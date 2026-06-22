@@ -95,10 +95,12 @@ export component ShellSliderRow inherits Rectangle {
     in property <string>    label: "";
     in-out property <float> value;
     in property <bool>      sld-enabled: true;
+    in property <bool>      minimal: false;       // single row: bare icon + track + chevron, no label/%
+    in property <bool>      show-chevron: false;  // trailing chevron -> device picker
     callback changed(float);
     callback chevron-clicked();
 
-    height: 52px;
+    height: root.minimal ? 46px : 52px;
     min-width: 100px;
     horizontal-stretch: 1;
     border-radius: self.height / 2;
@@ -106,7 +108,12 @@ export component ShellSliderRow inherits Rectangle {
     border-color: ShellPalette.tile-border;
     background: ShellPalette.tile-bg;
 
-    Rectangle {
+    // Track geometry shifts between the labelled (two-line) and minimal layouts.
+    property <length> track-x: root.minimal ? 42px : 52px;
+    property <length> track-right: root.show-chevron ? 44px : 16px;
+
+    // Icon — bare glyph in minimal mode, circle chip in the labelled layout.
+    if !root.minimal: Rectangle {
         x: 10px;
         y: (parent.height - 32px) / 2;
         width: 32px;
@@ -123,8 +130,16 @@ export component ShellSliderRow inherits Rectangle {
             colorize: ShellPalette.fg;
         }
     }
+    if root.minimal: Image {
+        x: 12px;
+        y: (parent.height - 20px) / 2;
+        width: 20px; height: 20px;
+        source: root.icon;
+        image-fit: contain;
+        colorize: ShellPalette.fg;
+    }
 
-    Text {
+    if !root.minimal: Text {
         x: 52px;
         y: 6px;
         width: parent.width - 130px;
@@ -141,7 +156,7 @@ export component ShellSliderRow inherits Rectangle {
 
     // The live value reads brightest — full-foreground and a touch larger so the
     // number is the thing your eye lands on, like macOS Control Center.
-    Text {
+    if !root.minimal: Text {
         x: parent.width - 60px;
         y: 6px;
         width: 44px;
@@ -156,10 +171,10 @@ export component ShellSliderRow inherits Rectangle {
     }
 
     track-ta := TouchArea {
-        x: 52px;
-        y: 22px;
+        x: root.track-x;
+        y: root.minimal ? (root.height - 24px) / 2 : 22px;
         // Track stretches from the leading icon to the right inset.
-        width:  parent.width - 52px - 16px;
+        width:  parent.width - root.track-x - root.track-right;
         height: 24px;
         enabled: root.sld-enabled;
         moved => {
@@ -217,6 +232,22 @@ export component ShellSliderRow inherits Rectangle {
         }
     }
 
+    // Trailing chevron — opens the audio output/input device picker (submenu).
+    if root.show-chevron: Image {
+        x: parent.width - 29px;
+        y: (parent.height - 14px) / 2;
+        width: 14px; height: 14px;
+        source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+        image-fit: contain;
+        colorize: ShellPalette.fg-secondary;
+    }
+    if root.show-chevron: TouchArea {
+        x: parent.width - 44px;
+        y: 0;
+        width: 44px; height: parent.height;
+        enabled: root.sld-enabled;
+        clicked => { root.chevron-clicked(); }
+    }
 }
 
 // Capsule tile: icon-circle + title + optional subtitle + optional chevron.
@@ -1531,19 +1562,22 @@ export component ControlCentrePopout {
                 }
             }
 
-            // Media controls.
+            // Media controls — minimal single-row sliders (icon + track + a
+            // chevron to the output/input device picker).
             VerticalLayout {
                 spacing: Spacing.sm;
                 ShellSliderRow {
+                    minimal: true;
+                    show-chevron: true;
                     icon: @image-url("../assets/icons/symbolic/volume.svg");
-                    label: "Output";
                     value <=> root.volume-value;
                     sld-enabled: root.open;
                     changed(v) => { root.volume-changed(v); }
                 }
                 ShellSliderRow {
+                    minimal: true;
+                    show-chevron: true;
                     icon: @image-url("../assets/icons/symbolic/mic.svg");
-                    label: "Microphone";
                     value <=> root.mic-value;
                     sld-enabled: root.open;
                     changed(v) => { root.mic-changed(v); }
