@@ -1,0 +1,41 @@
+From 9b3c4e1dfefc1fbcb18855c131407b04a25f5e8d Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 17 Jun 2026 18:45:00 +0100
+Subject: [PATCH] settings: install Gnoblin feature schema
+
+Install and compile the org.gnoblin.shell schema alongside GNOME Shell's
+schemas. Gnoblin layer-shell clients, Shell autostart, Mutter protocol gates,
+and the future control-center panel all consume this one settings contract.
+---
+ data/meson.build | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/data/meson.build b/data/meson.build
+index 1ffda38..b7a2081 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -106,8 +106,14 @@ schema = configure_file(
+   input: 'org.gnome.shell.gschema.xml.in',
+   output: 'org.gnome.shell.gschema.xml',
+   configuration: schemaconf,
+   install_dir: schemadir
+ )
++gnoblin_schema = configure_file(
++  input: 'org.gnoblin.shell.gschema.xml',
++  output: 'org.gnoblin.shell.gschema.xml',
++  copy: true,
++  install_dir: schemadir
++)
+ install_data('00_org.gnome.shell.gschema.override', install_dir: schemadir)
+ 
+ if have_systemd
+@@ -153,6 +159,6 @@
+ # for unit tests - gnome.compile_schemas() only looks in srcdir
+ compiled_schemas = custom_target('compile-schemas',
+-  input: schema,
++  input: [schema, gnoblin_schema],
+   output: 'gschemas.compiled',
+   command: [find_program('glib-compile-schemas'), '--strict', data_builddir],
+ )
+-- 
+2.53.0

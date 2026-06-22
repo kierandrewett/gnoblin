@@ -1,0 +1,43 @@
+From 8f9c7f662f9a3d789c7d80c2b1e6b4c6e6a86c1f Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 21 Jun 2026 14:20:00 +0100
+Subject: [PATCH] compositor: ignore edge resistance when no edges exist
+
+Edge resistance normally has monitor/screen edges to search, but the nested
+devkit can briefly drive a move update while those edge lists are empty. The
+search helpers dereference index 0 before checking the array length, so an
+otherwise harmless move update can segfault.
+
+Treat an empty edge list as no resistance/no snapping and let the proposed
+position through.
+---
+ src/compositor/edge-resistance.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/compositor/edge-resistance.c b/src/compositor/edge-resistance.c
+index f5386e5..eb37190 100644
+--- a/src/compositor/edge-resistance.c
++++ b/src/compositor/edge-resistance.c
+@@ -195,6 +195,9 @@ find_nearest_position (const GArray       *edges,
+   int best, best_dist, i;
+   gboolean edges_align;
+ 
++  if (!edges || edges->len == 0)
++    return position;
++
+   /* Initialize mid, edge, & compare in the off change that the array only
+    * has one element.
+    */
+@@ -338,6 +341,9 @@ apply_edge_resistance (MetaWindow         *window,
+   if (old_pos == new_pos)
+     return new_pos;
+ 
++  if (!edges || edges->len == 0)
++    return new_pos;
++
+   /* Get the range of indices in the edge array that we move past/to. */
+   begin = find_index_of_edge_near_position (edges, old_pos,  increasing, xdir);
+   end   = find_index_of_edge_near_position (edges, new_pos, !increasing, xdir);
+-- 
+2.53.0
+

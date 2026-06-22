@@ -1,0 +1,122 @@
+// On-screen display (volume / brightness): a glass pill centred near the bottom
+// of a full-screen, input-passthrough overlay. Rust sets the level + kind and
+// tears the surface down after a short timeout.
+import { Theme, TokenMode, Tokens, Spacing, Motion } from "../../shell-ui/vendor/slint/Tokens.slint";
+export { Theme, TokenMode }
+
+export component Osd inherits Window {
+    in property <float> level: 0.5;          // 0..1
+    in property <bool>  is-brightness: false;
+    in property <bool>  muted: false;
+    background: transparent;
+    default-font-family: Tokens.font-family;
+
+    // Fade + rise in on appear (a transient overlay shouldn't just pop).
+    property <bool> shown: false;
+    init => { self.shown = true; }
+
+    osd-panel := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - (root.shown ? 96px : 84px);
+        width: 280px;
+        height: 64px;
+        opacity: root.shown ? 1.0 : 0.0;
+        animate opacity, y { duration: Motion.medium; easing: Motion.medium-curve; }
+        background: transparent;
+        clip: false;
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: Theme.chrome-shadow-source;
+            border-radius: Tokens.popout-corner-radius;
+            drop-shadow-color: Theme.chrome-shadow;
+            drop-shadow-blur: Tokens.popout-shadow-blur;
+            drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
+        }
+
+        body := Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: Theme.surface-bg;
+            border-radius: Tokens.popout-corner-radius;
+            clip: true;
+
+        HorizontalLayout {
+            padding: Spacing.lg;
+            spacing: Spacing.md;
+            alignment: stretch;
+
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    Image {
+                        width: 28px;
+                        height: 28px;
+                        colorize: Theme.text-primary;
+                        opacity: root.muted ? 0.5 : 1.0;
+                        // Crossfade the muted-dim (and soften the volume/brightness swap).
+                        animate opacity { duration: Motion.fast; easing: Motion.fast-curve; }
+                        source: root.is-brightness
+                            ? @image-url("../../shell-ui/vendor/assets/icons/sun.svg")
+                            : @image-url("../../shell-ui/vendor/assets/icons/audio.svg");
+                    }
+                    // Mute slash — matches the topbar's audio glyph.
+                    if root.muted: Path {
+                        width: 28px;
+                        height: 28px;
+                        viewbox-width: 28;
+                        viewbox-height: 28;
+                        stroke: Theme.text-primary;
+                        stroke-width: 2.5px;
+                        MoveTo { x: 4; y: 24; }
+                        LineTo { x: 24; y: 4; }
+                    }
+                }
+            }
+
+            // Progress trough + fill.
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    height: 10px;
+                    background: Theme.surface-raised-bg;
+                    border-width: Tokens.chrome-hairline-width;
+                    border-color: Theme.surface-border;
+                    border-radius: 5px;
+
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * clamp(root.level, 0.0, 1.0);
+                        height: parent.height;
+                        background: root.muted ? Theme.text-secondary : Theme.surface-active-bg;
+                        border-radius: 5px;
+                        animate width { duration: Motion.fast; easing: Motion.fast-curve; }
+                    }
+                }
+            }
+        }
+        }
+
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.width - 2 * Tokens.chrome-hairline-width;
+            height: parent.height - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: Theme.surface-border;
+        }
+
+        Rectangle {
+            x: Tokens.popout-corner-radius;
+            y: Tokens.chrome-hairline-width / 2;
+            width: parent.width - 2 * Tokens.popout-corner-radius;
+            height: Tokens.chrome-highlight-height;
+            background: Theme.menu-highlight;
+        }
+    }
+}

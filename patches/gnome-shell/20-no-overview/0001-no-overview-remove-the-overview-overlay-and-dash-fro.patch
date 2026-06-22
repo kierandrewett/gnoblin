@@ -1,0 +1,38 @@
+From 07777b45316a7c9628461bc5bb701422f7703378 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 22:23:03 +0100
+Subject: [PATCH] no-overview: remove the overview/overlay and dash from the
+ session
+
+Put the primary 'user' session into GNOME's already-supported no-overview
+configuration (hasOverview:false) so Main.overview is a dummy: no overview
+actor, controls, toggle-overview/application-view keybindings, overlay-key
+handler, swipe tracker or hot corners are constructed. Keep the Activities
+panel item only as a workspace indicator. The dash/app-grid go too; a
+layer-shell dock and launcher replace them.
+---
+ js/ui/sessionMode.js | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/sessionMode.js b/js/ui/sessionMode.js
+index 9dc8e00..356bfaf 100644
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -79,7 +79,14 @@ const _modes = {
+     },
+ 
+     'user': {
+-        hasOverview: true,
++        // gnoblin: the overview/overlay does not exist. Putting the primary
++        // session into GNOME's already-supported no-overview configuration
++        // makes Main.overview a dummy (no actor, controls, keybindings, swipe
++        // tracker or hot corners are built), so there is no way in: Super, hot
++        // corner, gestures, toggle-overview/application-view, and the
++        // overlay-key handler are all gone. The dash and app grid go with it;
++        // a layer-shell dash-to-dock and launcher replace them.
++        hasOverview: false,
+         showCalendarEvents: true,
+         showWelcomeDialog: true,
+         allowSettings: true,
+-- 
+2.53.0

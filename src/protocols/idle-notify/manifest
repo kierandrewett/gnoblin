@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-idle-notify.c src/wayland/meta-wayland-idle-notify.c
+mutter meta-wayland-idle-notify.h src/wayland/meta-wayland-idle-notify.h
+mutter ext-idle-notify-v1.xml src/wayland/protocol/ext-idle-notify-v1.xml

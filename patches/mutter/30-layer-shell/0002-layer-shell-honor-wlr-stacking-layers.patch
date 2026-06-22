@@ -1,0 +1,173 @@
+From 7080f548052c6dcaedb7832da234fb02bc49a50d Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 17 Jun 2026 01:55:36 +0100
+Subject: [PATCH] layer-shell: honor wlr stacking layers
+
+Layer-shell surfaces store the exact MetaStackLayer selected from the wlr layer enum. Teach MetaWindowWayland's calculate_layer hook to prefer that stored value before falling back to the normal default-layer calculation.
+
+wlr-layer-shell has no ping/pong request pair, so layer-shell windows cannot participate in Mutter's normal alive-check ping protocol. Treat windows tagged as layer-shell as not pingable; otherwise pointer motion over a layer surface tries to call a NULL shell-surface ping vfunc.
+
+Layer-shell surfaces also run their own configure/ack state machine rather than MetaWindowWayland's xdg-style MetaWaylandWindowConfiguration queue. Ignore the generic surface-state reconfigure path for them, so focus/suspend state changes don't assert when no xdg configuration exists.
+
+Layer-shell pointer input is independent from keyboard interactivity. Keep
+MetaWindow input enabled for picking, but make keyboard focusability consult a
+layer-shell-specific flag.
+
+On-demand layer-shell keyboard interactivity must be triggered by normal
+pointer interaction. Focus focusable layer-shell windows from the Wayland
+pointer press path, and explicitly sync the Wayland keyboard focus for the same
+surface when the seat has a keyboard.
+
+Also honour monitor->in_fullscreen for the pinned DOCK layer: a wlr `top`
+panel (the topbar/dock) drops to META_LAYER_BOTTOM while its monitor is in
+fullscreen, so a fullscreen window is not obscured by the panels. `overlay`
+stays above by design.
+---
+ src/wayland/meta-wayland-pointer.c | 33 +++++++++++++++++++++++++
+ src/wayland/meta-window-wayland.c | 39 +++++++++++++++++++++++++++++
+ 2 files changed, 72 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index 9a310e6..cb3ae09 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -54,6 +54,7 @@
+ #include "wayland/meta-cursor-sprite-wayland.h"
+ #include "wayland/meta-wayland-buffer.h"
+ #include "wayland/meta-wayland-cursor-surface.h"
++#include "wayland/meta-wayland-layer-shell.h"
+ #include "wayland/meta-wayland-data-device.h"
+ #include "wayland/meta-wayland-pointer.h"
+ #include "wayland/meta-wayland-popup.h"
+@@ -334,6 +335,36 @@ surface_get_effective_window (MetaWaylandSurface *surface)
+   return meta_wayland_surface_get_window (toplevel);
+ }
+ 
++static void
++maybe_focus_layer_shell_on_button_press (MetaWaylandPointer *pointer,
++                                         const ClutterEvent *event)
++{
++  MetaWindow *window;
++
++  if (clutter_event_type (event) != CLUTTER_BUTTON_PRESS)
++    return;
++
++  if (!pointer->focus_surface)
++    return;
++
++  window = surface_get_effective_window (pointer->focus_surface);
++  if (!window)
++    return;
++
++  if (GPOINTER_TO_INT (g_object_get_data (G_OBJECT (window),
++                                          META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY)) != 0)
++    {
++      MetaWaylandSeat *seat = meta_wayland_pointer_get_seat (pointer);
++      MetaWaylandSurface *focus_surface =
++        meta_window_get_wayland_surface (window);
++
++      meta_window_focus (window, clutter_event_get_time (event));
++
++      if (focus_surface && meta_wayland_seat_has_keyboard (seat))
++        meta_wayland_keyboard_set_focus (seat->keyboard, focus_surface);
++    }
++}
++
+ static void
+ sync_focus_surface (MetaWaylandPointer *pointer)
+ {
+@@ -748,6 +779,8 @@ handle_button_event (MetaWaylandPointer *pointer,
+       clutter_event_get_coords (event, &pointer->grab_x, &pointer->grab_y);
+     }
+ 
++  maybe_focus_layer_shell_on_button_press (pointer, event);
++
+   meta_wayland_pointer_send_button (pointer, event);
+ 
+   if (implicit_grab)
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 18fb8e7..7f4bb45 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -38,6 +38,7 @@
+ #include "core/window-private.h"
+ #include "wayland/meta-wayland-actor-surface.h"
+ #include "wayland/meta-wayland-client-private.h"
++#include "wayland/meta-wayland-layer-shell.h"
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-surface-private.h"
+ #include "wayland/meta-wayland-toplevel-drag.h"
+@@ -221,6 +222,13 @@ meta_window_wayland_configure (MetaWindowWayland              *wl_window,
+     meta_wayland_window_configuration_ref (configuration);
+ }
+ 
++static gboolean
++is_layer_shell_window (MetaWindow *window)
++{
++  return g_object_get_data (G_OBJECT (window),
++                            META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY) != NULL;
++}
++
+ static gboolean
+ is_drag_resizing_window (MetaWindowDrag *window_drag,
+                          MetaWindow     *window)
+@@ -247,6 +255,9 @@ surface_state_changed (MetaWindow *window)
+   if (window->unmanaging)
+     return;
+ 
++  if (is_layer_shell_window (window))
++    return;
++
+   g_return_if_fail (last_sent_configuration);
+ 
+   configuration =
+@@ -956,12 +967,20 @@ meta_window_wayland_shortcuts_inhibited (MetaWindow         *window,
+ static gboolean
+ meta_window_wayland_is_focusable (MetaWindow *window)
+ {
++  if (is_layer_shell_window (window))
++    return GPOINTER_TO_INT (
++      g_object_get_data (G_OBJECT (window),
++                         META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY)) != 0;
++
+   return window->input;
+ }
+ 
+ static gboolean
+ meta_window_wayland_can_ping (MetaWindow *window)
+ {
++  if (is_layer_shell_window (window))
++    return FALSE;
++
+   return TRUE;
+ }
+ 
+@@ -1165,6 +1184,26 @@ meta_window_wayland_save_rect (MetaWindow *window)
+ static MetaStackLayer
+ meta_window_wayland_calculate_layer (MetaWindow *window)
+ {
++  gpointer layer_data =
++    g_object_get_data (G_OBJECT (window),
++                       META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY);
++
++  if (layer_data)
++    {
++      MetaStackLayer layer = (MetaStackLayer) (GPOINTER_TO_INT (layer_data) - 1);
++
++      /* A wlr `top` layer surface (mapped to DOCK) must drop below a fullscreen
++       * window on its monitor so the fullscreen window is unobscured, matching
++       * the dock case in meta_window_get_default_layer. `overlay`
++       * (OVERRIDE_REDIRECT) stays above fullscreen by design; background/bottom
++       * are already below normal windows. */
++      if (layer == META_LAYER_DOCK &&
++          window->monitor && window->monitor->in_fullscreen)
++        return META_LAYER_BOTTOM;
++
++      return layer;
++    }
++
+   return meta_window_get_default_layer (window);
+ }
+ 
+-- 
+2.53.0

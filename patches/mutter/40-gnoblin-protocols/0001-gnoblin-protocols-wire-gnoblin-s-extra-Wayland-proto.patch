@@ -1,0 +1,74 @@
+From 6862d88eba0f70b290f6d79857955072488b9061 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 21 Jun 2026 23:19:20 +0100
+Subject: [PATCH] gnoblin-protocols: wire gnoblin's extra Wayland protocols
+ into the build
+
+Add a single aggregated entry point, meta_gnoblin_init_protocols(), called
+once from meta_wayland_shell_init(), plus the meson sources and vendored
+protocol XML entries for gnoblin's wlr-/ext- protocols.
+
+The implementations, headers and protocol XML are gnoblin overlay files,
+copied into src/wayland/ at build time. New protocols are added by editing
+the aggregator overlay and scripts/gen-gnoblin-protocols-patch.sh, not this
+patch by hand. Insertions are anchored on pristine-stable context so the
+patch applies cleanly to the pinned tag independently of the layer-shell and
+screencopy wiring patches.
+---
+ src/meson.build                    | 28 ++++++++++++++++++++++++++++
+ src/wayland/meta-wayland-surface.c |  2 ++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index 508c341..97e6b20 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -687,2 +687,22 @@ if have_wayland
+     'wayland/meta-wayland-shell-surface.h',
++    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
++    # at build time; registered via meta_gnoblin_init_protocols)
++    'wayland/gnoblin-config.c',
++    'wayland/gnoblin-config.h',
++    'wayland/meta-gnoblin-protocols.c',
++    'wayland/meta-gnoblin-protocols.h',
++    'wayland/meta-wayland-idle-notify.c',
++    'wayland/meta-wayland-idle-notify.h',
++    'wayland/meta-wayland-foreign-toplevel-list.c',
++    'wayland/meta-wayland-foreign-toplevel-list.h',
++    'wayland/meta-wayland-foreign-toplevel-management.c',
++    'wayland/meta-wayland-foreign-toplevel-management.h',
++    'wayland/meta-wayland-gamma-control.c',
++    'wayland/meta-wayland-gamma-control.h',
++    'wayland/meta-wayland-output-power-management.c',
++    'wayland/meta-wayland-output-power-management.h',
++    'wayland/meta-wayland-data-control.c',
++    'wayland/meta-wayland-data-control.h',
++    'wayland/meta-wayland-kde-appmenu.c',
++    'wayland/meta-wayland-kde-appmenu.h',
+     'wayland/meta-wayland-single-pixel-buffer.c',
+@@ -1192,2 +1212,10 @@ if have_wayland
+     ['xdg-toplevel-tag', 'staging', 1, ],
++    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)
++    ['ext-idle-notify-v1', 'private', ],
++    ['ext-foreign-toplevel-list-v1', 'private', ],
++    ['wlr-foreign-toplevel-management-unstable-v1', 'private', ],
++    ['wlr-gamma-control-unstable-v1', 'private', ],
++    ['wlr-output-power-management-unstable-v1', 'private', ],
++    ['ext-data-control-v1', 'private', ],
++    ['kde-appmenu', 'private', ],
+     ['xwayland-keyboard-grab', 'unstable', 1, ],
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+index f01e65f..dfcc4f9 100644
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -41,2 +41,3 @@
+ #include "wayland/meta-wayland-color-representation.h"
++#include "wayland/meta-gnoblin-protocols.h"
+ #include "wayland/meta-wayland-fractional-scale.h"
+@@ -1899,2 +1900,3 @@ meta_wayland_shell_init (MetaWaylandCompositor *compositor)
+   meta_wayland_xdg_shell_init (compositor);
++  meta_gnoblin_init_protocols (compositor);
+   meta_wayland_init_gtk_shell (compositor);
+-- 
+2.53.0
+

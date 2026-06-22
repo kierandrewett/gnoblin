@@ -1,0 +1,75 @@
+From 68fef540fee95a9ff9dbed38bdff02bd526a8fd2 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 17 Jun 2026 01:19:39 +0100
+Subject: [PATCH] layer-shell-autostart: start Gnoblin components
+
+---
+ js/ui/main.js | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 4be8cea..3b366e8 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -44,6 +44,7 @@ import * as WindowManager from './windowManager.js';
+ import * as Magnifier from './magnifier.js';
+ import * as XdndHandler from './xdndHandler.js';
+ import * as KbdA11yDialog from './kbdA11yDialog.js';
++import * as LayerShellAutostart from './gnoblin/layerShellAutostart.js';
+ import * as LocatePointer from './locatePointer.js';
+ import * as PointerA11yTimeout from './pointerA11yTimeout.js';
+ import {formatError} from '../misc/errorUtils.js';
+@@ -100,6 +101,7 @@ export let timeLimitsManager = null;
+ export let timeLimitsDispatcher = null;
+ export let brightnessManager = null;
+ export let brightnessDBus = null;
++export let layerShellAutostartManager = null;
+ 
+ let _startDate;
+ let _defaultCssStylesheet = null;
+@@ -252,6 +254,7 @@ async function _initializeUI() {
+     notificationDaemon = new NotificationDaemon.NotificationDaemon();
+     windowAttentionHandler = new WindowAttentionHandler.WindowAttentionHandler();
+     componentManager = new Components.ComponentManager();
++    layerShellAutostartManager = new LayerShellAutostart.Manager();
+ 
+     introspectService = new Introspect.IntrospectService();
+ 
+@@ -352,18 +355,22 @@ async function _initializeUI() {
+     }
+ 
+     layoutManager.connect('startup-complete', () => {
++        const isUserSession =
++            sessionMode.currentMode !== 'gdm' &&
++            sessionMode.currentMode !== 'initial-setup';
++
+         if (actionMode === Shell.ActionMode.NONE)
+             actionMode = Shell.ActionMode.NORMAL;
+ 
+         if (screenShield)
+             screenShield.lockIfWasLocked();
+ 
+-        if (sessionMode.currentMode !== 'gdm' &&
+-            sessionMode.currentMode !== 'initial-setup') {
++        if (isUserSession) {
+             GLib.log_structured(LOG_DOMAIN, GLib.LogLevelFlags.LEVEL_MESSAGE, {
+                 'MESSAGE': `GNOME Shell started at ${_startDate}`,
+                 'MESSAGE_ID': GNOMESHELL_STARTED_MESSAGE_ID,
+             });
++            layerShellAutostartManager.start();
+         }
+ 
+         if (!perfModule) {
+@@ -377,8 +384,7 @@ async function _initializeUI() {
+             }
+         }
+ 
+-        if (sessionMode.currentMode !== 'gdm' &&
+-            sessionMode.currentMode !== 'initial-setup')
++        if (isUserSession)
+             _handleLockScreenWarning();
+ 
+         LoginManager.registerSessionWithGDM();
+-- 
+2.53.0
+

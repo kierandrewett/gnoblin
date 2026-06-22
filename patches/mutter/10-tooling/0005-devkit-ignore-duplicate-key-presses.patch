@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Mon, 22 Jun 2026 00:35:00 +0100
+Subject: [PATCH] devkit: ignore duplicate key presses
+
+GtkEventControllerKey can emit repeated key-pressed callbacks while a
+host key is held, and the visible Devkit viewer may also inherit stale
+host key state while its monitor widget is being mapped. Treat a press
+for an already-pressed key like the existing release-without-press case:
+ignore it and keep the EI keyboard state coherent.
+---
+ mdk/mdk-keyboard.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/mdk/mdk-keyboard.c b/mdk/mdk-keyboard.c
+index 953ae0f..106e53d 100644
+--- a/mdk/mdk-keyboard.c
++++ b/mdk/mdk-keyboard.c
+@@ -76,7 +76,7 @@ mdk_keyboard_notify_key (MdkKeyboard *keyboard,
+   MdkDevice *device = MDK_DEVICE (keyboard);
+   struct ei_device *ei_device = mdk_device_get_ei_device (device);
+ 
+-  if (key >= G_N_ELEMENTS (keyboard->key_pressed))
++  if (key < 0 || key >= G_N_ELEMENTS (keyboard->key_pressed))
+     {
+       g_warning ("Unknown key code 0x%x, ignoring", key);
+       return;
+@@ -84,7 +84,9 @@ mdk_keyboard_notify_key (MdkKeyboard *keyboard,
+ 
+   if (state)
+     {
+-      g_return_if_fail (!keyboard->key_pressed[key]);
++      if (keyboard->key_pressed[key])
++        return;
++
+       keyboard->key_pressed[key] = TRUE;
+     }
+   else
+-- 
+2.50.0

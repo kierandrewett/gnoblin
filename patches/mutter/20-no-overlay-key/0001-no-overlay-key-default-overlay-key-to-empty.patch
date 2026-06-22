@@ -1,0 +1,31 @@
+From 841d78ac883f0dda35e734bb601772f3045fb8b2 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 22:15:50 +0100
+Subject: [PATCH] no-overlay-key: default overlay-key to empty
+
+Gnoblin has no overview, so the Super tap/hold must never trigger the
+overlay. Default org.gnome.mutter overlay-key to '' in the schema so the
+overlay-key signal is never emitted, leaving Super free for window
+move/resize drags. Baked into the compiled schema (no per-user setting).
+---
+ data/org.gnome.mutter.gschema.xml.in | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/data/org.gnome.mutter.gschema.xml.in b/data/org.gnome.mutter.gschema.xml.in
+index 3a8fd2b..3ef67e8 100644
+--- a/data/org.gnome.mutter.gschema.xml.in
++++ b/data/org.gnome.mutter.gschema.xml.in
+@@ -12,7 +12,9 @@
+           gettext-domain="@GETTEXT_DOMAIN@">
+ 
+     <key name="overlay-key" type="s">
+-      <default>'Super'</default>
++      <!-- gnoblin: empty by default so tapping/holding Super never toggles
++           the overview, leaving Super free for window move/resize drags. -->
++      <default>''</default>
+       <summary>Modifier to use for extended window management operations</summary>
+       <description>
+         This key will initiate the “overlay”, which is a combination window
+-- 
+2.53.0
+

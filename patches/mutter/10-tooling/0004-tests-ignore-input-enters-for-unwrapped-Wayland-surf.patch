@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Sun, 21 Jun 2026 04:10:00 +0100
+Subject: [PATCH] tests: ignore input enters for unwrapped Wayland surfaces
+
+Some Wayland test clients use the shared WaylandDisplay helper while
+also creating raw wl_surface resources directly. These surfaces do not
+have a WaylandSurface wrapper stored in wl_surface user data, but the
+shared seat listeners can still receive pointer or keyboard enter events
+for them.
+
+Ignore those enter events instead of emitting a GObject signal on a NULL
+instance. This keeps G_DEBUG=fatal-criticals useful for real compositor
+criticals while avoiding a false abort in tests such as
+/wayland/subsurface/parent-unmapped.
+---
+ src/tests/wayland-test-clients/wayland-test-client-utils.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/tests/wayland-test-clients/wayland-test-client-utils.c b/src/tests/wayland-test-clients/wayland-test-client-utils.c
+index 99d2116..3881416 100644
+--- a/src/tests/wayland-test-clients/wayland-test-client-utils.c
++++ b/src/tests/wayland-test-clients/wayland-test-client-utils.c
+@@ -245,6 +245,9 @@ pointer_handle_enter (void              *user_data,
+ {
+   WaylandSurface *surface = wl_surface_get_user_data (surface_resource);
+ 
++  if (!surface)
++    return;
++
+   g_signal_emit (surface, surface_signals[SURFACE_POINTER_ENTER],
+                  0, pointer, serial);
+ }
+@@ -311,6 +314,9 @@ wl_keyboard_enter (void               *user_data,
+ {
+   WaylandSurface *surface = wl_surface_get_user_data (surface_resource);
+ 
++  if (!surface)
++    return;
++
+   g_signal_emit (surface, surface_signals[SURFACE_KEYBOARD_ENTER],
+                  0, keyboard, serial);
+ }
+-- 
+2.50.0
+

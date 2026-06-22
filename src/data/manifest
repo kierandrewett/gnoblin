@@ -1,0 +1,3 @@
+# gnoblin settings overlay copied into gnome-shell before patches apply.
+# Columns: <project> <source (rel to this dir)> <dest (rel to subproject)>
+gnome-shell  org.gnoblin.shell.gschema.xml  data/org.gnoblin.shell.gschema.xml

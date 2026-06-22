@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-output-power-management.c src/wayland/meta-wayland-output-power-management.c
+mutter meta-wayland-output-power-management.h src/wayland/meta-wayland-output-power-management.h
+mutter wlr-output-power-management-unstable-v1.xml src/wayland/protocol/wlr-output-power-management-unstable-v1.xml

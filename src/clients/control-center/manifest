@@ -1,0 +1,10 @@
+# gnoblin control-center overlay files copied into gnome-control-center before patches apply.
+# Columns: <project> <source (rel to this dir)> <dest (rel to subproject)>
+gnome-control-center  cc-gnoblin-panel.c  panels/gnoblin/cc-gnoblin-panel.c
+gnome-control-center  cc-gnoblin-panel.h  panels/gnoblin/cc-gnoblin-panel.h
+gnome-control-center  cc-gnoblin-panel.blp  panels/gnoblin/cc-gnoblin-panel.blp
+gnome-control-center  gnoblin.gresource.xml  panels/gnoblin/gnoblin.gresource.xml
+gnome-control-center  gnome-gnoblin-panel.desktop.in  panels/gnoblin/gnome-gnoblin-panel.desktop.in
+gnome-control-center  meson.build  panels/gnoblin/meson.build
+gnome-control-center  icons/meson.build  panels/gnoblin/icons/meson.build
+gnome-control-center  icons/scalable/org.gnome.Settings-gnoblin-symbolic.svg  panels/gnoblin/icons/scalable/org.gnome.Settings-gnoblin-symbolic.svg

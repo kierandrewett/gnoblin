@@ -1,0 +1,76 @@
+From 3863b12ca36e531b4819e0e098ee7e01b7a218ac Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 22:31:14 +0100
+Subject: [PATCH] branding: identify as Gnoblin
+
+Set the gnome-shell / extensions-tool / extensions-app project versions to
+49.6-gnoblin (kept equal as asserted in meson.build) so the fork is
+identifiable in `gnome-shell --version`, the org.gnome.Shell.ShellVersion
+D-Bus property and Looking Glass. Brand the --version banner as 'Gnoblin'
+so the shell does not announce itself as GNOME on the command line.
+
+Functional identifiers (D-Bus names, schema ids, app ids) are left
+untouched.
+---
+ meson.build                             | 5 ++++-
+ src/main.c                              | 4 +++-
+ subprojects/extensions-app/meson.build  | 3 ++-
+ subprojects/extensions-tool/meson.build | 3 ++-
+ 4 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 14ba119..784b070 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1,5 +1,8 @@
+ project('gnome-shell', 'c',
+-  version: '49.6',
++  # gnoblin: branded, fork-identifiable version. Surfaces in
++  # `gnome-shell --version`, the org.gnome.Shell.ShellVersion D-Bus property
++  # and Looking Glass. The three project versions must stay equal (asserted).
++  version: '49.6-gnoblin',
+   meson_version: '>= 1.3.0',
+   license: 'GPL-2.0-or-later',
+ )
+diff --git a/src/main.c b/src/main.c
+index 62a284b..56c9134 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -506,7 +506,9 @@ print_version (const gchar    *option_name,
+                gpointer        data,
+                GError        **error)
+ {
+-  g_print ("GNOME Shell %s\n", VERSION);
++  /* gnoblin: brand the --version banner so the shell does not announce
++   * itself as GNOME on the command line. */
++  g_print ("Gnoblin %s\n", VERSION);
+   exit (0);
+ }
+ 
+diff --git a/subprojects/extensions-app/meson.build b/subprojects/extensions-app/meson.build
+index 7cdeb6e..6e462d2 100644
+--- a/subprojects/extensions-app/meson.build
++++ b/subprojects/extensions-app/meson.build
+@@ -1,5 +1,6 @@
+ project('gnome-extensions-app',
+-  version: '49.6',
++  # gnoblin: must equal the parent gnome-shell project version (asserted).
++  version: '49.6-gnoblin',
+   meson_version: '>= 0.58.0',
+   license: 'GPL-2.0-or-later',
+ )
+diff --git a/subprojects/extensions-tool/meson.build b/subprojects/extensions-tool/meson.build
+index a9dc4be..2cf6c0c 100644
+--- a/subprojects/extensions-tool/meson.build
++++ b/subprojects/extensions-tool/meson.build
+@@ -1,5 +1,6 @@
+ project('gnome-extensions-tool', 'c',
+-  version: '49.6',
++  # gnoblin: must equal the parent gnome-shell project version (asserted).
++  version: '49.6-gnoblin',
+   meson_version: '>= 0.58.0',
+   license: 'GPL-2.0-or-later',
+ )
+-- 
+2.53.0
+

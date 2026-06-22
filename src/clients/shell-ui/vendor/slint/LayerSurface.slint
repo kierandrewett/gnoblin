@@ -1,0 +1,32 @@
+// LayerSurface.slint — Element for external layer-shell surfaces.
+// A third-party process (e.g. a notification daemon) writes to a wlr-layer-shell
+// surface; the Rust compositor imports that surface as a slint::Image and positions
+// it using the properties below.
+//
+// Anchor semantics (matches wlr-layer-shell):
+//   The Rust side computes `surface-x/y` from the anchor and the screen geometry,
+//   then sets them on LayerItem entries in the Compositor's `layers` list.
+//   The z-level is set directly on the element by the parent (Compositor.slint).
+
+export component LayerSurface {
+    // Layer surface texture — Rust feeds this after importing the SHM/DMA-BUF buffer.
+    in property <image>  surface;
+    // Resolved position (computed by Rust from anchor + exclusive zone).
+    in property <length> surface-x: 0px;
+    in property <length> surface-y: 0px;
+    in property <length> surface-width: 0px;
+    in property <length> surface-height: 0px;
+
+    // Position and size driven by Rust-supplied values.
+    x: root.surface-x;
+    y: root.surface-y;
+    width: root.surface-width;
+    height: root.surface-height;
+
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.surface;
+        image-fit: fill;
+    }
+}

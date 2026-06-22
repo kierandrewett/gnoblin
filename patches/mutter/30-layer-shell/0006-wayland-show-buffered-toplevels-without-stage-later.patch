@@ -1,0 +1,33 @@
+From 2f76a4ebf0b69cf1df48cb8faed83f233f95d5a7 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 21 Jun 2026 10:27:00 +0100
+Subject: [PATCH] wayland: show buffered toplevels if calc-showing is starved
+
+Wayland toplevel windows are created hidden and normally become visible when
+Mutter's stage-driven CALC_SHOWING later runs. In the visible devkit path, that
+stage update can fail to arrive until unrelated input happens, leaving freshly
+launched apps mapped but hidden.
+
+Layer-shell surfaces already refresh visibility directly after buffer commits.
+Do the same narrow nudge for Wayland toplevels that still have hidden set after
+finishing a buffer-backed move/resize.
+---
+ src/wayland/meta-window-wayland.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 7f4bb45..82d6ce9 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -1821,6 +1821,9 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+ 
+   if (place_flags & META_PLACE_FLAG_CALCULATE)
+     window->placed = TRUE;
++
++  if (window->hidden && meta_wayland_surface_get_buffer (surface))
++    meta_window_update_visibility (window);
+ }
+ 
+ void
+-- 
+2.53.0

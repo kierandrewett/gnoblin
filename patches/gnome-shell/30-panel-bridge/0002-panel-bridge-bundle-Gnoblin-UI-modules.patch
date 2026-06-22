@@ -1,0 +1,25 @@
+From ea68b86ab3b19eb4739f22815ac494397e56d4e0 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 17 Jun 2026 01:26:44 +0100
+Subject: [PATCH] panel-bridge: bundle Gnoblin UI modules
+
+---
+ js/js-resources.gresource.xml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index e5e6167..f93a903 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -71,6 +71,8 @@
+     <file>ui/extensionSystem.js</file>
+     <file>ui/focusCaretTracker.js</file>
+     <file>ui/grabHelper.js</file>
++    <file>ui/gnoblin/layerShellAutostart.js</file>
++    <file>ui/gnoblin/topbarBridge.js</file>
+     <file>ui/ibusCandidatePopup.js</file>
+     <file>ui/iconGrid.js</file>
+     <file>ui/inhibitShortcutsDialog.js</file>
+-- 
+2.53.0
+

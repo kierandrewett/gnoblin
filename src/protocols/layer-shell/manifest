@@ -1,0 +1,5 @@
+# gnoblin overlay manifest — files copied verbatim into a submodule before the
+# patch series is applied. Columns: <project> <source (rel to this dir)> <dest (rel to subproject)>
+mutter  meta-wayland-layer-shell.c       src/wayland/meta-wayland-layer-shell.c
+mutter  meta-wayland-layer-shell.h       src/wayland/meta-wayland-layer-shell.h
+mutter  wlr-layer-shell-unstable-v1.xml  src/wayland/protocol/wlr-layer-shell-unstable-v1.xml

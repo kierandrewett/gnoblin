@@ -1,0 +1,1697 @@
+// Popouts.slint — Two small floating panels triggered from the top bar.
+//   DatetimePopout    — clock click → date / day / time card
+//   ControlCentrePopout — system icons click → quick toggles card
+//
+// Both are styled like the dock pill: rounded rectangle, theme-aware bg,
+// soft drop-shadow. They animate in/out via opacity + translate-y; Rust
+// drives the "open" boolean on Compositor.slint.
+
+import { Tokens, Theme, TokenMode, ShellPalette, Spacing, Radius, Motion } from "./Tokens.slint";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Command/process-driven quick-settings plugins (qsplugin host → these structs).
+//
+// A plugin is an external command whose JSON output the Rust host parses into
+// these structs and pushes onto `ControlCentrePopout.qs-plugins`. Each plugin
+// renders as a tile (using the existing ShellTile) plus an optional submenu of
+// rows. This is the *data model*: the renderer drives it from
+// topbar.slint → main.rs. Kept additive — the built-in tiles above are
+// untouched; plugin tiles appear in their own clearly-marked section.
+// ────────────────────────────────────────────────────────────────────────────
+
+// One submenu row. `kind` is one of: item | toggle | slider | action |
+// separator | section. `icon` is a resolved image (Rust resolves the icon
+// name via find_icon before populating the model). `value` is the slider
+// position (0..1); `on` is the toggle state.
+export struct QsMenuRow {
+    id: string,
+    kind: string,
+    label: string,
+    sublabel: string,
+    icon: image,
+    value: float,
+    on: bool,
+}
+
+// One plugin tile + its (optional) submenu rows. `id` is the plugin id used
+// when emitting events back to Rust. An empty `rows` means a tile-only plugin.
+export struct QsPlugin {
+    id: string,
+    icon: image,
+    title: string,
+    subtitle: string,
+    active: bool,
+    chevron: bool,
+    rows: [QsMenuRow],
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Layer-shell primitive components.
+//
+// Exported from this file so topbar, dock, menus and future layer-shell panels
+// can share one interaction/chrome language instead of hand-rolling each panel.
+// ────────────────────────────────────────────────────────────────────────────
+
+// Round icon button (the four header buttons: account / settings /
+// lock / power, and any future "system action" cluster).
+export component ShellRoundButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool>  btn-enabled: true;
+    callback clicked();
+
+    width:  36px;
+    height: 36px;
+    border-radius: self.height / 2;
+    // Persistent fill so the button clearly reads as a circular control (like
+    // the GNOME quick-settings header), brightening on hover. A touch stronger
+    // than a tile so a bare-glyph button never disappears into the panel.
+    background: ta.has-hover
+        ? ShellPalette.tile-bg-hover
+        : (Theme.mode == TokenMode.Dark ? rgba(255, 255, 255, 0.14)
+                                        : rgba(0, 0, 0, 0.08));
+    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+    ta := TouchArea {
+        x: 0; y: 0;
+        width: parent.width; height: parent.height;
+        enabled: root.btn-enabled;
+        clicked => { root.clicked(); }
+    }
+    Image {
+        x: (parent.width  - 18px) / 2;
+        y: (parent.height - 18px) / 2;
+        width: 18px; height: 18px;
+        source: root.icon;
+        image-fit: contain;
+        colorize: ShellPalette.fg;
+    }
+}
+
+// Slider row: leading icon + 8 px-tall track with rounded accent fill and
+// a round thumb + trailing chevron (opens a fuller settings page in the
+// real shell).
+export component ShellSliderRow inherits Rectangle {
+    in property <image>     icon;
+    in property <string>    label: "";
+    in-out property <float> value;
+    in property <bool>      sld-enabled: true;
+    callback changed(float);
+    callback chevron-clicked();
+
+    height: 52px;
+    min-width: 100px;
+    horizontal-stretch: 1;
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: ShellPalette.tile-border;
+    background: ShellPalette.tile-bg;
+
+    Rectangle {
+        x: 10px;
+        y: (parent.height - 32px) / 2;
+        width: 32px;
+        height: 32px;
+        border-radius: self.height / 2;
+        background: ShellPalette.icon-bg-inactive;
+
+        Image {
+            x: (parent.width - 18px) / 2;
+            y: (parent.height - 18px) / 2;
+            width: 18px; height: 18px;
+            source: root.icon;
+            image-fit: contain;
+            colorize: ShellPalette.fg;
+        }
+    }
+
+    Text {
+        x: 52px;
+        y: 6px;
+        width: parent.width - 130px;
+        height: 16px;
+        text: root.label;
+        color: ShellPalette.fg-secondary;
+        font-family: Tokens.font-family;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: left;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    // The live value reads brightest — full-foreground and a touch larger so the
+    // number is the thing your eye lands on, like macOS Control Center.
+    Text {
+        x: parent.width - 60px;
+        y: 6px;
+        width: 44px;
+        height: 16px;
+        text: Math.round(root.value * 100) + "%";
+        color: ShellPalette.fg;
+        font-family: Tokens.font-family;
+        font-size: 13px;
+        font-weight: 700;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    track-ta := TouchArea {
+        x: 52px;
+        y: 22px;
+        // Track stretches from the leading icon to the right inset.
+        width:  parent.width - 52px - 16px;
+        height: 24px;
+        enabled: root.sld-enabled;
+        moved => {
+            if (self.pressed) {
+                root.value = clamp(self.mouse-x / self.width, 0.0, 1.0);
+                root.changed(root.value);
+            }
+        }
+        clicked => {
+            root.value = clamp(self.mouse-x / self.width, 0.0, 1.0);
+            root.changed(root.value);
+        }
+    }
+    Rectangle {
+        x: track-ta.x;
+        y: track-ta.y + (track-ta.height - 10px) / 2;
+        width:  track-ta.width;
+        height: 10px;
+        border-radius: 5px;
+        // A recessed groove distinctly darker than the container, so the unfilled
+        // range stays legible end-to-end (no border needed to define it).
+        background: Theme.mode == TokenMode.Dark
+            ? rgba(0, 0, 0, 0.30)
+            : rgba(0, 0, 0, 0.12);
+        Rectangle {
+            x: 0; y: 0;
+            width:  max(parent.height, parent.width * root.value);
+            height: parent.height;
+            border-radius: 5px;
+            background: ShellPalette.accent;
+            // Fill tracks the value smoothly. While actively dragging we
+            // don't want a lag between cursor and fill, so the tween only
+            // applies to programmatic/settled value changes (~120ms);
+            // dragging still feels 1:1 because successive `moved` updates
+            // are small and continuous.
+            animate width { duration: Motion.fast; easing: Motion.fast-curve; }
+        }
+        // Thumb — sits at the fill's leading edge so the slider reads
+        // as draggable rather than a bare progress bar. Position eases
+        // toward the value (matches the fill).
+        Rectangle {
+            x: clamp(parent.width * root.value - self.width / 2, 0px, parent.width - self.width);
+            y: (parent.height - 18px) / 2;
+            width: 18px; height: 18px;
+            border-radius: self.height / 2;
+            background: white;
+            // A hairline ring + soft shadow define the thumb against the bright
+            // fill so it reads as a grabbable knob, not a gap in the bar.
+            border-width: 1px;
+            border-color: rgba(0, 0, 0, 0.12);
+            drop-shadow-blur: Tokens.control-shadow-blur;
+            drop-shadow-offset-y: Tokens.control-shadow-offset-y;
+            drop-shadow-color: Theme.chrome-shadow;
+            animate x { duration: Motion.fast; easing: Motion.fast-curve; }
+        }
+    }
+
+}
+
+// Capsule tile: icon-circle + title + optional subtitle + optional chevron.
+// `compact: true` shrinks for the secondary toggle row (Night Light, etc.).
+export component ShellTile inherits Rectangle {
+    in property <image>  icon;
+    in property <string> title;
+    in property <string> subtitle: "";
+    in property <bool>   active: false;
+    in property <bool>   show-chevron: true;
+    in property <bool>   tile-enabled: true;
+    in property <bool>   compact: false;
+    callback clicked();
+
+    height: root.compact ? 52px : 60px;
+    // Stretch to fill available width inside a HorizontalLayout — without
+    // this `Rectangle`-based components default to zero stretch and the
+    // tiles collapse to their content's preferred width (~0 since the
+    // children are absolutely positioned).
+    min-width: 100px;
+    horizontal-stretch: 1;
+    // Full stadium pill, matching the GNOME quick-settings tile.
+    border-radius: self.height / 2;
+    border-width: Tokens.chrome-hairline-width;
+    border-color: root.active ? transparent : ShellPalette.tile-border;
+    // Interaction feedback is colour-only (no transform) so the text never
+    // renders at a fractional scale and blurs. Press = a darken (pressed-in),
+    // hover = a brighten/lift.
+    background: ta.pressed
+        ? (root.active ? ShellPalette.tile-bg-active.darker(0.10) : ShellPalette.tile-bg-hover.darker(0.08))
+        : (root.active
+            ? (ta.has-hover ? ShellPalette.tile-bg-active.brighter(0.14) : ShellPalette.tile-bg-active)
+            : (ta.has-hover ? ShellPalette.tile-bg-hover : ShellPalette.tile-bg));
+    animate background, border-color { duration: Motion.fast; easing: Motion.fast-curve; }
+
+    // Active tiles glow faintly in the accent colour — a lit-up "on" feel that
+    // reads at a glance and gives the panel depth a flat fill can't. (GNOME's
+    // tiles are flat; this is our edge.)
+    drop-shadow-blur:     root.active ? 11px : 0px;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-color:    root.active ? rgba(53, 132, 228, 0.38) : transparent;
+    animate drop-shadow-blur, drop-shadow-color {
+        duration: Motion.fast; easing: Motion.fast-curve;
+    }
+
+    property <length> circle-size: root.compact ? 28px : 32px;
+    property <length> glyph-size:  root.compact ? 16px : 18px;
+    // Reserve the right-hand divided section for the chevron when expandable.
+    property <length> chev-pad:    root.show-chevron ? 34px : 16px;
+    // Inset from the tile's left/right edge to the icon circle / chevron.
+    property <length> edge-pad:    10px;
+    // Left edge of the text block (just past the icon circle).
+    property <length> text-x:      root.edge-pad + root.circle-size + 12px;
+
+    ta := TouchArea {
+        x: 0; y: 0;
+        width: parent.width; height: parent.height;
+        enabled: root.tile-enabled;
+        clicked => { root.clicked(); }
+    }
+
+    // Soft top sheen — a light-from-above highlight giving every pill a glassy,
+    // raised finish. Strong on active fills, whisper-faint on inactive tiles so
+    // the whole grid shares one cohesive depth instead of flat-dark vs vivid.
+    property <color> sheen-top: root.active
+        ? rgba(255, 255, 255, 0.22)
+        : rgba(255, 255, 255, 0.05);
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: @linear-gradient(180deg, root.sheen-top 0%, rgba(255, 255, 255, 0.0) 52%);
+        animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+    }
+
+    Rectangle {
+        x: parent.edge-pad;
+        y: (parent.height - parent.circle-size) / 2;
+        width:  parent.circle-size;
+        height: parent.circle-size;
+        border-radius: self.height / 2;
+        background: root.active
+            ? rgba(255, 255, 255, 0.22)
+            : ShellPalette.icon-bg-inactive;
+        animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+        Image {
+            x: (parent.width  - root.glyph-size) / 2;
+            y: (parent.height - root.glyph-size) / 2;
+            width:  root.glyph-size;
+            height: root.glyph-size;
+            source: root.icon;
+            image-fit: contain;
+            colorize: root.active ? ShellPalette.icon-on-active : ShellPalette.fg;
+        }
+    }
+
+    // Title + optional subtitle as a self-centring block (a VerticalLayout, so
+    // there is no fragile fixed-height math — the text never clips and the pair
+    // stays vertically centred whether or not a subtitle is present).
+    VerticalLayout {
+        x: root.text-x;
+        y: 0;
+        width:  parent.width - root.text-x - root.chev-pad;
+        height: parent.height;
+        alignment: center;
+        spacing: 1px;
+
+        Text {
+            text: root.title;
+            color: root.active ? ShellPalette.icon-on-active : ShellPalette.fg;
+            font-family: Tokens.font-family;
+            font-size: root.compact ? 13px : 14px;
+            font-weight: 600;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+        if root.subtitle != "": Text {
+            text: root.subtitle;
+            color: root.active ? rgba(255, 255, 255, 0.80) : ShellPalette.fg-secondary;
+            font-family: Tokens.font-family;
+            font-size: root.compact ? 11px : 12px;
+            font-weight: 500;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+    }
+
+    // Drill-in section for tiles that open a fuller page (Wi-Fi, Bluetooth,
+    // Power Mode...): a short inset divider — kept clear of the pill's rounded
+    // ends — plus the chevron, GNOME-style. Tapping the chevron region can later
+    // expand the tile while the body toggles.
+    if root.show-chevron: Rectangle {
+        x: parent.width - 32px;
+        y: (parent.height - (root.height - 20px)) / 2;
+        width: 1px;
+        height: root.height - 20px;
+        background: root.active ? rgba(255, 255, 255, 0.24) : ShellPalette.tile-border;
+    }
+    if root.show-chevron: Image {
+        x: parent.width - 24px;
+        y: (parent.height - 13px) / 2;
+        width: 13px; height: 13px;
+        source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+        image-fit: contain;
+        colorize: root.active ? rgba(255, 255, 255, 0.75) : ShellPalette.fg-secondary;
+    }
+}
+
+// ── Calendar cell — single day in the grid. day-num=0 means "blank
+//    cell" (out-of-month padding); we render those at reduced opacity so the
+//    grid keeps its 7×6 layout but the focus stays on the current month.
+export struct CalendarDay {
+    /// 1..=31 for in-month days, 0 = blank (no rendering).
+    day-num: int,
+    /// Highlighted today (current date).
+    is-today: bool,
+    /// Dimmed prev/next month trail-in/trail-out days.
+    is-other-month: bool,
+    /// Saturday/Sunday in the Monday-first grid.
+    is-weekend: bool,
+}
+
+export struct CalendarWeekday {
+    label: string,
+}
+
+export struct NotificationItem {
+    app-name: string,
+    summary: string,
+    body: string,
+    age: string,
+    icon: image,
+    has-icon: bool,
+}
+
+// A single notification card. Layout-based (no fragile absolute math): app
+// avatar + name/time, summary, optional body, with a close button always and an
+// expand chevron only when `show-expand` (i.e. it stands for a group of >1).
+export component ShellNotificationCard inherits Rectangle {
+    in property <NotificationItem> item;
+    in property <bool> compact: false;
+    in property <bool> card-enabled: true;
+    in property <bool> show-expand: false;   // chevron to open the grouped stack
+    in property <bool> expanded: false;      // chevron points up when expanded
+    in property <int>  group-count: 0;       // ">N" affordance when grouped + collapsed
+    callback clicked();
+    callback dismissed();
+    callback toggle-expand();
+
+    height: 76px;
+    min-width: 100px;
+    horizontal-stretch: 1;
+    border-radius: Radius.lg;
+    background: ta.has-hover ? Theme.surface-hover-bg : Theme.surface-raised-bg;
+    border-width: Tokens.chrome-hairline-width;
+    border-color: Theme.surface-border;
+    clip: true;
+    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: root.card-enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        padding: 12px;
+        spacing: 12px;
+
+        // App avatar / icon
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                border-radius: Radius.md;
+                background: Theme.mode == TokenMode.Dark
+                    ? rgba(255, 255, 255, 0.08)
+                    : rgba(0, 0, 0, 0.06);
+                if root.item.has-icon: Image {
+                    width: 38px; height: 38px;
+                    source: root.item.icon;
+                    image-fit: contain;
+                }
+                if !root.item.has-icon: Image {
+                    x: (parent.width - 18px) / 2;
+                    y: (parent.height - 18px) / 2;
+                    width: 18px; height: 18px;
+                    source: @image-url("../assets/icons/symbolic/bell.svg");
+                    image-fit: contain;
+                    colorize: ShellPalette.fg-secondary;
+                }
+            }
+        }
+
+        // Text block — vertically centred so 2-line and 3-line cards both balance.
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.item.app-name + (root.item.age != "" ? "   " + root.item.age : "");
+                color: ShellPalette.fg-secondary;
+                font-family: Tokens.font-family;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+            Text {
+                text: root.item.summary;
+                color: ShellPalette.fg;
+                font-family: Tokens.font-family;
+                font-size: 14px;
+                font-weight: 700;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+            if root.item.body != "": Text {
+                text: root.item.body;
+                color: ShellPalette.fg-secondary;
+                font-family: Tokens.font-family;
+                font-size: 12.5px;
+                font-weight: 400;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+        }
+
+        // Actions — top-aligned: optional expand chevron + always-present close.
+        VerticalLayout {
+            alignment: start;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 4px;
+                if root.show-expand: Rectangle {
+                    width: 28px; height: 28px;
+                    border-radius: self.height / 2;
+                    background: exp-ta.has-hover ? Theme.surface-hover-bg : transparent;
+                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                    exp-ta := TouchArea {
+                        width: parent.width; height: parent.height;
+                        enabled: root.card-enabled;
+                        clicked => { root.toggle-expand(); }
+                    }
+                    Image {
+                        x: (parent.width - 12px) / 2;
+                        y: (parent.height - 12px) / 2;
+                        width: 12px; height: 12px;
+                        transform-rotation: root.expanded ? 270deg : 90deg;
+                        source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+                        image-fit: contain;
+                        colorize: ShellPalette.fg-secondary;
+                    }
+                }
+                Rectangle {
+                    width: 28px; height: 28px;
+                    border-radius: self.height / 2;
+                    background: close-ta.has-hover ? Theme.surface-hover-bg : transparent;
+                    visible: root.card-enabled;
+                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                    close-ta := TouchArea {
+                        width: parent.width; height: parent.height;
+                        enabled: root.card-enabled;
+                        clicked => { root.dismissed(); }
+                    }
+                    Image {
+                        x: (parent.width - 12px) / 2;
+                        y: (parent.height - 12px) / 2;
+                        width: 12px; height: 12px;
+                        source: @image-url("../assets/icons/close.svg");
+                        image-fit: contain;
+                        colorize: ShellPalette.fg-secondary;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ShellNotificationStack inherits Rectangle {
+    in property <[NotificationItem]> items;
+    in property <int> total-count: 0;
+    in-out property <bool> expanded: false;
+    in property <bool> stack-enabled: true;
+    callback dismissed(int);
+
+    visible: root.total-count > 0;
+    height: root.total-count <= 0
+        ? 0px
+        : (root.expanded
+            ? min(360px, 48px + root.items.length * 84px)
+            : (root.total-count > 1 ? 94px : 78px));
+    background: transparent;
+
+    if !root.expanded && root.items.length > 1: Rectangle {
+        x: 10px;
+        y: 16px;
+        width: parent.width - 20px;
+        height: 76px;
+        border-radius: Radius.md;
+        background: Theme.surface-raised-bg;
+        opacity: 0.52;
+    }
+    if !root.expanded && root.items.length > 2: Rectangle {
+        x: 20px;
+        y: 26px;
+        width: parent.width - 40px;
+        height: 68px;
+        border-radius: Radius.md;
+        background: Theme.surface-raised-bg;
+        opacity: 0.34;
+    }
+
+    if !root.expanded: Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: 76px;
+        background: transparent;
+        for item[i] in root.items: ShellNotificationCard {
+            visible: i == 0;
+            width: parent.width;
+            item: item;
+            // Only a GROUP (>1) is expandable — a lone notification just shows,
+            // no pointless chevron / no expand-on-click.
+            show-expand: root.total-count > 1;
+            card-enabled: root.stack-enabled;
+            clicked => { if (root.total-count > 1) { root.expanded = true; } }
+            toggle-expand => { root.expanded = true; }
+            dismissed => { root.dismissed(i); }
+        }
+    }
+
+    if root.expanded: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        border-radius: Radius.md;
+        background: Theme.mode == TokenMode.Dark
+            ? rgba(255, 255, 255, 0.045)
+            : rgba(0, 0, 0, 0.035);
+        border-width: Tokens.chrome-hairline-width;
+        border-color: Theme.surface-border;
+        clip: true;
+
+        header-ta := TouchArea {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 40px;
+            enabled: root.stack-enabled;
+            clicked => { root.expanded = false; }
+        }
+        Text {
+            x: 12px;
+            y: 0;
+            width: parent.width - 48px;
+            height: 40px;
+            text: root.items.length > 0 && root.items[0].app-name != ""
+                ? root.items[0].app-name
+                : "Notifications";
+            color: ShellPalette.fg;
+            font-family: Tokens.font-family;
+            font-size: 13px;
+            font-weight: 700;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            x: parent.width - 34px;
+            y: 7px;
+            width: 26px;
+            height: 26px;
+            border-radius: self.height / 2;
+            background: header-ta.has-hover ? Theme.surface-hover-bg : transparent;
+            Image {
+                x: 7px;
+                y: 7px;
+                width: 12px;
+                height: 12px;
+                transform-rotation: 270deg;
+                source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+                image-fit: contain;
+                colorize: ShellPalette.fg-secondary;
+            }
+        }
+
+        Flickable {
+            x: 8px;
+            y: 40px;
+            width: parent.width - 16px;
+            height: parent.height - 48px;
+            viewport-height: list.preferred-height;
+            list := VerticalLayout {
+                spacing: Spacing.sm;
+                for item[i] in root.items: ShellNotificationCard {
+                    item: item;
+                    card-enabled: root.stack-enabled;
+                    dismissed => { root.dismissed(i); }
+                }
+            }
+        }
+    }
+}
+
+export component ShellSectionDivider inherits Rectangle {
+    in property <string> title: "";
+
+    // A quiet section header — just a dimmed label with breathing room above
+    // (iOS/macOS settings style), no competing hairline rule.
+    height: 26px;
+    background: transparent;
+
+    label := Text {
+        x: 2px;
+        y: 0;
+        width: parent.width - 4px;
+        height: parent.height;
+        text: root.title;
+        color: ShellPalette.fg-secondary;
+        font-family: Tokens.font-family;
+        font-size: 12px;
+        font-weight: 700;
+        horizontal-alignment: left;
+        vertical-alignment: bottom;
+        visible: root.title != "";
+    }
+}
+
+// ── Datetime popout ──────────────────────────────────────────────────────────
+export component DatetimePopout {
+    in property <bool>   open;
+    in property <string> date-text: "";       // e.g. "Sunday, 27 April"
+    in property <string> clock-text: "00:00:00";
+    in property <string> day-text: "Today";
+    /// Header for the calendar grid, e.g. "April 2026".
+    in property <string> calendar-month-text: "";
+    /// 42-cell flat grid (6 rows × 7 columns) covering the visible month
+    /// plus prev/next-month trail cells. Populated once per day from Rust.
+    in property <[CalendarDay]> calendar-days;
+    /// Six ISO week labels, one per calendar row.
+    in property <[int]> calendar-week-numbers;
+    /// Seven localized weekday labels, Monday first.
+    in property <[CalendarWeekday]> weekday-labels;
+    in property <string> today-label: "Today";
+    in property <string> no-events-label: "No Events";
+    in property <string> world-clocks-label: "Add World Clocks...";
+    in property <string> weather-location-label: "Select Weather Location...";
+    /// Transform-origin for the scale animation, in local coords.
+    /// Default: top-left (clock sits at the left of the panel).
+    in property <length>        origin-x: 0px;
+    in property <length>        origin-y: 0px;
+
+    // ── Backdrop blur — same scheme as the dock pill ──────────────────
+    // Full-screen blurred wallpaper image plus the popout's screen
+    // position; the inner Image samples the slice of the wallpaper
+    // that sits directly behind the popout. Without these, callers
+    // get a solid theme-tint surface instead of glass.
+    in property <image>   backdrop;
+    in property <length>  backdrop-screen-w: 1px;
+    in property <length>  backdrop-screen-h: 1px;
+    in property <length>  popout-x: 0px;
+    in property <length>  popout-y: 0px;
+
+    // Calendar navigation. Rust handles `month-offset` accounting and
+    // re-publishes `calendar-days` + `calendar-month-text`.
+    callback prev-month();
+    callback next-month();
+    callback day-clicked(int);  // day-num within the displayed month
+
+    // Sized + positioned by the parent.
+    width: 350px;
+    height: 590px;
+
+    // Theme-aware bg (animated). Matches the Control Centre's frosted vibrancy
+    // so the two sibling popouts read as one design language, not two eras.
+    property <color> resolved-bg: Theme.mode == TokenMode.Dark
+        ? rgba(34, 34, 36, 0.84)
+        : rgba(250, 250, 250, 0.86);
+    property <color> resolved-fg: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.90)
+        : rgba(0, 0, 0, 0.85);
+    property <color> resolved-fg-secondary: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.55)
+        : rgba(0, 0, 0, 0.55);
+    property <color> resolved-border: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.10)
+        : rgba(0, 0, 0, 0.08);
+
+    animate resolved-bg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-fg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-fg-secondary  { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-border        { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    // Open/close transition. Direction-conditional easing via states +
+    // transitions: open uses the "decelerate" curve (slow start →
+    // smooth ramp into 1.0) so the scale + opacity ramp is visible;
+    // close uses the "spring" (fast start → soft tail) for a snappy
+    // dismiss. Real CSS-style `transform: scale(...)` via
+    // `transform-scale-*` so the whole subtree (chrome + text + tiles)
+    // shrinks together. Stays drawn during close (`visible: vis > 0.001`)
+    // so the fade-out is actually painted.
+    // Asymmetric easing via states — open ramps visibly via the
+    // ease-in-out "in" curve, close snaps via the spring "out" curve.
+    property <float> vis: 0.0;
+    states [
+        is-open when root.open: {
+            vis: 1.0;
+            in {
+                animate vis {
+                    duration: Tokens.motion-overlay-open-duration;
+                    easing:   Tokens.motion-overlay-curve-in;
+                }
+            }
+            out {
+                animate vis {
+                    duration: Tokens.motion-overlay-close-duration;
+                    easing:   Tokens.motion-overlay-curve-out;
+                }
+            }
+        }
+    ]
+    // Always visible to keep the GPU pipeline warm — see ContextMenu.
+    visible: true;
+    opacity: root.vis;
+    property <float> scale-t: Tokens.motion-overlay-scale-from
+        + (1.0 - Tokens.motion-overlay-scale-from) * root.vis;
+
+    // Wrapper Rectangle exists solely to host `transform-scale-*` so
+    // the click-absorber + chrome scale together as a unit. Background
+    // is transparent — actual visuals are on the inner chrome rect.
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        transform-scale-x: root.scale-t;
+        transform-scale-y: root.scale-t;
+        transform-origin: { x: root.origin-x, y: root.origin-y };
+
+    // Click-absorber covering the popout's chrome rect. Without this,
+    // clicks on the bg between tiles fall through to the full-screen
+    // dismiss TouchArea at z=55 in Compositor.slint and the popout
+    // closes mid-click.
+    TouchArea {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        enabled: root.open;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        background: Theme.chrome-shadow-source;
+        border-radius: Tokens.popout-corner-radius;
+        drop-shadow-blur: Tokens.popout-shadow-blur;
+        drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
+        drop-shadow-color: Theme.chrome-shadow;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+
+        background: transparent;
+        border-radius: Tokens.popout-corner-radius;
+        clip: true;
+
+        // Translucent tint only — the frosted-glass blur is provided by the
+        // COMPOSITOR (gnoblin frosts ^gnoblin- layer surfaces), so the client
+        // no longer composites a pre-blurred wallpaper slice itself.
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: root.resolved-bg;
+        }
+
+        Rectangle {
+            x: Tokens.popout-corner-radius;
+            y: 0px;
+            width: parent.width - 2 * Tokens.popout-corner-radius;
+            height: Tokens.chrome-highlight-height;
+            background: Theme.menu-highlight;
+        }
+
+        // Date header.
+        Text {
+            x: 24px;
+            y: 22px;
+            width: parent.width - 2 * Spacing.lg;
+            height: 16px;
+            text: root.day-text;
+            color: root.resolved-fg-secondary;
+            font-family: Tokens.font-family;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 24px;
+            y: 42px;
+            width: parent.width - 2 * Spacing.lg;
+            height: 22px;
+            text: root.date-text;
+            color: Theme.mode == TokenMode.Dark
+                ? rgba(168, 194, 226, 0.92)
+                : rgba(52, 100, 150, 0.92);
+            font-family: Tokens.font-family;
+            font-size: 18px;
+            font-weight: 800;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+
+        // Calendar header row.
+        Text {
+            x: 58px;
+            y: 92px;
+            width: parent.width - 116px;
+            height: 28px;
+            text: root.calendar-month-text;
+            color: root.resolved-fg;
+            font-family: Tokens.font-family;
+            font-size: 14px;
+            font-weight: 800;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        prev-ta := TouchArea {
+            x: 22px;
+            y: 92px;
+            width: 28px;
+            height: 28px;
+            enabled: root.open;
+            clicked => { root.prev-month(); }
+        }
+        Rectangle {
+            x: prev-ta.x; y: prev-ta.y;
+            width: prev-ta.width; height: prev-ta.height;
+            background: prev-ta.has-hover
+                ? Theme.surface-hover-bg
+                : transparent;
+            border-radius: Radius.sm;
+            animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+            Image {
+                x: (parent.width - 13px) / 2;
+                y: (parent.height - 13px) / 2;
+                width: 13px; height: 13px;
+                source: @image-url("../assets/icons/symbolic/chevron-left.svg");
+                colorize: root.resolved-fg;
+            }
+        }
+        next-ta := TouchArea {
+            x: parent.width - 50px;
+            y: 92px;
+            width: 28px;
+            height: 28px;
+            enabled: root.open;
+            clicked => { root.next-month(); }
+        }
+        Rectangle {
+            x: next-ta.x; y: next-ta.y;
+            width: next-ta.width; height: next-ta.height;
+            background: next-ta.has-hover
+                ? Theme.surface-hover-bg
+                : transparent;
+            border-radius: Radius.sm;
+            animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+            Image {
+                x: (parent.width - 13px) / 2;
+                y: (parent.height - 13px) / 2;
+                width: 13px; height: 13px;
+                source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+                colorize: root.resolved-fg;
+            }
+        }
+
+        // Weekday header row. Labels come from Rust/libc strftime so they
+        // follow the process locale; the grid itself stays Monday-first.
+        property <length> week-x: 20px;
+        property <length> grid-x: 58px;
+        property <length> grid-y: 128px;
+        property <length> cell-w: 38px;
+        property <length> cell-h: 32px;
+
+        for label[i] in root.weekday-labels: Text {
+            x: parent.grid-x + i * parent.cell-w;
+            y: parent.grid-y;
+            width: parent.cell-w;
+            height: parent.cell-h;
+            text: label.label;
+            color: i >= 5
+                ? (Theme.mode == TokenMode.Dark
+                    ? rgba(255, 255, 255, 0.36)
+                    : rgba(0, 0, 0, 0.34))
+                : root.resolved-fg-secondary;
+            font-family: Tokens.font-family;
+            font-size: 11px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        for week[i] in root.calendar-week-numbers: Rectangle {
+            x: parent.week-x;
+            y: parent.grid-y + parent.cell-h + i * parent.cell-h + 3px;
+            width: 27px;
+            height: 26px;
+            border-radius: Radius.sm;
+            background: Theme.surface-raised-bg;
+            Text {
+                width: parent.width;
+                height: parent.height;
+                text: week;
+                color: root.resolved-fg-secondary;
+                font-family: Tokens.font-family;
+                font-size: 12px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // 42-cell grid (6 rows × 7 cols). Each cell wraps a TouchArea
+        // so dates are clickable + show a hover ring; today's date gets
+        // a solid chip; out-of-month dates dim out.
+        for d[i] in root.calendar-days: Rectangle {
+            x: parent.grid-x + mod(i, 7) * parent.cell-w;
+            y: parent.grid-y + parent.cell-h + floor(i / 7) * parent.cell-h;
+            width: parent.cell-w;
+            height: parent.cell-h;
+            // Diameter of the today / hover chip — inset within the cell
+            // so the highlight reads as a deliberate disc, not a
+            // wall-to-wall fill of the grid square.
+            property <length> chip-d: 30px;
+            day-ta := TouchArea {
+                width: parent.width;
+                height: parent.height;
+                enabled: root.open && d.day-num > 0 && !d.is-other-month;
+                clicked => { root.day-clicked(d.day-num); }
+            }
+            Rectangle {
+                x: (parent.width - parent.chip-d) / 2;
+                y: (parent.height - parent.chip-d) / 2;
+                width: parent.chip-d;
+                height: parent.chip-d;
+                background: d.is-today
+                    ? rgba(96, 165, 250, 0.85)
+                    : (day-ta.has-hover ? Theme.surface-hover-bg : transparent);
+                border-radius: self.height / 2;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+            }
+            Text {
+                x: 0; y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: d.day-num > 0 ? d.day-num : "";
+                color: d.is-today
+                    ? rgba(255, 255, 255, 0.95)
+                    : (d.is-other-month
+                        ? root.resolved-fg-secondary
+                        : (d.is-weekend
+                            ? (Theme.mode == TokenMode.Dark
+                                ? rgba(255, 255, 255, 0.42)
+                                : rgba(0, 0, 0, 0.40))
+                            : root.resolved-fg));
+                font-family: Tokens.font-family;
+                font-size: 12px;
+                font-weight: d.is-today ? 600 : 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            x: Spacing.lg;
+            y: 368px;
+            width: parent.width - 2 * Spacing.lg;
+            height: 70px;
+            border-radius: Radius.md;
+            background: Theme.surface-raised-bg;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: root.resolved-border;
+            Text {
+                x: Spacing.md;
+                y: 10px;
+                width: parent.width - 2 * Spacing.md;
+                height: 18px;
+                text: root.today-label;
+                color: Theme.mode == TokenMode.Dark
+                    ? rgba(168, 194, 226, 0.92)
+                    : rgba(52, 100, 150, 0.92);
+                font-family: Tokens.font-family;
+                font-size: 13px;
+                font-weight: 800;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+            Text {
+                x: Spacing.md;
+                y: 34px;
+                width: parent.width - 2 * Spacing.md;
+                height: 20px;
+                text: root.no-events-label;
+                color: root.resolved-fg-secondary;
+                font-family: Tokens.font-family;
+                font-size: 13px;
+                font-weight: 500;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            x: Spacing.lg;
+            y: 454px;
+            width: parent.width - 2 * Spacing.lg;
+            height: 44px;
+            border-radius: Radius.md;
+            background: Theme.surface-raised-bg;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: root.resolved-border;
+            Text {
+                x: Spacing.md;
+                width: parent.width - 2 * Spacing.md;
+                height: parent.height;
+                text: root.world-clocks-label;
+                color: root.resolved-fg;
+                font-family: Tokens.font-family;
+                font-size: 13px;
+                font-weight: 800;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            x: Spacing.lg;
+            y: 512px;
+            width: parent.width - 2 * Spacing.lg;
+            height: 44px;
+            border-radius: Radius.md;
+            background: Theme.surface-raised-bg;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: root.resolved-border;
+            Text {
+                x: Spacing.md;
+                width: parent.width - 2 * Spacing.md;
+                height: parent.height;
+                text: root.weather-location-label;
+                color: root.resolved-fg;
+                font-family: Tokens.font-family;
+                font-size: 13px;
+                font-weight: 800;
+                horizontal-alignment: left;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.width - 2 * Tokens.chrome-hairline-width;
+            height: parent.height - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: root.resolved-border;
+        }
+    }
+    }
+}
+
+// ── Control-centre popout ────────────────────────────────────────────────────
+// GNOME/macOS-inspired quick-settings panel. Layout, top-to-bottom:
+//   header row    — account/settings, centred title, lock/power
+//   network row   — Wired | Wi-Fi
+//   media rows    — output and microphone controls
+//   system row    — Bluetooth | Power Mode
+//   focus row     — Night Light | Do Not Disturb
+//   utility row   — Dark Style | Background Apps
+//   history       — notification stack
+//
+// Most callbacks are stubs until Rust wires the real subsystems
+// (NM, BlueZ, background-app portal state, etc.).
+// One submenu row of a plugin tile. Functional rendering of the protocol's
+// row kinds (item | toggle | slider | action | separator | section). The
+// maintainer can restyle this freely; the callbacks are the contract.
+export component QsPluginRow inherits Rectangle {
+    in property <QsMenuRow> data;
+    in property <bool> row-enabled: true;
+    callback clicked();
+    callback toggled(bool);
+    callback slid(float);
+
+    property <bool> is-separator: root.data.kind == "separator";
+    property <bool> is-section:   root.data.kind == "section";
+    property <bool> is-toggle:    root.data.kind == "toggle";
+    property <bool> is-slider:    root.data.kind == "slider";
+    // item / action / fallback are a plain clickable row.
+    property <bool> is-button: !root.is-separator && !root.is-section
+        && !root.is-toggle && !root.is-slider;
+
+    height: root.is-separator ? 9px : (root.is-section ? 22px : 34px);
+    background: transparent;
+
+    // Separator: a thin hairline.
+    if root.is-separator: Rectangle {
+        y: parent.height / 2;
+        width: parent.width;
+        height: 1px;
+        background: ShellPalette.tile-border;
+    }
+
+    // Section header: a dim uppercase-ish label.
+    if root.is-section: Text {
+        x: 0;
+        text: root.data.label;
+        font-size: 11px;
+        font-weight: 600;
+        color: ShellPalette.fg-secondary;
+        vertical-alignment: center;
+    }
+
+    // Slider row: label + a reused ShellSliderRow.
+    if root.is-slider: ShellSliderRow {
+        width: parent.width;
+        icon: root.data.icon;
+        label: root.data.label;
+        value: root.data.value;
+        sld-enabled: root.row-enabled;
+        changed(v) => { root.slid(v); }
+    }
+
+    // Toggle row + item/action row share an icon + label + tail.
+    if !root.is-separator && !root.is-section && !root.is-slider: TouchArea {
+        enabled: root.row-enabled;
+        clicked => {
+            if (root.is-toggle) {
+                root.toggled(!root.data.on);
+            } else {
+                root.clicked();
+            }
+        }
+        HorizontalLayout {
+            width: parent.width;
+            height: parent.height;
+            spacing: Spacing.sm;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Image {
+                    width: 16px; height: 16px;
+                    source: root.data.icon;
+                    colorize: ShellPalette.fg;
+                    visible: root.data.icon.width > 0;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: root.data.label;
+                    font-size: 13px;
+                    color: ShellPalette.fg;
+                    overflow: elide;
+                }
+                if root.data.sublabel != "": Text {
+                    text: root.data.sublabel;
+                    font-size: 11px;
+                    color: ShellPalette.fg-secondary;
+                    overflow: elide;
+                }
+            }
+            // Tail: a simple on/off pill for toggles.
+            if root.is-toggle: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 36px; height: 20px;
+                    border-radius: 10px;
+                    background: root.data.on ? ShellPalette.accent : ShellPalette.tile-bg-hover;
+                    Rectangle {
+                        x: root.data.on ? parent.width - self.width - 2px : 2px;
+                        y: 2px;
+                        width: 16px; height: 16px;
+                        border-radius: 8px;
+                        background: white;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ControlCentrePopout {
+    in property <bool> open;
+    in property <length> origin-x: 400px;
+    in property <length> origin-y: 0px;
+
+    // Backdrop blur (mirror of DatetimePopout).
+    in property <image>   backdrop;
+    in property <length>  backdrop-screen-w: 1px;
+    in property <length>  backdrop-screen-h: 1px;
+    in property <length>  popout-x: 0px;
+    in property <length>  popout-y: 0px;
+
+    // Sliders (0..1).
+    in-out property <float> volume-value: 0.6;
+    in-out property <float> mic-value:    0.5;
+    callback volume-changed(float);
+    callback mic-changed(float);
+
+    // Tile state — most are placeholders the renderer can update later.
+    in property <bool>   wired-active:    false;
+    in property <bool>   wifi-active:     false;
+    in property <string> wifi-name:       "Wi-Fi";
+    in property <bool>   bt-active:       false;
+    in property <string> bt-device:       "";
+    in property <string> power-mode:      "Balanced";
+    in property <bool>   night-light:     false;
+    in property <bool>   dnd-active:      false;
+    in property <int>    background-apps: 0;
+    in property <[NotificationItem]> notifications;
+    in property <int>    notification-count: 0;
+    in-out property <bool> notifications-expanded: false;
+
+    callback account-clicked();
+    callback settings-clicked();
+    callback lock-clicked();
+    callback power-clicked();
+    callback wired-clicked();
+    callback wifi-clicked();
+    callback bt-clicked();
+    callback power-mode-clicked();
+    callback night-light-clicked();
+    callback theme-toggle-clicked();
+    callback dnd-clicked();
+    callback background-apps-clicked();
+    callback notification-dismissed(int);
+
+    // ── Plugin tiles (qsplugin host) ─────────────────────────────────────
+    // Rust pushes the ordered list of ready plugins here. `expanded-plugin`
+    // is the id of the plugin whose submenu is currently shown inline (empty =
+    // none). The maintainer can later replace the inline list with a
+    // slide-out submenu animation; the data + callbacks below stay the same.
+    in property <[QsPlugin]> qs-plugins;
+    in-out property <string> expanded-plugin: "";
+    callback plugin-tile-clicked(string /* plugin-id */);
+    callback plugin-row(string /* plugin-id */, string /* row-id */);
+    callback plugin-toggle(string /* plugin-id */, string /* row-id */, bool);
+    callback plugin-slider(string /* plugin-id */, string /* row-id */, float);
+
+    width: 360px;
+    // Base panel height + a rough allowance per plugin tile (and the section
+    // header) so functional plugin content isn't clipped. The maintainer can
+    // replace this with a proper scroll/measured layout during polish.
+    height: 684px
+        + (root.qs-plugins.length > 0 ? 30px + root.qs-plugins.length * 60px : 0px)
+        + (root.expanded-plugin != "" ? 180px : 0px);
+
+    // A touch more translucent than a flat panel so the blurred wallpaper's
+    // colour bleeds through — the frosted-glass vibrancy that makes iOS/macOS
+    // control centres feel alive rather than like an opaque box.
+    property <color> resolved-bg: Theme.mode == TokenMode.Dark
+        ? rgba(34, 34, 36, 0.84)
+        : rgba(250, 250, 250, 0.86);
+    property <color> resolved-fg: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.90)
+        : rgba(0, 0, 0, 0.85);
+    property <color> resolved-fg-secondary: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.55)
+        : rgba(0, 0, 0, 0.55);
+    property <color> resolved-border: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.10)
+        : rgba(0, 0, 0, 0.08);
+    property <color> resolved-tile-bg: ShellPalette.tile-bg;
+    property <color> resolved-tile-bg-hover: ShellPalette.tile-bg-hover;
+    // Accent + icon-circle colours used by every active toggle. At
+    // root level so child tile rectangles can read `root.accent` etc.
+    // Inactive circles want to recede but not vanish — at 0.06 they
+    // disappeared into the backdrop blur, making disabled status glyphs look
+    // lost. Keep the circle visible so the icon reads as a deliberate chip.
+    property <color> accent:           ShellPalette.accent;
+    property <color> icon-on-active:   rgba(255, 255, 255, 0.95);
+    property <color> icon-bg-inactive: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(0, 0, 0, 0.06);
+    // Footer hairline — slightly more visible than `resolved-border`
+    // (which is calibrated for outer-frame edges); the footer divider
+    // needs to read against the panel bg, not at the chrome edge.
+    property <color> footer-divider: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.12)
+        : rgba(0, 0, 0, 0.12);
+
+    animate resolved-bg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-fg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-fg-secondary  { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-border        { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-tile-bg       { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-tile-bg-hover { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate icon-bg-inactive       { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    // Standardised overlay motion (see Tokens.motion-overlay-*).
+    // Direction-conditional easing for a visible open ramp + snappy
+    // close. Real CSS-style scale via `transform-scale-*` on a wrapper —
+    // the whole subtree (chrome + tiles + text) shrinks together.
+    // Asymmetric easing via states — open ramps visibly via the
+    // ease-in-out "in" curve, close snaps via the spring "out" curve.
+    property <float> vis: 0.0;
+    states [
+        is-open when root.open: {
+            vis: 1.0;
+            in {
+                animate vis {
+                    duration: Tokens.motion-overlay-open-duration;
+                    easing:   Tokens.motion-overlay-curve-in;
+                }
+            }
+            out {
+                animate vis {
+                    duration: Tokens.motion-overlay-close-duration;
+                    easing:   Tokens.motion-overlay-curve-out;
+                }
+            }
+        }
+    ]
+    // Always visible to keep the GPU pipeline warm — see ContextMenu.
+    visible: true;
+    opacity: root.vis;
+    property <float>  scale-t: Tokens.motion-overlay-scale-from
+        + (1.0 - Tokens.motion-overlay-scale-from) * root.vis;
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        transform-scale-x: root.scale-t;
+        transform-scale-y: root.scale-t;
+        transform-origin: { x: root.origin-x, y: root.origin-y };
+
+    // Click-absorber covering the popout's chrome rect. Without this,
+    // clicks on the bg between tiles fall through to the full-screen
+    // dismiss TouchArea at z=55 in Compositor.slint and the popout
+    // closes mid-click.
+    TouchArea {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        enabled: root.open;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        background: Theme.chrome-shadow-source;
+        border-radius: Tokens.popout-corner-radius;
+        drop-shadow-blur: Tokens.popout-shadow-blur;
+        drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
+        drop-shadow-color: Theme.chrome-shadow;
+    }
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+
+        background: transparent;
+        border-radius: Tokens.popout-corner-radius;
+        clip: true;
+
+        // Translucent tint only — frosted blur comes from the compositor.
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: root.resolved-bg;
+        }
+
+        Rectangle {
+            x: Tokens.popout-corner-radius;
+            y: 0px;
+            width: parent.width - 2 * Tokens.popout-corner-radius;
+            height: Tokens.chrome-highlight-height;
+            background: Theme.menu-highlight;
+        }
+
+        // ── Body ─────────────────────────────────────────────────────
+        // One VerticalLayout owns every row's Y-position. No more
+        // `y-section` arithmetic strewn across the file: the layout
+        // system places each row at the previous row's bottom +
+        // `spacing`, so a tweak to any tile height cascades cleanly.
+        // Cross-axis (horizontal) alignment is forced by nested
+        // HorizontalLayouts so half-width tiles always line up.
+        VerticalLayout {
+            x: Spacing.lg; y: Spacing.lg;
+            width:  parent.width  - 2 * Spacing.lg;
+            height: parent.height - 2 * Spacing.lg;
+            spacing: Spacing.md;
+            alignment: start;
+
+            // Header actions.
+            Rectangle {
+                height: 36px;
+                background: transparent;
+
+                HorizontalLayout {
+                    width: parent.width;
+                    height: parent.height;
+                    spacing: Spacing.sm;
+
+                    ShellRoundButton {
+                        icon: @image-url("../assets/icons/symbolic/user.svg");
+                        btn-enabled: root.open;
+                        clicked => { root.account-clicked(); }
+                    }
+                    ShellRoundButton {
+                        icon: @image-url("../assets/icons/symbolic/settings.svg");
+                        btn-enabled: root.open;
+                        clicked => { root.settings-clicked(); }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        background: transparent;
+                    }
+                    ShellRoundButton {
+                        icon: @image-url("../assets/icons/symbolic/lock.svg");
+                        btn-enabled: root.open;
+                        clicked => { root.lock-clicked(); }
+                    }
+                    ShellRoundButton {
+                        icon: @image-url("../assets/icons/symbolic/power.svg");
+                        btn-enabled: root.open;
+                        clicked => { root.power-clicked(); }
+                    }
+                }
+            }
+
+            // Primary connectivity.
+            HorizontalLayout {
+                spacing: Spacing.sm;
+                ShellTile {
+                    icon: @image-url("../assets/icons/symbolic/ethernet.svg");
+                    title: "Wired";
+                    subtitle: root.wired-active ? "Connected" : "Off";
+                    active: root.wired-active;
+                    tile-enabled: root.open;
+                    clicked => { root.wired-clicked(); }
+                }
+                ShellTile {
+                    icon: root.wifi-active
+                        ? @image-url("../assets/icons/symbolic/wifi.svg")
+                        : @image-url("../assets/icons/symbolic/wifi-off.svg");
+                    // GNOME pattern: category as the title, the live detail
+                    // (SSID / state) as the dimmer subtitle below it.
+                    title: "Wi-Fi";
+                    subtitle: root.wifi-active
+                        ? (root.wifi-name == "" ? "Connected" : root.wifi-name)
+                        : "Off";
+                    active: root.wifi-active;
+                    tile-enabled: root.open;
+                    clicked => { root.wifi-clicked(); }
+                }
+            }
+
+            // Media controls.
+            VerticalLayout {
+                spacing: Spacing.sm;
+                ShellSliderRow {
+                    icon: @image-url("../assets/icons/symbolic/volume.svg");
+                    label: "Output";
+                    value <=> root.volume-value;
+                    sld-enabled: root.open;
+                    changed(v) => { root.volume-changed(v); }
+                }
+                ShellSliderRow {
+                    icon: @image-url("../assets/icons/symbolic/mic.svg");
+                    label: "Microphone";
+                    value <=> root.mic-value;
+                    sld-enabled: root.open;
+                    changed(v) => { root.mic-changed(v); }
+                }
+            }
+
+            // System controls.
+            HorizontalLayout {
+                spacing: Spacing.sm;
+                ShellTile {
+                    icon: @image-url("../assets/icons/symbolic/bluetooth.svg");
+                    // Category title + dimmer detail (connected device / state).
+                    title: "Bluetooth";
+                    subtitle: root.bt-active
+                        ? (root.bt-device == "" ? "On" : root.bt-device)
+                        : "Off";
+                    active: root.bt-active;
+                    tile-enabled: root.open;
+                    clicked => { root.bt-clicked(); }
+                }
+                ShellTile {
+                    icon: @image-url("../assets/icons/symbolic/moon.svg");
+                    title: "Night Light";
+                    active: root.night-light;
+                    show-chevron: false;
+                    tile-enabled: root.open;
+                    clicked => { root.night-light-clicked(); }
+                }
+            }
+
+            // Focus controls. DND intentionally stays on this row so the live
+            // input regression test's y=400 click still lands inside it.
+            HorizontalLayout {
+                spacing: Spacing.sm;
+                ShellTile {
+                    compact: true;
+                    show-chevron: false;
+                    // State-driven icon: a normal bell when notifications flow,
+                    // bell-slash only when DND is actually silencing them (no more
+                    // permanent slash that reads as "off is on").
+                    icon: root.dnd-active
+                        ? @image-url("../assets/icons/symbolic/bell-off.svg")
+                        : @image-url("../assets/icons/symbolic/bell.svg");
+                    title: "Do Not Disturb";
+                    active: root.dnd-active;
+                    tile-enabled: root.open;
+                    clicked => { root.dnd-clicked(); }
+                }
+                ShellTile {
+                    compact: true;
+                    show-chevron: false;
+                    // Half-filled "contrast" glyph — a mode-agnostic dark/light
+                    // symbol that doesn't collide with Night Light's moon.
+                    icon: @image-url("../assets/icons/symbolic/contrast.svg");
+                    title: "Dark Style";
+                    active: Theme.mode == TokenMode.Dark;
+                    tile-enabled: root.open;
+                    clicked => { root.theme-toggle-clicked(); }
+                }
+            }
+
+            ShellSectionDivider { title: "Shortcuts"; }
+
+            // Utility controls are actions/status shortcuts, not boolean
+            // toggles — full-width list rows so their labels + status never
+            // truncate, and the blue active fill stays reserved for real "on".
+            ShellTile {
+                compact: true;
+                show-chevron: true;
+                icon: @image-url("../assets/icons/symbolic/gauge.svg");
+                title: "Power Mode";
+                subtitle: root.power-mode;
+                active: false;
+                tile-enabled: root.open;
+                clicked => { root.power-mode-clicked(); }
+            }
+            ShellTile {
+                compact: true;
+                show-chevron: true;
+                icon: @image-url("../assets/icons/symbolic/apps.svg");
+                title: "Background Apps";
+                subtitle: root.background-apps == 0
+                    ? "None running"
+                    : (root.background-apps == 1 ? "1 app running"
+                                                 : root.background-apps + " apps running");
+                active: false;
+                tile-enabled: root.open;
+                clicked => { root.background-apps-clicked(); }
+            }
+
+            // ── Plugin tiles ─────────────────────────────────────────────
+            // Functional rendering only (the maintainer polishes + animates
+            // the slide-out submenu). Each plugin is a full-width ShellTile;
+            // clicking a tile with rows toggles its inline submenu, and always
+            // fires plugin-tile-clicked so tile-only plugins can act.
+            if root.qs-plugins.length > 0: ShellSectionDivider { title: "Plugins"; }
+            for plugin in root.qs-plugins: VerticalLayout {
+                spacing: Spacing.xs;
+                ShellTile {
+                    compact: true;
+                    icon: plugin.icon;
+                    title: plugin.title;
+                    subtitle: plugin.subtitle;
+                    active: plugin.active;
+                    show-chevron: plugin.chevron || plugin.rows.length > 0;
+                    tile-enabled: root.open;
+                    clicked => {
+                        root.plugin-tile-clicked(plugin.id);
+                        if (plugin.rows.length > 0) {
+                            root.expanded-plugin = root.expanded-plugin == plugin.id
+                                ? "" : plugin.id;
+                        }
+                    }
+                }
+                // Inline submenu rows — only while this plugin is expanded.
+                if root.expanded-plugin == plugin.id: VerticalLayout {
+                    spacing: Spacing.xs;
+                    padding-left: Spacing.md;
+                    for row in plugin.rows: QsPluginRow {
+                        data: row;
+                        row-enabled: root.open;
+                        clicked => { root.plugin-row(plugin.id, row.id); }
+                        toggled(v) => { root.plugin-toggle(plugin.id, row.id, v); }
+                        slid(v) => { root.plugin-slider(plugin.id, row.id, v); }
+                    }
+                }
+            }
+
+            if root.notification-count > 0: ShellSectionDivider { title: "Notifications"; }
+
+            ShellNotificationStack {
+                items: root.notifications;
+                total-count: root.notification-count;
+                expanded <=> root.notifications-expanded;
+                stack-enabled: root.open;
+                dismissed(i) => { root.notification-dismissed(i); }
+            }
+        }
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.width - 2 * Tokens.chrome-hairline-width;
+            height: parent.height - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: root.resolved-border;
+        }
+    }
+    }
+}

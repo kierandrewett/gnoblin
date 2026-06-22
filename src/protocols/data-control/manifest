@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-data-control.c src/wayland/meta-wayland-data-control.c
+mutter meta-wayland-data-control.h src/wayland/meta-wayland-data-control.h
+mutter ext-data-control-v1.xml src/wayland/protocol/ext-data-control-v1.xml

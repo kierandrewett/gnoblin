@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Wed, 17 Jun 2026 23:20:00 +0100
+Subject: [PATCH] devkit: allow host cursor for visible testing
+
+Mutter Devkit hides the GTK cursor over the monitor widget and expects
+the nested compositor cursor to be drawn through PipeWire cursor
+metadata. That is correct for avoiding duplicate cursors, but it makes
+local visual debugging painful when cursor metadata is not rendered.
+
+Allow Gnoblin's visible nested test harness to opt into the host cursor
+with GNOBLIN_DEVKIT_SHOW_HOST_CURSOR=1.
+---
+ mdk/mdk-monitor.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/mdk/mdk-monitor.c b/mdk/mdk-monitor.c
+index 6bd0838..4a4db23 100644
+--- a/mdk/mdk-monitor.c
++++ b/mdk/mdk-monitor.c
+@@ -67,8 +67,10 @@ update_cursor (MdkMonitor *monitor)
+ 
+   if (mdk_context_get_emulate_touch (monitor->context))
+     cursor = gdk_cursor_new_from_name ("pointer", NULL);
+-  else
++  else if (g_strcmp0 (g_getenv ("GNOBLIN_DEVKIT_SHOW_HOST_CURSOR"), "1") != 0)
+     cursor = gdk_cursor_new_from_name ("none", NULL);
++  else
++    cursor = gdk_cursor_new_from_name ("default", NULL);
+ 
+   gtk_widget_set_cursor (GTK_WIDGET (monitor), cursor);
+ }
+-- 
+2.50.0

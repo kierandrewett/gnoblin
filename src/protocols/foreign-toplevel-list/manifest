@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-foreign-toplevel-list.c src/wayland/meta-wayland-foreign-toplevel-list.c
+mutter meta-wayland-foreign-toplevel-list.h src/wayland/meta-wayland-foreign-toplevel-list.h
+mutter ext-foreign-toplevel-list-v1.xml src/wayland/protocol/ext-foreign-toplevel-list-v1.xml

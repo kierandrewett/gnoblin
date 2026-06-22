@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Dummy Bluetooth quick-settings provider (ONESHOT) for the gnoblin devkit.
+#
+# Emits FAKE device data — the devkit NEVER talks to the host's real BlueZ.
+# Prints one protocol JSON object and exits; re-run on interval + on events.
+set -euo pipefail
+
+LOG="${GNOBLIN_QS_LOG:-${TMPDIR:-/tmp}/gnoblin-qs-events.log}"
+STATE="${GNOBLIN_QS_STATE:-${TMPDIR:-/tmp}/gnoblin-qs-bt.state}"
+
+# Persisted power state ("on"/"off").
+power="$(cat "$STATE" 2>/dev/null || echo on)"
+
+if [[ -n "${GNOBLIN_QS_EVENT:-}" ]]; then
+    printf '%s bluetooth %s\n' "$(date -Iseconds)" "$GNOBLIN_QS_EVENT" >>"$LOG"
+    case "$GNOBLIN_QS_EVENT" in
+        *'"event":"toggle"'*'bt-power"'*'true'*)  power=on;  echo on  >"$STATE" ;;
+        *'"event":"toggle"'*'bt-power"'*'false'*) power=off; echo off >"$STATE" ;;
+    esac
+fi
+
+if [[ "$power" == "on" ]]; then
+    sub="Pixel Buds"; active=true
+else
+    sub="Off"; active=false
+fi
+
+pw=$([[ "$power" == on ]] && echo true || echo false)
+printf '%s\n' "{\"tile\":{\"icon\":\"bluetooth-active-symbolic\",\"title\":\"Bluetooth\",\"subtitle\":\"$sub\",\"active\":$active,\"chevron\":true},\"menu\":{\"title\":\"Bluetooth\",\"rows\":[{\"id\":\"bt-power\",\"type\":\"toggle\",\"label\":\"Bluetooth\",\"value\":$pw},{\"type\":\"section\",\"label\":\"Devices\"},{\"id\":\"bt-buds\",\"type\":\"item\",\"label\":\"Pixel Buds\",\"sublabel\":\"Connected · 78%\",\"icon\":\"audio-headphones-symbolic\"},{\"id\":\"bt-mouse\",\"type\":\"item\",\"label\":\"MX Master 3\",\"sublabel\":\"Paired\",\"icon\":\"input-mouse-symbolic\"},{\"id\":\"bt-kbd\",\"type\":\"item\",\"label\":\"Keychron K2\",\"sublabel\":\"Paired\",\"icon\":\"input-keyboard-symbolic\"}]}}"

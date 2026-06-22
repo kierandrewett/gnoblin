@@ -1,0 +1,422 @@
+// Dock.slint — Bottom-centre floating dock, macOS-style.
+// Visual: squircle-approximated (20 px border-radius) container whose colour
+// animates between dark (#b5000000) and light (rgba(240,240,240,0.80)) via
+// locally-resolved properties that watch Theme.mode.
+// Icons: 48 px squares, hover scale 1.0→1.15 (animate), active dot below running apps.
+//
+// Animation strategy:
+//   Locally-resolved colour properties in the Dock pill carry 200 ms
+//   ease-in-out animate blocks.  The DockIconSlot carries animate blocks on its
+//   running-dot colour so it crossfades independently.
+
+import { Tokens, Theme, TokenMode, Spacing, Radius, Motion } from "./Tokens.slint";
+
+// ── Data type shared with Rust ────────────────────────────────────────────────
+export struct DockItem {
+    icon:    image,
+    app-id:  string,
+    /// Display name (resolved from .desktop) — shown as a tooltip on hover.
+    name:    string,
+    running: bool,
+    focused: bool,
+    /// Number of open windows for this app. Running apps draw one round dot per
+    /// window, capped in the view so a busy app does not overrun its slot.
+    window-count: int,
+    pinned:  bool,
+}
+
+// ── Internal single icon slot ─────────────────────────────────────────────────
+//
+// Each app icon sits inside its own dark squircle "button" container — a
+// rounded-rect with a subtle dark fill + thin top-edge highlight, separate
+// from the dock pill itself. Mirrors the screenshot the user shared.
+component DockIconSlot {
+    in property <DockItem> item;
+    in property <bool>     show-separator: false;
+
+    callback icon-clicked(string);
+    /// Right-click on the icon. Args: app-id, slot-centre x in WINDOW space
+    /// (already converted from slot-local via `absolute-position`, so the
+    /// caller can anchor a context menu directly under the icon).
+    callback icon-right-clicked(string, length);
+
+    // Slot is a square of `dock-slot-size` (= icon-size + 2·padding).
+    // Square keeps the layout grid clean — the running-dot lives within
+    // the slot bounds at the bottom, no extra height needed.
+    width: Tokens.dock-slot-size;
+    height: Tokens.dock-slot-size;
+
+    // ── Subtle hover background (animated). No idle bg, no border, no
+    //    top-edge gloss — the icon itself is the visual; we keep things
+    //    quiet until the cursor actually hovers a slot.
+    property <color> button-bg-hover: Theme.surface-hover-bg;
+    property <color> button-bg-pressed: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.14)
+        : rgba(0, 0, 0, 0.10);
+
+    animate button-bg-hover   { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate button-bg-pressed { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    // Running-dot colours (locally-resolved for animation).
+    property <color> dot-color: item.focused
+        ? Theme.dock-dot-focused
+        : Theme.dock-dot-running;
+    animate dot-color { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    property <color> button-bg-focused: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.145)
+        : rgba(0, 0, 0, 0.085);
+    property <color> button-border-focused: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.18)
+        : rgba(0, 0, 0, 0.13);
+    animate button-bg-focused { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate button-border-focused { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    // Touch area covers the full slot.
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.right
+                && e.kind == PointerEventKind.up) {
+                // Slot centre in window coords = where we anchor the menu.
+                root.icon-right-clicked(root.item.app-id,
+                    ta.absolute-position.x + ta.width / 2);
+            }
+        }
+        clicked => { root.icon-clicked(root.item.app-id); }
+    }
+
+    // ── Hover spotlight + icon image ────────────────────────────────
+    // The hover fill fills the full slot; the icon glyph sits centred
+    // inside at `dock-icon-size`. With slot = icon + 2·padding the
+    // glyph naturally lands with `dock-padding` of breathing room on
+    // every side — no extra inset variables.
+    button := Rectangle {
+        x: 0; y: 0;
+        width:  parent.width;
+        height: parent.height;
+        border-radius: Radius.md;
+        background: ta.pressed
+            ? root.button-bg-pressed
+            : (root.item.focused ? root.button-bg-focused : (ta.has-hover ? root.button-bg-hover : transparent));
+        border-width: root.item.focused ? Tokens.chrome-hairline-width : 0px;
+        border-color: root.button-border-focused;
+        animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+        animate border-color { duration: Motion.fast; easing: Motion.fast-curve; }
+
+        icon-img := Image {
+            x: (parent.width  - Tokens.dock-icon-size) / 2;
+            y: (parent.height - Tokens.dock-icon-size) / 2;
+            width:  Tokens.dock-icon-size;
+            height: Tokens.dock-icon-size;
+            source: root.item.icon;
+            image-fit: contain;
+
+            // Hover lifts the glyph slightly. Mouse-down keeps the same scale
+            // so clicks do not add the cheap "spring" dip the shell used to
+            // show on every press.
+            property <float> hover-scale: ta.has-hover ? 1.08 : 1.0;
+            transform-origin: { x: self.width / 2, y: self.height / 2 };
+            transform-scale-x: self.hover-scale;
+            transform-scale-y: self.hover-scale;
+            animate transform-scale-x { duration: Motion.fast; easing: Motion.fast-curve; }
+            animate transform-scale-y { duration: Motion.fast; easing: Motion.fast-curve; }
+        }
+    }
+
+    // ── Tooltip — compact floating label above the hovered icon ──
+    tip-body := Rectangle {
+        property <bool>   shown: ta.has-hover && root.item.name != "";
+        property <float>  tip-vis: 0.0;
+        states [
+            shown-state when self.shown: {
+                tip-vis: 1.0;
+                in {
+                    animate tip-vis {
+                        duration: Tokens.motion-overlay-open-duration;
+                        easing:   Tokens.motion-overlay-curve-in;
+                    }
+                }
+                out {
+                    animate tip-vis {
+                        duration: Tokens.motion-overlay-close-duration;
+                        easing:   Tokens.motion-overlay-curve-out;
+                    }
+                }
+            }
+        ]
+        opacity: self.tip-vis;
+        visible: true;
+
+        property <length> body-w: max(56px, tip-text.preferred-width + 24px);
+        property <length> body-h: 30px;
+        property <length> arrow-h: 7px;
+        property <length> arrow-half: 7px;
+        property <length> radius:  Tokens.tooltip-corner-radius;
+        property <length> slot-cx: parent.width / 2;
+
+        x: self.slot-cx - self.body-w / 2;
+        // Slide up from the icon as we fade in (–4 px → 0 px).
+        // Scale was pulled because text rendered through a scaled
+        // transform reads as duplicated/blurry: glyphs are baked into
+        // an atlas at one size and bitmap-scaled, which subpixel
+        // positioning can't compensate for. Opacity + slide is enough
+        // motion for a tooltip.
+        y: -self.body-h - self.arrow-h - 8px - 4px * (1.0 - self.tip-vis);
+        width: self.body-w;
+        height: self.body-h + self.arrow-h;
+
+        // Theme-aware fill / border / text.
+        property <color> bubble-bg: Theme.menu-bg;
+        property <color> bubble-border: Theme.menu-border;
+        property <color> bubble-fg: Theme.text-primary;
+        animate bubble-bg     { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+        animate bubble-border { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+        animate bubble-fg     { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.body-w;
+            height: parent.body-h;
+            background: Theme.chrome-shadow-source;
+            border-radius: parent.radius;
+            drop-shadow-blur: Tokens.tooltip-shadow-blur;
+            drop-shadow-offset-y: Tokens.tooltip-shadow-offset-y;
+            drop-shadow-color: Theme.chrome-shadow;
+        }
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.body-w;
+            height: parent.body-h;
+            background: parent.bubble-bg;
+            border-radius: parent.radius;
+            clip: true;
+
+            Rectangle {
+                x: tip-body.radius;
+                y: Tokens.chrome-hairline-width / 2;
+                width: parent.width - 2 * tip-body.radius;
+                height: Tokens.chrome-highlight-height;
+                background: Theme.menu-highlight;
+            }
+        }
+
+        // Separate arrow, tucked under the body. Keeping it separate avoids the
+        // old speech-bubble outline whose rounded path clipped visibly at the
+        // corners while still giving the tooltip its pointer back.
+        Path {
+            x: (parent.body-w - 2 * parent.arrow-half) / 2;
+            y: parent.body-h - 1px;
+            width: 2 * parent.arrow-half;
+            height: parent.arrow-h + 1px;
+            viewbox-width: (2 * tip-body.arrow-half) / 1px;
+            viewbox-height: (tip-body.arrow-h + 1px) / 1px;
+            fill: parent.bubble-bg;
+            stroke: transparent;
+            stroke-width: 0px;
+            MoveTo { x: 0; y: 0; }
+            LineTo { x: tip-body.arrow-half / 1px; y: (tip-body.arrow-h + 1px) / 1px; }
+            LineTo { x: (2 * tip-body.arrow-half) / 1px; y: 0; }
+            LineTo { x: 0; y: 0; }
+        }
+
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.body-w - 2 * Tokens.chrome-hairline-width;
+            height: parent.body-h - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: parent.radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: parent.bubble-border;
+        }
+
+        tip-text := Text {
+            x: Spacing.md;
+            y: 0;
+            width: parent.body-w - 2 * Spacing.md;
+            height: parent.body-h;
+            text: root.item.name;
+            color: parent.bubble-fg;
+            font-family: Tokens.font-family;
+            font-size: 12px;
+            font-weight: 500;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+
+    // Running indicators — centred round dots below the icon. One dot per
+    // window, capped at five so multi-window apps read like macOS-style
+    // running marks without overrunning the slot.
+    if item.running: dots := HorizontalLayout {
+        property <int> visible-count: min(max(root.item.window-count, 1), 5);
+        x: (parent.width - self.preferred-width) / 2;
+        y: parent.height - 6px;
+        height: 4px;
+        spacing: 3px;
+        for i in 5: Rectangle {
+            visible: i < dots.visible-count;
+            width: 4px;
+            height: 4px;
+            border-radius: 2px;
+            background: root.dot-color;
+            animate background { duration: Motion.medium; easing: Motion.medium-curve; }
+        }
+    }
+}
+
+// ── Separator between pinned and running sections ─────────────────────────────
+component DockSeparator {
+    property <color> sep-color: Theme.dock-border;
+    animate sep-color { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    // Separator slot is `2·padding` wide (matches the slot's interior
+    // breathing room on either side), full slot-tall.
+    width: Tokens.dock-padding * 2;
+    height: Tokens.dock-slot-size;
+
+    Rectangle {
+        x: (parent.width - 1px) / 2;
+        // Hairline at half the slot's height, vertically centred.
+        y: parent.height / 4;
+        width: 1px;
+        height: parent.height / 2;
+        background: root.sep-color;
+    }
+}
+
+// ── Public Dock component ─────────────────────────────────────────────────────
+export component Dock {
+    in property <[DockItem]> items;
+    in property <image>      backdrop;
+    in property <length>     backdrop-screen-w: 1px;
+    in property <length>     backdrop-screen-h: 1px;
+    in property <length>     backdrop-offset-y: 0px;
+    callback icon-clicked(string);
+    /// Right-click — args: app-id, slot-centre x in window space. The caller
+    /// positions a context menu anchored under that icon.
+    callback icon-right-clicked(string, length);
+
+    // Total dock band: pill + outer-padding above & below.
+    height: Tokens.dock-height;
+
+    property <color> resolved-bg:     Theme.dock-bg;
+    property <color> resolved-border: Theme.dock-border;
+    property <color> resolved-highlight: Theme.dock-highlight;
+    property <color> resolved-shadow: Theme.chrome-shadow;
+
+    animate resolved-bg     { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-border { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-highlight { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-shadow { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    dock-bg := Rectangle {
+        x: 0;
+        // Pill sits one `dock-padding` below the dock band's top edge.
+        y: Tokens.dock-padding;
+        width: parent.width;
+        height: Tokens.dock-pill-height;
+        background: transparent;
+
+        // Inner pill — outer container is non-clipping so per-icon
+        // tooltips can escape upward past the rounded corners. The
+        // backdrop+tint are wrapped in a separate `pill-bg` Rectangle
+        // that DOES clip, so the blurred wallpaper image (which extends
+        // far beyond the pill bounds for the parallax effect) doesn't
+        // leak out past the squircle.
+        pill := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 0;
+            // `items-row.preferred-width` already includes its own
+            // padding-left + padding-right (Slint counts a layout's
+            // preferred size INCLUSIVE of its padding). The previous
+            // formula then added another `2 * dock-padding` on top,
+            // double-counting horizontally and giving 22 px gap from
+            // pill edge to first icon vs only 14 px vertically. Now
+            // single-counted: horizontal and vertical pill padding
+            // both come out to 14 px (`dock-padding + slot-internal`).
+            width: items-row.preferred-width;
+            height: parent.height;
+            background: transparent;
+            clip: false;
+
+            Rectangle {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                background: Theme.chrome-shadow-source;
+                border-radius: Tokens.dock-corner-radius;
+                drop-shadow-blur: Tokens.dock-shadow-blur;
+                drop-shadow-offset-y: Tokens.dock-shadow-offset-y;
+                drop-shadow-color: root.resolved-shadow;
+            }
+
+            // Clipped backdrop + theme tint. The visible hairline is a separate
+            // inset layer below; keeping it out of this clip avoids clipped
+            // corner strokes.
+            pill-bg := Rectangle {
+                x: 0; y: 0;
+                width: parent.width;
+                height: parent.height;
+                background: transparent;
+                border-radius: Tokens.dock-corner-radius;
+                clip: true;
+
+                // Translucent tint only — frosted blur comes from the compositor.
+                Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    background: root.resolved-bg;
+                }
+            }
+
+            // Inset hairline + short top highlight. The stroke is drawn inside
+            // the rounded mask's visual boundary, so corners stay continuous.
+            Rectangle {
+                x: Tokens.chrome-hairline-width;
+                y: Tokens.chrome-hairline-width;
+                width: parent.width - 2 * Tokens.chrome-hairline-width;
+                height: parent.height - 2 * Tokens.chrome-hairline-width;
+                background: transparent;
+                border-radius: Tokens.dock-corner-radius - Tokens.chrome-hairline-width;
+                border-width: Tokens.chrome-hairline-width;
+                border-color: root.resolved-border;
+            }
+
+            Rectangle {
+                x: Tokens.dock-corner-radius;
+                y: Tokens.chrome-hairline-width / 2;
+                width: parent.width - 2 * Tokens.dock-corner-radius;
+                height: Tokens.chrome-highlight-height;
+                background: root.resolved-highlight;
+            }
+
+            items-row := HorizontalLayout {
+                padding-left: Tokens.dock-padding;
+                padding-right: Tokens.dock-padding;
+                padding-top: Tokens.dock-padding;
+                padding-bottom: Tokens.dock-padding;
+                spacing: 0px;
+                alignment: center;
+
+                for item[i] in root.items: HorizontalLayout {
+                    spacing: 0px;
+                    if i > 0 && !item.pinned && root.items[i - 1].pinned:
+                    DockSeparator { }
+
+                    DockIconSlot {
+                        item: item;
+                        icon-clicked(id) => { root.icon-clicked(id); }
+                        icon-right-clicked(id, ax) => { root.icon-right-clicked(id, ax); }
+                    }
+                }
+            }
+        }
+    }
+}

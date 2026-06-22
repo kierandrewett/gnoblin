@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-screencopy.c src/wayland/meta-wayland-screencopy.c
+mutter meta-wayland-screencopy.h src/wayland/meta-wayland-screencopy.h
+mutter wlr-screencopy-unstable-v1.xml src/wayland/protocol/wlr-screencopy-unstable-v1.xml

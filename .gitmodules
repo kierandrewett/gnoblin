@@ -1,0 +1,12 @@
+[submodule "subprojects/mutter"]
+	path = subprojects/mutter
+	url = https://gitlab.gnome.org/GNOME/mutter.git
+	shallow = true
+[submodule "subprojects/gnome-shell"]
+	path = subprojects/gnome-shell
+	url = https://gitlab.gnome.org/GNOME/gnome-shell.git
+	shallow = true
+[submodule "subprojects/gnome-control-center"]
+	path = subprojects/gnome-control-center
+	url = https://gitlab.gnome.org/GNOME/gnome-control-center.git
+	shallow = true

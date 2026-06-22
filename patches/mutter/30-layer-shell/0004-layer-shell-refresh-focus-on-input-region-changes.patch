@@ -1,0 +1,73 @@
+From 8dd3e0f219fbbe2994a657157b7de09fd54ddff1 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 20 Jun 2026 20:41:00 +0100
+Subject: [PATCH] layer-shell: refresh focus on input-region changes
+
+Layer-shell clients often expand their surface input region while a menu or
+popover is open, then shrink it again from the button-press handler that
+dismisses the menu. If the pointer stays stationary, Clutter's sprite keeps the
+old current actor until the next motion event. Wayland pointer focus is then
+synced from that stale actor, so the next click can still be delivered to the
+closed menu surface even though the committed input region no longer contains
+that coordinate.
+
+Invalidate the current stage focus whenever a surface actor's input region
+changes. This forces a pick at the sprite's current coordinates using the new
+input shape, so stale focus is cleared without requiring pointer motion.
+---
+ clutter/clutter/clutter-stage-private.h |  1 +
+ src/compositor/meta-surface-actor.c     | 13 +++++++++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
+index 3eba2adf4..bc79840e1 100644
+--- a/clutter/clutter/clutter-stage-private.h
++++ b/clutter/clutter/clutter-stage-private.h
+@@ -115,6 +115,7 @@ void clutter_stage_unlink_grab (ClutterStage *self,
+ void clutter_stage_invalidate_focus (ClutterStage *self,
+                                      ClutterActor *actor);
+ 
++CLUTTER_EXPORT
+ void clutter_stage_maybe_invalidate_focus (ClutterStage *self,
+                                            ClutterActor *actor);
+ 
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index e983cda5c..11aef291d 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -21,6 +21,7 @@
+ #include "compositor/meta-surface-actor.h"
+ 
+ #include "clutter/clutter.h"
++#include "clutter/clutter-stage-private.h"
+ #include "compositor/clutter-utils.h"
+ #include "compositor/meta-cullable.h"
+ #include "compositor/meta-shaped-texture-private.h"
+@@ -592,13 +593,25 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
+ {
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (self);
++  gboolean changed;
++
++  changed = !mtk_region_equal (priv->input_region, region);
+ 
+   g_clear_pointer (&priv->input_region, mtk_region_unref);
+ 
+   if (region)
+     priv->input_region = mtk_region_ref (region);
+   else
+     priv->input_region = NULL;
++
++  if (changed)
++    {
++      ClutterActor *actor = CLUTTER_ACTOR (self);
++      ClutterActor *stage = clutter_actor_get_stage (actor);
++
++      if (stage)
++        clutter_stage_maybe_invalidate_focus (CLUTTER_STAGE (stage), actor);
++    }
+ }
+ 
+ void
+-- 
+2.50.1

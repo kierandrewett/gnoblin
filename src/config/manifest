@@ -1,0 +1,3 @@
+# project source destination
+mutter gnoblin-config.c src/wayland/gnoblin-config.c
+mutter gnoblin-config.h src/wayland/gnoblin-config.h

@@ -1,0 +1,42 @@
+From f24fa86b68b8cb5f50b526bf32c9d62111a22263 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 18 Jun 2026 02:45:27 +0100
+Subject: [PATCH] cpp-compat: make ClutterPaintFlag usable from C++
+
+clutter-types.h forward-typedefs the unscoped enum _ClutterPaintFlag before
+clutter-paint-context.h defines it. C tolerates the forward use; C++ rejects a
+forward-typedef of an unscoped enum without a fixed underlying type.
+Forward-declare it with 'unsigned int' under __cplusplus only, then typedef it
+separately, so gnoblin-shell (C++) can include the Clutter headers while
+mutter's own C build is unchanged.
+---
+ clutter/clutter/clutter-paint-context.h | 3 +++
+ clutter/clutter/clutter-types.h         | 7 ++++++-
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/clutter/clutter/clutter-paint-context.h b/clutter/clutter/clutter-paint-context.h
+index 321c86e..a799206 100644
+--- a/clutter/clutter/clutter-paint-context.h
++++ b/clutter/clutter/clutter-paint-context.h
+@@ -31,2 +31,5 @@ typedef struct _ClutterPaintContext ClutterPaintContext;
+ typedef enum _ClutterPaintFlag
++#ifdef __cplusplus
++  : unsigned int
++#endif
+ {
+diff --git a/clutter/clutter/clutter-types.h b/clutter/clutter/clutter-types.h
+index dcade77..b50f65a 100644
+--- a/clutter/clutter/clutter-types.h
++++ b/clutter/clutter/clutter-types.h
+@@ -91,3 +91,8 @@ typedef union _ClutterEvent                     ClutterEvent;
+ 
+-typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
++#ifdef __cplusplus
++enum _ClutterPaintFlag : unsigned int;
++typedef enum _ClutterPaintFlag ClutterPaintFlag;
++#else
++typedef enum _ClutterPaintFlag ClutterPaintFlag;
++#endif
+ 
+-- 
+2.53.0

@@ -1,0 +1,665 @@
+// Panel.slint — Top-of-screen shell panel.
+// Layout: [Focused App]  [— Clock —]  [Network | Audio | Power]
+//
+// Backdrop: takes a `backdrop` image (pre-blurred wallpaper) which it
+// stretches to the full screen size and clips to its own rect, giving the
+// bar a glass look without a per-frame GPU pass.
+
+import { Tokens, Theme, TokenMode, Spacing, Radius, Motion, ShellPalette } from "./Tokens.slint";
+import { StatusIcon } from "./widgets/StatusIcon.slint";
+import { TrayIconItem } from "./widgets/TrayItem.slint";
+
+// One top-level entry of the KDE-style global menu bar (File / Edit / …).
+// `id` is the com.canonical.dbusmenu node id — passed back so Rust can
+// fetch that submenu's children.
+export struct GlobalMenuTopItem {
+    id:    int,
+    label: string,
+}
+
+// One configured topbar widget. Rust maps string IDs from `[topbar] left/center/right`
+// into these stable integer kinds:
+// 0 spacer, 1 spring, 2 separator, 3 workspaces, 4 focused-app, 5 appmenu,
+// 6 clock, 7 notifications, 8 tray, 9 status, 10 launcher.
+export struct TopbarWidget {
+    kind: int,
+    flex: int,
+    size: int,
+}
+
+component PanelArea {
+    in property <[TopbarWidget]> widgets;
+    in property <LayoutAlignment> alignment: start;
+    in property <length> area-padding-left: Spacing.md;
+    in property <length> area-padding-right: 0px;
+    in property <length> clock-padding: Spacing.md;
+    in property <length> status-padding: Spacing.xs;
+    in property <length> status-icon-gap: Spacing.xs;
+    in property <string> focused-app: "";
+    in property <string> clock-text: "00:00";
+    in property <string> date-text: "";
+    in property <int> workspace-count: 0;
+    in property <int> workspace-active: 0;
+    in property <[GlobalMenuTopItem]> global-menu-bar;
+    in property <int> global-menu-open-index: -1;
+    in property <[TrayIconItem]> tray-items;
+    in property <int> network-mode: 1;
+    in property <bool> audio-muted: false;
+    in property <bool> notif-pending: false;
+    in property <image> icon-network;
+    in property <image> icon-wifi;
+    in property <image> icon-wifi-none;
+    in property <image> icon-audio;
+    in property <image> icon-bell;
+    in property <image> icon-search;
+    in property <image> icon-power;
+    in property <color> resolved-fg;
+    in property <color> resolved-border;
+    in property <color> resolved-hover-bg;
+    in property <color> resolved-active-bg;
+    callback workspace-clicked(int);
+    callback focused-app-clicked(length);
+    callback global-menu-clicked(int, length);
+    callback toggle-datetime-popout(length);
+    callback toggle-control-centre(length);
+    callback bell-clicked();
+    callback launcher-clicked();
+    callback tray-clicked(int);
+    callback tray-right-clicked(int);
+    width: 100%;
+    height: 100%;
+
+    HorizontalLayout {
+        x: 0; y: 0;
+        width: parent.width;
+        height: parent.height;
+        padding-left: root.area-padding-left;
+        padding-right: root.area-padding-right;
+        spacing: Spacing.sm;
+        alignment: root.alignment;
+
+        for w in root.widgets: slot := Rectangle {
+            property <length> icons-w: 3 * Tokens.panel-icon-size + 2 * root.status-icon-gap;
+            property <length> app-w: w.size > 0
+                ? w.size * 1px
+                : min(app-text.preferred-width, 180px);
+            property <length> width-by-kind:
+                w.kind == 0 ? max(0px, w.size * 1px) :
+                w.kind == 1 ? 1px :
+                w.kind == 2 ? 9px :
+                w.kind == 3 ? (root.workspace-count > 1 ? ws-row.preferred-width : 0px) :
+                w.kind == 4 ? self.app-w :
+                w.kind == 5 ? menu-row.preferred-width :
+                w.kind == 6 ? clock-row.preferred-width + 2 * root.clock-padding :
+                w.kind == 7 ? 26px :
+                w.kind == 8 ? tray-row.preferred-width :
+                w.kind == 9 ? self.icons-w + 2 * root.status-padding :
+                w.kind == 10 ? 26px :
+                0px;
+            width: self.width-by-kind;
+            height: parent.height;
+            horizontal-stretch: w.kind == 1 ? max(1, w.flex) : 0;
+
+            if w.kind == 2: Rectangle {
+                x: 4px;
+                y: (parent.height - 14px) / 2;
+                width: 1px;
+                height: 14px;
+                background: root.resolved-border;
+            }
+
+            ws-row := HorizontalLayout {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                spacing: Spacing.xs;
+                visible: w.kind == 3 && root.workspace-count > 1;
+                for i in root.workspace-count: Rectangle {
+                    property <bool> active: i == root.workspace-active;
+                    y: (parent.height - self.height) / 2;
+                    width: self.active ? 18px : 8px;
+                    height: Spacing.sm;
+                    border-radius: Spacing.xs;
+                    // Active workspace wears the accent — a "you are here" marker
+                    // that ties the bar to the panel's brand colour; the rest are
+                    // quiet neutral dots.
+                    background: self.active ? ShellPalette.accent : root.resolved-fg;
+                    opacity: self.active ? 1.0 : (ws-ta.has-hover ? 0.65 : 0.32);
+                    animate width, background { duration: Motion.medium; easing: Motion.medium-curve; }
+                    animate opacity { duration: Motion.fast; easing: Motion.fast-curve; }
+                    ws-ta := TouchArea {
+                        clicked => { root.workspace-clicked(i); }
+                    }
+                }
+            }
+
+            app-text := Text {
+                visible: w.kind == 4;
+                width: parent.width;
+                height: parent.height;
+                text: root.focused-app;
+                color: root.resolved-fg;
+                font-family: Tokens.font-family;
+                font-size: Tokens.panel-font-size;
+                font-weight: 700;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            app-touch := TouchArea {
+                visible: w.kind == 4 && root.focused-app != "";
+                enabled: self.visible;
+                width: parent.width;
+                height: parent.height;
+                clicked => {
+                    root.focused-app-clicked(slot.absolute-position.x + slot.width / 2);
+                }
+            }
+
+            menu-row := HorizontalLayout {
+                visible: w.kind == 5;
+                x: 0; y: 0;
+                width: parent.width;
+                height: parent.height;
+                spacing: Spacing.xs;
+                for entry[i] in root.global-menu-bar: entry-rect := Rectangle {
+                    property <bool> active: root.global-menu-open-index == i;
+                    width: label-text.preferred-width + 2 * Spacing.sm;
+                    height: parent.height - 2 * Spacing.xs;
+                    y: Spacing.xs;
+                    border-radius: Radius.sm;
+                    background: entry-touch.has-hover || self.active
+                        ? (self.active ? root.resolved-active-bg : root.resolved-hover-bg)
+                        : transparent;
+                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                    label-text := Text {
+                        x: Spacing.sm;
+                        width: parent.width - 2 * Spacing.sm;
+                        height: parent.height;
+                        text: entry.label;
+                        color: root.resolved-fg;
+                        font-family: Tokens.font-family;
+                        font-size: Tokens.panel-font-size;
+                        font-weight: 500;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    entry-touch := TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        clicked => {
+                            root.global-menu-clicked(entry.id, entry-rect.absolute-position.x);
+                        }
+                    }
+                }
+            }
+
+            clock-btn := Rectangle {
+                visible: w.kind == 6;
+                width: parent.width;
+                height: parent.height - 2 * Spacing.xs;
+                y: Spacing.xs;
+                border-radius: self.height / 2;
+                background: clock-touch.has-hover
+                    ? root.resolved-hover-bg
+                    : transparent;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                clock-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.left
+                            && e.kind == PointerEventKind.down) {
+                            root.toggle-datetime-popout(
+                                clock-btn.absolute-position.x + clock-btn.width / 2);
+                        }
+                    }
+                }
+
+                clock-row := HorizontalLayout {
+                    x: 0; y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    spacing: Spacing.sm;
+                    alignment: center;
+
+                    if root.date-text != "": Text {
+                        text: root.date-text;
+                        color: root.resolved-fg;
+                        font-family: Tokens.font-family;
+                        font-size: Tokens.panel-font-size;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.clock-text;
+                        color: root.resolved-fg;
+                        font-family: Tokens.font-family;
+                        font-size: Tokens.panel-font-size;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            bell-btn := Rectangle {
+                visible: w.kind == 7;
+                width: parent.width;
+                height: parent.height - 2 * Spacing.xs;
+                y: Spacing.xs;
+                border-radius: self.height / 2;
+                background: bell-ta.has-hover ? root.resolved-hover-bg : transparent;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                bell-ta := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.left
+                            && e.kind == PointerEventKind.down) {
+                            root.bell-clicked();
+                        }
+                    }
+                }
+
+                StatusIcon {
+                    x: (parent.width - Tokens.panel-icon-size) / 2;
+                    y: (parent.height - Tokens.panel-icon-size) / 2;
+                    icon-size: Tokens.panel-icon-size;
+                    icon: root.icon-bell;
+                    name: "notifications";
+                    tint: root.resolved-fg;
+                }
+
+                if root.notif-pending: Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    x: parent.width / 2 + 6px;
+                    y: parent.height / 2 - 9px;
+                    background: Theme.critical-accent;
+                }
+            }
+
+            tray-row := HorizontalLayout {
+                visible: w.kind == 8;
+                x: 0;
+                y: (parent.height - 22px) / 2;
+                height: 22px;
+                spacing: Spacing.xs;
+                for it in root.tray-items: Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    background: tray-touch.has-hover
+                        ? root.resolved-hover-bg
+                        : transparent;
+                    border-radius: Radius.sm;
+                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                    tray-touch := TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        pointer-event(e) => {
+                            if (e.button == PointerEventButton.right
+                                && e.kind == PointerEventKind.up) {
+                                root.tray-right-clicked(it.id);
+                            }
+                        }
+                        clicked => { root.tray-clicked(it.id); }
+                    }
+                    Image {
+                        x: 1px; y: 1px;
+                        width: 20px;
+                        height: 20px;
+                        source: it.icon;
+                        image-fit: contain;
+                    }
+                }
+            }
+
+            status-btn := Rectangle {
+                visible: w.kind == 9;
+                width: parent.width;
+                height: parent.height - 2 * Spacing.xs;
+                y: Spacing.xs;
+                border-radius: self.height / 2;
+                background: cc-touch.has-hover
+                    ? root.resolved-hover-bg
+                    : transparent;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                cc-touch := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.left
+                            && e.kind == PointerEventKind.down) {
+                            root.toggle-control-centre(
+                                status-btn.absolute-position.x + status-btn.width);
+                        }
+                    }
+                }
+
+                icons-row := Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: slot.icons-w;
+                    height: Tokens.panel-icon-size;
+
+                    StatusIcon {
+                        x: 0; y: 0;
+                        icon-size: Tokens.panel-icon-size;
+                        icon: root.network-mode == 2
+                            ? root.icon-wifi
+                            : (root.network-mode == 0 ? root.icon-wifi-none : root.icon-network);
+                        name: "network";
+                        tint: root.resolved-fg;
+                        opacity: root.network-mode == 0 ? 0.45 : 1.0;
+                    }
+                    audio-icon := StatusIcon {
+                        x: Tokens.panel-icon-size + root.status-icon-gap; y: 0;
+                        icon-size: Tokens.panel-icon-size;
+                        icon: root.icon-audio;
+                        name: "audio";
+                        tint: root.resolved-fg;
+                        opacity: root.audio-muted ? 0.5 : 1.0;
+                    }
+                    if root.audio-muted: Path {
+                        x: audio-icon.x;
+                        y: audio-icon.y;
+                        width: Tokens.panel-icon-size;
+                        height: Tokens.panel-icon-size;
+                        viewbox-width: 16;
+                        viewbox-height: 16;
+                        stroke: root.resolved-fg;
+                        stroke-width: 2px;
+                        MoveTo { x: 2.5; y: 13.5; }
+                        LineTo { x: 13.5; y: 2.5; }
+                    }
+                    StatusIcon {
+                        x: (Tokens.panel-icon-size + root.status-icon-gap) * 2; y: 0;
+                        icon-size: Tokens.panel-icon-size;
+                        icon: root.icon-power;
+                        name: "power";
+                        tint: root.resolved-fg;
+                    }
+                }
+            }
+
+            launcher-btn := Rectangle {
+                visible: w.kind == 10;
+                width: parent.width;
+                height: parent.height - 2 * Spacing.xs;
+                y: Spacing.xs;
+                border-radius: self.height / 2;
+                background: launcher-ta.has-hover ? root.resolved-hover-bg : transparent;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                launcher-ta := TouchArea {
+                    width: parent.width;
+                    height: parent.height;
+                    pointer-event(e) => {
+                        if (e.button == PointerEventButton.left
+                            && e.kind == PointerEventKind.down) {
+                            root.launcher-clicked();
+                        }
+                    }
+                }
+
+                StatusIcon {
+                    x: (parent.width - Tokens.panel-icon-size) / 2;
+                    y: (parent.height - Tokens.panel-icon-size) / 2;
+                    icon-size: Tokens.panel-icon-size;
+                    icon: root.icon-search;
+                    name: "launcher";
+                    tint: root.resolved-fg;
+                }
+            }
+        }
+    }
+}
+
+export component Panel {
+    in property <string> focused-app: "";
+    in property <string> clock-text: "00:00";
+
+    // Workspace indicator: one pill per workspace, `workspace-active` (0-based)
+    // highlighted. Click a pill to switch. Hidden when there's ≤1 workspace.
+    in property <int> workspace-count: 0;
+    in property <int> workspace-active: 0;
+    callback workspace-clicked(int);
+    callback focused-app-clicked(length);
+    /// KDE-style global menu bar for the focused window. Empty when the
+    /// focused app exports no appmenu — then the left zone shows only the
+    /// app name.
+    in property <[GlobalMenuTopItem]> global-menu-bar;
+    /// Index of the bar entry whose submenu is currently open (-1 = none).
+    in property <int> global-menu-open-index: -1;
+    /// Bar entry clicked: (dbusmenu node id, screen-x of the entry's left
+    /// edge) so the submenu popup drops directly below it.
+    callback global-menu-clicked(int, length);
+    /// Short date string shown next to the time (e.g. "Wed 29 Apr").
+    in property <string> date-text: "";
+    /// Ordered widget placements. This intentionally mirrors Firefox's
+    /// CustomizableUI idea: areas contain widget IDs, and special widgets
+    /// (spacer/spring/separator) behave like first-class placements.
+    in property <[TopbarWidget]> left-widgets;
+    in property <[TopbarWidget]> center-widgets;
+    in property <[TopbarWidget]> right-widgets;
+    in property <length> panel-padding-left: Spacing.md;
+    in property <length> panel-padding-right: Spacing.md;
+    in property <length> clock-padding: Spacing.md;
+    in property <length> status-padding: Spacing.xs;
+    in property <length> status-icon-gap: 5px;
+    /// Registered StatusNotifierItem icons rendered to the right of the
+    /// status icons row. Empty when nothing's registered.
+    in property <[TrayIconItem]> tray-items;
+    callback tray-clicked(int);
+    callback tray-right-clicked(int);
+    // Status icons use Gnoblin's small symbolic set, not desktop theme dumps.
+    // Rust may override per-state.
+    in property <image>  icon-network:   @image-url("../assets/icons/symbolic/ethernet.svg");
+    in property <image>  icon-wifi:      @image-url("../assets/icons/symbolic/wifi.svg");
+    in property <image>  icon-wifi-none: @image-url("../assets/icons/symbolic/wifi-off.svg");
+    in property <image>  icon-audio:     @image-url("../assets/icons/symbolic/volume.svg");
+    // Live connection state for the cluster's network glyph: 0 = disconnected,
+    // 1 = wired (ethernet), 2 = wifi. Driven by Rust from quicksettings.
+    in property <int>    network-mode:   1;
+    // Default sink muted — dims the audio glyph + draws a slash. Driven by Rust.
+    in property <bool>   audio-muted:    false;
+    // Notification bell: opens quick settings/history; shows an unread dot when
+    // notifications are waiting.
+    in property <bool>   notif-pending:  false;
+    in property <image>  icon-bell:      @image-url("../assets/icons/symbolic/bell.svg");
+    callback bell-clicked();
+    callback launcher-clicked();
+    in property <image>  icon-power:     @image-url("../assets/icons/symbolic/power.svg");
+    in property <image>  icon-search:    @image-url("../assets/icons/symbolic/search.svg");
+    in property <image>  icon-bluetooth: @image-url("../assets/icons/symbolic/bluetooth.svg");
+
+    // Glass backdrop — pre-blurred wallpaper stretched to screen size,
+    // clipped to bar rect.
+    in property <image>  backdrop;
+    in property <length> backdrop-screen-w: 1px;
+    in property <length> backdrop-screen-h: 1px;
+
+    callback toggle-datetime-popout(length);
+    callback toggle-control-centre(length);
+
+    width: 100%;
+    height: Tokens.panel-height;
+
+    property <color> resolved-bg:           Theme.panel-bg;
+    property <color> resolved-fg:           Theme.panel-fg;
+    property <color> resolved-border:       Theme.panel-border-bottom;
+    property <color> resolved-hover-bg: Theme.surface-hover-bg;
+    property <color> resolved-active-bg: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.14)
+        : rgba(0, 0, 0, 0.08);
+
+    animate resolved-bg        { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-fg        { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-border    { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-hover-bg  { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+    animate resolved-active-bg { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
+
+    bar := Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: transparent;
+        clip: true;
+
+        // Translucent tint only — frosted blur comes from the compositor.
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: root.resolved-bg;
+        }
+
+        bottom-border := Rectangle {
+            x: 0;
+            y: parent.height - 1px;
+            width: parent.width;
+            height: 1px;
+            background: root.resolved-border;
+        }
+
+        PanelArea {
+            x: 0;
+            y: 0;
+            width: parent.width / 2;
+            height: parent.height;
+            widgets: root.left-widgets;
+            alignment: start;
+            area-padding-left: root.panel-padding-left;
+            area-padding-right: 0px;
+            clock-padding: root.clock-padding;
+            status-padding: root.status-padding;
+            status-icon-gap: root.status-icon-gap;
+            focused-app: root.focused-app;
+            clock-text: root.clock-text;
+            date-text: root.date-text;
+            workspace-count: root.workspace-count;
+            workspace-active: root.workspace-active;
+            global-menu-bar: root.global-menu-bar;
+            global-menu-open-index: root.global-menu-open-index;
+            tray-items: root.tray-items;
+            network-mode: root.network-mode;
+            audio-muted: root.audio-muted;
+            notif-pending: root.notif-pending;
+            icon-network: root.icon-network;
+            icon-wifi: root.icon-wifi;
+            icon-wifi-none: root.icon-wifi-none;
+            icon-audio: root.icon-audio;
+            icon-bell: root.icon-bell;
+            icon-search: root.icon-search;
+            icon-power: root.icon-power;
+            resolved-fg: root.resolved-fg;
+            resolved-border: root.resolved-border;
+            resolved-hover-bg: root.resolved-hover-bg;
+            resolved-active-bg: root.resolved-active-bg;
+            workspace-clicked(i) => { root.workspace-clicked(i); }
+            focused-app-clicked(x) => { root.focused-app-clicked(x); }
+            global-menu-clicked(id, x) => { root.global-menu-clicked(id, x); }
+            toggle-datetime-popout(x) => { root.toggle-datetime-popout(x); }
+            toggle-control-centre(x) => { root.toggle-control-centre(x); }
+            bell-clicked() => { root.bell-clicked(); }
+            launcher-clicked() => { root.launcher-clicked(); }
+            tray-clicked(id) => { root.tray-clicked(id); }
+            tray-right-clicked(id) => { root.tray-right-clicked(id); }
+        }
+
+        PanelArea {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            widgets: root.center-widgets;
+            alignment: center;
+            area-padding-left: root.panel-padding-left;
+            area-padding-right: root.panel-padding-right;
+            clock-padding: root.clock-padding;
+            status-padding: root.status-padding;
+            status-icon-gap: root.status-icon-gap;
+            focused-app: root.focused-app;
+            clock-text: root.clock-text;
+            date-text: root.date-text;
+            workspace-count: root.workspace-count;
+            workspace-active: root.workspace-active;
+            global-menu-bar: root.global-menu-bar;
+            global-menu-open-index: root.global-menu-open-index;
+            tray-items: root.tray-items;
+            network-mode: root.network-mode;
+            audio-muted: root.audio-muted;
+            notif-pending: root.notif-pending;
+            icon-network: root.icon-network;
+            icon-wifi: root.icon-wifi;
+            icon-wifi-none: root.icon-wifi-none;
+            icon-audio: root.icon-audio;
+            icon-bell: root.icon-bell;
+            icon-search: root.icon-search;
+            icon-power: root.icon-power;
+            resolved-fg: root.resolved-fg;
+            resolved-border: root.resolved-border;
+            resolved-hover-bg: root.resolved-hover-bg;
+            resolved-active-bg: root.resolved-active-bg;
+            workspace-clicked(i) => { root.workspace-clicked(i); }
+            focused-app-clicked(x) => { root.focused-app-clicked(x); }
+            global-menu-clicked(id, x) => { root.global-menu-clicked(id, x); }
+            toggle-datetime-popout(x) => { root.toggle-datetime-popout(x); }
+            toggle-control-centre(x) => { root.toggle-control-centre(x); }
+            bell-clicked() => { root.bell-clicked(); }
+            launcher-clicked() => { root.launcher-clicked(); }
+            tray-clicked(id) => { root.tray-clicked(id); }
+            tray-right-clicked(id) => { root.tray-right-clicked(id); }
+        }
+
+        PanelArea {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            widgets: root.right-widgets;
+            alignment: end;
+            area-padding-left: 0px;
+            area-padding-right: root.panel-padding-right;
+            clock-padding: root.clock-padding;
+            status-padding: root.status-padding;
+            status-icon-gap: root.status-icon-gap;
+            focused-app: root.focused-app;
+            clock-text: root.clock-text;
+            date-text: root.date-text;
+            workspace-count: root.workspace-count;
+            workspace-active: root.workspace-active;
+            global-menu-bar: root.global-menu-bar;
+            global-menu-open-index: root.global-menu-open-index;
+            tray-items: root.tray-items;
+            network-mode: root.network-mode;
+            audio-muted: root.audio-muted;
+            notif-pending: root.notif-pending;
+            icon-network: root.icon-network;
+            icon-wifi: root.icon-wifi;
+            icon-wifi-none: root.icon-wifi-none;
+            icon-audio: root.icon-audio;
+            icon-bell: root.icon-bell;
+            icon-search: root.icon-search;
+            icon-power: root.icon-power;
+            resolved-fg: root.resolved-fg;
+            resolved-border: root.resolved-border;
+            resolved-hover-bg: root.resolved-hover-bg;
+            resolved-active-bg: root.resolved-active-bg;
+            workspace-clicked(i) => { root.workspace-clicked(i); }
+            focused-app-clicked(x) => { root.focused-app-clicked(x); }
+            global-menu-clicked(id, x) => { root.global-menu-clicked(id, x); }
+            toggle-datetime-popout(x) => { root.toggle-datetime-popout(x); }
+            toggle-control-centre(x) => { root.toggle-control-centre(x); }
+            bell-clicked() => { root.bell-clicked(); }
+            launcher-clicked() => { root.launcher-clicked(); }
+            tray-clicked(id) => { root.tray-clicked(id); }
+            tray-right-clicked(id) => { root.tray-right-clicked(id); }
+        }
+    }
+}

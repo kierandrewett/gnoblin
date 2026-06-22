@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-gamma-control.c src/wayland/meta-wayland-gamma-control.c
+mutter meta-wayland-gamma-control.h src/wayland/meta-wayland-gamma-control.h
+mutter wlr-gamma-control-unstable-v1.xml src/wayland/protocol/wlr-gamma-control-unstable-v1.xml

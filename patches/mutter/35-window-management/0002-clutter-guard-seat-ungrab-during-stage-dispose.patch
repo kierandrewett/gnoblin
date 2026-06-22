@@ -1,0 +1,33 @@
+From 0ef055c9d2afe70fe2041f1f2196b292e2f0dbcc Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 21 Jun 2026 14:48:00 +0100
+Subject: [PATCH] clutter: guard seat ungrab during stage dispose
+
+The devkit tears down a headless/native backend aggressively after each
+harness run. During stage disposal, actors clear outstanding Clutter grabs; if
+the backend seat has already been disposed, clutter_stage_unlink_grab() tries
+to ungrab a NULL seat and crashes in CLUTTER_SEAT_GET_CLASS().
+
+If there is no default seat left, there is nothing left to backend-ungrab.
+Still clear the stage grab state so disposal can continue cleanly.
+---
+ clutter/clutter/clutter-stage.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index 84f7c42..28b609a 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -3219,7 +3219,8 @@ clutter_stage_unlink_grab (ClutterStage *stage,
+       /* This was the last remaining grab, trigger a backend ungrab */
+       context = clutter_actor_get_context (CLUTTER_ACTOR (stage));
+       seat = clutter_backend_get_default_seat (context->backend);
+-      clutter_seat_ungrab (seat, clutter_get_current_event_time ());
++      if (seat)
++        clutter_seat_ungrab (seat, clutter_get_current_event_time ());
+       priv->grab_state = CLUTTER_GRAB_STATE_NONE;
+     }
+ 
+-- 
+2.53.0
+

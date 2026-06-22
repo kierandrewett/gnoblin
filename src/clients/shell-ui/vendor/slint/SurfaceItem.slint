@@ -1,0 +1,28 @@
+// One wl_surface in a window's surface tree (the toplevel itself, or any
+// subsurface). Coordinates are in the WINDOW's local space — i.e. (0, 0)
+// is the geom rect's top-left corner; the toplevel surface's offset is
+// (-geom_x, -geom_y) so its buffer aligns with the chrome rect.
+// Subsurfaces emit at their `surface_view.offset` position (folds in
+// subsurface location, wl_surface.offset(), wp_viewporter dst).
+//
+// `texture` is the per-surface buffer (NOT a composite of the tree).
+// `src_*` are the source-clip rect inside the buffer in BUFFER pixels.
+// `w`/`h` are the destination size in compositor LOGICAL pixels (so
+// HiDPI / set_buffer_scale buffers downscale correctly).
+//
+// Defined in its own file to avoid the circular import that arises if
+// WindowChrome imports it from Compositor.slint while Compositor
+// imports WindowChrome.
+
+export struct SurfaceItem {
+    id:           int,
+    x-in-window:  int,
+    y-in-window:  int,
+    w:            int,
+    h:            int,
+    src-x:        int,
+    src-y:        int,
+    src-w:        int,
+    src-h:        int,
+    texture:      image,
+}

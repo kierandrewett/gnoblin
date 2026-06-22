@@ -1,0 +1,4 @@
+# project source destination
+mutter meta-wayland-foreign-toplevel-management.c src/wayland/meta-wayland-foreign-toplevel-management.c
+mutter meta-wayland-foreign-toplevel-management.h src/wayland/meta-wayland-foreign-toplevel-management.h
+mutter wlr-foreign-toplevel-management-unstable-v1.xml src/wayland/protocol/wlr-foreign-toplevel-management-unstable-v1.xml

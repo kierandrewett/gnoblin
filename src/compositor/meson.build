@@ -1,0 +1,69 @@
+# gnoblin-shell — a minimal libmutter compositor.
+#
+# Unlike the protocol overlays under src/<feature>/ (which are copied INTO the
+# mutter submodule and built as part of libmutter), gnoblin-shell is a
+# first-class, standalone program. It links the *installed* libmutter-17 — the
+# same one gnoblin's patched mutter ships — via pkg-config. Concrete, owned
+# source; no submodule, no patches.
+#
+# The shell is C++; the shared config parser (../config/gnoblin-config.c) stays
+# C because the libmutter protocol overlays also use it.
+#
+# Build standalone:
+#     meson setup build/gnoblin-shell src/compositor
+#     meson compile -C build/gnoblin-shell
+
+project('gnoblin-shell', ['c', 'cpp'],
+  version : '0.1',
+  default_options : ['c_std=gnu11', 'cpp_std=c++20', 'warning_level=2'],
+)
+
+libmutter_dep = dependency('libmutter-17')
+gio_dep = dependency('gio-2.0')
+
+# GLib/Clutter vtable callbacks have fixed signatures with unavoidably-unused
+# parameters; keep warning_level=2 otherwise.
+cc = meson.get_compiler('c')
+cxx = meson.get_compiler('cpp')
+add_project_arguments(cc.get_supported_arguments('-Wno-unused-parameter'), language : 'c')
+add_project_arguments(cxx.get_supported_arguments('-Wno-unused-parameter'), language : 'cpp')
+
+# PAM for the lock screen's password check.
+pam_dep = cxx.find_library('pam')
+# cairo for the self-screenshot PNG writer.
+cairo_dep = dependency('cairo')
+
+executable('gnoblin-shell',
+  sources : [
+    'gnoblin-shell.cpp',
+    'gnoblin-shell-plugin.cpp',
+    'gnoblin-actions.cpp',
+    'gnoblin-actions-spec.c',
+    'gnoblin-anim.cpp',
+    'gnoblin-anim-spec.c',
+    'gnoblin-blur.cpp',
+    'gnoblin-color-spec.c',
+    'gnoblin-control.cpp',
+    'gnoblin-gestures.cpp',
+    'gnoblin-input.cpp',
+    'gnoblin-input-spec.c',
+    'gnoblin-lock.cpp',
+    'gnoblin-output.cpp',
+    'gnoblin-output-spec.c',
+    'gnoblin-overview.cpp',
+    'gnoblin-roles.cpp',
+    'gnoblin-rounded.cpp',
+    'gnoblin-rules.cpp',
+    'gnoblin-rules-spec.c',
+    'gnoblin-shadow.cpp',
+    'gnoblin-shadow-spec.c',
+    'gnoblin-switcher.cpp',
+    '../config/gnoblin-config.c',
+  ],
+  include_directories : include_directories('../config'),
+  dependencies : [libmutter_dep, gio_dep, pam_dep],
+  cpp_args : [
+    '-DGNOBLIN_SHELL_VERSION="@0@"'.format(meson.project_version()),
+  ],
+  install : true,
+)

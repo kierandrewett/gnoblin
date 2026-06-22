@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Wed, 17 Jun 2026 16:10:00 +0100
+Subject: [PATCH] tooling: expose feature variables in uninstalled pkg-config
+
+gnome-shell reads Mutter's typelibdir and have_* pkg-config variables
+while configuring. Meson's generated uninstalled .pc files only include
+variables listed in uninstalled_variables, so local builds that point
+gnome-shell at a patched, uninstalled Mutter fail during regeneration.
+---
+ src/meson.build | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index 61f2b76..3adf6f4 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1379,6 +1379,15 @@ pkg.generate(libmutter,
+     'have_wayland=@0@'.format(have_wayland),
+     'have_fonts=@0@'.format(have_fonts),
+   ],
++  uninstalled_variables: [
++    'apiversion=' + libmutter_api_version,
++    'girdir=${prefix}/src',
++    'typelibdir=${prefix}/src',
++    'have_x11=@0@'.format(have_x11),
++    'have_x11_client=@0@'.format(have_x11_client),
++    'have_wayland=@0@'.format(have_wayland),
++    'have_fonts=@0@'.format(have_fonts),
++  ],
+   install_dir: pcdir,
+ )
+ 
+-- 
+2.50.0

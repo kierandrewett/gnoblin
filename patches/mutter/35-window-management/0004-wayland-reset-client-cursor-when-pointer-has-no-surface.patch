@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Mon, 22 Jun 2026 16:00:00 +0100
+Subject: [PATCH] wayland: reset stale client cursors on idle focus changes
+
+Wayland clients own the cursor while they have pointer focus. CSD toolkits use
+that to set resize cursors at their window edges. If the compositor has no
+Wayland surface currently under the pointer, but the old focus has not been
+fully invalidated yet, the old client cursor can survive visually until another
+client sets a new cursor.
+
+The same can happen when focus moves from a CSD window edge to a layer-shell
+surface, because the new surface may not immediately set a cursor. Clear the
+old client's cursor state whenever idle pointer focus changes to a different
+client; preserve it for same-client surface hops and active button grabs.
+
+Treat "no current surface and no button held" as a compositor/root cursor
+situation and unset the client cursor immediately. The button guard preserves
+normal implicit-grab behaviour while dragging or resizing.
+---
+ src/wayland/meta-wayland-pointer.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index a0ace17..ba6f004 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -1088,6 +1088,9 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
+   ClutterSeat *clutter_seat = clutter_backend_get_default_seat (clutter_backend);
+   MetaWindow *toplevel_window;
++  struct wl_client *old_client = NULL;
++  struct wl_client *new_client = NULL;
++  gboolean client_changed;
+ 
+   g_return_if_fail (meta_cursor_tracker_get_pointer_visible (cursor_tracker) ||
+                     clutter_seat_is_unfocus_inhibited (clutter_seat) ||
+@@ -1096,6 +1099,26 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+   if (pointer->focus_surface == surface)
+     return;
+ 
++  if (pointer->focus_surface && pointer->focus_surface->resource)
++    old_client = wl_resource_get_client (pointer->focus_surface->resource);
++  if (surface && surface->resource)
++    new_client = wl_resource_get_client (surface->resource);
++  client_changed = old_client != new_client;
++
++  if (client_changed && pointer->button_count == 0)
++    {
++      if (pointer->cursor_surface)
++        {
++          meta_wayland_surface_update_outputs (pointer->cursor_surface);
++          g_clear_signal_handler (&pointer->cursor_surface_destroy_id,
++                                  pointer->cursor_surface);
++        }
++
++      pointer->cursor_surface = NULL;
++      pointer->cursor_shape = META_CURSOR_INVALID;
++      g_clear_object (&pointer->shape_sprite);
++    }
++
+   pointer->last_rel_x = -FLT_MAX;
+   pointer->last_rel_y = -FLT_MAX;
+ 
+@@ -1210,6 +1233,9 @@ meta_wayland_pointer_update_cursor_surface (MetaWaylandPointer *pointer)
+ 
+   surface = pointer->focus_surface;
+ 
++  if (!pointer->current && pointer->button_count == 0)
++    surface = NULL;
++
+   if (surface)
+     {
+       MetaCursorSprite *cursor_sprite = NULL;
+-- 
+2.50.0

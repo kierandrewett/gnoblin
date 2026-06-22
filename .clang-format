@@ -1,0 +1,11 @@
+# gnoblin C/C++ style: 4-space, return type on the same line as the function
+# name (no GNU-style break), K&R braces, left-aligned pointers.
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+AlwaysBreakAfterReturnType: None
+AllowShortFunctionsOnASingleLine: Empty
+PointerAlignment: Left
+SpaceBeforeParens: ControlStatements
+SortIncludes: false

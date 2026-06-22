@@ -1,0 +1,57 @@
+From 1b7dbfdafe4b4033cb4c6a4c930ec4639bb78177 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 21 Jun 2026 17:24:00 +0100
+Subject: [PATCH] wayland/keyboard: send post-key modifiers from Wayland XKB
+ state
+
+Wayland key events are delivered after meta_wayland_keyboard_update() has
+updated the Wayland keyboard's own XKB state. The modifier notification that
+follows the key must be derived from that same state.
+
+Using the Clutter keymap here is racy: it can still report the old modifier
+state for a modifier key release, causing the focused Wayland client to receive
+the key release without the corresponding modifier-clear event. The Mutter
+wayland-keyboard test then waits forever for the expected sync point.
+---
+ src/wayland/meta-wayland-keyboard.c | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index 51d236b..7e07bb0 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -626,6 +626,22 @@ maybe_update_modifiers_from_keymap (MetaWaylandKeyboard *keyboard)
+   return maybe_update_modifiers (keyboard, pressed, latched, locked);
+ }
+ 
++static gboolean
++maybe_update_modifiers_from_xkb_state (MetaWaylandKeyboard *keyboard)
++{
++  MetaWaylandXkbInfo *xkb_info = &keyboard->xkb_info;
++  ClutterModifierType pressed, locked, latched;
++
++  pressed = xkb_state_serialize_mods (xkb_info->state,
++                                      XKB_STATE_MODS_DEPRESSED);
++  latched = xkb_state_serialize_mods (xkb_info->state,
++                                      XKB_STATE_MODS_LATCHED);
++  locked = xkb_state_serialize_mods (xkb_info->state,
++                                     XKB_STATE_MODS_LOCKED);
++
++  return maybe_update_modifiers (keyboard, pressed, latched, locked);
++}
++
+ static gboolean
+ maybe_update_modifiers_from_event (MetaWaylandKeyboard *keyboard,
+                                    const ClutterEvent  *event)
+@@ -732,7 +748,7 @@ meta_wayland_keyboard_handle_event (MetaWaylandKeyboard   *keyboard,
+                   "No wayland surface is focused, continuing normal operation");
+     }
+ 
+-  if (maybe_update_modifiers_from_keymap (keyboard))
++  if (maybe_update_modifiers_from_xkb_state (keyboard))
+     notify_modifiers (keyboard);
+ 
+   return handled;
+-- 
+2.53.0
+

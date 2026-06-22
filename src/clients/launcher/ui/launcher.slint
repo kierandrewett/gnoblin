@@ -1,0 +1,221 @@
+// Application launcher: a centred glass panel with a search field + matching
+// apps shown either as a scrollable list (default) or an icon grid (grid-mode,
+// the `Super+A` app grid). Rust owns the input (query, selection, scroll) and
+// pushes it down; clicks launch by index.
+import { Theme, TokenMode, Spacing, Radius, Motion, Tokens } from "../../shell-ui/vendor/slint/Tokens.slint";
+export { Theme, TokenMode }
+
+export struct AppEntry {
+    name:     string,
+    icon:     image,
+    has-icon: bool,
+}
+
+export component Launcher inherits Window {
+    in property <string> query: "";
+    in property <[AppEntry]> apps;
+    in property <int> selected: 0;
+    in property <length> scroll-y: 0px;
+    in property <bool> grid-mode: false;
+    in property <int> columns: 5;
+    callback activated(int);
+    background: transparent;
+    default-font-family: Tokens.font-family;
+
+    property <length> panel-w: root.grid-mode ? 660px : 620px;
+    property <length> panel-h: root.grid-mode ? 560px : 440px;
+    property <length> row-h: 44px;
+    property <length> cell-w: (root.panel-w - 32px) / root.columns;
+    property <length> cell-h: 112px;
+
+    // Enter animation: flip on at first paint so opacity + scale tween from
+    // their initial (hidden) values to the shown state — a quick pop-in since
+    // the launcher appears on top of the desktop.
+    property <bool> shown: false;
+    init => { root.shown = true; }
+
+    panel := Rectangle {
+        x: (parent.width - root.panel-w) / 2;
+        y: (parent.height - root.panel-h) / 2;
+        width: root.panel-w;
+        height: root.panel-h;
+        background: transparent;
+        clip: false;
+
+        // Pop-in: fade up and scale from ~0.96 about the panel centre.
+        opacity: root.shown ? 1.0 : 0.0;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale-x: root.shown ? 1.0 : 0.96;
+        transform-scale-y: root.shown ? 1.0 : 0.96;
+        animate opacity, transform-scale-x, transform-scale-y {
+            duration: Motion.overlay;
+            easing: Motion.overlay-curve;
+        }
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: Theme.chrome-shadow-source;
+            border-radius: Tokens.popout-corner-radius;
+            drop-shadow-color: Theme.chrome-shadow;
+            drop-shadow-blur: Tokens.popout-shadow-blur;
+            drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
+        }
+
+        body := Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: Theme.surface-bg;
+            border-radius: Tokens.popout-corner-radius;
+            clip: true;
+
+        VerticalLayout {
+            padding: Spacing.lg;
+            spacing: Spacing.md;
+
+            // Search field (Rust feeds the query).
+            Rectangle {
+                height: 40px;
+                background: Theme.surface-raised-bg;
+                border-radius: Radius.md;
+                border-width: Tokens.chrome-hairline-width;
+                border-color: Theme.surface-border;
+                HorizontalLayout {
+                    padding-left: Spacing.lg;
+                    padding-right: Spacing.lg;
+                    Text {
+                        text: root.query == "" ? (root.grid-mode ? "Search All Applications" : "Search Applications") : root.query;
+                        color: root.query == "" ? Theme.text-secondary : Theme.text-primary;
+                        font-size: 15px;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // Results — a vertical list…
+            if !root.grid-mode: Flickable {
+                viewport-height: root.apps.length * root.row-h;
+                viewport-y: root.scroll-y;
+                interactive: false;
+
+                VerticalLayout {
+                    alignment: start;
+                    for app[i] in root.apps: Rectangle {
+                        height: root.row-h;
+
+                        // Inset, rounded selection/hover pill — Adwaita boxed-list
+                        // style, not an edge-to-edge saturated bar.
+                        Rectangle {
+                            x: Spacing.sm;
+                            width: parent.width - 2 * Spacing.sm;
+                            height: parent.height - 2 * Spacing.xs;
+                            y: Spacing.xs;
+                            border-radius: Radius.md;
+                            background: i == root.selected
+                                ? Theme.surface-active-bg
+                                : (touch.has-hover ? Theme.surface-hover-bg : transparent);
+                            animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                        }
+
+                        touch := TouchArea {
+                            clicked => { root.activated(i); }
+                        }
+                        HorizontalLayout {
+                            padding-left: Spacing.md + Spacing.xs;
+                            padding-right: Spacing.md + Spacing.xs;
+                            spacing: Spacing.md;
+                            if app.has-icon: Image {
+                                width: 26px;
+                                height: 26px;
+                                y: (parent.height - self.height) / 2;
+                                source: app.icon;
+                            }
+                            Text {
+                                text: app.name;
+                                // Full-contrast on the accent, gently dimmed otherwise
+                                // (hierarchy via opacity, per the design guidance).
+                                color: i == root.selected ? rgba(255, 255, 255, 0.98) : Theme.text-primary;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // …or a grid of icon tiles.
+            if root.grid-mode: Flickable {
+                viewport-height: Math.ceil(root.apps.length / root.columns) * root.cell-h;
+                viewport-y: root.scroll-y;
+                interactive: false;
+
+                for app[i] in root.apps: Rectangle {
+                    x: Math.mod(i, root.columns) * root.cell-w;
+                    y: Math.floor(i / root.columns) * root.cell-h;
+                    width: root.cell-w;
+                    height: root.cell-h;
+
+                    tile := Rectangle {
+                        x: Spacing.xs;
+                        y: Spacing.xs;
+                        width: parent.width - 2 * Spacing.xs;
+                        height: parent.height - 2 * Spacing.xs;
+                        border-radius: 12px;
+                        background: i == root.selected ? Theme.surface-active-bg : (gtouch.has-hover ? Theme.surface-hover-bg : transparent);
+                        border-width: i == root.selected || gtouch.has-hover ? Tokens.chrome-hairline-width : 0px;
+                        border-color: Theme.surface-border;
+                        animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                        gtouch := TouchArea {
+                            clicked => { root.activated(i); }
+                        }
+                        VerticalLayout {
+                            padding: Spacing.sm;
+                            spacing: Spacing.sm;
+                            alignment: center;
+                            if app.has-icon: Image {
+                                width: 52px;
+                                height: 52px;
+                                horizontal-alignment: center;
+                                source: app.icon;
+                            }
+                            Text {
+                                text: app.name;
+                                color: i == root.selected ? rgba(255, 255, 255, 0.98) : Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                wrap: word-wrap;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.width - 2 * Tokens.chrome-hairline-width;
+            height: parent.height - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: Theme.surface-border;
+        }
+
+        Rectangle {
+            x: Tokens.popout-corner-radius;
+            y: Tokens.chrome-hairline-width / 2;
+            width: parent.width - 2 * Tokens.popout-corner-radius;
+            height: Tokens.chrome-highlight-height;
+            background: Theme.menu-highlight;
+        }
+    }
+}

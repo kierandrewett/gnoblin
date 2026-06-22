@@ -1,0 +1,107 @@
+From 9040c5de44de852a667835ea8f96cabde39b4f72 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 22:15:50 +0100
+Subject: [PATCH] tooling: broadcast Wayland key events on the session bus
+
+Emit a dev.kieran.mutter.Keys.Event D-Bus signal for every Wayland key
+press/release so user-space tools (e.g. screen-mirror's keyboard overlay)
+can observe global key input without /dev/input access.
+
+The session-bus lookup is deliberately asynchronous: this is on the compositor
+input path, so key delivery must never wait for D-Bus connection setup.
+---
+ src/wayland/meta-wayland-keyboard.c | 77 +++++++++++++++++++++++++++++
+ 1 file changed, 77 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index 149eb0a..51d236b 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -56,6 +56,68 @@
+ #include "mtk/mtk.h"
+ #include "wayland/meta-wayland-private.h"
+ 
++#include <gio/gio.h>
++
++/* gnoblin tooling: every Wayland key event emits a session-bus D-Bus
++ * signal so user-space tools can observe global key input without
++ * needing /dev/input access. See screen-mirror's keyboard overlay. */
++static GDBusConnection *_kdr_session_bus = NULL;
++static gboolean _kdr_session_bus_requested = FALSE;
++
++static void
++_kdr_on_session_bus_ready (GObject      *source_object,
++                           GAsyncResult *result,
++                           gpointer      user_data)
++{
++  g_autoptr (GError) error = NULL;
++  GDBusConnection *connection;
++
++  connection = g_bus_get_finish (result, &error);
++  if (!connection)
++    return;
++
++  if (_kdr_session_bus)
++    {
++      g_object_unref (connection);
++      return;
++    }
++
++  _kdr_session_bus = connection;
++}
++
++static void
++_kdr_ensure_session_bus (void)
++{
++  if (_kdr_session_bus || _kdr_session_bus_requested)
++    return;
++
++  _kdr_session_bus_requested = TRUE;
++  g_bus_get (G_BUS_TYPE_SESSION, NULL, _kdr_on_session_bus_ready, NULL);
++}
++
++static void
++_kdr_emit_key_event (uint32_t keysym,
++                     uint32_t state,
++                     uint32_t unicode,
++                     gboolean is_press)
++{
++  if (!_kdr_session_bus)
++    {
++      _kdr_ensure_session_bus ();
++      return;
++    }
++
++  g_dbus_connection_emit_signal (_kdr_session_bus,
++                                 NULL,
++                                 "/dev/kieran/mutter/keys",
++                                 "dev.kieran.mutter.Keys",
++                                 "Event",
++                                 g_variant_new ("(uuub)",
++                                                keysym, state, unicode,
++                                                is_press),
++                                 NULL);
++}
++
+ typedef struct
+ {
+   struct xkb_keymap *keymap;
+@@ -623,6 +685,15 @@ meta_wayland_keyboard_handle_event (MetaWaylandKeyboard   *keyboard,
+       !(flags & CLUTTER_EVENT_FLAG_INPUT_METHOD))
+     return FALSE;
+ 
++  /* gnoblin tooling: broadcast the key on the session bus. */
++  {
++    ClutterEvent *cev = (ClutterEvent *) event;
++    _kdr_emit_key_event (clutter_event_get_key_symbol (cev),
++                         clutter_event_get_state (cev),
++                         clutter_event_get_key_unicode (cev),
++                         clutter_event_type (cev) == CLUTTER_KEY_PRESS);
++  }
++
+   meta_topic (META_DEBUG_WAYLAND,
+               "Handling key %s event code %d",
+               is_press ? "press" : "release",
+-- 
+2.53.0
+

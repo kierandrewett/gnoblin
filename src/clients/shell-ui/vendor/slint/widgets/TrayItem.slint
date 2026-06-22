@@ -1,0 +1,15 @@
+// TrayItem.slint — shared struct definition for StatusNotifierItem entries
+// shown in the panel's tray zone. Defined in a tiny dedicated file so both
+// Compositor.slint and Panel.slint can import it without a circular
+// dependency.
+
+export struct TrayIconItem {
+    id:          int,
+    title:       string,
+    icon-name:   string,
+    icon:        image,
+    /// DBus service + path so the panel callback can fire Activate /
+    /// ContextMenu RPCs without a separate id → endpoint lookup table.
+    service:     string,
+    object-path: string,
+}

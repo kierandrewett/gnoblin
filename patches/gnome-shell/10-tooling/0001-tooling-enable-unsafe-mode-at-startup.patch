@@ -1,0 +1,31 @@
+From ccbde2afe722985cb68d03299044c6868b853310 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 22:16:46 +0100
+Subject: [PATCH] tooling: enable unsafe-mode at startup
+
+Set global.context.unsafe_mode = true in start() so Shell.Eval and other
+privileged shell operations work without a manual Looking Glass toggle.
+screen-mirror installs its shell-side polling via Shell.Eval at startup.
+---
+ js/ui/main.js | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 4be8cea..3f95fd5 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -151,6 +151,11 @@ function _sessionUpdated() {
+ 
+ /** @returns {void} */
+ export async function start() {
++    // gnoblin tooling: enable unsafe-mode permanently so Shell.Eval and
++    // other privileged shell ops work without requiring a manual Looking
++    // Glass toggle.
++    global.context.unsafe_mode = true;
++
+     globalThis.log = console.log;
+     globalThis.logError = function (err, msg) {
+         const args = [formatError(err)];
+-- 
+2.53.0
+

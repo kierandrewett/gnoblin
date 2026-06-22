@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Dummy audio quick-settings provider (ONESHOT) for the gnoblin devkit.
+#
+# Emits a FAKE sink + volume — the devkit NEVER runs wpctl/pactl against the host.
+# A slider event updates the persisted fake level; a sink row "switches" output.
+set -euo pipefail
+
+LOG="${GNOBLIN_QS_LOG:-${TMPDIR:-/tmp}/gnoblin-qs-events.log}"
+STATE="${GNOBLIN_QS_STATE:-${TMPDIR:-/tmp}/gnoblin-qs-audio.state}"
+
+vol="$(cat "$STATE" 2>/dev/null || echo 0.65)"
+sink="Built-in Speakers"
+
+if [[ -n "${GNOBLIN_QS_EVENT:-}" ]]; then
+    printf '%s audio %s\n' "$(date -Iseconds)" "$GNOBLIN_QS_EVENT" >>"$LOG"
+    # Pull the slider value out of {"event":"slider","id":"vol","value":0.42}.
+    if [[ "$GNOBLIN_QS_EVENT" == *'"event":"slider"'*'"vol"'* ]]; then
+        v="$(printf '%s' "$GNOBLIN_QS_EVENT" | grep -oE '"value":[0-9.]+' | grep -oE '[0-9.]+')"
+        [[ -n "$v" ]] && { vol="$v"; echo "$vol" >"$STATE"; }
+    fi
+fi
+
+pct=$(awk -v v="$vol" 'BEGIN{printf "%d", v*100}')
+
+printf '%s\n' "{\"tile\":{\"icon\":\"audio-volume-high-symbolic\",\"title\":\"Output\",\"subtitle\":\"$sink · ${pct}%\",\"active\":true,\"chevron\":true},\"menu\":{\"title\":\"Sound\",\"rows\":[{\"id\":\"vol\",\"type\":\"slider\",\"label\":\"Volume\",\"value\":$vol,\"icon\":\"audio-volume-high-symbolic\"},{\"type\":\"section\",\"label\":\"Output device\"},{\"id\":\"sink-speakers\",\"type\":\"item\",\"label\":\"Built-in Speakers\",\"icon\":\"audio-speakers-symbolic\",\"on\":true},{\"id\":\"sink-buds\",\"type\":\"item\",\"label\":\"Pixel Buds\",\"icon\":\"audio-headphones-symbolic\",\"on\":false},{\"id\":\"sink-hdmi\",\"type\":\"item\",\"label\":\"HDMI / DisplayPort\",\"icon\":\"video-display-symbolic\",\"on\":false}]}}"

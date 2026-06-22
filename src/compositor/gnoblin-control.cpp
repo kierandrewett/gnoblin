@@ -1,0 +1,464 @@
+/*
+ * gnoblin-shell: config keybindings + D-Bus/IPC -> the action dispatcher.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
+ */
+
+#include "gnoblin-control.h"
+
+#include <gio/gio.h>
+#include <string.h>
+
+extern "C" {
+#include <meta/display.h>
+#include <meta/meta-workspace-manager.h>
+#include <meta/prefs.h>
+#include <meta/window.h>
+}
+
+#include "gnoblin-actions.h"
+#include "gnoblin-config.h"
+#include "gnoblin-roles.h"
+
+#define GNOBLIN_DBUS_NAME "dev.gnoblin.Shell"
+#define GNOBLIN_DBUS_PATH "/dev/gnoblin/Shell"
+
+typedef struct {
+    char* action;
+    char* arg;
+} Binding;
+
+static MetaDisplay* the_display;
+static GHashTable* bindings; /* accelerator action id (guint) -> Binding* */
+static gulong accelerator_handler;
+
+/* ---- keybindings ---- */
+
+/* mutter processes its own built-in keybindings (gsettings) before our grabbed
+ * accelerators, so e.g. Super+Left is taken. Since gnoblin IS the window
+ * manager, make its config authoritative: disable mutter's keybinding schemas
+ * so any key is free to grab. Gated by `take-over-keybindings` (default true).
+ * Set it false to keep mutter's defaults (and avoid touching your dconf). */
+static void disable_schema_keybindings(const char* schema_id) {
+    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
+    g_autoptr(GSettingsSchema) schema = NULL;
+    g_autoptr(GSettings) settings = NULL;
+    g_auto(GStrv) keys = NULL;
+    const char* empty[] = {NULL};
+    int i;
+
+    if (!source)
+        return;
+    schema = g_settings_schema_source_lookup(source, schema_id, TRUE);
+    if (!schema)
+        return;
+
+    settings = g_settings_new_full(schema, NULL, NULL);
+    keys = g_settings_schema_list_keys(schema);
+    for (i = 0; keys[i]; i++) {
+        g_autoptr(GSettingsSchemaKey) key = g_settings_schema_get_key(schema, keys[i]);
+
+        if (g_variant_type_equal(g_settings_schema_key_get_value_type(key),
+                                 G_VARIANT_TYPE_STRING_ARRAY))
+            g_settings_set_strv(settings, keys[i], empty);
+    }
+    g_settings_sync();
+}
+
+void gnoblin_control_take_over_keybindings(void) {
+    if (!gnoblin_config_get_bool("input", "take-over-keybindings", TRUE))
+        return;
+
+    disable_schema_keybindings("org.gnome.desktop.wm.keybindings");
+    disable_schema_keybindings("org.gnome.mutter.keybindings");
+    disable_schema_keybindings("org.gnome.mutter.wayland.keybindings");
+}
+
+static void binding_free(gpointer data) {
+    Binding* b = (Binding*)data;
+
+    g_free(b->action);
+    g_free(b->arg);
+    g_free(b);
+}
+
+/* "Super+Shift+Q" -> "<Super><Shift>q"; "Super+Left" -> "<Super>Left". */
+static char* to_mutter_accelerator(const char* spec) {
+    g_auto(GStrv) parts = g_strsplit(spec, "+", -1);
+    GString* out = g_string_new(NULL);
+    int i;
+
+    for (i = 0; parts[i]; i++) {
+        g_autofree char* tok = g_strdup(g_strstrip(parts[i]));
+
+        if (tok[0] == '\0')
+            continue;
+
+        if (!g_ascii_strcasecmp(tok, "super") || !g_ascii_strcasecmp(tok, "meta") ||
+            !g_ascii_strcasecmp(tok, "mod4") || !g_ascii_strcasecmp(tok, "win"))
+            g_string_append(out, "<Super>");
+        else if (!g_ascii_strcasecmp(tok, "ctrl") || !g_ascii_strcasecmp(tok, "control"))
+            g_string_append(out, "<Control>");
+        else if (!g_ascii_strcasecmp(tok, "alt") || !g_ascii_strcasecmp(tok, "mod1"))
+            g_string_append(out, "<Alt>");
+        else if (!g_ascii_strcasecmp(tok, "shift"))
+            g_string_append(out, "<Shift>");
+        else if (strlen(tok) == 1) /* a letter/digit key — lowercase */
+            g_string_append_c(out, g_ascii_tolower(tok[0]));
+        else /* a named key: Left, Up, Return, space, F1 … */
+            g_string_append(out, tok);
+    }
+
+    return g_string_free(out, FALSE);
+}
+
+/* While the session is locked, config keybindings are suppressed — otherwise
+ * `Super+Space` (launcher), `spawn`, `close`, etc. would bypass the lock. */
+static gboolean locked;
+
+void gnoblin_control_set_locked(gboolean is_locked) {
+    locked = is_locked;
+}
+
+gboolean gnoblin_control_is_locked(void) {
+    return locked;
+}
+
+static void on_accelerator_activated(MetaDisplay* display, guint action_id,
+                                     ClutterInputDevice* device, guint timestamp,
+                                     gpointer user_data) {
+    Binding* b = (Binding*)g_hash_table_lookup(bindings, GUINT_TO_POINTER(action_id));
+
+    if (locked)
+        return;
+    if (b)
+        gnoblin_actions_dispatch(display, b->action, b->arg, NULL, timestamp);
+}
+
+static void ungrab_all(void) {
+    GHashTableIter iter;
+    gpointer key;
+
+    if (!bindings)
+        return;
+
+    g_hash_table_iter_init(&iter, bindings);
+    while (g_hash_table_iter_next(&iter, &key, NULL))
+        meta_display_ungrab_accelerator(the_display, GPOINTER_TO_UINT(key));
+
+    g_hash_table_remove_all(bindings);
+}
+
+void gnoblin_control_reload_keybindings(MetaDisplay* display) {
+    /* Each line in the config's [bind] section is `Accelerator = action [arg]`,
+     * so the key is the accelerator and its value is the command. */
+    g_auto(GStrv) accels = gnoblin_config_get_keys("bind");
+    g_autoptr(GHashTable) seen = g_hash_table_new(g_str_hash, g_str_equal);
+    int i;
+
+    the_display = display;
+    if (!bindings)
+        bindings = g_hash_table_new_full(NULL, NULL, NULL, binding_free);
+
+    ungrab_all();
+
+    if (!accels)
+        return;
+
+    for (i = 0; accels[i]; i++) {
+        g_autofree char* value = NULL;
+        g_autofree char* accel = NULL;
+        g_auto(GStrv) cmd = NULL;
+        guint action_id;
+        Binding* b;
+
+        if (g_hash_table_contains(seen, accels[i]))
+            continue;
+        g_hash_table_add(seen, accels[i]);
+
+        value = gnoblin_config_get_string("bind", accels[i]);
+        if (!value || value[0] == '\0')
+            continue;
+
+        accel = to_mutter_accelerator(accels[i]);
+        cmd = g_strsplit(g_strstrip(value), " ", 2);
+
+        action_id = meta_display_grab_accelerator(display, accel, META_KEY_BINDING_NONE);
+        if (action_id == 0) {
+            g_warning("gnoblin: could not grab '%s = %s' (%s)", accels[i], value, accel);
+            continue;
+        }
+
+        b = g_new0(Binding, 1);
+        b->action = g_strdup(cmd[0]);
+        b->arg = cmd[1] ? g_strdup(g_strstrip(cmd[1])) : NULL;
+        g_hash_table_insert(bindings, GUINT_TO_POINTER(action_id), b);
+    }
+}
+
+/* ---- D-Bus / IPC ---- */
+
+static const char introspection_xml[] =
+    "<node>"
+    "  <interface name='dev.gnoblin.Shell'>"
+    "    <method name='Dispatch'>"
+    "      <arg type='s' name='action' direction='in'/>"
+    "      <arg type='s' name='arg' direction='in'/>"
+    "    </method>"
+    "    <method name='ListActions'>"
+    "      <arg type='as' name='actions' direction='out'/>"
+    "    </method>"
+    "    <method name='WorkspaceState'>"
+    "      <arg type='u' name='active' direction='out'/>"
+    "      <arg type='u' name='count' direction='out'/>"
+    "    </method>"
+    "    <method name='WorkspaceNames'>"
+    "      <arg type='as' name='names' direction='out'/>"
+    "    </method>"
+    "    <method name='ListWindows'>"
+    "      <arg type='a(tssbb)' name='windows' direction='out'/>"
+    "    </method>"
+    "    <method name='ListWindowFrames'>"
+    "      <arg type='a(tiiii)' name='frames' direction='out'/>"
+    "    </method>"
+    "    <method name='ActivateWindow'>"
+    "      <arg type='t' name='id' direction='in'/>"
+    "    </method>"
+    "    <method name='GetActiveWindowMenu'>"
+    "      <arg type='s' name='kind' direction='out'/>"
+    "      <arg type='s' name='bus_name' direction='out'/>"
+    "      <arg type='s' name='app_object_path' direction='out'/>"
+    "      <arg type='s' name='window_object_path' direction='out'/>"
+    "      <arg type='s' name='menubar_object_path' direction='out'/>"
+    "      <arg type='s' name='app_menu_object_path' direction='out'/>"
+    "    </method>"
+    "  </interface>"
+    "</node>";
+
+/* Per-window tuple for ListWindows: (id, title, app-id, focused, minimized).
+ * `app-id` is the GTK application id, falling back to the WM class. Skips
+ * non-normal and skip-taskbar windows (panels, docks, popups). */
+static void build_window_list(MetaDisplay* display, GVariantBuilder* builder) {
+    GList* windows = meta_display_list_all_windows(display);
+    GList* l;
+
+    for (l = windows; l; l = l->next) {
+        MetaWindow* w = META_WINDOW(l->data);
+        const char* title;
+        const char* app;
+
+        if (meta_window_get_window_type(w) != META_WINDOW_NORMAL || meta_window_is_skip_taskbar(w))
+            continue;
+
+        title = meta_window_get_title(w);
+        app = meta_window_get_gtk_application_id(w);
+        if (!app)
+            app = meta_window_get_wm_class(w);
+
+        g_variant_builder_add(
+            builder, "(tssbb)", (guint64)meta_window_get_id(w), title ? title : "", app ? app : "",
+            (gboolean)meta_window_has_focus(w), (gboolean)meta_window_is_hidden(w));
+    }
+
+    g_list_free(windows);
+}
+
+/* Geometry companion for tests and tooling. Keeps ListWindows stable for
+ * existing clients while exposing the frame rect used by Mutter constraints. */
+static void build_window_frame_list(MetaDisplay* display, GVariantBuilder* builder) {
+    GList* windows = meta_display_list_all_windows(display);
+    GList* l;
+
+    for (l = windows; l; l = l->next) {
+        MetaWindow* w = META_WINDOW(l->data);
+        MtkRectangle frame;
+
+        if (meta_window_get_window_type(w) != META_WINDOW_NORMAL || meta_window_is_skip_taskbar(w))
+            continue;
+
+        meta_window_get_frame_rect(w, &frame);
+        g_variant_builder_add(builder, "(tiiii)", (guint64)meta_window_get_id(w), frame.x, frame.y,
+                              frame.width, frame.height);
+    }
+
+    g_list_free(windows);
+}
+
+/* The GTK menu export (org.gtk.Menus / org.gtk.Actions) of the focused window,
+ * propagated to mutter via gtk-shell / X11 _GTK_* properties. KDE/Qt windows
+ * can also publish a com.canonical.dbusmenu address via the KDE appmenu Wayland
+ * protocol. Returns the backend kind + bus name + object paths so the topbar can
+ * render a KDE-style global menu. All empty when nothing is focused or the app
+ * exports no menu. */
+static MetaWindow* find_focused_window(MetaDisplay* display) {
+    GList* windows = meta_display_list_all_windows(display);
+    GList* l;
+    MetaWindow* found = NULL;
+
+    for (l = windows; l; l = l->next) {
+        MetaWindow* w = META_WINDOW(l->data);
+
+        if (meta_window_has_focus(w)) {
+            found = w;
+            break;
+        }
+    }
+
+    g_list_free(windows);
+    return found;
+}
+
+static void activate_window_by_id(MetaDisplay* display, guint64 id) {
+    GList* windows = meta_display_list_all_windows(display);
+    GList* l;
+
+    for (l = windows; l; l = l->next) {
+        MetaWindow* w = META_WINDOW(l->data);
+
+        if (meta_window_get_id(w) == id) {
+            meta_window_activate(w, meta_display_get_current_time_roundtrip(display));
+            break;
+        }
+    }
+
+    g_list_free(windows);
+}
+
+static void handle_method_call(GDBusConnection* connection, const char* sender,
+                               const char* object_path, const char* interface_name,
+                               const char* method_name, GVariant* parameters,
+                               GDBusMethodInvocation* invocation, gpointer user_data) {
+    if (!g_strcmp0(method_name, "Dispatch")) {
+        const char *action = NULL, *arg = NULL;
+
+        g_variant_get(parameters, "(&s&s)", &action, &arg);
+        if (!locked || !g_strcmp0(action, "lock"))
+            gnoblin_actions_dispatch(the_display, action, (arg && arg[0]) ? arg : NULL, NULL, 0);
+        g_dbus_method_invocation_return_value(invocation, NULL);
+    } else if (!g_strcmp0(method_name, "ListActions")) {
+        g_dbus_method_invocation_return_value(invocation,
+                                              g_variant_new("(^as)", gnoblin_actions_list()));
+    } else if (!g_strcmp0(method_name, "WorkspaceState")) {
+        MetaWorkspaceManager* wm = meta_display_get_workspace_manager(the_display);
+        guint active = (guint)meta_workspace_manager_get_active_workspace_index(wm);
+        guint count = (guint)meta_workspace_manager_get_n_workspaces(wm);
+
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(uu)", active, count));
+    } else if (!g_strcmp0(method_name, "WorkspaceNames")) {
+        /* The configured `[workspaces]` index->name labels (1-based keys), padded
+         * to the live workspace count; an unnamed workspace yields "". The topbar
+         * renders these instead of bare numbers. */
+        MetaWorkspaceManager* wm = meta_display_get_workspace_manager(the_display);
+        guint count = (guint)meta_workspace_manager_get_n_workspaces(wm);
+        GVariantBuilder builder;
+        guint i;
+
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("as"));
+        for (i = 0; i < count; i++) {
+            g_autofree char* key = g_strdup_printf("%u", i + 1);
+            g_autofree char* name = gnoblin_config_get_string("workspaces", key);
+
+            g_variant_builder_add(&builder, "s", name ? name : "");
+        }
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(as)", &builder));
+    } else if (!g_strcmp0(method_name, "ListWindows")) {
+        GVariantBuilder builder;
+
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("a(tssbb)"));
+        build_window_list(the_display, &builder);
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(a(tssbb))", &builder));
+    } else if (!g_strcmp0(method_name, "ListWindowFrames")) {
+        GVariantBuilder builder;
+
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("a(tiiii)"));
+        build_window_frame_list(the_display, &builder);
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(a(tiiii))", &builder));
+    } else if (!g_strcmp0(method_name, "ActivateWindow")) {
+        guint64 id = 0;
+
+        g_variant_get(parameters, "(t)", &id);
+        if (!locked)
+            activate_window_by_id(the_display, id);
+        g_dbus_method_invocation_return_value(invocation, NULL);
+    } else if (!g_strcmp0(method_name, "GetActiveWindowMenu")) {
+        /* The appmenu is a toggleable API — when [features] appmenu = off we
+         * report no menu, so any client honouring the API hides its menu bar. */
+        MetaWindow* w =
+            (!locked && gnoblin_feature_enabled("appmenu", TRUE)) ? find_focused_window(the_display)
+                                                                  : NULL;
+        g_autofree char* backend = gnoblin_config_get_string("topbar", "appmenu-backend");
+        const gboolean allow_gtk =
+            !backend || backend[0] == '\0' || !g_ascii_strcasecmp(backend, "auto") ||
+            !g_ascii_strcasecmp(backend, "both") || !g_ascii_strcasecmp(backend, "gtk");
+        const gboolean allow_kde =
+            !backend || backend[0] == '\0' || !g_ascii_strcasecmp(backend, "auto") ||
+            !g_ascii_strcasecmp(backend, "both") || !g_ascii_strcasecmp(backend, "kde") ||
+            !g_ascii_strcasecmp(backend, "dbusmenu");
+        const gboolean disabled =
+            backend && (!g_ascii_strcasecmp(backend, "off") || !g_ascii_strcasecmp(backend, "none"));
+        const char* kind = "";
+        const char* bus = NULL;
+        const char* app = NULL;
+        const char* win = NULL;
+        const char* bar = NULL;
+        const char* appmenu = NULL;
+
+        if (w && !disabled && allow_kde) {
+            bus = meta_window_get_kde_appmenu_service_name(w);
+            bar = meta_window_get_kde_appmenu_object_path(w);
+            if (bus && bus[0] && bar && bar[0])
+                kind = "dbusmenu";
+            else
+                bus = bar = NULL;
+        }
+
+        if (w && !disabled && kind[0] == '\0' && allow_gtk) {
+            bus = meta_window_get_gtk_unique_bus_name(w);
+            app = meta_window_get_gtk_application_object_path(w);
+            win = meta_window_get_gtk_window_object_path(w);
+            bar = meta_window_get_gtk_menubar_object_path(w);
+            appmenu = meta_window_get_gtk_app_menu_object_path(w);
+            if (bus && bus[0] && bar && bar[0])
+                kind = "gtk";
+        }
+
+        g_dbus_method_invocation_return_value(
+            invocation, g_variant_new("(ssssss)", kind, bus ? bus : "", app ? app : "", win ? win : "",
+                                      bar ? bar : "", appmenu ? appmenu : ""));
+    } else {
+        g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+                                              "Unknown method %s", method_name);
+    }
+}
+
+static const GDBusInterfaceVTable interface_vtable = {handle_method_call, NULL, NULL, {0}};
+
+static void on_bus_acquired(GDBusConnection* connection, const char* name, gpointer user_data) {
+    g_autoptr(GDBusNodeInfo) node = NULL;
+    g_autoptr(GError) error = NULL;
+
+    node = g_dbus_node_info_new_for_xml(introspection_xml, &error);
+    if (!node) {
+        g_warning("gnoblin: bad D-Bus introspection: %s", error->message);
+        return;
+    }
+
+    if (g_dbus_connection_register_object(connection, GNOBLIN_DBUS_PATH, node->interfaces[0],
+                                          &interface_vtable, NULL, NULL, &error) == 0)
+        g_warning("gnoblin: failed to register %s: %s", GNOBLIN_DBUS_PATH, error->message);
+}
+
+void gnoblin_control_init(MetaDisplay* display) {
+    the_display = display;
+
+    accelerator_handler = g_signal_connect(display, "accelerator-activated",
+                                           G_CALLBACK(on_accelerator_activated), NULL);
+
+    gnoblin_control_reload_keybindings(display);
+
+    g_bus_own_name(G_BUS_TYPE_SESSION, GNOBLIN_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_REPLACE,
+                   on_bus_acquired, NULL, NULL, NULL, NULL);
+}

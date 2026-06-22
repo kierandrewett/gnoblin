@@ -1,0 +1,746 @@
+// Tokens.slint — Design token constants for the compositor shell.
+// All values sourced from WINDOW_SPEC.md and the Figma designs.
+// Import this file in every component that references colours, sizes, or typography.
+//
+// ── Theme system ──────────────────────────────────────────────────────────────
+// The `Theme` global holds the current mode and computes mode-aware colour
+// values.  Individual components bind to these properties and declare their own
+// `animate` blocks to crossfade when the mode changes.
+//
+// NOTE: Slint global components cannot have `animate` blocks directly.
+//       Animations must be declared in the components that use the properties.
+
+export enum TokenMode { Dark, Light }
+
+export global MotionCurves {
+    out property <easing> c0:  cubic-bezier(0.0, 0.0, 1.0, 1.0);
+    out property <easing> c1:  cubic-bezier(0.25, 0.1, 0.25, 1.0);
+    out property <easing> c2:  cubic-bezier(0.42, 0.0, 1.0, 1.0);
+    out property <easing> c3:  cubic-bezier(0.0, 0.0, 0.58, 1.0);
+    out property <easing> c4:  cubic-bezier(0.42, 0.0, 0.58, 1.0);
+    out property <easing> c5:  cubic-bezier(0.55, 0.085, 0.68, 0.53);
+    out property <easing> c6:  cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    out property <easing> c7:  cubic-bezier(0.455, 0.03, 0.515, 0.955);
+    out property <easing> c8:  cubic-bezier(0.55, 0.055, 0.675, 0.19);
+    out property <easing> c9:  cubic-bezier(0.215, 0.61, 0.355, 1.0);
+    out property <easing> c10: cubic-bezier(0.645, 0.045, 0.355, 1.0);
+    out property <easing> c11: cubic-bezier(0.895, 0.03, 0.685, 0.22);
+    out property <easing> c12: cubic-bezier(0.165, 0.84, 0.44, 1.0);
+    out property <easing> c13: cubic-bezier(0.77, 0.0, 0.175, 1.0);
+    out property <easing> c14: cubic-bezier(0.755, 0.05, 0.855, 0.06);
+    out property <easing> c15: cubic-bezier(0.23, 1.0, 0.32, 1.0);
+    out property <easing> c16: cubic-bezier(0.86, 0.0, 0.07, 1.0);
+    out property <easing> c17: cubic-bezier(0.47, 0.0, 0.745, 0.715);
+    out property <easing> c18: cubic-bezier(0.39, 0.575, 0.565, 1.0);
+    out property <easing> c19: cubic-bezier(0.445, 0.05, 0.55, 0.95);
+    out property <easing> c20: cubic-bezier(0.95, 0.05, 0.795, 0.035);
+    out property <easing> c21: cubic-bezier(0.19, 1.0, 0.22, 1.0);
+    out property <easing> c22: cubic-bezier(1.0, 0.0, 0.0, 1.0);
+    out property <easing> c23: cubic-bezier(0.6, 0.04, 0.98, 0.335);
+    out property <easing> c24: cubic-bezier(0.075, 0.82, 0.165, 1.0);
+    out property <easing> c25: cubic-bezier(0.785, 0.135, 0.15, 0.86);
+    out property <easing> c26: cubic-bezier(0.6, -0.28, 0.735, 0.045);
+    out property <easing> c27: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    out property <easing> c28: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    out property <easing> c29: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+    out property <easing> c30: cubic-bezier(0.32, 0.72, 0.0, 1.0);
+}
+
+export global Theme {
+    // ── Current mode (set from Rust via Theme::get(&handle).set_mode(...)) ─────
+    in-out property <TokenMode> mode: TokenMode.Dark;
+
+    // ── Motion tokens (set from Rust) ─────────────────────────────────────────
+    // 1.0 = normal, 0.0 = no motion. The remaining fields are configurable from
+    // gnoblin.conf `[animations] slint-*`, so Slint chrome and shell popouts
+    // follow the same appearance contract as compositor window animations.
+    in-out property <float> motion-scale: 1.0;
+    in-out property <float> motion-fast-ms: 120;
+    in-out property <float> motion-medium-ms: 200;
+    in-out property <float> motion-overlay-ms: 240;
+    in-out property <float> motion-overlay-open-ms: 160;
+    in-out property <float> motion-overlay-close-ms: 160;
+    in-out property <float> motion-fade-ms: 200;
+    in-out property <length> motion-overlay-slide-value: 8px;
+    in-out property <float> motion-overlay-scale-from-value: 0.95;
+
+    in-out property <int> motion-fast-style: 3;
+    in-out property <int> motion-medium-style: 4;
+    in-out property <int> motion-overlay-style: 3;
+    in-out property <int> motion-ease-out-style: 3;
+    in-out property <int> motion-ease-in-style: 2;
+    in-out property <int> motion-ease-in-out-style: 4;
+    in-out property <int> motion-overlay-open-style: 29;
+    in-out property <int> motion-overlay-close-style: 30;
+    in-out property <int> motion-fade-style: 4;
+
+    // ── Panel colours ─────────────────────────────────────────────────────────
+    // Heavily translucent — the wallpaper-blurred backdrop image renders
+    // beneath this tint so the panel reads as glass.
+    in-out property <color> panel-bg: mode == TokenMode.Dark
+        ? rgba(36, 36, 36, 0.86)
+        : rgba(250, 250, 250, 0.86);
+    in-out property <color> panel-fg: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.88)
+        : rgba(0, 0, 0, 0.80);
+    in-out property <color> panel-border-bottom: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(0, 0, 0, 0.12);
+
+    // ── Dock colours ──────────────────────────────────────────────────────────
+    in-out property <color> dock-bg: mode == TokenMode.Dark
+        ? rgba(32, 33, 34, 0.77)
+        : rgba(247, 247, 247, 0.89);
+    in-out property <color> dock-border: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.095)
+        : rgba(0, 0, 0, 0.10);
+    in-out property <color> dock-highlight: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.085)
+        : rgba(255, 255, 255, 0.72);
+
+    // ── Generic shell surfaces ───────────────────────────────────────────────
+    // Adwaita-inspired surfaces used by standalone Slint clients that do not
+    // receive a blurred backdrop slice (launcher, notifications, OSD).
+    in-out property <color> surface-bg: mode == TokenMode.Dark
+        ? rgba(38, 38, 39, 0.94)
+        : rgba(250, 250, 250, 0.96);
+    in-out property <color> surface-raised-bg: mode == TokenMode.Dark
+        ? rgba(52, 52, 54, 0.95)
+        : rgba(255, 255, 255, 0.96);
+    in-out property <color> surface-hover-bg: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(0, 0, 0, 0.06);
+    in-out property <color> surface-active-bg: rgba(53, 132, 228, 0.95);
+    in-out property <color> critical-accent: rgba(224, 73, 47, 0.95);
+    in-out property <color> wallpaper-fallback-bg: mode == TokenMode.Dark
+        ? #1e1e2e
+        : #f3f4f6;
+    in-out property <color> menu-bg: mode == TokenMode.Dark
+        ? rgba(38, 38, 40, 0.93)
+        : rgba(250, 250, 250, 0.94);
+    in-out property <color> menu-border: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.10)
+        : rgba(0, 0, 0, 0.10);
+    in-out property <color> menu-highlight: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(255, 255, 255, 0.82);
+    in-out property <color> surface-border: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.10)
+        : rgba(0, 0, 0, 0.14);
+    in-out property <color> text-primary: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.92)
+        : rgba(0, 0, 0, 0.86);
+    in-out property <color> text-secondary: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.62)
+        : rgba(0, 0, 0, 0.58);
+    in-out property <color> chrome-shadow: mode == TokenMode.Dark
+        ? rgba(0, 0, 0, 0.165)
+        : rgba(0, 0, 0, 0.095);
+    in-out property <color> chrome-shadow-source: mode == TokenMode.Dark
+        ? rgba(0, 0, 0, 0.012)
+        : rgba(0, 0, 0, 0.006);
+    out property <color> shadow-color: chrome-shadow;
+    in-out property <length> dock-corner-radius: 20px;
+    in-out property <length> menu-corner-radius: 12px;
+    in-out property <length> popout-corner-radius: 18px;
+    in-out property <length> tooltip-corner-radius: 10px;
+    in-out property <length> control-corner-radius: 8px;
+    in-out property <length> chrome-hairline-width: 1px;
+    in-out property <length> chrome-highlight-height: 1px;
+    in-out property <length> dock-shadow-blur: mode == TokenMode.Dark ? 36px : 34px;
+    in-out property <length> dock-shadow-offset-y: mode == TokenMode.Dark ? 9px : 8px;
+    in-out property <length> menu-shadow-blur: mode == TokenMode.Dark ? 28px : 26px;
+    in-out property <length> menu-shadow-offset-y: mode == TokenMode.Dark ? 8px : 7px;
+    in-out property <length> popout-shadow-blur: mode == TokenMode.Dark ? 34px : 32px;
+    in-out property <length> popout-shadow-offset-y: mode == TokenMode.Dark ? 9px : 8px;
+    in-out property <length> tooltip-shadow-blur: mode == TokenMode.Dark ? 18px : 16px;
+    in-out property <length> tooltip-shadow-offset-y: mode == TokenMode.Dark ? 6px : 5px;
+    in-out property <length> control-shadow-blur: 4px;
+    in-out property <length> control-shadow-offset-y: 1px;
+    in-out property <length> window-shadow-blur: mode == TokenMode.Dark ? 36px : 34px;
+    in-out property <length> window-shadow-offset-y: mode == TokenMode.Dark ? 12px : 10px;
+    in-out property <string> shell-font-family: "Adwaita Sans";
+
+    // ── Title bar colours — per mode ──────────────────────────────────────────
+    out property <color> titlebar-bg-dark-active:    #111318;
+    out property <color> titlebar-bg-dark-inactive:  rgba(17, 19, 24, 0.75);
+    out property <color> titlebar-fg-dark:           rgba(255, 255, 255, 0.80);
+    out property <color> titlebar-border-dark:       rgba(0, 0, 0, 0.80);
+    out property <color> titlebar-bg-light-active:   #ffffff;
+    out property <color> titlebar-bg-light-inactive: rgba(255, 255, 255, 0.50);
+    out property <color> titlebar-fg-light:          rgba(0, 0, 0, 0.75);
+    out property <color> titlebar-border-light:      #bbbbbb;
+
+    // ── Window chrome — outer border ──────────────────────────────────────────
+    out property <color> border-dark-active:    rgba(0, 0, 0, 0.72);
+    out property <color> border-dark-inactive:  rgba(0, 0, 0, 0.55);
+    out property <color> border-light-active:   rgba(0, 0, 0, 0.22);
+    out property <color> border-light-inactive: rgba(0, 0, 0, 0.15);
+
+    // ── Window chrome — inner highlight (top edge) ────────────────────────────
+    out property <color> highlight-dark-active-top:   rgba(255, 255, 255, 0.08);
+    out property <color> highlight-dark-inactive-top: rgba(255, 255, 255, 0.04);
+    out property <color> highlight-light-active-top:  rgba(255, 255, 255, 0.50);
+    out property <color> highlight-light-inactive-top:rgba(255, 255, 255, 0.25);
+
+    // ── Content area background ────────────────────────────────────────────────
+    out property <color> window-content-bg: mode == TokenMode.Dark
+        ? #1d1d1d
+        : #f6f6f6;
+
+    // ── Window control button colours (mode-aware) ────────────────────────────
+    out property <color> control-bg: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(0, 0, 0, 0.06);
+    out property <color> control-bg-hover: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.20)
+        : rgba(0, 0, 0, 0.12);
+    out property <color> control-bg-pressed: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.30)
+        : rgba(0, 0, 0, 0.18);
+    out property <color> control-icon-tint: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.80)
+        : rgba(0, 0, 0, 0.80);
+
+    // ── Dock running-dot colours (mode-aware) ─────────────────────────────────
+    out property <color> dock-dot-focused: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.90)
+        : rgba(0, 0, 0, 0.70);
+    out property <color> dock-dot-running: mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.50)
+        : rgba(0, 0, 0, 0.35);
+}
+
+// ── Shell primitive palette ──────────────────────────────────────────────────
+// Theme-resolved colours used by shared layer-shell tiles/buttons/sliders.
+// Centralised here so theme transitions are a single token flip and primitive
+// components do not each redeclare their own local palette.
+export global ShellPalette {
+    out property <color> tile-bg: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.11)
+        : rgba(0, 0, 0, 0.06);
+    out property <color> tile-bg-hover: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.15)
+        : rgba(0, 0, 0, 0.10);
+    out property <color> tile-bg-active: Theme.mode == TokenMode.Dark
+        ? rgba(53, 132, 228, 0.98)
+        : rgba(53, 132, 228, 0.92);
+    out property <color> tile-border: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.06)
+        : rgba(0, 0, 0, 0.08);
+    out property <color> fg: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.90)
+        : rgba(0, 0, 0, 0.85);
+    out property <color> fg-secondary: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.64)
+        : rgba(0, 0, 0, 0.60);
+    out property <color> accent:           rgba(53, 132, 228, 0.98);
+    out property <color> icon-on-active:   rgba(255, 255, 255, 0.95);
+    out property <color> icon-bg-inactive: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.08)
+        : rgba(0, 0, 0, 0.06);
+}
+
+export global Tokens {
+    // ── Corner radii ──────────────────────────────────────────────────────────
+    // 18px outer: the content-area clip must round AT LEAST as much as the
+    // client's own window-corner radius for CSD apps. GTK4/libadwaita rounds
+    // its windows at ~15-16px; at our old 14px the clip arc sat *inside* the
+    // client's, leaving a thin ring of the client's drop-shadow visible past
+    // our corner — the "glow inside the window" reported on CSD apps. 18px
+    // clips at or beyond the client corner so that ring is masked.
+    out property <length> window-corner-radius-outer: 18px;
+    out property <length> window-corner-radius-inner: 16px;
+    out property <length> dock-corner-radius: Theme.dock-corner-radius;
+    out property <length> menu-corner-radius: Theme.menu-corner-radius;
+    out property <length> popout-corner-radius: Theme.popout-corner-radius;
+    out property <length> tooltip-corner-radius: Theme.tooltip-corner-radius;
+    out property <length> control-corner-radius: Theme.control-corner-radius;
+    out property <length> chrome-hairline-width: Theme.chrome-hairline-width;
+    out property <length> chrome-highlight-height: Theme.chrome-highlight-height;
+    out property <length> dock-shadow-blur: Theme.dock-shadow-blur;
+    out property <length> dock-shadow-offset-y: Theme.dock-shadow-offset-y;
+    out property <length> menu-shadow-blur: Theme.menu-shadow-blur;
+    out property <length> menu-shadow-offset-y: Theme.menu-shadow-offset-y;
+    out property <length> popout-shadow-blur: Theme.popout-shadow-blur;
+    out property <length> popout-shadow-offset-y: Theme.popout-shadow-offset-y;
+    out property <length> tooltip-shadow-blur: Theme.tooltip-shadow-blur;
+    out property <length> tooltip-shadow-offset-y: Theme.tooltip-shadow-offset-y;
+    out property <length> control-shadow-blur: Theme.control-shadow-blur;
+    out property <length> control-shadow-offset-y: Theme.control-shadow-offset-y;
+    out property <length> window-shadow-blur: Theme.window-shadow-blur;
+    out property <length> window-shadow-offset-y: Theme.window-shadow-offset-y;
+    out property <length> panel-corner-radius: 0px;
+
+    // ── Panel ────────────────────────────────────────────────────────────────
+    out property <length>  panel-height: 34px;
+    out property <color>   panel-bg: Theme.panel-bg;
+    out property <color>   panel-fg: Theme.panel-fg;
+    out property <color>   panel-border-bottom: Theme.panel-border-bottom;
+    // Matches GNOME's top panel exactly: GNOME uses `11pt` and converts to px
+    // via St as `pt * resolution/72`, where the resolution is a HARDCODED 96 DPI
+    // (mutter meta-settings.c: dots_per_inch = 96) times text-scaling. So at
+    // default scaling: 11 * 96/72 = 14.667px. (The "13.3" floating around is
+    // Clutter's doc example for 10pt, not the 11pt panel.)
+    out property <length>  panel-font-size: 14.67px;
+    out property <length>  panel-icon-size: 18px;
+
+    // ── Dock ─────────────────────────────────────────────────────────────────
+    // Two source values, everything else derived. Keep the dock band
+    // height in sync with `wm::DOCK_HEIGHT` in Rust (used by the WM
+    // for window-position constraints) — bump there too if you tweak
+    // these.
+    //
+    //   dock-icon-size  — the rendered icon glyph (48 px)
+    //   dock-padding    — the ONE spacing value used everywhere:
+    //                     icon→slot, slot→pill, pill→dock-band edge
+    //
+    //   slot = icon + 2·padding         (e.g. 48 + 16 = 64 px)
+    //   pill = slot + 2·padding         (e.g. 64 + 16 = 80 px)
+    //   band = pill + 2·padding         (e.g. 80 + 16 = 96 px)  ← dock-height
+    out property <length>  dock-icon-size:   48px;
+    out property <length>  dock-padding:      8px;
+    out property <length>  dock-slot-size:   dock-icon-size + dock-padding * 2;
+    out property <length>  dock-pill-height: dock-slot-size + dock-padding * 2;
+    out property <length>  dock-height:      dock-pill-height + dock-padding * 2;
+    out property <color>   dock-bg: Theme.dock-bg;
+    out property <color>   dock-border: Theme.dock-border;
+    out property <color>   dock-highlight: Theme.dock-highlight;
+
+    // ── Window chrome — title bar ─────────────────────────────────────────────
+    out property <length>  titlebar-height: 33px;
+    out property <length>  titlebar-padding: 6px;
+    out property <color>   titlebar-bg-dark-active: Theme.titlebar-bg-dark-active;
+    out property <color>   titlebar-bg-dark-inactive: Theme.titlebar-bg-dark-inactive;
+    out property <color>   titlebar-bg-light-active: Theme.titlebar-bg-light-active;
+    out property <color>   titlebar-bg-light-inactive: Theme.titlebar-bg-light-inactive;
+    out property <color>   titlebar-fg-dark: Theme.titlebar-fg-dark;
+    out property <color>   titlebar-fg-light: Theme.titlebar-fg-light;
+    out property <color>   titlebar-border-dark: Theme.titlebar-border-dark;
+    out property <color>   titlebar-border-light: Theme.titlebar-border-light;
+    out property <length>  titlebar-font-size: 13px;
+
+    // ── Window chrome — outer border ─────────────────────────────────────────
+    out property <color>   border-dark-active: Theme.border-dark-active;
+    out property <color>   border-dark-inactive: Theme.border-dark-inactive;
+    out property <color>   border-light-active: Theme.border-light-active;
+    out property <color>   border-light-inactive: Theme.border-light-inactive;
+
+    // ── Window chrome — inner highlight ──────────────────────────────────────
+    out property <color>   highlight-dark-active-top: Theme.highlight-dark-active-top;
+    out property <color>   highlight-dark-active-bottom: rgba(255, 255, 255, 0.00);
+
+    // ── Window controls ───────────────────────────────────────────────────────
+    out property <length>  control-size: 21px;
+    out property <length>  control-gap: 4px;
+    out property <length>  control-inset: 6px;
+
+    // ── Typography ────────────────────────────────────────────────────────────
+    // Set from Rust via `[appearance] font-family`, or from GNOME's system UI
+    // font setting when unset. Applied globally via each root Window's
+    // `default-font-family`.
+    out property <string>  font-family: Theme.shell-font-family;
+    out property <string>  font-family-fallback: "Cantarell";
+
+    // ── Motion ────────────────────────────────────────────────────────────────
+    // ONE source of truth for open/close transitions. Every animated
+    // overlay (context menus, popouts, window chrome lifecycle) reads
+    // these so the whole shell feels coherent.
+    //
+    // Open and close use DIFFERENT curves on purpose. The close uses
+    // GNOME-libadwaita's "spring" — very fast acceleration up front
+    // with a soft tail. Mapped onto a 1 → 0 fade this reads as a
+    // visible long decay (drops to ~30 % almost instantly, then
+    // slow tail), which feels like a snappy dismissal.
+    //
+    // The SAME curve mapped onto a 0 → 1 fade is invisible: ~70 % of
+    // the rise lands in the first 30 ms, so the menu effectively pops
+    // to full size with no perceivable ramp. Open therefore uses an
+    // ease-in-out curve (slow start, smooth ramp through the middle,
+    // gentle settle) — the entire 220 ms window is visible.
+    //
+    // Curve choice: `cubic-bezier(0.4, 0, 0.2, 1)` is Material
+    // Design's "standard" easing — well-known to read as smooth in
+    // both directions, balanced acceleration. Verified arithmetically:
+    // y is 3 % at 23 ms, 50 % at 77 ms, 97 % at 174 ms.
+    out property <duration>  motion-overlay-open-duration: 1ms * Theme.motion-overlay-open-ms * Theme.motion-scale;
+    out property <duration>  motion-overlay-close-duration: 1ms * Theme.motion-overlay-close-ms * Theme.motion-scale;
+    out property <duration>  motion-overlay-duration: motion-overlay-open-duration;
+    out property <easing>    motion-overlay-curve-in:
+        Theme.motion-overlay-open-style == 0  ? MotionCurves.c0  :
+        Theme.motion-overlay-open-style == 1  ? MotionCurves.c1  :
+        Theme.motion-overlay-open-style == 2  ? MotionCurves.c2  :
+        Theme.motion-overlay-open-style == 3  ? MotionCurves.c3  :
+        Theme.motion-overlay-open-style == 4  ? MotionCurves.c4  :
+        Theme.motion-overlay-open-style == 5  ? MotionCurves.c5  :
+        Theme.motion-overlay-open-style == 6  ? MotionCurves.c6  :
+        Theme.motion-overlay-open-style == 7  ? MotionCurves.c7  :
+        Theme.motion-overlay-open-style == 8  ? MotionCurves.c8  :
+        Theme.motion-overlay-open-style == 9  ? MotionCurves.c9  :
+        Theme.motion-overlay-open-style == 10 ? MotionCurves.c10 :
+        Theme.motion-overlay-open-style == 11 ? MotionCurves.c11 :
+        Theme.motion-overlay-open-style == 12 ? MotionCurves.c12 :
+        Theme.motion-overlay-open-style == 13 ? MotionCurves.c13 :
+        Theme.motion-overlay-open-style == 14 ? MotionCurves.c14 :
+        Theme.motion-overlay-open-style == 15 ? MotionCurves.c15 :
+        Theme.motion-overlay-open-style == 16 ? MotionCurves.c16 :
+        Theme.motion-overlay-open-style == 17 ? MotionCurves.c17 :
+        Theme.motion-overlay-open-style == 18 ? MotionCurves.c18 :
+        Theme.motion-overlay-open-style == 19 ? MotionCurves.c19 :
+        Theme.motion-overlay-open-style == 20 ? MotionCurves.c20 :
+        Theme.motion-overlay-open-style == 21 ? MotionCurves.c21 :
+        Theme.motion-overlay-open-style == 22 ? MotionCurves.c22 :
+        Theme.motion-overlay-open-style == 23 ? MotionCurves.c23 :
+        Theme.motion-overlay-open-style == 24 ? MotionCurves.c24 :
+        Theme.motion-overlay-open-style == 25 ? MotionCurves.c25 :
+        Theme.motion-overlay-open-style == 26 ? MotionCurves.c26 :
+        Theme.motion-overlay-open-style == 27 ? MotionCurves.c27 :
+        Theme.motion-overlay-open-style == 28 ? MotionCurves.c28 :
+        Theme.motion-overlay-open-style == 29 ? MotionCurves.c29 :
+        Theme.motion-overlay-open-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c29;
+    out property <easing>    motion-overlay-curve-out:
+        Theme.motion-overlay-close-style == 0  ? MotionCurves.c0  :
+        Theme.motion-overlay-close-style == 1  ? MotionCurves.c1  :
+        Theme.motion-overlay-close-style == 2  ? MotionCurves.c2  :
+        Theme.motion-overlay-close-style == 3  ? MotionCurves.c3  :
+        Theme.motion-overlay-close-style == 4  ? MotionCurves.c4  :
+        Theme.motion-overlay-close-style == 5  ? MotionCurves.c5  :
+        Theme.motion-overlay-close-style == 6  ? MotionCurves.c6  :
+        Theme.motion-overlay-close-style == 7  ? MotionCurves.c7  :
+        Theme.motion-overlay-close-style == 8  ? MotionCurves.c8  :
+        Theme.motion-overlay-close-style == 9  ? MotionCurves.c9  :
+        Theme.motion-overlay-close-style == 10 ? MotionCurves.c10 :
+        Theme.motion-overlay-close-style == 11 ? MotionCurves.c11 :
+        Theme.motion-overlay-close-style == 12 ? MotionCurves.c12 :
+        Theme.motion-overlay-close-style == 13 ? MotionCurves.c13 :
+        Theme.motion-overlay-close-style == 14 ? MotionCurves.c14 :
+        Theme.motion-overlay-close-style == 15 ? MotionCurves.c15 :
+        Theme.motion-overlay-close-style == 16 ? MotionCurves.c16 :
+        Theme.motion-overlay-close-style == 17 ? MotionCurves.c17 :
+        Theme.motion-overlay-close-style == 18 ? MotionCurves.c18 :
+        Theme.motion-overlay-close-style == 19 ? MotionCurves.c19 :
+        Theme.motion-overlay-close-style == 20 ? MotionCurves.c20 :
+        Theme.motion-overlay-close-style == 21 ? MotionCurves.c21 :
+        Theme.motion-overlay-close-style == 22 ? MotionCurves.c22 :
+        Theme.motion-overlay-close-style == 23 ? MotionCurves.c23 :
+        Theme.motion-overlay-close-style == 24 ? MotionCurves.c24 :
+        Theme.motion-overlay-close-style == 25 ? MotionCurves.c25 :
+        Theme.motion-overlay-close-style == 26 ? MotionCurves.c26 :
+        Theme.motion-overlay-close-style == 27 ? MotionCurves.c27 :
+        Theme.motion-overlay-close-style == 28 ? MotionCurves.c28 :
+        Theme.motion-overlay-close-style == 29 ? MotionCurves.c29 :
+        Theme.motion-overlay-close-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c30;
+    // Back-compat alias for callers that haven't been migrated yet.
+    out property <easing>    motion-overlay-curve:     motion-overlay-curve-out;
+
+    // Slide distance and scale endpoints for overlays. Centralised so a
+    // tweak here propagates to every menu and popout consistently.
+    out property <length>    motion-overlay-slide: Theme.motion-overlay-slide-value;
+    out property <float>     motion-overlay-scale-from: Theme.motion-overlay-scale-from-value;
+
+    // Smooth ease-in-out for theme / focus / colour-only crossfades —
+    // no scale or slide, just a soft colour blend.
+    out property <duration>  motion-fade-duration: 1ms * Theme.motion-fade-ms * Theme.motion-scale;
+    out property <easing>    motion-fade-curve:
+        Theme.motion-fade-style == 0  ? MotionCurves.c0  :
+        Theme.motion-fade-style == 1  ? MotionCurves.c1  :
+        Theme.motion-fade-style == 2  ? MotionCurves.c2  :
+        Theme.motion-fade-style == 3  ? MotionCurves.c3  :
+        Theme.motion-fade-style == 4  ? MotionCurves.c4  :
+        Theme.motion-fade-style == 5  ? MotionCurves.c5  :
+        Theme.motion-fade-style == 6  ? MotionCurves.c6  :
+        Theme.motion-fade-style == 7  ? MotionCurves.c7  :
+        Theme.motion-fade-style == 8  ? MotionCurves.c8  :
+        Theme.motion-fade-style == 9  ? MotionCurves.c9  :
+        Theme.motion-fade-style == 10 ? MotionCurves.c10 :
+        Theme.motion-fade-style == 11 ? MotionCurves.c11 :
+        Theme.motion-fade-style == 12 ? MotionCurves.c12 :
+        Theme.motion-fade-style == 13 ? MotionCurves.c13 :
+        Theme.motion-fade-style == 14 ? MotionCurves.c14 :
+        Theme.motion-fade-style == 15 ? MotionCurves.c15 :
+        Theme.motion-fade-style == 16 ? MotionCurves.c16 :
+        Theme.motion-fade-style == 17 ? MotionCurves.c17 :
+        Theme.motion-fade-style == 18 ? MotionCurves.c18 :
+        Theme.motion-fade-style == 19 ? MotionCurves.c19 :
+        Theme.motion-fade-style == 20 ? MotionCurves.c20 :
+        Theme.motion-fade-style == 21 ? MotionCurves.c21 :
+        Theme.motion-fade-style == 22 ? MotionCurves.c22 :
+        Theme.motion-fade-style == 23 ? MotionCurves.c23 :
+        Theme.motion-fade-style == 24 ? MotionCurves.c24 :
+        Theme.motion-fade-style == 25 ? MotionCurves.c25 :
+        Theme.motion-fade-style == 26 ? MotionCurves.c26 :
+        Theme.motion-fade-style == 27 ? MotionCurves.c27 :
+        Theme.motion-fade-style == 28 ? MotionCurves.c28 :
+        Theme.motion-fade-style == 29 ? MotionCurves.c29 :
+        Theme.motion-fade-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c4;
+
+    // ── Z-order layers ────────────────────────────────────────────────────────
+    //   wallpaper:  0
+    //   windows:   10
+    //   layers-bg: 20
+    //   layers-top: 30
+    //   dock:       40
+    //   panel:      50
+}
+
+// ── Spacing scale ─────────────────────────────────────────────────────────────
+// The 4px spacing scale from the slint-design skill. Reference these named
+// lengths from layout `padding`/`spacing` instead of magic numbers so the whole
+// shell shares one rhythm. See .claude/skills/slint-design/SKILL.md §1.
+//
+//   xs  →  4px   tight pairs (label↔value, icon↔text in a chip)
+//   sm  →  8px   between buttons, list-row inset, chip padding
+//   md  → 12px   icon↔text in a row, inter-group spacing
+//   lg  → 16px   default container padding (cards, popouts, rows)
+//   xl  → 24px   section separation, generous card padding
+//   xxl → 32px   page-level gutters
+export global Spacing {
+    out property <length> xs:   4px;
+    out property <length> sm:   8px;
+    out property <length> md:  12px;
+    out property <length> lg:  16px;
+    out property <length> xl:  24px;
+    out property <length> xxl: 32px;
+}
+
+// ── Corner radius scale ───────────────────────────────────────────────────────
+// Nesting radii from the slint-design skill (§4 "Radii nest"): an inner radius
+// is smaller than the outer one. A button (sm) inside a card (lg) reads right.
+//
+//   sm →  8px   buttons, chips, inner controls
+//   md → 12px   tiles, small surfaces
+//   lg → 14px   cards, popout containers
+export global Radius {
+    out property <length> sm:  8px;
+    out property <length> md: 12px;
+    out property <length> lg: 14px;
+}
+
+// ── Motion scale ──────────────────────────────────────────────────────────────
+// A complete, NAMED duration + easing scale matching the slint-design skill's
+// duration bands (§6 "Motion & animation"). Reference these from `animate`
+// blocks so the whole shell shares one motion vocabulary instead of retyping
+// magic millisecond values.
+//
+// This global is ADDITIVE — it complements the existing `Tokens.motion-*`
+// overlay/fade tokens (which remain the source of truth for overlay open/close
+// choreography) by giving every other interaction a named band to reach for.
+//
+//   Durations (skill §6):
+//     fast    → 120ms   hover / press / micro-feedback (band 80–150ms)
+//     medium  → 200ms   state changes, toggles, small moves (band 150–250ms)
+//     overlay → 240ms   menu / popout / dialog enter-exit (band 200–300ms)
+//
+//   Easing (skill §6 — never `linear` for UI):
+//     ease-out-curve    → arriving / appearing / hover-in (decelerate in)
+//     ease-in-curve     → leaving
+//     ease-in-out-curve → moving / morphing between two on-screen states
+export global Motion {
+    // ── Durations ─────────────────────────────────────────────────────────────
+    out property <duration> fast:    1ms * Theme.motion-fast-ms * Theme.motion-scale;
+    out property <duration> medium:  1ms * Theme.motion-medium-ms * Theme.motion-scale;
+    out property <duration> overlay: 1ms * Theme.motion-overlay-ms * Theme.motion-scale;
+
+    // ── Easing curves ─────────────────────────────────────────────────────────
+    out property <easing> fast-curve:
+        Theme.motion-fast-style == 0  ? MotionCurves.c0  :
+        Theme.motion-fast-style == 1  ? MotionCurves.c1  :
+        Theme.motion-fast-style == 2  ? MotionCurves.c2  :
+        Theme.motion-fast-style == 3  ? MotionCurves.c3  :
+        Theme.motion-fast-style == 4  ? MotionCurves.c4  :
+        Theme.motion-fast-style == 5  ? MotionCurves.c5  :
+        Theme.motion-fast-style == 6  ? MotionCurves.c6  :
+        Theme.motion-fast-style == 7  ? MotionCurves.c7  :
+        Theme.motion-fast-style == 8  ? MotionCurves.c8  :
+        Theme.motion-fast-style == 9  ? MotionCurves.c9  :
+        Theme.motion-fast-style == 10 ? MotionCurves.c10 :
+        Theme.motion-fast-style == 11 ? MotionCurves.c11 :
+        Theme.motion-fast-style == 12 ? MotionCurves.c12 :
+        Theme.motion-fast-style == 13 ? MotionCurves.c13 :
+        Theme.motion-fast-style == 14 ? MotionCurves.c14 :
+        Theme.motion-fast-style == 15 ? MotionCurves.c15 :
+        Theme.motion-fast-style == 16 ? MotionCurves.c16 :
+        Theme.motion-fast-style == 17 ? MotionCurves.c17 :
+        Theme.motion-fast-style == 18 ? MotionCurves.c18 :
+        Theme.motion-fast-style == 19 ? MotionCurves.c19 :
+        Theme.motion-fast-style == 20 ? MotionCurves.c20 :
+        Theme.motion-fast-style == 21 ? MotionCurves.c21 :
+        Theme.motion-fast-style == 22 ? MotionCurves.c22 :
+        Theme.motion-fast-style == 23 ? MotionCurves.c23 :
+        Theme.motion-fast-style == 24 ? MotionCurves.c24 :
+        Theme.motion-fast-style == 25 ? MotionCurves.c25 :
+        Theme.motion-fast-style == 26 ? MotionCurves.c26 :
+        Theme.motion-fast-style == 27 ? MotionCurves.c27 :
+        Theme.motion-fast-style == 28 ? MotionCurves.c28 :
+        Theme.motion-fast-style == 29 ? MotionCurves.c29 :
+        Theme.motion-fast-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c3;
+    out property <easing> medium-curve:
+        Theme.motion-medium-style == 0  ? MotionCurves.c0  :
+        Theme.motion-medium-style == 1  ? MotionCurves.c1  :
+        Theme.motion-medium-style == 2  ? MotionCurves.c2  :
+        Theme.motion-medium-style == 3  ? MotionCurves.c3  :
+        Theme.motion-medium-style == 4  ? MotionCurves.c4  :
+        Theme.motion-medium-style == 5  ? MotionCurves.c5  :
+        Theme.motion-medium-style == 6  ? MotionCurves.c6  :
+        Theme.motion-medium-style == 7  ? MotionCurves.c7  :
+        Theme.motion-medium-style == 8  ? MotionCurves.c8  :
+        Theme.motion-medium-style == 9  ? MotionCurves.c9  :
+        Theme.motion-medium-style == 10 ? MotionCurves.c10 :
+        Theme.motion-medium-style == 11 ? MotionCurves.c11 :
+        Theme.motion-medium-style == 12 ? MotionCurves.c12 :
+        Theme.motion-medium-style == 13 ? MotionCurves.c13 :
+        Theme.motion-medium-style == 14 ? MotionCurves.c14 :
+        Theme.motion-medium-style == 15 ? MotionCurves.c15 :
+        Theme.motion-medium-style == 16 ? MotionCurves.c16 :
+        Theme.motion-medium-style == 17 ? MotionCurves.c17 :
+        Theme.motion-medium-style == 18 ? MotionCurves.c18 :
+        Theme.motion-medium-style == 19 ? MotionCurves.c19 :
+        Theme.motion-medium-style == 20 ? MotionCurves.c20 :
+        Theme.motion-medium-style == 21 ? MotionCurves.c21 :
+        Theme.motion-medium-style == 22 ? MotionCurves.c22 :
+        Theme.motion-medium-style == 23 ? MotionCurves.c23 :
+        Theme.motion-medium-style == 24 ? MotionCurves.c24 :
+        Theme.motion-medium-style == 25 ? MotionCurves.c25 :
+        Theme.motion-medium-style == 26 ? MotionCurves.c26 :
+        Theme.motion-medium-style == 27 ? MotionCurves.c27 :
+        Theme.motion-medium-style == 28 ? MotionCurves.c28 :
+        Theme.motion-medium-style == 29 ? MotionCurves.c29 :
+        Theme.motion-medium-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c4;
+    out property <easing> overlay-curve:
+        Theme.motion-overlay-style == 0  ? MotionCurves.c0  :
+        Theme.motion-overlay-style == 1  ? MotionCurves.c1  :
+        Theme.motion-overlay-style == 2  ? MotionCurves.c2  :
+        Theme.motion-overlay-style == 3  ? MotionCurves.c3  :
+        Theme.motion-overlay-style == 4  ? MotionCurves.c4  :
+        Theme.motion-overlay-style == 5  ? MotionCurves.c5  :
+        Theme.motion-overlay-style == 6  ? MotionCurves.c6  :
+        Theme.motion-overlay-style == 7  ? MotionCurves.c7  :
+        Theme.motion-overlay-style == 8  ? MotionCurves.c8  :
+        Theme.motion-overlay-style == 9  ? MotionCurves.c9  :
+        Theme.motion-overlay-style == 10 ? MotionCurves.c10 :
+        Theme.motion-overlay-style == 11 ? MotionCurves.c11 :
+        Theme.motion-overlay-style == 12 ? MotionCurves.c12 :
+        Theme.motion-overlay-style == 13 ? MotionCurves.c13 :
+        Theme.motion-overlay-style == 14 ? MotionCurves.c14 :
+        Theme.motion-overlay-style == 15 ? MotionCurves.c15 :
+        Theme.motion-overlay-style == 16 ? MotionCurves.c16 :
+        Theme.motion-overlay-style == 17 ? MotionCurves.c17 :
+        Theme.motion-overlay-style == 18 ? MotionCurves.c18 :
+        Theme.motion-overlay-style == 19 ? MotionCurves.c19 :
+        Theme.motion-overlay-style == 20 ? MotionCurves.c20 :
+        Theme.motion-overlay-style == 21 ? MotionCurves.c21 :
+        Theme.motion-overlay-style == 22 ? MotionCurves.c22 :
+        Theme.motion-overlay-style == 23 ? MotionCurves.c23 :
+        Theme.motion-overlay-style == 24 ? MotionCurves.c24 :
+        Theme.motion-overlay-style == 25 ? MotionCurves.c25 :
+        Theme.motion-overlay-style == 26 ? MotionCurves.c26 :
+        Theme.motion-overlay-style == 27 ? MotionCurves.c27 :
+        Theme.motion-overlay-style == 28 ? MotionCurves.c28 :
+        Theme.motion-overlay-style == 29 ? MotionCurves.c29 :
+        Theme.motion-overlay-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c3;
+    out property <easing> ease-out-curve:
+        Theme.motion-ease-out-style == 0  ? MotionCurves.c0  :
+        Theme.motion-ease-out-style == 1  ? MotionCurves.c1  :
+        Theme.motion-ease-out-style == 2  ? MotionCurves.c2  :
+        Theme.motion-ease-out-style == 3  ? MotionCurves.c3  :
+        Theme.motion-ease-out-style == 4  ? MotionCurves.c4  :
+        Theme.motion-ease-out-style == 5  ? MotionCurves.c5  :
+        Theme.motion-ease-out-style == 6  ? MotionCurves.c6  :
+        Theme.motion-ease-out-style == 7  ? MotionCurves.c7  :
+        Theme.motion-ease-out-style == 8  ? MotionCurves.c8  :
+        Theme.motion-ease-out-style == 9  ? MotionCurves.c9  :
+        Theme.motion-ease-out-style == 10 ? MotionCurves.c10 :
+        Theme.motion-ease-out-style == 11 ? MotionCurves.c11 :
+        Theme.motion-ease-out-style == 12 ? MotionCurves.c12 :
+        Theme.motion-ease-out-style == 13 ? MotionCurves.c13 :
+        Theme.motion-ease-out-style == 14 ? MotionCurves.c14 :
+        Theme.motion-ease-out-style == 15 ? MotionCurves.c15 :
+        Theme.motion-ease-out-style == 16 ? MotionCurves.c16 :
+        Theme.motion-ease-out-style == 17 ? MotionCurves.c17 :
+        Theme.motion-ease-out-style == 18 ? MotionCurves.c18 :
+        Theme.motion-ease-out-style == 19 ? MotionCurves.c19 :
+        Theme.motion-ease-out-style == 20 ? MotionCurves.c20 :
+        Theme.motion-ease-out-style == 21 ? MotionCurves.c21 :
+        Theme.motion-ease-out-style == 22 ? MotionCurves.c22 :
+        Theme.motion-ease-out-style == 23 ? MotionCurves.c23 :
+        Theme.motion-ease-out-style == 24 ? MotionCurves.c24 :
+        Theme.motion-ease-out-style == 25 ? MotionCurves.c25 :
+        Theme.motion-ease-out-style == 26 ? MotionCurves.c26 :
+        Theme.motion-ease-out-style == 27 ? MotionCurves.c27 :
+        Theme.motion-ease-out-style == 28 ? MotionCurves.c28 :
+        Theme.motion-ease-out-style == 29 ? MotionCurves.c29 :
+        Theme.motion-ease-out-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c3;
+    out property <easing> ease-in-curve:
+        Theme.motion-ease-in-style == 0  ? MotionCurves.c0  :
+        Theme.motion-ease-in-style == 1  ? MotionCurves.c1  :
+        Theme.motion-ease-in-style == 2  ? MotionCurves.c2  :
+        Theme.motion-ease-in-style == 3  ? MotionCurves.c3  :
+        Theme.motion-ease-in-style == 4  ? MotionCurves.c4  :
+        Theme.motion-ease-in-style == 5  ? MotionCurves.c5  :
+        Theme.motion-ease-in-style == 6  ? MotionCurves.c6  :
+        Theme.motion-ease-in-style == 7  ? MotionCurves.c7  :
+        Theme.motion-ease-in-style == 8  ? MotionCurves.c8  :
+        Theme.motion-ease-in-style == 9  ? MotionCurves.c9  :
+        Theme.motion-ease-in-style == 10 ? MotionCurves.c10 :
+        Theme.motion-ease-in-style == 11 ? MotionCurves.c11 :
+        Theme.motion-ease-in-style == 12 ? MotionCurves.c12 :
+        Theme.motion-ease-in-style == 13 ? MotionCurves.c13 :
+        Theme.motion-ease-in-style == 14 ? MotionCurves.c14 :
+        Theme.motion-ease-in-style == 15 ? MotionCurves.c15 :
+        Theme.motion-ease-in-style == 16 ? MotionCurves.c16 :
+        Theme.motion-ease-in-style == 17 ? MotionCurves.c17 :
+        Theme.motion-ease-in-style == 18 ? MotionCurves.c18 :
+        Theme.motion-ease-in-style == 19 ? MotionCurves.c19 :
+        Theme.motion-ease-in-style == 20 ? MotionCurves.c20 :
+        Theme.motion-ease-in-style == 21 ? MotionCurves.c21 :
+        Theme.motion-ease-in-style == 22 ? MotionCurves.c22 :
+        Theme.motion-ease-in-style == 23 ? MotionCurves.c23 :
+        Theme.motion-ease-in-style == 24 ? MotionCurves.c24 :
+        Theme.motion-ease-in-style == 25 ? MotionCurves.c25 :
+        Theme.motion-ease-in-style == 26 ? MotionCurves.c26 :
+        Theme.motion-ease-in-style == 27 ? MotionCurves.c27 :
+        Theme.motion-ease-in-style == 28 ? MotionCurves.c28 :
+        Theme.motion-ease-in-style == 29 ? MotionCurves.c29 :
+        Theme.motion-ease-in-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c2;
+    out property <easing> ease-in-out-curve:
+        Theme.motion-ease-in-out-style == 0  ? MotionCurves.c0  :
+        Theme.motion-ease-in-out-style == 1  ? MotionCurves.c1  :
+        Theme.motion-ease-in-out-style == 2  ? MotionCurves.c2  :
+        Theme.motion-ease-in-out-style == 3  ? MotionCurves.c3  :
+        Theme.motion-ease-in-out-style == 4  ? MotionCurves.c4  :
+        Theme.motion-ease-in-out-style == 5  ? MotionCurves.c5  :
+        Theme.motion-ease-in-out-style == 6  ? MotionCurves.c6  :
+        Theme.motion-ease-in-out-style == 7  ? MotionCurves.c7  :
+        Theme.motion-ease-in-out-style == 8  ? MotionCurves.c8  :
+        Theme.motion-ease-in-out-style == 9  ? MotionCurves.c9  :
+        Theme.motion-ease-in-out-style == 10 ? MotionCurves.c10 :
+        Theme.motion-ease-in-out-style == 11 ? MotionCurves.c11 :
+        Theme.motion-ease-in-out-style == 12 ? MotionCurves.c12 :
+        Theme.motion-ease-in-out-style == 13 ? MotionCurves.c13 :
+        Theme.motion-ease-in-out-style == 14 ? MotionCurves.c14 :
+        Theme.motion-ease-in-out-style == 15 ? MotionCurves.c15 :
+        Theme.motion-ease-in-out-style == 16 ? MotionCurves.c16 :
+        Theme.motion-ease-in-out-style == 17 ? MotionCurves.c17 :
+        Theme.motion-ease-in-out-style == 18 ? MotionCurves.c18 :
+        Theme.motion-ease-in-out-style == 19 ? MotionCurves.c19 :
+        Theme.motion-ease-in-out-style == 20 ? MotionCurves.c20 :
+        Theme.motion-ease-in-out-style == 21 ? MotionCurves.c21 :
+        Theme.motion-ease-in-out-style == 22 ? MotionCurves.c22 :
+        Theme.motion-ease-in-out-style == 23 ? MotionCurves.c23 :
+        Theme.motion-ease-in-out-style == 24 ? MotionCurves.c24 :
+        Theme.motion-ease-in-out-style == 25 ? MotionCurves.c25 :
+        Theme.motion-ease-in-out-style == 26 ? MotionCurves.c26 :
+        Theme.motion-ease-in-out-style == 27 ? MotionCurves.c27 :
+        Theme.motion-ease-in-out-style == 28 ? MotionCurves.c28 :
+        Theme.motion-ease-in-out-style == 29 ? MotionCurves.c29 :
+        Theme.motion-ease-in-out-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c4;
+}

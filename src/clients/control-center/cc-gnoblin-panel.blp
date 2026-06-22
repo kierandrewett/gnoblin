@@ -1,0 +1,97 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CcGnoblinPanel: $CcPanel {
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {}
+
+    content: Adw.PreferencesPage preferences_page {
+      Adw.PreferencesGroup schema_missing_group {
+        visible: false;
+
+        Adw.ActionRow {
+          title: _("Gnoblin settings are not installed");
+          subtitle: _("Install the Gnoblin Shell settings schema to manage shell features from Settings.");
+        }
+      }
+
+      Adw.PreferencesGroup topbar_group {
+        title: _("Top Bar");
+
+        Adw.SwitchRow topbar_row {
+          title: _("_Top Bar");
+          subtitle: _("Render the GNOME top bar as a layer-shell surface");
+          use-underline: true;
+        }
+
+        Adw.ComboRow topbar_monitor_row {
+          sensitive: bind topbar_row.active;
+          title: _("Show On");
+          notify::selected => $topbar_monitor_mode_row_changed_cb(template);
+
+          model: StringList {
+            /* Update cc-gnoblin-panel.c if this order changes. */
+            strings [
+              _("Primary Display"),
+              _("All Displays"),
+              _("Selected Displays"),
+            ]
+          };
+        }
+      }
+
+      Adw.PreferencesGroup topbar_displays_group {
+        sensitive: bind topbar_row.active;
+        title: _("Top Bar Displays");
+        description: _("Used when Top Bar is set to Selected Displays.");
+      }
+
+      Adw.PreferencesGroup dock_group {
+        title: _("Dock");
+
+        Adw.SwitchRow dock_row {
+          title: _("_Dock");
+          subtitle: _("Render the GNOME dash as a layer-shell dock");
+          use-underline: true;
+        }
+
+        Adw.ComboRow dock_monitor_row {
+          sensitive: bind dock_row.active;
+          title: _("Show On");
+          notify::selected => $dock_monitor_mode_row_changed_cb(template);
+
+          model: StringList {
+            /* Update cc-gnoblin-panel.c if this order changes. */
+            strings [
+              _("Primary Display"),
+              _("All Displays"),
+              _("Selected Displays"),
+            ]
+          };
+        }
+      }
+
+      Adw.PreferencesGroup dock_displays_group {
+        sensitive: bind dock_row.active;
+        title: _("Dock Displays");
+        description: _("Used when Dock is set to Selected Displays.");
+      }
+
+      Adw.PreferencesGroup protocols_group {
+        title: _("Wayland Protocols");
+        description: _("Protocol changes apply after restarting Gnoblin Shell.");
+
+        Adw.SwitchRow layer_shell_row {
+          title: _("Layer Shell");
+          subtitle: _("Allow clients to reserve panel, dock, overlay, and background layers");
+        }
+
+        Adw.SwitchRow screencopy_row {
+          title: _("Screen Copy");
+          subtitle: _("Allow nested-session capture through the wlr-screencopy protocol");
+        }
+      }
+    };
+  };
+}

@@ -1,0 +1,70 @@
+From 93272b8aa61c3e47cd7709381fda597e3315730f Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 16 Jun 2026 23:39:24 +0100
+Subject: [PATCH] tooling: add disable-extensions runtime flag
+
+---
+ js/ui/extensionSystem.js |  4 +++-
+ src/main.c               | 10 ++++++++++
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
+index 17240de..8e7e283 100644
+--- a/js/ui/extensionSystem.js
++++ b/js/ui/extensionSystem.js
+@@ -19,6 +19,7 @@ const ENABLED_EXTENSIONS_KEY = 'enabled-extensions';
+ const DISABLED_EXTENSIONS_KEY = 'disabled-extensions';
+ const DISABLE_USER_EXTENSIONS_KEY = 'disable-user-extensions';
+ const EXTENSION_DISABLE_VERSION_CHECK_KEY = 'disable-extension-version-validation';
++const DISABLE_EXTENSIONS_ENV = 'GNOME_SHELL_DISABLE_EXTENSIONS';
+ 
+ const UPDATE_CHECK_TIMEOUT = 24 * 60 * 60; // 1 day in seconds
+ 
+@@ -549,7 +550,8 @@ export class ExtensionManager extends Signals.EventEmitter {
+     _getEnabledExtensions() {
+         let extensions = this._getModeExtensions();
+ 
+-        if (!global.settings.get_boolean(DISABLE_USER_EXTENSIONS_KEY))
++        if (GLib.getenv(DISABLE_EXTENSIONS_ENV) !== '1' &&
++            !global.settings.get_boolean(DISABLE_USER_EXTENSIONS_KEY))
+             extensions = extensions.concat(global.settings.get_strv(ENABLED_EXTENSIONS_KEY));
+ 
+         extensions.sort((a, b) => this._compareExtensions(this.lookup(a), this.lookup(b)));
+diff --git a/src/main.c b/src/main.c
+index 56c9134..9abd09d 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -41,6 +41,7 @@ static gboolean is_gdm_mode = FALSE;
+ static char *session_mode = NULL;
+ static int caught_signal = 0;
+ static gboolean force_animations = FALSE;
++static gboolean disable_extensions = FALSE;
+ static char *script_path = NULL;
+ 
+ #define DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER 1
+@@ -543,6 +544,12 @@ GOptionEntry gnome_shell_options[] = {
+     N_("Force animations to be enabled"),
+     NULL
+   },
++  {
++    "disable-extensions", 0, G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE,
++    &disable_extensions,
++    N_("Disable user extensions for this shell process"),
++    NULL
++  },
+   {
+     "automation-script", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_FILENAME,
+     &script_path,
+@@ -640,6 +647,9 @@ main (int argc, char **argv)
+   if (session_mode == NULL)
+     session_mode = is_gdm_mode ? (char *)"gdm" : (char *)"user";
+ 
++  if (disable_extensions)
++    g_setenv ("GNOME_SHELL_DISABLE_EXTENSIONS", "1", TRUE);
++
+   dump_gjs_stack_on_signal (SIGABRT);
+   dump_gjs_stack_on_signal (SIGFPE);
+   dump_gjs_stack_on_signal (SIGIOT);
+-- 
+2.53.0
+

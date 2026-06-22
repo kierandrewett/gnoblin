@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin Developers <gnoblin@example.invalid>
+Date: Mon, 22 Jun 2026 00:45:00 +0100
+Subject: [PATCH] context: ignore duplicate termination while loop is stopping
+
+The visible Mutter Devkit path can receive more than one teardown signal:
+the host viewer disappears, remote sessions close, and the process may also
+receive SIGTERM from the harness cleanup. Once the main loop has been asked
+to quit, an additional meta_context_terminate() call should be harmless.
+
+Keep warning when termination is requested in the wrong context state, but
+do not emit a runtime-check warning for the already-stopping main loop case.
+---
+ src/core/meta-context.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/meta-context.c b/src/core/meta-context.c
+index 579e450..ea9f607 100644
+--- a/src/core/meta-context.c
++++ b/src/core/meta-context.c
+@@ -594,7 +594,8 @@ meta_context_terminate (MetaContext *context)
+   g_return_if_fail (META_IS_CONTEXT (context));
+ 
+   g_warn_if_fail (priv->state == META_CONTEXT_STATE_RUNNING);
+-  g_warn_if_fail (g_main_loop_is_running (priv->main_loop));
++  if (!priv->main_loop || !g_main_loop_is_running (priv->main_loop))
++    return;
+ 
+   g_main_loop_quit (priv->main_loop);
+ }
+-- 
+2.50.0
