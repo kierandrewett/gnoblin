@@ -13,11 +13,11 @@ HIG; animations buttery + customisable (easing/length/scale).
   branch + mpris provider `span:4 layout:"media"` + transport→plugin-row wiring
   still to do.
 
-## To do (from the loop brief, roughly in order)
-- [ ] **More launcher providers** (optional polish) — the host is DONE
-  (`82b36e5`) with web + file-search examples. Easy wins to add as shipped
-  example scripts: unit/currency convert, dictionary define, emoji search,
-  clipboard history, ssh hosts, kill-process, window switcher.
+## To do (open-ended — "whatever gnoblin needs")
+- [ ] More launcher providers if wanted (unit/currency convert, dictionary
+  define, clipboard history, ssh hosts, window switcher) — trivial to add.
+- [ ] Polish driven by Kieran's real-hardware feel feedback (blur, animation
+  timing, dock, menu, launcher).
 - [ ] Then: whatever gnoblin needs next, following the ethos.
 
 ## Needs Kieran (real-GPU verification)
@@ -30,6 +30,8 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Launcher: emoji + kill-process providers; fixed the provider query
+  interface ($GNOBLIN_QUERY — $1 didn't reach script-path commands). (`5409f16`)
 - [x] Submenu rows refresh live while open (last codex P2 cleared). (`e9243cd`)
 - [x] codex gpt-5.5 validation pass — caught a P1 build-breaker (untracked
   transport SVGs) + 2 P2 UX bugs (launcher scroll math, empty-submenu chevron),
