@@ -30,6 +30,10 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] codex re-review (gpt-5.5) of the new code — clean (build + tests pass); its
+  one P1 was a false positive (misread the locally-patched mutter submodule
+  working tree as a committed change; the committed pointer is unchanged — left
+  alone). Untracked stale `__pycache__` .pyc noise. (`8a45ffe`)
 - [x] Launcher: emoji + kill-process providers; fixed the provider query
   interface ($GNOBLIN_QUERY — $1 didn't reach script-path commands). (`5409f16`)
 - [x] Submenu rows refresh live while open (last codex P2 cleared). (`e9243cd`)
