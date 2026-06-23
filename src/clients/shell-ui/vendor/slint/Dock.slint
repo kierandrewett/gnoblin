@@ -100,10 +100,9 @@ component DockIconSlot {
         background: ta.pressed
             ? root.button-bg-pressed
             : (root.item.focused ? root.button-bg-focused : (ta.has-hover ? root.button-bg-hover : transparent));
-        border-width: root.item.focused ? Tokens.chrome-hairline-width : 0px;
-        border-color: root.button-border-focused;
+        // No per-icon border — the soft fill + running dot mark focus; a border
+        // around the focused slot just added clutter (macOS doesn't draw one).
         animate background { duration: Motion.fast; easing: Motion.fast-curve; }
-        animate border-color { duration: Motion.fast; easing: Motion.fast-curve; }
 
         icon-img := Image {
             x: (parent.width  - Tokens.dock-icon-size) / 2;

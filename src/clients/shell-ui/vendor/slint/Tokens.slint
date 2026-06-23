@@ -93,12 +93,16 @@ export global Theme {
         : rgba(0, 0, 0, 0.12);
 
     // ── Dock colours ──────────────────────────────────────────────────────────
+    // More translucent so the compositor frost reads as real glass (was nearly
+    // opaque, which hid the blur and made the dock look like a flat grey box).
     in-out property <color> dock-bg: mode == TokenMode.Dark
-        ? rgba(32, 33, 34, 0.77)
-        : rgba(247, 247, 247, 0.89);
+        ? rgba(28, 29, 31, 0.58)
+        : rgba(250, 250, 250, 0.62);
+    // Whisper-soft edge — a near-invisible rim, not a hard hairline box. macOS
+    // defines the dock with frost + shadow + a faint top highlight, not a border.
     in-out property <color> dock-border: mode == TokenMode.Dark
-        ? rgba(255, 255, 255, 0.095)
-        : rgba(0, 0, 0, 0.10);
+        ? rgba(255, 255, 255, 0.06)
+        : rgba(0, 0, 0, 0.045);
     in-out property <color> dock-highlight: mode == TokenMode.Dark
         ? rgba(255, 255, 255, 0.085)
         : rgba(255, 255, 255, 0.72);
@@ -145,7 +149,7 @@ export global Theme {
         ? rgba(0, 0, 0, 0.012)
         : rgba(0, 0, 0, 0.006);
     out property <color> shadow-color: chrome-shadow;
-    in-out property <length> dock-corner-radius: 20px;
+    in-out property <length> dock-corner-radius: 23px;
     in-out property <length> menu-corner-radius: 12px;
     in-out property <length> popout-corner-radius: 18px;
     in-out property <length> tooltip-corner-radius: 10px;
