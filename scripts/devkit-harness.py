@@ -31,6 +31,10 @@
 #   devkit-harness.py wm 'ops' [OUT]      drive the window manager over dev.gnoblin.Shell. ops is
 #                                         comma-separated: spawn:foot,maximize,snap:left,minimize,
 #                                         close — prints window state after each, screenshots OUT
+#   devkit-harness.py inspect ['ops'] [OUT]  run optional ops (same syntax as wm), then dump the
+#                                         live scene: every surface's frame/buffer rect, csd_inset
+#                                         and the resolved+attached gnoblin effects (round/ring/blur)
+#                                         — accurate rendering truth, not eyeballed screenshots
 #   devkit-harness.py smoke               boot + crash-check + teardown, prints PASS/CRASH
 #   devkit-harness.py boot                boot and keep alive (prints WAYLAND_DISPLAY), Ctrl-C
 #
