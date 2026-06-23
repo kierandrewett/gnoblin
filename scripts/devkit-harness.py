@@ -1153,6 +1153,11 @@ def cmd_inspect(spec=None, out=None):
                         if el.get('border_col', [0, 0, 0, 0])[3]:
                             bc = el['border_col']
                             extra += f"  border=#{bc[0]:02x}{bc[1]:02x}{bc[2]:02x}{bc[3]:02x}"
+                        if 'text' in el:
+                            c = el['color']
+                            txt = el['text'][:24]
+                            extra += (f"  text={txt!r} fs={el['font_size']:.0f} "
+                                      f"fw={el['font_weight']} #{c[0]:02x}{c[1]:02x}{c[2]:02x}{c[3]:02x}")
                         print(f"        {'  ' * el['depth']}{ty} "
                               f"[{g[0]:.0f},{g[1]:.0f} {g[2]:.0f}x{g[3]:.0f}]{extra}")
                     if len(els) > 44:

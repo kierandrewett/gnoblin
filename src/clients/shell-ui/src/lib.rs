@@ -1852,7 +1852,7 @@ fn inspect_log_icon(
 /// (ARGB bytes). Returns a JSON fragment (leading comma) or None. Uses the
 /// unstable item downcast + render-trait accessors.
 fn slint_item_props(item: &i_slint_core::item_tree::ItemRc) -> Option<String> {
-    use i_slint_core::items::{BorderRectangle, ItemRef, Rectangle};
+    use i_slint_core::items::{BorderRectangle, ComplexText, ItemRef, Rectangle, SimpleText};
     use std::fmt::Write;
 
     let mut out = String::new();
@@ -1888,6 +1888,35 @@ fn slint_item_props(item: &i_slint_core::item_tree::ItemRc) -> Option<String> {
         );
         return Some(out);
     }
+    // Text comes in two item flavours (SimpleText / ComplexText) with the same
+    // text/font_size/font_weight/colour Property fields. Read them directly via
+    // FIELD_OFFSETS (the text()/color() methods are ambiguous between inherent and
+    // RenderText-trait versions).
+    macro_rules! try_text {
+        ($ty:ty) => {
+            if let Some(t) = ItemRef::downcast_pin::<$ty>(item.borrow()) {
+                let text = <$ty>::FIELD_OFFSETS.text().apply_pin(t).get();
+                let fs = <$ty>::FIELD_OFFSETS.font_size().apply_pin(t).get().get();
+                let fw = <$ty>::FIELD_OFFSETS.font_weight().apply_pin(t).get();
+                let col = <$ty>::FIELD_OFFSETS.color().apply_pin(t).get().color();
+                let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+                let _ = write!(
+                    out,
+                    ",\"text\":\"{}\",\"font_size\":{:.1},\"font_weight\":{},\"color\":[{},{},{},{}]",
+                    esc(text.as_str()),
+                    fs,
+                    fw,
+                    col.red(),
+                    col.green(),
+                    col.blue(),
+                    col.alpha(),
+                );
+                return Some(out);
+            }
+        };
+    }
+    try_text!(SimpleText);
+    try_text!(ComplexText);
     None
 }
 
