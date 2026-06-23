@@ -79,6 +79,13 @@ poll async" + "prefix commands with gnoblin" + "no graceful fallback".
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Full regression sweep after the blur + QS-pivot work: test-clients (fmt +
+  clippy -D warnings + 55 unit tests), test-logic (C parsers/SDF/PAM), and the
+  blur/shadow/topbar devkit tests (blur, content-behind-blur, chrome-blur,
+  blur-alpha-threshold, shadow-not-blurred, topbar-live-commands) ALL green. Found
+  + fixed 2 pre-existing failures (rustfmt drift; a stale maximize/unmaximize
+  expectation failing since the initial commit) + updated topbar-live-commands for
+  the plugin pivot. (`3d0ea4a`..`566dbda`)
 - [x] Launcher: unit-conversion + colour-converter providers (`c 10 km to mi`,
   `# ff8800` → hex/rgb/hsl, ⏎ copies). Offline, awk-based, ⏎-copyable results;
   registered in the harness + documented in conf.example. codex gpt-5.5 caught +
