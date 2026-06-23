@@ -263,6 +263,24 @@ appmenu-backend = auto
 # get-audio     = wpctl-qs       # wrap `wpctl get-volume @DEFAULT_AUDIO_SINK@`
 # get-battery   = battery-qs     # wrap `upower -i …` / read /sys/class/power_supply
 
+# ── Launcher providers (process/command search sources) ──────────────────────
+# The Spotlight launcher can search anything: declare a command that receives
+# the query in $GNOBLIN_QUERY (and as $1) and prints one result per line as
+# TAB-separated fields:  title <TAB> subtitle <TAB> icon <TAB> action
+#   icon   = a theme icon name (or empty)
+#   action = a shell command run on activation (empty → the title is copied)
+# `prefix` is an optional keyword the query must start with (stripped before the
+# command runs) — keeps app searches from spawning processes. Omit to run on
+# every query. The launcher also has a built-in calculator (just type maths).
+# [launcher-provider.files]
+# command = ~/.config/gnoblin/providers/launcher-files
+# prefix  = "f "
+# [launcher-provider.web]
+# command = ~/.config/gnoblin/providers/launcher-web
+# prefix  = "g "
+# Other ideas (all just commands): unit/currency convert, dictionary define,
+# emoji search, clipboard history, ssh hosts, kill-process, window switcher.
+
 [animations]
 # By default animations follow the STANDARD desktop setting
 # `org.gnome.desktop.interface enable-animations` — the same toggle GTK/other

@@ -10,6 +10,7 @@
 
 mod calc;
 mod desktop;
+mod provider;
 mod usage;
 
 use desktop::App;
@@ -63,6 +64,8 @@ fn copy_to_clipboard(text: &str) {
 enum Action {
     Launch(String),
     Copy(String),
+    /// Run a shell command (a provider result's action), then close.
+    Run(String),
 }
 
 /// One result row — an app, a calculator answer, or (later) a provider hit.
@@ -87,6 +90,8 @@ struct LauncherApp {
     grid: bool,
     exit: Rc<Cell<bool>>,
     usage: Rc<RefCell<HashMap<String, u32>>>,
+    /// Process/command search sources (file search, web, convert, …).
+    providers: Vec<provider::Provider>,
 }
 
 /// Activate the row at `index`: launch an app (recording usage) or copy a
@@ -100,6 +105,16 @@ fn activate_row(
         match &row.action {
             Action::Launch(id) => launch_app(id, usage),
             Action::Copy(text) => copy_to_clipboard(text),
+            Action::Run(cmd) => {
+                use std::process::{Command, Stdio};
+                let _ = Command::new("sh")
+                    .arg("-c")
+                    .arg(cmd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
+            }
         }
     }
 }
@@ -125,10 +140,12 @@ impl LauncherApp {
                 .borrow()
                 .iter()
                 .map(|r| {
-                    let icon = if r.kind == "app" {
-                        find_icon(&r.icon, "")
-                    } else {
+                    // Apps + provider rows carry a (theme) icon name; calc uses a
+                    // built-in glyph resolved in the view.
+                    let icon = if r.icon.is_empty() {
                         None
+                    } else {
+                        find_icon(&r.icon, "")
                     };
                     AppEntry {
                         name: r.name.clone().into(),
@@ -162,6 +179,29 @@ impl LauncherApp {
                     accessory: String::new(),
                     action: Action::Copy(ans),
                 });
+            }
+        }
+
+        // Process/command providers — file search, web handoff, convert, etc.
+        // Prefix-gated ones only run when their keyword is typed, so app
+        // searches never spawn a process. Provider hits sit above the app list.
+        if !self.grid {
+            for p in &self.providers {
+                for r in provider::run(p, &self.query) {
+                    let action = if r.action.is_empty() {
+                        Action::Copy(r.title.clone())
+                    } else {
+                        Action::Run(r.action)
+                    };
+                    rows.push(Row {
+                        name: r.title,
+                        subtitle: r.subtitle,
+                        icon: r.icon,
+                        kind: "provider".into(),
+                        accessory: String::new(),
+                        action,
+                    });
+                }
             }
         }
 
@@ -346,6 +386,8 @@ fn main() {
             grid,
             exit: Rc::new(Cell::new(false)),
             usage: Rc::new(RefCell::new(usage::load())),
+            // The app grid has no search box, so skip provider spawning there.
+            providers: if grid { Vec::new() } else { provider::load() },
         }),
     );
 }

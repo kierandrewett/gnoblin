@@ -157,6 +157,14 @@ class Devkit:
                        + plugin("audio", "audio", "oneshot", "4s")
                        + plugin("bluetooth", "bluetooth", "oneshot", "4s")
                        + plugin("mpris", "mpris", "persistent"))
+        # Launcher providers (process/command search sources), prefix-gated so
+        # they only run on their keyword. Registered whenever clients are up.
+        launcher_conf = ""
+        if CLIENTS and PROVIDERS_DIR.is_dir():
+            launcher_conf = (
+                f'[launcher-provider.web]\ncommand = {PROVIDERS_DIR / "launcher-web"}\nprefix = "g "\n'
+                f'[launcher-provider.files]\ncommand = {PROVIDERS_DIR / "launcher-files"}\nprefix = "f "\n'
+            )
         (cfgdir / "gnoblin.conf").write_text(
             "[appearance]\n"
             'background = "#202434"\n'
@@ -176,6 +184,7 @@ class Devkit:
             "Super+Q = close\n"
             "Super+Escape = window-menu\n"
             + qs_conf
+            + launcher_conf
             + (self.extra_conf or "")
         )
 
