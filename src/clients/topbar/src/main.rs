@@ -323,7 +323,7 @@ fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
 fn build_qs_tiles(
     st: &gnoblin_shell_ui::quicksettings::QuickState,
     plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
-) -> Vec<QsTileRow> {
+) -> Vec<QsTile> {
     let dnd = gnoblin_shell_ui::dnd::is_on();
     let nl = gnoblin_shell_ui::nightlight::is_on();
     let dark = gnoblin_shell_ui::theme::is_dark();
@@ -420,7 +420,7 @@ fn build_qs_tiles(
         });
     }
 
-    pack_rows(tiles)
+    tiles
 }
 
 /// Push the unified CC tile model + status cluster from a known state snapshot.
@@ -430,8 +430,17 @@ fn push_cc_tiles(
     plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
 ) {
     apply_cluster(p, st);
-    let rows = build_qs_tiles(st, plugins);
-    p.set_cc_tiles(Rc::new(slint::VecModel::from(rows)).into());
+    let tiles = build_qs_tiles(st, plugins);
+    // If a slide-out submenu is open, refresh its rows from the freshly-built
+    // model so a plugin update mid-open doesn't leave the page showing a stale
+    // snapshot (the rows were captured when the chevron was tapped).
+    let open = p.get_cc_open_submenu().to_string();
+    if !open.is_empty() {
+        if let Some(t) = tiles.iter().find(|t| t.id == open) {
+            p.set_cc_submenu_rows(t.rows.clone());
+        }
+    }
+    p.set_cc_tiles(Rc::new(slint::VecModel::from(pack_rows(tiles))).into());
 }
 
 /// Re-read live built-in state and rebuild the CC tile grid (used by toggles +

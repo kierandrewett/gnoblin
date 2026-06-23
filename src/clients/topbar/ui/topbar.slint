@@ -66,6 +66,9 @@ export component TopBar inherits Window {
     callback cc-plugin-row(string /* tile-id */, string /* row-id */);
     callback cc-plugin-toggle(string /* tile-id */, string /* row-id */, bool);
     callback cc-plugin-slider(string /* tile-id */, string /* row-id */, float);
+    // Open slide-out submenu state, surfaced so Rust can refresh its rows live.
+    in-out property <string> cc-open-submenu: "";
+    in-out property <[QsMenuRow]> cc-submenu-rows;
     callback cc-account-clicked();
     callback cc-settings-clicked();
     callback cc-lock-clicked();
@@ -244,6 +247,8 @@ export component TopBar inherits Window {
         plugin-row(id, row) => { root.cc-plugin-row(id, row); }
         plugin-toggle(id, row, v) => { root.cc-plugin-toggle(id, row, v); }
         plugin-slider(id, row, v) => { root.cc-plugin-slider(id, row, v); }
+        open-submenu <=> root.cc-open-submenu;
+        submenu-rows <=> root.cc-submenu-rows;
         account-clicked => { root.cc-account-clicked(); }
         settings-clicked => { root.cc-settings-clicked(); }
         lock-clicked => { root.cc-lock-clicked(); }

@@ -1485,7 +1485,9 @@ export component ControlCentrePopout {
     // Row interactions are forwarded to the qsplugin host keyed by the tile id.
     in-out property <string> open-submenu: "";
     property <string> submenu-title: "";
-    property <[QsMenuRow]> submenu-rows: [];
+    // in-out so Rust can refresh the open page's rows live when the plugin
+    // updates (otherwise the slide-out shows the snapshot from when it opened).
+    in-out property <[QsMenuRow]> submenu-rows: [];
     callback plugin-row(string /* tile-id */, string /* row-id */);
     callback plugin-toggle(string /* tile-id */, string /* row-id */, bool);
     callback plugin-slider(string /* tile-id */, string /* row-id */, float);
