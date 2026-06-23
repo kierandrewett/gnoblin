@@ -122,9 +122,10 @@ def run_list_click_check():
             print(f"FAIL: launcher did not stay open for list click: {launchers(dk)}")
             return 1
 
-        # 1280x800 default monitor: list panel is 620x440 centered at (330,180).
-        # With lg=16, search=40, md=12, and row height=44, this is the first row.
-        dk.click(640, 270)
+        # 1280x800 default monitor: the Spotlight panel is 600 wide, centred on
+        # x=640, anchored at y=0.16*800=128. Search field 60px + 1px hairline +
+        # 4px pad, rows 52px → the first result row's centre is ~y=219.
+        dk.click(640, 219)
         if not wait_for_foot_and_launcher_close(dk):
             print(f"FAIL: clicking launcher list row did not map foot/close launcher")
             print(f"windows={dk.list_windows()}")

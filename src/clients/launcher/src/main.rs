@@ -8,6 +8,7 @@
 //! apps + usage data shown as a scrollable icon grid (GNOME "show apps"),
 //! navigated in 2-D with the arrow keys. Bound to Super+A.
 
+mod calc;
 mod desktop;
 mod usage;
 
@@ -38,15 +39,69 @@ fn launch_app(id: &str, usage: &Rc<RefCell<HashMap<String, u32>>>) {
     gnoblin_shell_ui::launch_desktop_app(id);
 }
 
+/// Put `text` on the Wayland clipboard (used by the calculator's "Enter to
+/// copy"). Best-effort: if `wl-copy` isn't present, nothing happens.
+fn copy_to_clipboard(text: &str) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    if let Ok(mut child) = Command::new("wl-copy")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        if let Some(stdin) = child.stdin.as_mut() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let _ = child.wait();
+    }
+}
+
+/// What activating a result does. Apps launch; computed results (calculator,
+/// future providers) copy their payload. The process-command provider host
+/// (file search, web, custom) will add a `Run(String)` variant here.
+enum Action {
+    Launch(String),
+    Copy(String),
+}
+
+/// One result row — an app, a calculator answer, or (later) a provider hit.
+struct Row {
+    name: String,
+    subtitle: String,
+    /// Icon name for `kind == "app"` (resolved via find_icon); empty otherwise.
+    icon: String,
+    /// "app" | "calc" — lets the view pick a built-in glyph + styling.
+    kind: String,
+    /// Right-aligned accessory text (unused for now; reserved for providers).
+    accessory: String,
+    action: Action,
+}
+
 struct LauncherApp {
     win: Option<Launcher>,
     all: Vec<App>,
-    filtered: Rc<RefCell<Vec<App>>>,
+    filtered: Rc<RefCell<Vec<Row>>>,
     query: String,
     selected: usize,
     grid: bool,
     exit: Rc<Cell<bool>>,
     usage: Rc<RefCell<HashMap<String, u32>>>,
+}
+
+/// Activate the row at `index`: launch an app (recording usage) or copy a
+/// computed answer. Shared by the click closure and the Enter key path.
+fn activate_row(
+    rows: &Rc<RefCell<Vec<Row>>>,
+    index: usize,
+    usage: &Rc<RefCell<HashMap<String, u32>>>,
+) {
+    if let Some(row) = rows.borrow().get(index) {
+        match &row.action {
+            Action::Launch(id) => launch_app(id, usage),
+            Action::Copy(text) => copy_to_clipboard(text),
+        }
+    }
 }
 
 fn apply_theme(win: &Launcher) {
@@ -69,12 +124,19 @@ impl LauncherApp {
                 .filtered
                 .borrow()
                 .iter()
-                .map(|a| {
-                    let icon = find_icon(&a.icon, "");
+                .map(|r| {
+                    let icon = if r.kind == "app" {
+                        find_icon(&r.icon, "")
+                    } else {
+                        None
+                    };
                     AppEntry {
-                        name: a.name.clone().into(),
+                        name: r.name.clone().into(),
+                        subtitle: r.subtitle.clone().into(),
                         has_icon: icon.is_some(),
                         icon: icon.unwrap_or_default(),
+                        kind: r.kind.clone().into(),
+                        accessory: r.accessory.clone().into(),
                     }
                 })
                 .collect();
@@ -86,13 +148,30 @@ impl LauncherApp {
 
     fn refilter(&mut self) {
         let q = self.query.to_lowercase();
-        let mut matched: Vec<App> = self
+        let mut rows: Vec<Row> = Vec::new();
+
+        // Calculator: a computed answer on top when the query is arithmetic
+        // (search mode only — the app grid is just apps). Enter copies it.
+        if !self.grid {
+            if let Some(ans) = calc::try_eval(&self.query) {
+                rows.push(Row {
+                    name: ans.clone(),
+                    subtitle: "Calculator — press ⏎ to copy".into(),
+                    icon: String::new(),
+                    kind: "calc".into(),
+                    accessory: String::new(),
+                    action: Action::Copy(ans),
+                });
+            }
+        }
+
+        // Apps — most-used first (so the empty query surfaces frequent apps),
+        // then A→Z.
+        let mut matched: Vec<&App> = self
             .all
             .iter()
             .filter(|a| q.is_empty() || a.search.contains(&q))
-            .cloned()
             .collect();
-        // Most-used first (so the empty query surfaces frequent apps), then A→Z.
         let usage = self.usage.borrow();
         matched.sort_by(|a, b| {
             let ua = usage.get(&a.id).copied().unwrap_or(0);
@@ -101,8 +180,18 @@ impl LauncherApp {
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
         drop(usage);
-        matched.truncate(300);
-        *self.filtered.borrow_mut() = matched;
+        for a in matched.into_iter().take(300) {
+            rows.push(Row {
+                name: a.name.clone(),
+                subtitle: "Application".into(),
+                icon: a.icon.clone(),
+                kind: "app".into(),
+                accessory: String::new(),
+                action: Action::Launch(a.id.clone()),
+            });
+        }
+
+        *self.filtered.borrow_mut() = rows;
         self.selected = 0;
         self.rebuild();
     }
@@ -127,9 +216,7 @@ impl LauncherApp {
     }
 
     fn launch(&self, index: usize) {
-        if let Some(app) = self.filtered.borrow().get(index) {
-            launch_app(&app.id, &self.usage);
-        }
+        activate_row(&self.filtered, index, &self.usage);
     }
 }
 
@@ -154,9 +241,7 @@ impl BarApp for LauncherApp {
         let filtered = self.filtered.clone();
         let usage = self.usage.clone();
         win.on_activated(move |i| {
-            if let Some(app) = filtered.borrow().get(i as usize) {
-                launch_app(&app.id, &usage);
-            }
+            activate_row(&filtered, i as usize, &usage);
             exit.set(true);
         });
         win.show()
