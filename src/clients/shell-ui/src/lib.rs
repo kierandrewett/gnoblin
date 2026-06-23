@@ -1847,9 +1847,54 @@ fn inspect_log_icon(
     }
 }
 
+/// Read the visual properties of a Slint item if it's a (Border)Rectangle: the
+/// per-corner border radius, border width, and the background + border colours
+/// (ARGB bytes). Returns a JSON fragment (leading comma) or None. Uses the
+/// unstable item downcast + render-trait accessors.
+fn slint_item_props(item: &i_slint_core::item_tree::ItemRc) -> Option<String> {
+    use i_slint_core::items::{BorderRectangle, ItemRef, Rectangle};
+    use std::fmt::Write;
+
+    let mut out = String::new();
+    if let Some(br) = ItemRef::downcast_pin::<BorderRectangle>(item.borrow()) {
+        let bg = br.background().color();
+        let bc = br.border_color().color();
+        let _ = write!(
+            out,
+            ",\"radius\":{:.1},\"border_w\":{:.1},\
+             \"bg\":[{},{},{},{}],\"border_col\":[{},{},{},{}]",
+            br.border_radius().get(),
+            br.border_width().get(),
+            bg.red(),
+            bg.green(),
+            bg.blue(),
+            bg.alpha(),
+            bc.red(),
+            bc.green(),
+            bc.blue(),
+            bc.alpha(),
+        );
+        return Some(out);
+    }
+    if let Some(rect) = ItemRef::downcast_pin::<Rectangle>(item.borrow()) {
+        let bg = rect.background().color();
+        let _ = write!(
+            out,
+            ",\"bg\":[{},{},{},{}]",
+            bg.red(),
+            bg.green(),
+            bg.blue(),
+            bg.alpha()
+        );
+        return Some(out);
+    }
+    None
+}
+
 /// Recursively serialise a Slint item subtree (depth-first) into `out` as JSON
-/// objects: depth, item index, geometry [x,y,w,h], accessible role, and element
-/// type name (empty unless built with SLINT_EMIT_DEBUG_INFO). Bounded so a
+/// objects: depth, item index, geometry [x,y,w,h], accessible role, element
+/// type name (empty unless built with SLINT_EMIT_DEBUG_INFO), and — for
+/// rectangles — the visual props (radius/border/colours). Bounded so a
 /// pathological tree can't run away.
 fn walk_slint_elements(
     item: &i_slint_core::item_tree::ItemRc,
@@ -1875,9 +1920,10 @@ fn walk_slint_elements(
         out.push(',');
     }
     *first = false;
+    let props = slint_item_props(item).unwrap_or_default();
     let _ = write!(
         out,
-        "{{\"depth\":{},\"i\":{},\"geom\":[{:.1},{:.1},{:.1},{:.1}],\"role\":\"{}\",\"type\":\"{}\"}}",
+        "{{\"depth\":{},\"i\":{},\"geom\":[{:.1},{:.1},{:.1},{:.1}],\"role\":\"{}\",\"type\":\"{}\"{}}}",
         depth,
         item.index(),
         g.origin.x,
@@ -1886,6 +1932,7 @@ fn walk_slint_elements(
         g.size.height,
         esc(&role),
         esc(&ty),
+        props,
     );
     let mut child = item.first_child();
     while let Some(c) = child {

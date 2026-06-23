@@ -1141,13 +1141,22 @@ def cmd_inspect(spec=None, out=None):
                     els = []
                 if els:
                     print(f"    slint element tree ({len(els)} elements):")
-                    for el in els[:40]:
+                    for el in els[:44]:
                         g = el['geom']
                         ty = el['type'] or el['role']
+                        extra = ""
+                        if 'radius' in el:
+                            extra += f"  r={el['radius']:.0f} bw={el['border_w']:.0f}"
+                        if 'bg' in el and el['bg'][3]:  # non-transparent background
+                            bg = el['bg']
+                            extra += f"  bg=#{bg[0]:02x}{bg[1]:02x}{bg[2]:02x}{bg[3]:02x}"
+                        if el.get('border_col', [0, 0, 0, 0])[3]:
+                            bc = el['border_col']
+                            extra += f"  border=#{bc[0]:02x}{bc[1]:02x}{bc[2]:02x}{bc[3]:02x}"
                         print(f"        {'  ' * el['depth']}{ty} "
-                              f"[{g[0]:.0f},{g[1]:.0f} {g[2]:.0f}x{g[3]:.0f}]")
-                    if len(els) > 40:
-                        print(f"        … +{len(els) - 40} more")
+                              f"[{g[0]:.0f},{g[1]:.0f} {g[2]:.0f}x{g[3]:.0f}]{extra}")
+                    if len(els) > 44:
+                        print(f"        … +{len(els) - 44} more")
         print("\nRAW:", _json.dumps(scene))
         if out:
             dk.shot(out)
