@@ -348,11 +348,36 @@ static void json_str(GString* s, const char* v) {
     g_string_append_c(s, '"');
 }
 
-/* Dump the live scene as JSON: every window actor / layer surface with its
- * geometry (frame vs buffer rect, actor allocation), the gnoblin effects
- * actually attached to its actor, and the resolved effect set. Built so tooling
- * (the harness `inspect` command) can see EXACTLY what is rounded/ringed/blurred
- * and where — no guessing from screenshots. */
+/* Append ,"key":[r,g,b,a]. */
+static void json_color(GString* s, const char* key, const float c[4]) {
+    g_string_append_printf(s, ",\"%s\":[%.3f,%.3f,%.3f,%.3f]", key, (double)c[0], (double)c[1],
+                           (double)c[2], (double)c[3]);
+}
+
+static const char* border_style_name(int st) {
+    switch (st) {
+    case 0:
+        return "none";
+    case 1:
+        return "line";
+    case 2:
+        return "lip";
+    case 3:
+        return "ring";
+    default:
+        return "?";
+    }
+}
+
+/* Dump the live scene as JSON — the gnoblin equivalent of the GTK inspector's
+ * object tree + properties. For every window actor / layer surface: geometry
+ * (frame vs buffer rect, actor allocation, CSD inset), live Clutter actor state
+ * (position/size/opacity/scale/visibility/children), the resolved gnoblin effect
+ * set with FULL parameters (rounding radius/algorithm/smoothing, the two-layer
+ * ring border widths + every colour incl. focused variants, blur radius +
+ * alpha-gate, shadow), which gnoblin effects are actually attached, and window
+ * state (wm-class, app-id, pid, monitor, stacking layer, maximized/fullscreen/
+ * focus, SSD-vs-CSD). Tooling reads this instead of guessing from pixels. */
 static char* build_scene_json(MetaDisplay* display) {
     MetaCompositor* compositor = meta_display_get_compositor(display);
     GList* actors = meta_compositor_get_window_actors(compositor);
@@ -368,9 +393,14 @@ static char* build_scene_json(MetaDisplay* display) {
         MtkRectangle buffer = {0, 0, 0, 0};
         const char* ns;
         const char* title;
-        float aw = 0, ah = 0;
+        const char* wmclass;
+        const char* appid;
+        float aw = 0, ah = 0, ax = 0, ay = 0;
+        double sx = 1.0, sy = 1.0;
         GnoblinEffects fx;
         gboolean has_rounded, has_blur;
+        /* CSD inset, clamped to >=0 the way the rounded shader applies it. */
+        int il, it, ir, ib;
 
         if (!w)
             continue;
@@ -378,36 +408,95 @@ static char* build_scene_json(MetaDisplay* display) {
         meta_window_get_frame_rect(w, &frame);
         meta_window_get_buffer_rect(w, &buffer);
         clutter_actor_get_size(actor, &aw, &ah);
+        clutter_actor_get_position(actor, &ax, &ay);
+        clutter_actor_get_scale(actor, &sx, &sy);
         ns = gnoblin_rules_layer_namespace(w);
         title = meta_window_get_title(w);
+        wmclass = meta_window_get_wm_class(w);
+        appid = meta_window_get_gtk_application_id(w);
         has_rounded = clutter_actor_get_effect(actor, "gnoblin-rounded") != NULL;
         has_blur = clutter_actor_get_effect(actor, "gnoblin-blur") != NULL;
         gnoblin_rules_effects(w, &fx);
+        il = MAX(0, frame.x - buffer.x);
+        it = MAX(0, frame.y - buffer.y);
+        ir = MAX(0, (buffer.x + buffer.width) - (frame.x + frame.width));
+        ib = MAX(0, (buffer.y + buffer.height) - (frame.y + frame.height));
 
         if (!first)
             g_string_append_c(s, ',');
         first = FALSE;
         g_string_append_c(s, '{');
-        g_string_append_printf(s, "\"id\":%" G_GUINT64_FORMAT ",", (guint64)meta_window_get_id(w));
-        g_string_append(s, "\"title\":");
+        g_string_append_printf(s, "\"id\":%" G_GUINT64_FORMAT, (guint64)meta_window_get_id(w));
+        g_string_append(s, ",\"title\":");
         json_str(s, title ? title : "");
-        g_string_append(s, ",\"layer\":");
+        g_string_append(s, ",\"layer_ns\":");
         json_str(s, ns ? ns : "");
+        g_string_append(s, ",\"wm_class\":");
+        json_str(s, wmclass ? wmclass : "");
+        g_string_append(s, ",\"app_id\":");
+        json_str(s, appid ? appid : "");
         g_string_append_printf(s, ",\"type\":%d", (int)meta_window_get_window_type(w));
+        g_string_append_printf(s, ",\"pid\":%d", (int)meta_window_get_pid(w));
+        g_string_append_printf(s, ",\"monitor\":%d", meta_window_get_monitor(w));
+        g_string_append_printf(s, ",\"stack_layer\":%d", (int)meta_window_get_layer(w));
+
+        /* Window state. */
+        g_string_append_printf(
+            s, ",\"state\":{\"focused\":%s,\"maximized\":%s,\"fullscreen\":%s,\"all_ws\":%s,\"ssd\":%s}",
+            meta_window_has_focus(w) ? "true" : "false",
+            meta_window_is_maximized(w) ? "true" : "false",
+            meta_window_is_fullscreen(w) ? "true" : "false",
+            meta_window_is_on_all_workspaces(w) ? "true" : "false",
+            (il || it || ir || ib) ? "false" : "true");
+
+        /* Geometry. */
         g_string_append_printf(s, ",\"frame\":[%d,%d,%d,%d]", frame.x, frame.y, frame.width,
                                frame.height);
         g_string_append_printf(s, ",\"buffer\":[%d,%d,%d,%d]", buffer.x, buffer.y, buffer.width,
                                buffer.height);
-        g_string_append_printf(s, ",\"actor\":[%.0f,%.0f]", (double)aw, (double)ah);
-        g_string_append_printf(s, ",\"csd_inset\":[%d,%d,%d,%d]", frame.x - buffer.x,
-                               frame.y - buffer.y,
-                               (buffer.x + buffer.width) - (frame.x + frame.width),
-                               (buffer.y + buffer.height) - (frame.y + frame.height));
-        g_string_append_printf(s, ",\"fx\":{\"round\":%s,\"radius\":%.1f,\"border_style\":%d,"
-                                  "\"blur\":%s,\"blur_r\":%.1f,\"shadow\":%s}",
+        g_string_append_printf(s, ",\"csd_inset\":[%d,%d,%d,%d]", il, it, ir, ib);
+
+        /* Live Clutter actor state. */
+        g_string_append_printf(s,
+                               ",\"actor\":{\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],"
+                               "\"opacity\":%d,\"scale\":[%.3f,%.3f],\"visible\":%s,\"mapped\":%s,"
+                               "\"reactive\":%s,\"z\":%.1f,\"clip\":%s,\"children\":%d}",
+                               (double)ax, (double)ay, (double)aw, (double)ah,
+                               (int)clutter_actor_get_opacity(actor), sx, sy,
+                               clutter_actor_is_visible(actor) ? "true" : "false",
+                               clutter_actor_is_mapped(actor) ? "true" : "false",
+                               clutter_actor_get_reactive(actor) ? "true" : "false",
+                               (double)clutter_actor_get_z_position(actor),
+                               clutter_actor_has_clip(actor) ? "true" : "false",
+                               clutter_actor_get_n_children(actor));
+
+        /* Rounding + the two-layer ring border, FULL parameters. */
+        g_string_append_printf(s,
+                               ",\"rounding\":{\"enabled\":%s,\"radius\":%.1f,\"algorithm\":%d,"
+                               "\"smoothing\":%.3f,\"applied_inset\":[%d,%d,%d,%d]}",
                                fx.rounding_enabled ? "true" : "false", (double)fx.rounded.radius,
-                               (int)fx.rounded.border_style, fx.blur_enabled ? "true" : "false",
-                               (double)fx.blur_radius, fx.shadow_enabled ? "true" : "false");
+                               (int)fx.rounded.algorithm, (double)fx.rounded.smoothing, il, it, ir,
+                               ib);
+        g_string_append(s, ",\"border\":{");
+        g_string_append_printf(s, "\"style\":");
+        json_str(s, border_style_name((int)fx.rounded.border_style));
+        g_string_append_printf(s, ",\"border_width\":%.2f,\"ring_width\":%.2f",
+                               (double)fx.rounded.border_width, (double)fx.rounded.ring_width);
+        json_color(s, "border_color", fx.rounded.border_color);
+        json_color(s, "border_color_focused", fx.rounded.border_color_focused);
+        json_color(s, "ring_color", fx.rounded.ring_color);
+        json_color(s, "ring_color_focused", fx.rounded.ring_color_focused);
+        g_string_append_c(s, '}');
+
+        /* Blur + shadow. */
+        g_string_append_printf(
+            s, ",\"blur\":{\"enabled\":%s,\"radius\":%.1f,\"alpha_threshold\":%.3f}",
+            fx.blur_enabled ? "true" : "false", (double)fx.blur_radius,
+            (double)fx.blur_alpha_threshold);
+        g_string_append_printf(s, ",\"shadow\":{\"enabled\":%s}",
+                               fx.shadow_enabled ? "true" : "false");
+
+        /* Which gnoblin effects are actually attached to the live actor. */
         g_string_append_printf(s, ",\"attached\":{\"rounded\":%s,\"blur\":%s}",
                                has_rounded ? "true" : "false", has_blur ? "true" : "false");
         g_string_append_c(s, '}');

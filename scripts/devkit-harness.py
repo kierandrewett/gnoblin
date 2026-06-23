@@ -1049,19 +1049,38 @@ def cmd_inspect(spec=None, out=None):
             print(dk._tail())
             return 1
         scene = dk.inspect_scene()
-        # Compact, aligned table — easy to scan for the offending surface.
-        print(f"{'layer/title':30} {'type':4} {'frame(xywh)':22} {'csd_inset':16} "
-              f"{'round':5} {'rad':4} {'bstyle':6} {'blur':4} {'attached'}")
+        WT = {0: "normal", 1: "desktop", 2: "dock", 3: "dialog"}
+
+        def rgba(c):
+            return f"rgba({c[0]:.2f},{c[1]:.2f},{c[2]:.2f},{c[3]:.2f})"
+
         for s in scene.get("surfaces", []):
-            label = (s['layer'] or s['title'] or f"id{s['id']}")[:30]
-            fr = ",".join(map(str, s['frame']))
-            inset = ",".join(map(str, s['csd_inset']))
-            fx = s['fx']
-            att = "+".join(k for k, v in s['attached'].items() if v) or "-"
-            print(f"{label:30} {s['type']:<4} {fr:22} {inset:16} "
-                  f"{str(fx['round']):5} {fx['radius']:<4.0f} {fx['border_style']:<6} "
-                  f"{str(fx['blur']):4} {att}")
-        print("RAW:", _json.dumps(scene))
+            label = s['layer_ns'] or s['title'] or s['wm_class'] or f"id{s['id']}"
+            st = s['state']
+            flags = "".join(f for f, on in [
+                ("F", st['focused']), ("M", st['maximized']),
+                ("⛶", st['fullscreen']), ("SSD" if st['ssd'] else "CSD", True)] if on)
+            print(f"\n▸ {label}  [{WT.get(s['type'], s['type'])}]  {flags}")
+            print(f"    frame  {s['frame']}   buffer {s['buffer']}   csd_inset {s['csd_inset']}")
+            a = s['actor']
+            print(f"    actor  pos{a['pos']} size{a['size']} op{a['opacity']} "
+                  f"scale{a['scale']} vis={a['visible']} mapped={a['mapped']} "
+                  f"z={a['z']} clip={a['clip']} kids={a['children']}")
+            print(f"    win    wm_class={s['wm_class']!r} app_id={s['app_id']!r} "
+                  f"pid={s['pid']} monitor={s['monitor']} stack_layer={s['stack_layer']}")
+            r = s['rounding']
+            print(f"    round  enabled={r['enabled']} radius={r['radius']} "
+                  f"algo={r['algorithm']} smoothing={r['smoothing']} inset={r['applied_inset']}")
+            b = s['border']
+            print(f"    border style={b['style']} bw={b['border_width']} rw={b['ring_width']}")
+            print(f"           outer={rgba(b['border_color'])} / {rgba(b['border_color_focused'])}(F)")
+            print(f"           inner={rgba(b['ring_color'])} / {rgba(b['ring_color_focused'])}(F)")
+            bl = s['blur']
+            print(f"    blur   enabled={bl['enabled']} radius={bl['radius']} "
+                  f"alpha_threshold={bl['alpha_threshold']}   shadow={s['shadow']['enabled']}")
+            att = "+".join(k for k, v in s['attached'].items() if v) or "none"
+            print(f"    attached effects: {att}")
+        print("\nRAW:", _json.dumps(scene))
         if out:
             dk.shot(out)
         return 0
