@@ -72,6 +72,10 @@ pub struct TileSpec {
     /// Empty = `toggle`. A `slider`/`row` implies a full-width (span 4) tile.
     #[serde(default)]
     pub layout: String,
+    /// Slider position 0..1 for `layout == "slider"` tiles (e.g. volume). Ignored
+    /// by other layouts.
+    #[serde(default)]
+    pub value: f32,
 }
 
 /// One row of a plugin's submenu.
@@ -630,11 +634,17 @@ pub fn parse_interval(raw: &str, fallback: Duration) -> Duration {
 /// Read every `[qs-plugin.NAME]` section plus the `[providers]` shorthand into a
 /// list of [`PluginConfig`], in config (file) order. The `[providers]`
 /// shorthand maps each `get-foo = cmd` to a oneshot plugin with id `foo`.
-pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
-    let mut out = Vec::new();
+/// Read the `[qs-plugin.NAME]` sections of one config into `out`, overlaying:
+/// a section whose id already exists replaces it; `enabled = off` removes it;
+/// otherwise it's appended (declaration order).
+fn read_qs_sections(cfg: &crate::config::Config, out: &mut Vec<PluginConfig>) {
     for section in cfg.sections_with_prefix("qs-plugin.") {
         let id = section.trim_start_matches("qs-plugin.").trim();
         if id.is_empty() {
+            continue;
+        }
+        if cfg.get(section, "enabled").map(str::trim) == Some("off") {
+            out.retain(|p| p.id != id);
             continue;
         }
         let Some(command) = cfg.get(section, "command").filter(|c| !c.trim().is_empty()) else {
@@ -648,20 +658,37 @@ pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
             cfg.get(section, "interval").unwrap_or(""),
             Duration::from_secs(5),
         );
-        out.push(PluginConfig {
+        let pc = PluginConfig {
             id: id.to_string(),
             command: command.to_string(),
             mode,
             interval,
-        });
+        };
+        match out.iter_mut().find(|p| p.id == id) {
+            Some(slot) => *slot = pc,
+            None => out.push(pc),
+        }
     }
-    // `[providers] get-foo = cmd` shorthand: data-only oneshot providers.
+}
+
+/// The quick-settings plugin set: gnoblin's shipped defaults
+/// (`data/gnoblin.defaults.conf`) overlaid by the user's `gnoblin.conf` — the
+/// user can override a plugin by id, disable one with `enabled = off`, add new
+/// ones, and reorder them all with `[quicksettings] order = a, b, c`. The tiles
+/// are config-declared plugins, NOT hardcoded in the shell.
+pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
+    let defaults =
+        crate::config::Config::from_text(include_str!("../../../data/gnoblin.defaults.conf"));
+    let mut out = Vec::new();
+    read_qs_sections(&defaults, &mut out);
+    read_qs_sections(cfg, &mut out);
+
+    // `[providers] get-foo = cmd` shorthand (user only): data-only oneshot providers.
     for (key, command) in cfg.entries_with_prefix("providers", "get-") {
         let id = key.trim_start_matches("get-").trim();
         if id.is_empty() || command.trim().is_empty() {
             continue;
         }
-        // Don't shadow an explicit [qs-plugin.id].
         if out.iter().any(|p| p.id == id) {
             continue;
         }
@@ -670,6 +697,25 @@ pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
             command: command.to_string(),
             mode: PluginMode::Oneshot,
             interval: Duration::from_secs(5),
+        });
+    }
+
+    // Order: `[quicksettings] order = ...` (user's wins, else the default's).
+    // Listed ids come first in that order; anything unlisted keeps its relative
+    // position at the end (stable sort).
+    if let Some(order) = cfg
+        .get("quicksettings", "order")
+        .or_else(|| defaults.get("quicksettings", "order"))
+    {
+        let want: Vec<&str> = order
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        out.sort_by_key(|p| {
+            want.iter()
+                .position(|w| *w == p.id)
+                .unwrap_or(usize::MAX)
         });
     }
     out
@@ -773,28 +819,41 @@ mod tests {
     }
 
     #[test]
-    fn load_configs_reads_sections_and_providers() {
+    fn load_configs_overlays_user_onto_defaults() {
+        // Empty user config → the shipped defaults, ordered by the defaults'
+        // [quicksettings] order (wifi first).
+        let defs = load_configs(&crate::config::Config::from_text(""));
+        assert!(defs.iter().any(|p| p.id == "wifi"));
+        assert!(defs.iter().any(|p| p.id == "darkstyle"));
+        assert_eq!(defs.first().map(|p| p.id.as_str()), Some("wifi"));
+
+        // User overrides wifi (command/mode/interval win), adds mpris + a
+        // [providers] shorthand; defaults stay present.
         let cfg = crate::config::Config::from_text(
             "[qs-plugin.wifi]\n\
-             command = GNOBLIN_QS_LOG=/tmp/x /path/to/wifi\n\
-             mode = oneshot\n\
-             interval = 4s\n\
+             command = /my/wifi\n\
+             mode = persistent\n\
+             interval = 9s\n\
              [qs-plugin.mpris]\n\
              command = /path/to/mpris\n\
              mode = persistent\n\
              [providers]\n\
              get-battery = cat /sys/class/power_supply/BAT0/capacity\n",
         );
-        let plugins = load_configs(&cfg);
-        assert_eq!(plugins.len(), 3);
-        assert_eq!(plugins[0].id, "wifi");
-        assert_eq!(plugins[0].mode, PluginMode::Oneshot);
-        assert_eq!(plugins[0].interval, Duration::from_secs(4));
-        assert!(plugins[0].command.contains("/path/to/wifi"));
-        assert_eq!(plugins[1].id, "mpris");
-        assert_eq!(plugins[1].mode, PluginMode::Persistent);
-        // [providers] shorthand → oneshot plugin named by the `get-` suffix.
-        assert_eq!(plugins[2].id, "battery");
-        assert_eq!(plugins[2].mode, PluginMode::Oneshot);
+        let p = load_configs(&cfg);
+        let wifi = p.iter().find(|x| x.id == "wifi").expect("wifi present");
+        assert!(wifi.command.contains("/my/wifi")); // user override won
+        assert_eq!(wifi.mode, PluginMode::Persistent);
+        assert_eq!(wifi.interval, Duration::from_secs(9));
+        assert!(p.iter().any(|x| x.id == "mpris")); // user-added
+        assert!(p.iter().any(|x| x.id == "battery")); // provider shorthand
+        assert!(p.iter().any(|x| x.id == "bluetooth")); // default still there
+
+        // `enabled = off` removes a default.
+        let off = load_configs(&crate::config::Config::from_text(
+            "[qs-plugin.bluetooth]\nenabled = off\n",
+        ));
+        assert!(!off.iter().any(|x| x.id == "bluetooth"));
+        assert!(off.iter().any(|x| x.id == "wifi"));
     }
 }

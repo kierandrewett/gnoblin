@@ -210,6 +210,15 @@ appmenu-backend = auto
 # background_apps = gnome-control-center applications
 
 # ── Quick-settings plugins ────────────────────────────────────────────────────
+# EVERY control-centre tile is a plugin — there are no hardcoded built-ins. gnoblin
+# ships a default set (wifi, bluetooth, output, mic, nightlight, dnd, darkstyle,
+# powermode, backgroundapps) as `gnoblin-qs-*` commands declared in a bundled
+# defaults config that THIS file is layered on top of. So you can:
+#   • reorder every tile:        [quicksettings] order = output, mic, wifi, dnd, …
+#   • override a default:        re-declare its [qs-plugin.NAME] with a new command
+#   • disable a default:         [qs-plugin.bluetooth]  → enabled = off
+#   • add your own:              a new [qs-plugin.NAME] (appended after the defaults)
+#
 # Add your own tiles to the control centre, driven by an external command. The
 # command speaks a small JSON protocol on stdout; the shell renders a tile plus
 # an optional submenu, and forwards interactions back to the command.

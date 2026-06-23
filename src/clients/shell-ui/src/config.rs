@@ -34,7 +34,6 @@ impl Config {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn from_text(text: &str) -> Self {
         let mut values = HashMap::new();
         let mut lists = HashMap::new();

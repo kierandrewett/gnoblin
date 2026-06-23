@@ -29,10 +29,6 @@ struct TopbarCommands {
     account: String,
     settings: String,
     power: String,
-    wired: String,
-    wifi: String,
-    bluetooth: String,
-    background_apps: String,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -262,32 +258,6 @@ fn apply_cluster(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
 /// One built-in tile. Its glyph is named (resolved to a bundled symbolic asset
 /// in Slint via QsIcons.glyph), not a pre-loaded image.
 #[allow(clippy::too_many_arguments)]
-fn builtin_tile(
-    id: &str,
-    span: i32,
-    layout: &str,
-    icon_name: &str,
-    title: &str,
-    subtitle: &str,
-    active: bool,
-    chevron: bool,
-    value: f32,
-) -> QsTile {
-    QsTile {
-        id: id.into(),
-        span,
-        layout: layout.into(),
-        icon_name: icon_name.into(),
-        icon: Default::default(),
-        title: title.into(),
-        subtitle: subtitle.into(),
-        active,
-        chevron,
-        value,
-        rows: Default::default(),
-    }
-}
-
 /// Greedily pack tiles into rows of a 4-wide span grid, wrapping when the next
 /// tile would overflow the row's 4 columns.
 fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
@@ -320,61 +290,12 @@ fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
 /// Build the unified tile list: the dogfooded built-ins (synthesised from live
 /// state) followed by every ready plugin tile. One model, one render path, no
 /// "Plugins" section — see the unified-grid design note.
-fn build_qs_tiles(
-    st: &gnoblin_shell_ui::quicksettings::QuickState,
-    plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
-) -> Vec<QsTile> {
-    let dnd = gnoblin_shell_ui::dnd::is_on();
-    let nl = gnoblin_shell_ui::nightlight::is_on();
-    let dark = gnoblin_shell_ui::theme::is_dark();
-
-    let wifi_sub = if st.wifi {
-        if st.wifi_name.is_empty() {
-            "Connected".to_string()
-        } else {
-            st.wifi_name.clone()
-        }
-    } else {
-        "Off".to_string()
-    };
-    let bt_sub = if st.bt {
-        if st.bt_device.is_empty() {
-            "On".to_string()
-        } else {
-            st.bt_device.clone()
-        }
-    } else {
-        "Off".to_string()
-    };
-
-    let mut tiles = vec![
-        builtin_tile("wired", 2, "toggle", "ethernet", "Wired",
-            if st.wired { "Connected" } else { "Off" }, st.wired, true, 0.0),
-        builtin_tile("wifi", 2, "toggle", if st.wifi { "wifi" } else { "wifi-off" },
-            "Wi-Fi", &wifi_sub, st.wifi, true, 0.0),
-        builtin_tile("output", 4, "slider", "volume", "Output", "", false, true,
-            st.volume.min(1.0)),
-        builtin_tile("mic", 4, "slider", "mic", "Microphone", "", false, true,
-            st.mic.min(1.0)),
-        builtin_tile("bluetooth", 2, "toggle", "bluetooth", "Bluetooth", &bt_sub,
-            st.bt, true, 0.0),
-        builtin_tile("night-light", 2, "toggle", "moon", "Night Light", "", nl, false, 0.0),
-        builtin_tile("dnd", 2, "toggle", if dnd { "bell-off" } else { "bell" },
-            "Do Not Disturb", "", dnd, false, 0.0),
-        builtin_tile("dark-style", 2, "toggle", "contrast", "Dark Style", "", dark, false, 0.0),
-        builtin_tile("__shortcuts", 4, "section", "", "Shortcuts", "", false, false, 0.0),
-        builtin_tile("power-mode", 4, "row", "gauge", "Power Mode", &st.power_mode,
-            false, true, 0.0),
-        builtin_tile("background-apps", 4, "row", "apps", "Background Apps",
-            "None running", false, true, 0.0),
-    ];
-
-    // External plugin tiles — same QsTile model, appended after the built-ins.
-    // A now-playing media card is pinned first among the plugins (the headline
-    // "what's playing" widget), then everything else in config order.
-    let mut ordered: Vec<&gnoblin_shell_ui::qsplugin::PluginState> = plugins.iter().collect();
-    ordered.sort_by_key(|pl| if pl.update.tile.layout == "media" { 0 } else { 1 });
-    for pl in ordered {
+fn build_qs_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<QsTile> {
+    // EVERY tile is a config-declared async plugin — there are no hardcoded
+    // built-ins. Render the host's snapshot in its order (the host preserves the
+    // declared/`[quicksettings] order` order; see qsplugin::load_configs).
+    let mut tiles = Vec::new();
+    for pl in plugins {
         let spec = &pl.update.tile;
         let layout = if spec.layout.is_empty() {
             "toggle"
@@ -415,7 +336,7 @@ fn build_qs_tiles(
             subtitle: spec.subtitle.clone().into(),
             active: spec.active,
             chevron: spec.chevron || !rows.is_empty(),
-            value: 0.0,
+            value: spec.value,
             rows: Rc::new(slint::VecModel::from(rows)).into(),
         });
     }
@@ -430,7 +351,7 @@ fn push_cc_tiles(
     plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
 ) {
     apply_cluster(p, st);
-    let tiles = build_qs_tiles(st, plugins);
+    let tiles = build_qs_tiles(plugins);
     // If a slide-out submenu is open, refresh its rows from the freshly-built
     // model so a plugin update mid-open doesn't leave the page showing a stale
     // snapshot (the rows were captured when the chevron was tapped).
@@ -490,19 +411,6 @@ fn apply_notifications(p: &TopBar) -> gnoblin_shell_ui::notifcenter::Summary {
     p.set_cc_notification_count(count);
     p.set_cc_notifications(Rc::new(slint::VecModel::from(items)).into());
     summary
-}
-
-/// Build the Slint plugin model from the host's latest snapshot. Icon names are
-/// resolved here (the Slint struct holds a ready `image`, not a name).
-/// Set the default sink volume (0..1) via wpctl.
-fn set_volume(sink: &str, v: f32) {
-    use std::process::{Command, Stdio};
-    let _ = Command::new("wpctl")
-        .args(["set-volume", sink, &format!("{:.2}", v.clamp(0.0, 1.5))])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
 }
 
 struct TopBarApp {
@@ -774,73 +682,31 @@ impl BarApp for TopBarApp {
             });
         }
         // ── Unified tile dispatch ────────────────────────────────────────────
-        // One handler for every tile, keyed by id: built-in ids run their
-        // action (and rebuild the grid to reflect the new state); any other id
-        // is an external plugin tile and is forwarded to the qsplugin host.
+        // Every tile is a config-declared plugin: tap and slide events go
+        // straight to the qsplugin host, which forwards them to the owning plugin
+        // process (gnoblin-qs-* etc.). The plugin performs the action (flip a
+        // state file, run wpctl/nmcli, …) and its next poll reflects the result.
         {
-            let commands = self.commands.clone();
             let host = self.qs_host.clone();
-            let weak = panel.as_weak();
-            let cached_theme = self.theme_dark.clone();
-            let plugins = self.qs_plugins.clone();
             panel.on_cc_tile_clicked(move |id| {
-                let rebuild = |weak: &slint::Weak<TopBar>| {
-                    if let Some(p) = weak.upgrade() {
-                        refresh_cc_tiles(&p, &plugins.borrow());
-                    }
-                };
-                match id.as_str() {
-                    "wired" => spawn_cmd(&commands.borrow().wired.clone()),
-                    "wifi" => spawn_cmd(&commands.borrow().wifi.clone()),
-                    "bluetooth" => spawn_cmd(&commands.borrow().bluetooth.clone()),
-                    "background-apps" => spawn_cmd(&commands.borrow().background_apps.clone()),
-                    "power-mode" => {
-                        gnoblin_shell_ui::quicksettings::cycle_power_profile();
-                        rebuild(&weak);
-                    }
-                    "dnd" => {
-                        gnoblin_shell_ui::dnd::toggle();
-                        rebuild(&weak);
-                    }
-                    "night-light" => {
-                        gnoblin_shell_ui::nightlight::toggle();
-                        rebuild(&weak);
-                    }
-                    "dark-style" => {
-                        let dark = !gnoblin_shell_ui::theme::is_dark();
-                        gnoblin_shell_ui::theme::set_dark(dark);
-                        cached_theme.set(dark);
-                        if let Some(p) = weak.upgrade() {
-                            apply_theme(&p);
-                            refresh_cc_tiles(&p, &plugins.borrow());
-                        }
-                    }
-                    other => {
-                        host.borrow().send_event(
-                            gnoblin_shell_ui::qsplugin::PluginEvent::TileClicked {
-                                id: other.to_string(),
-                            },
-                        );
-                    }
-                }
+                host.borrow()
+                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::TileClicked {
+                        id: id.to_string(),
+                    });
             });
         }
         {
             let host = self.qs_host.clone();
-            panel.on_cc_tile_slider(move |id, v| match id.as_str() {
-                "output" => set_volume("@DEFAULT_AUDIO_SINK@", v),
-                "mic" => set_volume("@DEFAULT_AUDIO_SOURCE@", v),
-                other => host.borrow().send_event(
-                    gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
-                        id: other.to_string(),
+            panel.on_cc_tile_slider(move |id, v| {
+                host.borrow()
+                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
+                        id: id.to_string(),
                         row_id: String::new(),
                         value: v,
-                    },
-                ),
+                    });
             });
         }
-        // The chevron opens the slide-out submenu in Slint; Rust only needs to
-        // act for built-in tiles that want extra work on drill-in (none yet).
+        // The chevron opens the slide-out submenu in Slint; nothing extra here.
         panel.on_cc_tile_chevron(|_id| {});
         // Submenu row interactions → the qsplugin host (keyed by the tile/plugin
         // id; built-in tiles have no host rows, so these only fire for plugins).
@@ -1476,10 +1342,6 @@ fn topbar_settings() -> TopbarSettings {
         account: command("account", "gnome-control-center users"),
         settings: command("control_centre", "gnome-control-center"),
         power: command("power", "gnoblin-power-menu"),
-        wired: command("wired", "nm-connection-editor"),
-        wifi: command("wifi", "nm-connection-editor"),
-        bluetooth: command("bluetooth", "blueman-manager"),
-        background_apps: command("background_apps", "gnome-control-center applications"),
     };
     TopbarSettings {
         commands,

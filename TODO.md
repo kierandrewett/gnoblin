@@ -6,29 +6,25 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
-## In progress — QS DE-HARDCODING (top priority, Kieran's directive)
-"there shouldnt be built in plugins.. dont hardcode... define in config stuff
-like wifi, bluetooth etc.. you define the order of the plugins and they poll
-async" + "prefix commands with gnoblin".
-
-The async plugin host + tile/menu/rows protocol + config order ALREADY exist
-(qsplugin.rs). Only `build_qs_tiles` hardcodes the built-ins. Plan:
-- [ ] Ship default `gnoblin-qs-*` plugin scripts (src/data/plugins/), real hw
-  integration + graceful fallback: wifi(nmcli), bluetooth(bluetoothctl),
-  output/mic(wpctl, slider), nightlight/dnd(runtime state-file), darkstyle
-  ($XDG_RUNTIME_DIR/gnoblin-theme), powermode(powerprofilesctl), background-apps.
-- [ ] Ship a default config layer declaring them in order, commands gnoblin-qs-*;
-  Config::load (Rust) overlays the user's gnoblin.conf on top (user wins). Add
-  `[quicksettings] order = …` for explicit user ordering. C parser untouched.
-- [ ] meson: install src/data/plugins/gnoblin-qs-* to bindir (on PATH).
-- [ ] Refactor build_qs_tiles → grid = plugin snapshot in config order, NO
-  builtin_tile(). Dispatch handlers forward ALL ids to the host (drop the
-  wired/wifi/output/mic/dark-style/dnd/... special-cases).
-- [ ] Harness: declare the gnoblin-qs-* plugins so the devkit renders the grid.
-- [ ] Verify on llvmpipe: grid renders from plugins in config order; toggle /
-  click / slider / chevron-slide events all flow to the right plugin.
-- SAFETY: do NOT delete the hardcoded built-ins until the plugin replacements
-  are in + verified, so the QS never goes empty mid-refactor.
+## QS DE-HARDCODING — DONE (Kieran's directive)
+"there shouldnt be built in plugins.. dont hardcode... define in config... they
+poll async" + "prefix commands with gnoblin" + "no graceful fallback".
+- [x] Default `gnoblin-qs-*` plugin scripts shipped (src/data/plugins/), NO
+  fallbacks: wifi(nmcli)/bluetooth(bluetoothctl)/output+mic(wpctl slider)/
+  nightlight+dnd(runtime flag file)/darkstyle($XDG_RUNTIME_DIR/gnoblin-theme)/
+  powermode(powerprofilesctl)/backgroundapps(flatpak). (`96cebd2`)
+- [x] Installed to bindir on PATH. (`33b27cb`)
+- [x] Default config layer (`src/data/gnoblin.defaults.conf`) declaring them in
+  order; qsplugin::load_configs parses it as a BASE and overlays the user's
+  gnoblin.conf (override by id, `enabled=off` to disable, `[quicksettings] order`
+  to reorder). config.rs from_text un-cfg-test'd. TileSpec gained `value` (sliders).
+- [x] build_qs_tiles renders PURELY from the plugin snapshot (no builtin_tile);
+  dispatch forwards every tap/slide to the host; removed set_volume + the
+  vestigial [commands] wired/wifi/bluetooth/background_apps.
+- [x] Verified: cargo check + clippy(-D warnings) + 49 shell-ui tests green; devkit
+  CC renders entirely from plugins (wifi/bluetooth sliding submenus, sliders,
+  toggles, media card) with NO hardcoded built-ins. Theme/dnd/nightlight changes
+  propagate via the existing client theme-follow poll.
 
 ## Blur — FIXED (was never GPU-broken; harness uses the real GPU /dev/dri/renderD128)
 - [x] SMEAR: 9-tap Gaussian ran at radius*0.5 with fixed half-res → ~90 texels
