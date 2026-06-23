@@ -1547,13 +1547,17 @@ export component ControlCentrePopout {
         // Scrolls only when the content exceeds the screen-height cap; on a
         // roomy screen the whole panel fits and nothing moves. Child TouchAreas
         // (tile taps, horizontal slider drags) still receive their gestures.
+        // Slides left in lockstep with the submenu page (a carousel: the grid
+        // and the submenu move together, edge-to-edge, not one over the other).
         Flickable {
-            x: 0; y: 0;
+            x: root.open-submenu != "" ? -parent.width : 0px;
+            y: 0;
             width: parent.width;
             height: parent.height;
             viewport-width: parent.width;
             viewport-height: root.content-h;
             interactive: root.content-h > root.avail-h;
+            animate x { duration: 220ms; easing: ease-out; }
 
         body := VerticalLayout {
             x: Spacing.lg; y: Spacing.lg;

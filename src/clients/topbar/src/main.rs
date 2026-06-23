@@ -1485,14 +1485,14 @@ fn topbar_settings() -> TopbarSettings {
                 &cfg,
                 "topbar",
                 &["status-padding", "status_padding"],
-                4,
+                10,
             )
             .max(0),
             status_icon_gap: config_i32_any(
                 &cfg,
                 "topbar",
                 &["status-icon-gap", "status_icon_gap"],
-                5,
+                10,
             )
             .max(0),
             cc_offset_x: config_i32_any(
