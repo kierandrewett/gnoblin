@@ -43,7 +43,11 @@ HIG; animations buttery + customisable (easing/length/scale).
 ## Done (recent)
 - [x] Launcher: unit-conversion + colour-converter providers (`c 10 km to mi`,
   `# ff8800` → hex/rgb/hsl, ⏎ copies). Offline, awk-based, ⏎-copyable results;
-  registered in the harness + documented in conf.example.
+  registered in the harness + documented in conf.example. codex gpt-5.5 caught +
+  I fixed a P2 ("in" source unit mis-parsed as separator); re-review clean.
+  (`23ada93`, `7dfab31`)
+- [x] Topbar truly flush — re-disabled its frost (the re-frost had reintroduced
+  the rounded screen-edge halo; blur can't frost a screen edge). (`1c60bbb`)
 - [x] Launcher: clipboard-history provider example (cliphist, prefix "v ").
   Launcher now ships web/files/emoji/kill/clipboard providers + calc + web
   fallback. (`9cf841d`)
