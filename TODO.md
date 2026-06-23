@@ -20,13 +20,21 @@ HIG; animations buttery + customisable (easing/length/scale).
   timing, dock, menu, launcher).
 - [ ] Then: whatever gnoblin needs next, following the ethos.
 
-## Needs Kieran (real-hardware verification)
-- [ ] **Held Alt+Tab** — the switcher dispatch path works, but `run-switcher`'s
-  injected held-modifier release-commit fails in the headless harness (the ~40ms
-  synthetic held key is finicky; verified NOT a regression — this session touched
-  no switcher/keybind/input code, and it fails even with instant animations).
-  Confirm Alt+Tab cycles windows on real hardware; if not, it's a real switcher
-  bug to chase (independent of this session's work).
+## Real bug found (pre-existing, needs a focused fix)
+- [ ] **Alt+Tab keybind never fires the switcher** — diagnosed: `switcher_open`
+  is never called on Alt+Tab (instrumented + confirmed). NOT a regression and NOT
+  the switcher logic (which is correct: opens on index 1, commits on Alt release).
+  Root cause: gnoblin registers every config keybind via
+  `meta_display_grab_accelerator` (gnoblin-control.cpp), and mutter does **not**
+  emit `accelerator-activated` for switch-application-style accelerators like
+  `<Alt>Tab` — `Super+Space` fires fine through the same path
+  (run-keybind-launcher passes), so it's Alt+Tab-specific. Fix: route Tab-based
+  switcher binds through mutter's `switch-applications` /
+  `switch-applications-backward` custom-handler
+  (`meta_keybindings_set_custom_handler`) instead of grab_accelerator. Careful
+  keybind-system change → needs real-hardware testing (the headless harness also
+  can't fully validate the held-modifier release-commit). Confirm on real
+  hardware whether Alt+Tab is dead there too (very likely yes).
 
 - [ ] **Blur** — rewrote `gnoblin-blur.cpp` (padded capture + downsample-then-
   blur). Smooth on llvmpipe + all blur tests green; confirm the smear/flicker is
