@@ -336,7 +336,10 @@ fn build_qs_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<Qs
             subtitle: spec.subtitle.clone().into(),
             active: spec.active,
             chevron: spec.chevron || !rows.is_empty(),
-            value: spec.value,
+            // Clamp to the track range: a slider plugin (e.g. gnoblin-qs-output)
+            // can report >1.0 for an over-amplified PipeWire volume, which would
+            // overdraw the fill past the track.
+            value: spec.value.clamp(0.0, 1.0),
             rows: Rc::new(slint::VecModel::from(rows)).into(),
         });
     }
