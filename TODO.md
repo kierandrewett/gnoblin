@@ -7,15 +7,11 @@ Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
 ## In progress
-- [ ] **MPRIS media card (#6)** — 4x1 "now playing" tile (`layout: "media"`):
-  art chip + title/artist + prev/play-pause/next. Heroicons-solid media glyphs
-  added (`play/pause/backward/forward.svg`); `ShellMediaCard` component + grid
-  branch + mpris provider `span:4 layout:"media"` + transport→plugin-row wiring
-  still to do.
+- (nothing actively in flight — blocked items are below)
 
 ## To do (open-ended — "whatever gnoblin needs")
-- [ ] More launcher providers if wanted (unit/currency convert, dictionary
-  define, clipboard history, ssh hosts, window switcher) — trivial to add.
+- [ ] More launcher providers if wanted (dictionary define, ssh hosts, window
+  switcher) — trivial to add. (convert + color shipped.)
 - [ ] Polish driven by Kieran's real-hardware feel feedback (blur, animation
   timing, dock, menu, launcher).
 - [ ] Then: whatever gnoblin needs next, following the ethos.
@@ -45,6 +41,9 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Launcher: unit-conversion + colour-converter providers (`c 10 km to mi`,
+  `# ff8800` → hex/rgb/hsl, ⏎ copies). Offline, awk-based, ⏎-copyable results;
+  registered in the harness + documented in conf.example.
 - [x] Launcher: clipboard-history provider example (cliphist, prefix "v ").
   Launcher now ships web/files/emoji/kill/clipboard providers + calc + web
   fallback. (`9cf841d`)
