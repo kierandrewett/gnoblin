@@ -847,11 +847,8 @@ export component Compositor inherits Window {
         y: Tokens.panel-height + 6px;
         z: 60;
         open: root.control-centre-open;
-        theme-toggle-clicked => {
-            root.toggle-theme();
-            // Don't auto-close so the user can immediately see the
-            // accent / icon-bg flip on the Dark Style tile.
-        }
+        // Dark Style is now a tile in the unified grid; theme toggling flows
+        // through tile-clicked("dark-style") via the topbar's dispatcher.
         // Anchored to the panel's right edge (system icons cluster) —
         // origin top-right so the panel "unfolds out" of the icons.
         origin-x: self.width;

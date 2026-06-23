@@ -235,17 +235,9 @@ fn app_menu_model(app_id: &str, running: bool) -> slint::ModelRc<MenuItem> {
 
 /// Push a quick-settings snapshot into the control-centre popout + the status
 /// cluster (network glyph, mute). Shared by the one-shot read and the poller.
-fn apply_state(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
-    p.set_cc_volume(st.volume.min(1.0));
-    p.set_cc_mic(st.mic.min(1.0));
-    p.set_cc_wired_active(st.wired);
-    p.set_cc_wifi_active(st.wifi);
-    if !st.wifi_name.is_empty() {
-        p.set_cc_wifi_name(st.wifi_name.clone().into());
-    }
-    p.set_cc_bt_active(st.bt);
-    p.set_cc_bt_device(st.bt_device.clone().into());
-    p.set_cc_power_mode(st.power_mode.clone().into());
+/// Topbar status cluster (network glyph + mute icon) — independent of the CC
+/// tile grid, so it's set separately from the tile model.
+fn apply_cluster(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
     // Cluster network glyph: wired wins when both are up (the active route, as
     // GNOME does); else wifi; else disconnected. GNOBLIN_NET_MODE overrides for
     // headless validation of the wifi/disconnected variants.
@@ -265,15 +257,187 @@ fn apply_state(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
         .map(|v| v == "1")
         .unwrap_or(st.muted);
     p.set_audio_muted(muted);
-    p.set_cc_dnd_active(gnoblin_shell_ui::dnd::is_on());
-    p.set_cc_night_light_active(gnoblin_shell_ui::nightlight::is_on());
+}
+
+/// One built-in tile. Its glyph is named (resolved to a bundled symbolic asset
+/// in Slint via QsIcons.glyph), not a pre-loaded image.
+#[allow(clippy::too_many_arguments)]
+fn builtin_tile(
+    id: &str,
+    span: i32,
+    layout: &str,
+    icon_name: &str,
+    title: &str,
+    subtitle: &str,
+    active: bool,
+    chevron: bool,
+    value: f32,
+) -> QsTile {
+    QsTile {
+        id: id.into(),
+        span,
+        layout: layout.into(),
+        icon_name: icon_name.into(),
+        icon: Default::default(),
+        title: title.into(),
+        subtitle: subtitle.into(),
+        active,
+        chevron,
+        value,
+        rows: Default::default(),
+    }
+}
+
+/// Greedily pack tiles into rows of a 4-wide span grid, wrapping when the next
+/// tile would overflow the row's 4 columns.
+fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
+    let mut rows: Vec<Vec<QsTile>> = Vec::new();
+    let mut cur: Vec<QsTile> = Vec::new();
+    let mut used = 0;
+    for t in tiles {
+        let span = t.span.clamp(1, 4);
+        if used + span > 4 && !cur.is_empty() {
+            rows.push(std::mem::take(&mut cur));
+            used = 0;
+        }
+        used += span;
+        cur.push(t);
+        if used >= 4 {
+            rows.push(std::mem::take(&mut cur));
+            used = 0;
+        }
+    }
+    if !cur.is_empty() {
+        rows.push(cur);
+    }
+    rows.into_iter()
+        .map(|tiles| QsTileRow {
+            tiles: Rc::new(slint::VecModel::from(tiles)).into(),
+        })
+        .collect()
+}
+
+/// Build the unified tile list: the dogfooded built-ins (synthesised from live
+/// state) followed by every ready plugin tile. One model, one render path, no
+/// "Plugins" section — see the unified-grid design note.
+fn build_qs_tiles(
+    st: &gnoblin_shell_ui::quicksettings::QuickState,
+    plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
+) -> Vec<QsTileRow> {
+    let dnd = gnoblin_shell_ui::dnd::is_on();
+    let nl = gnoblin_shell_ui::nightlight::is_on();
+    let dark = gnoblin_shell_ui::theme::is_dark();
+
+    let wifi_sub = if st.wifi {
+        if st.wifi_name.is_empty() {
+            "Connected".to_string()
+        } else {
+            st.wifi_name.clone()
+        }
+    } else {
+        "Off".to_string()
+    };
+    let bt_sub = if st.bt {
+        if st.bt_device.is_empty() {
+            "On".to_string()
+        } else {
+            st.bt_device.clone()
+        }
+    } else {
+        "Off".to_string()
+    };
+
+    let mut tiles = vec![
+        builtin_tile("wired", 2, "toggle", "ethernet", "Wired",
+            if st.wired { "Connected" } else { "Off" }, st.wired, true, 0.0),
+        builtin_tile("wifi", 2, "toggle", if st.wifi { "wifi" } else { "wifi-off" },
+            "Wi-Fi", &wifi_sub, st.wifi, true, 0.0),
+        builtin_tile("output", 4, "slider", "volume", "Output", "", false, true,
+            st.volume.min(1.0)),
+        builtin_tile("mic", 4, "slider", "mic", "Microphone", "", false, true,
+            st.mic.min(1.0)),
+        builtin_tile("bluetooth", 2, "toggle", "bluetooth", "Bluetooth", &bt_sub,
+            st.bt, true, 0.0),
+        builtin_tile("night-light", 2, "toggle", "moon", "Night Light", "", nl, false, 0.0),
+        builtin_tile("dnd", 2, "toggle", if dnd { "bell-off" } else { "bell" },
+            "Do Not Disturb", "", dnd, false, 0.0),
+        builtin_tile("dark-style", 2, "toggle", "contrast", "Dark Style", "", dark, false, 0.0),
+        builtin_tile("__shortcuts", 4, "section", "", "Shortcuts", "", false, false, 0.0),
+        builtin_tile("power-mode", 4, "row", "gauge", "Power Mode", &st.power_mode,
+            false, true, 0.0),
+        builtin_tile("background-apps", 4, "row", "apps", "Background Apps",
+            "None running", false, true, 0.0),
+    ];
+
+    // External plugin tiles — same QsTile model, appended after the built-ins.
+    for pl in plugins {
+        let spec = &pl.update.tile;
+        let layout = if spec.layout.is_empty() {
+            "toggle"
+        } else {
+            spec.layout.as_str()
+        };
+        let span = if spec.span == 0 {
+            if layout == "toggle" { 2 } else { 4 }
+        } else {
+            spec.span
+        };
+        let rows: Vec<QsMenuRow> = pl
+            .update
+            .menu
+            .as_ref()
+            .map(|m| {
+                m.rows
+                    .iter()
+                    .map(|r| QsMenuRow {
+                        id: r.id.clone().into(),
+                        kind: r.kind.clone().into(),
+                        label: r.label.clone().into(),
+                        sublabel: r.sublabel.clone().into(),
+                        icon: find_icon(&r.icon, "").unwrap_or_default(),
+                        value: r.value,
+                        on: r.on,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        tiles.push(QsTile {
+            id: pl.id.clone().into(),
+            span,
+            layout: layout.into(),
+            icon_name: String::new().into(),
+            icon: find_icon(&spec.icon, "").unwrap_or_default(),
+            title: spec.title.clone().into(),
+            subtitle: spec.subtitle.clone().into(),
+            active: spec.active,
+            chevron: spec.chevron || !rows.is_empty(),
+            value: 0.0,
+            rows: Rc::new(slint::VecModel::from(rows)).into(),
+        });
+    }
+
+    pack_rows(tiles)
+}
+
+/// Push the unified CC tile model + status cluster from a known state snapshot.
+fn push_cc_tiles(
+    p: &TopBar,
+    st: &gnoblin_shell_ui::quicksettings::QuickState,
+    plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
+) {
+    apply_cluster(p, st);
+    let rows = build_qs_tiles(st, plugins);
+    p.set_cc_tiles(Rc::new(slint::VecModel::from(rows)).into());
+}
+
+/// Re-read live built-in state and rebuild the CC tile grid (used by toggles +
+/// popout-open, where a fresh read is wanted and cheap enough).
+fn refresh_cc_tiles(p: &TopBar, plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) {
+    let st = gnoblin_shell_ui::quicksettings::read();
+    push_cc_tiles(p, &st, plugins);
 }
 
 /// One-shot synchronous read (startup + popout-open, for an immediate refresh).
-fn apply_quick_settings(p: &TopBar) {
-    apply_state(p, &gnoblin_shell_ui::quicksettings::read());
-}
-
 fn notification_age_label(timestamp_secs: u64) -> String {
     if timestamp_secs == 0 {
         return String::new();
@@ -317,44 +481,6 @@ fn apply_notifications(p: &TopBar) -> gnoblin_shell_ui::notifcenter::Summary {
 
 /// Build the Slint plugin model from the host's latest snapshot. Icon names are
 /// resolved here (the Slint struct holds a ready `image`, not a name).
-fn apply_qs_plugins(p: &TopBar, plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) {
-    let model: Vec<QsPlugin> = plugins
-        .iter()
-        .map(|st| {
-            let tile = &st.update.tile;
-            let rows: Vec<QsMenuRow> = st
-                .update
-                .menu
-                .as_ref()
-                .map(|m| {
-                    m.rows
-                        .iter()
-                        .map(|r| QsMenuRow {
-                            id: r.id.clone().into(),
-                            kind: r.kind.clone().into(),
-                            label: r.label.clone().into(),
-                            sublabel: r.sublabel.clone().into(),
-                            icon: find_icon(&r.icon, "").unwrap_or_default(),
-                            value: r.value,
-                            on: r.on,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            QsPlugin {
-                id: st.id.clone().into(),
-                icon: find_icon(&tile.icon, "").unwrap_or_default(),
-                title: tile.title.clone().into(),
-                subtitle: tile.subtitle.clone().into(),
-                active: tile.active,
-                chevron: tile.chevron,
-                rows: Rc::new(slint::VecModel::from(rows)).into(),
-            }
-        })
-        .collect();
-    p.set_qs_plugins(Rc::new(slint::VecModel::from(model)).into());
-}
-
 /// Set the default sink volume (0..1) via wpctl.
 fn set_volume(sink: &str, v: f32) {
     use std::process::{Command, Stdio};
@@ -377,6 +503,10 @@ struct TopBarApp {
     qs_rx: Receiver<gnoblin_shell_ui::quicksettings::QuickState>,
     // Command/process-driven QS plugin host (spawns + drives declared plugins).
     qs_host: Rc<RefCell<gnoblin_shell_ui::qsplugin::Host>>,
+    // Latest built-in quick-settings snapshot + plugin tiles. Both feed the one
+    // unified CC tile grid, so both are cached to rebuild it on either change.
+    qs_state: gnoblin_shell_ui::quicksettings::QuickState,
+    qs_plugins: Rc<RefCell<Vec<gnoblin_shell_ui::qsplugin::PluginState>>>,
     last_focused: String,
     last_workspaces: (u32, u32), // (active, count) last pushed to the panel
     last_pending: bool,          // notification-history unread dot
@@ -538,6 +668,7 @@ impl BarApp for TopBarApp {
             let weak = panel.as_weak();
             let app_open = self.app_menu_open.clone();
             let host = self.qs_host.clone();
+            let plugins = self.qs_plugins.clone();
             panel.on_toggle_control_centre(move |anchor_x| {
                 let open = !pop.cc_open.get();
                 if open {
@@ -548,7 +679,7 @@ impl BarApp for TopBarApp {
                 host.borrow().broadcast_open(open);
                 if let Some(p) = weak.upgrade() {
                     if open {
-                        apply_quick_settings(&p);
+                        refresh_cc_tiles(&p, &plugins.borrow());
                         apply_notifications(&p);
                         p.set_cc_anchor_x(anchor_x);
                     }
@@ -606,8 +737,7 @@ impl BarApp for TopBarApp {
                 spawn_cmd(&cmd);
             });
         }
-        panel.on_cc_volume_changed(|v| set_volume("@DEFAULT_AUDIO_SINK@", v));
-        panel.on_cc_mic_changed(|v| set_volume("@DEFAULT_AUDIO_SOURCE@", v));
+        // ── Header actions (account / settings / lock / power) ───────────────
         {
             let commands = self.commands.clone();
             panel.on_cc_account_clicked(move || {
@@ -630,52 +760,74 @@ impl BarApp for TopBarApp {
                 spawn_cmd(&cmd);
             });
         }
+        // ── Unified tile dispatch ────────────────────────────────────────────
+        // One handler for every tile, keyed by id: built-in ids run their
+        // action (and rebuild the grid to reflect the new state); any other id
+        // is an external plugin tile and is forwarded to the qsplugin host.
         {
             let commands = self.commands.clone();
-            panel.on_cc_wired_clicked(move || {
-                let cmd = commands.borrow().wired.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        {
-            let commands = self.commands.clone();
-            panel.on_cc_wifi_clicked(move || {
-                let cmd = commands.borrow().wifi.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        {
-            let commands = self.commands.clone();
-            panel.on_cc_bt_clicked(move || {
-                let cmd = commands.borrow().bluetooth.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        {
+            let host = self.qs_host.clone();
             let weak = panel.as_weak();
-            panel.on_cc_power_mode_clicked(move || {
-                gnoblin_shell_ui::quicksettings::cycle_power_profile();
-                if let Some(p) = weak.upgrade() {
-                    apply_quick_settings(&p);
+            let cached_theme = self.theme_dark.clone();
+            let plugins = self.qs_plugins.clone();
+            panel.on_cc_tile_clicked(move |id| {
+                let rebuild = |weak: &slint::Weak<TopBar>| {
+                    if let Some(p) = weak.upgrade() {
+                        refresh_cc_tiles(&p, &plugins.borrow());
+                    }
+                };
+                match id.as_str() {
+                    "wired" => spawn_cmd(&commands.borrow().wired.clone()),
+                    "wifi" => spawn_cmd(&commands.borrow().wifi.clone()),
+                    "bluetooth" => spawn_cmd(&commands.borrow().bluetooth.clone()),
+                    "background-apps" => spawn_cmd(&commands.borrow().background_apps.clone()),
+                    "power-mode" => {
+                        gnoblin_shell_ui::quicksettings::cycle_power_profile();
+                        rebuild(&weak);
+                    }
+                    "dnd" => {
+                        gnoblin_shell_ui::dnd::toggle();
+                        rebuild(&weak);
+                    }
+                    "night-light" => {
+                        gnoblin_shell_ui::nightlight::toggle();
+                        rebuild(&weak);
+                    }
+                    "dark-style" => {
+                        let dark = !gnoblin_shell_ui::theme::is_dark();
+                        gnoblin_shell_ui::theme::set_dark(dark);
+                        cached_theme.set(dark);
+                        if let Some(p) = weak.upgrade() {
+                            apply_theme(&p);
+                            refresh_cc_tiles(&p, &plugins.borrow());
+                        }
+                    }
+                    other => {
+                        host.borrow().send_event(
+                            gnoblin_shell_ui::qsplugin::PluginEvent::TileClicked {
+                                id: other.to_string(),
+                            },
+                        );
+                    }
                 }
             });
         }
         {
-            let commands = self.commands.clone();
-            panel.on_cc_background_apps_clicked(move || {
-                let cmd = commands.borrow().background_apps.clone();
-                spawn_cmd(&cmd);
+            let host = self.qs_host.clone();
+            panel.on_cc_tile_slider(move |id, v| match id.as_str() {
+                "output" => set_volume("@DEFAULT_AUDIO_SINK@", v),
+                "mic" => set_volume("@DEFAULT_AUDIO_SOURCE@", v),
+                other => host.borrow().send_event(
+                    gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
+                        id: other.to_string(),
+                        row_id: String::new(),
+                        value: v,
+                    },
+                ),
             });
         }
-        {
-            let weak = panel.as_weak();
-            panel.on_cc_dnd_clicked(move || {
-                let on = gnoblin_shell_ui::dnd::toggle();
-                if let Some(p) = weak.upgrade() {
-                    p.set_cc_dnd_active(on);
-                }
-            });
-        }
+        // TODO(#8): the chevron opens the slide-out submenu / device picker.
+        panel.on_cc_tile_chevron(|_id| {});
         {
             let weak = panel.as_weak();
             panel.on_cc_notification_dismissed(move |index| {
@@ -685,48 +837,6 @@ impl BarApp for TopBarApp {
                 if let Some(p) = weak.upgrade() {
                     apply_notifications(&p);
                 }
-            });
-        }
-        // QS plugin tile / row / toggle / slider events → the host.
-        {
-            let host = self.qs_host.clone();
-            panel.on_plugin_tile_clicked(move |id| {
-                host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::TileClicked {
-                        id: id.to_string(),
-                    });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_plugin_row(move |id, row| {
-                host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Row {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                    });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_plugin_toggle(move |id, row, v| {
-                host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Toggle {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                        value: v,
-                    });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_plugin_slider(move |id, row, v| {
-                host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                        value: v,
-                    });
             });
         }
         {
@@ -739,39 +849,19 @@ impl BarApp for TopBarApp {
             let pop = self.popouts.clone();
             let weak = panel.as_weak();
             let app_open = self.app_menu_open.clone();
+            let plugins = self.qs_plugins.clone();
             panel.on_bell_clicked(move || {
                 gnoblin_shell_ui::notifcenter::set(false);
                 pop.dt_open.set(false);
                 pop.cc_open.set(true);
                 if let Some(p) = weak.upgrade() {
-                    apply_quick_settings(&p);
+                    refresh_cc_tiles(&p, &plugins.borrow());
                     apply_notifications(&p);
                     p.set_datetime_open(false);
                     p.set_cc_anchor_x(0.0);
                     p.set_cc_open(true);
                     p.set_app_menu_open(false);
                     app_open.set(false);
-                }
-            });
-        }
-        {
-            let weak = panel.as_weak();
-            panel.on_cc_night_light_clicked(move || {
-                let on = gnoblin_shell_ui::nightlight::toggle();
-                if let Some(p) = weak.upgrade() {
-                    p.set_cc_night_light_active(on);
-                }
-            });
-        }
-        {
-            let weak = panel.as_weak();
-            let cached = self.theme_dark.clone();
-            panel.on_cc_theme_toggle_clicked(move || {
-                let dark = !gnoblin_shell_ui::theme::is_dark();
-                gnoblin_shell_ui::theme::set_dark(dark);
-                cached.set(dark);
-                if let Some(p) = weak.upgrade() {
-                    apply_theme(&p);
                 }
             });
         }
@@ -921,20 +1011,19 @@ impl BarApp for TopBarApp {
             }
             Ok("cc") => {
                 self.popouts.cc_open.set(true);
-                apply_quick_settings(&panel);
-                self.last_notif_summary = apply_notifications(&panel);
                 panel.set_cc_open(true);
             }
             _ => {}
         }
 
-        // Reflect real network/audio state in the status cluster from launch
-        // (the popout-open handler refreshes it live thereafter).
-        apply_quick_settings(&panel);
-        self.last_notif_summary = apply_notifications(&panel);
+        // Reflect real network/audio state + plugin tiles in the unified grid
+        // from launch (the popout-open handler refreshes it live thereafter).
         if let Some(plugins) = self.qs_host.borrow().poll() {
-            apply_qs_plugins(&panel, &plugins);
+            *self.qs_plugins.borrow_mut() = plugins;
         }
+        self.qs_state = gnoblin_shell_ui::quicksettings::read();
+        push_cc_tiles(&panel, &self.qs_state, &self.qs_plugins.borrow());
+        self.last_notif_summary = apply_notifications(&panel);
 
         panel
             .show()
@@ -1009,16 +1098,20 @@ impl BarApp for TopBarApp {
             latest_qs = Some(st);
         }
         if let Some(st) = latest_qs {
+            self.qs_state = st;
             if let Some(p) = &self.panel {
-                apply_state(p, &st);
+                push_cc_tiles(p, &self.qs_state, &self.qs_plugins.borrow());
             }
             changed = true;
         }
 
         // Drain to the latest QS plugin snapshot (process-driven tiles/menus).
+        // Rebuild the grid from the cached built-in state so the (possibly
+        // high-frequency) plugin tick doesn't re-read wpctl/D-Bus each time.
         if let Some(plugins) = self.qs_host.borrow().poll() {
+            *self.qs_plugins.borrow_mut() = plugins;
             if let Some(p) = &self.panel {
-                apply_qs_plugins(p, &plugins);
+                push_cc_tiles(p, &self.qs_state, &self.qs_plugins.borrow());
             }
             changed = true;
         }
@@ -1449,6 +1542,8 @@ fn main() {
             win_rx: wrx,
             qs_rx: qrx,
             qs_host,
+            qs_state: gnoblin_shell_ui::quicksettings::QuickState::default(),
+            qs_plugins: Rc::new(RefCell::new(Vec::new())),
             last_focused: String::new(),
             last_workspaces: (0, 0),
             last_pending: false,

@@ -16,6 +16,12 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+# This test exercises the notification history, not the QS plugin tiles. Disable
+# the dummy plugins so the unified control-centre grid stays short enough to keep
+# the notification stack on-screen on the 800px devkit (the grid + 4 plugin tiles
+# + an expanded stack would otherwise overflow). Must be set before the harness
+# module is imported — QS_PLUGINS is read at module load.
+os.environ.setdefault("QS_PLUGINS", "0")
 spec = importlib.util.spec_from_file_location("dh", ROOT / "scripts" / "devkit-harness.py")
 dh = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dh)
@@ -173,17 +179,20 @@ def main():
         cc_png = "/tmp/gnoblin-notif-cc-history.png"
         dk.shot(cc_png)
         cc = load(cc_png)
-        if not region_changed(clean_cc, cc, range(930, 1240, 35), range(530, 630, 20), 14, 8):
+        # The unified grid is taller than the old fixed panel, so the history
+        # stack sits lower — at the bottom, below all the tiles.
+        if not region_changed(clean_cc, cc, range(930, 1240, 35), range(640, 740, 16), 14, 8):
             print("FAIL: quick settings did not render notification history below the grid")
             return 1
         print("  ok  quick settings notification stack rendered")
 
-        dk.click(1000, 535)
+        # Click the collapsed group card to expand it in place.
+        dk.click(1080, 670)
         time.sleep(0.8)
         expanded_png = "/tmp/gnoblin-notif-cc-history-expanded.png"
         dk.shot(expanded_png)
         expanded = load(expanded_png)
-        if not region_changed(cc, expanded, range(930, 1240, 35), range(610, 700, 20), 10, 8):
+        if not region_changed(cc, expanded, range(930, 1240, 35), range(700, 790, 16), 10, 8):
             print("FAIL: notification stack did not expand to show additional rows")
             return 1
         print("  ok  quick settings notification stack expands in place")

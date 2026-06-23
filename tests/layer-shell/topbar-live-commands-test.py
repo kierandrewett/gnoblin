@@ -104,13 +104,14 @@ def main():
         dk.click(w - 120, 17)
         time.sleep(0.4)
 
-        # ControlCentrePopout is 360px wide at x=904 on the default 1280px
-        # monitor. Header has 16px padding; the settings button is the second
-        # 32px round button in the left cluster.
-        dk.click(976, 74)
+        # ControlCentrePopout is 360px wide at x~912 on the default 1280px
+        # monitor. Header has 16px padding + 8px button gap; the two 36px left
+        # round buttons (account, settings) sit at screen-x ~936-971 and
+        # ~980-1016. Click their centres so neither lands in the inter-button gap.
+        dk.click(998, 74)
         # Account is the first round button in that same header.
-        dk.click(936, 74)
-        # Wired is the first primary connectivity tile.
+        dk.click(953, 74)
+        # Wired is the first primary connectivity tile (top-left of the grid).
         dk.click(960, 130)
         time.sleep(0.8)
 

@@ -64,6 +64,14 @@ pub struct TileSpec {
     pub active: bool,
     #[serde(default)]
     pub chevron: bool,
+    /// Grid span, 1..4 columns of the 4-wide grid. 0 = let the shell pick a
+    /// sensible default for the layout (2 for a toggle, 4 for slider/row).
+    #[serde(default)]
+    pub span: i32,
+    /// Tile shape: `toggle` (pill) | `slider` | `row` (full-width shortcut).
+    /// Empty = `toggle`. A `slider`/`row` implies a full-width (span 4) tile.
+    #[serde(default)]
+    pub layout: String,
 }
 
 /// One row of a plugin's submenu.

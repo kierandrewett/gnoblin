@@ -33,16 +33,58 @@ export struct QsMenuRow {
     on: bool,
 }
 
-// One plugin tile + its (optional) submenu rows. `id` is the plugin id used
-// when emitting events back to Rust. An empty `rows` means a tile-only plugin.
-export struct QsPlugin {
+// One control-centre tile. EVERY tile is one of these — built-in (Wired, the
+// volume slider, Dark Style…) and external/community plugins alike. There is no
+// built-in-vs-plugin distinction and no separate "Plugins" section: Rust
+// synthesises the built-ins from live state and merges them with the qsplugin
+// host's tiles into one ordered list, all rendered through the same grid.
+//
+//   span    1..4 columns in a 4-wide grid (1 = quarter … 4 = full width).
+//   layout  "toggle" (GNOME pill) | "slider" (4x1 icon+track+chevron)
+//           | "row" (4x1 full-width shortcut row) | "section" (label divider).
+//   value   slider position 0..1 (layout == "slider").
+//   rows    optional slide-out submenu (chevron → full-page list).
+export struct QsTile {
     id: string,
+    span: int,
+    layout: string,
+    // Built-in tiles carry a semantic `icon-name` resolved to a bundled
+    // symbolic asset by QsIcons.glyph (the SVGs are @image-url compile-time
+    // embeds, so Rust can't load them by path). External plugins instead pass a
+    // pre-resolved `icon` (find_icon → theme icon). Whichever is set wins.
+    icon-name: string,
     icon: image,
     title: string,
     subtitle: string,
     active: bool,
     chevron: bool,
+    value: float,
     rows: [QsMenuRow],
+}
+
+// Maps a built-in tile's semantic icon name to its bundled symbolic asset.
+// (Slint @image-url is compile-time, so this is an explicit switch — the set of
+// built-in glyphs is small and fixed.)
+export global QsIcons {
+    public pure function glyph(name: string) -> image {
+        return name == "ethernet"  ? @image-url("../assets/icons/symbolic/ethernet.svg")
+             : name == "wifi"      ? @image-url("../assets/icons/symbolic/wifi.svg")
+             : name == "wifi-off"  ? @image-url("../assets/icons/symbolic/wifi-off.svg")
+             : name == "volume"    ? @image-url("../assets/icons/symbolic/volume.svg")
+             : name == "mic"       ? @image-url("../assets/icons/symbolic/mic.svg")
+             : name == "bluetooth" ? @image-url("../assets/icons/symbolic/bluetooth.svg")
+             : name == "moon"      ? @image-url("../assets/icons/symbolic/moon.svg")
+             : name == "bell"      ? @image-url("../assets/icons/symbolic/bell.svg")
+             : name == "bell-off"  ? @image-url("../assets/icons/symbolic/bell-off.svg")
+             : name == "contrast"  ? @image-url("../assets/icons/symbolic/contrast.svg")
+             : name == "gauge"     ? @image-url("../assets/icons/symbolic/gauge.svg")
+             : @image-url("../assets/icons/symbolic/apps.svg");
+    }
+}
+
+// One packed row of the grid (Rust greedily fills to 4 columns then wraps).
+export struct QsTileRow {
+    tiles: [QsTile],
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -362,6 +404,10 @@ export component ShellTile inherits Rectangle {
             font-size: root.compact ? 13px : 14px;
             font-weight: 600;
             horizontal-alignment: left;
+            // Wrap long single-line labels (e.g. "Do Not Disturb") to a second
+            // line inside the pill rather than truncating. Tiles with a subtitle
+            // carry short titles, so they never wrap.
+            wrap: root.subtitle == "" ? TextWrap.word-wrap : TextWrap.no-wrap;
             overflow: elide;
         }
         if root.subtitle != "": Text {
@@ -1302,59 +1348,34 @@ export component ControlCentrePopout {
     in property <length>  popout-x: 0px;
     in property <length>  popout-y: 0px;
 
-    // Sliders (0..1).
-    in-out property <float> volume-value: 0.6;
-    in-out property <float> mic-value:    0.5;
-    callback volume-changed(float);
-    callback mic-changed(float);
+    // ── Unified tile grid ────────────────────────────────────────────────
+    // Every tile — the dogfooded built-ins (Wired, the volume slider, Dark
+    // Style…) and external plugins — arrives here, pre-packed by Rust into rows
+    // of a 4-wide span grid. There is no built-in/plugin split and no separate
+    // "Plugins" section: it's all just QsTiles. Events are generic and keyed by
+    // the tile's id; Rust dispatches them (built-in action or qsplugin event).
+    in property <[QsTileRow]> tiles;
+    callback tile-clicked(string /* tile-id */);
+    callback tile-slider(string /* tile-id */, float /* 0..1 */);
+    callback tile-chevron(string /* tile-id */); // chevron → slide-out submenu / picker
 
-    // Tile state — most are placeholders the renderer can update later.
-    in property <bool>   wired-active:    false;
-    in property <bool>   wifi-active:     false;
-    in property <string> wifi-name:       "Wi-Fi";
-    in property <bool>   bt-active:       false;
-    in property <string> bt-device:       "";
-    in property <string> power-mode:      "Balanced";
-    in property <bool>   night-light:     false;
-    in property <bool>   dnd-active:      false;
-    in property <int>    background-apps: 0;
+    // Notifications history.
     in property <[NotificationItem]> notifications;
     in property <int>    notification-count: 0;
     in-out property <bool> notifications-expanded: false;
 
+    // Header actions.
     callback account-clicked();
     callback settings-clicked();
     callback lock-clicked();
     callback power-clicked();
-    callback wired-clicked();
-    callback wifi-clicked();
-    callback bt-clicked();
-    callback power-mode-clicked();
-    callback night-light-clicked();
-    callback theme-toggle-clicked();
-    callback dnd-clicked();
-    callback background-apps-clicked();
     callback notification-dismissed(int);
 
-    // ── Plugin tiles (qsplugin host) ─────────────────────────────────────
-    // Rust pushes the ordered list of ready plugins here. `expanded-plugin`
-    // is the id of the plugin whose submenu is currently shown inline (empty =
-    // none). The maintainer can later replace the inline list with a
-    // slide-out submenu animation; the data + callbacks below stay the same.
-    in property <[QsPlugin]> qs-plugins;
-    in-out property <string> expanded-plugin: "";
-    callback plugin-tile-clicked(string /* plugin-id */);
-    callback plugin-row(string /* plugin-id */, string /* row-id */);
-    callback plugin-toggle(string /* plugin-id */, string /* row-id */, bool);
-    callback plugin-slider(string /* plugin-id */, string /* row-id */, float);
-
     width: 360px;
-    // Base panel height + a rough allowance per plugin tile (and the section
-    // header) so functional plugin content isn't clipped. The maintainer can
-    // replace this with a proper scroll/measured layout during polish.
-    height: 684px
-        + (root.qs-plugins.length > 0 ? 30px + root.qs-plugins.length * 60px : 0px)
-        + (root.expanded-plugin != "" ? 180px : 0px);
+    // Height follows content (header + packed tile rows + notifications), so the
+    // dynamic tile list is never clipped and there's no magic allowance to keep
+    // in sync. `body` is the inner VerticalLayout declared further down.
+    height: body.preferred-height + 2 * Spacing.lg;
 
     // A touch more translucent than a flat panel so the blurred wallpaper's
     // colour bleeds through — the frosted-glass vibrancy that makes iOS/macOS
@@ -1491,10 +1512,10 @@ export component ControlCentrePopout {
         // `spacing`, so a tweak to any tile height cascades cleanly.
         // Cross-axis (horizontal) alignment is forced by nested
         // HorizontalLayouts so half-width tiles always line up.
-        VerticalLayout {
+        body := VerticalLayout {
             x: Spacing.lg; y: Spacing.lg;
             width:  parent.width  - 2 * Spacing.lg;
-            height: parent.height - 2 * Spacing.lg;
+            height: self.preferred-height;
             spacing: Spacing.md;
             alignment: start;
 
@@ -1535,173 +1556,55 @@ export component ControlCentrePopout {
                 }
             }
 
-            // Primary connectivity.
-            HorizontalLayout {
+            // ── The grid ─────────────────────────────────────────────────
+            // One render path for every tile. Each packed row is a
+            // HorizontalLayout; a tile's width is its span/4 of the inner
+            // width (gap = Spacing.sm), so a span-2 toggle is half-width, a
+            // span-4 slider/row/section is full-width. Partial rows pack left.
+            for trow in root.tiles: HorizontalLayout {
                 spacing: Spacing.sm;
-                ShellTile {
-                    icon: @image-url("../assets/icons/symbolic/ethernet.svg");
-                    title: "Wired";
-                    subtitle: root.wired-active ? "Connected" : "Off";
-                    active: root.wired-active;
-                    tile-enabled: root.open;
-                    clicked => { root.wired-clicked(); }
-                }
-                ShellTile {
-                    icon: root.wifi-active
-                        ? @image-url("../assets/icons/symbolic/wifi.svg")
-                        : @image-url("../assets/icons/symbolic/wifi-off.svg");
-                    // GNOME pattern: category as the title, the live detail
-                    // (SSID / state) as the dimmer subtitle below it.
-                    title: "Wi-Fi";
-                    subtitle: root.wifi-active
-                        ? (root.wifi-name == "" ? "Connected" : root.wifi-name)
-                        : "Off";
-                    active: root.wifi-active;
-                    tile-enabled: root.open;
-                    clicked => { root.wifi-clicked(); }
-                }
-            }
+                alignment: start;
+                // 4-column unit derived from this row's own (parent-fixed) width.
+                property <length> gap: Spacing.sm;
+                property <length> colu: (self.width - 3 * self.gap) / 4;
 
-            // Media controls — minimal single-row sliders (icon + track + a
-            // chevron to the output/input device picker).
-            VerticalLayout {
-                spacing: Spacing.sm;
-                ShellSliderRow {
-                    minimal: true;
-                    show-chevron: true;
-                    icon: @image-url("../assets/icons/symbolic/volume.svg");
-                    value <=> root.volume-value;
-                    sld-enabled: root.open;
-                    changed(v) => { root.volume-changed(v); }
-                }
-                ShellSliderRow {
-                    minimal: true;
-                    show-chevron: true;
-                    icon: @image-url("../assets/icons/symbolic/mic.svg");
-                    value <=> root.mic-value;
-                    sld-enabled: root.open;
-                    changed(v) => { root.mic-changed(v); }
-                }
-            }
+                for tile in trow.tiles: Rectangle {
+                    width: tile.span * parent.colu + (tile.span - 1) * parent.gap;
+                    height: tile.layout == "slider" ? 46px
+                          : tile.layout == "section" ? 26px
+                          : 60px;
+                    horizontal-stretch: 0;
+                    background: transparent;
 
-            // System controls.
-            HorizontalLayout {
-                spacing: Spacing.sm;
-                ShellTile {
-                    icon: @image-url("../assets/icons/symbolic/bluetooth.svg");
-                    // Category title + dimmer detail (connected device / state).
-                    title: "Bluetooth";
-                    subtitle: root.bt-active
-                        ? (root.bt-device == "" ? "On" : root.bt-device)
-                        : "Off";
-                    active: root.bt-active;
-                    tile-enabled: root.open;
-                    clicked => { root.bt-clicked(); }
-                }
-                ShellTile {
-                    icon: @image-url("../assets/icons/symbolic/moon.svg");
-                    title: "Night Light";
-                    active: root.night-light;
-                    show-chevron: false;
-                    tile-enabled: root.open;
-                    clicked => { root.night-light-clicked(); }
-                }
-            }
-
-            // Focus controls. DND intentionally stays on this row so the live
-            // input regression test's y=400 click still lands inside it.
-            HorizontalLayout {
-                spacing: Spacing.sm;
-                ShellTile {
-                    compact: true;
-                    show-chevron: false;
-                    // State-driven icon: a normal bell when notifications flow,
-                    // bell-slash only when DND is actually silencing them (no more
-                    // permanent slash that reads as "off is on").
-                    icon: root.dnd-active
-                        ? @image-url("../assets/icons/symbolic/bell-off.svg")
-                        : @image-url("../assets/icons/symbolic/bell.svg");
-                    title: "Do Not Disturb";
-                    active: root.dnd-active;
-                    tile-enabled: root.open;
-                    clicked => { root.dnd-clicked(); }
-                }
-                ShellTile {
-                    compact: true;
-                    show-chevron: false;
-                    // Half-filled "contrast" glyph — a mode-agnostic dark/light
-                    // symbol that doesn't collide with Night Light's moon.
-                    icon: @image-url("../assets/icons/symbolic/contrast.svg");
-                    title: "Dark Style";
-                    active: Theme.mode == TokenMode.Dark;
-                    tile-enabled: root.open;
-                    clicked => { root.theme-toggle-clicked(); }
-                }
-            }
-
-            ShellSectionDivider { title: "Shortcuts"; }
-
-            // Utility controls are actions/status shortcuts, not boolean
-            // toggles — full-width list rows so their labels + status never
-            // truncate, and the blue active fill stays reserved for real "on".
-            ShellTile {
-                compact: true;
-                show-chevron: true;
-                icon: @image-url("../assets/icons/symbolic/gauge.svg");
-                title: "Power Mode";
-                subtitle: root.power-mode;
-                active: false;
-                tile-enabled: root.open;
-                clicked => { root.power-mode-clicked(); }
-            }
-            ShellTile {
-                compact: true;
-                show-chevron: true;
-                icon: @image-url("../assets/icons/symbolic/apps.svg");
-                title: "Background Apps";
-                subtitle: root.background-apps == 0
-                    ? "None running"
-                    : (root.background-apps == 1 ? "1 app running"
-                                                 : root.background-apps + " apps running");
-                active: false;
-                tile-enabled: root.open;
-                clicked => { root.background-apps-clicked(); }
-            }
-
-            // ── Plugin tiles ─────────────────────────────────────────────
-            // Functional rendering only (the maintainer polishes + animates
-            // the slide-out submenu). Each plugin is a full-width ShellTile;
-            // clicking a tile with rows toggles its inline submenu, and always
-            // fires plugin-tile-clicked so tile-only plugins can act.
-            if root.qs-plugins.length > 0: ShellSectionDivider { title: "Plugins"; }
-            for plugin in root.qs-plugins: VerticalLayout {
-                spacing: Spacing.xs;
-                ShellTile {
-                    compact: true;
-                    icon: plugin.icon;
-                    title: plugin.title;
-                    subtitle: plugin.subtitle;
-                    active: plugin.active;
-                    show-chevron: plugin.chevron || plugin.rows.length > 0;
-                    tile-enabled: root.open;
-                    clicked => {
-                        root.plugin-tile-clicked(plugin.id);
-                        if (plugin.rows.length > 0) {
-                            root.expanded-plugin = root.expanded-plugin == plugin.id
-                                ? "" : plugin.id;
-                        }
+                    // Toggle pill + full-width shortcut row share ShellTile;
+                    // a "row" uses the compact (denser) text treatment.
+                    if tile.layout == "toggle" || tile.layout == "row": ShellTile {
+                        width: parent.width;
+                        height: parent.height;
+                        compact: tile.layout == "row";
+                        icon: tile.icon-name != "" ? QsIcons.glyph(tile.icon-name) : tile.icon;
+                        title: tile.title;
+                        subtitle: tile.subtitle;
+                        active: tile.active;
+                        show-chevron: tile.chevron;
+                        tile-enabled: root.open;
+                        clicked => { root.tile-clicked(tile.id); }
                     }
-                }
-                // Inline submenu rows — only while this plugin is expanded.
-                if root.expanded-plugin == plugin.id: VerticalLayout {
-                    spacing: Spacing.xs;
-                    padding-left: Spacing.md;
-                    for row in plugin.rows: QsPluginRow {
-                        data: row;
-                        row-enabled: root.open;
-                        clicked => { root.plugin-row(plugin.id, row.id); }
-                        toggled(v) => { root.plugin-toggle(plugin.id, row.id, v); }
-                        slid(v) => { root.plugin-slider(plugin.id, row.id, v); }
+                    // Rich 4x1 slider (icon + track + device-picker chevron).
+                    if tile.layout == "slider": ShellSliderRow {
+                        width: parent.width;
+                        minimal: true;
+                        show-chevron: tile.chevron;
+                        icon: tile.icon-name != "" ? QsIcons.glyph(tile.icon-name) : tile.icon;
+                        value: tile.value;
+                        sld-enabled: root.open;
+                        changed(v) => { root.tile-slider(tile.id, v); }
+                        chevron-clicked => { root.tile-chevron(tile.id); }
+                    }
+                    // Quiet section label (a divider that's just a tile).
+                    if tile.layout == "section": ShellSectionDivider {
+                        width: parent.width;
+                        title: tile.title;
                     }
                 }
             }
