@@ -95,6 +95,29 @@ struct LauncherApp {
     usage: Rc<RefCell<HashMap<String, u32>>>,
     /// Process/command search sources (file search, web, convert, …).
     providers: Vec<provider::Provider>,
+    /// Optional `[launcher] web-search` URL template (with `%s`) — when set, a
+    /// "Search the web" fallback appears if nothing else matches.
+    web_search: Option<String>,
+}
+
+/// Minimal URL query encoder (RFC 3986 unreserved chars pass through).
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Single-quote a string for safe use inside `sh -c`.
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Activate the row at `index`: launch an app (recording usage) or copy a
@@ -232,6 +255,28 @@ impl LauncherApp {
                 accessory: String::new(),
                 action: Action::Launch(a.id.clone()),
             });
+        }
+
+        // Web-search fallback (opt-in via `[launcher] web-search = <url %s>`):
+        // when nothing else matches, offer to search the web — like Spotlight.
+        if !self.grid && rows.is_empty() {
+            let q = self.query.trim();
+            if !q.is_empty() {
+                if let Some(tmpl) = &self.web_search {
+                    let enc = urlencode(q);
+                    rows.push(Row {
+                        name: format!("Search the web for “{q}”"),
+                        subtitle: "Open in your browser".into(),
+                        icon: "web-browser".into(),
+                        kind: "web".into(),
+                        accessory: String::new(),
+                        action: Action::Run(format!(
+                            "xdg-open {}",
+                            shell_quote(&tmpl.replace("%s", &enc))
+                        )),
+                    });
+                }
+            }
         }
 
         *self.filtered.borrow_mut() = rows;
@@ -391,6 +436,15 @@ fn main() {
             usage: Rc::new(RefCell::new(usage::load())),
             // The app grid has no search box, so skip provider spawning there.
             providers: if grid { Vec::new() } else { provider::load() },
+            web_search: if grid {
+                None
+            } else {
+                gnoblin_shell_ui::config::Config::load()
+                    .get("launcher", "web-search")
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            },
         }),
     );
 }

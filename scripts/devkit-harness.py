@@ -166,6 +166,7 @@ class Devkit:
                 f'[launcher-provider.files]\ncommand = {PROVIDERS_DIR / "launcher-files"}\nprefix = "f "\n'
                 f'[launcher-provider.emoji]\ncommand = {PROVIDERS_DIR / "launcher-emoji"}\nprefix = "e "\n'
                 f'[launcher-provider.kill]\ncommand = {PROVIDERS_DIR / "launcher-kill"}\nprefix = "k "\n'
+                '[launcher]\nweb-search = https://duckduckgo.com/?q=%s\n'
             )
         (cfgdir / "gnoblin.conf").write_text(
             "[appearance]\n"
