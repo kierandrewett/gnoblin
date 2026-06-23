@@ -23,11 +23,14 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-const ROW_H: i32 = 44;
-const VISIBLE_H: i32 = 356; // list viewport height (panel 440 - pad 16 - search 40 - spacing 12 - pad 16)
+// These MUST track the Spotlight geometry in launcher.slint (row-h 52, search-h
+// 60, panel-h 432 list / 560 grid) so keyboard nav scrolls the selected row into
+// view. List viewport = panel-h(432) - search-h(60) - hairline(1) - top pad(4).
+const ROW_H: i32 = 52;
+const VISIBLE_H: i32 = 367;
 const COLUMNS: usize = 5; // app-grid columns (must match the .slint default)
 const CELL_H: i32 = 112; // app-grid tile height (must match the .slint cell-h)
-const GRID_VISIBLE_H: i32 = 476; // grid viewport (panel 560 - pad 16 - search 40 - spacing 12 - pad 16)
+const GRID_VISIBLE_H: i32 = 499; // grid viewport (panel 560 - search 60 - hairline 1)
 
 /// Bump `id`'s launch count, persist, then run it. Shared by the click + Enter
 /// paths so usage (which drives the most-used-first sort) is always recorded.

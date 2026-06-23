@@ -1741,11 +1741,18 @@ export component ControlCentrePopout {
                         show-chevron: tile.chevron;
                         tile-enabled: root.open;
                         clicked => { root.tile-clicked(tile.id); }
+                        // Drill into the slide-out page only when the tile has
+                        // rows; otherwise the chevron just runs the tile action
+                        // (built-ins like Wired/Power Mode have no submenu yet).
                         chevron-clicked => {
-                            root.submenu-title = tile.title;
-                            root.submenu-rows = tile.rows;
-                            root.open-submenu = tile.id;
-                            root.tile-chevron(tile.id);
+                            if (tile.rows.length > 0) {
+                                root.submenu-title = tile.title;
+                                root.submenu-rows = tile.rows;
+                                root.open-submenu = tile.id;
+                                root.tile-chevron(tile.id);
+                            } else {
+                                root.tile-clicked(tile.id);
+                            }
                         }
                     }
                     // Rich 4x1 slider (icon + track + device-picker chevron).
@@ -1758,9 +1765,13 @@ export component ControlCentrePopout {
                         sld-enabled: root.open;
                         changed(v) => { root.tile-slider(tile.id, v); }
                         chevron-clicked => {
-                            root.submenu-title = tile.title;
-                            root.submenu-rows = tile.rows;
-                            root.open-submenu = tile.id;
+                            if (tile.rows.length > 0) {
+                                root.submenu-title = tile.title;
+                                root.submenu-rows = tile.rows;
+                                root.open-submenu = tile.id;
+                            }
+                            // No rows yet (built-in Output/Mic) → device-picker
+                            // hook; opening an empty page would just say "nothing".
                             root.tile-chevron(tile.id);
                         }
                     }

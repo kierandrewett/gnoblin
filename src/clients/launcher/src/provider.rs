@@ -27,6 +27,8 @@ use std::time::{Duration, Instant};
 
 /// A provider declared under `[launcher-provider.NAME]`.
 pub struct Provider {
+    /// The NAME (kept for diagnostics / future per-provider ordering).
+    #[allow(dead_code)]
     pub id: String,
     pub command: String,
     /// Keyword the query must start with for this provider to run (stripped
