@@ -652,6 +652,25 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
     if (hints->no_shadow)
         out->shadow_enabled = FALSE;
 
+    /* gnoblin's own chrome (^gnoblin-*) is a full-screen / full-width layer
+     * surface whose VISIBLE UI is drawn by Slint INSIDE it (the dock pill, the
+     * bar, popouts — each already rounded by the client). A compositor ring/
+     * rounding frames the whole SURFACE, so it paints a border around the screen
+     * edge and a hard line where the surface edge cuts across (the dock surface
+     * spans 0,344..1280,800 — its top edge was the line across mid-screen). So
+     * the chrome gets NO compositor ring/rounding by default; its blur frost is
+     * alpha-gated to the Slint shape and still works. An explicit [window-rules]
+     * border/rounding for the namespace still wins. */
+    {
+        const char* cns = gnoblin_rules_layer_namespace(window);
+        if (cns && g_str_has_prefix(cns, "gnoblin-")) {
+            if (!hints->border_style_set)
+                out->rounded.border_style = GNOBLIN_BORDER_NONE;
+            if (!hints->rounding_set && !hints->border_style_set)
+                out->rounding_enabled = FALSE;
+        }
+    }
+
     /* RING border: fill the two-layer focus-aware colours from the spec defaults
      * (theme-aware), unless a rule already set explicit ring/border colours. The
      * ring needs the rounded shader to run even with a 0 inner-border width. */

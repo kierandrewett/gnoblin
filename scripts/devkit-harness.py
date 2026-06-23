@@ -606,6 +606,13 @@ class Devkit:
         return self.shell_proxy().call_sync(
             "ListWindowFrames", None, Gio.DBusCallFlags.NONE, -1, None).unpack()[0]
 
+    def inspect_scene(self):
+        """Return the live scene as a dict: every surface's geometry + effects."""
+        raw = self.shell_proxy().call_sync(
+            "InspectScene", None, Gio.DBusCallFlags.NONE, -1, None).unpack()[0]
+        import json as _json
+        return _json.loads(raw)
+
     def workspace_state(self):
         return self.shell_proxy().call_sync(
             "WorkspaceState", None, Gio.DBusCallFlags.NONE, -1, None).unpack()
@@ -1013,6 +1020,51 @@ def cmd_wm(spec, out=None):
         dk.teardown()
 
 
+def cmd_inspect(spec=None, out=None):
+    """Boot, run optional spawn/dispatch ops (same syntax as `wm`), then print the
+    live scene: every surface's geometry + the gnoblin effects on it. The actual
+    rendering truth — what is rounded/ringed/blurred and where — instead of
+    eyeballing screenshots. Optionally also writes a screenshot to OUT."""
+    import json as _json
+    dk = Devkit()
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        for op in (spec or "").split(","):
+            op = op.strip()
+            if not op:
+                continue
+            action, _, arg = op.partition(":")
+            if action == "spawn":
+                dk.spawn_and_wait(arg or "foot")
+            else:
+                dk.dispatch(action, arg)
+                time.sleep(1.2)
+        if dk.crashed():
+            print(f"CRASH: {dk.crashed()}")
+            print(dk._tail())
+            return 1
+        scene = dk.inspect_scene()
+        # Compact, aligned table — easy to scan for the offending surface.
+        print(f"{'layer/title':30} {'type':4} {'frame(xywh)':22} {'csd_inset':16} "
+              f"{'round':5} {'rad':4} {'bstyle':6} {'blur':4} {'attached'}")
+        for s in scene.get("surfaces", []):
+            label = (s['layer'] or s['title'] or f"id{s['id']}")[:30]
+            fr = ",".join(map(str, s['frame']))
+            inset = ",".join(map(str, s['csd_inset']))
+            fx = s['fx']
+            att = "+".join(k for k, v in s['attached'].items() if v) or "-"
+            print(f"{label:30} {s['type']:<4} {fr:22} {inset:16} "
+                  f"{str(fx['round']):5} {fx['radius']:<4.0f} {fx['border_style']:<6} "
+                  f"{str(fx['blur']):4} {att}")
+        print("RAW:", _json.dumps(scene))
+        if out:
+            dk.shot(out)
+        return 0
+    finally:
+        dk.teardown()
+
+
 def cmd_boot():
     dk = Devkit()
     stop = {"go": True}
@@ -1059,10 +1111,12 @@ def main():
         if not arg:
             sys.exit(f"usage: {sys.argv[0]} wm 'spawn:foot,maximize,snap:left' [OUT.png]")
         sys.exit(cmd_wm(arg, sys.argv[3] if len(sys.argv) > 3 else None))
+    elif cmd == "inspect":
+        sys.exit(cmd_inspect(arg, sys.argv[3] if len(sys.argv) > 3 else None))
     elif cmd == "boot":
         sys.exit(cmd_boot())
     else:
-        sys.exit(f"usage: {sys.argv[0]} [smoke|shot OUT|late [OUT]|boot]")
+        sys.exit(f"usage: {sys.argv[0]} [smoke|shot OUT|late [OUT]|wm OPS|inspect [OPS]|boot]")
 
 
 if __name__ == "__main__":

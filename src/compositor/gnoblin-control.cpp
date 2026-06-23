@@ -13,7 +13,10 @@
 #include <string.h>
 
 extern "C" {
+#include <clutter/clutter.h>
+#include <meta/compositor.h>
 #include <meta/display.h>
+#include <meta/meta-window-actor.h>
 #include <meta/meta-workspace-manager.h>
 #include <meta/prefs.h>
 #include <meta/window.h>
@@ -22,6 +25,7 @@ extern "C" {
 #include "gnoblin-actions.h"
 #include "gnoblin-config.h"
 #include "gnoblin-roles.h"
+#include "gnoblin-rules.h"
 
 #define GNOBLIN_DBUS_NAME "dev.gnoblin.Shell"
 #define GNOBLIN_DBUS_PATH "/dev/gnoblin/Shell"
@@ -224,6 +228,9 @@ static const char introspection_xml[] =
     "    <method name='ListWindowFrames'>"
     "      <arg type='a(tiiii)' name='frames' direction='out'/>"
     "    </method>"
+    "    <method name='InspectScene'>"
+    "      <arg type='s' name='json' direction='out'/>"
+    "    </method>"
     "    <method name='ActivateWindow'>"
     "      <arg type='t' name='id' direction='in'/>"
     "    </method>"
@@ -327,6 +334,88 @@ static void activate_window_by_id(MetaDisplay* display, guint64 id) {
     g_list_free(windows);
 }
 
+/* Append a JSON-escaped string (quotes included). */
+static void json_str(GString* s, const char* v) {
+    g_string_append_c(s, '"');
+    for (const char* p = v ? v : ""; *p; p++) {
+        if (*p == '"' || *p == '\\')
+            g_string_append_c(s, '\\'), g_string_append_c(s, *p);
+        else if ((unsigned char)*p < 0x20)
+            g_string_append_printf(s, "\\u%04x", *p);
+        else
+            g_string_append_c(s, *p);
+    }
+    g_string_append_c(s, '"');
+}
+
+/* Dump the live scene as JSON: every window actor / layer surface with its
+ * geometry (frame vs buffer rect, actor allocation), the gnoblin effects
+ * actually attached to its actor, and the resolved effect set. Built so tooling
+ * (the harness `inspect` command) can see EXACTLY what is rounded/ringed/blurred
+ * and where — no guessing from screenshots. */
+static char* build_scene_json(MetaDisplay* display) {
+    MetaCompositor* compositor = meta_display_get_compositor(display);
+    GList* actors = meta_compositor_get_window_actors(compositor);
+    GList* l;
+    GString* s = g_string_new("{\"surfaces\":[");
+    gboolean first = TRUE;
+
+    for (l = actors; l; l = l->next) {
+        MetaWindowActor* wa = META_WINDOW_ACTOR(l->data);
+        MetaWindow* w = meta_window_actor_get_meta_window(wa);
+        ClutterActor* actor = CLUTTER_ACTOR(wa);
+        MtkRectangle frame = {0, 0, 0, 0};
+        MtkRectangle buffer = {0, 0, 0, 0};
+        const char* ns;
+        const char* title;
+        float aw = 0, ah = 0;
+        GnoblinEffects fx;
+        gboolean has_rounded, has_blur;
+
+        if (!w)
+            continue;
+
+        meta_window_get_frame_rect(w, &frame);
+        meta_window_get_buffer_rect(w, &buffer);
+        clutter_actor_get_size(actor, &aw, &ah);
+        ns = gnoblin_rules_layer_namespace(w);
+        title = meta_window_get_title(w);
+        has_rounded = clutter_actor_get_effect(actor, "gnoblin-rounded") != NULL;
+        has_blur = clutter_actor_get_effect(actor, "gnoblin-blur") != NULL;
+        gnoblin_rules_effects(w, &fx);
+
+        if (!first)
+            g_string_append_c(s, ',');
+        first = FALSE;
+        g_string_append_c(s, '{');
+        g_string_append_printf(s, "\"id\":%" G_GUINT64_FORMAT ",", (guint64)meta_window_get_id(w));
+        g_string_append(s, "\"title\":");
+        json_str(s, title ? title : "");
+        g_string_append(s, ",\"layer\":");
+        json_str(s, ns ? ns : "");
+        g_string_append_printf(s, ",\"type\":%d", (int)meta_window_get_window_type(w));
+        g_string_append_printf(s, ",\"frame\":[%d,%d,%d,%d]", frame.x, frame.y, frame.width,
+                               frame.height);
+        g_string_append_printf(s, ",\"buffer\":[%d,%d,%d,%d]", buffer.x, buffer.y, buffer.width,
+                               buffer.height);
+        g_string_append_printf(s, ",\"actor\":[%.0f,%.0f]", (double)aw, (double)ah);
+        g_string_append_printf(s, ",\"csd_inset\":[%d,%d,%d,%d]", frame.x - buffer.x,
+                               frame.y - buffer.y,
+                               (buffer.x + buffer.width) - (frame.x + frame.width),
+                               (buffer.y + buffer.height) - (frame.y + frame.height));
+        g_string_append_printf(s, ",\"fx\":{\"round\":%s,\"radius\":%.1f,\"border_style\":%d,"
+                                  "\"blur\":%s,\"blur_r\":%.1f,\"shadow\":%s}",
+                               fx.rounding_enabled ? "true" : "false", (double)fx.rounded.radius,
+                               (int)fx.rounded.border_style, fx.blur_enabled ? "true" : "false",
+                               (double)fx.blur_radius, fx.shadow_enabled ? "true" : "false");
+        g_string_append_printf(s, ",\"attached\":{\"rounded\":%s,\"blur\":%s}",
+                               has_rounded ? "true" : "false", has_blur ? "true" : "false");
+        g_string_append_c(s, '}');
+    }
+    g_string_append(s, "]}");
+    return g_string_free(s, FALSE);
+}
+
 static void handle_method_call(GDBusConnection* connection, const char* sender,
                                const char* object_path, const char* interface_name,
                                const char* method_name, GVariant* parameters,
@@ -376,6 +465,10 @@ static void handle_method_call(GDBusConnection* connection, const char* sender,
         g_variant_builder_init(&builder, G_VARIANT_TYPE("a(tiiii)"));
         build_window_frame_list(the_display, &builder);
         g_dbus_method_invocation_return_value(invocation, g_variant_new("(a(tiiii))", &builder));
+    } else if (!g_strcmp0(method_name, "InspectScene")) {
+        g_autofree char* json = build_scene_json(the_display);
+
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", json));
     } else if (!g_strcmp0(method_name, "ActivateWindow")) {
         guint64 id = 0;
 
