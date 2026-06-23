@@ -303,7 +303,11 @@ fn build_qs_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<Qs
             spec.layout.as_str()
         };
         let span = if spec.span == 0 {
-            if layout == "toggle" { 2 } else { 4 }
+            if layout == "toggle" {
+                2
+            } else {
+                4
+            }
         } else {
             spec.span
         };

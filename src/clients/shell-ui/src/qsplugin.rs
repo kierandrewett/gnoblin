@@ -712,11 +712,7 @@ pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
-        out.sort_by_key(|p| {
-            want.iter()
-                .position(|w| *w == p.id)
-                .unwrap_or(usize::MAX)
-        });
+        out.sort_by_key(|p| want.iter().position(|w| *w == p.id).unwrap_or(usize::MAX));
     }
     out
 }

@@ -156,11 +156,13 @@ pub fn dismiss_history_index(index: usize) -> bool {
     entries.remove(index);
     write_history(&entries);
     set_pending(!entries.is_empty());
-    let summary = entries.first().map_or_else(Summary::default, |entry| Summary {
-        count: entries.len(),
-        latest_summary: entry.summary.clone(),
-        latest_body: entry.body.clone(),
-    });
+    let summary = entries
+        .first()
+        .map_or_else(Summary::default, |entry| Summary {
+            count: entries.len(),
+            latest_summary: entry.summary.clone(),
+            latest_body: entry.body.clone(),
+        });
     write_summary(&summary);
     true
 }
