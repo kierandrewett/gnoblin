@@ -6,7 +6,41 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
-## In progress
+## In progress — QS DE-HARDCODING (top priority, Kieran's directive)
+"there shouldnt be built in plugins.. dont hardcode... define in config stuff
+like wifi, bluetooth etc.. you define the order of the plugins and they poll
+async" + "prefix commands with gnoblin".
+
+The async plugin host + tile/menu/rows protocol + config order ALREADY exist
+(qsplugin.rs). Only `build_qs_tiles` hardcodes the built-ins. Plan:
+- [ ] Ship default `gnoblin-qs-*` plugin scripts (src/data/plugins/), real hw
+  integration + graceful fallback: wifi(nmcli), bluetooth(bluetoothctl),
+  output/mic(wpctl, slider), nightlight/dnd(runtime state-file), darkstyle
+  ($XDG_RUNTIME_DIR/gnoblin-theme), powermode(powerprofilesctl), background-apps.
+- [ ] Ship a default config layer declaring them in order, commands gnoblin-qs-*;
+  Config::load (Rust) overlays the user's gnoblin.conf on top (user wins). Add
+  `[quicksettings] order = …` for explicit user ordering. C parser untouched.
+- [ ] meson: install src/data/plugins/gnoblin-qs-* to bindir (on PATH).
+- [ ] Refactor build_qs_tiles → grid = plugin snapshot in config order, NO
+  builtin_tile(). Dispatch handlers forward ALL ids to the host (drop the
+  wired/wifi/output/mic/dark-style/dnd/... special-cases).
+- [ ] Harness: declare the gnoblin-qs-* plugins so the devkit renders the grid.
+- [ ] Verify on llvmpipe: grid renders from plugins in config order; toggle /
+  click / slider / chevron-slide events all flow to the right plugin.
+- SAFETY: do NOT delete the hardcoded built-ins until the plugin replacements
+  are in + verified, so the QS never goes empty mid-refactor.
+
+## Blur (also urgent — real-GPU bug, see Kieran's screenshot)
+- [ ] Topbar has NO blur because I disabled it — Kieran WANTS it frosted. Re-enable
+  + solve the screen-edge halo properly (clamp capture to screen, don't sample
+  above the top edge) rather than disabling.
+- [ ] QS popout shows NO frost on real GPU (sharp wallpaper behind it) though it
+  looks frosted on llvmpipe — the offscreen capture-behind isn't compositing on
+  the GPU path. Root-cause the real-HW blur.
+- [ ] Dock blur smears the SHADOW (broken halo). The shadow second-pass interacts
+  badly on GPU. Needs real-HW iteration.
+
+## Other in progress
 - (nothing actively in flight — blocked items are below)
 
 ## To do (open-ended — "whatever gnoblin needs")

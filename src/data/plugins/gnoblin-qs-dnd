@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# gnoblin Do Not Disturb plugin (oneshot).
+# Toggles the DND runtime flag the notification daemon checks before showing
+# popups (presence of $XDG_RUNTIME_DIR/gnoblin-dnd == on).
+set -euo pipefail
+FLAG="$XDG_RUNTIME_DIR/gnoblin-dnd"   # exact file dnd.rs / notifyd read
+case "${GNOBLIN_QS_EVENT:-}" in
+    *'"event":"tile-clicked"'*)
+        if [ -e "$FLAG" ]; then rm -f "$FLAG"; else : >"$FLAG"; fi ;;
+esac
+if [ -e "$FLAG" ]; then
+    active=true; icon=notifications-disabled-symbolic
+else
+    active=false; icon=preferences-system-notifications-symbolic
+fi
+printf '{"tile":{"icon":"%s","title":"Do Not Disturb","active":%s,"chevron":false,"layout":"toggle","span":2}}\n' "$icon" "$active"

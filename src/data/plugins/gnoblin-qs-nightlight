@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# gnoblin Night Light plugin (oneshot).
+# Toggles the night-light runtime flag the gnoblin-night-light daemon watches to
+# warm the screen gamma (presence of $XDG_RUNTIME_DIR/gnoblin-nightlight == on).
+set -euo pipefail
+FLAG="$XDG_RUNTIME_DIR/gnoblin-nightlight"   # exact file the night-light daemon watches
+case "${GNOBLIN_QS_EVENT:-}" in
+    *'"event":"tile-clicked"'*)
+        if [ -e "$FLAG" ]; then rm -f "$FLAG"; else : >"$FLAG"; fi ;;
+esac
+if [ -e "$FLAG" ]; then active=true; sub=On; else active=false; sub=Off; fi
+printf '{"tile":{"icon":"night-light-symbolic","title":"Night Light","subtitle":"%s","active":%s,"chevron":false,"layout":"toggle","span":2}}\n' "$sub" "$active"

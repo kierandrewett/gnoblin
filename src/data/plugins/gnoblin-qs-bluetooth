@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# gnoblin Bluetooth plugin (oneshot). Real BlueZ integration via bluetoothctl.
+# Tile = power state + connected device; submenu lists known devices (tap to
+# connect/disconnect), a power toggle, and a Settings action. No fallback.
+set -euo pipefail
+
+evt="${GNOBLIN_QS_EVENT:-}"
+case "$evt" in
+    *'"event":"toggle"'*'bt-power'*)
+        case "$evt" in *'"value":true'*) bluetoothctl power on ;; *) bluetoothctl power off ;; esac ;;
+    *'"event":"row"'*'"id":"settings"'*)
+        setsid -f gnome-control-center bluetooth ;;
+    *'"event":"row"'*'"id":"dev:'*)
+        mac=$(printf '%s' "$evt" | sed -n 's/.*"id":"dev:\([0-9A-Fa-f:]*\)".*/\1/p')
+        if [ -n "$mac" ]; then
+            if bluetoothctl info "$mac" | grep -q 'Connected: yes'; then
+                bluetoothctl disconnect "$mac"
+            else
+                bluetoothctl connect "$mac"
+            fi
+        fi ;;
+esac
+
+json_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+powered=$(bluetoothctl show | sed -n 's/.*Powered: //p' | head -1)
+if [ "$powered" = yes ]; then on=true; else on=false; fi
+
+connected_name=""
+rows='{"type":"toggle","id":"bt-power","label":"Bluetooth","value":'"$on"'},{"type":"section","label":"Devices"}'
+if [ "$on" = true ]; then
+    while read -r _ mac name; do
+        [ -z "$mac" ] && continue
+        if bluetoothctl info "$mac" | grep -q 'Connected: yes'; then cur=true; connected_name="$name"; else cur=false; fi
+        e=$(json_esc "$name")
+        if [ "$cur" = true ]; then sl="Connected"; else sl="Paired"; fi
+        rows="$rows,{\"type\":\"item\",\"id\":\"dev:$mac\",\"label\":\"$e\",\"sublabel\":\"$sl\",\"icon\":\"bluetooth-symbolic\",\"on\":$cur}"
+    done < <(bluetoothctl devices | head -12)
+fi
+rows="$rows,{\"type\":\"separator\"},{\"type\":\"action\",\"id\":\"settings\",\"label\":\"Bluetooth Settings…\",\"icon\":\"preferences-system-symbolic\"}"
+
+if [ "$on" = true ]; then sub="${connected_name:-On}"; else sub="Off"; fi
+printf '{"tile":{"icon":"bluetooth-symbolic","title":"Bluetooth","subtitle":"%s","active":%s,"chevron":true,"layout":"toggle","span":2},"menu":{"title":"Bluetooth","rows":[%s]}}\n' "$(json_esc "$sub")" "$on" "$rows"

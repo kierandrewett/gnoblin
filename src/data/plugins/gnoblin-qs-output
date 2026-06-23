@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# gnoblin Output volume plugin (oneshot, slider). Reads/sets the default sink via
+# wpctl. Dragging the 4-wide slider emits a slider event carrying the new value.
+# No fallback: if wpctl/PipeWire is absent it fails.
+set -euo pipefail
+SINK="@DEFAULT_AUDIO_SINK@"
+case "${GNOBLIN_QS_EVENT:-}" in
+    *'"event":"slider"'*)
+        v=$(printf '%s' "$GNOBLIN_QS_EVENT" | sed -n 's/.*"value":\([0-9.]*\).*/\1/p')
+        [ -n "$v" ] && wpctl set-volume "$SINK" "$v" ;;
+esac
+vol=$(wpctl get-volume "$SINK" | awk '{print $2}')
+printf '{"tile":{"icon":"audio-volume-high-symbolic","title":"Output","chevron":true,"layout":"slider","span":4,"value":%s}}\n' "$vol"

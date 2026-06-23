@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# gnoblin Microphone volume plugin (oneshot, slider). Reads/sets the default
+# source via wpctl. No fallback: if wpctl/PipeWire is absent it fails.
+set -euo pipefail
+SRC="@DEFAULT_AUDIO_SOURCE@"
+case "${GNOBLIN_QS_EVENT:-}" in
+    *'"event":"slider"'*)
+        v=$(printf '%s' "$GNOBLIN_QS_EVENT" | sed -n 's/.*"value":\([0-9.]*\).*/\1/p')
+        [ -n "$v" ] && wpctl set-volume "$SRC" "$v" ;;
+esac
+vol=$(wpctl get-volume "$SRC" | awk '{print $2}')
+printf '{"tile":{"icon":"audio-input-microphone-symbolic","title":"Microphone","chevron":true,"layout":"slider","span":4,"value":%s}}\n' "$vol"

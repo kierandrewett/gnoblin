@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# gnoblin Dark Style quick-settings plugin (oneshot).
+# Flips the runtime theme-override file the shell + clients read; the tile
+# reflects the current mode. Tapping the tile toggles.
+set -euo pipefail
+STATE="$XDG_RUNTIME_DIR/gnoblin-theme"   # exact file theme.rs reads
+mode() { case "$(cat "$STATE" 2>/dev/null)" in light) echo light ;; *) echo dark ;; esac; }
+case "${GNOBLIN_QS_EVENT:-}" in
+    *'"event":"tile-clicked"'*)
+        if [ "$(mode)" = dark ]; then echo light >"$STATE"; else echo dark >"$STATE"; fi ;;
+esac
+if [ "$(mode)" = dark ]; then active=true; sub=On; else active=false; sub=Off; fi
+printf '{"tile":{"icon":"weather-clear-night-symbolic","title":"Dark Style","subtitle":"%s","active":%s,"chevron":false,"layout":"toggle","span":2}}\n' "$sub" "$active"
