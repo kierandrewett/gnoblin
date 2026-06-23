@@ -98,10 +98,11 @@ def main():
 
         # Use the real default layout. The right zone is:
         # launcher, tray, status. With no tray items on a 1280px test monitor,
-        # the launcher button sits around x=1160; scale that from the monitor
-        # width so this still works under MONITOR=WxH.
+        # the launcher (magnifier) button sits around x=1144 (left of the roomier
+        # status cluster); scale that from the monitor width so this still works
+        # under MONITOR=WxH.
         w = monitor_width()
-        dk.click(w - 120, 17)
+        dk.click(w - 136, 17)
         time.sleep(0.4)
 
         # ControlCentrePopout is 360px wide at x~912 on the default 1280px
