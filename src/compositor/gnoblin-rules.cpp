@@ -523,17 +523,20 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
      * so config rules win). */
     apply_gnoblin_chrome_defaults(window, out);
 
-    /* The top bar spans the whole top edge of the screen, so it gets NO rounding
-     * and NO shadow: a flush, flat, GNOME-style bar (rounding carves notches out
-     * against the bezel; a rounded shadow at the edge reads as a gap). It keeps
-     * its frost — the padded-capture blur no longer smears a halo into the screen
-     * edge. An explicit [window-rules] rule still wins. */
+    /* The top bar spans the whole top edge of the screen, so it gets NO rounding,
+     * NO shadow and NO frost: a flush, flat, GNOME-style bar. It keeps its own
+     * translucent tint. The blur-behind cannot frost a screen-edge surface
+     * cleanly — there is nothing above the screen to sample, so even the
+     * padded-capture blur smears a rounded halo back into the top corners (the
+     * "gap" Kieran kept seeing). Rounding/shadow would also notch the bezel. An
+     * explicit [window-rules] rule still wins. */
     {
         const char* ns = gnoblin_rules_layer_namespace(window);
         if (ns && g_strcmp0(ns, "gnoblin-topbar") == 0) {
             out->rounding_enabled = FALSE;
             out->rounded.radius = 0.0f;
             out->shadow_enabled = FALSE;
+            out->blur_enabled = FALSE;
         }
     }
 
