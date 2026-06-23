@@ -1,0 +1,35 @@
+From 38ddfee6fa1f7b826215fbe47440c9fb270fb15b Mon Sep 17 00:00:00 2001
+From: gnoblin <drewett.kieran@gmail.com>
+Date: Tue, 23 Jun 2026 22:03:23 +0100
+Subject: [PATCH] core: guard zero-area window in coverage check (SIGFPE on
+ layer-surface focus)
+
+window_would_mostly_be_covered_by_always_above_window divides (100 * visible_area)
+by window_area. A layer-shell surface focused before it has been allocated a size
+(e.g. gnoblin's keyboard-interactive launcher) has a 0x0 frame rect, so this is an
+integer divide-by-zero -> SIGFPE, taking down the whole compositor. A zero-area
+window can't be mostly covered; return FALSE before the division.
+---
+ src/core/window.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/core/window.c b/src/core/window.c
+index f5700be..be4cb30 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -2214,6 +2214,12 @@ window_would_mostly_be_covered_by_always_above_window (MetaWindow *window)
+   frame_rect = meta_window_config_get_rect (window->config);
+   window_area = frame_rect.width * frame_rect.height;
+ 
++  /* A window with no area (e.g. a layer-shell surface being focused before it
++   * has been allocated a size) cannot be "mostly covered" — and dividing by a
++   * zero area below is a SIGFPE. Treat it as not covered. */
++  if (window_area <= 0)
++    return FALSE;
++
+   mtk_region_intersect_rectangle (region, &frame_rect);
+   intersection_area = calculate_region_area (region);
+   visible_area = window_area - intersection_area;
+-- 
+2.53.0
+

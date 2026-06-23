@@ -139,10 +139,10 @@ shadow = "0 20px 48px -20px rgba(0,0,0,.22), 0 4px 12px -6px rgba(0,0,0,.14)"
 # ring-border-color-focused-dark = "#ffffff29"
 # ring-color-dark                = "#000000e0"
 # ring-color-focused-dark        = "#000000f5"
-# ring-border-color-light         = "#ffffffff"
-# ring-border-color-focused-light = "#ffffffff"
-# ring-color-light                = "#00000014"
-# ring-color-focused-light        = "#00000029"
+# ring-border-color-light         = "#0000001a"   # outer: subtle gray hairline
+# ring-border-color-focused-light = "#00000026"
+# ring-color-light                = "#ffffffff"    # inner: pure-white highlight
+# ring-color-focused-light        = "#ffffffff"
 # Turn the whole thing off with `border-style = none`.
 #
 # Blur -----------------------------------------------------------------------
