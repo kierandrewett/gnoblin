@@ -215,12 +215,15 @@ component DockIconSlot {
             viewbox-width: (2 * tip-body.arrow-half) / 1px;
             viewbox-height: (tip-body.arrow-h + 1px) / 1px;
             fill: parent.bubble-bg;
-            stroke: transparent;
-            stroke-width: 0px;
+            // Border the two slanted sides (the V) so the outline wraps the arrow
+            // too, continuing from the body's bottom corners. The path is left
+            // OPEN (no closing segment back to the start) so the stroke skips the
+            // base where the arrow meets the body; `fill` still auto-closes it.
+            stroke: parent.bubble-border;
+            stroke-width: Tokens.chrome-hairline-width;
             MoveTo { x: 0; y: 0; }
             LineTo { x: tip-body.arrow-half / 1px; y: (tip-body.arrow-h + 1px) / 1px; }
             LineTo { x: (2 * tip-body.arrow-half) / 1px; y: 0; }
-            LineTo { x: 0; y: 0; }
         }
 
         Rectangle {

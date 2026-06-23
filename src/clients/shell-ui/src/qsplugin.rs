@@ -527,7 +527,15 @@ fn run_oneshot(config: PluginConfig, event_rx: Receiver<PluginEvent>, shared: Sh
     loop {
         match event_rx.recv_timeout(config.interval) {
             Ok(event) => {
-                if let Some(update) = run_oneshot_once(&config, Some(&event)) {
+                // Coalesce a burst: a slider drag emits many events while one
+                // run is in flight. Drain everything queued and act on only the
+                // LATEST, so we spawn the command once per burst (one wpctl call)
+                // instead of once per drag pixel — that's the drag-lag smoothing.
+                let mut latest = event;
+                while let Ok(next) = event_rx.try_recv() {
+                    latest = next;
+                }
+                if let Some(update) = run_oneshot_once(&config, Some(&latest)) {
                     shared.publish(&config.id, update);
                 }
             }

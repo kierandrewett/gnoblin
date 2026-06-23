@@ -1773,7 +1773,34 @@ pub fn find_icon_at_size(name: &str, theme_path: &str, logical_size: u32) -> Opt
     find_icon_internal(name, theme_path, Some(logical_size.max(1)))
 }
 
+// (name, theme_path, target_size) → resolved image (or None, cached so misses
+// aren't re-searched).
+type IconCache = std::collections::HashMap<(String, String, Option<u32>), Option<slint::Image>>;
+
+thread_local! {
+    // Resolved-icon cache: the theme search stats dozens of paths per lookup, and
+    // find_icon runs for every tile + submenu row on every control-centre refresh,
+    // so an uncached lookup is a real open-time cost. slint::Image is cheap to
+    // clone (ref-counted).
+    static ICON_CACHE: std::cell::RefCell<IconCache> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 fn find_icon_internal(
+    name: &str,
+    theme_path: &str,
+    target_size: Option<u32>,
+) -> Option<slint::Image> {
+    let key = (name.to_string(), theme_path.to_string(), target_size);
+    if let Some(hit) = ICON_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let result = find_icon_uncached(name, theme_path, target_size);
+    ICON_CACHE.with(|c| c.borrow_mut().insert(key, result.clone()));
+    result
+}
+
+fn find_icon_uncached(
     name: &str,
     theme_path: &str,
     target_size: Option<u32>,

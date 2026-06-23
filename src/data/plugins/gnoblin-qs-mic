@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
-# gnoblin Microphone volume plugin (oneshot, slider). Reads/sets the default
-# source via wpctl. No fallback: if wpctl/PipeWire is absent it fails.
+# gnoblin Microphone volume plugin (oneshot, slider). wpctl drives the volume;
+# the chevron opens an input-device picker (pactl sources) — tap to make default.
+# No fallback: needs wpctl + pactl (PipeWire/pulse).
 set -euo pipefail
 SRC="@DEFAULT_AUDIO_SOURCE@"
-case "${GNOBLIN_QS_EVENT:-}" in
+evt="${GNOBLIN_QS_EVENT:-}"
+case "$evt" in
     *'"event":"slider"'*)
-        v=$(printf '%s' "$GNOBLIN_QS_EVENT" | sed -n 's/.*"value":\([0-9.]*\).*/\1/p')
+        v=$(printf '%s' "$evt" | sed -n 's/.*"value":\([0-9.]*\).*/\1/p')
         [ -n "$v" ] && wpctl set-volume "$SRC" "$v" ;;
+    *'"event":"row"'*'"id":"src:'*)
+        name=$(printf '%s' "$evt" | sed -n 's/.*"id":"src:\(.*\)".*/\1/p')
+        [ -n "$name" ] && pactl set-default-source "$name" ;;
 esac
+
 vol=$(wpctl get-volume "$SRC" | awk '{print $2}')
-printf '{"tile":{"icon":"audio-input-microphone-symbolic","title":"Microphone","chevron":true,"layout":"slider","span":4,"value":%s}}\n' "$vol"
+default=$(pactl get-default-source)
+# Skip monitor sources (the .monitor of each sink) — they aren't real inputs.
+rows=$(pactl list sources | awk -v def="$default" '
+    /^[[:space:]]*Name:/ { name=$2 }
+    /^[[:space:]]*Description:/ {
+        $1=""; sub(/^[[:space:]]+/,""); desc=$0;
+        if (name ~ /\.monitor$/) next;
+        gsub(/\\/,"\\\\",desc); gsub(/"/,"\\\"",desc);
+        on=(name==def)?"true":"false";
+        printf ",{\"type\":\"item\",\"id\":\"src:%s\",\"label\":\"%s\",\"icon\":\"audio-input-microphone-symbolic\",\"on\":%s}", name, desc, on;
+    }')
+printf '{"tile":{"icon":"audio-input-microphone-symbolic","title":"Microphone","chevron":true,"layout":"slider","span":4,"value":%s},"menu":{"title":"Input Device","rows":[{"type":"section","label":"Input Device"}%s]}}\n' "$vol" "$rows"
