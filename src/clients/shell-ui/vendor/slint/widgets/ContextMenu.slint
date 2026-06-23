@@ -53,8 +53,9 @@ export component ContextMenu {
     /// Fired when the user clicks outside the menu (caller closes it).
     callback dismiss();
 
-    width: 220px;
-    height: items-col.preferred-height + 2 * Spacing.sm;
+    width: 210px;
+    // Compact macOS-style chrome: a tight ~5px top/bottom inset, not 8px.
+    height: items-col.preferred-height + 10px;
 
     // ── macOS-style click flicker ──────────────────────────────────────
     // When a row is clicked we don't fire `item-clicked` immediately —
@@ -194,15 +195,17 @@ export component ContextMenu {
         }
 
         items-col := VerticalLayout {
-            x: 0; y: Spacing.sm;
+            x: 0; y: 5px;
             width: parent.width;
-            spacing: 0px;
-            padding-left: Spacing.sm;
-            padding-right: Spacing.sm;
+            spacing: 1px;
+            padding-left: 6px;
+            padding-right: 6px;
 
             for it[i] in root.items: Rectangle {
-                height: it.separator ? 11px : 34px;
-                width: parent.width - 16px;
+                // Compact macOS rows (~26px) with a hairline-margin highlight,
+                // not chunky 34px blocks.
+                height: it.separator ? 9px : 26px;
+                width: parent.width - 12px;
                 // Highlight via either input: pointer hover OR the
                 // keyboard's `selected-index`. Tried wiring hover
                 // through `selected-index` for unification, but that
