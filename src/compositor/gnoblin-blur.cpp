@@ -150,6 +150,10 @@ typedef struct {
     CoglTexture* history;
     int hist_w;
     int hist_h;
+    int hist_cap_x; /* capture origin the history corresponds to */
+    int hist_cap_y;
+    int cap_x; /* this frame's capture origin (set in pre_paint) */
+    int cap_y;
 
     /* Cached pipelines (rebuilt lazily). */
     CoglPipeline* downsample;
@@ -343,6 +347,8 @@ static gboolean gnoblin_blur_pre_paint(ClutterEffect* effect, ClutterPaintNode* 
                         self->frost_off[1] = (float)(ay - cy0) / (float)ch;
                         self->frost_scale[0] = (float)aw_i / (float)cw;
                         self->frost_scale[1] = (float)ah_i / (float)ch;
+                        self->cap_x = cx0; /* for temporal-smoothing geometry check */
+                        self->cap_y = cy0;
                     }
                 }
                 g_object_unref(bmp);
@@ -431,7 +437,8 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
      * frame's, which converges the two double-buffered frost states to a common
      * value and kills the flicker toggle. Reset when the low-res size changes. */
     frost = tex_b;
-    if (self->history && self->hist_w == sw && self->hist_h == sh) {
+    if (self->history && self->hist_w == sw && self->hist_h == sh &&
+        self->hist_cap_x == self->cap_x && self->hist_cap_y == self->cap_y) {
         smoothed = cogl_texture_2d_new_with_size(ctx, sw, sh);
         if (smoothed) {
             CoglOffscreen* off_sm = cogl_offscreen_new_with_texture(smoothed);
@@ -451,6 +458,8 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     self->history = (CoglTexture*)g_object_ref(frost);
     self->hist_w = sw;
     self->hist_h = sh;
+    self->hist_cap_x = self->cap_x;
+    self->hist_cap_y = self->cap_y;
 
     /* Composite onto the destination with the current modelview (which maps the
      * offscreen actor texture to its on-screen footprint). Layer 0 = blurred
