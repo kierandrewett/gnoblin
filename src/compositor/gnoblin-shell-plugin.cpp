@@ -298,6 +298,40 @@ static gboolean menu_like_shadow_type(MetaWindow* window) {
     }
 }
 
+/* libadwaita / libhandy clients (Nautilus, most GNOME apps) draw their OWN
+ * rounded corners and shadow. Rounding them again in the compositor double-rounds
+ * the edge — the client's arc and ours don't coincide, leaving a transparent gap
+ * in the corners (exactly what Kieran saw on Nautilus). Like Rounded Window
+ * Corners Reborn, detect those toolkits by scanning the client's mapped
+ * libraries and skip compositor rounding for them by default (they already look
+ * rounded). Result cached on the window. Override with
+ * `[effects] round-self-rounding-apps = on` to force our rounding/ring anyway. */
+static gboolean window_is_self_rounding(MetaWindow* window) {
+    gpointer cached;
+    gboolean self_round = FALSE;
+    pid_t pid;
+
+    if (!window)
+        return FALSE;
+    cached = g_object_get_data(G_OBJECT(window), "gnoblin-self-rounding");
+    if (cached)
+        return GPOINTER_TO_INT(cached) == 1;
+
+    pid = meta_window_get_pid(window);
+    if (pid > 0) {
+        g_autofree char* path = g_strdup_printf("/proc/%d/maps", (int)pid);
+        g_autofree char* contents = NULL;
+
+        if (g_file_get_contents(path, &contents, NULL, NULL) && contents &&
+            (strstr(contents, "libadwaita-1.so") || strstr(contents, "libhandy-1.so")))
+            self_round = TRUE;
+    }
+    /* Cache as 1 (yes) / 2 (no) so the 0 "unset" sentinel is distinct. */
+    g_object_set_data(G_OBJECT(window), "gnoblin-self-rounding",
+                      GINT_TO_POINTER(self_round ? 1 : 2));
+    return self_round;
+}
+
 static void shadow_frame_margins(MetaWindow* window, float margins[4]) {
     MtkRectangle frame;
     MtkRectangle buffer;
@@ -518,6 +552,11 @@ static void maybe_round_corners(MetaWindowActor* window_actor) {
     if (!fx.rounding_enabled)
         return;
     if (clutter_actor_get_effect(actor, "gnoblin-rounded"))
+        return;
+    /* Skip clients that already round themselves (libadwaita/libhandy) so we
+     * don't double-round and leave a corner gap. A rule/config can force it. */
+    if (window_is_self_rounding(window) &&
+        !gnoblin_config_get_bool("effects", "round-self-rounding-apps", FALSE))
         return;
 
     /* Inset the mask/border/ring to the visible surface inside any CSD shadow
