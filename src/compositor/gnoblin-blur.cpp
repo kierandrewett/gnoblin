@@ -141,10 +141,21 @@ typedef struct {
     float frost_off[2];
     float frost_scale[2];
 
+    /* Previous frame's blurred backdrop, for temporal smoothing. The read-back
+     * blur feeds back on itself through double-buffering (each buffer captures
+     * its OWN frost from its previous use), making the frost TOGGLE between two
+     * states = flicker. Averaging this frame's blur with the last converges both
+     * buffers to a common value and kills the toggle. Sized sw x sh; reset when
+     * the low-res dimensions change (geometry/radius change). */
+    CoglTexture* history;
+    int hist_w;
+    int hist_h;
+
     /* Cached pipelines (rebuilt lazily). */
     CoglPipeline* downsample;
     CoglPipeline* blur_h;
     CoglPipeline* blur_v;
+    CoglPipeline* temporal;
     CoglPipeline* composite;
     gboolean pipelines_ready;
 } GnoblinBlur;
@@ -191,6 +202,23 @@ static CoglPipeline* make_composite_pipeline(CoglContext* ctx) {
     return p;
 }
 
+/* Temporal mix: layer 0 = this frame's blur, layer 1 = last frame's. Output is
+ * their average, so the double-buffer feedback toggle averages to a stable
+ * value (kills the flicker). 0.5 = a 2-frame box average. */
+static const char* TEMPORAL_SRC =
+    "  vec4 a = texture2D(cogl_sampler0, cogl_tex_coord0_in.st);\n"
+    "  vec4 b = texture2D(cogl_sampler1, cogl_tex_coord1_in.st);\n"
+    "  cogl_color_out = mix(b, a, 0.5);\n";
+
+static CoglPipeline* make_temporal_pipeline(CoglContext* ctx) {
+    CoglPipeline* p = make_fragment_pipeline(ctx, "", TEMPORAL_SRC);
+    cogl_pipeline_set_layer_null_texture(p, 1);
+    cogl_pipeline_set_layer_filters(p, 1, COGL_PIPELINE_FILTER_LINEAR,
+                                    COGL_PIPELINE_FILTER_LINEAR);
+    cogl_pipeline_set_layer_wrap_mode(p, 1, COGL_PIPELINE_WRAP_MODE_CLAMP_TO_EDGE);
+    return p;
+}
+
 /* A plain textured pipeline (linear filter) used to bilinearly downsample the
  * captured backdrop before blurring — halving the resolution averages 2x2 blocks
  * so the cheap 9-tap Gaussian covers the full radius smoothly instead of
@@ -209,6 +237,7 @@ static void ensure_pipelines(GnoblinBlur* self, CoglContext* ctx) {
     self->downsample = make_copy_pipeline(ctx);
     self->blur_h = make_blur_pipeline(ctx);
     self->blur_v = make_blur_pipeline(ctx);
+    self->temporal = make_temporal_pipeline(ctx);
     self->composite = make_composite_pipeline(ctx);
     self->pipelines_ready = TRUE;
 }
@@ -341,6 +370,8 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     CoglOffscreen* off_half = NULL;
     CoglOffscreen* off_a = NULL;
     CoglOffscreen* off_b = NULL;
+    CoglTexture* smoothed = NULL;
+    CoglTexture* frost = NULL;
 
     /* No captured backdrop (off-screen, or read-back failed): fall back to the
      * plain actor paint so nothing disappears. */
@@ -396,12 +427,37 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     blur_pass(self->blur_h, tex_half, COGL_FRAMEBUFFER(off_a), sw, sh, 1.0f, 0.0f, 1.2f);
     blur_pass(self->blur_v, tex_a, COGL_FRAMEBUFFER(off_b), sw, sh, 0.0f, 1.0f, 1.2f);
 
+    /* Temporal smoothing: average this frame's blur (tex_b) with the previous
+     * frame's, which converges the two double-buffered frost states to a common
+     * value and kills the flicker toggle. Reset when the low-res size changes. */
+    frost = tex_b;
+    if (self->history && self->hist_w == sw && self->hist_h == sh) {
+        smoothed = cogl_texture_2d_new_with_size(ctx, sw, sh);
+        if (smoothed) {
+            CoglOffscreen* off_sm = cogl_offscreen_new_with_texture(smoothed);
+            cogl_pipeline_set_layer_texture(self->temporal, 0, tex_b);
+            cogl_pipeline_set_layer_texture(self->temporal, 1, self->history);
+            cogl_framebuffer_set_viewport(COGL_FRAMEBUFFER(off_sm), 0, 0, sw, sh);
+            cogl_framebuffer_orthographic(COGL_FRAMEBUFFER(off_sm), 0, 0, sw, sh, -1.0f, 1.0f);
+            cogl_framebuffer_draw_textured_rectangle(COGL_FRAMEBUFFER(off_sm), self->temporal, 0.0f,
+                                                     0.0f, (float)sw, (float)sh, 0.0f, 0.0f, 1.0f,
+                                                     1.0f);
+            g_object_unref(off_sm);
+            frost = smoothed;
+        }
+    }
+    /* Stash the frost as next frame's history (own a ref). */
+    g_clear_object(&self->history);
+    self->history = (CoglTexture*)g_object_ref(frost);
+    self->hist_w = sw;
+    self->hist_h = sh;
+
     /* Composite onto the destination with the current modelview (which maps the
      * offscreen actor texture to its on-screen footprint). Layer 0 = blurred
      * backdrop (remapped to the actor footprint within the padded capture),
      * layer 1 = actor render. The shader masks the frost by the rounded-rect SDF
      * and the actor's own coverage, then puts the actor over. */
-    cogl_pipeline_set_layer_texture(self->composite, 0, tex_b);
+    cogl_pipeline_set_layer_texture(self->composite, 0, frost);
     cogl_pipeline_set_layer_texture(self->composite, 1, actor_tex);
     set_uniform_2f(self->composite, "mask_size", (float)cogl_texture_get_width(actor_tex),
                    (float)cogl_texture_get_height(actor_tex));
@@ -437,15 +493,18 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     g_clear_object(&tex_half);
     g_clear_object(&tex_a);
     g_clear_object(&tex_b);
+    g_clear_object(&smoothed); /* history holds its own ref now */
 }
 
 static void gnoblin_blur_dispose(GObject* object) {
     GnoblinBlur* self = GNOBLIN_BLUR(object);
 
     g_clear_object(&self->captured);
+    g_clear_object(&self->history);
     g_clear_object(&self->downsample);
     g_clear_object(&self->blur_h);
     g_clear_object(&self->blur_v);
+    g_clear_object(&self->temporal);
     g_clear_object(&self->composite);
     self->pipelines_ready = FALSE;
 

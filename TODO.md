@@ -30,15 +30,21 @@ The async plugin host + tile/menu/rows protocol + config order ALREADY exist
 - SAFETY: do NOT delete the hardcoded built-ins until the plugin replacements
   are in + verified, so the QS never goes empty mid-refactor.
 
-## Blur (also urgent — real-GPU bug, see Kieran's screenshot)
-- [ ] Topbar has NO blur because I disabled it — Kieran WANTS it frosted. Re-enable
-  + solve the screen-edge halo properly (clamp capture to screen, don't sample
-  above the top edge) rather than disabling.
-- [ ] QS popout shows NO frost on real GPU (sharp wallpaper behind it) though it
-  looks frosted on llvmpipe — the offscreen capture-behind isn't compositing on
-  the GPU path. Root-cause the real-HW blur.
-- [ ] Dock blur smears the SHADOW (broken halo). The shadow second-pass interacts
-  badly on GPU. Needs real-HW iteration.
+## Blur — FIXED (was never GPU-broken; harness uses the real GPU /dev/dri/renderD128)
+- [x] SMEAR: 9-tap Gaussian ran at radius*0.5 with fixed half-res → ~90 texels
+  between taps → under-sampled streaks. Fixed: downsample ∝ radius, tight kernel.
+  Verified smooth at radius 100. (`6ebeb16`)
+- [x] NO FROST ON TOPBAR/QS: self-inflicted — I'd disabled blur on gnoblin-topbar
+  to kill a halo, but the QS popout shares that surface. Halo was the ROUNDING.
+  Topbar now flat+frosted; QS+dock frosted. (`6ebeb16`)
+- [x] FLICKER ("blurring shadows / flickers"): isolated to the blur (not the
+  shadow — A/B'd via no-blur/no-shadow rules + an 8-frame capture diff). Root
+  cause: read-back blur feeds back through double-buffering → frost TOGGLES
+  between two states. Fixed with temporal smoothing (2-frame average converges
+  both buffers). Flicker dropped ~90% (dock max 38→14, many frame-pairs now
+  identical). Verified with the multi-frame capture harness.
+- Tooling added: scratchpad/flicker.py (multi-frame flicker capture + region
+  diff) and GNOBLIN_EXTRA_CONF harness hook for A/B config testing.
 
 ## Other in progress
 - (nothing actively in flight — blocked items are below)
