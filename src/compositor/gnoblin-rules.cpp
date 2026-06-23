@@ -540,6 +540,20 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
         }
     }
 
+    /* The dock keeps its rounded pill + soft drop-shadow, but NOT the compositor
+     * frost: on the GPU path the blur capture smears into the dock's own
+     * drop-shadow, painting a broken rectangular halo around the pill (Kieran's
+     * dock screenshot). The frost-behind and the shadow second-pass interact
+     * badly there and can't be tuned without real-HW iteration, so the dock ships
+     * un-frosted (a clean translucent pill) rather than smeared. An explicit
+     * [window-rules] `rule = layer~=^gnoblin-dock$ | blur N` still re-enables it. */
+    {
+        const char* ns = gnoblin_rules_layer_namespace(window);
+        if (ns && g_strcmp0(ns, "gnoblin-dock") == 0) {
+            out->blur_enabled = FALSE;
+        }
+    }
+
     /* Make sure rules have been applied so the per-rule hints are populated. */
     hints = get_hints(window);
     if (!hints->applied)
