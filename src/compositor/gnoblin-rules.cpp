@@ -456,8 +456,9 @@ static void global_effects(GnoblinEffects* out) {
     out->blur_enabled = out->blur_radius > 0;
 
     /* Frost only the translucent parts of a surface: frost where the surface's
-     * own alpha is below this cutoff. Default 1.0 = frost wherever the surface
-     * has coverage (preserves current behaviour). */
+     * own alpha is below this cutoff. Default 1.0 leaves the upper-alpha gate
+     * open; gnoblin-blur still requires solid-body coverage so client-side
+     * shadow halos are not frosted. */
     out->blur_alpha_threshold =
         (float)CLAMP(config_get_double("effects", "blur-alpha-threshold", 1.0), 0.0, 1.0);
 

@@ -37,9 +37,10 @@ ClutterEffect* gnoblin_blur_new(float radius);
  * window's corners. Pass NULL (or never call) for a plain rectangular frost. */
 void gnoblin_blur_set_rounded(ClutterEffect* effect, const GnoblinRoundedParams* params);
 
-/* Frost only the surface's translucent pixels: the frost is applied where the
- * surface's own alpha is BELOW `threshold` (in [0,1]). E.g. 0.9 frosts pixels
- * that are at least ~10% transparent and shows near-opaque pixels directly with
- * no wasted blur. A threshold >= 1.0 (the default) frosts wherever the surface
- * has any coverage, preserving the historic behaviour. */
+/* Frost only the surface's translucent body pixels: the frost is applied where
+ * the surface's own alpha is BELOW `threshold` (in [0,1]) and high enough to be
+ * part of the panel/window body rather than a low-alpha client-side shadow. E.g.
+ * 0.9 frosts pixels that are at least ~10% transparent and shows near-opaque
+ * pixels directly with no wasted blur. A threshold >= 1.0 (the default) keeps the
+ * upper-alpha gate open. */
 void gnoblin_blur_set_alpha_threshold(ClutterEffect* effect, float threshold);

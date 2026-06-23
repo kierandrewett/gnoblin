@@ -88,20 +88,26 @@ static const char* MASK_DECL =
 /* Composite the frosted backdrop UNDER the actor: layer 0 is the blurred
  * backdrop, layer 1 is the actor's offscreen render (its alpha tells us where the
  * panel actually has content). We draw `frost` masked by the rounded-rect SDF AND
- * by the actor's coverage, then the actor over the top — so the frost only shows
- * where the (possibly translucent) panel paints, never over the transparent gaps
- * of a full-screen layer surface. Compositing: out = frost*(1-actorA) + actor,
- * with frost premultiplied and clipped to the panel's footprint. */
+ * by the actor's solid-body coverage, then the actor over the top — so the frost
+ * only shows where the (possibly translucent) panel itself paints, never over the
+ * transparent gaps of a full-screen layer surface or through low-alpha client
+ * drop-shadow halos. Compositing: out = frost*(1-actorA) + actor, with frost
+ * premultiplied and clipped to the panel's footprint. */
 static const char* MASK_SRC =
     "  vec4 frost = texture2D(cogl_sampler0, frost_off + cogl_tex_coord0_in.st * frost_scale);\n"
     "  vec4 act = texture2D(cogl_sampler1, cogl_tex_coord1_in.st);\n"
-    "  float cover = smoothstep(0.0, 0.04, act.a);\n" /* where the panel has pixels */
+    /* Treat only the surface's solid/translucent body as backdrop-filter
+     * coverage. Client toolkits often draw soft drop-shadows into transparent
+     * buffer margins; those halos are real pixels, but CSS backdrop-filter does
+     * not blur behind the shadow. The built-in chrome bodies are alpha 0.58+
+     * (dock) and 0.84+ (popouts), while their shadow halos sit below this band. */
+    "  float cover = smoothstep(0.45, 0.55, act.a);\n"
     /* Alpha-threshold gate: only frost pixels that are translucent enough — i.e.
      * where the surface's own alpha is below `alpha_threshold`. Near-opaque
      * pixels (act.a >= threshold) show the actor directly with no wasted blur.
      * A small soft band around the cutoff avoids a hard edge. The default
-     * threshold (>= 1.0) frosts wherever the panel has any coverage (the historic
-     * behaviour, since premultiplied act.a never exceeds 1.0). */
+     * threshold (>= 1.0) leaves this upper gate open; the solid-body coverage
+     * gate above still excludes low-alpha decoration. */
     "  if (alpha_threshold < 1.0) {\n"
     "    cover *= 1.0 - smoothstep(alpha_threshold - 0.04, alpha_threshold, act.a);\n"
     "  }\n"
@@ -189,7 +195,7 @@ typedef struct {
     GnoblinRoundedParams rounded;
 
     /* Frost only where the surface's own alpha is below this cutoff (1.0 = no
-     * gating: frost wherever the surface has coverage, the historic behaviour). */
+     * upper-alpha gating: frost wherever the surface has solid-body coverage). */
     float alpha_threshold;
 
     /* The content captured from behind the actor in pre_paint (the live backdrop
@@ -606,7 +612,7 @@ static void gnoblin_blur_init(GnoblinBlur* self) {
     self->radius = 24.0f;
     self->rounded_set = FALSE;
     self->pipelines_ready = FALSE;
-    self->alpha_threshold = 1.0f; /* no gating by default (frost all coverage) */
+    self->alpha_threshold = 1.0f; /* no upper-alpha gate by default */
     self->frost_off[0] = self->frost_off[1] = 0.0f;
     self->frost_scale[0] = self->frost_scale[1] = 1.0f;
 }
