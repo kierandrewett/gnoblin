@@ -18,9 +18,8 @@ HIG; animations buttery + customisable (easing/length/scale).
   (`82b36e5`) with web + file-search examples. Easy wins to add as shipped
   example scripts: unit/currency convert, dictionary define, emoji search,
   clipboard history, ssh hosts, kill-process, window switcher.
-- [ ] **MPRIS media card (#6)** — 4x1 "now playing" tile in the unified grid.
-- [ ] **codex CLI (GPT 5.5) validation pass** — once the above land, have codex
-  review/validate the changes and act on findings.
+- [ ] **codex CLI (GPT 5.5) validation pass** — running `codex exec review
+  --base eefa647 -m gpt-5.5` over this session's diff; act on real findings.
 - [ ] Then: whatever gnoblin needs next, following the ethos.
 
 ## Needs Kieran (real-GPU verification)
@@ -39,6 +38,7 @@ HIG; animations buttery + customisable (easing/length/scale).
 - [x] Launcher: macOS Spotlight redesign (frosted upper-third panel, big search
   field, rich rows) + inline calculator (type maths → answer, ⏎ copies). The
   Row/Action model is provider-ready. (`191231b`)
+- [x] QS: MPRIS now-playing media card (4x1 "media" tile, transport → plugin rows). (`a801b21`)
 - [x] Dock: frosted-glass macOS chrome — more translucent, soft rim instead of
   the boxy border, no focused-slot border, radius 23. (`4b7ba65`)
 - [x] Context menu: compact macOS rows (34→26px), tighter insets, less chunky.
