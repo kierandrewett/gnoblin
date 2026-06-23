@@ -33,8 +33,24 @@ pam_dep = cxx.find_library('pam')
 # cairo for the self-screenshot PNG writer.
 cairo_dep = dependency('cairo')
 
+# Bake gnoblin.defaults.conf into the compositor as a C string so the config
+# parser can layer it UNDER the user's gnoblin.conf (shipped defaults live in
+# the config file, not hardcoded in code — same contract the Rust shell honours
+# via include_str!). The mutter protocol overlays compile the same config.c
+# WITHOUT this header; the parser guards the embed behind GNOBLIN_EMBED_DEFAULTS.
+defaults_conf_h = custom_target('gnoblin-defaults-conf-h',
+  input : '../data/gnoblin.defaults.conf',
+  output : 'gnoblin-defaults-conf.h',
+  command : [
+    find_program('python3'),
+    files('../../scripts/stringify-file.py'),
+    '@INPUT@', '@OUTPUT@', 'GNOBLIN_DEFAULTS_CONF',
+  ],
+)
+
 executable('gnoblin-shell',
   sources : [
+    defaults_conf_h,
     'gnoblin-shell.cpp',
     'gnoblin-shell-plugin.cpp',
     'gnoblin-actions.cpp',
@@ -62,6 +78,9 @@ executable('gnoblin-shell',
   ],
   include_directories : include_directories('../config'),
   dependencies : [libmutter_dep, gio_dep, pam_dep],
+  c_args : [
+    '-DGNOBLIN_EMBED_DEFAULTS',
+  ],
   cpp_args : [
     '-DGNOBLIN_SHELL_VERSION="@0@"'.format(meson.project_version()),
   ],

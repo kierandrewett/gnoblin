@@ -118,11 +118,32 @@ shadow = "0 20px 48px -20px rgba(0,0,0,.22), 0 4px 12px -6px rgba(0,0,0,.14)"
                                  # sets the corner-smoothing strength.
 #
 # Borders --------------------------------------------------------------------
-# border-width = 1               # default border thickness in px (0 = off)
-# border-color = "#ffffff20"     # #rrggbb / #rrggbbaa
-# border-style = lip             # line (flat stroke) | lip (macOS raised bevel:
+# border-style = ring            # line (flat stroke) | lip (macOS raised bevel:
                                  # light inner highlight, brighter at the top,
-                                 # plus a faint dark outer hairline)
+                                 # plus a faint dark outer hairline) | ring (the
+                                 # default — a two-layer Tailwind-style edge:
+                                 # inner `border` + outer `ring`, drawn INSIDE
+                                 # the rounded corner, focus- and theme-aware) |
+                                 # none (no border)
+# border-width = 1               # default thickness for the line/lip styles (0 = off)
+# border-color = "#ffffff20"     # line/lip colour (#rrggbb / #rrggbbaa)
+#
+# The RING style is the shipped default (see gnoblin.defaults.conf). Its whole
+# palette is config-driven — override any of these to retune or recolour it.
+# Widths are in logical px; both bands draw inside the rounded edge:
+# ring-border-width = 1
+# ring-width = 1
+# Dark theme (faint white inner border + dark outer ring; *-focused strengthen
+# on focus). Light theme uses the -light keys.
+# ring-border-color-dark         = "#ffffff14"
+# ring-border-color-focused-dark = "#ffffff29"
+# ring-color-dark                = "#000000e0"
+# ring-color-focused-dark        = "#000000f5"
+# ring-border-color-light         = "#ffffffff"
+# ring-border-color-focused-light = "#ffffffff"
+# ring-color-light                = "#00000014"
+# ring-color-focused-light        = "#00000029"
+# Turn the whole thing off with `border-style = none`.
 #
 # Blur -----------------------------------------------------------------------
 # blur = 24                      # compositor-side blur-behind radius in px for

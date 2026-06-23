@@ -226,36 +226,6 @@ static gboolean border_theme_is_dark(void) {
     return TRUE;
 }
 
-static void set_rgba(float c[4], float r, float g, float b, float a) {
-    c[0] = r;
-    c[1] = g;
-    c[2] = b;
-    c[3] = a;
-}
-
-/* The "ring"/"pulse" two-layer border: a light inner border + a darker outer
- * ring, both strengthening on focus; colours flip for light/dark. Widths default
- * to 1px each if a rule didn't set them. Mirrors Kieran's Tailwind spec. */
-static void apply_ring_border_defaults(GnoblinRoundedParams* r, gboolean dark) {
-    /* The spec is 1px each, but a 1px line washes out on this renderer; ~1.5px
-     * inner border + 2px outer ring reads as the intended thin two-tone edge. */
-    if (r->border_width <= 0.0f)
-        r->border_width = 1.5f;
-    if (r->ring_width <= 0.0f)
-        r->ring_width = 2.0f;
-    if (dark) {
-        set_rgba(r->border_color, 1, 1, 1, 0.08f);
-        set_rgba(r->border_color_focused, 1, 1, 1, 0.16f);
-        set_rgba(r->ring_color, 0, 0, 0, 0.88f);
-        set_rgba(r->ring_color_focused, 0, 0, 0, 0.96f);
-    } else {
-        set_rgba(r->border_color, 1, 1, 1, 1.00f);
-        set_rgba(r->border_color_focused, 1, 1, 1, 1.00f);
-        set_rgba(r->ring_color, 0, 0, 0, 0.08f);
-        set_rgba(r->ring_color_focused, 0, 0, 0, 0.16f);
-    }
-}
-
 /* #rrggbb[aa] -> 0..1 rgba. Tolerates a value wrapped in single/double quotes
  * (rule colours are written quoted in the config, e.g. `border 1 "#ffffff20"`,
  * and the quotes survive into the per-action token). Leaves `out` untouched on a
@@ -462,6 +432,37 @@ static double config_get_double(const char* section, const char* key, double fal
     if (end == s)
         return fallback;
     return v;
+}
+
+/* Copy an [effects] colour key into `out` only if it is present in the config;
+ * leaves `out` untouched otherwise. Keeps the RING palette entirely in the
+ * config (the shipped gnoblin.defaults.conf carries the baseline). */
+static void effects_color(const char* key, float out[4]) {
+    g_autofree char* s = gnoblin_config_get_string("effects", key);
+    if (s && *s)
+        parse_color01(g_strstrip(s), out);
+}
+
+/* The "ring"/"pulse" two-layer border: a light inner `border` + a darker outer
+ * `ring`, both strengthening on focus, flipped for light/dark. Nothing is
+ * hardcoded here — every width and colour is read from `[effects]` (the shipped
+ * gnoblin.defaults.conf provides the baseline values, the user's config can
+ * override any of them, and a per-window rule can still override widths). */
+static void apply_ring_border_defaults(GnoblinRoundedParams* r, gboolean dark) {
+    const char* suffix = dark ? "dark" : "light";
+    g_autofree char* bc = g_strdup_printf("ring-border-color-%s", suffix);
+    g_autofree char* bcf = g_strdup_printf("ring-border-color-focused-%s", suffix);
+    g_autofree char* rc = g_strdup_printf("ring-color-%s", suffix);
+    g_autofree char* rcf = g_strdup_printf("ring-color-focused-%s", suffix);
+
+    if (r->border_width <= 0.0f)
+        r->border_width = (float)config_get_double("effects", "ring-border-width", 0.0);
+    if (r->ring_width <= 0.0f)
+        r->ring_width = (float)config_get_double("effects", "ring-width", 0.0);
+    effects_color(bc, r->border_color);
+    effects_color(bcf, r->border_color_focused);
+    effects_color(rc, r->ring_color);
+    effects_color(rcf, r->ring_color_focused);
 }
 
 /* Fill `out` with the global default effect set: the resolved `[appearance]` /
