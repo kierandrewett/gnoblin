@@ -750,7 +750,15 @@ static void apply_rule_opacity(MetaWindowActor* window_actor, gboolean focused) 
     clutter_actor_restore_easing_state(actor);
 }
 
-/* On focus change, refresh active/inactive opacity for every window. */
+/* Swap the RING border to its focused/unfocused colours (no-op for other styles
+ * or windows without a rounded effect). */
+static void apply_border_focus(MetaWindowActor* window_actor, gboolean focused) {
+    ClutterEffect* fx = clutter_actor_get_effect(CLUTTER_ACTOR(window_actor), "gnoblin-rounded");
+    if (fx)
+        gnoblin_rounded_set_focused(fx, focused);
+}
+
+/* On focus change, refresh active/inactive opacity + RING border for every window. */
 static void on_focus_window_changed(MetaDisplay* display, GParamSpec* pspec, gpointer user_data) {
     MetaCompositor* compositor = meta_display_get_compositor(display);
     MetaWindow* focused = meta_display_get_focus_window(display);
@@ -758,7 +766,9 @@ static void on_focus_window_changed(MetaDisplay* display, GParamSpec* pspec, gpo
 
     for (l = meta_compositor_get_window_actors(compositor); l; l = l->next) {
         MetaWindowActor* wa = META_WINDOW_ACTOR(l->data);
-        apply_rule_opacity(wa, meta_window_actor_get_meta_window(wa) == focused);
+        gboolean is_focused = meta_window_actor_get_meta_window(wa) == focused;
+        apply_rule_opacity(wa, is_focused);
+        apply_border_focus(wa, is_focused);
     }
 }
 

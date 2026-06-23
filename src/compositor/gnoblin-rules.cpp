@@ -198,7 +198,60 @@ static gboolean parse_border_style(const char* s, GnoblinBorderStyle* out) {
         *out = GNOBLIN_BORDER_NONE;
         return TRUE;
     }
+    if (!g_ascii_strcasecmp(s, "ring") || !g_ascii_strcasecmp(s, "pulse")) {
+        *out = GNOBLIN_BORDER_RING;
+        return TRUE;
+    }
     return FALSE;
+}
+
+/* Live light/dark for the RING border colours: the dark-style toggle writes
+ * "$XDG_RUNTIME_DIR/gnoblin-theme" ("dark"/"light") — same file the clients read.
+ * Falls back to [appearance] theme; defaults to dark. */
+static gboolean border_theme_is_dark(void) {
+    const char* run = g_getenv("XDG_RUNTIME_DIR");
+    if (run && *run) {
+        g_autofree char* path = g_build_filename(run, "gnoblin-theme", NULL);
+        g_autofree char* contents = NULL;
+        if (g_file_get_contents(path, &contents, NULL, NULL) && contents) {
+            g_strstrip(contents);
+            return g_strcmp0(contents, "light") != 0;
+        }
+    }
+    {
+        g_autofree char* theme = gnoblin_config_get_string("appearance", "theme");
+        if (theme && *theme)
+            return g_ascii_strcasecmp(theme, "light") != 0;
+    }
+    return TRUE;
+}
+
+static void set_rgba(float c[4], float r, float g, float b, float a) {
+    c[0] = r;
+    c[1] = g;
+    c[2] = b;
+    c[3] = a;
+}
+
+/* The "ring"/"pulse" two-layer border: a light inner border + a darker outer
+ * ring, both strengthening on focus; colours flip for light/dark. Widths default
+ * to 1px each if a rule didn't set them. Mirrors Kieran's Tailwind spec. */
+static void apply_ring_border_defaults(GnoblinRoundedParams* r, gboolean dark) {
+    if (r->border_width <= 0.0f)
+        r->border_width = 1.0f;
+    if (r->ring_width <= 0.0f)
+        r->ring_width = 1.0f;
+    if (dark) {
+        set_rgba(r->border_color, 1, 1, 1, 0.08f);
+        set_rgba(r->border_color_focused, 1, 1, 1, 0.16f);
+        set_rgba(r->ring_color, 0, 0, 0, 0.88f);
+        set_rgba(r->ring_color_focused, 0, 0, 0, 0.96f);
+    } else {
+        set_rgba(r->border_color, 1, 1, 1, 1.00f);
+        set_rgba(r->border_color_focused, 1, 1, 1, 1.00f);
+        set_rgba(r->ring_color, 0, 0, 0, 0.08f);
+        set_rgba(r->ring_color_focused, 0, 0, 0, 0.16f);
+    }
 }
 
 /* #rrggbb[aa] -> 0..1 rgba. Tolerates a value wrapped in single/double quotes
@@ -595,6 +648,14 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
         out->blur_alpha_threshold = hints->blur_threshold;
     if (hints->no_shadow)
         out->shadow_enabled = FALSE;
+
+    /* RING border: fill the two-layer focus-aware colours from the spec defaults
+     * (theme-aware), unless a rule already set explicit ring/border colours. The
+     * ring needs the rounded shader to run even with a 0 inner-border width. */
+    if (out->rounded.border_style == GNOBLIN_BORDER_RING) {
+        apply_ring_border_defaults(&out->rounded, border_theme_is_dark());
+        out->rounding_enabled = TRUE;
+    }
 
     /* A border with no radius still needs the rounded shader to draw it; treat a
      * border as implying the shader runs (radius 0 = square border). */

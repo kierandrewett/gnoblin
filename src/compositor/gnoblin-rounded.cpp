@@ -43,6 +43,8 @@ static const char* ROUNDED_SHADER =
     "uniform float border_w;\n"
     "uniform int border_style;\n"
     "uniform vec4 border_col;\n"
+    "uniform float ring_w;\n"   /* RING style: outer ring thickness */
+    "uniform vec4 ring_col;\n"  /* RING style: outer ring colour (focus picked CPU-side) */
     /* Circular rounded-box SDF (negative inside). */
     "float sd_circle (vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -83,7 +85,25 @@ static const char* ROUNDED_SHADER =
     "  }\n"
     "  float alpha = 1.0 - smoothstep(-1.0, 0.5, dist);\n"
     "  vec4 base = cogl_color_in * texture2D(tex, uv) * alpha;\n"
-    "  if (border_style != 0 && border_w > 0.5) {\n"
+    /* RING: two stacked bands hugging the rounded edge — the outer `ring` at the
+     * very edge (mostly in the antialiased fringe, so it barely touches solid
+     * content) and the inner `border` just inside it. Both clipped to the mask
+     * and premultiplied. The focused/unfocused colours are chosen CPU-side. */
+    "  if (border_style == 3) {\n"
+    "    float edge = -dist;\n"                          /* >0 inside the shape */
+    "    float rw = max(ring_w, 0.0);\n"
+    "    float bw = max(border_w, 0.0);\n"
+    "    float ring_band = (1.0 - smoothstep(rw - 1.0, rw + 0.5, edge)) * alpha;\n"
+    "    float b_in  = smoothstep(rw - 0.5, rw + 0.5, edge);\n"          /* past the ring */
+    "    float b_out = 1.0 - smoothstep(rw + bw - 1.0, rw + bw + 0.5, edge);\n"
+    "    float border_band = b_in * b_out * alpha;\n"
+    "    vec4 rc = ring_col; rc.rgb *= rc.a;\n"
+    "    base.rgb = mix(base.rgb, rc.rgb, ring_band);\n"
+    "    base.a   = mix(base.a, base.a * (1.0 - ring_col.a) + ring_col.a, ring_band);\n"
+    "    vec4 bc = border_col; bc.rgb *= bc.a;\n"
+    "    base.rgb = mix(base.rgb, bc.rgb, border_band);\n"
+    "    base.a   = mix(base.a, base.a * (1.0 - border_col.a) + border_col.a, border_band);\n"
+    "  } else if (border_style != 0 && border_w > 0.5) {\n"
     /* Band: from the rounded edge inward by border_w. inner = how far inside the
      * border band we are (1 at the very edge -> 0 at border_w deep). */
     "    float edge = -dist;\n"                      /* >0 inside the shape */
@@ -118,6 +138,7 @@ typedef struct {
     ClutterShaderEffect parent;
     GnoblinRoundedParams params;
     gboolean source_set;
+    gboolean focused; /* RING: pick the focused vs unfocused colours */
 } GnoblinRounded;
 
 typedef struct {
@@ -139,6 +160,7 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
     double scale_x = 1.0, scale_y = 1.0;
     float radius = self->params.radius;
     float border_w = self->params.border_width;
+    float ring_w = self->params.ring_width;
 
     if (actor) {
         clutter_actor_get_size(actor, &width, &height);
@@ -156,6 +178,7 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         double avg_scale = (scale_x + scale_y) * 0.5;
         radius = (float)(self->params.radius / avg_scale);
         border_w = (float)(self->params.border_width / avg_scale);
+        ring_w = (float)(self->params.ring_width / avg_scale);
     }
 
     if (!self->source_set) {
@@ -176,11 +199,17 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
     clutter_shader_effect_set_uniform(shader, "border_w", G_TYPE_FLOAT, 1, (double)border_w);
     clutter_shader_effect_set_uniform(shader, "border_style", G_TYPE_INT, 1,
                                       (int)self->params.border_style);
-    clutter_shader_effect_set_uniform(shader, "border_col", G_TYPE_FLOAT, 4,
-                                      (double)self->params.border_color[0],
-                                      (double)self->params.border_color[1],
-                                      (double)self->params.border_color[2],
-                                      (double)self->params.border_color[3]);
+    /* RING picks the focused/unfocused colours; LINE/LIP ignore focus. */
+    const float* bcol = (self->params.border_style == GNOBLIN_BORDER_RING && self->focused)
+                            ? self->params.border_color_focused
+                            : self->params.border_color;
+    const float* rcol =
+        self->focused ? self->params.ring_color_focused : self->params.ring_color;
+    clutter_shader_effect_set_uniform(shader, "border_col", G_TYPE_FLOAT, 4, (double)bcol[0],
+                                      (double)bcol[1], (double)bcol[2], (double)bcol[3]);
+    clutter_shader_effect_set_uniform(shader, "ring_w", G_TYPE_FLOAT, 1, (double)ring_w);
+    clutter_shader_effect_set_uniform(shader, "ring_col", G_TYPE_FLOAT, 4, (double)rcol[0],
+                                      (double)rcol[1], (double)rcol[2], (double)rcol[3]);
 
     CLUTTER_OFFSCREEN_EFFECT_CLASS(gnoblin_rounded_parent_class)
         ->paint_target(effect, node, paint_context);
@@ -199,7 +228,12 @@ static void gnoblin_rounded_init(GnoblinRounded* self) {
     self->params.border_color[0] = self->params.border_color[1] = self->params.border_color[2] =
         0.0f;
     self->params.border_color[3] = 0.0f;
+    self->params.ring_width = 0.0f;
+    memset(self->params.ring_color, 0, sizeof(self->params.ring_color));
+    memset(self->params.border_color_focused, 0, sizeof(self->params.border_color_focused));
+    memset(self->params.ring_color_focused, 0, sizeof(self->params.ring_color_focused));
     self->source_set = FALSE;
+    self->focused = FALSE;
 }
 
 ClutterEffect* gnoblin_rounded_new_full(const GnoblinRoundedParams* params) {
@@ -208,6 +242,23 @@ ClutterEffect* gnoblin_rounded_new_full(const GnoblinRoundedParams* params) {
     if (params)
         self->params = *params;
     return CLUTTER_EFFECT(self);
+}
+
+void gnoblin_rounded_set_focused(ClutterEffect* effect, gboolean focused) {
+    GnoblinRounded* self;
+
+    if (!effect || !G_TYPE_CHECK_INSTANCE_TYPE(effect, gnoblin_rounded_get_type()))
+        return;
+    self = GNOBLIN_ROUNDED(effect);
+    if (self->focused == focused)
+        return;
+    self->focused = focused;
+    /* Repaint so the new colours show (only matters for RING). */
+    if (self->params.border_style == GNOBLIN_BORDER_RING) {
+        ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(effect));
+        if (actor)
+            clutter_actor_queue_redraw(actor);
+    }
 }
 
 ClutterEffect* gnoblin_rounded_new(float radius) {

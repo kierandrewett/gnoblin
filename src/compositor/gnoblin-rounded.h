@@ -43,6 +43,10 @@ typedef enum {
     GNOBLIN_BORDER_NONE = 0,
     GNOBLIN_BORDER_LINE = 1,
     GNOBLIN_BORDER_LIP = 2,
+    /* RING: a two-layer focus-aware edge — an outer `ring` band at the very
+     * rounded edge plus an inner `border` band just inside it (CSS border+ring).
+     * Uses ring_*, border_color and the *_focused variants. */
+    GNOBLIN_BORDER_RING = 3,
 } GnoblinBorderStyle;
 
 /* Full parameter set for the effect. `radius` and the corner algorithm/smoothing
@@ -53,11 +57,20 @@ typedef struct {
     float smoothing;                 /* 0..1 circle->squircle blend (Figma-style) */
     GnoblinBorderStyle border_style;
     float border_width;              /* border thickness (logical px) */
-    float border_color[4];           /* rgba 0..1, used by LINE (and LIP outer tint) */
+    float border_color[4];           /* rgba 0..1, LINE / LIP outer tint / RING inner border */
+    /* RING style only: */
+    float ring_width;                /* outer ring thickness (logical px) */
+    float ring_color[4];             /* outer ring colour (unfocused) */
+    float border_color_focused[4];   /* inner border colour when focused */
+    float ring_color_focused[4];     /* outer ring colour when focused */
 } GnoblinRoundedParams;
 
 /* A new rounded-corners effect from a full parameter set. */
 ClutterEffect* gnoblin_rounded_new_full(const GnoblinRoundedParams* params);
+
+/* Swap the RING border between its focused / unfocused colours (the plugin flips
+ * this on focus change). No-op for non-RING styles. */
+void gnoblin_rounded_set_focused(ClutterEffect* effect, gboolean focused);
 
 /* Back-compat convenience: a circular mask with `radius` and no border. */
 ClutterEffect* gnoblin_rounded_new(float radius);
