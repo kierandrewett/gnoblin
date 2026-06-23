@@ -39,6 +39,15 @@ install -m755 "$ROOT/dist/gnoblin-screenshot" "$PREFIX/bin/gnoblin-screenshot"
 # gnoblin-notify-center — toggles the notification-center history panel.
 install -m755 "$ROOT/dist/gnoblin-notify-center" "$PREFIX/bin/gnoblin-notify-center"
 
+# Default quick-settings plugin scripts (gnoblin-qs-*) — the dogfooded built-in
+# tiles (wifi/bluetooth/output/mic/dnd/nightlight/darkstyle/powermode/...) as
+# process/command plugins. Installed on PATH so the topbar's plugin host can
+# spawn them by name from the default [qs-plugin.*] config.
+for p in "$ROOT"/src/data/plugins/gnoblin-qs-*; do
+  [ -e "$p" ] || continue
+  install -m755 "$p" "$PREFIX/bin/$(basename "$p")" && echo ">> installed $(basename "$p")"
+done
+
 # Example config file (the compositor + protocols read $XDG_CONFIG_HOME/gnoblin/
 # gnoblin.conf, NOT GSettings).
 install -d "$PREFIX/share/gnoblin"
