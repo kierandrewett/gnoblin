@@ -370,7 +370,11 @@ fn build_qs_tiles(
     ];
 
     // External plugin tiles — same QsTile model, appended after the built-ins.
-    for pl in plugins {
+    // A now-playing media card is pinned first among the plugins (the headline
+    // "what's playing" widget), then everything else in config order.
+    let mut ordered: Vec<&gnoblin_shell_ui::qsplugin::PluginState> = plugins.iter().collect();
+    ordered.sort_by_key(|pl| if pl.update.tile.layout == "media" { 0 } else { 1 });
+    for pl in ordered {
         let spec = &pl.update.tile;
         let layout = if spec.layout.is_empty() {
             "toggle"

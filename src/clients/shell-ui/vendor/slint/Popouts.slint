@@ -780,6 +780,110 @@ export component ShellSectionDivider inherits Rectangle {
     }
 }
 
+// ── Now-playing media card (4x1 "media" tile) ────────────────────────────────
+// A rich media widget: an accent art chip, the track title + artist/status, and
+// three round transport controls. The controls emit `transport(row-id)` with the
+// stable ids "prev" | "playpause" | "next" — forwarded to the plugin host as row
+// events, so any MPRIS-ish provider drives it.
+export component ShellMediaCard inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool>   playing;
+    in property <bool>   card-enabled: true;
+    callback transport(string);
+
+    height: 64px;
+    border-radius: 16px;
+    background: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.055)
+        : rgba(0, 0, 0, 0.045);
+    border-width: Tokens.chrome-hairline-width;
+    border-color: ShellPalette.tile-border;
+
+    // Album-art chip (accent gradient + note glyph).
+    Rectangle {
+        x: 10px;
+        y: (parent.height - 44px) / 2;
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        background: @linear-gradient(135deg,
+            ShellPalette.accent 0%, ShellPalette.accent.darker(0.28) 100%);
+        Image {
+            x: (parent.width - 22px) / 2;
+            y: (parent.height - 22px) / 2;
+            width: 22px; height: 22px;
+            source: @image-url("../assets/icons/symbolic/note.svg");
+            colorize: rgba(255, 255, 255, 0.96);
+            image-fit: contain;
+        }
+    }
+
+    // Title + artist/status.
+    VerticalLayout {
+        x: 66px;
+        y: 0;
+        width: parent.width - 66px - 128px;
+        height: parent.height;
+        alignment: center;
+        spacing: 1px;
+        Text {
+            text: root.title == "" ? "Nothing playing" : root.title;
+            color: ShellPalette.fg;
+            font-family: Tokens.font-family;
+            font-size: 14px;
+            font-weight: 600;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+        if root.subtitle != "": Text {
+            text: root.subtitle;
+            color: ShellPalette.fg-secondary;
+            font-family: Tokens.font-family;
+            font-size: 12px;
+            font-weight: 400;
+            horizontal-alignment: left;
+            overflow: elide;
+        }
+    }
+
+    // Transport controls — prev / play-pause / next.
+    HorizontalLayout {
+        x: parent.width - 122px;
+        y: (parent.height - 38px) / 2;
+        width: 112px;
+        height: 38px;
+        spacing: 2px;
+        alignment: end;
+        for btn in [
+            { id: "prev",      glyph: @image-url("../assets/icons/symbolic/backward.svg"), big: false },
+            { id: "playpause", glyph: root.playing
+                ? @image-url("../assets/icons/symbolic/pause.svg")
+                : @image-url("../assets/icons/symbolic/play.svg"), big: true },
+            { id: "next",      glyph: @image-url("../assets/icons/symbolic/forward.svg"), big: false },
+        ]: Rectangle {
+            width: 36px; height: 36px;
+            border-radius: self.height / 2;
+            background: btn-ta.pressed
+                ? (Theme.mode == TokenMode.Dark ? rgba(255,255,255,0.16) : rgba(0,0,0,0.12))
+                : (btn-ta.has-hover ? ShellPalette.tile-bg-hover : transparent);
+            animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+            Image {
+                x: (parent.width - (btn.big ? 19px : 17px)) / 2;
+                y: (parent.height - (btn.big ? 19px : 17px)) / 2;
+                width: btn.big ? 19px : 17px;
+                height: btn.big ? 19px : 17px;
+                source: btn.glyph;
+                colorize: ShellPalette.fg;
+                image-fit: contain;
+            }
+            btn-ta := TouchArea {
+                enabled: root.card-enabled;
+                clicked => { root.transport(btn.id); }
+            }
+        }
+    }
+}
+
 // ── Datetime popout ──────────────────────────────────────────────────────────
 export component DatetimePopout {
     in property <bool>   open;
@@ -1619,6 +1723,7 @@ export component ControlCentrePopout {
                     width: tile.span * parent.colu + (tile.span - 1) * parent.gap;
                     height: tile.layout == "slider" ? 46px
                           : tile.layout == "section" ? 26px
+                          : tile.layout == "media" ? 64px
                           : 60px;
                     horizontal-stretch: 0;
                     background: transparent;
@@ -1658,6 +1763,15 @@ export component ControlCentrePopout {
                             root.open-submenu = tile.id;
                             root.tile-chevron(tile.id);
                         }
+                    }
+                    // Rich 4x1 now-playing media card; transport → plugin rows.
+                    if tile.layout == "media": ShellMediaCard {
+                        width: parent.width;
+                        title: tile.title;
+                        subtitle: tile.subtitle;
+                        playing: tile.active;
+                        card-enabled: root.open;
+                        transport(rid) => { root.plugin-row(tile.id, rid); }
                     }
                     // Quiet section label (a divider that's just a tile).
                     if tile.layout == "section": ShellSectionDivider {

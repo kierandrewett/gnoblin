@@ -45,6 +45,8 @@ def emit():
             "subtitle": ("Playing" if playing else "Paused") + " · " + artist,
             "active": playing,
             "chevron": True,
+            "span": 4,
+            "layout": "media",
         },
         "menu": {
             "title": "Now Playing",
