@@ -826,8 +826,43 @@ impl BarApp for TopBarApp {
                 ),
             });
         }
-        // TODO(#8): the chevron opens the slide-out submenu / device picker.
+        // The chevron opens the slide-out submenu in Slint; Rust only needs to
+        // act for built-in tiles that want extra work on drill-in (none yet).
         panel.on_cc_tile_chevron(|_id| {});
+        // Submenu row interactions → the qsplugin host (keyed by the tile/plugin
+        // id; built-in tiles have no host rows, so these only fire for plugins).
+        {
+            let host = self.qs_host.clone();
+            panel.on_cc_plugin_row(move |id, row| {
+                host.borrow()
+                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Row {
+                        id: id.to_string(),
+                        row_id: row.to_string(),
+                    });
+            });
+        }
+        {
+            let host = self.qs_host.clone();
+            panel.on_cc_plugin_toggle(move |id, row, v| {
+                host.borrow()
+                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Toggle {
+                        id: id.to_string(),
+                        row_id: row.to_string(),
+                        value: v,
+                    });
+            });
+        }
+        {
+            let host = self.qs_host.clone();
+            panel.on_cc_plugin_slider(move |id, row, v| {
+                host.borrow()
+                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
+                        id: id.to_string(),
+                        row_id: row.to_string(),
+                        value: v,
+                    });
+            });
+        }
         {
             let weak = panel.as_weak();
             panel.on_cc_notification_dismissed(move |index| {

@@ -303,6 +303,9 @@ export component ShellTile inherits Rectangle {
     in property <bool>   tile-enabled: true;
     in property <bool>   compact: false;
     callback clicked();
+    // Fired when the chevron drill-in region is tapped (separate from the body),
+    // so a tile can both toggle (body) and open its submenu page (chevron).
+    callback chevron-clicked();
 
     height: root.compact ? 52px : 60px;
     // Stretch to fill available width inside a HorizontalLayout — without
@@ -439,6 +442,17 @@ export component ShellTile inherits Rectangle {
         source: @image-url("../assets/icons/symbolic/chevron-right.svg");
         image-fit: contain;
         colorize: root.active ? rgba(255, 255, 255, 0.75) : ShellPalette.fg-secondary;
+    }
+    // Chevron hit zone — declared last so it sits above the body TouchArea and
+    // wins clicks in the drill-in strip; the rest of the tile falls through to
+    // the body. Only present when there's a chevron to drill into.
+    if root.show-chevron: TouchArea {
+        x: parent.width - 40px;
+        y: 0;
+        width: 40px;
+        height: parent.height;
+        enabled: root.tile-enabled;
+        clicked => { root.chevron-clicked(); }
     }
 }
 
@@ -1359,6 +1373,21 @@ export component ControlCentrePopout {
     callback tile-slider(string /* tile-id */, float /* 0..1 */);
     callback tile-chevron(string /* tile-id */); // chevron → slide-out submenu / picker
 
+    // ── Slide-out submenu ────────────────────────────────────────────────
+    // Tapping a tile's chevron slides the whole panel sideways to a full-page
+    // list of that tile's rows (network list / device picker / media controls),
+    // Firefox-app-menu style. `open-submenu` is the tile id of the open page (""
+    // = the grid is showing); the row data + title are captured when it opens.
+    // Row interactions are forwarded to the qsplugin host keyed by the tile id.
+    in-out property <string> open-submenu: "";
+    property <string> submenu-title: "";
+    property <[QsMenuRow]> submenu-rows: [];
+    callback plugin-row(string /* tile-id */, string /* row-id */);
+    callback plugin-toggle(string /* tile-id */, string /* row-id */, bool);
+    callback plugin-slider(string /* tile-id */, string /* row-id */, float);
+    // Close the submenu whenever the popout itself closes, so it reopens fresh.
+    changed open => { if !root.open { root.open-submenu = ""; } }
+
     // Notifications history.
     in property <[NotificationItem]> notifications;
     in property <int>    notification-count: 0;
@@ -1603,6 +1632,12 @@ export component ControlCentrePopout {
                         show-chevron: tile.chevron;
                         tile-enabled: root.open;
                         clicked => { root.tile-clicked(tile.id); }
+                        chevron-clicked => {
+                            root.submenu-title = tile.title;
+                            root.submenu-rows = tile.rows;
+                            root.open-submenu = tile.id;
+                            root.tile-chevron(tile.id);
+                        }
                     }
                     // Rich 4x1 slider (icon + track + device-picker chevron).
                     if tile.layout == "slider": ShellSliderRow {
@@ -1613,7 +1648,12 @@ export component ControlCentrePopout {
                         value: tile.value;
                         sld-enabled: root.open;
                         changed(v) => { root.tile-slider(tile.id, v); }
-                        chevron-clicked => { root.tile-chevron(tile.id); }
+                        chevron-clicked => {
+                            root.submenu-title = tile.title;
+                            root.submenu-rows = tile.rows;
+                            root.open-submenu = tile.id;
+                            root.tile-chevron(tile.id);
+                        }
                     }
                     // Quiet section label (a divider that's just a tile).
                     if tile.layout == "section": ShellSectionDivider {
@@ -1634,6 +1674,93 @@ export component ControlCentrePopout {
             }
         }
         }
+
+        // ── Slide-out submenu page ───────────────────────────────────────
+        // Sits above the grid and slides in from the right (220ms ease-out)
+        // when a tile's chevron is tapped; the back affordance slides it back
+        // out. A second `resolved-bg` layer over the panel tint makes the page
+        // read as solid so the grid behind it doesn't bleed through.
+        submenu-page := Rectangle {
+            property <bool> shown: root.open-submenu != "";
+            x: self.shown ? 0px : parent.width;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            // Near-opaque so the grid behind doesn't bleed through; the panel's
+            // frosted vibrancy still comes from the compositor blur behind it.
+            background: Theme.mode == TokenMode.Dark
+                ? rgba(30, 30, 32, 0.985)
+                : rgba(248, 248, 250, 0.99);
+            border-radius: Tokens.popout-corner-radius;
+            clip: true;
+            animate x { duration: 220ms; easing: ease-out; }
+
+            // Header: back chevron + the originating tile's title.
+            Rectangle {
+                x: 0; y: 0; width: parent.width; height: 52px;
+                background: transparent;
+                back-ta := TouchArea {
+                    x: Spacing.sm; y: 8px; width: 40px; height: 36px;
+                    enabled: submenu-page.shown;
+                    clicked => { root.open-submenu = ""; }
+                }
+                Rectangle {
+                    x: Spacing.sm; y: 8px; width: 40px; height: 36px;
+                    border-radius: self.height / 2;
+                    background: back-ta.has-hover ? ShellPalette.tile-bg-hover : transparent;
+                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                    Image {
+                        x: (parent.width - 14px) / 2; y: (parent.height - 14px) / 2;
+                        width: 14px; height: 14px;
+                        source: @image-url("../assets/icons/symbolic/chevron-left.svg");
+                        image-fit: contain;
+                        colorize: root.resolved-fg;
+                    }
+                }
+                Text {
+                    x: 56px; y: 0; width: parent.width - 72px; height: parent.height;
+                    text: root.submenu-title;
+                    color: root.resolved-fg;
+                    font-family: Tokens.font-family;
+                    font-size: 15px;
+                    font-weight: 700;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            // The tile's rows, scrollable, respecting the panel's height cap.
+            Flickable {
+                x: Spacing.lg; y: 52px;
+                width: parent.width - 2 * Spacing.lg;
+                height: parent.height - 52px - Spacing.lg;
+                viewport-width: self.width;
+                viewport-height: rows-col.preferred-height;
+                interactive: rows-col.preferred-height > self.height;
+                rows-col := VerticalLayout {
+                    width: parent.width;
+                    spacing: Spacing.xs;
+                    alignment: start;
+                    if root.submenu-rows.length == 0: Text {
+                        height: 40px;
+                        text: "Nothing here yet.";
+                        color: root.resolved-fg-secondary;
+                        font-family: Tokens.font-family;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    for row in root.submenu-rows: QsPluginRow {
+                        data: row;
+                        row-enabled: submenu-page.shown;
+                        clicked => { root.plugin-row(root.open-submenu, row.id); }
+                        toggled(v) => { root.plugin-toggle(root.open-submenu, row.id, v); }
+                        slid(v) => { root.plugin-slider(root.open-submenu, row.id, v); }
+                    }
+                }
+            }
+        }
+
         Rectangle {
             x: Tokens.chrome-hairline-width;
             y: Tokens.chrome-hairline-width;
