@@ -24,7 +24,9 @@ poll async" + "prefix commands with gnoblin" + "no graceful fallback".
 - [x] Verified: cargo check + clippy(-D warnings) + 49 shell-ui tests green; devkit
   CC renders entirely from plugins (wifi/bluetooth sliding submenus, sliders,
   toggles, media card) with NO hardcoded built-ins. Theme/dnd/nightlight changes
-  propagate via the existing client theme-follow poll.
+  propagate via the existing client theme-follow poll. (`a4c8a34`)
+- [x] codex gpt-5.5 review of the pivot — one P2 (plugin slider value unclamped →
+  over-100% PipeWire volume overdrew the track); fixed with a 0..1 clamp. (`48641b0`)
 
 ## Blur — FIXED (was never GPU-broken; harness uses the real GPU /dev/dri/renderD128)
 - [x] SMEAR: 9-tap Gaussian ran at radius*0.5 with fixed half-res → ~90 texels
