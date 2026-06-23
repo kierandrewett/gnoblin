@@ -14,13 +14,11 @@ HIG; animations buttery + customisable (easing/length/scale).
   still to do.
 
 ## To do (from the loop brief, roughly in order)
-- [ ] **Launcher provider host** (process/command, like the QS plugins) — the
-  Spotlight redesign + inline calculator are DONE (`191231b`). Next: a provider
-  protocol so a query is piped to configured commands (`[launcher-provider.NAME]
-  command = …`, optional trigger prefix) returning JSON results
-  {title, subtitle, icon, action}. Ship example providers: file search
-  (fd/locate), web-search handoff, unit/currency convert, define, emoji,
-  clipboard history, kill-process. The Row/Action seam is already in place.
+- [ ] **More launcher providers** (optional polish) — the host is DONE
+  (`82b36e5`) with web + file-search examples. Easy wins to add as shipped
+  example scripts: unit/currency convert, dictionary define, emoji search,
+  clipboard history, ssh hosts, kill-process, window switcher.
+- [ ] **MPRIS media card (#6)** — 4x1 "now playing" tile in the unified grid.
 - [ ] **codex CLI (GPT 5.5) validation pass** — once the above land, have codex
   review/validate the changes and act on findings.
 - [ ] Then: whatever gnoblin needs next, following the ethos.
@@ -35,6 +33,9 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Launcher: process/command provider host — `[launcher-provider.NAME]`
+  commands emit TSV results (title/subtitle/icon/action), prefix-gated; web +
+  file-search examples shipped. Search anything, config-driven. (`82b36e5`)
 - [x] Launcher: macOS Spotlight redesign (frosted upper-third panel, big search
   field, rich rows) + inline calculator (type maths → answer, ⏎ copies). The
   Row/Action model is provider-ready. (`191231b`)
