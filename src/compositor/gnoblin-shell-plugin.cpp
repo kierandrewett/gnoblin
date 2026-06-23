@@ -592,6 +592,14 @@ static void maybe_add_shadow(MetaPlugin* plugin, MetaWindowActor* window_actor) 
         return;
     if (get_actor_shadow(actor))
         return;
+    /* The flush, edge-to-edge top bar has no rounding and no drop shadow (a
+     * GNOME-style bar); a rounded shadow at the screen edge just reads as a gap
+     * around it. */
+    {
+        const char* ns = gnoblin_rules_layer_namespace(window);
+        if (ns && g_strcmp0(ns, "gnoblin-topbar") == 0)
+            return;
+    }
 
     if (const char* type_name = shadow_window_type_name(window)) {
         g_autofree char* key = g_strdup_printf("shadow.%s", type_name);
