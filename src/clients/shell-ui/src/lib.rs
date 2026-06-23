@@ -2309,7 +2309,40 @@ impl State {
             size: LogicalSize::new(self.width as f32, self.height as f32),
         });
         self.adapter = shared.borrow().clone();
+        self.inspect_log_window();
         Ok(())
+    }
+
+    /// When `GNOBLIN_INSPECT` is set, write this client's self-view —
+    /// logical/physical size, output scale, theme, full-height/input strip — to
+    /// `$XDG_RUNTIME_DIR/gnoblin-inspect/window-<pid>.json` (overwritten with the
+    /// latest state). The inspector correlates it to the compositor surface by
+    /// pid, so e.g. a client's `theme_dark` can be checked against the ring the
+    /// compositor drew. No-op unless the env var is set.
+    fn inspect_log_window(&self) {
+        if std::env::var_os("GNOBLIN_INSPECT").is_none() {
+            return;
+        }
+        let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
+            Some(d) => std::path::PathBuf::from(d).join("gnoblin-inspect"),
+            None => return,
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        let json = format!(
+            "{{\"pid\":{},\"theme_dark\":{},\"scale\":{},\"logical\":[{},{}],\
+             \"physical\":[{},{}],\"full_height\":{},\"input_height\":{}}}\n",
+            std::process::id(),
+            crate::theme::is_dark(),
+            self.scale,
+            self.width,
+            self.height,
+            self.width * self.scale,
+            self.height * self.scale,
+            self.full_height,
+            self.input_height,
+        );
+        let path = dir.join(format!("window-{}.json", std::process::id()));
+        let _ = std::fs::write(path, json);
     }
 
     /// Re-apply the current logical size + scale to the live surface: the EGL
@@ -2338,6 +2371,7 @@ impl State {
         let (screen_w, screen_h) = self.screen_size();
         self.app
             .resized(self.width, self.height, screen_w, screen_h);
+        self.inspect_log_window();
         // The input region is sized in surface-logical px. Apply it from the
         // post-dispatch commit point so it cannot race unread configures.
         self.input_region_dirty = true;

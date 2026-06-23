@@ -1079,6 +1079,16 @@ def cmd_inspect(spec=None, out=None):
                   f"z={a['z']} clip={a['clip']} kids={a['children']}")
             print(f"    win    wm_class={s['wm_class']!r} app_id={s['app_id']!r} "
                   f"pid={s['pid']} monitor={s['monitor']} stack_layer={s['stack_layer']}")
+            # Slint client's self-view (theme/scale/size), correlated by pid.
+            win_log = os.path.join(insp_dir, f"window-{s['pid']}.json")
+            if s['pid'] and os.path.exists(win_log):
+                try:
+                    wj = _json.load(open(win_log))
+                    print(f"    slint  theme={'dark' if wj['theme_dark'] else 'light'} "
+                          f"scale={wj['scale']} logical={wj['logical']} physical={wj['physical']} "
+                          f"full_height={wj['full_height']} input_h={wj['input_height']}")
+                except (OSError, ValueError, KeyError):
+                    pass
             r = s['rounding']
             print(f"    round  enabled={r['enabled']} radius={r['radius']} "
                   f"algo={r['algorithm']} smoothing={r['smoothing']} inset={r['applied_inset']}")
