@@ -275,20 +275,28 @@ export component ShellSliderRow inherits Rectangle {
     }
 
     // Trailing chevron — opens the audio output/input device picker (submenu).
-    if root.show-chevron: Image {
-        x: parent.width - 29px;
-        y: (parent.height - 14px) / 2;
-        width: 14px; height: 14px;
-        source: @image-url("../assets/icons/symbolic/chevron-right.svg");
-        image-fit: contain;
-        colorize: ShellPalette.fg-secondary;
-    }
-    if root.show-chevron: TouchArea {
-        x: parent.width - 44px;
-        y: 0;
-        width: 44px; height: parent.height;
-        enabled: root.sld-enabled;
-        clicked => { root.chevron-clicked(); }
+    // A rounded hover pill gives the button affordance + a comfortable hit area.
+    if root.show-chevron: Rectangle {
+        x: parent.width - 40px;
+        y: (parent.height - 32px) / 2;
+        width: 32px; height: 32px;
+        border-radius: 8px;
+        background: chev-ta.pressed ? Theme.surface-hover-bg.darker(0.25)
+            : chev-ta.has-hover ? Theme.surface-hover-bg
+            : transparent;
+        animate background { duration: 120ms; easing: ease-out; }
+        Image {
+            width: 14px; height: 14px;
+            source: @image-url("../assets/icons/symbolic/chevron-right.svg");
+            image-fit: contain;
+            colorize: ShellPalette.fg-secondary;
+            opacity: root.sld-enabled ? 1.0 : 0.4;
+        }
+        chev-ta := TouchArea {
+            enabled: root.sld-enabled;
+            mouse-cursor: pointer;
+            clicked => { root.chevron-clicked(); }
+        }
     }
 }
 
