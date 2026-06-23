@@ -1080,6 +1080,21 @@ def cmd_inspect(spec=None, out=None):
                   f"alpha_threshold={bl['alpha_threshold']}   shadow={s['shadow']['enabled']}")
             att = "+".join(k for k, v in s['attached'].items() if v) or "none"
             print(f"    attached effects: {att}")
+            if s.get('shadow_actor'):
+                sh = s['shadow_actor']
+                print(f"    shadow_actor pos{sh['pos']} size{sh['size']} "
+                      f"op{sh['opacity']} mapped={sh['mapped']}")
+
+            def tree(node, ind):
+                fx = ("  fx=" + "+".join(node['fx'])) if node['fx'] else ""
+                nm = f" {node['name']!r}" if node['name'] else ""
+                print(f"    {'  ' * ind}└ {node['gtype']}{nm} "
+                      f"pos{node['pos']} size{node['size']} op{node['opacity']}"
+                      f"{'' if node['mapped'] else ' (unmapped)'}{fx}")
+                for c in node['children']:
+                    tree(c, ind + 1)
+            print("    object tree:")
+            tree(s['tree'], 0)
         print("\nRAW:", _json.dumps(scene))
         if out:
             dk.shot(out)

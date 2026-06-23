@@ -354,6 +354,60 @@ static void json_color(GString* s, const char* key, const float c[4]) {
                            (double)c[2], (double)c[3]);
 }
 
+/* Emit ,"fx":[...] listing the gnoblin effects attached to this actor (no public
+ * Clutter API enumerates effects, so we probe our known names). */
+static void json_attached_fx(GString* s, ClutterActor* a) {
+    static const char* names[] = {"gnoblin-rounded", "gnoblin-blur", "gnoblin-shadow"};
+    gboolean first = TRUE;
+
+    g_string_append(s, ",\"fx\":[");
+    for (guint i = 0; i < G_N_ELEMENTS(names); i++) {
+        if (clutter_actor_get_effect(a, names[i])) {
+            if (!first)
+                g_string_append_c(s, ',');
+            first = FALSE;
+            json_str(s, names[i] + strlen("gnoblin-"));
+        }
+    }
+    g_string_append_c(s, ']');
+}
+
+/* Recursively dump a Clutter actor subtree (the GTK-inspector object tree): each
+ * node's runtime type, name, geometry, opacity, mapped state, attached gnoblin
+ * effects and children, down to `maxdepth`. */
+static void dump_actor_tree(GString* s, ClutterActor* a, int depth, int maxdepth) {
+    float x = 0, y = 0, w = 0, h = 0;
+    const char* name = clutter_actor_get_name(a);
+
+    clutter_actor_get_position(a, &x, &y);
+    clutter_actor_get_size(a, &w, &h);
+
+    g_string_append(s, "{\"gtype\":");
+    json_str(s, G_OBJECT_TYPE_NAME(a));
+    g_string_append(s, ",\"name\":");
+    json_str(s, name ? name : "");
+    g_string_append_printf(s, ",\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],\"opacity\":%d,\"mapped\":%s",
+                           (double)x, (double)y, (double)w, (double)h,
+                           (int)clutter_actor_get_opacity(a),
+                           clutter_actor_is_mapped(a) ? "true" : "false");
+    json_attached_fx(s, a);
+    g_string_append(s, ",\"children\":[");
+    if (depth < maxdepth) {
+        GList* kids = clutter_actor_get_children(a);
+        GList* k;
+        gboolean first = TRUE;
+
+        for (k = kids; k; k = k->next) {
+            if (!first)
+                g_string_append_c(s, ',');
+            first = FALSE;
+            dump_actor_tree(s, CLUTTER_ACTOR(k->data), depth + 1, maxdepth);
+        }
+        g_list_free(kids);
+    }
+    g_string_append(s, "]}");
+}
+
 static const char* border_style_name(int st) {
     switch (st) {
     case 0:
@@ -499,6 +553,30 @@ static char* build_scene_json(MetaDisplay* display) {
         /* Which gnoblin effects are actually attached to the live actor. */
         g_string_append_printf(s, ",\"attached\":{\"rounded\":%s,\"blur\":%s}",
                                has_rounded ? "true" : "false", has_blur ? "true" : "false");
+
+        /* The drop-shadow is a SIBLING actor pinned below the window (data key
+         * "gnoblin-shadow"); report its geometry + that the shadow effect runs. */
+        {
+            ClutterActor* sh =
+                (ClutterActor*)g_object_get_data(G_OBJECT(actor), "gnoblin-shadow");
+
+            if (sh) {
+                float sxp = 0, syp = 0, swp = 0, shp = 0;
+
+                clutter_actor_get_position(sh, &sxp, &syp);
+                clutter_actor_get_size(sh, &swp, &shp);
+                g_string_append_printf(s,
+                                       ",\"shadow_actor\":{\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],"
+                                       "\"opacity\":%d,\"mapped\":%s}",
+                                       (double)sxp, (double)syp, (double)swp, (double)shp,
+                                       (int)clutter_actor_get_opacity(sh),
+                                       clutter_actor_is_mapped(sh) ? "true" : "false");
+            }
+        }
+
+        /* The Clutter actor subtree (object tree, like the GTK inspector). */
+        g_string_append(s, ",\"tree\":");
+        dump_actor_tree(s, actor, 0, 3);
         g_string_append_c(s, '}');
     }
     g_string_append(s, "]}");
