@@ -45,6 +45,8 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Launcher: opt-in Spotlight-style web-search fallback (`[launcher]
+  web-search = <url %s>`) when nothing else matches. (`afd23b6`)
 - [x] Hardening sweep — ran the compositor-effects + UI devkit tests touched by
   the blur/rounding/shadow/anim changes: blur, content-behind-blur, chrome-blur,
   blur-alpha-threshold, shadow-not-blurred, effects-shadow, effects-rules-visual,
