@@ -39,6 +39,9 @@
 #   devkit-harness.py boot                boot and keep alive (prints WAYLAND_DISPLAY), Ctrl-C
 #
 # Env: GNOBLIN_PREFIX (default <repo>/install), MONITOR (default 1280x800),
+#      HIDPI (default 1; set 2 for crisp "retina" screenshots — renders the
+#      virtual output at 2x pixels with output scale 2, keeping the logical
+#      1280x800 layout but capturing 2560x1600). E.g. HIDPI=2 …harness inspect
 #      CLIENTS=0 to boot a bare compositor, SETTLE seconds (default 7).
 import os, sys, time, signal, shutil, socket, subprocess, tempfile, pathlib
 
@@ -54,6 +57,28 @@ from devkit_crash_detector import match_crash_log
 PREFIX = pathlib.Path(os.environ.get("GNOBLIN_PREFIX", ROOT / "install"))
 SHELL_BIN = PREFIX / "bin" / "gnoblin-shell"
 MONITOR = os.environ.get("MONITOR", "1280x800")
+# HiDPI / "retina" capture: render the virtual output at HIDPI× the logical size
+# with output scale = HIDPI, so the UI keeps its 1280x800 logical layout but is
+# drawn (and grim-captured) at HIDPI× the pixels — crisp screenshots. Default 1.
+HIDPI = float(os.environ.get("HIDPI", "1"))
+
+
+def _logical_wh():
+    w, h = (int(x) for x in MONITOR.split("x"))
+    return w, h
+
+
+def _phys_wh():
+    """Physical (rendered/captured) resolution = logical × HiDPI scale."""
+    w, h = _logical_wh()
+    return int(round(w * HIDPI)), int(round(h * HIDPI))
+
+
+def _phys_spec():
+    w, h = _phys_wh()
+    return f"{w}x{h}"
+
+
 CLIENTS = os.environ.get("CLIENTS", "1") == "1"
 # Dummy quick-settings plugin scripts (FAKE data — never touch the host's real
 # network/audio/media/bluetooth). Injected as [qs-plugin.*] so the devkit's
@@ -179,7 +204,13 @@ class Devkit:
                 f'[launcher-provider.time]\ncommand = {PROVIDERS_DIR / "launcher-time"}\nprefix = "t "\n'
                 '[launcher]\nweb-search = https://duckduckgo.com/?q=%s\n'
             )
+        # HiDPI: force the virtual connector (Meta-0) to the chosen output scale so
+        # the logical layout stays put while rendering at HIDPI× pixels.
+        output_conf = ""
+        if HIDPI != 1.0:
+            output_conf = f"[output]\nMeta-0 = scale {HIDPI:g}\n"
         (cfgdir / "gnoblin.conf").write_text(
+            output_conf +
             "[appearance]\n"
             'background = "#202434"\n'
             + wallpaper_conf +
@@ -235,7 +266,9 @@ class Devkit:
         args = [str(SHELL_BIN), "--headless", "--no-x11",
                 "--wayland-display", self.disp]
         if monitors is None and with_monitor:
-            monitors = [MONITOR]
+            # Physical resolution = logical × HiDPI; [output] scale brings the
+            # logical layout back to MONITOR so the UI is unchanged but crisp.
+            monitors = [_phys_spec()]
         for spec in (monitors or []):
             args += ["--virtual-monitor", spec]
         if command:
