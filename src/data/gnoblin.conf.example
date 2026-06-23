@@ -285,9 +285,12 @@ appmenu-backend = auto
 # [launcher-provider.kill]
 # command = ~/.config/gnoblin/providers/launcher-kill    # "k firefox" → ⏎ SIGTERMs
 # prefix  = "k "
+# [launcher-provider.clip]
+# command = ~/.config/gnoblin/providers/launcher-clipboard   # needs cliphist
+# prefix  = "v "
 # Example provider scripts live in tests/devkit/providers/launcher-* (web, files,
-# emoji, kill). Other ideas (all just commands): unit/currency convert,
-# dictionary define, clipboard history, ssh hosts, window switcher.
+# emoji, kill, clipboard). Other ideas (all just commands): unit/currency
+# convert, dictionary define, ssh hosts, window switcher.
 # Opt-in web-search fallback: when nothing else matches, offer to search the web
 # (Spotlight-style). %s is the URL-encoded query. Unset = no fallback.
 # [launcher]
