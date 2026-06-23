@@ -237,10 +237,12 @@ static void set_rgba(float c[4], float r, float g, float b, float a) {
  * ring, both strengthening on focus; colours flip for light/dark. Widths default
  * to 1px each if a rule didn't set them. Mirrors Kieran's Tailwind spec. */
 static void apply_ring_border_defaults(GnoblinRoundedParams* r, gboolean dark) {
+    /* The spec is 1px each, but a 1px line washes out on this renderer; ~1.5px
+     * inner border + 2px outer ring reads as the intended thin two-tone edge. */
     if (r->border_width <= 0.0f)
-        r->border_width = 1.0f;
+        r->border_width = 1.5f;
     if (r->ring_width <= 0.0f)
-        r->ring_width = 1.0f;
+        r->ring_width = 2.0f;
     if (dark) {
         set_rgba(r->border_color, 1, 1, 1, 0.08f);
         set_rgba(r->border_color_focused, 1, 1, 1, 0.16f);

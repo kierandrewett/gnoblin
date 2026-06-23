@@ -45,6 +45,7 @@ static const char* ROUNDED_SHADER =
     "uniform vec4 border_col;\n"
     "uniform float ring_w;\n"   /* RING style: outer ring thickness */
     "uniform vec4 ring_col;\n"  /* RING style: outer ring colour (focus picked CPU-side) */
+    "uniform float margin;\n"   /* RING style: px the FBO grows beyond content per side */
     /* Circular rounded-box SDF (negative inside). */
     "float sd_circle (vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -70,7 +71,10 @@ static const char* ROUNDED_SHADER =
     "  vec2 px = uv * size;\n"
     "  vec2 center = size * 0.5;\n"
     "  vec2 p = px - center;\n"
-    "  vec2 b = center;\n"
+    /* Content half-extent: the FBO is grown by `margin` per side for the RING
+     * style so the ring can sit OUTSIDE the window, so the actual content edge is
+     * `margin` in from the texture edge. `margin` is 0 for every other style. */
+    "  vec2 b = center - vec2(margin);\n"
     "  float r = radius;\n"
     "  float d_circle = sd_circle(p, b, r);\n"
     "  float dist = d_circle;\n"
@@ -90,19 +94,24 @@ static const char* ROUNDED_SHADER =
      * content) and the inner `border` just inside it. Both clipped to the mask
      * and premultiplied. The focused/unfocused colours are chosen CPU-side. */
     "  if (border_style == 3) {\n"
-    "    float edge = -dist;\n"                          /* >0 inside the shape */
     "    float rw = max(ring_w, 0.0);\n"
     "    float bw = max(border_w, 0.0);\n"
-    "    float ring_band = (1.0 - smoothstep(rw - 1.0, rw + 0.5, edge)) * alpha;\n"
-    "    float b_in  = smoothstep(rw - 0.5, rw + 0.5, edge);\n"          /* past the ring */
-    "    float b_out = 1.0 - smoothstep(rw + bw - 1.0, rw + bw + 0.5, edge);\n"
-    "    float border_band = b_in * b_out * alpha;\n"
-    "    vec4 rc = ring_col; rc.rgb *= rc.a;\n"
-    "    base.rgb = mix(base.rgb, rc.rgb, ring_band);\n"
-    "    base.a   = mix(base.a, base.a * (1.0 - ring_col.a) + ring_col.a, ring_band);\n"
+    /* INNER border: a band just INSIDE the content edge (over the window's own
+     * edge), the light/white layer. */
+    "    float cedge = -dist;\n"                          /* >0 inside the content */
+    "    float border_band = (1.0 - smoothstep(bw - 1.0, bw + 0.5, cedge)) * alpha;\n"
     "    vec4 bc = border_col; bc.rgb *= bc.a;\n"
     "    base.rgb = mix(base.rgb, bc.rgb, border_band);\n"
     "    base.a   = mix(base.a, base.a * (1.0 - border_col.a) + border_col.a, border_band);\n"
+    /* OUTER ring: a band just OUTSIDE the content edge, in the grown margin (over
+     * the wallpaper/shadow, never over content) — the dark layer that gives the
+     * crisp outline. Composited UNDER the content (content over ring). */
+    "    float ring_band = smoothstep(-0.5, 0.5, dist)\n"        /* starts at the edge */
+    "                    * (1.0 - smoothstep(rw - 0.5, rw + 0.5, dist));\n" /* fades by rw */
+    "    vec4 rc = ring_col; rc.rgb *= rc.a;\n"               /* premultiplied */
+    "    float inv = 1.0 - base.a;\n"
+    "    base.rgb += rc.rgb * ring_band * inv;\n"
+    "    base.a   += ring_col.a * ring_band * inv;\n"
     "  } else if (border_style != 0 && border_w > 0.5) {\n"
     /* Band: from the rounded edge inward by border_w. inner = how far inside the
      * border band we are (1 at the very edge -> 0 at border_w deep). */
@@ -186,11 +195,19 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         self->source_set = TRUE;
     }
 
+    /* RING grows the offscreen by `margin` per side (see modify_paint_volume) so
+     * the ring can sit OUTSIDE the window. `size` must be the GROWN texture size
+     * and the SDF insets the content by `margin`. 0 for every other style. */
+    float margin = (self->params.border_style == GNOBLIN_BORDER_RING) ? (ring_w + 2.0f) : 0.0f;
+    float tex_w = width + 2.0f * margin;
+    float tex_h = height + 2.0f * margin;
+
     /* Uniforms float-collected as doubles via varargs (see mutter's conform
      * tests); the sampler is texture unit 0. */
     clutter_shader_effect_set_uniform(shader, "tex", G_TYPE_INT, 1, 0);
-    clutter_shader_effect_set_uniform(shader, "size", G_TYPE_FLOAT, 2, (double)width,
-                                      (double)height);
+    clutter_shader_effect_set_uniform(shader, "size", G_TYPE_FLOAT, 2, (double)tex_w,
+                                      (double)tex_h);
+    clutter_shader_effect_set_uniform(shader, "margin", G_TYPE_FLOAT, 1, (double)margin);
     clutter_shader_effect_set_uniform(shader, "radius", G_TYPE_FLOAT, 1, (double)radius);
     clutter_shader_effect_set_uniform(shader, "algo", G_TYPE_INT, 1,
                                       (int)self->params.algorithm);
@@ -215,8 +232,33 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         ->paint_target(effect, node, paint_context);
 }
 
+/* Grow the actor's paint volume by the ring margin so the RING ring renders
+ * OUTSIDE the window bounds (over the wallpaper/shadow) without occluding
+ * content. ClutterOffscreenEffect sizes its FBO to this volume + re-positions
+ * the composited texture by the offset, so the content stays put and the ring
+ * extends past it. No growth for other styles. */
+static gboolean gnoblin_rounded_modify_paint_volume(ClutterEffect* effect,
+                                                    ClutterPaintVolume* volume) {
+    GnoblinRounded* self = GNOBLIN_ROUNDED(effect);
+    graphene_point3d_t origin;
+    float m;
+
+    if (self->params.border_style != GNOBLIN_BORDER_RING)
+        return TRUE;
+
+    m = self->params.ring_width + 2.0f;
+    clutter_paint_volume_get_origin(volume, &origin);
+    origin.x -= m;
+    origin.y -= m;
+    clutter_paint_volume_set_origin(volume, &origin);
+    clutter_paint_volume_set_width(volume, clutter_paint_volume_get_width(volume) + 2.0f * m);
+    clutter_paint_volume_set_height(volume, clutter_paint_volume_get_height(volume) + 2.0f * m);
+    return TRUE;
+}
+
 static void gnoblin_rounded_class_init(GnoblinRoundedClass* klass) {
     CLUTTER_OFFSCREEN_EFFECT_CLASS(klass)->paint_target = gnoblin_rounded_paint_target;
+    CLUTTER_EFFECT_CLASS(klass)->modify_paint_volume = gnoblin_rounded_modify_paint_volume;
 }
 
 static void gnoblin_rounded_init(GnoblinRounded* self) {
