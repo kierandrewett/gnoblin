@@ -1,6 +1,6 @@
 #!/bin/sh
-# Launcher provider: file search under $HOME. Query in $1.
-q="$1"
+# Launcher provider: file search under $HOME. Query in $GNOBLIN_QUERY.
+q="$GNOBLIN_QUERY"
 [ -z "$q" ] && exit 0
 if command -v fd >/dev/null 2>&1; then
   fd -tf -d5 -i --max-results 12 -- "$q" "$HOME" 2>/dev/null

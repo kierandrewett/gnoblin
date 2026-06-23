@@ -265,8 +265,9 @@ appmenu-backend = auto
 
 # ── Launcher providers (process/command search sources) ──────────────────────
 # The Spotlight launcher can search anything: declare a command that receives
-# the query in $GNOBLIN_QUERY (and as $1) and prints one result per line as
-# TAB-separated fields:  title <TAB> subtitle <TAB> icon <TAB> action
+# the (prefix-stripped) query in the $GNOBLIN_QUERY env var — a separate script
+# reads that; an inline command can also use "$1" — and prints one result per
+# line as TAB-separated fields:  title <TAB> subtitle <TAB> icon <TAB> action
 #   icon   = a theme icon name (or empty)
 #   action = a shell command run on activation (empty → the title is copied)
 # `prefix` is an optional keyword the query must start with (stripped before the
@@ -278,8 +279,15 @@ appmenu-backend = auto
 # [launcher-provider.web]
 # command = ~/.config/gnoblin/providers/launcher-web
 # prefix  = "g "
-# Other ideas (all just commands): unit/currency convert, dictionary define,
-# emoji search, clipboard history, ssh hosts, kill-process, window switcher.
+# [launcher-provider.emoji]
+# command = ~/.config/gnoblin/providers/launcher-emoji   # "e love" → 😍, ⏎ copies
+# prefix  = "e "
+# [launcher-provider.kill]
+# command = ~/.config/gnoblin/providers/launcher-kill    # "k firefox" → ⏎ SIGTERMs
+# prefix  = "k "
+# Example provider scripts live in tests/devkit/providers/launcher-* (web, files,
+# emoji, kill). Other ideas (all just commands): unit/currency convert,
+# dictionary define, clipboard history, ssh hosts, window switcher.
 
 [animations]
 # By default animations follow the STANDARD desktop setting

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Launcher provider: find + kill a process by name. Query in $GNOBLIN_QUERY; ⏎ → SIGTERM.
+q="$GNOBLIN_QUERY"
+[ -z "$q" ] && exit 0
+ps -eo pid,comm,pcpu --sort=-pcpu 2>/dev/null \
+  | awk -v q="$q" 'NR>1 && index(tolower($2), tolower(q)) {print}' | head -10 \
+  | while read -r pid comm cpu; do
+  printf 'Quit %s\tpid %s · %s%% CPU — \xe2\x8f\x8e to SIGTERM\tprocess-stop\tkill %s\n' "$comm" "$pid" "$cpu" "$pid"
+done
