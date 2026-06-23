@@ -107,6 +107,9 @@ class Devkit:
         env["XDG_CONFIG_HOME"] = str(self.tmp / "config")
         env["XDG_CACHE_HOME"] = str(self.tmp / "cache")
         env["HOME"] = str(self.tmp / "home")
+        # Make Slint clients emit their inspection sidecars (icon resolutions etc.)
+        # under $XDG_RUNTIME_DIR/gnoblin-inspect/. Cheap; harmless when unread.
+        env["GNOBLIN_INSPECT"] = "1"
         if self.dbus_addr:
             env["DBUS_SESSION_BUS_ADDRESS"] = self.dbus_addr
         return env
@@ -1030,6 +1033,14 @@ def cmd_inspect(spec=None, out=None):
     rendering truth — what is rounded/ringed/blurred and where — instead of
     eyeballing screenshots. Optionally also writes a screenshot to OUT."""
     import json as _json
+    import glob as _glob
+    # Clear stale Slint inspection sidecars so we only read this run's data.
+    insp_dir = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "gnoblin-inspect")
+    for f in _glob.glob(os.path.join(insp_dir, "*.jsonl")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
     dk = Devkit()
     try:
         dk.boot(with_monitor=True)
@@ -1095,6 +1106,17 @@ def cmd_inspect(spec=None, out=None):
                     tree(c, ind + 1)
             print("    object tree:")
             tree(s['tree'], 0)
+            # Slint-side icon resolutions logged by this surface's client (by pid).
+            icon_log = os.path.join(insp_dir, f"icons-{s['pid']}.jsonl")
+            if s['pid'] and os.path.exists(icon_log):
+                with open(icon_log) as f:
+                    icons = [_json.loads(ln) for ln in f if ln.strip()]
+                if icons:
+                    print(f"    icons ({len(icons)} resolved by this client):")
+                    for ic in icons[:24]:
+                        mark = ic['dims'] if ic['resolved'] else "MISSING"
+                        sz = f"@{ic['req_size']}" if ic['req_size'] else ""
+                        print(f"        {ic['name']}{sz} -> {mark}")
         print("\nRAW:", _json.dumps(scene))
         if out:
             dk.shot(out)

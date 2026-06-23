@@ -1796,8 +1796,55 @@ fn find_icon_internal(
         return hit;
     }
     let result = find_icon_uncached(name, theme_path, target_size);
+    inspect_log_icon(name, theme_path, target_size, &result);
     ICON_CACHE.with(|c| c.borrow_mut().insert(key, result.clone()));
     result
+}
+
+/// When `GNOBLIN_INSPECT` is set, append each unique icon resolution (logged
+/// once, on cache miss) to `$XDG_RUNTIME_DIR/gnoblin-inspect/icons-<pid>.jsonl`
+/// so the inspector can see exactly which icon resolved for each name/size and at
+/// what pixel dimensions — the Slint-side counterpart to the compositor's scene
+/// dump. No-op unless the env var is set.
+fn inspect_log_icon(
+    name: &str,
+    theme_path: &str,
+    size: Option<u32>,
+    result: &Option<slint::Image>,
+) {
+    if std::env::var_os("GNOBLIN_INSPECT").is_none() {
+        return;
+    }
+    let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(d) => std::path::PathBuf::from(d).join("gnoblin-inspect"),
+        None => return,
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let dims = result
+        .as_ref()
+        .map(|img| {
+            let s = img.size();
+            format!("[{},{}]", s.width, s.height)
+        })
+        .unwrap_or_else(|| "null".to_string());
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    let line = format!(
+        "{{\"name\":\"{}\",\"theme\":\"{}\",\"req_size\":{},\"resolved\":{},\"dims\":{}}}\n",
+        esc(name),
+        esc(theme_path),
+        size.map(|s| s.to_string()).unwrap_or_else(|| "null".into()),
+        result.is_some(),
+        dims,
+    );
+    use std::io::Write;
+    let path = dir.join(format!("icons-{}.jsonl", std::process::id()));
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 fn find_icon_uncached(
