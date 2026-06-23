@@ -70,6 +70,8 @@ static const char* MASK_DECL =
     "uniform int mask_algo;\n"
     "uniform float mask_smoothing;\n"
     "uniform float alpha_threshold;\n" /* frost only where act.a < this cutoff */
+    "uniform vec2 frost_off;\n"        /* actor footprint origin in the padded capture */
+    "uniform vec2 frost_scale;\n"      /* actor footprint size in the padded capture */
     "float gn_sd_circle (vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
     "  return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;\n"
@@ -91,7 +93,7 @@ static const char* MASK_DECL =
  * of a full-screen layer surface. Compositing: out = frost*(1-actorA) + actor,
  * with frost premultiplied and clipped to the panel's footprint. */
 static const char* MASK_SRC =
-    "  vec4 frost = texture2D(cogl_sampler0, cogl_tex_coord0_in.st);\n"
+    "  vec4 frost = texture2D(cogl_sampler0, frost_off + cogl_tex_coord0_in.st * frost_scale);\n"
     "  vec4 act = texture2D(cogl_sampler1, cogl_tex_coord1_in.st);\n"
     "  float cover = smoothstep(0.0, 0.04, act.a);\n" /* where the panel has pixels */
     /* Alpha-threshold gate: only frost pixels that are translucent enough — i.e.
@@ -130,10 +132,17 @@ typedef struct {
     float alpha_threshold;
 
     /* The content captured from behind the actor in pre_paint (the live backdrop
-     * — wallpaper + any windows underneath), to be blurred in paint_target. */
+     * — wallpaper + any windows underneath), to be blurred in paint_target. The
+     * capture is PADDED by ~the blur radius beyond the actor's rect so the
+     * Gaussian has real backdrop to sample at the edges instead of smearing the
+     * clamped edge texel into a halo. `frost_off`/`frost_scale` map the actor's
+     * 0..1 footprint to its sub-rect inside the padded capture. */
     CoglTexture* captured;
+    float frost_off[2];
+    float frost_scale[2];
 
     /* Cached pipelines (rebuilt lazily). */
+    CoglPipeline* downsample;
     CoglPipeline* blur_h;
     CoglPipeline* blur_v;
     CoglPipeline* composite;
@@ -182,9 +191,22 @@ static CoglPipeline* make_composite_pipeline(CoglContext* ctx) {
     return p;
 }
 
+/* A plain textured pipeline (linear filter) used to bilinearly downsample the
+ * captured backdrop before blurring — halving the resolution averages 2x2 blocks
+ * so the cheap 9-tap Gaussian covers the full radius smoothly instead of
+ * undersampling it into a smear. */
+static CoglPipeline* make_copy_pipeline(CoglContext* ctx) {
+    CoglPipeline* p = cogl_pipeline_new(ctx);
+    cogl_pipeline_set_layer_null_texture(p, 0);
+    cogl_pipeline_set_layer_filters(p, 0, COGL_PIPELINE_FILTER_LINEAR, COGL_PIPELINE_FILTER_LINEAR);
+    cogl_pipeline_set_layer_wrap_mode(p, 0, COGL_PIPELINE_WRAP_MODE_CLAMP_TO_EDGE);
+    return p;
+}
+
 static void ensure_pipelines(GnoblinBlur* self, CoglContext* ctx) {
     if (self->pipelines_ready)
         return;
+    self->downsample = make_copy_pipeline(ctx);
     self->blur_h = make_blur_pipeline(ctx);
     self->blur_v = make_blur_pipeline(ctx);
     self->composite = make_composite_pipeline(ctx);
@@ -241,8 +263,12 @@ static gboolean gnoblin_blur_pre_paint(ClutterEffect* effect, ClutterPaintNode* 
     int fb_w, fb_h, rx, ry, rw, rh;
 
     g_clear_object(&self->captured);
+    self->frost_off[0] = self->frost_off[1] = 0.0f;
+    self->frost_scale[0] = self->frost_scale[1] = 1.0f;
 
     if (actor && fb && ctx) {
+        int ax, ay, aw_i, ah_i, pad, cx0, cy0, cx1, cy1, cw, ch;
+
         clutter_actor_get_size(actor, &aw, &ah);
         clutter_actor_get_transformed_position(actor, &tx, &ty);
         scale = clutter_actor_get_resource_scale(actor);
@@ -252,34 +278,43 @@ static gboolean gnoblin_blur_pre_paint(ClutterEffect* effect, ClutterPaintNode* 
         fb_w = cogl_framebuffer_get_width(fb);
         fb_h = cogl_framebuffer_get_height(fb);
 
-        /* Actor rect in framebuffer device pixels (top-left origin). Clamp to the
-         * framebuffer for partially off-screen surfaces. */
+        /* Actor rect in framebuffer device pixels (top-left origin), clamped to
+         * the framebuffer for partially off-screen surfaces. */
         rx = (int)floorf(tx * scale);
         ry = (int)floorf(ty * scale);
         rw = (int)ceilf(aw * scale);
         rh = (int)ceilf(ah * scale);
-        if (rx < 0) {
-            rw += rx;
-            rx = 0;
-        }
-        if (ry < 0) {
-            rh += ry;
-            ry = 0;
-        }
-        if (rx + rw > fb_w)
-            rw = fb_w - rx;
-        if (ry + rh > fb_h)
-            rh = fb_h - ry;
+        ax = rx < 0 ? 0 : rx;
+        ay = ry < 0 ? 0 : ry;
+        aw_i = (rx + rw > fb_w ? fb_w : rx + rw) - ax;
+        ah_i = (ry + rh > fb_h ? fb_h : ry + rh) - ay;
 
-        if (rw >= 2 && rh >= 2 && aw >= 1 && ah >= 1) {
+        /* Capture PADDED by ~1.5x the blur radius so the Gaussian has real
+         * backdrop to sample at the actor's edges (no clamp-to-edge halo). The
+         * pad is clamped per-side to the framebuffer; the actor footprint within
+         * the captured texture is recorded for the composite to remap. */
+        pad = (int)ceilf(self->radius * scale * 1.5f) + 2;
+        cx0 = ax - pad < 0 ? 0 : ax - pad;
+        cy0 = ay - pad < 0 ? 0 : ay - pad;
+        cx1 = ax + aw_i + pad > fb_w ? fb_w : ax + aw_i + pad;
+        cy1 = ay + ah_i + pad > fb_h ? fb_h : ay + ah_i + pad;
+        cw = cx1 - cx0;
+        ch = cy1 - cy0;
+
+        if (cw >= 2 && ch >= 2 && aw_i >= 1 && ah_i >= 1) {
             CoglBitmap* bmp =
-                cogl_bitmap_new_with_size(ctx, rw, rh, COGL_PIXEL_FORMAT_RGBA_8888_PRE);
+                cogl_bitmap_new_with_size(ctx, cw, ch, COGL_PIXEL_FORMAT_RGBA_8888_PRE);
             if (bmp) {
-                if (cogl_framebuffer_read_pixels_into_bitmap(fb, rx, ry,
+                if (cogl_framebuffer_read_pixels_into_bitmap(fb, cx0, cy0,
                                                              COGL_READ_PIXELS_COLOR_BUFFER, bmp)) {
                     self->captured = cogl_texture_2d_new_from_bitmap(bmp);
-                    if (self->captured)
+                    if (self->captured) {
                         cogl_texture_set_premultiplied(self->captured, TRUE);
+                        self->frost_off[0] = (float)(ax - cx0) / (float)cw;
+                        self->frost_off[1] = (float)(ay - cy0) / (float)ch;
+                        self->frost_scale[0] = (float)aw_i / (float)cw;
+                        self->frost_scale[1] = (float)ah_i / (float)ch;
+                    }
                 }
                 g_object_unref(bmp);
             }
@@ -299,9 +334,11 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     CoglTexture* actor_tex = clutter_offscreen_effect_get_texture(effect);
     CoglFramebuffer* fb = clutter_paint_context_get_framebuffer(paint_context);
     CoglContext* ctx = fb ? cogl_framebuffer_get_context(fb) : NULL;
-    int tw, th;
+    int cw, ch, sw, sh;
+    CoglTexture* tex_half = NULL;
     CoglTexture* tex_a = NULL;
     CoglTexture* tex_b = NULL;
+    CoglOffscreen* off_half = NULL;
     CoglOffscreen* off_a = NULL;
     CoglOffscreen* off_b = NULL;
 
@@ -313,34 +350,55 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         return;
     }
 
-    tw = cogl_texture_get_width(self->captured);
-    th = cogl_texture_get_height(self->captured);
+    cw = cogl_texture_get_width(self->captured);
+    ch = cogl_texture_get_height(self->captured);
     ensure_pipelines(self, ctx);
 
-    tex_a = cogl_texture_2d_new_with_size(ctx, tw, th);
-    tex_b = cogl_texture_2d_new_with_size(ctx, tw, th);
-    if (!tex_a || !tex_b) {
+    /* Work at half resolution: the bilinear downsample averages 2x2 blocks, so
+     * the cheap 9-tap Gaussian covers the full radius smoothly instead of
+     * undersampling it into a smear. */
+    sw = MAX(cw / 2, 1);
+    sh = MAX(ch / 2, 1);
+    tex_half = cogl_texture_2d_new_with_size(ctx, sw, sh);
+    tex_a = cogl_texture_2d_new_with_size(ctx, sw, sh);
+    tex_b = cogl_texture_2d_new_with_size(ctx, sw, sh);
+    if (!tex_half || !tex_a || !tex_b) {
+        g_clear_object(&tex_half);
         g_clear_object(&tex_a);
         g_clear_object(&tex_b);
         CLUTTER_OFFSCREEN_EFFECT_CLASS(gnoblin_blur_parent_class)
             ->paint_target(effect, node, paint_context);
         return;
     }
+    off_half = cogl_offscreen_new_with_texture(tex_half);
     off_a = cogl_offscreen_new_with_texture(tex_a);
     off_b = cogl_offscreen_new_with_texture(tex_b);
 
-    /* Separable Gaussian: captured -> tex_a (H) -> tex_b (V). */
-    blur_pass(self->blur_h, self->captured, COGL_FRAMEBUFFER(off_a), tw, th, 1.0f, 0.0f,
-              self->radius);
-    blur_pass(self->blur_v, tex_a, COGL_FRAMEBUFFER(off_b), tw, th, 0.0f, 1.0f, self->radius);
+    /* Downsample captured -> tex_half (bilinear average). */
+    cogl_pipeline_set_layer_texture(self->downsample, 0, self->captured);
+    cogl_framebuffer_set_viewport(COGL_FRAMEBUFFER(off_half), 0, 0, sw, sh);
+    cogl_framebuffer_orthographic(COGL_FRAMEBUFFER(off_half), 0, 0, sw, sh, -1.0f, 1.0f);
+    cogl_framebuffer_draw_textured_rectangle(COGL_FRAMEBUFFER(off_half), self->downsample, 0.0f,
+                                             0.0f, (float)sw, (float)sh, 0.0f, 0.0f, 1.0f, 1.0f);
+
+    /* Separable Gaussian on the half-res backdrop: tex_half -> tex_a (H) ->
+     * tex_b (V). Radius halved to match the half-res grid. */
+    blur_pass(self->blur_h, tex_half, COGL_FRAMEBUFFER(off_a), sw, sh, 1.0f, 0.0f,
+              self->radius * 0.5f);
+    blur_pass(self->blur_v, tex_a, COGL_FRAMEBUFFER(off_b), sw, sh, 0.0f, 1.0f,
+              self->radius * 0.5f);
 
     /* Composite onto the destination with the current modelview (which maps the
      * offscreen actor texture to its on-screen footprint). Layer 0 = blurred
-     * backdrop, layer 1 = actor render. The shader masks the frost by the
-     * rounded-rect SDF and the actor's own coverage, then puts the actor over. */
+     * backdrop (remapped to the actor footprint within the padded capture),
+     * layer 1 = actor render. The shader masks the frost by the rounded-rect SDF
+     * and the actor's own coverage, then puts the actor over. */
     cogl_pipeline_set_layer_texture(self->composite, 0, tex_b);
     cogl_pipeline_set_layer_texture(self->composite, 1, actor_tex);
-    set_uniform_2f(self->composite, "mask_size", (float)tw, (float)th);
+    set_uniform_2f(self->composite, "mask_size", (float)cogl_texture_get_width(actor_tex),
+                   (float)cogl_texture_get_height(actor_tex));
+    set_uniform_2f(self->composite, "frost_off", self->frost_off[0], self->frost_off[1]);
+    set_uniform_2f(self->composite, "frost_scale", self->frost_scale[0], self->frost_scale[1]);
     set_uniform_1f(self->composite, "alpha_threshold", self->alpha_threshold);
     if (self->rounded_set && self->rounded.radius > 0.0f) {
         float rscale = clutter_actor_get_resource_scale(
@@ -365,8 +423,10 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
                                                  0.0f, 1.0f, 1.0f);
     }
 
+    g_clear_object(&off_half);
     g_clear_object(&off_a);
     g_clear_object(&off_b);
+    g_clear_object(&tex_half);
     g_clear_object(&tex_a);
     g_clear_object(&tex_b);
 }
@@ -375,6 +435,7 @@ static void gnoblin_blur_dispose(GObject* object) {
     GnoblinBlur* self = GNOBLIN_BLUR(object);
 
     g_clear_object(&self->captured);
+    g_clear_object(&self->downsample);
     g_clear_object(&self->blur_h);
     g_clear_object(&self->blur_v);
     g_clear_object(&self->composite);
@@ -394,6 +455,8 @@ static void gnoblin_blur_init(GnoblinBlur* self) {
     self->rounded_set = FALSE;
     self->pipelines_ready = FALSE;
     self->alpha_threshold = 1.0f; /* no gating by default (frost all coverage) */
+    self->frost_off[0] = self->frost_off[1] = 0.0f;
+    self->frost_scale[0] = self->frost_scale[1] = 1.0f;
 }
 
 ClutterEffect* gnoblin_blur_new(float radius) {

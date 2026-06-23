@@ -10,11 +10,12 @@ task tool). Newest asks bubble to the top of **To do**.
   branch + mpris provider `span:4 layout:"media"` still to do.
 
 ## To do
-- [ ] **Blur smearing + shadow artifacts/flicker** — content-behind blur is
-  heavily SMEARED and flickers with artifacts where the shadow is. Investigate
-  `gnoblin-blur.cpp` (Gaussian sample bounds / smear direction) + the shadow
-  second-pass in `gnoblin-shell-plugin.cpp` (`shadow_clip_region`). Note:
-  llvmpipe devkit may not reproduce GPU artifacts.
+- [ ] **Blur — confirm on real GPU.** Rewrote `gnoblin-blur.cpp`: padded capture
+  (samples real backdrop past the actor edge → no clamp halo) + downsample-then-
+  blur (half-res bilinear average → the 9-tap Gaussian covers the radius smoothly
+  → no undersampling smear). Looks smooth on llvmpipe + all blur tests green, but
+  **Kieran to verify the smear/flicker is gone on real hardware.** If the shadow
+  still flickers, dig into the shadow second-pass (`shadow_clip_region`).
 
 ## Done (recent)
 - [x] **Topbar flush + flat** — no rounding/shadow/frost on the edge-to-edge
