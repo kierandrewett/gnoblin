@@ -14,12 +14,13 @@ HIG; animations buttery + customisable (easing/length/scale).
   still to do.
 
 ## To do (from the loop brief, roughly in order)
-- [ ] **App launcher → macOS Spotlight.** Redesign appearance (Spotlight-esque),
-  and add smart modes: file search, calculator, and invent fun providers
-  (unit/currency convert, define, web-search handoff, emoji, clipboard, kill
-  process, etc.). Drive results via the process/command approach so each search
-  source is a configurable plugin (like the QS plugins). Keep everything
-  customisable.
+- [ ] **Launcher provider host** (process/command, like the QS plugins) — the
+  Spotlight redesign + inline calculator are DONE (`191231b`). Next: a provider
+  protocol so a query is piped to configured commands (`[launcher-provider.NAME]
+  command = …`, optional trigger prefix) returning JSON results
+  {title, subtitle, icon, action}. Ship example providers: file search
+  (fd/locate), web-search handoff, unit/currency convert, define, emoji,
+  clipboard history, kill-process. The Row/Action seam is already in place.
 - [ ] **codex CLI (GPT 5.5) validation pass** — once the above land, have codex
   review/validate the changes and act on findings.
 - [ ] Then: whatever gnoblin needs next, following the ethos.
@@ -34,6 +35,9 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Launcher: macOS Spotlight redesign (frosted upper-third panel, big search
+  field, rich rows) + inline calculator (type maths → answer, ⏎ copies). The
+  Row/Action model is provider-ready. (`191231b`)
 - [x] Dock: frosted-glass macOS chrome — more translucent, soft rim instead of
   the boxy border, no focused-slot border, radius 23. (`4b7ba65`)
 - [x] Context menu: compact macOS rows (34→26px), tighter insets, less chunky.
