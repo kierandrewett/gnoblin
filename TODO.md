@@ -20,7 +20,14 @@ HIG; animations buttery + customisable (easing/length/scale).
   timing, dock, menu, launcher).
 - [ ] Then: whatever gnoblin needs next, following the ethos.
 
-## Needs Kieran (real-GPU verification)
+## Needs Kieran (real-hardware verification)
+- [ ] **Held Alt+Tab** — the switcher dispatch path works, but `run-switcher`'s
+  injected held-modifier release-commit fails in the headless harness (the ~40ms
+  synthetic held key is finicky; verified NOT a regression — this session touched
+  no switcher/keybind/input code, and it fails even with instant animations).
+  Confirm Alt+Tab cycles windows on real hardware; if not, it's a real switcher
+  bug to chase (independent of this session's work).
+
 - [ ] **Blur** — rewrote `gnoblin-blur.cpp` (padded capture + downsample-then-
   blur). Smooth on llvmpipe + all blur tests green; confirm the smear/flicker is
   gone on real hardware. If shadow still flickers, dig into the shadow
@@ -30,6 +37,11 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Hardening sweep — ran the compositor-effects + UI devkit tests touched by
+  the blur/rounding/shadow/anim changes: blur, content-behind-blur, chrome-blur,
+  blur-alpha-threshold, shadow-not-blurred, effects-shadow, effects-rules-visual,
+  maximize-effects/animation, window-rules, overview — all green. (One pre-
+  existing held-Alt+Tab harness failure isolated as NOT a regression.)
 - [x] codex re-review (gpt-5.5) of the new code — clean (build + tests pass); its
   one P1 was a false positive (misread the locally-patched mutter submodule
   working tree as a committed change; the committed pointer is unchanged — left
