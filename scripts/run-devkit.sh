@@ -153,6 +153,12 @@ mkdir -p "$DK/config/gnoblin"
   emit_default_wallpaper
   echo "rounding = 12"          # rounded window corners, so the effect is visible
   echo 'shadow = "0 20px 48px -20px rgba(0,0,0,.22), 0 4px 12px -6px rgba(0,0,0,.14)"'
+  # The compositor-managed window effects (these mirror gnoblin.defaults.conf,
+  # spelled out here so the devkit visibly exercises them and they're easy to
+  # tweak in one place). The two-layer ring border hugs each window's surface.
+  echo "[effects]"
+  echo "rounding = 12"
+  echo "border-style = ring"
   echo "[animations]"
   echo "enabled = on"
   echo "[bind]"
