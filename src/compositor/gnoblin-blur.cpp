@@ -121,6 +121,67 @@ static const char* MASK_SRC =
     "  frost *= cover;\n"
     "  cogl_color_out = frost * (1.0 - act.a) + act;\n";
 
+static void enlarge_box_for_effects(ClutterActorBox* box) {
+    float width, height;
+
+    if (!box || clutter_actor_box_get_area(box) == 0.0f)
+        return;
+
+    /* Mirrors Clutter's private _clutter_actor_box_enlarge_for_effects().
+     * ClutterOffscreenEffect uses this enlarged box for the FBO, then offsets
+     * the final texture back by box.x1/box.y1. This effect paints its own
+     * target, so it must use the same actor sub-rect inside that FBO. */
+    width = box->x2 - box->x1;
+    height = box->y2 - box->y1;
+    width = nearbyintf(width);
+    height = nearbyintf(height);
+
+    box->x2 = ceilf(box->x2 + 0.75f);
+    box->y2 = ceilf(box->y2 + 0.75f);
+    box->x1 = box->x2 - width - 3.0f;
+    box->y1 = box->y2 - height - 3.0f;
+}
+
+static void get_actor_offscreen_rect(ClutterActor* actor, CoglTexture* actor_tex, float* x1,
+                                     float* y1, float* x2, float* y2) {
+    float width = 0.0f, height = 0.0f;
+    float scale = 1.0f;
+    int tex_w = actor_tex ? cogl_texture_get_width(actor_tex) : 1;
+    int tex_h = actor_tex ? cogl_texture_get_height(actor_tex) : 1;
+    float inset_x = 0.0f, inset_y = 0.0f;
+    const ClutterPaintVolume* volume = NULL;
+
+    if (actor)
+        clutter_actor_get_size(actor, &width, &height);
+
+    if (actor) {
+        scale = clutter_actor_get_resource_scale(actor);
+        if (scale <= 0.0f)
+            scale = 1.0f;
+        volume = clutter_actor_get_paint_volume(actor);
+    }
+
+    if (volume) {
+        graphene_point3d_t origin;
+        ClutterActorBox box;
+
+        clutter_paint_volume_get_origin(volume, &origin);
+        box.x1 = origin.x;
+        box.y1 = origin.y;
+        box.x2 = origin.x + clutter_paint_volume_get_width(volume);
+        box.y2 = origin.y + clutter_paint_volume_get_height(volume);
+        enlarge_box_for_effects(&box);
+
+        inset_x = MAX((0.0f - box.x1) * scale, 0.0f);
+        inset_y = MAX((0.0f - box.y1) * scale, 0.0f);
+    }
+
+    *x1 = CLAMP(inset_x, 0.0f, (float)tex_w);
+    *y1 = CLAMP(inset_y, 0.0f, (float)tex_h);
+    *x2 = CLAMP(inset_x + width * scale, *x1, (float)tex_w);
+    *y2 = CLAMP(inset_y + height * scale, *y1, (float)tex_h);
+}
+
 typedef struct {
     ClutterOffscreenEffect parent;
     float radius;
@@ -366,6 +427,7 @@ static gboolean gnoblin_blur_pre_paint(ClutterEffect* effect, ClutterPaintNode* 
 static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPaintNode* node,
                                       ClutterPaintContext* paint_context) {
     GnoblinBlur* self = GNOBLIN_BLUR(effect);
+    ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(effect));
     CoglTexture* actor_tex = clutter_offscreen_effect_get_texture(effect);
     CoglFramebuffer* fb = clutter_paint_context_get_framebuffer(paint_context);
     CoglContext* ctx = fb ? cogl_framebuffer_get_context(fb) : NULL;
@@ -466,6 +528,9 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
      * backdrop (remapped to the actor footprint within the padded capture),
      * layer 1 = actor render. The shader masks the frost by the rounded-rect SDF
      * and the actor's own coverage, then puts the actor over. */
+    float rect_x1, rect_y1, rect_x2, rect_y2;
+    get_actor_offscreen_rect(actor, actor_tex, &rect_x1, &rect_y1, &rect_x2, &rect_y2);
+
     cogl_pipeline_set_layer_texture(self->composite, 0, frost);
     cogl_pipeline_set_layer_texture(self->composite, 1, actor_tex);
     set_uniform_2f(self->composite, "mask_size", (float)cogl_texture_get_width(actor_tex),
@@ -488,12 +553,23 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     }
 
     {
-        /* Draw the actor-sized quad. The offscreen texture is the actor's paint
-         * box; draw it 1:1 in the texture's own pixel size so layers line up. */
-        float qw = (float)cogl_texture_get_width(actor_tex);
-        float qh = (float)cogl_texture_get_height(actor_tex);
-        cogl_framebuffer_draw_textured_rectangle(fb, self->composite, 0.0f, 0.0f, qw, qh, 0.0f,
-                                                 0.0f, 1.0f, 1.0f);
+        float tx = 1.0f, ty = 1.0f;
+        float right_pad = MAX((float)cogl_texture_get_width(actor_tex) - rect_x2, 0.0f);
+        float bottom_pad = MAX((float)cogl_texture_get_height(actor_tex) - rect_y2, 0.0f);
+        float qw = rect_x2 + right_pad;
+        float qh = rect_y2 + bottom_pad;
+        float qx1 = 0.0f;
+        float qy1 = 0.0f;
+
+        if (actor)
+            clutter_actor_get_transformed_position(actor, &tx, &ty);
+        if (tx <= 0.5f)
+            qx1 = -rect_x1;
+        if (ty <= 0.5f)
+            qy1 = -rect_y1;
+
+        cogl_framebuffer_draw_textured_rectangle(fb, self->composite, qx1, qy1, qx1 + qw, qy1 + qh,
+                                                 0.0f, 0.0f, 1.0f, 1.0f);
     }
 
     g_clear_object(&off_half);
