@@ -45,7 +45,13 @@ static const char* ROUNDED_SHADER =
     "uniform vec4 border_col;\n"
     "uniform float ring_w;\n"   /* RING style: outer ring thickness */
     "uniform vec4 ring_col;\n"  /* RING style: outer ring colour (focus picked CPU-side) */
-    "uniform float margin;\n"   /* RING style: px the FBO grows beyond content per side */
+    /* Per-side inset (px) from the texture edge to the ACTUAL window surface:
+     * (left, top, right, bottom). CSD apps (GTK/firefox/nautilus) reserve an
+     * invisible shadow border inside their buffer, so the visible window is
+     * smaller than the actor; this insets the rounded edge + border/ring so they
+     * hug the real surface instead of floating out past the shadow. Zero for SSD
+     * windows where the buffer already equals the frame. */
+    "uniform vec4 inset;\n"
     /* Circular rounded-box SDF (negative inside). */
     "float sd_circle (vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -69,12 +75,14 @@ static const char* ROUNDED_SHADER =
     "void main () {\n"
     "  vec2 uv = cogl_tex_coord_in[0].xy;\n"
     "  vec2 px = uv * size;\n"
-    "  vec2 center = size * 0.5;\n"
-    "  vec2 p = px - center;\n"
-    /* Content half-extent: the FBO is grown by `margin` per side for the RING
-     * style so the ring can sit OUTSIDE the window, so the actual content edge is
-     * `margin` in from the texture edge. `margin` is 0 for every other style. */
-    "  vec2 b = center - vec2(margin);\n"
+    /* The content rect is the texture inset per side by `inset` (left,top,right,
+     * bottom) — the visible window surface inside any CSD shadow margin. Round
+     * and stroke THAT rect, not the full texture. */
+    "  vec2 c0 = vec2(inset.x, inset.y);\n"
+    "  vec2 c1 = size - vec2(inset.z, inset.w);\n"
+    "  vec2 cc = (c0 + c1) * 0.5;\n"
+    "  vec2 p = px - cc;\n"
+    "  vec2 b = (c1 - c0) * 0.5;\n"
     "  float r = radius;\n"
     "  float d_circle = sd_circle(p, b, r);\n"
     "  float dist = d_circle;\n"
@@ -193,16 +201,18 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         self->source_set = TRUE;
     }
 
-    /* The RING bands render INSIDE the rounded edge, so the offscreen is NOT
-     * grown — margin stays 0 and `size` is the actor size like every other style. */
-    float margin = 0.0f;
+    /* Per-side inset to the visible surface (CSD shadow margin); 0 for SSD. In
+     * allocation px, the same space as `size`, so it scales naturally with the
+     * actor transform (unlike radius/border, which are kept screen-constant). */
+    const float* in = self->params.content_inset;
 
     /* Uniforms float-collected as doubles via varargs (see mutter's conform
      * tests); the sampler is texture unit 0. */
     clutter_shader_effect_set_uniform(shader, "tex", G_TYPE_INT, 1, 0);
     clutter_shader_effect_set_uniform(shader, "size", G_TYPE_FLOAT, 2, (double)width,
                                       (double)height);
-    clutter_shader_effect_set_uniform(shader, "margin", G_TYPE_FLOAT, 1, (double)margin);
+    clutter_shader_effect_set_uniform(shader, "inset", G_TYPE_FLOAT, 4, (double)in[0],
+                                      (double)in[1], (double)in[2], (double)in[3]);
     clutter_shader_effect_set_uniform(shader, "radius", G_TYPE_FLOAT, 1, (double)radius);
     clutter_shader_effect_set_uniform(shader, "algo", G_TYPE_INT, 1,
                                       (int)self->params.algorithm);
@@ -244,6 +254,7 @@ static void gnoblin_rounded_init(GnoblinRounded* self) {
     memset(self->params.ring_color, 0, sizeof(self->params.ring_color));
     memset(self->params.border_color_focused, 0, sizeof(self->params.border_color_focused));
     memset(self->params.ring_color_focused, 0, sizeof(self->params.ring_color_focused));
+    memset(self->params.content_inset, 0, sizeof(self->params.content_inset));
     self->source_set = FALSE;
     self->focused = FALSE;
 }

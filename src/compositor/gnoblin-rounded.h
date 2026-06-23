@@ -63,6 +63,10 @@ typedef struct {
     float ring_color[4];             /* outer ring colour (unfocused) */
     float border_color_focused[4];   /* inner border colour when focused */
     float ring_color_focused[4];     /* outer ring colour when focused */
+    /* Per-side inset (left, top, right, bottom; logical px) from the actor edge
+     * to the visible window surface, so the mask/border/ring hug the real
+     * surface inside any CSD shadow margin. Zero = round the whole actor. */
+    float content_inset[4];
 } GnoblinRoundedParams;
 
 /* A new rounded-corners effect from a full parameter set. */

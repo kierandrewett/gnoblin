@@ -520,6 +520,11 @@ static void maybe_round_corners(MetaWindowActor* window_actor) {
     if (clutter_actor_get_effect(actor, "gnoblin-rounded"))
         return;
 
+    /* Inset the mask/border/ring to the visible surface inside any CSD shadow
+     * margin (same margins the drop-shadow uses), so the rounded edge hugs the
+     * real window rather than the buffer edge out past the shadow. */
+    shadow_frame_margins(window, fx.rounded.content_inset);
+
     clutter_actor_add_effect_with_name(actor, "gnoblin-rounded",
                                        gnoblin_rounded_new_full(&fx.rounded));
 }
