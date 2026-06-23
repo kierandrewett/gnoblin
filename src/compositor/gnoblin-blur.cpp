@@ -354,11 +354,18 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     ch = cogl_texture_get_height(self->captured);
     ensure_pipelines(self, ctx);
 
-    /* Work at half resolution: the bilinear downsample averages 2x2 blocks, so
-     * the cheap 9-tap Gaussian covers the full radius smoothly instead of
-     * undersampling it into a smear. */
-    sw = MAX(cw / 2, 1);
-    sh = MAX(ch / 2, 1);
+    /* Downsample by a factor that SCALES WITH THE RADIUS, so the fixed 9-tap
+     * Gaussian always operates on a small (~5-texel) radius in the low-res grid.
+     * The old fixed half-res left the taps tens of texels apart at radius 32 —
+     * 9 samples spread over ~90 texels, which under-samples into a streaky SMEAR
+     * instead of a smooth blur. With f ~= radius/5 the kernel's farthest tap
+     * (5.6 texels low-res) maps back to ~the requested radius in real pixels. */
+    {
+        int f = (int)lroundf(self->radius / 5.0f);
+        f = CLAMP(f, 1, 12);
+        sw = MAX(cw / f, 1);
+        sh = MAX(ch / f, 1);
+    }
     tex_half = cogl_texture_2d_new_with_size(ctx, sw, sh);
     tex_a = cogl_texture_2d_new_with_size(ctx, sw, sh);
     tex_b = cogl_texture_2d_new_with_size(ctx, sw, sh);
@@ -383,10 +390,11 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
 
     /* Separable Gaussian on the half-res backdrop: tex_half -> tex_a (H) ->
      * tex_b (V). Radius halved to match the half-res grid. */
-    blur_pass(self->blur_h, tex_half, COGL_FRAMEBUFFER(off_a), sw, sh, 1.0f, 0.0f,
-              self->radius * 0.5f);
-    blur_pass(self->blur_v, tex_a, COGL_FRAMEBUFFER(off_b), sw, sh, 0.0f, 1.0f,
-              self->radius * 0.5f);
+    /* Tight kernel: ~1 texel between taps in the low-res grid (the downsample
+     * above already encodes the real-world radius), so the 9 taps form a smooth
+     * Gaussian instead of a sparse smear. */
+    blur_pass(self->blur_h, tex_half, COGL_FRAMEBUFFER(off_a), sw, sh, 1.0f, 0.0f, 1.2f);
+    blur_pass(self->blur_v, tex_a, COGL_FRAMEBUFFER(off_b), sw, sh, 0.0f, 1.0f, 1.2f);
 
     /* Composite onto the destination with the current modelview (which maps the
      * offscreen actor texture to its on-screen footprint). Layer 0 = blurred

@@ -81,7 +81,7 @@ class Devkit:
         self._rd_stream_path = None   # ScreenCast stream linked to RD (pointer map)
         self._sc_for_rd = None        # the linked ScreenCast session (keep alive)
         self.extra_appearance = ""    # extra lines appended to [appearance] (e.g. wallpaper)
-        self.extra_conf = ""          # raw config appended at the end (e.g. [window-rules])
+        self.extra_conf = os.environ.get("GNOBLIN_EXTRA_CONF", "").replace("\\n", "\n")  # raw config appended at the end
 
     # --- sandbox + environment ------------------------------------------------
     def _env(self):

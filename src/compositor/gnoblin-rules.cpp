@@ -533,10 +533,15 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
     {
         const char* ns = gnoblin_rules_layer_namespace(window);
         if (ns && g_strcmp0(ns, "gnoblin-topbar") == 0) {
+            /* Flat, flush bar: NO rounding/shadow (those notched the screen edge).
+             * Blur STAYS ON: the bar and its drop-down popouts share this one
+             * surface, so the frost is gated per-pixel by the surface's own alpha
+             * (flat bar + rounded popouts both frost; the transparent gap between
+             * them does not). With rounding off the frost mask is rectangular, but
+             * the alpha gate still follows the popout's rounded Slint shape. */
             out->rounding_enabled = FALSE;
             out->rounded.radius = 0.0f;
             out->shadow_enabled = FALSE;
-            out->blur_enabled = FALSE;
         }
     }
 
@@ -547,12 +552,10 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
      * badly there and can't be tuned without real-HW iteration, so the dock ships
      * un-frosted (a clean translucent pill) rather than smeared. An explicit
      * [window-rules] `rule = layer~=^gnoblin-dock$ | blur N` still re-enables it. */
-    {
-        const char* ns = gnoblin_rules_layer_namespace(window);
-        if (ns && g_strcmp0(ns, "gnoblin-dock") == 0) {
-            out->blur_enabled = FALSE;
-        }
-    }
+    /* The dock keeps the default chrome frost (rounded pill + soft shadow +
+     * blur): verified clean on the real GPU render path. If a temporal flicker
+     * shows up in the dock shadow live, that's the shadow second-pass, not the
+     * frost — fix it there, don't disable the blur. */
 
     /* Make sure rules have been applied so the per-rule hints are populated. */
     hints = get_hints(window);
