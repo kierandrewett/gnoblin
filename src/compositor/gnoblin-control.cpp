@@ -22,6 +22,10 @@ extern "C" {
 #include <meta/window.h>
 }
 
+extern "C" {
+#include "gnoblin-shadow-spec.h"
+}
+
 #include "gnoblin-actions.h"
 #include "gnoblin-config.h"
 #include "gnoblin-roles.h"
@@ -408,6 +412,51 @@ static void dump_actor_tree(GString* s, ClutterActor* a, int depth, int maxdepth
     g_string_append(s, "]}");
 }
 
+/* Resolve a window's box-shadow spec the way maybe_add_shadow does: a
+ * type-specific `shadow.<type>` overrides the global `shadow`; menu-like types
+ * take only their explicit key. Newly-allocated string or NULL. */
+static char* resolve_shadow_spec(MetaWindow* w) {
+    const char* tn = NULL;
+    gboolean menu_like = FALSE;
+    char* spec = NULL;
+
+    switch (meta_window_get_window_type(w)) {
+    case META_WINDOW_NORMAL:
+        tn = "normal";
+        break;
+    case META_WINDOW_DIALOG:
+        tn = "dialog";
+        break;
+    case META_WINDOW_MODAL_DIALOG:
+        tn = "modal-dialog";
+        break;
+    case META_WINDOW_MENU:
+        tn = "menu", menu_like = TRUE;
+        break;
+    case META_WINDOW_DROPDOWN_MENU:
+        tn = "dropdown-menu", menu_like = TRUE;
+        break;
+    case META_WINDOW_POPUP_MENU:
+        tn = "popup-menu", menu_like = TRUE;
+        break;
+    case META_WINDOW_UTILITY:
+        tn = "utility";
+        break;
+    case META_WINDOW_COMBO:
+        tn = "combo", menu_like = TRUE;
+        break;
+    default:
+        break;
+    }
+    if (tn) {
+        g_autofree char* key = g_strdup_printf("shadow.%s", tn);
+        spec = gnoblin_config_get_string("appearance", key);
+    }
+    if (!spec && !menu_like)
+        spec = gnoblin_config_get_string("appearance", "shadow");
+    return spec;
+}
+
 static const char* border_style_name(int st) {
     switch (st) {
     case 0:
@@ -547,8 +596,30 @@ static char* build_scene_json(MetaDisplay* display) {
             s, ",\"blur\":{\"enabled\":%s,\"radius\":%.1f,\"alpha_threshold\":%.3f}",
             fx.blur_enabled ? "true" : "false", (double)fx.blur_radius,
             (double)fx.blur_alpha_threshold);
-        g_string_append_printf(s, ",\"shadow\":{\"enabled\":%s}",
+        g_string_append_printf(s, ",\"shadow\":{\"enabled\":%s",
                                fx.shadow_enabled ? "true" : "false");
+        {
+            g_autofree char* spec = resolve_shadow_spec(w);
+
+            if (spec && *spec) {
+                GnoblinShadowLayer layers[GNOBLIN_SHADOW_MAX_LAYERS];
+                int n = gnoblin_shadow_parse_box_shadow(spec, layers, GNOBLIN_SHADOW_MAX_LAYERS);
+                int i;
+
+                g_string_append(s, ",\"layers\":[");
+                for (i = 0; i < n; i++) {
+                    if (i)
+                        g_string_append_c(s, ',');
+                    g_string_append_printf(
+                        s, "{\"offset\":[%.1f,%.1f],\"blur\":%.1f,\"spread\":%.1f", (double)layers[i].offset_x,
+                        (double)layers[i].offset_y, (double)layers[i].blur, (double)layers[i].spread);
+                    json_color(s, "color", layers[i].color);
+                    g_string_append_c(s, '}');
+                }
+                g_string_append_c(s, ']');
+            }
+        }
+        g_string_append_c(s, '}');
 
         /* Which gnoblin effects are actually attached to the live actor. */
         g_string_append_printf(s, ",\"attached\":{\"rounded\":%s,\"blur\":%s}",

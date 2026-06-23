@@ -1097,8 +1097,13 @@ def cmd_inspect(spec=None, out=None):
             print(f"           outer={rgba(b['border_color'])} / {rgba(b['border_color_focused'])}(F)")
             print(f"           inner={rgba(b['ring_color'])} / {rgba(b['ring_color_focused'])}(F)")
             bl = s['blur']
+            sh_fx = s['shadow']
             print(f"    blur   enabled={bl['enabled']} radius={bl['radius']} "
-                  f"alpha_threshold={bl['alpha_threshold']}   shadow={s['shadow']['enabled']}")
+                  f"alpha_threshold={bl['alpha_threshold']}")
+            print(f"    shadow enabled={sh_fx['enabled']}")
+            for ly in sh_fx.get('layers', []):
+                print(f"           layer offset{ly['offset']} blur={ly['blur']} "
+                      f"spread={ly['spread']} {rgba(ly['color'])}")
             att = "+".join(k for k, v in s['attached'].items() if v) or "none"
             print(f"    attached effects: {att}")
             if s.get('shadow_actor'):
