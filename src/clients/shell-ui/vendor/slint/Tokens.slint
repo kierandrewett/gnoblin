@@ -63,6 +63,11 @@ export global Theme {
     in-out property <float> motion-fade-ms: 200;
     in-out property <length> motion-overlay-slide-value: 8px;
     in-out property <float> motion-overlay-scale-from-value: 0.95;
+    // Buttery page transitions (the QS carousel / submenu slide). Longer + an
+    // ease-out-expo settle so the slide glides instead of snapping. Configurable
+    // from `[animations] slint-page-*`.
+    in-out property <float> motion-page-ms: 420;
+    in-out property <int> motion-page-style: 21;
 
     in-out property <int> motion-fast-style: 3;
     in-out property <int> motion-medium-style: 4;
@@ -543,6 +548,7 @@ export global Motion {
     out property <duration> fast:    1ms * Theme.motion-fast-ms * Theme.motion-scale;
     out property <duration> medium:  1ms * Theme.motion-medium-ms * Theme.motion-scale;
     out property <duration> overlay: 1ms * Theme.motion-overlay-ms * Theme.motion-scale;
+    out property <duration> page:    1ms * Theme.motion-page-ms * Theme.motion-scale;
 
     // ── Easing curves ─────────────────────────────────────────────────────────
     out property <easing> fast-curve:
@@ -644,6 +650,39 @@ export global Motion {
         Theme.motion-overlay-style == 29 ? MotionCurves.c29 :
         Theme.motion-overlay-style == 30 ? MotionCurves.c30 :
         MotionCurves.c3;
+    out property <easing> page-curve:
+        Theme.motion-page-style == 0  ? MotionCurves.c0  :
+        Theme.motion-page-style == 1  ? MotionCurves.c1  :
+        Theme.motion-page-style == 2  ? MotionCurves.c2  :
+        Theme.motion-page-style == 3  ? MotionCurves.c3  :
+        Theme.motion-page-style == 4  ? MotionCurves.c4  :
+        Theme.motion-page-style == 5  ? MotionCurves.c5  :
+        Theme.motion-page-style == 6  ? MotionCurves.c6  :
+        Theme.motion-page-style == 7  ? MotionCurves.c7  :
+        Theme.motion-page-style == 8  ? MotionCurves.c8  :
+        Theme.motion-page-style == 9  ? MotionCurves.c9  :
+        Theme.motion-page-style == 10 ? MotionCurves.c10 :
+        Theme.motion-page-style == 11 ? MotionCurves.c11 :
+        Theme.motion-page-style == 12 ? MotionCurves.c12 :
+        Theme.motion-page-style == 13 ? MotionCurves.c13 :
+        Theme.motion-page-style == 14 ? MotionCurves.c14 :
+        Theme.motion-page-style == 15 ? MotionCurves.c15 :
+        Theme.motion-page-style == 16 ? MotionCurves.c16 :
+        Theme.motion-page-style == 17 ? MotionCurves.c17 :
+        Theme.motion-page-style == 18 ? MotionCurves.c18 :
+        Theme.motion-page-style == 19 ? MotionCurves.c19 :
+        Theme.motion-page-style == 20 ? MotionCurves.c20 :
+        Theme.motion-page-style == 21 ? MotionCurves.c21 :
+        Theme.motion-page-style == 22 ? MotionCurves.c22 :
+        Theme.motion-page-style == 23 ? MotionCurves.c23 :
+        Theme.motion-page-style == 24 ? MotionCurves.c24 :
+        Theme.motion-page-style == 25 ? MotionCurves.c25 :
+        Theme.motion-page-style == 26 ? MotionCurves.c26 :
+        Theme.motion-page-style == 27 ? MotionCurves.c27 :
+        Theme.motion-page-style == 28 ? MotionCurves.c28 :
+        Theme.motion-page-style == 29 ? MotionCurves.c29 :
+        Theme.motion-page-style == 30 ? MotionCurves.c30 :
+        MotionCurves.c21;
     out property <easing> ease-out-curve:
         Theme.motion-ease-out-style == 0  ? MotionCurves.c0  :
         Theme.motion-ease-out-style == 1  ? MotionCurves.c1  :

@@ -56,6 +56,7 @@ pub struct ShellMotion {
     pub overlay_open_ms: f32,
     pub overlay_close_ms: f32,
     pub fade_ms: f32,
+    pub page_ms: f32,
     pub overlay_slide: f32,
     pub overlay_scale_from: f32,
     pub fast_style: i32,
@@ -67,6 +68,7 @@ pub struct ShellMotion {
     pub overlay_open_style: i32,
     pub overlay_close_style: i32,
     pub fade_style: i32,
+    pub page_style: i32,
 }
 
 impl ShellMotion {
@@ -79,6 +81,7 @@ impl ShellMotion {
             overlay_open_ms: 160.0,
             overlay_close_ms: 160.0,
             fade_ms: 200.0,
+            page_ms: 420.0,
             overlay_slide: 8.0,
             overlay_scale_from: 0.95,
             fast_style: CURVE_EASE_OUT,
@@ -90,6 +93,7 @@ impl ShellMotion {
             overlay_open_style: CURVE_STANDARD,
             overlay_close_style: CURVE_SPRING,
             fade_style: CURVE_EASE_IN_OUT,
+            page_style: CURVE_EASE_OUT_EXPO,
         }
     }
 }
@@ -210,6 +214,12 @@ fn shell_motion_from_config(cfg: &Config, enabled: bool) -> ShellMotion {
         "slint-fade",
         &mut motion.fade_ms,
         Some(&mut motion.fade_style),
+    );
+    apply_motion_spec(
+        cfg,
+        "slint-page",
+        &mut motion.page_ms,
+        Some(&mut motion.page_style),
     );
 
     if let Some(curve) = config_curve(cfg, "slint-ease-out") {

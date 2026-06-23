@@ -320,6 +320,7 @@ overview = 250, ease-out-quint    # windows glide into the overview grid
 # slint-overlay-open = 160, standard
 # slint-overlay-close = 160, spring
 # slint-fade = 200, ease-in-out
+# slint-page = 420, ease-out-expo   # QS carousel / submenu slide (buttery)
 # slint-ease-out = ease-out
 # slint-ease-in = ease-in
 # slint-ease-in-out = ease-in-out

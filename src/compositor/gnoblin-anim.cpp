@@ -114,13 +114,17 @@ static void set_default_animation(GnoblinAnim* a, const char* effect, const char
     /* Per-effect defaults follow the motion principles: entrances ease-out,
      * exits ease-in, everything well under 300ms. */
     if (!g_strcmp0(effect, "open")) {
-        a->duration_ms = 150;
-        a->mode = CLUTTER_EASE_OUT_CUBIC;
-        a->scale = 0.985;
+        /* A clearer grow-in than the old 1.5% nudge: ~7% scale-up over a longer
+         * decelerating curve so the window visibly "arrives" (it still fades in),
+         * while dialogs/menus stay subtle since they pop up constantly. */
+        a->duration_ms = 200;
+        a->mode = CLUTTER_EASE_OUT_QUINT;
+        a->scale = 0.93;
         if (!g_strcmp0(window_type, "dialog") || !g_strcmp0(window_type, "modal-dialog") ||
             !g_strcmp0(window_type, "utility")) {
-            a->duration_ms = 105;
-            a->scale = 0.985;
+            a->duration_ms = 130;
+            a->mode = CLUTTER_EASE_OUT_CUBIC;
+            a->scale = 0.97;
         } else if (!g_strcmp0(window_type, "menu") ||
                    !g_strcmp0(window_type, "dropdown-menu") ||
                    !g_strcmp0(window_type, "popup-menu") ||
@@ -130,13 +134,14 @@ static void set_default_animation(GnoblinAnim* a, const char* effect, const char
             a->scale = 0.995;
         }
     } else if (!g_strcmp0(effect, "close")) {
-        a->duration_ms = 110;
+        /* Mirror the open: a clearer shrink-away (~6%) as it fades out. */
+        a->duration_ms = 150;
         a->mode = CLUTTER_EASE_IN_CUBIC;
-        a->scale = 0.985;
+        a->scale = 0.94;
         if (!g_strcmp0(window_type, "dialog") || !g_strcmp0(window_type, "modal-dialog") ||
             !g_strcmp0(window_type, "utility")) {
-            a->duration_ms = 80;
-            a->scale = 0.985;
+            a->duration_ms = 100;
+            a->scale = 0.97;
         } else if (!g_strcmp0(window_type, "menu") ||
                    !g_strcmp0(window_type, "dropdown-menu") ||
                    !g_strcmp0(window_type, "popup-menu") ||

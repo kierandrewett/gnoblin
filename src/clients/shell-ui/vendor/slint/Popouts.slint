@@ -1557,7 +1557,7 @@ export component ControlCentrePopout {
             viewport-width: parent.width;
             viewport-height: root.content-h;
             interactive: root.content-h > root.avail-h;
-            animate x { duration: 220ms; easing: ease-out; }
+            animate x { duration: Motion.page; easing: Motion.page-curve; }
 
         body := VerticalLayout {
             x: Spacing.lg; y: Spacing.lg;
@@ -1697,7 +1697,7 @@ export component ControlCentrePopout {
                 : rgba(248, 248, 250, 0.99);
             border-radius: Tokens.popout-corner-radius;
             clip: true;
-            animate x { duration: 220ms; easing: ease-out; }
+            animate x { duration: Motion.page; easing: Motion.page-curve; }
 
             // Header: back chevron + the originating tile's title.
             Rectangle {

@@ -172,6 +172,7 @@ macro_rules! apply_shell_motion_to_theme {
             motion.overlay_close_ms
         );
         set_f32!(get_motion_fade_ms, set_motion_fade_ms, motion.fade_ms);
+        set_f32!(get_motion_page_ms, set_motion_page_ms, motion.page_ms);
         set_f32!(
             get_motion_overlay_slide_value,
             set_motion_overlay_slide_value,
@@ -227,6 +228,11 @@ macro_rules! apply_shell_motion_to_theme {
             get_motion_fade_style,
             set_motion_fade_style,
             motion.fade_style
+        );
+        set_i32!(
+            get_motion_page_style,
+            set_motion_page_style,
+            motion.page_style
         );
 
         changed
