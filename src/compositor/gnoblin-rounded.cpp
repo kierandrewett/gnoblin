@@ -177,23 +177,30 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
     float border_w = self->params.border_width;
     float ring_w = self->params.ring_width;
 
+    float res_scale = 1.0f;
     if (actor) {
-        clutter_actor_get_size(actor, &width, &height);
         clutter_actor_get_scale(actor, &scale_x, &scale_y);
+        res_scale = (float)clutter_actor_get_resource_scale(actor);
+        if (!(res_scale > 0.0f))
+            res_scale = 1.0f;
     }
 
-    /* The offscreen effect renders the actor at its (unscaled) allocation size;
-     * the resulting texture is then scaled by the actor's transform-scale before
-     * it lands on screen. To keep the corner radius (and border width) reading as
-     * a CONSTANT number of on-screen pixels while the actor is mid-grow/shrink
-     * (maximize/restore animation scales the actor), pre-divide by the average
-     * scale so the post-scale visual values stay at the configured value. At
-     * scale 1.0 (the resting state) this is a no-op. */
-    if (scale_x > 0.0001 && scale_y > 0.0001) {
-        double avg_scale = (scale_x + scale_y) * 0.5;
-        radius = (float)(self->params.radius / avg_scale);
-        border_w = (float)(self->params.border_width / avg_scale);
-        ring_w = (float)(self->params.ring_width / avg_scale);
+    /* Size the rounded rect to the actual offscreen TEXTURE — the window's full
+     * paint box in physical px — NOT the actor allocation. SSD windows draw their
+     * titlebar/borders as child surfaces that extend BEYOND the allocation (e.g.
+     * the titlebar sits 26px above it), so the allocation is smaller than the
+     * painted window; rounding the allocation leaves the ring floating outside
+     * the real edge. The offscreen texture is exactly what gets painted, so it is
+     * the correct silhouette. (CSD/normal windows: texture == allocation, no
+     * change.) */
+    CoglTexture* tex = clutter_offscreen_effect_get_texture(CLUTTER_OFFSCREEN_EFFECT(effect));
+    if (tex) {
+        width = (float)cogl_texture_get_width(tex);
+        height = (float)cogl_texture_get_height(tex);
+    } else if (actor) {
+        clutter_actor_get_size(actor, &width, &height);
+        width *= res_scale;
+        height *= res_scale;
     }
 
     if (!self->source_set) {
@@ -201,10 +208,24 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         self->source_set = TRUE;
     }
 
-    /* Per-side inset to the visible surface (CSD shadow margin); 0 for SSD. In
-     * allocation px, the same space as `size`, so it scales naturally with the
-     * actor transform (unlike radius/border, which are kept screen-constant). */
-    const float* in = self->params.content_inset;
+    /* radius/border/ring are configured in LOGICAL px; the texture is in PHYSICAL
+     * px, so scale them by the resource (output/HiDPI) scale. Also keep them
+     * on-screen-constant while a transform-scale animation (maximize/restore)
+     * grows the actor, by dividing out that transform scale. */
+    {
+        double avg = (scale_x > 0.0001 && scale_y > 0.0001) ? (scale_x + scale_y) * 0.5 : 1.0;
+        float k = res_scale / (float)avg;
+        radius = self->params.radius * k;
+        border_w = self->params.border_width * k;
+        ring_w = self->params.ring_width * k;
+    }
+
+    /* Per-side inset to the visible surface (CSD shadow margin), in LOGICAL px →
+     * scale to the texture's physical px. 0 for SSD (round the whole paint box). */
+    float in[4] = {self->params.content_inset[0] * res_scale,
+                   self->params.content_inset[1] * res_scale,
+                   self->params.content_inset[2] * res_scale,
+                   self->params.content_inset[3] * res_scale};
 
     /* Uniforms float-collected as doubles via varargs (see mutter's conform
      * tests); the sampler is texture unit 0. */
