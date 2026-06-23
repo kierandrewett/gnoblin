@@ -483,6 +483,25 @@ class Devkit:
             time.sleep(0.05)
         log(f"clicked ({x},{y}) button={button}")
 
+    def scroll(self, x, y, steps):
+        """Scroll the wheel by `steps` discrete notches at (x, y). steps > 0
+        scrolls down (content moves up), < 0 scrolls up. Used to reach content
+        below the fold in a capped/scrolling popout."""
+        self.move(x, y)
+        time.sleep(0.05)
+        self.move(x, y)
+        time.sleep(0.05)
+        axis = 0  # 0 = vertical, 1 = horizontal
+        direction = 1 if steps >= 0 else -1
+        for _ in range(abs(int(steps))):
+            # org.gnome.Mutter.RemoteDesktop.Session.NotifyPointerAxisDiscrete(u axis, i steps)
+            self._rd_session.call_sync(
+                "NotifyPointerAxisDiscrete",
+                GLib.Variant("(ui)", (axis, direction)),
+                Gio.DBusCallFlags.NONE, -1, None)
+            time.sleep(0.04)
+        log(f"scrolled ({x},{y}) steps={steps}")
+
     def stop_remote_desktop(self):
         """Close the current RemoteDesktop session and its linked ScreenCast stream."""
         had_session = self._rd_session is not None or self._rd_consumers

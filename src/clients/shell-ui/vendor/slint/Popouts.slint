@@ -1372,10 +1372,13 @@ export component ControlCentrePopout {
     callback notification-dismissed(int);
 
     width: 360px;
-    // Height follows content (header + packed tile rows + notifications), so the
-    // dynamic tile list is never clipped and there's no magic allowance to keep
-    // in sync. `body` is the inner VerticalLayout declared further down.
-    height: body.preferred-height + 2 * Spacing.lg;
+    // Height follows content (header + packed tile rows + notifications), but is
+    // capped to the space between the panel's top and the screen bottom so it
+    // never draws off-screen; the body scrolls (Flickable) when content exceeds
+    // the cap. `body` is the inner VerticalLayout declared further down.
+    property <length> content-h: body.preferred-height + 2 * Spacing.lg;
+    property <length> avail-h: max(240px, root.backdrop-screen-h - root.popout-y - 12px);
+    height: min(root.content-h, root.avail-h);
 
     // A touch more translucent than a flat panel so the blurred wallpaper's
     // colour bleeds through — the frosted-glass vibrancy that makes iOS/macOS
@@ -1512,6 +1515,17 @@ export component ControlCentrePopout {
         // `spacing`, so a tweak to any tile height cascades cleanly.
         // Cross-axis (horizontal) alignment is forced by nested
         // HorizontalLayouts so half-width tiles always line up.
+        // Scrolls only when the content exceeds the screen-height cap; on a
+        // roomy screen the whole panel fits and nothing moves. Child TouchAreas
+        // (tile taps, horizontal slider drags) still receive their gestures.
+        Flickable {
+            x: 0; y: 0;
+            width: parent.width;
+            height: parent.height;
+            viewport-width: parent.width;
+            viewport-height: root.content-h;
+            interactive: root.content-h > root.avail-h;
+
         body := VerticalLayout {
             x: Spacing.lg; y: Spacing.lg;
             width:  parent.width  - 2 * Spacing.lg;
@@ -1618,6 +1632,7 @@ export component ControlCentrePopout {
                 stack-enabled: root.open;
                 dismissed(i) => { root.notification-dismissed(i); }
             }
+        }
         }
         Rectangle {
             x: Tokens.chrome-hairline-width;
