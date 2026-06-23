@@ -15,6 +15,10 @@ wayland-client = "0.31"
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["static"] }
 i-slint-renderer-femtovg = { version = "1.16", features = ["opengl"] }
+# Unstable internal API — used ONLY by the GNOBLIN_INSPECT element-tree walker to
+# read per-element geometry/role/type. Pinned to the slint version; expect it to
+# need a bump whenever slint is upgraded.
+i-slint-core = "=1.16.1"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
 zbus = "5"
 async-io = "2"

@@ -1132,6 +1132,22 @@ def cmd_inspect(spec=None, out=None):
                         mark = ic['dims'] if ic['resolved'] else "MISSING"
                         sz = f"@{ic['req_size']}" if ic['req_size'] else ""
                         print(f"        {ic['name']}{sz} -> {mark}")
+            # Slint element tree (per-element geometry/role/type), by pid.
+            el_log = os.path.join(insp_dir, f"elements-{s['pid']}.json")
+            if s['pid'] and os.path.exists(el_log):
+                try:
+                    els = _json.load(open(el_log))
+                except (OSError, ValueError):
+                    els = []
+                if els:
+                    print(f"    slint element tree ({len(els)} elements):")
+                    for el in els[:40]:
+                        g = el['geom']
+                        ty = el['type'] or el['role']
+                        print(f"        {'  ' * el['depth']}{ty} "
+                              f"[{g[0]:.0f},{g[1]:.0f} {g[2]:.0f}x{g[3]:.0f}]")
+                    if len(els) > 40:
+                        print(f"        … +{len(els) - 40} more")
         print("\nRAW:", _json.dumps(scene))
         if out:
             dk.shot(out)

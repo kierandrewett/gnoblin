@@ -1548,6 +1548,7 @@ name = "gnoblin-shell-ui"
 version = "0.1.0"
 dependencies = [
  "async-io",
+ "i-slint-core",
  "i-slint-renderer-femtovg",
  "image 0.24.9",
  "khronos-egl",

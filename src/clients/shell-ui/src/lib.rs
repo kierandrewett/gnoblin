@@ -1847,6 +1847,53 @@ fn inspect_log_icon(
     }
 }
 
+/// Recursively serialise a Slint item subtree (depth-first) into `out` as JSON
+/// objects: depth, item index, geometry [x,y,w,h], accessible role, and element
+/// type name (empty unless built with SLINT_EMIT_DEBUG_INFO). Bounded so a
+/// pathological tree can't run away.
+fn walk_slint_elements(
+    item: &i_slint_core::item_tree::ItemRc,
+    depth: u32,
+    out: &mut String,
+    first: &mut bool,
+    count: &mut usize,
+) {
+    use std::fmt::Write;
+    if *count >= 800 || depth > 16 {
+        return;
+    }
+    *count += 1;
+    let g = item.geometry();
+    let role = format!("{:?}", item.accessible_role());
+    let ty = item
+        .element_type_names_and_ids(0)
+        .and_then(|v| v.into_iter().next())
+        .map(|(t, _id)| t.to_string())
+        .unwrap_or_default();
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    if !*first {
+        out.push(',');
+    }
+    *first = false;
+    let _ = write!(
+        out,
+        "{{\"depth\":{},\"i\":{},\"geom\":[{:.1},{:.1},{:.1},{:.1}],\"role\":\"{}\",\"type\":\"{}\"}}",
+        depth,
+        item.index(),
+        g.origin.x,
+        g.origin.y,
+        g.size.width,
+        g.size.height,
+        esc(&role),
+        esc(&ty),
+    );
+    let mut child = item.first_child();
+    while let Some(c) = child {
+        walk_slint_elements(&c, depth + 1, out, first, count);
+        child = c.next_sibling();
+    }
+}
+
 fn find_icon_uncached(
     name: &str,
     theme_path: &str,
@@ -2343,6 +2390,35 @@ impl State {
         );
         let path = dir.join(format!("window-{}.json", std::process::id()));
         let _ = std::fs::write(path, json);
+        self.inspect_log_elements(&dir);
+    }
+
+    /// Walk the live Slint item tree (per-element geometry/role/type) and write it
+    /// to `elements-<pid>.json`. Uses the UNSTABLE `i_slint_core` item-tree API
+    /// (the only way to read a compiled component's element tree). Element type
+    /// names require `SLINT_EMIT_DEBUG_INFO=1` at build time; geometry + role work
+    /// regardless. No-op unless `GNOBLIN_INSPECT` is set (checked by the caller).
+    fn inspect_log_elements(&self, dir: &std::path::Path) {
+        use i_slint_core::item_tree::ItemRc;
+
+        let window = match self.app.window() {
+            Some(w) => w,
+            None => return,
+        };
+        // try_component (not component()) so a window whose root isn't set yet
+        // can't panic the client from the inspector path.
+        let comp = match i_slint_core::window::WindowInner::from_pub(window).try_component() {
+            Some(c) => c,
+            None => return,
+        };
+        let root = ItemRc::new(comp, 0);
+        let mut out = String::from("[");
+        let mut first = true;
+        let mut count = 0usize;
+        walk_slint_elements(&root, 0, &mut out, &mut first, &mut count);
+        out.push(']');
+        let path = dir.join(format!("elements-{}.json", std::process::id()));
+        let _ = std::fs::write(path, out);
     }
 
     /// Re-apply the current logical size + scale to the live surface: the EGL
