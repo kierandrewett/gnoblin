@@ -20,11 +20,6 @@ HIG; animations buttery + customisable (easing/length/scale).
   process, etc.). Drive results via the process/command approach so each search
   source is a configurable plugin (like the QS plugins). Keep everything
   customisable.
-- [ ] **Dock redesign** — still looks ugly; the borders hurt it. Follow macOS HIG
-  for borders/chrome (hairline/none, proper translucency + blur, separators,
-  running-dot, hover magnification?). Improve the whole look.
-- [ ] **Context menu redesign** — currently chunky + ugly. Tighten padding, type,
-  row height, separators, radius; macOS-style refined menu chrome.
 - [ ] **codex CLI (GPT 5.5) validation pass** — once the above land, have codex
   review/validate the changes and act on findings.
 - [ ] Then: whatever gnoblin needs next, following the ethos.
@@ -39,6 +34,9 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Dock: frosted-glass macOS chrome — more translucent, soft rim instead of
+  the boxy border, no focused-slot border, radius 23. (`4b7ba65`)
+- [x] Context menu: compact macOS rows (34→26px), tighter insets, less chunky.
 - [x] Buttery QS carousel (`Motion.page`, ease-out-expo 420ms) + more noticeable
   window open/close; both customisable. (`00c31b0`)
 - [x] Blur smear/halo fix (downsample + padded capture); topbar re-frosted but
