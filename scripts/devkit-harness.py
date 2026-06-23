@@ -168,6 +168,8 @@ class Devkit:
                 f'[launcher-provider.kill]\ncommand = {PROVIDERS_DIR / "launcher-kill"}\nprefix = "k "\n'
                 f'[launcher-provider.convert]\ncommand = {PROVIDERS_DIR / "launcher-convert"}\nprefix = "c "\n'
                 f'[launcher-provider.color]\ncommand = {PROVIDERS_DIR / "launcher-color"}\nprefix = "# "\n'
+                f'[launcher-provider.base]\ncommand = {PROVIDERS_DIR / "launcher-base"}\nprefix = "b "\n'
+                f'[launcher-provider.time]\ncommand = {PROVIDERS_DIR / "launcher-time"}\nprefix = "t "\n'
                 '[launcher]\nweb-search = https://duckduckgo.com/?q=%s\n'
             )
         (cfgdir / "gnoblin.conf").write_text(
