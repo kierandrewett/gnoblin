@@ -85,9 +85,9 @@ int main(int argc, char** argv) {
               "animations.open.menu present");
         CHECK(g_strcmp0(popup, "80, ease-out-quad, 0.995") == 0,
               "animations.open.popup-menu present");
-        CHECK(g_strcmp0(maximize, "210, ease-out-quint") == 0,
+        CHECK(g_strcmp0(maximize, "300, ease-out-quart") == 0,
               "animations.maximize present");
-        CHECK(g_strcmp0(unmaximize, "190, ease-out-quint") == 0,
+        CHECK(g_strcmp0(unmaximize, "280, ease-out-quart") == 0,
               "animations.unmaximize present");
         CHECK(g_strcmp0(overview, "250, ease-out-quint") == 0,
               "animations.overview present");
