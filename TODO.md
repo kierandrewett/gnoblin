@@ -18,10 +18,6 @@ HIG; animations buttery + customisable (easing/length/scale).
   (`82b36e5`) with web + file-search examples. Easy wins to add as shipped
   example scripts: unit/currency convert, dictionary define, emoji search,
   clipboard history, ssh hosts, kill-process, window switcher.
-- [ ] **Submenu rows can go stale** (codex P2, deferred) — when a plugin updates
-  while its slide-out submenu is open, the captured `submenu-rows` snapshot
-  doesn't refresh until reopened. Minor (submenu is short-lived). Fix needs Rust
-  to push fresh rows for the open submenu id, or a live lookup.
 - [ ] Then: whatever gnoblin needs next, following the ethos.
 
 ## Needs Kieran (real-GPU verification)
@@ -34,6 +30,7 @@ HIG; animations buttery + customisable (easing/length/scale).
   `[animations] slint-page` / `open` / `close` to taste. (`00c31b0`)
 
 ## Done (recent)
+- [x] Submenu rows refresh live while open (last codex P2 cleared). (`e9243cd`)
 - [x] codex gpt-5.5 validation pass — caught a P1 build-breaker (untracked
   transport SVGs) + 2 P2 UX bugs (launcher scroll math, empty-submenu chevron),
   all fixed. (`27946a8`, transport-glyphs commit)
