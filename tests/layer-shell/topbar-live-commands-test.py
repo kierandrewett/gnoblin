@@ -17,7 +17,7 @@ dh = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dh)
 
 
-def write_config(path, *, settings_marker, launcher_marker, account_marker, wired_marker):
+def write_config(path, *, settings_marker, launcher_marker, account_marker):
     path.write_text(
         "[appearance]\n"
         'background = "#202434"\n'
@@ -28,7 +28,6 @@ def write_config(path, *, settings_marker, launcher_marker, account_marker, wire
         "[topbar]\n"
         f"launcher = printf launcher > {launcher_marker}\n"
         f"account = printf account > {account_marker}\n"
-        f"wired = printf wired > {wired_marker}\n"
         f"control_centre = printf 'topbar # refreshed' > {settings_marker} # trailing comment\n"
     )
 
@@ -62,7 +61,6 @@ def main():
         settings_marker = dk.tmp / "topbar-settings-command"
         launcher_marker = dk.tmp / "topbar-launcher-command"
         account_marker = dk.tmp / "topbar-account-command"
-        wired_marker = dk.tmp / "topbar-wired-command"
         dk.extra_conf = (
             "[topbar]\n"
             f"launcher = printf old > {old_marker}\n"
@@ -92,7 +90,6 @@ def main():
             settings_marker=settings_marker,
             launcher_marker=launcher_marker,
             account_marker=account_marker,
-            wired_marker=wired_marker,
         )
         time.sleep(1.0)
 
@@ -112,8 +109,6 @@ def main():
         dk.click(998, 74)
         # Account is the first round button in that same header.
         dk.click(953, 74)
-        # Wired is the first primary connectivity tile (top-left of the grid).
-        dk.click(960, 130)
         time.sleep(0.8)
 
         if dk.crashed():
@@ -126,7 +121,6 @@ def main():
                 ("launcher", launcher_marker),
                 ("settings", settings_marker),
                 ("account", account_marker),
-                ("wired", wired_marker),
             )
             if not marker.exists()
         ]
