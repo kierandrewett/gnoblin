@@ -27,7 +27,4 @@ G_BEGIN_DECLS
 /* Toggle the Overview on `display`'s stage (open if closed, close if open). */
 void gnoblin_overview_toggle(MetaDisplay* display);
 
-/* Whether the Overview is currently open. */
-gboolean gnoblin_overview_is_open(void);
-
 G_END_DECLS

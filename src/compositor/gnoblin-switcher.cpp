@@ -46,10 +46,6 @@ static struct {
 
 static void switcher_close(gboolean commit, guint32 timestamp);
 
-gboolean gnoblin_switcher_is_open(void) {
-    return sw.open;
-}
-
 static void on_catcher_destroyed(ClutterActor* catcher, gpointer user_data) {
     if (sw.catcher == catcher)
         sw.catcher = NULL;

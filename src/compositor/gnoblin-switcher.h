@@ -32,7 +32,4 @@ G_BEGIN_DECLS
  * highlight if it is already open. `backward` reverses the direction. */
 void gnoblin_switcher_cycle(MetaDisplay* display, gboolean backward, guint32 timestamp);
 
-/* Whether the switcher is currently open. */
-gboolean gnoblin_switcher_is_open(void);
-
 G_END_DECLS

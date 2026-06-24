@@ -35,10 +35,6 @@ static GnoblinOverview ov;
 
 static void overview_close(void);
 
-gboolean gnoblin_overview_is_open(void) {
-    return ov.open;
-}
-
 static void on_overlay_destroyed(ClutterActor* overlay, gpointer user_data) {
     if (ov.overlay == overlay)
         ov.overlay = NULL;

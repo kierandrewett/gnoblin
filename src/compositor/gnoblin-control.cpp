@@ -708,19 +708,35 @@ static char* build_scene_json(MetaDisplay* display) {
                                buffer.height);
         g_string_append_printf(s, ",\"csd_inset\":[%d,%d,%d,%d]", il, it, ir, ib);
 
-        /* Live Clutter actor state. */
-        g_string_append_printf(s,
-                               ",\"actor\":{\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],"
-                               "\"opacity\":%d,\"scale\":[%.3f,%.3f],\"visible\":%s,\"mapped\":%s,"
-                               "\"reactive\":%s,\"z\":%.1f,\"clip\":%s,\"children\":%d}",
-                               (double)ax, (double)ay, (double)aw, (double)ah,
-                               (int)clutter_actor_get_opacity(actor), sx, sy,
-                               clutter_actor_is_visible(actor) ? "true" : "false",
-                               clutter_actor_is_mapped(actor) ? "true" : "false",
-                               clutter_actor_get_reactive(actor) ? "true" : "false",
-                               (double)clutter_actor_get_z_position(actor),
-                               clutter_actor_has_clip(actor) ? "true" : "false",
-                               clutter_actor_get_n_children(actor));
+        /* Live Clutter actor state. pos/size/scale go through the same non-finite
+         * guard as dump_actor_tree (an unmapped/mid-animation actor can report
+         * inf/NaN, which would emit invalid JSON and break the whole parse). */
+        {
+            float apos[2] = {ax, ay}, asize[2] = {aw, ah};
+            g_string_append_printf(s, ",\"actor\":{\"opacity\":%d",
+                                   (int)clutter_actor_get_opacity(actor));
+            json_fvec(s, "pos", apos, 2);
+            json_fvec(s, "size", asize, 2);
+            g_string_append(s, ",\"scale\":[");
+            if (isfinite(sx))
+                g_string_append_printf(s, "%.3f", sx);
+            else
+                g_string_append(s, "null");
+            g_string_append_c(s, ',');
+            if (isfinite(sy))
+                g_string_append_printf(s, "%.3f", sy);
+            else
+                g_string_append(s, "null");
+            g_string_append_printf(s,
+                                   "],\"visible\":%s,\"mapped\":%s,\"reactive\":%s,\"z\":%.1f,"
+                                   "\"clip\":%s,\"children\":%d}",
+                                   clutter_actor_is_visible(actor) ? "true" : "false",
+                                   clutter_actor_is_mapped(actor) ? "true" : "false",
+                                   clutter_actor_get_reactive(actor) ? "true" : "false",
+                                   (double)clutter_actor_get_z_position(actor),
+                                   clutter_actor_has_clip(actor) ? "true" : "false",
+                                   clutter_actor_get_n_children(actor));
+        }
 
         /* Paint box: the actor's 2D bounding box in STAGE coords — what actually
          * gets painted (incl. SSD titlebar/decorations + effect margins), which is

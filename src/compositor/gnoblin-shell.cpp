@@ -6,9 +6,10 @@
  * executable entry point (src/core/mutter.c).
  *
  * Configuration is a plain file (see gnoblin-config.h), not GSettings. The
- * `autostart = [...]` list names layer-shell apps to launch with the shell
- * (e.g. the gnoblin topbar/dock); the file is watched and re-read live, so
- * adding an autostart entry launches it without restarting the compositor.
+ * `[startup] exec` / `[startup] exec_per_output` lists name layer-shell apps to
+ * launch with the shell (e.g. the gnoblin topbar/dock — exec_per_output spawns
+ * one instance per monitor); the file is watched and re-read live, so adding an
+ * entry launches it without restarting the compositor.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
