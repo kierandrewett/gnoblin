@@ -88,5 +88,12 @@ ClutterEffect* gnoblin_rounded_new_full(const GnoblinRoundedParams* params);
  * this on focus change). No-op for non-RING styles. */
 void gnoblin_rounded_set_focused(ClutterEffect* effect, gboolean focused);
 
+/* Read back the ACTUAL applied parameters (and focus state) from a live effect —
+ * for the scene inspector, which otherwise can't see per-window decisions like
+ * corner_fill (set in maybe_round_corners, not in the resolved rules). Returns
+ * FALSE if `effect` is not a gnoblin-rounded effect. */
+gboolean gnoblin_rounded_get_params(ClutterEffect* effect, GnoblinRoundedParams* out,
+                                    gboolean* focused);
+
 /* Back-compat convenience: a circular mask with `radius` and no border. */
 ClutterEffect* gnoblin_rounded_new(float radius);

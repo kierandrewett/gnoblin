@@ -134,13 +134,14 @@ static const char* ROUNDED_SHADER =
     "    vec4 framep = vec4(frgb, 1.0);\n"             /* opaque, premultiplied frame colour */
     "    vec2 qc = abs(p) - inr;\n"
     "    float in_corner = step(0.0, min(qc.x, qc.y));\n"
-    /* Fill the client's transparent/gray corner with the frame colour, but ONLY
-     * the body — out to where the inner ring starts (cedge = border_w + ring_w),
-     * NOT under the ring bands at the very edge. If the fill reaches under the
-     * ring, the (partly transparent / anti-aliased) ring is backed by a white
-     * bulge that shows through it; instead the ring sits on the natural window
-     * edge + shadow, exactly as on the straight sides. */
-    "    float ring_depth = max(border_w, 0.0) + max(ring_w, 0.0);\n"
+    /* Fill the client's transparent/gray corner with the frame colour out to where
+     * the OUTER border band starts (cedge = border_w) — so the fill backs the INNER
+     * ring band (the white highlight) and the inner ring draws continuously OVER the
+     * corner, matching the straight edges. The OUTER band + the anti-aliased very
+     * edge (cedge in [0, border_w]) stay UNfilled, sitting on the natural window
+     * edge + shadow: otherwise the partly-transparent AA edge is backed by a white
+     * bulge that shows through it as a fringe instead of blending into the shadow. */
+    "    float ring_depth = max(border_w, 0.0);\n"
     "    float body = smoothstep(ring_depth - 0.5, ring_depth + 0.5, -dist);\n"
     /* Never fill from a transparent sample: if the nearest straight edge is empty
      * (a popover's tail margin, a gap), fs.rgb is meaningless (0,0,0) and filling
@@ -376,6 +377,19 @@ void gnoblin_rounded_set_focused(ClutterEffect* effect, gboolean focused) {
         if (actor)
             clutter_actor_queue_redraw(actor);
     }
+}
+
+gboolean gnoblin_rounded_get_params(ClutterEffect* effect, GnoblinRoundedParams* out,
+                                    gboolean* focused) {
+    GnoblinRounded* self;
+
+    if (!effect || !out || !G_TYPE_CHECK_INSTANCE_TYPE(effect, gnoblin_rounded_get_type()))
+        return FALSE;
+    self = GNOBLIN_ROUNDED(effect);
+    *out = self->params;
+    if (focused)
+        *focused = self->focused;
+    return TRUE;
 }
 
 ClutterEffect* gnoblin_rounded_new(float radius) {
