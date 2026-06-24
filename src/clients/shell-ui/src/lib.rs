@@ -2403,6 +2403,21 @@ struct State {
 impl State {
     fn init_slint(&mut self) -> Result<(), RuntimeError> {
         let surface = self.layer.wl_surface().clone();
+        // The Slint platform + EGL buffer are created ONCE here. The
+        // scale_factor_changed event may not have fired before this first
+        // configure, leaving self.scale at 1 — which would build the platform at
+        // the wrong (1×) size on a HiDPI output and never fully recover. Seed the
+        // scale from the output's actual factor now so the buffer is physical-
+        // sized from the start.
+        if let Some(s) = self
+            .output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .map(|i| i.scale_factor.max(1) as u32)
+        {
+            self.scale = s;
+        }
         let (pw, ph) = (self.width * self.scale, self.height * self.scale);
         // The EGL buffer is sized in PHYSICAL pixels (logical × output scale).
         if self.scale != 1 {
@@ -2481,9 +2496,21 @@ impl State {
                 format!("[{},{}]", s.width, s.height)
             })
             .unwrap_or_else(|| "null".into());
+        // What Slint ITSELF thinks: window physical size + its scale_factor. If
+        // scale_factor is 4 (not 2), the renderer double-scales the content.
+        let (slint_win, slint_sc) = self
+            .app
+            .window()
+            .map(|w| {
+                let s = w.size();
+                let sc = i_slint_core::window::WindowInner::from_pub(w).scale_factor();
+                (format!("[{},{}]", s.width, s.height), sc)
+            })
+            .unwrap_or_else(|| ("null".into(), 0.0));
         let json = format!(
             "{{\"pid\":{},\"theme_dark\":{},\"scale\":{},\"logical\":[{},{}],\
-             \"physical\":[{},{}],\"egl_buffer\":{},\"full_height\":{},\"input_height\":{},\
+             \"physical\":[{},{}],\"egl_buffer\":{},\"slint_win\":{},\"slint_scale\":{:.2},\
+             \"full_height\":{},\"input_height\":{},\
              \"out_logical\":{},\"out_scale\":{},\"out_mode\":[{},{}]}}\n",
             std::process::id(),
             crate::theme::is_dark(),
@@ -2493,6 +2520,8 @@ impl State {
             self.width * self.scale,
             self.height * self.scale,
             buf,
+            slint_win,
+            slint_sc,
             self.full_height,
             self.input_height,
             ol,
