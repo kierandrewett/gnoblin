@@ -1288,6 +1288,11 @@ def cmd_inspect(spec=None, out=None):
                 # Extra settle, e.g. for a CSD/libadwaita app to finish its ~8s
                 # GTK4 cold start before we inspect its rounded-corner rendering.
                 time.sleep(float(arg or "1"))
+            elif action == "click":
+                # Pointer click at WxH (e.g. click:780x78) — open a menu/popup.
+                cx, cy = (int(v) for v in arg.split("x"))
+                dk.click(cx, cy, button=272)
+                time.sleep(1.2)
             else:
                 dk.dispatch(action, arg)
                 time.sleep(1.2)
