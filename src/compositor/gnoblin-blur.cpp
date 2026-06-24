@@ -566,6 +566,16 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         float qh = rect_y2 + bottom_pad;
         float qx1 = 0.0f;
         float qy1 = 0.0f;
+        /* rect_*, the pads and qw/qh are all in PHYSICAL (resource-scaled) texels
+         * — the offscreen FBO is allocated at logical×scale. But the framebuffer
+         * modelview here is in LOGICAL actor coords, so the quad must be drawn at
+         * logical size; otherwise the offscreen texture is composited `scale`×
+         * too big on HiDPI (the magnified-from-top-left bug). The base
+         * ClutterOffscreenEffect::paint_target divides by the scale; match it.
+         * At scale 1 this is a no-op (physical == logical). */
+        float scale = actor ? clutter_actor_get_resource_scale(actor) : 1.0f;
+        if (scale <= 0.0f)
+            scale = 1.0f;
 
         if (actor)
             clutter_actor_get_transformed_position(actor, &tx, &ty);
@@ -574,8 +584,9 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         if (ty <= 0.5f)
             qy1 = -rect_y1;
 
-        cogl_framebuffer_draw_textured_rectangle(fb, self->composite, qx1, qy1, qx1 + qw, qy1 + qh,
-                                                 0.0f, 0.0f, 1.0f, 1.0f);
+        cogl_framebuffer_draw_textured_rectangle(fb, self->composite, qx1 / scale, qy1 / scale,
+                                                 (qx1 + qw) / scale, (qy1 + qh) / scale, 0.0f, 0.0f,
+                                                 1.0f, 1.0f);
     }
 
     g_clear_object(&off_half);

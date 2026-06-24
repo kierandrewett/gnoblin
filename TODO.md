@@ -6,6 +6,23 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
+## HiDPI 2× rendering — FIXED ("hidpi is important")
+Long-running "Slint clients render 2× too big at HiDPI" bug. Root cause was NOT
+the Slint client (proven: its GL buffer is pixel-correct) nor EGL/dmabuf/layer
+(intermediate hypotheses, disproven) — it was **`gnoblin-blur`** (a
+ClutterOffscreenEffect): its `paint_target` override composited the offscreen
+actor texture using PHYSICAL (resource-scaled) quad coords into a LOGICAL-coord
+framebuffer, so on a scale-2 output the actor was drawn 2× too big (magnified from
+top-left). Coincidentally fine at scale 1 (physical==logical).
+- [x] Fix: divide the composite quad by `clutter_actor_get_resource_scale` in
+  `gnoblin_blur_paint_target` (matches the base OffscreenEffect; no-op at scale 1;
+  correct for fractional scales). Only blurred surfaces (chrome) were affected.
+- [x] Verified at HIDPI=2: topbar bar 68px (was 134); HiDPI÷2 vs scale-1 whole-frame
+  mean diff 2.4 (was ~26); dock frost + blur still render correctly; scale-1 unchanged.
+- [x] Inspector tooling that cracked it (kept): client `GNOBLIN_DUMP_BUFFER`
+  (glReadPixels) + compositor `GNOBLIN_DUMP_TEXTURE` (cogl plane readback) + scene
+  fields stage/scale/content/alloc/txsize/redirect/rscale. `HIDPI=N` harness env.
+
 ## QS DE-HARDCODING — DONE (Kieran's directive)
 "there shouldnt be built in plugins.. dont hardcode... define in config... they
 poll async" + "prefix commands with gnoblin" + "no graceful fallback".
