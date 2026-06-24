@@ -115,29 +115,31 @@ static const char* ROUNDED_SHADER =
      * client's transparent corner is thus filled with its edge colour instead of
      * leaving a gap inside our rounded silhouette. Premultiplied "over". */
     "  if (corner_fill == 1) {\n"
-    /* Sample the window's FRAME colour a few px inside the edge ALONG THE INWARD
-     * NORMAL — NOT diagonally deep into the corner, which reaches inset widgets
-     * (e.g. a blue button) and bleeds their colour into the corner. The numeric
-     * SDF gradient gives the outward normal; step in past the client's own
-     * transparent corner AA to the solid frame, then unpremultiply. */
-    "    float ge = 1.5;\n"
-    "    vec2 grd = vec2(sd_circle(p + vec2(ge, 0.0), b, r) - sd_circle(p - vec2(ge, 0.0), b, r),\n"
-    "                    sd_circle(p + vec2(0.0, ge), b, r) - sd_circle(p - vec2(0.0, ge), b, r));\n"
-    "    vec2 nrm = normalize(grd + vec2(1e-4, 1e-4));\n"
-    "    vec2 fpx = clamp(px - nrm * (dist + 5.0), c0 + vec2(1.0), c1 - vec2(1.0));\n"
+    /* Sample the window's FRAME colour from the nearest STRAIGHT edge, a few px
+     * in, at the corner-arc tangent. NOT diagonally into the corner (which lands
+     * in the client's own transparent corner AA -> a gray crescent) and NOT deep
+     * (which reaches inset widgets -> e.g. a blue button bleeding in). A straight
+     * edge is solid frame right to its inner pixels, so this is the true colour. */
+    "    vec2 s = sign(p + vec2(1e-3, 1e-3));\n"
+    "    vec2 inr = max(b - vec2(r), vec2(0.0));\n"   /* half-extent of the straight region */
+    "    vec2 fp;\n"
+    "    if (b.x - abs(p.x) < b.y - abs(p.y)) {\n"     /* nearer a vertical (L/R) edge */
+    "      fp = vec2(s.x * (b.x - 3.0), s.y * min(abs(p.y), max(inr.y - 2.0, 0.0)));\n"
+    "    } else {\n"                                    /* nearer a horizontal (T/B) edge */
+    "      fp = vec2(s.x * min(abs(p.x), max(inr.x - 2.0, 0.0)), s.y * (b.y - 3.0));\n"
+    "    }\n"
+    "    vec2 fpx = clamp(cc + fp, c0 + vec2(1.0), c1 - vec2(1.0));\n"
     "    vec4 fs = texture2D(tex, fpx / size);\n"
     "    vec3 frgb = (fs.a > 0.01) ? fs.rgb / fs.a : fs.rgb;\n"
     "    vec4 framep = vec4(frgb, 1.0);\n"             /* opaque, premultiplied frame colour */
     "    vec4 over = src + framep * (1.0 - src.a);\n"
-    /* A self-rounding client's own corner leaves a thin band of SEMI-opaque
-     * (anti-aliased / its own gray corner border) pixels between its rounded
-     * corner and ours — a gray crescent inside our silhouette. The plain over
-     * composite only fixes FULLY transparent pixels; so inside the corner quarter
-     * (within r of both edges) pull any non-solid pixel to the frame colour. The
-     * SDF mask still shapes the silhouette and the ring is drawn over this below. */
-    "    vec2 qc = abs(p) - (b - vec2(r));\n"
+    /* Inside the corner quarter, pull EVERY non-solid pixel (the client's own
+     * transparent corner AND its semi-opaque anti-aliased corner border, the gray
+     * crescent) all the way to the frame colour, so the ring is then drawn over
+     * clean frame — not a muddy gray base. Only the fully solid body is kept. */
+    "    vec2 qc = abs(p) - inr;\n"
     "    float in_corner = step(0.0, min(qc.x, qc.y));\n"
-    "    float gap = in_corner * (1.0 - smoothstep(0.55, 0.95, src.a));\n"
+    "    float gap = in_corner * (1.0 - smoothstep(0.93, 0.995, src.a));\n"
     "    src = mix(over, framep, gap);\n"
     "  }\n"
     "  vec4 base = cogl_color_in * src * alpha;\n"
