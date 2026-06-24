@@ -553,11 +553,17 @@ static void maybe_round_corners(MetaWindowActor* window_actor) {
         return;
     if (clutter_actor_get_effect(actor, "gnoblin-rounded"))
         return;
-    /* Skip clients that already round themselves (libadwaita/libhandy) so we
-     * don't double-round and leave a corner gap. A rule/config can force it. */
-    if (window_is_self_rounding(window) &&
-        !gnoblin_config_get_bool("effects", "round-self-rounding-apps", FALSE))
-        return;
+    /* Clients that round themselves (libadwaita/libhandy) leave their own
+     * transparent corners; rounding them naively double-rounds into a gap. Rather
+     * than skip them (no ring at all), round them WITH smart corner-fill: the
+     * shader fills the client's transparent corner with its edge colour so our
+     * rounded corner + ring read cleanly. `round-self-rounding-apps = off` opts
+     * back out (skip entirely). */
+    if (window_is_self_rounding(window)) {
+        if (!gnoblin_config_get_bool("effects", "round-self-rounding-apps", TRUE))
+            return;
+        fx.rounded.corner_fill = TRUE;
+    }
 
     /* Inset the mask/border/ring to the visible surface inside any CSD shadow
      * margin (same margins the drop-shadow uses), so the rounded edge hugs the

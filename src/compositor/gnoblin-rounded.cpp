@@ -52,6 +52,10 @@ static const char* ROUNDED_SHADER =
      * hug the real surface instead of floating out past the shadow. Zero for SSD
      * windows where the buffer already equals the frame. */
     "uniform vec4 inset;\n"
+    /* When 1, fill any transparency the client left inside our rounded silhouette
+     * (a self-rounding app's own rounded corners) with its edge colour, so there
+     * is no gap between the client's corner and ours. */
+    "uniform int corner_fill;\n"
     /* Circular rounded-box SDF (negative inside). */
     "float sd_circle (vec2 p, vec2 b, float r) {\n"
     "  vec2 q = abs(p) - b + vec2(r);\n"
@@ -96,7 +100,18 @@ static const char* ROUNDED_SHADER =
     "    dist = mix(d_circle, d_sq, clamp(blend, 0.0, 1.0));\n"
     "  }\n"
     "  float alpha = 1.0 - smoothstep(-1.0, 0.5, dist);\n"
-    "  vec4 base = cogl_color_in * texture2D(tex, uv) * alpha;\n"
+    "  vec4 src = texture2D(tex, uv);\n"
+    /* Smart corner fill: sample the window's own edge colour just inside the
+     * rounded rect (clamp the pixel into the inner box by the radius) and
+     * composite the possibly-transparent corner pixel OVER it. A self-rounding
+     * client's transparent corner is thus filled with its edge colour instead of
+     * leaving a gap inside our rounded silhouette. Premultiplied "over". */
+    "  if (corner_fill == 1) {\n"
+    "    vec2 fpx = clamp(px, c0 + vec2(r + 1.0), c1 - vec2(r + 1.0));\n"
+    "    vec4 fillc = texture2D(tex, fpx / size);\n"
+    "    src = src + fillc * (1.0 - src.a);\n"
+    "  }\n"
+    "  vec4 base = cogl_color_in * src * alpha;\n"
     /* RING: a Tailwind `border` + `ring` rendered as two crisp ~1px bands stacked
      * INSIDE the rounded edge (like `border` + `ring-inset` box-shadows). From the
      * edge inward: `border` (the light layer), then `ring` (the dark layer). Both
@@ -234,6 +249,8 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
                                       (double)height);
     clutter_shader_effect_set_uniform(shader, "inset", G_TYPE_FLOAT, 4, (double)in[0],
                                       (double)in[1], (double)in[2], (double)in[3]);
+    clutter_shader_effect_set_uniform(shader, "corner_fill", G_TYPE_INT, 1,
+                                      self->params.corner_fill ? 1 : 0);
     clutter_shader_effect_set_uniform(shader, "radius", G_TYPE_FLOAT, 1, (double)radius);
     clutter_shader_effect_set_uniform(shader, "algo", G_TYPE_INT, 1,
                                       (int)self->params.algorithm);
@@ -276,6 +293,7 @@ static void gnoblin_rounded_init(GnoblinRounded* self) {
     memset(self->params.border_color_focused, 0, sizeof(self->params.border_color_focused));
     memset(self->params.ring_color_focused, 0, sizeof(self->params.ring_color_focused));
     memset(self->params.content_inset, 0, sizeof(self->params.content_inset));
+    self->params.corner_fill = FALSE;
     self->source_set = FALSE;
     self->focused = FALSE;
 }

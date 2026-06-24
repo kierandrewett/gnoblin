@@ -67,6 +67,10 @@ typedef struct {
      * to the visible window surface, so the mask/border/ring hug the real
      * surface inside any CSD shadow margin. Zero = round the whole actor. */
     float content_inset[4];
+    /* Fill a self-rounding client's own transparent corners with its edge colour
+     * (so there's no gap inside our rounded silhouette). For libadwaita/libhandy
+     * apps that round themselves. */
+    gboolean corner_fill;
 } GnoblinRoundedParams;
 
 /* A new rounded-corners effect from a full parameter set. */
