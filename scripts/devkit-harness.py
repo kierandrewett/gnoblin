@@ -135,6 +135,13 @@ class Devkit:
         # Make Slint clients emit their inspection sidecars (icon resolutions etc.)
         # under $XDG_RUNTIME_DIR/gnoblin-inspect/. Cheap; harmless when unread.
         env["GNOBLIN_INSPECT"] = "1"
+        # HiDPI: mutter only does proper framebuffer scaling (logical = physical /
+        # scale, crisp 2× buffers) with the scale-monitor-framebuffer experimental
+        # feature. The sandbox gsettings is empty (memory backend), so enable it
+        # via mutter's env override — otherwise scale 2 keeps logical == the full
+        # mode and clients render 2× into a 1× framebuffer (top-left quarter only).
+        if HIDPI != 1.0:
+            env["MUTTER_DEBUG_EXPERIMENTAL_FEATURES"] = "scale-monitor-framebuffer"
         if self.dbus_addr:
             env["DBUS_SESSION_BUS_ADDRESS"] = self.dbus_addr
         return env
@@ -204,11 +211,38 @@ class Devkit:
                 f'[launcher-provider.time]\ncommand = {PROVIDERS_DIR / "launcher-time"}\nprefix = "t "\n'
                 '[launcher]\nweb-search = https://duckduckgo.com/?q=%s\n'
             )
-        # HiDPI: force the virtual connector (Meta-0) to the chosen output scale so
-        # the logical layout stays put while rendering at HIDPI× pixels.
+        # HiDPI: apply the output scale via mutter's monitors.xml (read at OUTPUT
+        # CREATION) rather than a runtime [output] override. mutter does NOT resize
+        # already-created layer surfaces when the scale changes at runtime, so a
+        # runtime override leaves the wallpaper/dock sized for the unscaled output
+        # (rendering their top-left quarter). monitors.xml gets the scale right
+        # before any surface — wallpaper/topbar/dock/windows all come up correct.
         output_conf = ""
         if HIDPI != 1.0:
-            output_conf = f"[output]\nMeta-0 = scale {HIDPI:g}\n"
+            (cfgdir.parent / "monitors.xml").write_text(
+                '<monitors version="2">\n'
+                '  <configuration>\n'
+                '    <logicalmonitor>\n'
+                '      <x>0</x>\n      <y>0</y>\n'
+                f'      <scale>{HIDPI:g}</scale>\n'
+                '      <primary>yes</primary>\n'
+                '      <monitor>\n'
+                '        <monitorspec>\n'
+                '          <connector>Meta-0</connector>\n'
+                '          <vendor>MetaVendor</vendor>\n'
+                '          <product>MetaVirtualMonitor</product>\n'
+                '          <serial>0x00</serial>\n'
+                '        </monitorspec>\n'
+                '        <mode>\n'
+                f'          <width>{_phys_wh()[0]}</width>\n'
+                f'          <height>{_phys_wh()[1]}</height>\n'
+                '          <rate>60.000</rate>\n'
+                '        </mode>\n'
+                '      </monitor>\n'
+                '    </logicalmonitor>\n'
+                '  </configuration>\n'
+                '</monitors>\n'
+            )
         # ANIM_SPEED: force animations on + a global playback-speed multiplier
         # (0.1 = 10x slower, for frame-by-frame filmstrip capture of transitions).
         anim_conf = ""
@@ -292,6 +326,40 @@ class Devkit:
         else:
             raise RuntimeError(f"shell never created {sock}:\n{self._tail()}")
         log(f"booted: WAYLAND_DISPLAY={self.disp} (monitor={'yes' if with_monitor else 'LATE'})")
+
+    def _wait_for_scale(self, target, timeout=12):
+        """Poll DisplayConfig until a logical monitor reports the `target` scale."""
+        try:
+            proxy = Gio.DBusProxy.new_sync(
+                self.conn, Gio.DBusProxyFlags.NONE, None,
+                "org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
+                "org.gnome.Mutter.DisplayConfig", None)
+        except Exception:
+            return False
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                state = proxy.call_sync("GetCurrentState", None,
+                                        Gio.DBusCallFlags.NONE, -1, None).unpack()
+                if any(abs(lm[2] - target) < 0.01 for lm in state[2]):
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.3)
+        log(f"WARNING: output scale never reached {target}")
+        return False
+
+    def _spawn_deferred_clients(self, per_output=True):
+        """Start the layer-shell clients now (post-scale). Per-output clients get
+        --output Meta-0 (the virtual connector), matching exec_per_output."""
+        out = "Meta-0"
+        clients = [(f"gnoblin-wallpaper --output {out}", per_output),
+                   (f"gnoblin-topbar --output {out}", per_output),
+                   (f"gnoblin-dock --output {out}", per_output),
+                   ("gnoblin-notifyd", False)]
+        for cmd, _po in clients:
+            self.dispatch("spawn", cmd)
+            time.sleep(0.4)
 
     # --- crash detection ------------------------------------------------------
     def crashed(self):
@@ -1162,6 +1230,68 @@ def cmd_frames(setup, trigger, out=None):
         dk.teardown()
 
 
+def cmd_gallery(out=None):
+    """Dogfood gallery: boot once and walk a curated set of shell states (desktop,
+    windowed, maximized, restored, snapped, CSD app), capturing each + its key
+    effect state, into one labelled contact sheet. A whole-shell glance to spot
+    regressions. Env: HIDPI for crisp tiles, SPAWN_SETTLE for GTK cold start."""
+    scratch = os.environ.get("SCRATCH", "/tmp")
+    prefix = out or os.path.join(scratch, "gallery")
+    spawn_settle = float(os.environ.get("SPAWN_SETTLE", "8"))
+    # (label, op-to-run-first-or-None). Ops use the `wm` syntax.
+    steps = [
+        ("01-desktop", None),
+        ("02-foot", "spawn:foot"),
+        ("03-foot-max", "maximize"),
+        ("04-foot-restore", "maximize"),
+        ("05-foot-snap-L", "snap:left"),
+        ("06-nautilus-csd", "spawn:nautilus"),
+        ("07-nautilus-max", "maximize"),
+        ("08-nautilus-restore", "maximize"),
+    ]
+    dk = Devkit()
+    frames = []
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        for label, op in steps:
+            if op:
+                action, _, arg = op.partition(":")
+                if action == "spawn":
+                    dk.spawn_and_wait(arg or "foot")
+                    time.sleep(spawn_settle)
+                else:
+                    dk.dispatch(action, arg)
+                    time.sleep(2.0)   # let any size-change animation finish
+            p = f"{prefix}-{label}.png"
+            try:
+                dk.shot(p)
+                frames.append(p)
+            except Exception as e:
+                print(f"{label}: shot failed: {e}")
+            if dk.crashed():
+                print(f"CRASH at {label}: {dk.crashed()}")
+                print(dk._tail())
+                break
+            # per-scenario effect summary of the focused/last window
+            try:
+                scene = dk.inspect_scene()
+                apps = [s for s in scene["surfaces"] if not s["layer_ns"]]
+                w = apps[-1] if apps else None
+                if w:
+                    en = w.get("enabled", {})
+                    print(f"  {label}: '{w['title'][:24]}' max={w['state']['maximized']} "
+                          f"round-on={en.get('rounded')} blur-on={en.get('blur')} "
+                          f"frame={w['frame']} ring={w['border']['style']}")
+            except Exception:
+                pass
+        sheet = _contact_sheet(frames, f"{prefix}-sheet.png", cols=4)
+        print(f"GALLERY: {len(frames)} states -> {sheet}")
+        return 0
+    finally:
+        dk.teardown()
+
+
 def cmd_inspect(spec=None, out=None):
     """Boot, run optional spawn/dispatch ops (same syntax as `wm`), then print the
     live scene: every surface's geometry + the gnoblin effects on it. The actual
@@ -1360,6 +1490,8 @@ def main():
             sys.exit(f"usage: {sys.argv[0]} frames 'SETUP_OPS' 'TRIGGER' [OUT_PREFIX]")
         sys.exit(cmd_frames(arg, sys.argv[3] if len(sys.argv) > 3 else "",
                             sys.argv[4] if len(sys.argv) > 4 else None))
+    elif cmd == "gallery":
+        sys.exit(cmd_gallery(arg))
     elif cmd == "boot":
         sys.exit(cmd_boot())
     else:

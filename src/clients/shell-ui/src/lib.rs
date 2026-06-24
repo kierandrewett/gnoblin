@@ -2451,9 +2451,29 @@ impl State {
             None => return,
         };
         let _ = std::fs::create_dir_all(&dir);
+        // Raw output info the client sees (to debug HiDPI logical-size issues).
+        let (ol, osf, om) = self
+            .output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .map(|i| {
+                let mode = i
+                    .modes
+                    .iter()
+                    .find(|m| m.current)
+                    .map(|m| m.dimensions)
+                    .unwrap_or((0, 0));
+                (i.logical_size, i.scale_factor, mode)
+            })
+            .unwrap_or((None, 1, (0, 0)));
+        let ol = ol
+            .map(|(w, h)| format!("[{w},{h}]"))
+            .unwrap_or_else(|| "null".into());
         let json = format!(
             "{{\"pid\":{},\"theme_dark\":{},\"scale\":{},\"logical\":[{},{}],\
-             \"physical\":[{},{}],\"full_height\":{},\"input_height\":{}}}\n",
+             \"physical\":[{},{}],\"full_height\":{},\"input_height\":{},\
+             \"out_logical\":{},\"out_scale\":{},\"out_mode\":[{},{}]}}\n",
             std::process::id(),
             crate::theme::is_dark(),
             self.scale,
@@ -2463,6 +2483,10 @@ impl State {
             self.height * self.scale,
             self.full_height,
             self.input_height,
+            ol,
+            osf,
+            om.0,
+            om.1,
         );
         let path = dir.join(format!("window-{}.json", std::process::id()));
         let _ = std::fs::write(path, json);
@@ -2552,8 +2576,17 @@ impl State {
             .next()
             .and_then(|o| self.output_state.info(&o))
             .and_then(|i| {
-                i.logical_size
-                    .or_else(|| i.modes.iter().find(|m| m.current).map(|m| m.dimensions))
+                // Prefer the LOGICAL output size. Fall back to the current mode
+                // divided by the output scale — the mode is in PHYSICAL pixels, so
+                // using it raw on a scaled (HiDPI) output sizes surfaces for the
+                // unscaled resolution and renders only their top-left quarter.
+                i.logical_size.or_else(|| {
+                    let s = i.scale_factor.max(1);
+                    i.modes
+                        .iter()
+                        .find(|m| m.current)
+                        .map(|m| (m.dimensions.0 / s, m.dimensions.1 / s))
+                })
             })
             .map(|(w, h)| (w.max(1) as u32, h.max(1) as u32))
             .unwrap_or((self.width.max(1), self.height.max(1)))
