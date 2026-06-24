@@ -13,6 +13,7 @@
 #include <string.h>
 
 extern "C" {
+#include <math.h>
 #include <clutter/clutter.h>
 #include <cairo.h>
 #include <cogl/cogl.h>
@@ -365,6 +366,23 @@ static void json_color(GString* s, const char* key, const float c[4]) {
                            (double)c[2], (double)c[3]);
 }
 
+/* Append ,"key":[v0,v1,...] — but emit `null` for any non-finite component.
+ * printf prints "inf"/"-nan" for them (an UNALLOCATED actor's allocation box is
+ * +/-inf and its transformed size NaN), which is INVALID JSON and silently breaks
+ * the whole parse — exactly the kind of thing this inspector must never do. */
+static void json_fvec(GString* s, const char* key, const float* v, int n) {
+    g_string_append_printf(s, ",\"%s\":[", key);
+    for (int i = 0; i < n; i++) {
+        if (i)
+            g_string_append_c(s, ',');
+        if (isfinite((double)v[i]))
+            g_string_append_printf(s, "%.0f", (double)v[i]);
+        else
+            g_string_append(s, "null");
+    }
+    g_string_append_c(s, ']');
+}
+
 /* Emit ,"fx":[...] listing the gnoblin effects attached to this actor (no public
  * Clutter API enumerates effects, so we probe our known names). */
 static void json_attached_fx(GString* s, ClutterActor* a) {
@@ -399,24 +417,42 @@ static void dump_actor_tree(GString* s, ClutterActor* a, int depth, int maxdepth
     json_str(s, G_OBJECT_TYPE_NAME(a));
     g_string_append(s, ",\"name\":");
     json_str(s, name ? name : "");
-    g_string_append_printf(s, ",\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],\"scale\":[%.2f,%.2f],\"opacity\":%d,\"mapped\":%s",
-                           (double)x, (double)y, (double)w, (double)h, csx, csy,
-                           (int)clutter_actor_get_opacity(a),
-                           clutter_actor_is_mapped(a) ? "true" : "false");
+    {
+        float pos[2] = {x, y}, size[2] = {w, h};
+        json_fvec(s, "pos", pos, 2);
+        json_fvec(s, "size", size, 2);
+        g_string_append(s, ",\"scale\":[");
+        if (isfinite(csx))
+            g_string_append_printf(s, "%.2f", csx);
+        else
+            g_string_append(s, "null");
+        g_string_append_c(s, ',');
+        if (isfinite(csy))
+            g_string_append_printf(s, "%.2f", csy);
+        else
+            g_string_append(s, "null");
+        g_string_append_printf(s, "],\"opacity\":%d,\"mapped\":%s",
+                               (int)clutter_actor_get_opacity(a),
+                               clutter_actor_is_mapped(a) ? "true" : "false");
+    }
     /* The shaped-texture content's preferred size reveals the buffer_scale mutter
      * applied: a 2560px buffer at buffer_scale 2 reports 1280 logical here; if it
      * reports 2560 the scale was dropped (the HiDPI 2× layer-surface bug). */
     {
         ClutterContent* content = clutter_actor_get_content(a);
         float cw = 0, ch = 0;
-        if (content && clutter_content_get_preferred_size(content, &cw, &ch))
-            g_string_append_printf(s, ",\"content\":[%.0f,%.0f]", (double)cw, (double)ch);
+        if (content && clutter_content_get_preferred_size(content, &cw, &ch)) {
+            float c[2] = {cw, ch};
+            json_fvec(s, "content", c, 2);
+        }
     }
     {
+        /* An UNALLOCATED actor's box is +/-inf and its transformed size NaN —
+         * json_fvec emits those as null rather than the JSON-breaking inf/-nan. */
         ClutterActorBox box;
         clutter_actor_get_allocation_box(a, &box);
-        g_string_append_printf(s, ",\"alloc\":[%.0f,%.0f,%.0f,%.0f]",
-                               (double)box.x1, (double)box.y1, (double)box.x2, (double)box.y2);
+        float ab[4] = {box.x1, box.y1, box.x2, box.y2};
+        json_fvec(s, "alloc", ab, 4);
     }
     {
         /* Size after the FULL ancestor transform chain (stage coords). If this is
@@ -424,15 +460,20 @@ static void dump_actor_tree(GString* s, ClutterActor* a, int depth, int maxdepth
          * get_scale) — the layer-surface HiDPI 2× bug. */
         float tw = 0, th = 0;
         clutter_actor_get_transformed_size(a, &tw, &th);
-        g_string_append_printf(s, ",\"txsize\":[%.0f,%.0f]", (double)tw, (double)th);
+        float ts[2] = {tw, th};
+        json_fvec(s, "txsize", ts, 2);
     }
     {
         /* Offscreen redirect: an actor rendered to an intermediate FBO (effects,
          * forced redirect) can be composited at the wrong scale on HiDPI. The
          * actor's resource scale drives the FBO resolution. */
         ClutterOffscreenRedirect r = clutter_actor_get_offscreen_redirect(a);
-        g_string_append_printf(s, ",\"redirect\":%d,\"rscale\":%.2f",
-                               (int)r, clutter_actor_get_resource_scale(a));
+        double rs = clutter_actor_get_resource_scale(a);
+        g_string_append_printf(s, ",\"redirect\":%d", (int)r);
+        if (isfinite(rs))
+            g_string_append_printf(s, ",\"rscale\":%.2f", rs);
+        else
+            g_string_append(s, ",\"rscale\":null");
     }
     json_attached_fx(s, a);
     g_string_append(s, ",\"children\":[");
@@ -684,10 +725,33 @@ static char* build_scene_json(MetaDisplay* display) {
         /* Rounding + the two-layer ring border, FULL parameters. */
         g_string_append_printf(s,
                                ",\"rounding\":{\"enabled\":%s,\"radius\":%.1f,\"algorithm\":%d,"
-                               "\"smoothing\":%.3f,\"applied_inset\":[%d,%d,%d,%d]}",
+                               "\"smoothing\":%.3f,\"applied_inset\":[%d,%d,%d,%d]",
                                fx.rounding_enabled ? "true" : "false", (double)fx.rounded.radius,
                                (int)fx.rounded.algorithm, (double)fx.rounded.smoothing, il, it, ir,
                                ib);
+        /* The ACTUAL applied params read off the live effect: corner_fill +
+         * adaptive are decided per-window in maybe_round_corners, NOT in the
+         * resolved rules, so the inspector could not see them before. Plus the
+         * offscreen FBO size the effect renders to (should equal the window paint
+         * box x resource_scale; a mismatch is the HiDPI/SSD geometry bug). */
+        if (has_rounded) {
+            GnoblinRoundedParams ap;
+            gboolean rfocused = FALSE;
+
+            if (gnoblin_rounded_get_params(rounded_fx, &ap, &rfocused))
+                g_string_append_printf(s,
+                                       ",\"corner_fill\":%s,\"adaptive\":%s,\"adapt_shade\":%.3f,"
+                                       "\"adapt_light\":%.3f,\"focused\":%s",
+                                       ap.corner_fill ? "true" : "false",
+                                       ap.adaptive ? "true" : "false", (double)ap.adapt_shade,
+                                       (double)ap.adapt_light, rfocused ? "true" : "false");
+            CoglTexture* rt =
+                clutter_offscreen_effect_get_texture(CLUTTER_OFFSCREEN_EFFECT(rounded_fx));
+            if (rt)
+                g_string_append_printf(s, ",\"fbo\":[%d,%d]", cogl_texture_get_width(rt),
+                                       cogl_texture_get_height(rt));
+        }
+        g_string_append_c(s, '}');
         g_string_append(s, ",\"border\":{");
         g_string_append_printf(s, "\"style\":");
         json_str(s, border_style_name((int)fx.rounded.border_style));
