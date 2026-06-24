@@ -74,9 +74,7 @@ fn apply_shell_chrome_with(d: &DockBar, dark: bool) {
 }
 
 fn apply_shell_motion(d: &DockBar) -> bool {
-    let motion = gnoblin_shell_ui::prefs::shell_motion();
-    let theme = d.global::<Theme>();
-    gnoblin_shell_ui::apply_shell_motion_to_theme!(theme, motion)
+    gnoblin_shell_ui::apply_shell_motion!(d)
 }
 
 fn apply_backdrop(d: &DockBar, screen_w: u32, screen_h: u32) {

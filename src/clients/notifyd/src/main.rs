@@ -89,9 +89,7 @@ fn apply_theme(w: &Notifications) {
 }
 
 fn apply_shell_motion(w: &Notifications) -> bool {
-    let motion = gnoblin_shell_ui::prefs::shell_motion();
-    let theme = w.global::<Theme>();
-    gnoblin_shell_ui::apply_shell_motion_to_theme!(theme, motion)
+    gnoblin_shell_ui::apply_shell_motion!(w)
 }
 
 impl NotifyApp {

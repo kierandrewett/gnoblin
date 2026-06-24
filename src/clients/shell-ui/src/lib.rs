@@ -86,6 +86,17 @@ pub mod tray;
 
 pub use args::ClientArgs;
 
+/// Push the resolved motion palette to a client's Slint `Theme` global, returning
+/// whether anything changed — replaces the per-client `apply_shell_motion` copies.
+#[macro_export]
+macro_rules! apply_shell_motion {
+    ($component:expr) => {{
+        let motion = $crate::prefs::shell_motion();
+        let theme = $component.global::<Theme>();
+        $crate::apply_shell_motion_to_theme!(theme, motion)
+    }};
+}
+
 /// Apply the light/dark preference (mode + shell chrome) to a client's Slint
 /// `Theme` global — replaces the per-client `apply_theme` copies. `$component` is
 /// the client's top-level component; its generated `TokenMode`/`Theme` resolve at
