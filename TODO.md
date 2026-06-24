@@ -23,14 +23,16 @@ each time). Turned it into a tool that finds bugs mechanically, then dogfooded i
   ±inf / NaN → printf emits bare inf/-nan → invalid JSON → whole scene parse
   silently broke (foot+calc). `json_fvec` emits null + harness sanitiser. (`9d60144`)
 - [x] Inner ring now drawn over the CSD corner-fill (Kieran feedback). (`8e5aff1`)
-- [ ] **BUG (probe-found): SSD windows render SQUARE corners.** foot is SSD (mutter
-  draws a 26px titlebar above the buffer + a shadow); the rounding rounds the
-  offscreen TEXTURE, which for SSD = frame + shadow/decoration margin, so the arc
-  lands ~6.5px OUTSIDE the frame and the real corners stay square. CSD is fine
-  (content_inset = shadow margin pulls the arc in; SSD content_inset = 0). Fix
-  needs paint_target to inset to the frame rect within the texture (the frame's
-  offset in the FBO — currently uses the private fbo_offset). Test on real HW
-  (llvmpipe SSD shadow may differ). round enabled=True but visually square.
+- [x] **BUG (probe-found): SSD windows rendered SQUARE corners — FIXED.** The
+  rounding rounded the offscreen TEXTURE inset only by the CSD shadow margin
+  (content_inset); for SSD the texture = frame + titlebar/shadow + effect margin
+  but content_inset = 0, so the arc landed ~6px outside the frame → square. Fix:
+  derive the per-side inset from the actor paint_box vs the window frame in
+  paint_target (`inset = enlarge + (frame_edge − paintbox_edge)·scale`),
+  asymmetric-aware + uniform across CSD/SSD/layer, guarded with a content_inset
+  fallback. Added `paint_box` to InspectScene (revealed it). Verified: foot rounds
+  all 4 corners, calc/menu/maximized-foot unchanged, audit green. (`cac5199`,
+  `62cd6ff`). NB still worth an eyeball on real HW (llvmpipe SSD shadow may differ).
 
 ## GTK app menus: black popup corners — FIXED ("context menus in gtk apps are bugged")
 Right-click/hamburger menus of libadwaita apps (e.g. gnome-calculator) showed
