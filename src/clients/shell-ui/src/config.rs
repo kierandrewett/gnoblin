@@ -136,6 +136,12 @@ fn parse(
 
         if let Some(eq) = line.find('=') {
             let key = line[..eq].trim().to_string();
+            // Skip `= value` lines with no key — the C parser (gnoblin-config.c)
+            // drops these too; without this the Rust side stored them under an
+            // empty-string key, diverging from the compositor.
+            if key.is_empty() {
+                continue;
+            }
             let value = clean_value(&line[eq + 1..]);
             lists
                 .entry((section.clone(), key.clone()))
@@ -233,6 +239,20 @@ mod tests {
 
         assert_eq!(cfg.get("topbar", "left"), Some("clock"));
         assert_eq!(cfg.get("topbar", "; left"), None);
+    }
+
+    #[test]
+    fn empty_key_line_is_skipped_like_c_parser() {
+        // `= value` with no key: the C parser (gnoblin-config.c) drops these; the
+        // Rust side must too, not store the value under an empty-string key.
+        let cfg = Config::from_text(
+            "[topbar]\n\
+             = orphan\n\
+             left = clock\n",
+        );
+
+        assert_eq!(cfg.get("topbar", ""), None);
+        assert_eq!(cfg.get("topbar", "left"), Some("clock"));
     }
 
     #[test]
