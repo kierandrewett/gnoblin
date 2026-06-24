@@ -142,7 +142,12 @@ static const char* ROUNDED_SHADER =
      * edge + shadow, exactly as on the straight sides. */
     "    float ring_depth = max(border_w, 0.0) + max(ring_w, 0.0);\n"
     "    float body = smoothstep(ring_depth - 0.5, ring_depth + 0.5, -dist);\n"
-    "    float fillamt = in_corner * (1.0 - smoothstep(0.55, 0.95, src.a)) * body;\n"
+    /* Never fill from a transparent sample: if the nearest straight edge is empty
+     * (a popover's tail margin, a gap), fs.rgb is meaningless (0,0,0) and filling
+     * would paint a black corner. Fade the fill out as the sample loses opacity so
+     * the corner stays honestly transparent instead. */
+    "    float framevalid = smoothstep(0.02, 0.25, fs.a);\n"
+    "    float fillamt = in_corner * (1.0 - smoothstep(0.55, 0.95, src.a)) * body * framevalid;\n"
     "    src = mix(src, framep, fillamt);\n"
     "  }\n"
     "  vec4 base = cogl_color_in * src * alpha;\n"

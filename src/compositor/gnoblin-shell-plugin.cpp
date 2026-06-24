@@ -243,6 +243,25 @@ static gboolean wants_decoration(MetaWindow* window) {
     }
 }
 
+/* An application TOPLEVEL — the only window kind whose own rounded corners
+ * corner-fill is meant to repair. libadwaita/libhandy draw a NORMAL window (or
+ * dialog) with transparent rounded corners; corner-fill samples the window's
+ * straight edge to fill that gap behind our ring. The menu/popup family
+ * (right-click menus, combo dropdowns, GtkPopover) is SELF-SHAPED instead — a
+ * rounded body with a tail/beak and a wide transparent margin — so near its
+ * frame corner the nearest edge is empty margin, the sample is (0,0,0,0), and
+ * the fill would paint an opaque BLACK triangle. Those must be excluded. */
+static gboolean window_is_app_toplevel(MetaWindow* window) {
+    switch (meta_window_get_window_type(window)) {
+    case META_WINDOW_NORMAL:
+    case META_WINDOW_DIALOG:
+    case META_WINDOW_MODAL_DIALOG:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 /* Whether to consider this window/surface for gnoblin-managed visual effects
  * (rounding/border/blur). Ordinary decorated windows always qualify. A
  * wlr-layer-shell surface qualifies too — but only so a rule can opt it in:
@@ -562,7 +581,11 @@ static void maybe_round_corners(MetaWindowActor* window_actor) {
     if (window_is_self_rounding(window)) {
         if (!gnoblin_config_get_bool("effects", "round-self-rounding-apps", TRUE))
             return;
-        fx.rounded.corner_fill = TRUE;
+        /* Only fill a real toplevel's transparent corner. A self-rounding app's
+         * MENUS/popovers share its pid (so they read as self-rounding too) but are
+         * self-shaped with a transparent tail margin — filling their corners would
+         * sample that margin and paint black. They still get rounding + ring. */
+        fx.rounded.corner_fill = window_is_app_toplevel(window);
     }
 
     /* Inset the mask/border/ring to the visible surface inside any CSD shadow
