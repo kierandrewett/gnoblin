@@ -3,35 +3,11 @@
  */
 
 #include "gnoblin-output-spec.h"
+#include "gnoblin-spec-util.h"
 
 #include <errno.h>
 #include <math.h>
 #include <string.h>
-
-static void skip_spaces(char** p) {
-    while (**p && g_ascii_isspace(**p))
-        (*p)++;
-}
-
-static gboolean at_end(char* p) {
-    skip_spaces(&p);
-    return *p == '\0';
-}
-
-static gboolean parse_int(char** p, int* out) {
-    char* end = NULL;
-    gint64 value;
-
-    skip_spaces(p);
-    errno = 0;
-    value = g_ascii_strtoll(*p, &end, 10);
-    if (errno != 0 || end == *p || value < G_MININT || value > G_MAXINT)
-        return FALSE;
-
-    *out = (int)value;
-    *p = end;
-    return TRUE;
-}
 
 static gboolean parse_double_full(const char* text, double* out) {
     g_autofree char* copy = NULL;
@@ -49,7 +25,7 @@ static gboolean parse_double_full(const char* text, double* out) {
 
     errno = 0;
     value = g_ascii_strtod(s, &end);
-    if (errno != 0 || end == s || !isfinite(value) || !at_end(end))
+    if (errno != 0 || end == s || !isfinite(value) || !gnoblin_spec_at_end(end))
         return FALSE;
 
     *out = value;
@@ -105,23 +81,23 @@ static gboolean parse_mode(const char* text, GnoblinOutputSpec* out) {
 
     copy = g_strdup(text);
     p = copy;
-    if (!parse_int(&p, &w))
+    if (!gnoblin_spec_parse_int(&p, &w))
         return FALSE;
-    skip_spaces(&p);
+    gnoblin_spec_skip_spaces(&p);
     if (*p != 'x' && *p != 'X')
         return FALSE;
     p++;
-    if (!parse_int(&p, &h))
+    if (!gnoblin_spec_parse_int(&p, &h))
         return FALSE;
     if (w <= 0 || h <= 0)
         return FALSE;
 
-    skip_spaces(&p);
+    gnoblin_spec_skip_spaces(&p);
     if (*p == '@') {
         p++;
         if (!parse_double_full(p, &refresh) || refresh <= 0.0)
             return FALSE;
-    } else if (!at_end(p)) {
+    } else if (!gnoblin_spec_at_end(p)) {
         return FALSE;
     }
 
@@ -150,11 +126,11 @@ static gboolean parse_position(const char* text, GnoblinOutputSpec* out) {
 
     copy = g_strdup(text);
     p = copy;
-    if (!parse_int(&p, &x))
+    if (!gnoblin_spec_parse_int(&p, &x))
         return FALSE;
     if (!g_ascii_isspace(*p))
         return FALSE;
-    if (!parse_int(&p, &y) || !at_end(p))
+    if (!gnoblin_spec_parse_int(&p, &y) || !gnoblin_spec_at_end(p))
         return FALSE;
 
     out->has_position = TRUE;

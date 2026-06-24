@@ -10,6 +10,7 @@ cc "$ROOT/tests/anim-parser-test.c" "$ROOT/src/compositor/gnoblin-anim-spec.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-anim-parser-test
 cc "$ROOT/tests/actions-parser-test.c" "$ROOT/src/compositor/gnoblin-actions-spec.c" \
+    "$ROOT/src/compositor/gnoblin-spec-util.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-actions-parser-test
 cc "$ROOT/tests/color-parser-test.c" "$ROOT/src/compositor/gnoblin-color-spec.c" \
@@ -19,9 +20,11 @@ cc "$ROOT/tests/input-parser-test.c" "$ROOT/src/compositor/gnoblin-input-spec.c"
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-input-parser-test
 cc "$ROOT/tests/output-parser-test.c" "$ROOT/src/compositor/gnoblin-output-spec.c" \
+    "$ROOT/src/compositor/gnoblin-spec-util.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-output-parser-test
 cc "$ROOT/tests/rules-parser-test.c" "$ROOT/src/compositor/gnoblin-rules-spec.c" \
+    "$ROOT/src/compositor/gnoblin-spec-util.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-rules-parser-test
 cc "$ROOT/tests/shadow-parser-test.c" "$ROOT/src/compositor/gnoblin-shadow-spec.c" \
