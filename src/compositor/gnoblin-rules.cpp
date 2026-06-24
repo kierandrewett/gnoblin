@@ -29,7 +29,6 @@ typedef struct {
     int inactive_opacity; /* unfocused opacity %, or -1 */
     gboolean no_round;
     gboolean no_shadow;
-    gboolean blur; /* legacy boolean blur toggle (kept for compatibility) */
 
     /* Per-rule effect overrides. Each *_set flag says "a rule touched this", so
      * the resolver knows to override the global default. */
@@ -368,7 +367,6 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
         hints->border_set = TRUE;
         hints->border_width = 0.0f;
     } else if (!g_strcmp0(verb, "blur")) {
-        hints->blur = TRUE;
         hints->blur_set = TRUE;
         hints->blur_on = TRUE;
         if (arg) {
@@ -379,7 +377,6 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
             }
         }
     } else if (!g_strcmp0(verb, "no-blur")) {
-        hints->blur = FALSE;
         hints->blur_set = TRUE;
         hints->blur_on = FALSE;
     } else if ((!g_strcmp0(verb, "blur-threshold") || !g_strcmp0(verb, "blur-alpha-threshold")) &&
@@ -689,10 +686,6 @@ gboolean gnoblin_rules_no_round(MetaWindow* window) {
 
 gboolean gnoblin_rules_no_shadow(MetaWindow* window) {
     return get_hints(window)->no_shadow;
-}
-
-gboolean gnoblin_rules_blur(MetaWindow* window) {
-    return get_hints(window)->blur;
 }
 
 int gnoblin_rules_opacity(MetaWindow* window, gboolean focused) {

@@ -86,7 +86,6 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out);
  * matched or set them). The plugin consults these when adding effects. */
 gboolean gnoblin_rules_no_round(MetaWindow* window);
 gboolean gnoblin_rules_no_shadow(MetaWindow* window);
-gboolean gnoblin_rules_blur(MetaWindow* window);
 
 /* The target window opacity in percent (0-100) given its focus state, or -1 if
  * no rule set an opacity for this window. `focused` picks active vs
