@@ -502,6 +502,7 @@ static char* build_scene_json(MetaDisplay* display) {
         double sx = 1.0, sy = 1.0;
         GnoblinEffects fx;
         gboolean has_rounded, has_blur;
+        ClutterEffect *rounded_fx, *blur_fx;
         /* CSD inset, clamped to >=0 the way the rounded shader applies it. */
         int il, it, ir, ib;
 
@@ -517,8 +518,10 @@ static char* build_scene_json(MetaDisplay* display) {
         title = meta_window_get_title(w);
         wmclass = meta_window_get_wm_class(w);
         appid = meta_window_get_gtk_application_id(w);
-        has_rounded = clutter_actor_get_effect(actor, "gnoblin-rounded") != NULL;
-        has_blur = clutter_actor_get_effect(actor, "gnoblin-blur") != NULL;
+        rounded_fx = clutter_actor_get_effect(actor, "gnoblin-rounded");
+        blur_fx = clutter_actor_get_effect(actor, "gnoblin-blur");
+        has_rounded = rounded_fx != NULL;
+        has_blur = blur_fx != NULL;
         gnoblin_rules_effects(w, &fx);
         il = MAX(0, frame.x - buffer.x);
         it = MAX(0, frame.y - buffer.y);
@@ -621,9 +624,17 @@ static char* build_scene_json(MetaDisplay* display) {
         }
         g_string_append_c(s, '}');
 
-        /* Which gnoblin effects are actually attached to the live actor. */
-        g_string_append_printf(s, ",\"attached\":{\"rounded\":%s,\"blur\":%s}",
-                               has_rounded ? "true" : "false", has_blur ? "true" : "false");
+        /* Which gnoblin effects are attached AND whether they're currently enabled
+         * — the effect stays attached but gets DISABLED while a window is
+         * maximized/fullscreen (or mid-animation), so attached != active. */
+        g_string_append_printf(
+            s, ",\"attached\":{\"rounded\":%s,\"blur\":%s},\"enabled\":{\"rounded\":%s,\"blur\":%s}",
+            has_rounded ? "true" : "false", has_blur ? "true" : "false",
+            (has_rounded && clutter_actor_meta_get_enabled(CLUTTER_ACTOR_META(rounded_fx)))
+                ? "true"
+                : "false",
+            (has_blur && clutter_actor_meta_get_enabled(CLUTTER_ACTOR_META(blur_fx))) ? "true"
+                                                                                      : "false");
 
         /* The drop-shadow is a SIBLING actor pinned below the window (data key
          * "gnoblin-shadow"); report its geometry + that the shadow effect runs. */

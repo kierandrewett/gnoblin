@@ -1201,6 +1201,20 @@ static void gnoblin_shell_plugin_size_change(MetaPlugin* plugin, MetaWindowActor
         }
     }
 
+    /* The window is GROWING to a square, full-screen state, so the LIVE actor
+     * should grow SQUARE — not keep its rounded corners + ring through the whole
+     * animation and snap square at the end (the "ring breaks while maximizing"
+     * Kieran saw). Disable the live rounded effect now for a maximize/fullscreen
+     * target; the freeze-frame clone above still carries the OLD rounded contents
+     * for the cross-fade. Restore (unmaximize/unfullscreen) is left rounded so it
+     * shrinks back into a rounded window. finish_size_change() reconciles the
+     * final state either way. */
+    if (which_change == META_SIZE_CHANGE_MAXIMIZE ||
+        which_change == META_SIZE_CHANGE_FULLSCREEN) {
+        if (ClutterEffect* lr = clutter_actor_get_effect(actor, "gnoblin-rounded"))
+            clutter_actor_meta_set_enabled(CLUTTER_ACTOR_META(lr), FALSE);
+    }
+
     clutter_actor_add_child(parent, clone);
     clutter_actor_set_child_above_sibling(parent, clone, actor);
 

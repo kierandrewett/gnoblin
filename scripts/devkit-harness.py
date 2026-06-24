@@ -209,8 +209,14 @@ class Devkit:
         output_conf = ""
         if HIDPI != 1.0:
             output_conf = f"[output]\nMeta-0 = scale {HIDPI:g}\n"
+        # ANIM_SPEED: force animations on + a global playback-speed multiplier
+        # (0.1 = 10x slower, for frame-by-frame filmstrip capture of transitions).
+        anim_conf = ""
+        anim_speed = os.environ.get("ANIM_SPEED", "")
+        if anim_speed:
+            anim_conf = f"[animations]\nenabled = on\nanimation-speed = {anim_speed}\n"
         (cfgdir / "gnoblin.conf").write_text(
-            output_conf +
+            output_conf + anim_conf +
             "[appearance]\n"
             'background = "#202434"\n'
             + wallpaper_conf +
@@ -1060,6 +1066,102 @@ def cmd_wm(spec, out=None):
         dk.teardown()
 
 
+def _contact_sheet(paths, out, cols=4, thumb_w=380):
+    """Tile frame PNGs into one labelled contact sheet for at-a-glance review."""
+    from PIL import Image, ImageDraw
+    imgs = [(p, Image.open(p).convert("RGB")) for p in paths if os.path.exists(p)]
+    if not imgs:
+        return None
+    thumbs = []
+    for p, im in imgs:
+        t = im.resize((thumb_w, max(1, int(thumb_w * im.height / im.width))))
+        d = ImageDraw.Draw(t)
+        label = os.path.basename(p).rsplit("-", 1)[-1].split(".")[0]
+        d.rectangle([0, 0, 34, 16], fill=(0, 0, 0))
+        d.text((3, 3), label, fill=(255, 255, 0))
+        thumbs.append(t)
+    th = thumbs[0].height
+    rows = (len(thumbs) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * thumb_w, rows * th), (18, 18, 22))
+    for i, t in enumerate(thumbs):
+        sheet.paste(t, ((i % cols) * thumb_w, (i // cols) * th))
+    sheet.save(out)
+    return out
+
+
+def cmd_frames(setup, trigger, out=None):
+    """Filmstrip capture: boot, run SETUP ops, dispatch the TRIGGER op, then burst-
+    capture a sequence of frames THROUGH the resulting animation — with animations
+    forced on and slowed (ANIM_SPEED, default 0.12 = ~8x) so a transition spans many
+    frames. Saves frame-NN.png, a per-frame scene snapshot (the target window's
+    rounding/border/geometry over time), and a tiled contact sheet. Makes animation
+    bugs (maximize ring break, etc.) actually inspectable.
+
+      frames 'spawn:nautilus' 'maximize' [OUT_PREFIX]
+
+    Env: FRAMES (count, 14), FRAME_INTERVAL (s, 0.10), SPAWN_SETTLE (s, 8 for GTK),
+         ANIM_SPEED (0.12), plus HIDPI for crisp frames."""
+    import json as _json
+    os.environ.setdefault("ANIM_SPEED", "0.12")
+    n = int(os.environ.get("FRAMES", "14"))
+    interval = float(os.environ.get("FRAME_INTERVAL", "0.10"))
+    spawn_settle = float(os.environ.get("SPAWN_SETTLE", "8"))
+    scratch = os.environ.get("SCRATCH", "/tmp")
+    prefix = out or os.path.join(scratch, "frame")
+    dk = Devkit()
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        for op in (setup or "").split(","):
+            op = op.strip()
+            if not op:
+                continue
+            action, _, arg = op.partition(":")
+            if action == "spawn":
+                dk.spawn_and_wait(arg or "foot")
+                time.sleep(spawn_settle)   # GTK/libadwaita cold start
+            else:
+                dk.dispatch(action, arg)
+                time.sleep(1.0)
+        # The window we'll track in the per-frame scene snapshot (last real window).
+        wins = dk.list_windows()
+        track = wins[-1][0] if wins else None
+        taction, _, targ = (trigger or "").partition(":")
+        if taction:
+            dk.dispatch(taction, targ)
+        frames, snaps = [], []
+        for i in range(n):
+            p = f"{prefix}-{i:02d}.png"
+            try:
+                dk.shot(p)
+                frames.append(p)
+            except Exception as e:
+                print(f"frame {i}: shot failed: {e}")
+            try:
+                scene = dk.inspect_scene()
+                w = next((s for s in scene["surfaces"] if s["id"] == track), None)
+                if w:
+                    snaps.append({"f": i, "frame": w["frame"], "actor_size": w["actor"]["size"],
+                                  "scale": w["actor"]["scale"], "round": w["rounding"]["enabled"],
+                                  "radius": w["rounding"]["radius"],
+                                  "fx_on": w.get("enabled", {}).get("rounded"),
+                                  "maximized": w["state"]["maximized"], "op": w["actor"]["opacity"]})
+            except Exception:
+                pass
+            time.sleep(interval)
+        if dk.crashed():
+            print(f"CRASH during filmstrip: {dk.crashed()}")
+            print(dk._tail())
+        sheet = _contact_sheet(frames, f"{prefix}-sheet.png")
+        print(f"FILMSTRIP: {len(frames)} frames, sheet -> {sheet}")
+        for s in snaps:
+            print(f"  f{s['f']:02d} max={s['maximized']} round-fx-ON={s['fx_on']} r={s['radius']:.0f} "
+                  f"op={s['op']} actor={s['actor_size']} scale={s['scale']}")
+        return 0
+    finally:
+        dk.teardown()
+
+
 def cmd_inspect(spec=None, out=None):
     """Boot, run optional spawn/dispatch ops (same syntax as `wm`), then print the
     live scene: every surface's geometry + the gnoblin effects on it. The actual
@@ -1138,7 +1240,9 @@ def cmd_inspect(spec=None, out=None):
                 print(f"           layer offset{ly['offset']} blur={ly['blur']} "
                       f"spread={ly['spread']} {rgba(ly['color'])}")
             att = "+".join(k for k, v in s['attached'].items() if v) or "none"
-            print(f"    attached effects: {att}")
+            en = s.get('enabled', {})
+            onoff = "+".join(k for k, v in en.items() if v) or "none"
+            print(f"    attached effects: {att}   enabled: {onoff}")
             if s.get('shadow_actor'):
                 sh = s['shadow_actor']
                 print(f"    shadow_actor pos{sh['pos']} size{sh['size']} "
@@ -1251,6 +1355,11 @@ def main():
         sys.exit(cmd_wm(arg, sys.argv[3] if len(sys.argv) > 3 else None))
     elif cmd == "inspect":
         sys.exit(cmd_inspect(arg, sys.argv[3] if len(sys.argv) > 3 else None))
+    elif cmd == "frames":
+        if not arg:
+            sys.exit(f"usage: {sys.argv[0]} frames 'SETUP_OPS' 'TRIGGER' [OUT_PREFIX]")
+        sys.exit(cmd_frames(arg, sys.argv[3] if len(sys.argv) > 3 else "",
+                            sys.argv[4] if len(sys.argv) > 4 else None))
     elif cmd == "boot":
         sys.exit(cmd_boot())
     else:
