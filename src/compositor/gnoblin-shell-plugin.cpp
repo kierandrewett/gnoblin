@@ -572,21 +572,21 @@ static void maybe_round_corners(MetaWindowActor* window_actor) {
         return;
     if (clutter_actor_get_effect(actor, "gnoblin-rounded"))
         return;
-    /* Clients that round themselves (libadwaita/libhandy) leave their own
-     * transparent corners; rounding them naively double-rounds into a gap. Rather
-     * than skip them (no ring at all), round them WITH smart corner-fill: the
-     * shader fills the client's transparent corner with its edge colour so our
-     * rounded corner + ring read cleanly. `round-self-rounding-apps = off` opts
-     * back out (skip entirely). */
-    if (window_is_self_rounding(window)) {
-        if (!gnoblin_config_get_bool("effects", "round-self-rounding-apps", TRUE))
-            return;
-        /* Only fill a real toplevel's transparent corner. A self-rounding app's
-         * MENUS/popovers share its pid (so they read as self-rounding too) but are
-         * self-shaped with a transparent tail margin — filling their corners would
-         * sample that margin and paint black. They still get rounding + ring. */
-        fx.rounded.corner_fill = window_is_app_toplevel(window);
-    }
+    /* Clients that round themselves (libadwaita/libhandy, but ALSO firefox/electron/
+     * etc.) leave their own transparent corners; rounding them naively double-rounds
+     * into a gap and the ring can't draw across the corner. The shader's corner-fill
+     * fixes that by painting the client's transparent corner with its edge colour —
+     * and it SELF-GATES (only acts where the corner is actually transparent), so on
+     * an opaque/square corner it is a harmless no-op. So enable it for EVERY app
+     * TOPLEVEL rather than only the apps we can fingerprint as self-rounding — that
+     * way the rounded corner + ring read cleanly everywhere, no per-toolkit
+     * detection. (Popups are excluded by window_is_app_toplevel: their transparent
+     * tail margin would sample to black.) A self-rounding app can still be skipped
+     * entirely with `round-self-rounding-apps = off`. */
+    if (window_is_self_rounding(window) &&
+        !gnoblin_config_get_bool("effects", "round-self-rounding-apps", TRUE))
+        return;
+    fx.rounded.corner_fill = window_is_app_toplevel(window);
 
     /* Inset the mask/border/ring to the visible surface inside any CSD shadow
      * margin (same margins the drop-shadow uses), so the rounded edge hugs the

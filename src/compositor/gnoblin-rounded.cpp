@@ -136,15 +136,14 @@ static const char* ROUNDED_SHADER =
     "    vec4 framep = vec4(frgb, 1.0);\n"             /* opaque, premultiplied frame colour */
     "    vec2 qc = abs(p) - inr;\n"
     "    float in_corner = step(0.0, min(qc.x, qc.y));\n"
-    /* Fill the client's transparent/gray corner with the frame colour out to where
-     * the OUTER border band starts (cedge = border_w) — so the fill backs the INNER
-     * ring band (the white highlight) and the inner ring draws continuously OVER the
-     * corner, matching the straight edges. The OUTER band + the anti-aliased very
-     * edge (cedge in [0, border_w]) stay UNfilled, sitting on the natural window
-     * edge + shadow: otherwise the partly-transparent AA edge is backed by a white
-     * bulge that shows through it as a fringe instead of blending into the shadow. */
-    "    float ring_depth = max(border_w, 0.0);\n"
-    "    float body = smoothstep(ring_depth - 0.5, ring_depth + 0.5, -dist);\n"
+    /* Fill the client's transparent corner with the frame colour out to the rounded
+     * EDGE (cedge = 0), not stopping short — so BOTH ring bands have solid colour to
+     * draw on at the corner and the ring traces all the way around, matching the
+     * straight edges (Kieran: "the outer ring just ends on the corners, it should go
+     * all the way around"). The very-edge AA fades via `alpha` below, so the fill
+     * blends into the shadow exactly as the real content does on the straight sides
+     * — no fringe, because the fill IS the window's own edge colour. */
+    "    float body = smoothstep(-0.5, 0.5, -dist);\n"
     /* Never fill from a transparent sample: if the nearest straight edge is empty
      * (a popover's tail margin, a gap), fs.rgb is meaningless (0,0,0) and filling
      * would paint a black corner. Fade the fill out as the sample loses opacity so
