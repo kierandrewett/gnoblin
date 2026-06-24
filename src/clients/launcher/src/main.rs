@@ -146,16 +146,7 @@ fn activate_row(
 }
 
 fn apply_theme(win: &Launcher) {
-    let dark = gnoblin_shell_ui::theme::is_dark();
-    let mode = if dark {
-        TokenMode::Dark
-    } else {
-        TokenMode::Light
-    };
-    let chrome = gnoblin_shell_ui::theme::shell_chrome(dark);
-    let theme = win.global::<Theme>();
-    theme.set_mode(mode);
-    gnoblin_shell_ui::apply_shell_chrome_to_theme!(theme, chrome);
+    gnoblin_shell_ui::apply_shell_theme!(win);
 }
 
 impl LauncherApp {

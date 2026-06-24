@@ -60,14 +60,7 @@ struct DockApp {
 
 /// Apply the current light/dark preference to the Slint theme global.
 fn apply_theme(d: &DockBar) {
-    let dark = gnoblin_shell_ui::theme::is_dark();
-    let mode = if dark {
-        TokenMode::Dark
-    } else {
-        TokenMode::Light
-    };
-    d.global::<Theme>().set_mode(mode);
-    apply_shell_chrome_with(d, dark);
+    gnoblin_shell_ui::apply_shell_theme!(d);
 }
 
 fn apply_shell_chrome(d: &DockBar) {

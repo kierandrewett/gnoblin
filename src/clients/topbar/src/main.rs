@@ -132,14 +132,7 @@ fn topbar_clock_text(format: &str) -> String {
 
 /// Apply the current light/dark preference to the Slint theme global.
 fn apply_theme(p: &TopBar) {
-    let dark = gnoblin_shell_ui::theme::is_dark();
-    let mode = if dark {
-        TokenMode::Dark
-    } else {
-        TokenMode::Light
-    };
-    p.global::<Theme>().set_mode(mode);
-    apply_shell_chrome_with(p, dark);
+    gnoblin_shell_ui::apply_shell_theme!(p);
 }
 
 fn apply_shell_chrome(p: &TopBar) {

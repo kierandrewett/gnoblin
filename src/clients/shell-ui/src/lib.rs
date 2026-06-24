@@ -86,6 +86,24 @@ pub mod tray;
 
 pub use args::ClientArgs;
 
+/// Apply the light/dark preference (mode + shell chrome) to a client's Slint
+/// `Theme` global — replaces the per-client `apply_theme` copies. `$component` is
+/// the client's top-level component; its generated `TokenMode`/`Theme` resolve at
+/// the call site.
+#[macro_export]
+macro_rules! apply_shell_theme {
+    ($component:expr) => {{
+        let dark = $crate::theme::is_dark();
+        let theme = $component.global::<Theme>();
+        theme.set_mode(if dark {
+            TokenMode::Dark
+        } else {
+            TokenMode::Light
+        });
+        $crate::apply_shell_chrome_to_theme!(theme, $crate::theme::shell_chrome(dark));
+    }};
+}
+
 #[macro_export]
 macro_rules! apply_shell_chrome_to_theme {
     ($theme:expr, $chrome:expr) => {{

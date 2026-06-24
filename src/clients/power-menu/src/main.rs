@@ -57,16 +57,7 @@ struct PowerMenuApp {
 }
 
 fn apply_theme(menu: &PowerMenu) {
-    let dark = gnoblin_shell_ui::theme::is_dark();
-    let mode = if dark {
-        TokenMode::Dark
-    } else {
-        TokenMode::Light
-    };
-    let chrome = gnoblin_shell_ui::theme::shell_chrome(dark);
-    let theme = menu.global::<Theme>();
-    theme.set_mode(mode);
-    gnoblin_shell_ui::apply_shell_chrome_to_theme!(theme, chrome);
+    gnoblin_shell_ui::apply_shell_theme!(menu);
 }
 
 fn apply_geometry(menu: &PowerMenu, screen_w: u32, screen_h: u32) {

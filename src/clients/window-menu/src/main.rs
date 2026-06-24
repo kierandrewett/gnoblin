@@ -84,16 +84,7 @@ fn load_entries() -> Vec<Entry> {
 }
 
 fn apply_theme(menu: &WindowMenu) {
-    let dark = gnoblin_shell_ui::theme::is_dark();
-    let mode = if dark {
-        TokenMode::Dark
-    } else {
-        TokenMode::Light
-    };
-    let theme = menu.global::<Theme>();
-    theme.set_mode(mode);
-    let chrome = gnoblin_shell_ui::theme::shell_chrome(dark);
-    gnoblin_shell_ui::apply_shell_chrome_to_theme!(theme, chrome);
+    gnoblin_shell_ui::apply_shell_theme!(menu);
 }
 
 struct WindowMenuApp {
