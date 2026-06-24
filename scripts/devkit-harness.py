@@ -1284,6 +1284,10 @@ def cmd_inspect(spec=None, out=None):
             action, _, arg = op.partition(":")
             if action == "spawn":
                 dk.spawn_and_wait(arg or "foot")
+            elif action == "sleep":
+                # Extra settle, e.g. for a CSD/libadwaita app to finish its ~8s
+                # GTK4 cold start before we inspect its rounded-corner rendering.
+                time.sleep(float(arg or "1"))
             else:
                 dk.dispatch(action, arg)
                 time.sleep(1.2)
