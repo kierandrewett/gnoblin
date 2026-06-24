@@ -45,6 +45,14 @@ static const char* ROUNDED_SHADER =
     "uniform vec4 border_col;\n"
     "uniform float ring_w;\n"   /* RING style: outer ring thickness */
     "uniform vec4 ring_col;\n"  /* RING style: outer ring colour (focus picked CPU-side) */
+    /* Adaptive ring (macOS-style): when 1, ignore border_col/ring_col and derive
+     * the two bands from the window's OWN edge colour — a subtle darker hairline
+     * at the very edge, a lighter highlight just inside — so the border is always
+     * the "correct colour" for that window (dark line on light apps, light line on
+     * dark apps). shade/light are the darken/lighten strengths. */
+    "uniform int adaptive;\n"
+    "uniform float adapt_shade;\n"
+    "uniform float adapt_light;\n"
     /* Per-side inset (px) from the texture edge to the ACTUAL window surface:
      * (left, top, right, bottom). CSD apps (GTK/firefox/nautilus) reserve an
      * invisible shadow border inside their buffer, so the visible window is
@@ -107,9 +115,30 @@ static const char* ROUNDED_SHADER =
      * client's transparent corner is thus filled with its edge colour instead of
      * leaving a gap inside our rounded silhouette. Premultiplied "over". */
     "  if (corner_fill == 1) {\n"
-    "    vec2 fpx = clamp(px, c0 + vec2(r + 1.0), c1 - vec2(r + 1.0));\n"
-    "    vec4 fillc = texture2D(tex, fpx / size);\n"
-    "    src = src + fillc * (1.0 - src.a);\n"
+    /* Sample the window's FRAME colour a few px inside the edge ALONG THE INWARD
+     * NORMAL — NOT diagonally deep into the corner, which reaches inset widgets
+     * (e.g. a blue button) and bleeds their colour into the corner. The numeric
+     * SDF gradient gives the outward normal; step in past the client's own
+     * transparent corner AA to the solid frame, then unpremultiply. */
+    "    float ge = 1.5;\n"
+    "    vec2 grd = vec2(sd_circle(p + vec2(ge, 0.0), b, r) - sd_circle(p - vec2(ge, 0.0), b, r),\n"
+    "                    sd_circle(p + vec2(0.0, ge), b, r) - sd_circle(p - vec2(0.0, ge), b, r));\n"
+    "    vec2 nrm = normalize(grd + vec2(1e-4, 1e-4));\n"
+    "    vec2 fpx = clamp(px - nrm * (dist + 5.0), c0 + vec2(1.0), c1 - vec2(1.0));\n"
+    "    vec4 fs = texture2D(tex, fpx / size);\n"
+    "    vec3 frgb = (fs.a > 0.01) ? fs.rgb / fs.a : fs.rgb;\n"
+    "    vec4 framep = vec4(frgb, 1.0);\n"             /* opaque, premultiplied frame colour */
+    "    vec4 over = src + framep * (1.0 - src.a);\n"
+    /* A self-rounding client's own corner leaves a thin band of SEMI-opaque
+     * (anti-aliased / its own gray corner border) pixels between its rounded
+     * corner and ours — a gray crescent inside our silhouette. The plain over
+     * composite only fixes FULLY transparent pixels; so inside the corner quarter
+     * (within r of both edges) pull any non-solid pixel to the frame colour. The
+     * SDF mask still shapes the silhouette and the ring is drawn over this below. */
+    "    vec2 qc = abs(p) - (b - vec2(r));\n"
+    "    float in_corner = step(0.0, min(qc.x, qc.y));\n"
+    "    float gap = in_corner * (1.0 - smoothstep(0.55, 0.95, src.a));\n"
+    "    src = mix(over, framep, gap);\n"
     "  }\n"
     "  vec4 base = cogl_color_in * src * alpha;\n"
     /* RING: a Tailwind `border` + `ring` rendered as two crisp ~1px bands stacked
@@ -127,12 +156,22 @@ static const char* ROUNDED_SHADER =
     /* ring: inset just inside the border, cedge in [bw, bw+rw]. */
     "    float ring_band = smoothstep(bw - aa, bw + aa, cedge)\n"
     "                    * (1.0 - smoothstep(bw + rw - aa, bw + rw + aa, cedge)) * alpha;\n"
-    "    vec4 bc = border_col; bc.rgb *= bc.a;\n"
-    "    base.rgb = mix(base.rgb, bc.rgb, border_band);\n"
-    "    base.a   = mix(base.a, base.a * (1.0 - border_col.a) + border_col.a, border_band);\n"
-    "    vec4 rc = ring_col; rc.rgb *= rc.a;\n"
-    "    base.rgb = mix(base.rgb, rc.rgb, ring_band);\n"
-    "    base.a   = mix(base.a, base.a * (1.0 - ring_col.a) + ring_col.a, ring_band);\n"
+    "    if (adaptive == 1) {\n"
+    /* The bands sit OVER the window's edge content, so base.rgb here IS that
+     * colour (premultiplied). Modulate it: darken the outer hairline, lighten the
+     * inner highlight. This auto-adapts to ANY window — a light app shows the dark
+     * edge line, a dark app shows the light inner highlight (toward base.a =
+     * premultiplied white). No sampling, always the right colour. */
+    "      base.rgb = mix(base.rgb, base.rgb * (1.0 - adapt_shade), border_band);\n"
+    "      base.rgb = mix(base.rgb, mix(base.rgb, vec3(base.a), adapt_light), ring_band);\n"
+    "    } else {\n"
+    "      vec4 bc = border_col; bc.rgb *= bc.a;\n"
+    "      base.rgb = mix(base.rgb, bc.rgb, border_band);\n"
+    "      base.a   = mix(base.a, base.a * (1.0 - border_col.a) + border_col.a, border_band);\n"
+    "      vec4 rc = ring_col; rc.rgb *= rc.a;\n"
+    "      base.rgb = mix(base.rgb, rc.rgb, ring_band);\n"
+    "      base.a   = mix(base.a, base.a * (1.0 - ring_col.a) + ring_col.a, ring_band);\n"
+    "    }\n"
     "  } else if (border_style != 0 && border_w > 0.5) {\n"
     /* Band: from the rounded edge inward by border_w. inner = how far inside the
      * border band we are (1 at the very edge -> 0 at border_w deep). */
@@ -270,6 +309,12 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
     clutter_shader_effect_set_uniform(shader, "ring_w", G_TYPE_FLOAT, 1, (double)ring_w);
     clutter_shader_effect_set_uniform(shader, "ring_col", G_TYPE_FLOAT, 4, (double)rcol[0],
                                       (double)rcol[1], (double)rcol[2], (double)rcol[3]);
+    clutter_shader_effect_set_uniform(shader, "adaptive", G_TYPE_INT, 1,
+                                      self->params.adaptive ? 1 : 0);
+    clutter_shader_effect_set_uniform(shader, "adapt_shade", G_TYPE_FLOAT, 1,
+                                      (double)self->params.adapt_shade);
+    clutter_shader_effect_set_uniform(shader, "adapt_light", G_TYPE_FLOAT, 1,
+                                      (double)self->params.adapt_light);
 
     CLUTTER_OFFSCREEN_EFFECT_CLASS(gnoblin_rounded_parent_class)
         ->paint_target(effect, node, paint_context);

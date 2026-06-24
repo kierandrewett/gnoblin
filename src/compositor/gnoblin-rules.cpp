@@ -463,6 +463,11 @@ static void apply_ring_border_defaults(GnoblinRoundedParams* r, gboolean dark) {
     effects_color(bcf, r->border_color_focused);
     effects_color(rc, r->ring_color);
     effects_color(rcf, r->ring_color_focused);
+    /* Adaptive ring (macOS-style): derive the bands from the window's own edge
+     * colour instead of the fixed palette above. Theme-independent. */
+    r->adaptive = gnoblin_config_get_bool("effects", "ring-adaptive", TRUE);
+    r->adapt_shade = (float)config_get_double("effects", "ring-adaptive-shade", 0.16);
+    r->adapt_light = (float)config_get_double("effects", "ring-adaptive-light", 0.5);
 }
 
 /* Fill `out` with the global default effect set: the resolved `[appearance]` /

@@ -71,6 +71,14 @@ typedef struct {
      * (so there's no gap inside our rounded silhouette). For libadwaita/libhandy
      * apps that round themselves. */
     gboolean corner_fill;
+    /* RING style only: adaptive border (macOS-style). When TRUE the two ring
+     * bands are derived from the window's OWN edge colour instead of
+     * border_color/ring_color — a darker hairline + lighter highlight, so the
+     * border is always correct for that window (dark on light apps, light on dark
+     * apps). adapt_shade/adapt_light = outer-darken / inner-lighten strengths. */
+    gboolean adaptive;
+    float adapt_shade;
+    float adapt_light;
 } GnoblinRoundedParams;
 
 /* A new rounded-corners effect from a full parameter set. */
