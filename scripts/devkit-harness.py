@@ -692,7 +692,15 @@ class Devkit:
         raw = self.shell_proxy().call_sync(
             "InspectScene", None, Gio.DBusCallFlags.NONE, -1, None).unpack()[0]
         import json as _json
-        return _json.loads(raw)
+        try:
+            return _json.loads(raw)
+        except _json.JSONDecodeError:
+            # Defensive net: a non-finite float reaches us as bare inf/-nan (an
+            # unallocated actor's box) which is invalid JSON. The compositor emits
+            # null for these now; never hard-crash the inspector if a stray one
+            # slips through — sanitise value-position inf/nan to null and retry.
+            import re
+            return _json.loads(re.sub(r"-?(?:inf|nan)(?=[,\]}])", "null", raw, flags=re.I))
 
     def workspace_state(self):
         return self.shell_proxy().call_sync(
@@ -1259,6 +1267,320 @@ def cmd_gallery(out=None):
         dk.teardown()
 
 
+def _run_ops(dk, spec):
+    """Execute a comma-separated op spec, shared by inspect/audit/probe/annotate.
+    Ops: spawn:CMD | sleep:N | click:WxH (BTN_LEFT) | rclick:WxH (BTN_RIGHT) |
+    <dispatch-action>:<arg> (any gnoblin action, e.g. maximize, snap:left)."""
+    for op in (spec or "").split(","):
+        op = op.strip()
+        if not op:
+            continue
+        action, _, arg = op.partition(":")
+        if action == "spawn":
+            dk.spawn_and_wait(arg or "foot")
+        elif action == "sleep":
+            # Extra settle, e.g. for a CSD/libadwaita app to finish its ~8s GTK4
+            # cold start before we inspect its rounded-corner rendering.
+            time.sleep(float(arg or "1"))
+        elif action in ("click", "rclick"):
+            # Pointer click at WxH (e.g. click:780x78) — open a menu/popup.
+            cx, cy = (int(v) for v in arg.split("x"))
+            dk.click(cx, cy, button=273 if action == "rclick" else 272)
+            time.sleep(1.2)
+        else:
+            dk.dispatch(action, arg)
+            time.sleep(1.2)
+
+
+# ---- final-output (composited screenshot) analysis -------------------------
+# The scene dump is geometry + pre-composite textures; these read the FINAL
+# framebuffer (grim screenshot) the way a human eyeballs it, but mechanically.
+
+WTYPE = {0: "normal", 1: "desktop", 2: "dock", 3: "dialog", 4: "modal-dialog",
+         5: "toolbar", 6: "menu", 7: "utility", 8: "splashscreen", 9: "dropdown-menu",
+         10: "popup-menu", 11: "tooltip", 12: "notification", 13: "combo", 14: "dnd",
+         15: "override-other"}
+
+
+def _surf_label(s):
+    return (s.get("layer_ns") or s.get("title") or s.get("wm_class")
+            or s.get("app_id") or f"id{s.get('id')}")
+
+
+def _img_scale(scene, img):
+    """Screenshot-px per stage-logical-px (sx, sy). grim captures physical px;
+    the scene's stage is logical, so this is the output scale (1.0 unless HiDPI)."""
+    sw, sh = scene.get("stage", [img.width, img.height])
+    return (img.width / sw if sw else 1.0, img.height / sh if sh else 1.0)
+
+
+def _px(img, x, y):
+    """Bounds-clamped RGB pixel read."""
+    x = max(0, min(img.width - 1, int(round(x))))
+    y = max(0, min(img.height - 1, int(round(y))))
+    return img.getpixel((x, y))[:3]
+
+
+def _median_rgb(img, pts):
+    import statistics
+    cols = [_px(img, x, y) for (x, y) in pts]
+    return tuple(int(statistics.median(c[i] for c in cols)) for i in range(3)) if cols else (0, 0, 0)
+
+
+# Windows whose composited corners we audit/probe: real app surfaces + menus,
+# not the full-screen shell chrome layers (topbar/dock span the whole stage).
+def _is_window_surface(s):
+    return WTYPE.get(s.get("type"), "") in (
+        "normal", "dialog", "modal-dialog", "menu", "dropdown-menu",
+        "popup-menu", "combo", "utility")
+
+
+def _corners(frame):
+    """4 corners as (name, corner_x, corner_y, inward_dx, inward_dy)."""
+    fx, fy, fw, fh = frame
+    return [("TL", fx, fy, +1, +1), ("TR", fx + fw, fy, -1, +1),
+            ("BL", fx, fy + fh, +1, -1), ("BR", fx + fw, fy + fh, -1, -1)]
+
+
+def audit_corner_black(scene, img):
+    """The reproduced bug class: an opaque near-BLACK artifact in a rounded
+    window's corner (premultiplied transparent-black composited as black, e.g.
+    corner-fill sampling a popover's transparent margin). Robust: only fires when
+    the corner holds near-black while NEITHER the background just outside the
+    frame NOR the window's own edge is dark — i.e. black that should not be there
+    and that a human would actually SEE. Dark windows/wallpapers are skipped (a
+    black corner against black is invisible, not a bug)."""
+    sx, sy = _img_scale(scene, img)
+    out = []
+    for s in scene["surfaces"]:
+        if not (s["rounding"]["enabled"] and _is_window_surface(s)):
+            continue
+        r = max(8.0, s["rounding"]["radius"])
+        rr = int(r) + 2
+        for name, cx, cy, dx, dy in _corners(s["frame"]):
+            bg = _median_rgb(img, [((cx - dx * o) * sx, (cy - dy * o) * sy) for o in (3, 5, 7)])
+            edge = _median_rgb(img, [
+                ((cx + dx * 3) * sx, (cy + dy * (r + 7)) * sy),
+                ((cx + dx * (r + 7)) * sx, (cy + dy * 3) * sy)])
+            black = sum(1 for ox in range(rr) for oy in range(rr)
+                        if max(_px(img, (cx + dx * ox) * sx, (cy + dy * oy) * sy)) <= 20)
+            if black >= 4 and max(bg) > 40 and max(edge) > 40:
+                out.append({
+                    "check": "corner-black", "severity": "FAIL", "surface": _surf_label(s),
+                    "detail": f"{name} corner: {black} near-black px (bg={bg}, edge={edge})",
+                    "box": (cx + (dx - 1) * rr / 2, cy + (dy - 1) * rr / 2, rr, rr)})
+    return out
+
+
+def audit_geometry(scene, img):
+    """Cheap, always-correct scene sanity (no pixels): mapped+visible windows must
+    have a non-degenerate frame inside a sane range, and not be invisible-but-
+    occupying (opacity 0 while mapped+visible). Catches the maximize-strut /
+    blank-window failure shapes."""
+    out = []
+    SW, SH = scene.get("stage", [0, 0])
+    for s in scene["surfaces"]:
+        a = s["actor"]
+        lbl = _surf_label(s)
+        if not (a["mapped"] and a["visible"]):
+            continue
+        fw, fh = s["frame"][2], s["frame"][3]
+        if _is_window_surface(s) and (fw <= 0 or fh <= 0):
+            out.append({"check": "zero-frame", "severity": "FAIL", "surface": lbl,
+                        "detail": f"mapped+visible but frame is {fw}x{fh}"})
+        if SW and (fw > SW * 4 or fh > SH * 4):
+            out.append({"check": "runaway-frame", "severity": "WARN", "surface": lbl,
+                        "detail": f"frame {fw}x{fh} vs stage {SW}x{SH} (strut/alloc bug?)"})
+        if a["opacity"] == 0:
+            out.append({"check": "invisible-mapped", "severity": "WARN", "surface": lbl,
+                        "detail": "opacity 0 while mapped+visible"})
+    return out
+
+
+def audit_hidpi(scene, img):
+    """HiDPI 2x regression guard. Under a scaled output the shaped-texture content
+    size (logical) must equal buffer/scale; if content == buffer the buffer_scale
+    was dropped (the layer-surface 2x bug). Only meaningful when scale != 1."""
+    out = []
+    sx, _ = _img_scale(scene, img)
+    if abs(sx - 1.0) < 0.01:
+        return out  # scale-1 capture: nothing to assert
+    for s in scene["surfaces"]:
+        tree = s.get("tree", {})
+        content = tree.get("content")
+        bw = s["buffer"][2]
+        if content and bw and abs(content[0] - bw) < 2:
+            out.append({"check": "hidpi-buffer-scale", "severity": "FAIL", "surface": _surf_label(s),
+                        "detail": f"content {content[0]:.0f} == buffer {bw} at scale {sx:.2f} (2x bug)"})
+    return out
+
+
+AUDITS = [audit_geometry, audit_corner_black, audit_hidpi]
+
+
+def cmd_audit(spec=None, out=None):
+    """Boot, run ops, capture the FINAL composited frame, and run automated
+    rendering-invariant checks against it (the bug classes hit this session:
+    black popup corners, runaway frames, HiDPI 2x). Prints a PASS/FAIL report,
+    writes a crop of each pixel finding next to OUT, and exits non-zero if any
+    check FAILs — so it gates regressions instead of needing an eyeball."""
+    import json as _json
+    dk = Devkit()
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        _run_ops(dk, spec)
+        if dk.crashed():
+            print(f"CRASH: {dk.crashed()}")
+            print(dk._tail())
+            return 2
+        scene = dk.inspect_scene()
+        shot = out or os.path.join(
+            os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "gnoblin-audit.png")
+        dk.shot(shot)
+        from PIL import Image, ImageDraw
+        img = Image.open(shot).convert("RGB")
+        findings = []
+        for fn in AUDITS:
+            try:
+                findings.extend(fn(scene, img))
+            except Exception as e:  # a check must never mask the others
+                print(f"  [check {fn.__name__} errored: {e}]")
+        fails = [f for f in findings if f["severity"] == "FAIL"]
+        warns = [f for f in findings if f["severity"] != "FAIL"]
+        n_surf = sum(1 for s in scene["surfaces"] if _is_window_surface(s))
+        print(f"\n=== audit: {len(scene['surfaces'])} surfaces ({n_surf} windows), "
+              f"{len(fails)} FAIL, {len(warns)} WARN ===")
+        for f in fails + warns:
+            print(f"  [{f['severity']}] {f['check']:18} {f['surface']:22} {f['detail']}")
+        if not findings:
+            print("  all checks passed")
+        # Crop each pixel finding so a failure is inspectable, not just asserted.
+        crops = [f for f in findings if "box" in f]
+        if crops and out:
+            sx, sy = _img_scale(scene, img)
+            tiles = []
+            for i, f in enumerate(crops):
+                bx, by, bw, bh = f["box"]
+                pad = 10
+                c = img.crop((int(bx * sx) - pad, int(by * sy) - pad,
+                              int((bx + bw) * sx) + pad, int((by + bh) * sy) + pad))
+                c = c.resize((c.width * 6, c.height * 6), Image.NEAREST)
+                d = ImageDraw.Draw(c)
+                d.text((3, 3), f"{f['surface']} {f['detail'][:18]}", fill=(255, 80, 80))
+                tp = f"{os.path.splitext(out)[0]}-finding{i}.png"
+                c.save(tp)
+                tiles.append(tp)
+            sheet = f"{os.path.splitext(out)[0]}-findings.png"
+            _contact_sheet(tiles, sheet, cols=min(3, len(tiles)), thumb_w=300)
+            print(f"  finding crops -> {sheet}")
+        return 1 if fails else 0
+    finally:
+        dk.teardown()
+
+
+def cmd_probe(spec=None, out=None):
+    """Boot, run ops, and auto-crop+zoom every app/menu window's FOUR corners into
+    one labelled contact sheet — the corner inspection done by hand all session,
+    mechanised. Each tile is corner@6x with the window label + corner name, so
+    rounding / ring / fill / black artifacts are visible at a glance across every
+    window in the scene at once."""
+    out = out or os.path.join(
+        os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "gnoblin-probe.png")
+    dk = Devkit()
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        _run_ops(dk, spec)
+        if dk.crashed():
+            print(f"CRASH: {dk.crashed()}")
+            print(dk._tail())
+            return 2
+        scene = dk.inspect_scene()
+        shot = f"{os.path.splitext(out)[0]}-full.png"
+        dk.shot(shot)
+        from PIL import Image, ImageDraw
+        img = Image.open(shot).convert("RGB")
+        sx, sy = _img_scale(scene, img)
+        tiles = []
+        crop = 28  # logical px box at each corner
+        for s in scene["surfaces"]:
+            if not _is_window_surface(s):
+                continue
+            lbl = _surf_label(s)[:14]
+            for name, cx, cy, dx, dy in _corners(s["frame"]):
+                x0 = min(cx, cx + dx * crop) * sx
+                y0 = min(cy, cy + dy * crop) * sy
+                c = img.crop((int(x0), int(y0), int(x0) + int(crop * sx), int(y0) + int(crop * sy)))
+                if c.width < 2 or c.height < 2:
+                    continue
+                c = c.resize((c.width * 6, c.height * 6), Image.NEAREST)
+                d = ImageDraw.Draw(c)
+                d.rectangle([0, 0, len(lbl) * 6 + 24, 13], fill=(0, 0, 0))
+                d.text((2, 2), f"{lbl} {name}", fill=(120, 255, 120))
+                tp = os.path.join(os.path.dirname(out) or ".",
+                                  f".probe-{s['id']}-{name}.png")
+                c.save(tp)
+                tiles.append(tp)
+        if not tiles:
+            print("probe: no app/menu windows in scene")
+            return 0
+        _contact_sheet(tiles, out, cols=4, thumb_w=240)
+        for tp in tiles:
+            try:
+                os.remove(tp)
+            except OSError:
+                pass
+        print(f"probe: {len(tiles)} corners -> {out}")
+        return 0
+    finally:
+        dk.teardown()
+
+
+def cmd_annotate(spec=None, out=None):
+    """Boot, run ops, and overlay each surface's geometry on the screenshot:
+    buffer rect (gray), frame rect (cyan), CSD inset / rounded-content rect
+    (yellow), corner-probe boxes (magenta). Makes 'where is the frame vs the
+    buffer vs the shadow margin' visible instead of mentally mapping numbers."""
+    out = out or os.path.join(
+        os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "gnoblin-annot.png")
+    dk = Devkit()
+    try:
+        dk.boot(with_monitor=True)
+        time.sleep(SETTLE)
+        _run_ops(dk, spec)
+        if dk.crashed():
+            print(f"CRASH: {dk.crashed()}")
+            return 2
+        scene = dk.inspect_scene()
+        dk.shot(out)
+        from PIL import Image, ImageDraw
+        img = Image.open(out).convert("RGB")
+        d = ImageDraw.Draw(img)
+        sx, sy = _img_scale(scene, img)
+
+        def R(x, y, w, h, col):
+            d.rectangle([x * sx, y * sy, (x + w) * sx, (y + h) * sy], outline=col)
+
+        for s in scene["surfaces"]:
+            if not _is_window_surface(s):
+                continue
+            bx, by, bw, bh = s["buffer"]
+            fx, fy, fw, fh = s["frame"]
+            R(bx, by, bw, bh, (110, 110, 110))          # buffer rect (incl. CSD shadow margin)
+            R(fx, fy, fw, fh, (0, 220, 220))            # frame rect = rounded/ringed content
+            r = max(0.0, s["rounding"]["radius"]) if s["rounding"]["enabled"] else 0.0
+            if r:                                       # corner-probe boxes (where audit samples)
+                for _n, cx, cy, dx, dy in _corners(s["frame"]):
+                    R(min(cx, cx + dx * r), min(cy, cy + dy * r), r, r, (230, 0, 230))
+            d.text((fx * sx + 2, fy * sy + 2), _surf_label(s)[:18], fill=(0, 255, 255))
+        img.save(out)
+        print(f"annotate -> {out}")
+        return 0
+    finally:
+        dk.teardown()
+
+
 def cmd_inspect(spec=None, out=None):
     """Boot, run optional spawn/dispatch ops (same syntax as `wm`), then print the
     live scene: every surface's geometry + the gnoblin effects on it. The actual
@@ -1277,25 +1599,7 @@ def cmd_inspect(spec=None, out=None):
     try:
         dk.boot(with_monitor=True)
         time.sleep(SETTLE)
-        for op in (spec or "").split(","):
-            op = op.strip()
-            if not op:
-                continue
-            action, _, arg = op.partition(":")
-            if action == "spawn":
-                dk.spawn_and_wait(arg or "foot")
-            elif action == "sleep":
-                # Extra settle, e.g. for a CSD/libadwaita app to finish its ~8s
-                # GTK4 cold start before we inspect its rounded-corner rendering.
-                time.sleep(float(arg or "1"))
-            elif action == "click":
-                # Pointer click at WxH (e.g. click:780x78) — open a menu/popup.
-                cx, cy = (int(v) for v in arg.split("x"))
-                dk.click(cx, cy, button=272)
-                time.sleep(1.2)
-            else:
-                dk.dispatch(action, arg)
-                time.sleep(1.2)
+        _run_ops(dk, spec)
         if dk.crashed():
             print(f"CRASH: {dk.crashed()}")
             print(dk._tail())
@@ -1331,8 +1635,14 @@ def cmd_inspect(spec=None, out=None):
                 except (OSError, ValueError, KeyError):
                     pass
             r = s['rounding']
+            extra = ""
+            if 'corner_fill' in r:
+                extra = (f" fill={r['corner_fill']} adaptive={r['adaptive']}"
+                         f"({r['adapt_shade']:.2f}/{r['adapt_light']:.2f}) focused={r['focused']}")
+            if 'fbo' in r:
+                extra += f" fbo={r['fbo']}"
             print(f"    round  enabled={r['enabled']} radius={r['radius']} "
-                  f"algo={r['algorithm']} smoothing={r['smoothing']} inset={r['applied_inset']}")
+                  f"algo={r['algorithm']} smoothing={r['smoothing']} inset={r['applied_inset']}{extra}")
             b = s['border']
             print(f"    border style={b['style']} bw={b['border_width']} rw={b['ring_width']}")
             print(f"           outer={rgba(b['border_color'])} / {rgba(b['border_color_focused'])}(F)")
@@ -1461,6 +1771,12 @@ def main():
         sys.exit(cmd_wm(arg, sys.argv[3] if len(sys.argv) > 3 else None))
     elif cmd == "inspect":
         sys.exit(cmd_inspect(arg, sys.argv[3] if len(sys.argv) > 3 else None))
+    elif cmd == "audit":
+        sys.exit(cmd_audit(arg, sys.argv[3] if len(sys.argv) > 3 else None))
+    elif cmd == "probe":
+        sys.exit(cmd_probe(arg, sys.argv[3] if len(sys.argv) > 3 else None))
+    elif cmd == "annotate":
+        sys.exit(cmd_annotate(arg, sys.argv[3] if len(sys.argv) > 3 else None))
     elif cmd == "frames":
         if not arg:
             sys.exit(f"usage: {sys.argv[0]} frames 'SETUP_OPS' 'TRIGGER' [OUT_PREFIX]")
@@ -1471,7 +1787,9 @@ def main():
     elif cmd == "boot":
         sys.exit(cmd_boot())
     else:
-        sys.exit(f"usage: {sys.argv[0]} [smoke|shot OUT|late [OUT]|wm OPS|inspect [OPS]|boot]")
+        sys.exit(f"usage: {sys.argv[0]} [smoke|shot OUT|late [OUT]|wm OPS|"
+                 f"inspect [OPS]|audit [OPS] [OUT]|probe [OPS] [OUT]|"
+                 f"annotate [OPS] [OUT]|boot]")
 
 
 if __name__ == "__main__":
