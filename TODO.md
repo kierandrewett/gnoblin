@@ -6,6 +6,25 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
+## GTK app menus: black popup corners — FIXED ("context menus in gtk apps are bugged")
+Right-click/hamburger menus of libadwaita apps (e.g. gnome-calculator) showed
+opaque BLACK right-triangles in their top corners. Root cause: the menu/popover
+shares its app's pid, so `window_is_self_rounding()` reported TRUE and CSD
+corner-fill was enabled on it — but a GtkPopover is self-shaped (rounded body +
+tail/beak + wide transparent margin), so near its frame corner the nearest
+straight edge is empty margin → sample (0,0,0,0) → fill painted black.
+- [x] Gate corner-fill to real app TOPLEVELs (`window_is_app_toplevel`:
+  NORMAL/DIALOG/MODAL_DIALOG) in `maybe_round_corners`. Menus still get rounding
+  + the adaptive ring, just no fill. (`9effb90`)
+- [x] Harden the shader regardless: `framevalid = smoothstep(0.02,0.25,fs.a)`
+  fades corner-fill out as the sampled frame pixel loses opacity, so a transparent
+  sample can never paint black wherever fill runs. (`9effb90`)
+- [x] Verified headlessly: calc menu top corners were (0,0,0) → now menu-body
+  white / wallpaper-through; calc TOPLEVEL corner-fill unchanged (no regression).
+- [x] Harness `click:WxH` inspect op to open popups headlessly. (`723c01c`)
+- foot/firefox menus: non-libadwaita → never self-rounding → never had the fill,
+  so never black; they already get gnoblin rounding + ring.
+
 ## HiDPI 2× rendering — FIXED ("hidpi is important")
 Long-running "Slint clients render 2× too big at HiDPI" bug. Root cause was NOT
 the Slint client (proven: its GL buffer is pixel-correct) nor EGL/dmabuf/layer
