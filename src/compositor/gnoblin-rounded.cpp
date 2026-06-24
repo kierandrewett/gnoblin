@@ -14,6 +14,8 @@
 
 extern "C" {
 #include <clutter/clutter.h>
+#include <meta/meta-window-actor.h>
+#include <meta/window.h>
 }
 
 /* The fragment shader masks the actor's corners with a rounded-rectangle SDF and
@@ -285,12 +287,47 @@ static void gnoblin_rounded_paint_target(ClutterOffscreenEffect* effect, Clutter
         ring_w = self->params.ring_width * k;
     }
 
-    /* Per-side inset to the visible surface (CSD shadow margin), in LOGICAL px →
-     * scale to the texture's physical px. 0 for SSD (round the whole paint box). */
+    /* Per-side inset from the offscreen texture edge to the window FRAME (the
+     * rect we actually want rounded), in physical px.
+     *
+     * Baseline = the configured CSD shadow margin (content_inset, LOGICAL →
+     * physical). But the texture is sized to the full PAINT BOX — the window plus
+     * its CSD shadow OR its SSD titlebar/shadow plus a small effect-enlarge margin
+     * — so for SSD windows the paint box extends PAST the frame while content_inset
+     * is 0, and rounding the texture directly rounds ~6px outside the frame:
+     * square corners. Derive the true inset from the actor's paint box vs the
+     * window frame instead — asymmetric-aware, and uniform across CSD/SSD/layer:
+     *   inset_side = enlarge + (frame_edge − paintbox_edge) · res_scale
+     * where enlarge = (texture − paintbox · res_scale) / 2 is the symmetric
+     * effect margin. Guarded: only trust a sane result (non-negative, leaving a
+     * positive content rect), else keep the content_inset baseline. */
     float in[4] = {self->params.content_inset[0] * res_scale,
                    self->params.content_inset[1] * res_scale,
                    self->params.content_inset[2] * res_scale,
                    self->params.content_inset[3] * res_scale};
+    if (actor && META_IS_WINDOW_ACTOR(actor)) {
+        MetaWindow* win = meta_window_actor_get_meta_window(META_WINDOW_ACTOR(actor));
+        ClutterActorBox pb;
+
+        if (win && clutter_actor_get_paint_box(actor, &pb)) {
+            MtkRectangle fr;
+            meta_window_get_frame_rect(win, &fr);
+            float ex = (width - (pb.x2 - pb.x1) * res_scale) * 0.5f;
+            float ey = (height - (pb.y2 - pb.y1) * res_scale) * 0.5f;
+            float l = ex + ((float)fr.x - pb.x1) * res_scale;
+            float t = ey + ((float)fr.y - pb.y1) * res_scale;
+            float r = ex + (pb.x2 - (float)(fr.x + fr.width)) * res_scale;
+            float b = ey + (pb.y2 - (float)(fr.y + fr.height)) * res_scale;
+
+            if (l >= 0.0f && t >= 0.0f && r >= 0.0f && b >= 0.0f && l + r < width - 2.0f &&
+                t + b < height - 2.0f) {
+                in[0] = l;
+                in[1] = t;
+                in[2] = r;
+                in[3] = b;
+            }
+        }
+    }
 
     /* Uniforms float-collected as doubles via varargs (see mutter's conform
      * tests); the sampler is texture unit 0. */
