@@ -132,15 +132,18 @@ static const char* ROUNDED_SHADER =
     "    vec4 fs = texture2D(tex, fpx / size);\n"
     "    vec3 frgb = (fs.a > 0.01) ? fs.rgb / fs.a : fs.rgb;\n"
     "    vec4 framep = vec4(frgb, 1.0);\n"             /* opaque, premultiplied frame colour */
-    "    vec4 over = src + framep * (1.0 - src.a);\n"
-    /* Inside the corner quarter, pull EVERY non-solid pixel (the client's own
-     * transparent corner AND its semi-opaque anti-aliased corner border, the gray
-     * crescent) all the way to the frame colour, so the ring is then drawn over
-     * clean frame — not a muddy gray base. Only the fully solid body is kept. */
     "    vec2 qc = abs(p) - inr;\n"
     "    float in_corner = step(0.0, min(qc.x, qc.y));\n"
-    "    float gap = in_corner * (1.0 - smoothstep(0.93, 0.995, src.a));\n"
-    "    src = mix(over, framep, gap);\n"
+    /* Fill the client's transparent/gray corner with the frame colour, but ONLY
+     * the body — out to where the inner ring starts (cedge = border_w + ring_w),
+     * NOT under the ring bands at the very edge. If the fill reaches under the
+     * ring, the (partly transparent / anti-aliased) ring is backed by a white
+     * bulge that shows through it; instead the ring sits on the natural window
+     * edge + shadow, exactly as on the straight sides. */
+    "    float ring_depth = max(border_w, 0.0) + max(ring_w, 0.0);\n"
+    "    float body = smoothstep(ring_depth - 0.5, ring_depth + 0.5, -dist);\n"
+    "    float fillamt = in_corner * (1.0 - smoothstep(0.55, 0.95, src.a)) * body;\n"
+    "    src = mix(src, framep, fillamt);\n"
     "  }\n"
     "  vec4 base = cogl_color_in * src * alpha;\n"
     /* RING: a Tailwind `border` + `ring` rendered as two crisp ~1px bands stacked
