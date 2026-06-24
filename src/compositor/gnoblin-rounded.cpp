@@ -170,13 +170,21 @@ static const char* ROUNDED_SHADER =
     "    float ring_band = smoothstep(bw - aa, bw + aa, cedge)\n"
     "                    * (1.0 - smoothstep(bw + rw - aa, bw + rw + aa, cedge)) * alpha;\n"
     "    if (adaptive == 1) {\n"
-    /* The bands sit OVER the window's edge content, so base.rgb here IS that
-     * colour (premultiplied). Modulate it: darken the outer hairline, lighten the
-     * inner highlight. This auto-adapts to ANY window — a light app shows the dark
-     * edge line, a dark app shows the light inner highlight (toward base.a =
-     * premultiplied white). No sampling, always the right colour. */
-    "      base.rgb = mix(base.rgb, base.rgb * (1.0 - adapt_shade), border_band);\n"
-    "      base.rgb = mix(base.rgb, mix(base.rgb, vec3(base.a), adapt_light), ring_band);\n"
+    /* The bands sit OVER the window's edge content, so base.rgb here IS that colour
+     * (premultiplied). The OUTER hairline ADAPTS to the window's own luminance — a
+     * LIGHT window gets a faint darker edge, a DARK window a faint LIGHTER edge — so
+     * the visible line always sits at the very edge, the way macOS does it. (A fixed
+     * darken is invisible on a dark window: only the inset lighten shows, reading as
+     * a line floating INSIDE the window — the dark-mode bug.) The INNER band is the
+     * faint OPPOSITE, a subtle bevel just inside. */
+    "      float lum = dot(base.rgb, vec3(0.299, 0.587, 0.114)) / max(base.a, 0.001);\n"
+    "      float darkwin = 1.0 - smoothstep(0.22, 0.5, lum);\n"   /* 1 = dark window */
+    "      vec3 darker  = base.rgb * (1.0 - adapt_shade);\n"
+    "      vec3 lighter = mix(base.rgb, vec3(base.a), adapt_light);\n"
+    "      vec3 edgec  = mix(darker, lighter, darkwin);\n"        /* contrast hairline at the edge */
+    "      vec3 innerc = mix(lighter, darker, darkwin);\n"        /* faint opposite bevel inside */
+    "      base.rgb = mix(base.rgb, edgec, border_band);\n"
+    "      base.rgb = mix(base.rgb, innerc, ring_band);\n"
     "    } else {\n"
     "      vec4 bc = border_col; bc.rgb *= bc.a;\n"
     "      base.rgb = mix(base.rgb, bc.rgb, border_band);\n"
