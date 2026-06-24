@@ -6,6 +6,32 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
+## Inspector huge pass — DONE + 1 bug found ("check the inspector.. let's do a huge pass")
+The scene inspector dumped geometry + pre-composite textures, but every rendering
+bug this session lived in the FINAL composited frame (cropped + sampled by hand
+each time). Turned it into a tool that finds bugs mechanically, then dogfooded it.
+- [x] Harness `audit OPS [OUT]` — rendering-invariant checks on the screenshot,
+  exit non-zero on FAIL: corner-black (the libadwaita popup bug), runaway/zero
+  frame, HiDPI 2x. Validated FAIL on pre-fix menu shot, PASS post-fix. (`446ba95`)
+- [x] Harness `probe OPS [OUT]` — auto-crop+zoom every window's 4 corners into one
+  contact sheet (the by-hand corner review, mechanised). (`446ba95`)
+- [x] Harness `annotate OPS [OUT]` — overlay buffer/frame/corner-probe boxes. (`446ba95`)
+- [x] Shared op-runner (spawn/sleep/click/rclick/dispatch); `rclick:WxH` added.
+- [x] Compositor InspectScene now reports the live effect's applied corner_fill /
+  adaptive / focused / FBO size (was hidden — had to read source). (`9d60144`)
+- [x] Fixed latent JSON bug the dogfooding caught: an unallocated actor's box is
+  ±inf / NaN → printf emits bare inf/-nan → invalid JSON → whole scene parse
+  silently broke (foot+calc). `json_fvec` emits null + harness sanitiser. (`9d60144`)
+- [x] Inner ring now drawn over the CSD corner-fill (Kieran feedback). (`8e5aff1`)
+- [ ] **BUG (probe-found): SSD windows render SQUARE corners.** foot is SSD (mutter
+  draws a 26px titlebar above the buffer + a shadow); the rounding rounds the
+  offscreen TEXTURE, which for SSD = frame + shadow/decoration margin, so the arc
+  lands ~6.5px OUTSIDE the frame and the real corners stay square. CSD is fine
+  (content_inset = shadow margin pulls the arc in; SSD content_inset = 0). Fix
+  needs paint_target to inset to the frame rect within the texture (the frame's
+  offset in the FBO — currently uses the private fbo_offset). Test on real HW
+  (llvmpipe SSD shadow may differ). round enabled=True but visually square.
+
 ## GTK app menus: black popup corners — FIXED ("context menus in gtk apps are bugged")
 Right-click/hamburger menus of libadwaita apps (e.g. gnome-calculator) showed
 opaque BLACK right-triangles in their top corners. Root cause: the menu/popover
