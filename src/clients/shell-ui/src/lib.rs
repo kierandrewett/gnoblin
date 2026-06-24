@@ -2470,9 +2470,20 @@ impl State {
         let ol = ol
             .map(|(w, h)| format!("[{w},{h}]"))
             .unwrap_or_else(|| "null".into());
+        // The ACTUAL committed buffer size (the EGL/Slint adapter physical size) —
+        // to tell whether a HiDPI render bug is the client buffer being wrong vs
+        // mutter mis-scaling a correct buffer.
+        let buf = self
+            .adapter
+            .as_ref()
+            .map(|a| {
+                let s = a.size.get();
+                format!("[{},{}]", s.width, s.height)
+            })
+            .unwrap_or_else(|| "null".into());
         let json = format!(
             "{{\"pid\":{},\"theme_dark\":{},\"scale\":{},\"logical\":[{},{}],\
-             \"physical\":[{},{}],\"full_height\":{},\"input_height\":{},\
+             \"physical\":[{},{}],\"egl_buffer\":{},\"full_height\":{},\"input_height\":{},\
              \"out_logical\":{},\"out_scale\":{},\"out_mode\":[{},{}]}}\n",
             std::process::id(),
             crate::theme::is_dark(),
@@ -2481,6 +2492,7 @@ impl State {
             self.height,
             self.width * self.scale,
             self.height * self.scale,
+            buf,
             self.full_height,
             self.input_height,
             ol,
