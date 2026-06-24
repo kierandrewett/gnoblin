@@ -14,8 +14,14 @@
 
 extern "C" {
 #include <clutter/clutter.h>
+#include <cairo.h>
+#include <cogl/cogl.h>
 #include <meta/compositor.h>
 #include <meta/display.h>
+#include <meta/meta-backend.h>
+#include <meta/meta-context.h>
+#include <meta/meta-multi-texture.h>
+#include <meta/meta-shaped-texture.h>
 #include <meta/meta-window-actor.h>
 #include <meta/meta-workspace-manager.h>
 #include <meta/prefs.h>
@@ -33,6 +39,7 @@ extern "C" {
 
 #define GNOBLIN_DBUS_NAME "dev.gnoblin.Shell"
 #define GNOBLIN_DBUS_PATH "/dev/gnoblin/Shell"
+
 
 typedef struct {
     char* action;
@@ -381,19 +388,52 @@ static void json_attached_fx(GString* s, ClutterActor* a) {
  * effects and children, down to `maxdepth`. */
 static void dump_actor_tree(GString* s, ClutterActor* a, int depth, int maxdepth) {
     float x = 0, y = 0, w = 0, h = 0;
+    double csx = 1.0, csy = 1.0;
     const char* name = clutter_actor_get_name(a);
 
     clutter_actor_get_position(a, &x, &y);
     clutter_actor_get_size(a, &w, &h);
+    clutter_actor_get_scale(a, &csx, &csy);
 
     g_string_append(s, "{\"gtype\":");
     json_str(s, G_OBJECT_TYPE_NAME(a));
     g_string_append(s, ",\"name\":");
     json_str(s, name ? name : "");
-    g_string_append_printf(s, ",\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],\"opacity\":%d,\"mapped\":%s",
-                           (double)x, (double)y, (double)w, (double)h,
+    g_string_append_printf(s, ",\"pos\":[%.0f,%.0f],\"size\":[%.0f,%.0f],\"scale\":[%.2f,%.2f],\"opacity\":%d,\"mapped\":%s",
+                           (double)x, (double)y, (double)w, (double)h, csx, csy,
                            (int)clutter_actor_get_opacity(a),
                            clutter_actor_is_mapped(a) ? "true" : "false");
+    /* The shaped-texture content's preferred size reveals the buffer_scale mutter
+     * applied: a 2560px buffer at buffer_scale 2 reports 1280 logical here; if it
+     * reports 2560 the scale was dropped (the HiDPI 2× layer-surface bug). */
+    {
+        ClutterContent* content = clutter_actor_get_content(a);
+        float cw = 0, ch = 0;
+        if (content && clutter_content_get_preferred_size(content, &cw, &ch))
+            g_string_append_printf(s, ",\"content\":[%.0f,%.0f]", (double)cw, (double)ch);
+    }
+    {
+        ClutterActorBox box;
+        clutter_actor_get_allocation_box(a, &box);
+        g_string_append_printf(s, ",\"alloc\":[%.0f,%.0f,%.0f,%.0f]",
+                               (double)box.x1, (double)box.y1, (double)box.x2, (double)box.y2);
+    }
+    {
+        /* Size after the FULL ancestor transform chain (stage coords). If this is
+         * 2× the alloc, there's a hidden transform scale (not visible in
+         * get_scale) — the layer-surface HiDPI 2× bug. */
+        float tw = 0, th = 0;
+        clutter_actor_get_transformed_size(a, &tw, &th);
+        g_string_append_printf(s, ",\"txsize\":[%.0f,%.0f]", (double)tw, (double)th);
+    }
+    {
+        /* Offscreen redirect: an actor rendered to an intermediate FBO (effects,
+         * forced redirect) can be composited at the wrong scale on HiDPI. The
+         * actor's resource scale drives the FBO resolution. */
+        ClutterOffscreenRedirect r = clutter_actor_get_offscreen_redirect(a);
+        g_string_append_printf(s, ",\"redirect\":%d,\"rscale\":%.2f",
+                               (int)r, clutter_actor_get_resource_scale(a));
+    }
     json_attached_fx(s, a);
     g_string_append(s, ",\"children\":[");
     if (depth < maxdepth) {
@@ -481,11 +521,76 @@ static const char* border_style_name(int st) {
  * alpha-gate, shadow), which gnoblin effects are actually attached, and window
  * state (wm-class, app-id, pid, monitor, stacking layer, maximized/fullscreen/
  * focus, SSD-vs-CSD). Tooling reads this instead of guessing from pixels. */
+/* Find the first descendant surface actor's shaped texture (its ClutterContent). */
+static MetaShapedTexture* find_shaped_texture(ClutterActor* a) {
+    ClutterContent* content = clutter_actor_get_content(a);
+    if (content && META_IS_SHAPED_TEXTURE(content))
+        return META_SHAPED_TEXTURE(content);
+    GList* kids = clutter_actor_get_children(a);
+    MetaShapedTexture* found = NULL;
+    for (GList* k = kids; k && !found; k = k->next)
+        found = find_shaped_texture(CLUTTER_ACTOR(k->data));
+    g_list_free(kids);
+    return found;
+}
+
+/* DIAGNOSTIC (GNOBLIN_DUMP_TEXTURE=<dir>): write each window's shaped-texture
+ * content — what mutter actually holds, BEFORE compositing — to tex-<pid>.png.
+ * Distinguishes a too-big received texture (Mesa/dmabuf import) from a correct
+ * texture scaled up at composite time (the HiDPI EGL-layer 2× bug). */
+static void dump_surface_textures(MetaDisplay* display) {
+    const char* dir = g_getenv("GNOBLIN_DUMP_TEXTURE");
+    if (!dir)
+        return;
+    MetaCompositor* compositor = meta_display_get_compositor(display);
+    GList* actors = meta_compositor_get_window_actors(compositor);
+    for (GList* l = actors; l; l = l->next) {
+        MetaWindowActor* wa = META_WINDOW_ACTOR(l->data);
+        MetaWindow* w = meta_window_actor_get_meta_window(wa);
+        if (!w)
+            continue;
+        MetaShapedTexture* stex = find_shaped_texture(CLUTTER_ACTOR(wa));
+        if (!stex)
+            continue;
+        /* Read the cogl texture DIRECTLY (meta_shaped_texture_get_image bails on
+         * dmabuf/external textures via should_get_via_offscreen). cogl handles the
+         * readback for external textures internally. This shows what mutter holds
+         * for the EGL/dmabuf topbar — at PHYSICAL texture size. */
+        MetaMultiTexture* mtex = meta_shaped_texture_get_texture(stex);
+        if (!mtex)
+            continue;
+        CoglTexture* tex = meta_multi_texture_get_plane(mtex, 0);
+        if (!tex)
+            continue;
+        int tw = cogl_texture_get_width(tex);
+        int th = cogl_texture_get_height(tex);
+        cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
+        cogl_texture_get_data(tex, COGL_PIXEL_FORMAT_BGRA_8888_PRE,
+                              cairo_image_surface_get_stride(img),
+                              cairo_image_surface_get_data(img));
+        cairo_surface_mark_dirty(img);
+        char path[512];
+        g_snprintf(path, sizeof(path), "%s/tex-%d-%dx%d.png", dir,
+                   (int)meta_window_get_pid(w), tw, th);
+        cairo_surface_write_to_png(img, path);
+        cairo_surface_destroy(img);
+    }
+}
+
 static char* build_scene_json(MetaDisplay* display) {
     MetaCompositor* compositor = meta_display_get_compositor(display);
     GList* actors = meta_compositor_get_window_actors(compositor);
     GList* l;
-    GString* s = g_string_new("{\"surfaces\":[");
+    MetaBackend* backend = meta_context_get_backend(meta_display_get_context(display));
+    ClutterActor* stage = meta_backend_get_stage(backend);
+    float stage_w = 0, stage_h = 0;
+    clutter_actor_get_size(stage, &stage_w, &stage_h);
+    GString* s = g_string_new("{");
+    /* Stage coord space is LOGICAL (==monitor logical size) when stage views are
+     * scaled, PHYSICAL (==mode) otherwise. So stage_w == logical width means the
+     * HiDPI "scaled framebuffer" path is active. */
+    g_string_append_printf(s, "\"stage\":[%.0f,%.0f],", stage_w, stage_h);
+    g_string_append(s, "\"surfaces\":[");
     gboolean first = TRUE;
 
     for (l = actors; l; l = l->next) {
@@ -715,6 +820,7 @@ static void handle_method_call(GDBusConnection* connection, const char* sender,
         build_window_frame_list(the_display, &builder);
         g_dbus_method_invocation_return_value(invocation, g_variant_new("(a(tiiii))", &builder));
     } else if (!g_strcmp0(method_name, "InspectScene")) {
+        dump_surface_textures(the_display);
         g_autofree char* json = build_scene_json(the_display);
 
         g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", json));
