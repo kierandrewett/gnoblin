@@ -722,6 +722,19 @@ static char* build_scene_json(MetaDisplay* display) {
                                clutter_actor_has_clip(actor) ? "true" : "false",
                                clutter_actor_get_n_children(actor));
 
+        /* Paint box: the actor's 2D bounding box in STAGE coords — what actually
+         * gets painted (incl. SSD titlebar/decorations + effect margins), which is
+         * what the rounding effect's offscreen TEXTURE is sized to. Comparing it to
+         * the frame rect reveals where the window sits inside the texture — the key
+         * to rounding the frame (not the padded texture) on SSD windows. */
+        {
+            ClutterActorBox pb;
+            if (clutter_actor_get_paint_box(actor, &pb))
+                g_string_append_printf(s, ",\"paint_box\":[%.0f,%.0f,%.0f,%.0f]", (double)pb.x1,
+                                       (double)pb.y1, (double)(pb.x2 - pb.x1),
+                                       (double)(pb.y2 - pb.y1));
+        }
+
         /* Rounding + the two-layer ring border, FULL parameters. */
         g_string_append_printf(s,
                                ",\"rounding\":{\"enabled\":%s,\"radius\":%.1f,\"algorithm\":%d,"
