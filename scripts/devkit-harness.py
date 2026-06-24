@@ -327,41 +327,8 @@ class Devkit:
             raise RuntimeError(f"shell never created {sock}:\n{self._tail()}")
         log(f"booted: WAYLAND_DISPLAY={self.disp} (monitor={'yes' if with_monitor else 'LATE'})")
 
-    def _wait_for_scale(self, target, timeout=12):
-        """Poll DisplayConfig until a logical monitor reports the `target` scale."""
-        try:
-            proxy = Gio.DBusProxy.new_sync(
-                self.conn, Gio.DBusProxyFlags.NONE, None,
-                "org.gnome.Mutter.DisplayConfig", "/org/gnome/Mutter/DisplayConfig",
-                "org.gnome.Mutter.DisplayConfig", None)
-        except Exception:
-            return False
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                state = proxy.call_sync("GetCurrentState", None,
-                                        Gio.DBusCallFlags.NONE, -1, None).unpack()
-                if any(abs(lm[2] - target) < 0.01 for lm in state[2]):
-                    return True
-            except Exception:
-                pass
-            time.sleep(0.3)
-        log(f"WARNING: output scale never reached {target}")
-        return False
 
-    def _spawn_deferred_clients(self, per_output=True):
-        """Start the layer-shell clients now (post-scale). Per-output clients get
-        --output Meta-0 (the virtual connector), matching exec_per_output."""
-        out = "Meta-0"
-        clients = [(f"gnoblin-wallpaper --output {out}", per_output),
-                   (f"gnoblin-topbar --output {out}", per_output),
-                   (f"gnoblin-dock --output {out}", per_output),
-                   ("gnoblin-notifyd", False)]
-        for cmd, _po in clients:
-            self.dispatch("spawn", cmd)
-            time.sleep(0.4)
 
-    # --- crash detection ------------------------------------------------------
     def crashed(self):
         if self.shell_proc and self.shell_proc.poll() is not None:
             rc = self.shell_proc.returncode
