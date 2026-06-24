@@ -49,7 +49,6 @@ typedef struct {
 
 static MetaDisplay* the_display;
 static GHashTable* bindings; /* accelerator action id (guint) -> Binding* */
-static gulong accelerator_handler;
 
 /* ---- keybindings ---- */
 
@@ -979,8 +978,8 @@ static void on_bus_acquired(GDBusConnection* connection, const char* name, gpoin
 void gnoblin_control_init(MetaDisplay* display) {
     the_display = display;
 
-    accelerator_handler = g_signal_connect(display, "accelerator-activated",
-                                           G_CALLBACK(on_accelerator_activated), NULL);
+    g_signal_connect(display, "accelerator-activated", G_CALLBACK(on_accelerator_activated),
+                     NULL);
 
     gnoblin_control_reload_keybindings(display);
 

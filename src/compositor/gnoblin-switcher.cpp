@@ -18,7 +18,6 @@ extern "C" {
 #include <meta/workspace.h>
 }
 
-#include "gnoblin-anim.h"
 #include "gnoblin-rounded.h"
 
 /* Layout constants (logical px). A cell holds one thumbnail plus its margin. */

@@ -311,9 +311,6 @@ static void run_autostart(void) {
     }
 }
 
-/* On hotplug: forget per-output entries whose monitor is gone (its client has
- * already exited via the layer surface `closed` event), so a re-plugged monitor
- * respawns; then launch clients for any newly-arrived monitors. */
 /* Apply the [output] config once the main loop is running (async; it retries
  * internally until mutter has claimed DisplayConfig + laid out the monitors). */
 static gboolean apply_output_once(gpointer user_data) {
@@ -321,6 +318,9 @@ static gboolean apply_output_once(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+/* On hotplug: forget per-output entries whose monitor is gone (its client has
+ * already exited via the layer surface `closed` event), so a re-plugged monitor
+ * respawns; then launch clients for any newly-arrived monitors. */
 static void on_monitors_changed_autostart(MetaMonitorManager* mm, gpointer user_data) {
     g_autoptr(GPtrArray) conns = active_connectors();
 
