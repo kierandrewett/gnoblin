@@ -44,6 +44,39 @@ export global MotionCurves {
     out property <easing> c28: cubic-bezier(0.68, -0.55, 0.265, 1.55);
     out property <easing> c29: cubic-bezier(0.4, 0.0, 0.2, 1.0);
     out property <easing> c30: cubic-bezier(0.32, 0.72, 0.0, 1.0);
+    // ── Signature reveal vocabulary ───────────────────────────────────────────
+    // c31 — "smooth ease out": a strong, confident deceleration with a long
+    //   glide-to-rest tail. The single curve that makes reveals (menus, popouts,
+    //   modals, resizes, position moves) feel intentional instead of snappy.
+    // c32 — "soft overshoot": pops slightly past the target and settles back.
+    //   For elements that should feel springy on appear (hover lifts, dots,
+    //   toggle pills).
+    // c33 — "strong overshoot": a punchier spring, for the return-to-rest of a
+    //   hover lift so it bounces home.
+    out property <easing> c31: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+    out property <easing> c32: cubic-bezier(0.34, 1.36, 0.64, 1.0);
+    out property <easing> c33: cubic-bezier(0.34, 3.85, 0.64, 1.0);
+
+    // ── Indexed curve lookup ──────────────────────────────────────────────────
+    // Every motion-*-style integer (set from Rust prefs / gnoblin.conf) resolves
+    // through this ONE function, so the 34-entry index->curve map has a single
+    // home instead of being transcribed into a 34-branch ternary per resolver.
+    // `fallback` is returned only for an out-of-range index (never produced by a
+    // valid style value), preserving each resolver's original default.
+    pure function curve-by-index(idx: int, fallback: easing) -> easing {
+        return idx ==  0 ? root.c0  : idx ==  1 ? root.c1  : idx ==  2 ? root.c2  :
+               idx ==  3 ? root.c3  : idx ==  4 ? root.c4  : idx ==  5 ? root.c5  :
+               idx ==  6 ? root.c6  : idx ==  7 ? root.c7  : idx ==  8 ? root.c8  :
+               idx ==  9 ? root.c9  : idx == 10 ? root.c10 : idx == 11 ? root.c11 :
+               idx == 12 ? root.c12 : idx == 13 ? root.c13 : idx == 14 ? root.c14 :
+               idx == 15 ? root.c15 : idx == 16 ? root.c16 : idx == 17 ? root.c17 :
+               idx == 18 ? root.c18 : idx == 19 ? root.c19 : idx == 20 ? root.c20 :
+               idx == 21 ? root.c21 : idx == 22 ? root.c22 : idx == 23 ? root.c23 :
+               idx == 24 ? root.c24 : idx == 25 ? root.c25 : idx == 26 ? root.c26 :
+               idx == 27 ? root.c27 : idx == 28 ? root.c28 : idx == 29 ? root.c29 :
+               idx == 30 ? root.c30 : idx == 31 ? root.c31 : idx == 32 ? root.c32 :
+               idx == 33 ? root.c33 : fallback;
+    }
 }
 
 export global Theme {
@@ -57,12 +90,12 @@ export global Theme {
     in-out property <float> motion-scale: 1.0;
     in-out property <float> motion-fast-ms: 120;
     in-out property <float> motion-medium-ms: 200;
-    in-out property <float> motion-overlay-ms: 240;
-    in-out property <float> motion-overlay-open-ms: 160;
-    in-out property <float> motion-overlay-close-ms: 160;
+    in-out property <float> motion-overlay-ms: 250;
+    in-out property <float> motion-overlay-open-ms: 250;
+    in-out property <float> motion-overlay-close-ms: 150;
     in-out property <float> motion-fade-ms: 200;
     in-out property <length> motion-overlay-slide-value: 8px;
-    in-out property <float> motion-overlay-scale-from-value: 0.95;
+    in-out property <float> motion-overlay-scale-from-value: 0.97;
     // Buttery page transitions (the QS carousel / submenu slide). Longer + an
     // ease-out-expo settle so the slide glides instead of snapping. Configurable
     // from `[animations] slint-page-*`.
@@ -70,13 +103,13 @@ export global Theme {
     in-out property <int> motion-page-style: 21;
 
     in-out property <int> motion-fast-style: 3;
-    in-out property <int> motion-medium-style: 4;
-    in-out property <int> motion-overlay-style: 3;
+    in-out property <int> motion-medium-style: 31;
+    in-out property <int> motion-overlay-style: 31;
     in-out property <int> motion-ease-out-style: 3;
     in-out property <int> motion-ease-in-style: 2;
     in-out property <int> motion-ease-in-out-style: 4;
-    in-out property <int> motion-overlay-open-style: 29;
-    in-out property <int> motion-overlay-close-style: 30;
+    in-out property <int> motion-overlay-open-style: 31;
+    in-out property <int> motion-overlay-close-style: 31;
     in-out property <int> motion-fade-style: 4;
 
     // ── Panel colours ─────────────────────────────────────────────────────────
@@ -375,72 +408,8 @@ export global Tokens {
     out property <duration>  motion-overlay-open-duration: 1ms * Theme.motion-overlay-open-ms * Theme.motion-scale;
     out property <duration>  motion-overlay-close-duration: 1ms * Theme.motion-overlay-close-ms * Theme.motion-scale;
     out property <duration>  motion-overlay-duration: motion-overlay-open-duration;
-    out property <easing>    motion-overlay-curve-in:
-        Theme.motion-overlay-open-style == 0  ? MotionCurves.c0  :
-        Theme.motion-overlay-open-style == 1  ? MotionCurves.c1  :
-        Theme.motion-overlay-open-style == 2  ? MotionCurves.c2  :
-        Theme.motion-overlay-open-style == 3  ? MotionCurves.c3  :
-        Theme.motion-overlay-open-style == 4  ? MotionCurves.c4  :
-        Theme.motion-overlay-open-style == 5  ? MotionCurves.c5  :
-        Theme.motion-overlay-open-style == 6  ? MotionCurves.c6  :
-        Theme.motion-overlay-open-style == 7  ? MotionCurves.c7  :
-        Theme.motion-overlay-open-style == 8  ? MotionCurves.c8  :
-        Theme.motion-overlay-open-style == 9  ? MotionCurves.c9  :
-        Theme.motion-overlay-open-style == 10 ? MotionCurves.c10 :
-        Theme.motion-overlay-open-style == 11 ? MotionCurves.c11 :
-        Theme.motion-overlay-open-style == 12 ? MotionCurves.c12 :
-        Theme.motion-overlay-open-style == 13 ? MotionCurves.c13 :
-        Theme.motion-overlay-open-style == 14 ? MotionCurves.c14 :
-        Theme.motion-overlay-open-style == 15 ? MotionCurves.c15 :
-        Theme.motion-overlay-open-style == 16 ? MotionCurves.c16 :
-        Theme.motion-overlay-open-style == 17 ? MotionCurves.c17 :
-        Theme.motion-overlay-open-style == 18 ? MotionCurves.c18 :
-        Theme.motion-overlay-open-style == 19 ? MotionCurves.c19 :
-        Theme.motion-overlay-open-style == 20 ? MotionCurves.c20 :
-        Theme.motion-overlay-open-style == 21 ? MotionCurves.c21 :
-        Theme.motion-overlay-open-style == 22 ? MotionCurves.c22 :
-        Theme.motion-overlay-open-style == 23 ? MotionCurves.c23 :
-        Theme.motion-overlay-open-style == 24 ? MotionCurves.c24 :
-        Theme.motion-overlay-open-style == 25 ? MotionCurves.c25 :
-        Theme.motion-overlay-open-style == 26 ? MotionCurves.c26 :
-        Theme.motion-overlay-open-style == 27 ? MotionCurves.c27 :
-        Theme.motion-overlay-open-style == 28 ? MotionCurves.c28 :
-        Theme.motion-overlay-open-style == 29 ? MotionCurves.c29 :
-        Theme.motion-overlay-open-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c29;
-    out property <easing>    motion-overlay-curve-out:
-        Theme.motion-overlay-close-style == 0  ? MotionCurves.c0  :
-        Theme.motion-overlay-close-style == 1  ? MotionCurves.c1  :
-        Theme.motion-overlay-close-style == 2  ? MotionCurves.c2  :
-        Theme.motion-overlay-close-style == 3  ? MotionCurves.c3  :
-        Theme.motion-overlay-close-style == 4  ? MotionCurves.c4  :
-        Theme.motion-overlay-close-style == 5  ? MotionCurves.c5  :
-        Theme.motion-overlay-close-style == 6  ? MotionCurves.c6  :
-        Theme.motion-overlay-close-style == 7  ? MotionCurves.c7  :
-        Theme.motion-overlay-close-style == 8  ? MotionCurves.c8  :
-        Theme.motion-overlay-close-style == 9  ? MotionCurves.c9  :
-        Theme.motion-overlay-close-style == 10 ? MotionCurves.c10 :
-        Theme.motion-overlay-close-style == 11 ? MotionCurves.c11 :
-        Theme.motion-overlay-close-style == 12 ? MotionCurves.c12 :
-        Theme.motion-overlay-close-style == 13 ? MotionCurves.c13 :
-        Theme.motion-overlay-close-style == 14 ? MotionCurves.c14 :
-        Theme.motion-overlay-close-style == 15 ? MotionCurves.c15 :
-        Theme.motion-overlay-close-style == 16 ? MotionCurves.c16 :
-        Theme.motion-overlay-close-style == 17 ? MotionCurves.c17 :
-        Theme.motion-overlay-close-style == 18 ? MotionCurves.c18 :
-        Theme.motion-overlay-close-style == 19 ? MotionCurves.c19 :
-        Theme.motion-overlay-close-style == 20 ? MotionCurves.c20 :
-        Theme.motion-overlay-close-style == 21 ? MotionCurves.c21 :
-        Theme.motion-overlay-close-style == 22 ? MotionCurves.c22 :
-        Theme.motion-overlay-close-style == 23 ? MotionCurves.c23 :
-        Theme.motion-overlay-close-style == 24 ? MotionCurves.c24 :
-        Theme.motion-overlay-close-style == 25 ? MotionCurves.c25 :
-        Theme.motion-overlay-close-style == 26 ? MotionCurves.c26 :
-        Theme.motion-overlay-close-style == 27 ? MotionCurves.c27 :
-        Theme.motion-overlay-close-style == 28 ? MotionCurves.c28 :
-        Theme.motion-overlay-close-style == 29 ? MotionCurves.c29 :
-        Theme.motion-overlay-close-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c30;
+    out property <easing>    motion-overlay-curve-in: MotionCurves.curve-by-index(Theme.motion-overlay-open-style, MotionCurves.c29);
+    out property <easing>    motion-overlay-curve-out: MotionCurves.curve-by-index(Theme.motion-overlay-close-style, MotionCurves.c30);
     // Back-compat alias for callers that haven't been migrated yet.
     out property <easing>    motion-overlay-curve:     motion-overlay-curve-out;
 
@@ -452,39 +421,7 @@ export global Tokens {
     // Smooth ease-in-out for theme / focus / colour-only crossfades —
     // no scale or slide, just a soft colour blend.
     out property <duration>  motion-fade-duration: 1ms * Theme.motion-fade-ms * Theme.motion-scale;
-    out property <easing>    motion-fade-curve:
-        Theme.motion-fade-style == 0  ? MotionCurves.c0  :
-        Theme.motion-fade-style == 1  ? MotionCurves.c1  :
-        Theme.motion-fade-style == 2  ? MotionCurves.c2  :
-        Theme.motion-fade-style == 3  ? MotionCurves.c3  :
-        Theme.motion-fade-style == 4  ? MotionCurves.c4  :
-        Theme.motion-fade-style == 5  ? MotionCurves.c5  :
-        Theme.motion-fade-style == 6  ? MotionCurves.c6  :
-        Theme.motion-fade-style == 7  ? MotionCurves.c7  :
-        Theme.motion-fade-style == 8  ? MotionCurves.c8  :
-        Theme.motion-fade-style == 9  ? MotionCurves.c9  :
-        Theme.motion-fade-style == 10 ? MotionCurves.c10 :
-        Theme.motion-fade-style == 11 ? MotionCurves.c11 :
-        Theme.motion-fade-style == 12 ? MotionCurves.c12 :
-        Theme.motion-fade-style == 13 ? MotionCurves.c13 :
-        Theme.motion-fade-style == 14 ? MotionCurves.c14 :
-        Theme.motion-fade-style == 15 ? MotionCurves.c15 :
-        Theme.motion-fade-style == 16 ? MotionCurves.c16 :
-        Theme.motion-fade-style == 17 ? MotionCurves.c17 :
-        Theme.motion-fade-style == 18 ? MotionCurves.c18 :
-        Theme.motion-fade-style == 19 ? MotionCurves.c19 :
-        Theme.motion-fade-style == 20 ? MotionCurves.c20 :
-        Theme.motion-fade-style == 21 ? MotionCurves.c21 :
-        Theme.motion-fade-style == 22 ? MotionCurves.c22 :
-        Theme.motion-fade-style == 23 ? MotionCurves.c23 :
-        Theme.motion-fade-style == 24 ? MotionCurves.c24 :
-        Theme.motion-fade-style == 25 ? MotionCurves.c25 :
-        Theme.motion-fade-style == 26 ? MotionCurves.c26 :
-        Theme.motion-fade-style == 27 ? MotionCurves.c27 :
-        Theme.motion-fade-style == 28 ? MotionCurves.c28 :
-        Theme.motion-fade-style == 29 ? MotionCurves.c29 :
-        Theme.motion-fade-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c4;
+    out property <easing>    motion-fade-curve: MotionCurves.curve-by-index(Theme.motion-fade-style, MotionCurves.c4);
 
     // ── Z-order layers ────────────────────────────────────────────────────────
     //   wallpaper:  0
@@ -555,235 +492,22 @@ export global Motion {
     out property <duration> page:    1ms * Theme.motion-page-ms * Theme.motion-scale;
 
     // ── Easing curves ─────────────────────────────────────────────────────────
-    out property <easing> fast-curve:
-        Theme.motion-fast-style == 0  ? MotionCurves.c0  :
-        Theme.motion-fast-style == 1  ? MotionCurves.c1  :
-        Theme.motion-fast-style == 2  ? MotionCurves.c2  :
-        Theme.motion-fast-style == 3  ? MotionCurves.c3  :
-        Theme.motion-fast-style == 4  ? MotionCurves.c4  :
-        Theme.motion-fast-style == 5  ? MotionCurves.c5  :
-        Theme.motion-fast-style == 6  ? MotionCurves.c6  :
-        Theme.motion-fast-style == 7  ? MotionCurves.c7  :
-        Theme.motion-fast-style == 8  ? MotionCurves.c8  :
-        Theme.motion-fast-style == 9  ? MotionCurves.c9  :
-        Theme.motion-fast-style == 10 ? MotionCurves.c10 :
-        Theme.motion-fast-style == 11 ? MotionCurves.c11 :
-        Theme.motion-fast-style == 12 ? MotionCurves.c12 :
-        Theme.motion-fast-style == 13 ? MotionCurves.c13 :
-        Theme.motion-fast-style == 14 ? MotionCurves.c14 :
-        Theme.motion-fast-style == 15 ? MotionCurves.c15 :
-        Theme.motion-fast-style == 16 ? MotionCurves.c16 :
-        Theme.motion-fast-style == 17 ? MotionCurves.c17 :
-        Theme.motion-fast-style == 18 ? MotionCurves.c18 :
-        Theme.motion-fast-style == 19 ? MotionCurves.c19 :
-        Theme.motion-fast-style == 20 ? MotionCurves.c20 :
-        Theme.motion-fast-style == 21 ? MotionCurves.c21 :
-        Theme.motion-fast-style == 22 ? MotionCurves.c22 :
-        Theme.motion-fast-style == 23 ? MotionCurves.c23 :
-        Theme.motion-fast-style == 24 ? MotionCurves.c24 :
-        Theme.motion-fast-style == 25 ? MotionCurves.c25 :
-        Theme.motion-fast-style == 26 ? MotionCurves.c26 :
-        Theme.motion-fast-style == 27 ? MotionCurves.c27 :
-        Theme.motion-fast-style == 28 ? MotionCurves.c28 :
-        Theme.motion-fast-style == 29 ? MotionCurves.c29 :
-        Theme.motion-fast-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c3;
-    out property <easing> medium-curve:
-        Theme.motion-medium-style == 0  ? MotionCurves.c0  :
-        Theme.motion-medium-style == 1  ? MotionCurves.c1  :
-        Theme.motion-medium-style == 2  ? MotionCurves.c2  :
-        Theme.motion-medium-style == 3  ? MotionCurves.c3  :
-        Theme.motion-medium-style == 4  ? MotionCurves.c4  :
-        Theme.motion-medium-style == 5  ? MotionCurves.c5  :
-        Theme.motion-medium-style == 6  ? MotionCurves.c6  :
-        Theme.motion-medium-style == 7  ? MotionCurves.c7  :
-        Theme.motion-medium-style == 8  ? MotionCurves.c8  :
-        Theme.motion-medium-style == 9  ? MotionCurves.c9  :
-        Theme.motion-medium-style == 10 ? MotionCurves.c10 :
-        Theme.motion-medium-style == 11 ? MotionCurves.c11 :
-        Theme.motion-medium-style == 12 ? MotionCurves.c12 :
-        Theme.motion-medium-style == 13 ? MotionCurves.c13 :
-        Theme.motion-medium-style == 14 ? MotionCurves.c14 :
-        Theme.motion-medium-style == 15 ? MotionCurves.c15 :
-        Theme.motion-medium-style == 16 ? MotionCurves.c16 :
-        Theme.motion-medium-style == 17 ? MotionCurves.c17 :
-        Theme.motion-medium-style == 18 ? MotionCurves.c18 :
-        Theme.motion-medium-style == 19 ? MotionCurves.c19 :
-        Theme.motion-medium-style == 20 ? MotionCurves.c20 :
-        Theme.motion-medium-style == 21 ? MotionCurves.c21 :
-        Theme.motion-medium-style == 22 ? MotionCurves.c22 :
-        Theme.motion-medium-style == 23 ? MotionCurves.c23 :
-        Theme.motion-medium-style == 24 ? MotionCurves.c24 :
-        Theme.motion-medium-style == 25 ? MotionCurves.c25 :
-        Theme.motion-medium-style == 26 ? MotionCurves.c26 :
-        Theme.motion-medium-style == 27 ? MotionCurves.c27 :
-        Theme.motion-medium-style == 28 ? MotionCurves.c28 :
-        Theme.motion-medium-style == 29 ? MotionCurves.c29 :
-        Theme.motion-medium-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c4;
-    out property <easing> overlay-curve:
-        Theme.motion-overlay-style == 0  ? MotionCurves.c0  :
-        Theme.motion-overlay-style == 1  ? MotionCurves.c1  :
-        Theme.motion-overlay-style == 2  ? MotionCurves.c2  :
-        Theme.motion-overlay-style == 3  ? MotionCurves.c3  :
-        Theme.motion-overlay-style == 4  ? MotionCurves.c4  :
-        Theme.motion-overlay-style == 5  ? MotionCurves.c5  :
-        Theme.motion-overlay-style == 6  ? MotionCurves.c6  :
-        Theme.motion-overlay-style == 7  ? MotionCurves.c7  :
-        Theme.motion-overlay-style == 8  ? MotionCurves.c8  :
-        Theme.motion-overlay-style == 9  ? MotionCurves.c9  :
-        Theme.motion-overlay-style == 10 ? MotionCurves.c10 :
-        Theme.motion-overlay-style == 11 ? MotionCurves.c11 :
-        Theme.motion-overlay-style == 12 ? MotionCurves.c12 :
-        Theme.motion-overlay-style == 13 ? MotionCurves.c13 :
-        Theme.motion-overlay-style == 14 ? MotionCurves.c14 :
-        Theme.motion-overlay-style == 15 ? MotionCurves.c15 :
-        Theme.motion-overlay-style == 16 ? MotionCurves.c16 :
-        Theme.motion-overlay-style == 17 ? MotionCurves.c17 :
-        Theme.motion-overlay-style == 18 ? MotionCurves.c18 :
-        Theme.motion-overlay-style == 19 ? MotionCurves.c19 :
-        Theme.motion-overlay-style == 20 ? MotionCurves.c20 :
-        Theme.motion-overlay-style == 21 ? MotionCurves.c21 :
-        Theme.motion-overlay-style == 22 ? MotionCurves.c22 :
-        Theme.motion-overlay-style == 23 ? MotionCurves.c23 :
-        Theme.motion-overlay-style == 24 ? MotionCurves.c24 :
-        Theme.motion-overlay-style == 25 ? MotionCurves.c25 :
-        Theme.motion-overlay-style == 26 ? MotionCurves.c26 :
-        Theme.motion-overlay-style == 27 ? MotionCurves.c27 :
-        Theme.motion-overlay-style == 28 ? MotionCurves.c28 :
-        Theme.motion-overlay-style == 29 ? MotionCurves.c29 :
-        Theme.motion-overlay-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c3;
-    out property <easing> page-curve:
-        Theme.motion-page-style == 0  ? MotionCurves.c0  :
-        Theme.motion-page-style == 1  ? MotionCurves.c1  :
-        Theme.motion-page-style == 2  ? MotionCurves.c2  :
-        Theme.motion-page-style == 3  ? MotionCurves.c3  :
-        Theme.motion-page-style == 4  ? MotionCurves.c4  :
-        Theme.motion-page-style == 5  ? MotionCurves.c5  :
-        Theme.motion-page-style == 6  ? MotionCurves.c6  :
-        Theme.motion-page-style == 7  ? MotionCurves.c7  :
-        Theme.motion-page-style == 8  ? MotionCurves.c8  :
-        Theme.motion-page-style == 9  ? MotionCurves.c9  :
-        Theme.motion-page-style == 10 ? MotionCurves.c10 :
-        Theme.motion-page-style == 11 ? MotionCurves.c11 :
-        Theme.motion-page-style == 12 ? MotionCurves.c12 :
-        Theme.motion-page-style == 13 ? MotionCurves.c13 :
-        Theme.motion-page-style == 14 ? MotionCurves.c14 :
-        Theme.motion-page-style == 15 ? MotionCurves.c15 :
-        Theme.motion-page-style == 16 ? MotionCurves.c16 :
-        Theme.motion-page-style == 17 ? MotionCurves.c17 :
-        Theme.motion-page-style == 18 ? MotionCurves.c18 :
-        Theme.motion-page-style == 19 ? MotionCurves.c19 :
-        Theme.motion-page-style == 20 ? MotionCurves.c20 :
-        Theme.motion-page-style == 21 ? MotionCurves.c21 :
-        Theme.motion-page-style == 22 ? MotionCurves.c22 :
-        Theme.motion-page-style == 23 ? MotionCurves.c23 :
-        Theme.motion-page-style == 24 ? MotionCurves.c24 :
-        Theme.motion-page-style == 25 ? MotionCurves.c25 :
-        Theme.motion-page-style == 26 ? MotionCurves.c26 :
-        Theme.motion-page-style == 27 ? MotionCurves.c27 :
-        Theme.motion-page-style == 28 ? MotionCurves.c28 :
-        Theme.motion-page-style == 29 ? MotionCurves.c29 :
-        Theme.motion-page-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c21;
-    out property <easing> ease-out-curve:
-        Theme.motion-ease-out-style == 0  ? MotionCurves.c0  :
-        Theme.motion-ease-out-style == 1  ? MotionCurves.c1  :
-        Theme.motion-ease-out-style == 2  ? MotionCurves.c2  :
-        Theme.motion-ease-out-style == 3  ? MotionCurves.c3  :
-        Theme.motion-ease-out-style == 4  ? MotionCurves.c4  :
-        Theme.motion-ease-out-style == 5  ? MotionCurves.c5  :
-        Theme.motion-ease-out-style == 6  ? MotionCurves.c6  :
-        Theme.motion-ease-out-style == 7  ? MotionCurves.c7  :
-        Theme.motion-ease-out-style == 8  ? MotionCurves.c8  :
-        Theme.motion-ease-out-style == 9  ? MotionCurves.c9  :
-        Theme.motion-ease-out-style == 10 ? MotionCurves.c10 :
-        Theme.motion-ease-out-style == 11 ? MotionCurves.c11 :
-        Theme.motion-ease-out-style == 12 ? MotionCurves.c12 :
-        Theme.motion-ease-out-style == 13 ? MotionCurves.c13 :
-        Theme.motion-ease-out-style == 14 ? MotionCurves.c14 :
-        Theme.motion-ease-out-style == 15 ? MotionCurves.c15 :
-        Theme.motion-ease-out-style == 16 ? MotionCurves.c16 :
-        Theme.motion-ease-out-style == 17 ? MotionCurves.c17 :
-        Theme.motion-ease-out-style == 18 ? MotionCurves.c18 :
-        Theme.motion-ease-out-style == 19 ? MotionCurves.c19 :
-        Theme.motion-ease-out-style == 20 ? MotionCurves.c20 :
-        Theme.motion-ease-out-style == 21 ? MotionCurves.c21 :
-        Theme.motion-ease-out-style == 22 ? MotionCurves.c22 :
-        Theme.motion-ease-out-style == 23 ? MotionCurves.c23 :
-        Theme.motion-ease-out-style == 24 ? MotionCurves.c24 :
-        Theme.motion-ease-out-style == 25 ? MotionCurves.c25 :
-        Theme.motion-ease-out-style == 26 ? MotionCurves.c26 :
-        Theme.motion-ease-out-style == 27 ? MotionCurves.c27 :
-        Theme.motion-ease-out-style == 28 ? MotionCurves.c28 :
-        Theme.motion-ease-out-style == 29 ? MotionCurves.c29 :
-        Theme.motion-ease-out-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c3;
-    out property <easing> ease-in-curve:
-        Theme.motion-ease-in-style == 0  ? MotionCurves.c0  :
-        Theme.motion-ease-in-style == 1  ? MotionCurves.c1  :
-        Theme.motion-ease-in-style == 2  ? MotionCurves.c2  :
-        Theme.motion-ease-in-style == 3  ? MotionCurves.c3  :
-        Theme.motion-ease-in-style == 4  ? MotionCurves.c4  :
-        Theme.motion-ease-in-style == 5  ? MotionCurves.c5  :
-        Theme.motion-ease-in-style == 6  ? MotionCurves.c6  :
-        Theme.motion-ease-in-style == 7  ? MotionCurves.c7  :
-        Theme.motion-ease-in-style == 8  ? MotionCurves.c8  :
-        Theme.motion-ease-in-style == 9  ? MotionCurves.c9  :
-        Theme.motion-ease-in-style == 10 ? MotionCurves.c10 :
-        Theme.motion-ease-in-style == 11 ? MotionCurves.c11 :
-        Theme.motion-ease-in-style == 12 ? MotionCurves.c12 :
-        Theme.motion-ease-in-style == 13 ? MotionCurves.c13 :
-        Theme.motion-ease-in-style == 14 ? MotionCurves.c14 :
-        Theme.motion-ease-in-style == 15 ? MotionCurves.c15 :
-        Theme.motion-ease-in-style == 16 ? MotionCurves.c16 :
-        Theme.motion-ease-in-style == 17 ? MotionCurves.c17 :
-        Theme.motion-ease-in-style == 18 ? MotionCurves.c18 :
-        Theme.motion-ease-in-style == 19 ? MotionCurves.c19 :
-        Theme.motion-ease-in-style == 20 ? MotionCurves.c20 :
-        Theme.motion-ease-in-style == 21 ? MotionCurves.c21 :
-        Theme.motion-ease-in-style == 22 ? MotionCurves.c22 :
-        Theme.motion-ease-in-style == 23 ? MotionCurves.c23 :
-        Theme.motion-ease-in-style == 24 ? MotionCurves.c24 :
-        Theme.motion-ease-in-style == 25 ? MotionCurves.c25 :
-        Theme.motion-ease-in-style == 26 ? MotionCurves.c26 :
-        Theme.motion-ease-in-style == 27 ? MotionCurves.c27 :
-        Theme.motion-ease-in-style == 28 ? MotionCurves.c28 :
-        Theme.motion-ease-in-style == 29 ? MotionCurves.c29 :
-        Theme.motion-ease-in-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c2;
-    out property <easing> ease-in-out-curve:
-        Theme.motion-ease-in-out-style == 0  ? MotionCurves.c0  :
-        Theme.motion-ease-in-out-style == 1  ? MotionCurves.c1  :
-        Theme.motion-ease-in-out-style == 2  ? MotionCurves.c2  :
-        Theme.motion-ease-in-out-style == 3  ? MotionCurves.c3  :
-        Theme.motion-ease-in-out-style == 4  ? MotionCurves.c4  :
-        Theme.motion-ease-in-out-style == 5  ? MotionCurves.c5  :
-        Theme.motion-ease-in-out-style == 6  ? MotionCurves.c6  :
-        Theme.motion-ease-in-out-style == 7  ? MotionCurves.c7  :
-        Theme.motion-ease-in-out-style == 8  ? MotionCurves.c8  :
-        Theme.motion-ease-in-out-style == 9  ? MotionCurves.c9  :
-        Theme.motion-ease-in-out-style == 10 ? MotionCurves.c10 :
-        Theme.motion-ease-in-out-style == 11 ? MotionCurves.c11 :
-        Theme.motion-ease-in-out-style == 12 ? MotionCurves.c12 :
-        Theme.motion-ease-in-out-style == 13 ? MotionCurves.c13 :
-        Theme.motion-ease-in-out-style == 14 ? MotionCurves.c14 :
-        Theme.motion-ease-in-out-style == 15 ? MotionCurves.c15 :
-        Theme.motion-ease-in-out-style == 16 ? MotionCurves.c16 :
-        Theme.motion-ease-in-out-style == 17 ? MotionCurves.c17 :
-        Theme.motion-ease-in-out-style == 18 ? MotionCurves.c18 :
-        Theme.motion-ease-in-out-style == 19 ? MotionCurves.c19 :
-        Theme.motion-ease-in-out-style == 20 ? MotionCurves.c20 :
-        Theme.motion-ease-in-out-style == 21 ? MotionCurves.c21 :
-        Theme.motion-ease-in-out-style == 22 ? MotionCurves.c22 :
-        Theme.motion-ease-in-out-style == 23 ? MotionCurves.c23 :
-        Theme.motion-ease-in-out-style == 24 ? MotionCurves.c24 :
-        Theme.motion-ease-in-out-style == 25 ? MotionCurves.c25 :
-        Theme.motion-ease-in-out-style == 26 ? MotionCurves.c26 :
-        Theme.motion-ease-in-out-style == 27 ? MotionCurves.c27 :
-        Theme.motion-ease-in-out-style == 28 ? MotionCurves.c28 :
-        Theme.motion-ease-in-out-style == 29 ? MotionCurves.c29 :
-        Theme.motion-ease-in-out-style == 30 ? MotionCurves.c30 :
-        MotionCurves.c4;
+    out property <easing> fast-curve: MotionCurves.curve-by-index(Theme.motion-fast-style, MotionCurves.c3);
+    out property <easing> medium-curve: MotionCurves.curve-by-index(Theme.motion-medium-style, MotionCurves.c4);
+    out property <easing> overlay-curve: MotionCurves.curve-by-index(Theme.motion-overlay-style, MotionCurves.c3);
+    out property <easing> page-curve: MotionCurves.curve-by-index(Theme.motion-page-style, MotionCurves.c21);
+    out property <easing> ease-out-curve: MotionCurves.curve-by-index(Theme.motion-ease-out-style, MotionCurves.c3);
+    out property <easing> ease-in-curve: MotionCurves.curve-by-index(Theme.motion-ease-in-style, MotionCurves.c2);
+    out property <easing> ease-in-out-curve: MotionCurves.curve-by-index(Theme.motion-ease-in-out-style, MotionCurves.c4);
+
+    // ── Named choreography curves ─────────────────────────────────────────────
+    // Direct handles to the signature reveal + overshoot curves for motion that
+    // isn't individually user-tunable (hover pops, tooltip slides, dot reveals).
+    // Reaching for these keeps every reveal and spring coherent shell-wide.
+    //   smooth   — confident decelerate-to-rest; the house reveal curve.
+    //   pop      — soft overshoot; springy "appear" for small accents.
+    //   pop-back — punchier spring; the return-home of a hover lift.
+    out property <easing> smooth-curve:   MotionCurves.c31;
+    out property <easing> pop-curve:      MotionCurves.c32;
+    out property <easing> pop-back-curve: MotionCurves.c33;
 }

@@ -46,6 +46,12 @@ const CURVE_EASE_OUT_BACK: i32 = 27;
 const CURVE_EASE_IN_OUT_BACK: i32 = 28;
 const CURVE_STANDARD: i32 = 29;
 const CURVE_SPRING: i32 = 30;
+// Signature reveal vocabulary (see MotionCurves c31-c33 in Tokens.slint).
+const CURVE_SMOOTH: i32 = 31;
+#[allow(dead_code)]
+const CURVE_POP: i32 = 32;
+#[allow(dead_code)]
+const CURVE_POP_BACK: i32 = 33;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ShellMotion {
@@ -77,21 +83,25 @@ impl ShellMotion {
             scale,
             fast_ms: 120.0,
             medium_ms: 200.0,
-            overlay_ms: 240.0,
-            overlay_open_ms: 160.0,
-            overlay_close_ms: 160.0,
+            overlay_ms: 250.0,
+            // Asymmetric reveal: a longer, fully-visible open that glides to
+            // rest, and a brisk close that gets out of the way. Both ride the
+            // same smooth decelerate curve so open/close feel like one gesture.
+            overlay_open_ms: 250.0,
+            overlay_close_ms: 150.0,
             fade_ms: 200.0,
             page_ms: 420.0,
             overlay_slide: 8.0,
-            overlay_scale_from: 0.95,
+            overlay_scale_from: 0.97,
             fast_style: CURVE_EASE_OUT,
-            medium_style: CURVE_EASE_IN_OUT,
-            overlay_style: CURVE_EASE_OUT,
+            // Resizes and on-screen position moves glide on the signature curve.
+            medium_style: CURVE_SMOOTH,
+            overlay_style: CURVE_SMOOTH,
             ease_out_style: CURVE_EASE_OUT,
             ease_in_style: CURVE_EASE_IN,
             ease_in_out_style: CURVE_EASE_IN_OUT,
-            overlay_open_style: CURVE_STANDARD,
-            overlay_close_style: CURVE_SPRING,
+            overlay_open_style: CURVE_SMOOTH,
+            overlay_close_style: CURVE_SMOOTH,
             fade_style: CURVE_EASE_IN_OUT,
             page_style: CURVE_EASE_OUT_EXPO,
         }
@@ -382,6 +392,9 @@ fn parse_curve(raw: &str) -> Option<i32> {
         "ease-in-bounce" | "ease-in-elastic" => Some(CURVE_EASE_IN_BACK),
         "standard" | "material-standard" => Some(CURVE_STANDARD),
         "spring" | "libadwaita-spring" => Some(CURVE_SPRING),
+        "smooth" | "smooth-out" | "reveal" => Some(CURVE_SMOOTH),
+        "pop" | "overshoot" | "soft-overshoot" => Some(CURVE_POP),
+        "pop-back" | "overshoot-strong" | "spring-back" => Some(CURVE_POP_BACK),
         _ => None,
     }
 }
