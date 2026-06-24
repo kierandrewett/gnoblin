@@ -306,29 +306,6 @@ static void build_window_frame_list(MetaDisplay* display, GVariantBuilder* build
     g_list_free(windows);
 }
 
-/* The GTK menu export (org.gtk.Menus / org.gtk.Actions) of the focused window,
- * propagated to mutter via gtk-shell / X11 _GTK_* properties. KDE/Qt windows
- * can also publish a com.canonical.dbusmenu address via the KDE appmenu Wayland
- * protocol. Returns the backend kind + bus name + object paths so the topbar can
- * render a KDE-style global menu. All empty when nothing is focused or the app
- * exports no menu. */
-static MetaWindow* find_focused_window(MetaDisplay* display) {
-    GList* windows = meta_display_list_all_windows(display);
-    GList* l;
-    MetaWindow* found = NULL;
-
-    for (l = windows; l; l = l->next) {
-        MetaWindow* w = META_WINDOW(l->data);
-
-        if (meta_window_has_focus(w)) {
-            found = w;
-            break;
-        }
-    }
-
-    g_list_free(windows);
-    return found;
-}
 
 static void activate_window_by_id(MetaDisplay* display, guint64 id) {
     GList* windows = meta_display_list_all_windows(display);
@@ -538,30 +515,21 @@ static char* resolve_shadow_spec(MetaWindow* w) {
     return spec;
 }
 
-static const char* border_style_name(int st) {
+static const char* border_style_name(GnoblinBorderStyle st) {
     switch (st) {
-    case 0:
+    case GNOBLIN_BORDER_NONE:
         return "none";
-    case 1:
+    case GNOBLIN_BORDER_LINE:
         return "line";
-    case 2:
+    case GNOBLIN_BORDER_LIP:
         return "lip";
-    case 3:
+    case GNOBLIN_BORDER_RING:
         return "ring";
     default:
         return "?";
     }
 }
 
-/* Dump the live scene as JSON — the gnoblin equivalent of the GTK inspector's
- * object tree + properties. For every window actor / layer surface: geometry
- * (frame vs buffer rect, actor allocation, CSD inset), live Clutter actor state
- * (position/size/opacity/scale/visibility/children), the resolved gnoblin effect
- * set with FULL parameters (rounding radius/algorithm/smoothing, the two-layer
- * ring border widths + every colour incl. focused variants, blur radius +
- * alpha-gate, shadow), which gnoblin effects are actually attached, and window
- * state (wm-class, app-id, pid, monitor, stacking layer, maximized/fullscreen/
- * focus, SSD-vs-CSD). Tooling reads this instead of guessing from pixels. */
 /* Find the first descendant surface actor's shaped texture (its ClutterContent). */
 static MetaShapedTexture* find_shaped_texture(ClutterActor* a) {
     ClutterContent* content = clutter_actor_get_content(a);
@@ -618,6 +586,15 @@ static void dump_surface_textures(MetaDisplay* display) {
     }
 }
 
+/* Dump the live scene as JSON — the gnoblin equivalent of the GTK inspector's
+ * object tree + properties. For every window actor / layer surface: geometry
+ * (frame vs buffer rect, actor allocation, CSD inset), live Clutter actor state
+ * (position/size/opacity/scale/visibility/children), the resolved gnoblin effect
+ * set with FULL parameters (rounding radius/algorithm/smoothing, the two-layer
+ * ring border widths + every colour incl. focused variants, blur radius +
+ * alpha-gate, shadow), which gnoblin effects are actually attached, and window
+ * state (wm-class, app-id, pid, monitor, stacking layer, maximized/fullscreen/
+ * focus, SSD-vs-CSD). Tooling reads this instead of guessing from pixels. */
 static char* build_scene_json(MetaDisplay* display) {
     MetaCompositor* compositor = meta_display_get_compositor(display);
     GList* actors = meta_compositor_get_window_actors(compositor);
@@ -783,7 +760,7 @@ static char* build_scene_json(MetaDisplay* display) {
         g_string_append_c(s, '}');
         g_string_append(s, ",\"border\":{");
         g_string_append_printf(s, "\"style\":");
-        json_str(s, border_style_name((int)fx.rounded.border_style));
+        json_str(s, border_style_name(fx.rounded.border_style));
         g_string_append_printf(s, ",\"border_width\":%.2f,\"ring_width\":%.2f",
                                (double)fx.rounded.border_width, (double)fx.rounded.ring_width);
         json_color(s, "border_color", fx.rounded.border_color);
@@ -925,11 +902,18 @@ static void handle_method_call(GDBusConnection* connection, const char* sender,
             activate_window_by_id(the_display, id);
         g_dbus_method_invocation_return_value(invocation, NULL);
     } else if (!g_strcmp0(method_name, "GetActiveWindowMenu")) {
-        /* The appmenu is a toggleable API — when [features] appmenu = off we
-         * report no menu, so any client honouring the API hides its menu bar. */
-        MetaWindow* w =
-            (!locked && gnoblin_feature_enabled("appmenu", TRUE)) ? find_focused_window(the_display)
-                                                                  : NULL;
+        /* The GTK menu export (org.gtk.Menus / org.gtk.Actions) of the focused
+         * window, propagated to mutter via gtk-shell / X11 _GTK_* properties. KDE/Qt
+         * windows can also publish a com.canonical.dbusmenu address via the KDE
+         * appmenu Wayland protocol. Returns the backend kind + bus name + object
+         * paths so the topbar can render a KDE-style global menu. All empty when
+         * nothing is focused or the app exports no menu.
+         *
+         * The appmenu is a toggleable API — when [features] appmenu = off we report
+         * no menu, so any client honouring the API hides its menu bar. */
+        MetaWindow* w = (!locked && gnoblin_feature_enabled("appmenu", TRUE))
+                            ? meta_display_get_focus_window(the_display)
+                            : NULL;
         g_autofree char* backend = gnoblin_config_get_string("topbar", "appmenu-backend");
         const gboolean allow_gtk =
             !backend || backend[0] == '\0' || !g_ascii_strcasecmp(backend, "auto") ||
