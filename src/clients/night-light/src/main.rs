@@ -33,6 +33,7 @@ struct Output {
     control: Option<ZwlrGammaControlV1>,
     size: u32,            // 0 until the gamma_size event arrives
     applied: Option<u16>, // temperature last pushed (None = nothing applied yet)
+    failed: bool, // gamma rejected (another client owns it) — don't re-create until re-enabled
 }
 
 struct State {
@@ -52,7 +53,7 @@ impl State {
             return;
         };
         for o in &mut self.outputs {
-            if self.on && o.control.is_none() {
+            if self.on && o.control.is_none() && !o.failed {
                 o.control = Some(mgr.get_gamma_control(&o.wl, &self.qh, o.reg_name));
                 o.size = 0;
                 o.applied = None;
@@ -61,6 +62,8 @@ impl State {
                     c.destroy();
                 }
                 o.applied = None;
+                // Re-enabling night-light retries — whatever owned gamma may be gone.
+                o.failed = false;
             }
         }
     }
@@ -179,6 +182,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
                         control: None,
                         size: 0,
                         applied: None,
+                        failed: false,
                     });
                     state.sync_controls();
                 }
@@ -237,11 +241,14 @@ impl Dispatch<ZwlrGammaControlV1, u32> for State {
                 }
             }
             zwlr_gamma_control_v1::Event::Failed => {
-                // Another client owns this output's gamma, or it's unsupported.
+                // Another client owns this output's gamma (wlsunset/gammastep), or
+                // it's unsupported. Mark it failed so sync_controls stops re-creating
+                // (and re-failing, re-logging) it until night-light is toggled off→on.
                 if let Some(o) = state.outputs.iter_mut().find(|o| o.reg_name == *reg_name) {
                     o.control = None;
                     o.size = 0;
                     o.applied = None;
+                    o.failed = true;
                 }
                 eprintln!("gnoblin-night-light: gamma control failed for one output");
             }
