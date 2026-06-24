@@ -339,7 +339,7 @@ void gnoblin_lock_engage(MetaDisplay* display) {
     g_signal_connect(the_lock->overlay, "destroy", G_CALLBACK(on_overlay_destroyed), NULL);
     g_signal_connect(the_lock->overlay, "event", G_CALLBACK(on_lock_event), NULL);
 
-    /* A clock-ish prompt + a masked password entry, centred on the primary monitor. */
+    /* A prompt label + a masked password entry, centred on the primary monitor. */
     the_lock->prompt_region = clutter_actor_new();
     clutter_actor_set_reactive(the_lock->prompt_region, FALSE);
     update_prompt_region(the_lock);

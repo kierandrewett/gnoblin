@@ -14,9 +14,13 @@
  * factor (0..1, Figma-style "corner smoothing") blends between the two so the
  * corner can read anywhere from a pure circle to a strong squircle.
  *
- * The border has two styles: a flat LINE of a single colour, or a macOS raised
+ * The border has three styles: a flat LINE of a single colour; a macOS raised
  * "LIP" — a light inner highlight (stronger along the top edge) plus a faint
- * darker outer line — giving windows a subtle bevelled 3D edge.
+ * darker outer line, a subtle bevelled 3D edge; and the default RING — a
+ * two-layer edge (an outer hairline + an inner highlight) drawn just inside the
+ * rounded silhouette, focus- and theme-aware, and by default ADAPTIVE: each band
+ * is derived from the window's own edge colour (a dark line on light apps, a
+ * light line on dark apps), the way macOS does it.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free

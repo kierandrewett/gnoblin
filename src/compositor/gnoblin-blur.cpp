@@ -494,7 +494,7 @@ static void gnoblin_blur_paint_target(ClutterOffscreenEffect* effect, ClutterPai
                                              0.0f, (float)sw, (float)sh, 0.0f, 0.0f, 1.0f, 1.0f);
 
     /* Separable Gaussian on the half-res backdrop: tex_half -> tex_a (H) ->
-     * tex_b (V). Radius halved to match the half-res grid. */
+     * tex_b (V). */
     /* Tight kernel: ~1 texel between taps in the low-res grid (the downsample
      * above already encodes the real-world radius), so the 9 taps form a smooth
      * Gaussian instead of a sparse smear. */
