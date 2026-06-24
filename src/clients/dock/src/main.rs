@@ -7,11 +7,11 @@
 use gnoblin_shell_ui::app_context_menu;
 use gnoblin_shell_ui::config::Config;
 use gnoblin_shell_ui::shell::{self, WindowState};
-use gnoblin_shell_ui::{run, BarApp, BarConfig, RuntimeError};
+use gnoblin_shell_ui::{file_mtime, run, BarApp, BarConfig, RuntimeError};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
@@ -444,9 +444,6 @@ impl BarApp for DockApp {
 /// (comma-separated .desktop ids); falls back to a sensible default set when
 /// unset. Icons are resolved from the system icon theme; the app-id is used as
 /// both the icon name and the tooltip.
-fn file_mtime(path: Option<&Path>) -> Option<SystemTime> {
-    path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-}
 
 fn default_favourites() -> Vec<(String, slint::Image)> {
     app_context_menu::favorite_ids_from_config()

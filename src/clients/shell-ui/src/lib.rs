@@ -63,6 +63,12 @@ pub fn runtime_error(message: impl Into<String>) -> RuntimeError {
     Box::new(std::io::Error::other(message.into()))
 }
 
+/// Last-modified time of a file, or `None` if the path is `None` or unreadable.
+/// Layer-shell clients poll this to live-reload their config/pins on change.
+pub fn file_mtime(path: Option<&std::path::Path>) -> Option<std::time::SystemTime> {
+    path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+}
+
 pub mod app_context_menu;
 pub mod appmenu;
 pub mod args;

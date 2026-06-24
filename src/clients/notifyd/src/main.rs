@@ -6,13 +6,13 @@
 mod server;
 
 use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::{find_icon, run, BarApp, BarConfig, RuntimeError};
+use gnoblin_shell_ui::{file_mtime, find_icon, run, BarApp, BarConfig, RuntimeError};
 slint::include_modules!(); // Notifications, NotifCard, NotifAction
 use server::{NotifyCommand, NotifyEvent};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -101,10 +101,6 @@ fn apply_shell_motion(w: &Notifications) -> bool {
     let motion = gnoblin_shell_ui::prefs::shell_motion();
     let theme = w.global::<Theme>();
     gnoblin_shell_ui::apply_shell_motion_to_theme!(theme, motion)
-}
-
-fn file_mtime(path: Option<&Path>) -> Option<SystemTime> {
-    path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
 }
 
 impl NotifyApp {

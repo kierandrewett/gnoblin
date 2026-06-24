@@ -108,17 +108,6 @@ impl ShellMotion {
     }
 }
 
-/// Are UI animations enabled? Same precedence as the compositor: gnoblin's own
-/// `[animations] enabled` overrides; otherwise the standard desktop setting;
-/// defaulting to `true` when neither can be read.
-pub fn animations_enabled() -> bool {
-    let cfg = Config::load();
-    if let Some(v) = config_bool(&cfg, "enabled") {
-        return v;
-    }
-    read_gsetting().unwrap_or(true)
-}
-
 fn config_bool(cfg: &Config, key: &str) -> Option<bool> {
     cfg.get("animations", key).and_then(parse_bool)
 }
@@ -162,16 +151,6 @@ fn read_gsetting() -> Option<bool> {
         "true" => Some(true),
         "false" => Some(false),
         _ => None,
-    }
-}
-
-/// Motion scale to feed the Slint `Theme.motion-scale` global: 1.0 normally,
-/// 0.0 when animations are disabled (makes every `duration:` instant).
-pub fn motion_scale() -> f32 {
-    if animations_enabled() {
-        1.0
-    } else {
-        0.0
     }
 }
 

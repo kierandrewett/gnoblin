@@ -4,12 +4,12 @@ use gnoblin_shell_ui::appmenu::{self, BarEntry, MenuAddr, MenuCommand, MenuReply
 use gnoblin_shell_ui::config::Config;
 use gnoblin_shell_ui::shell::{self, WindowState};
 use gnoblin_shell_ui::tray::{self, TrayCommand, TrayItem};
-use gnoblin_shell_ui::{datetime, find_icon, run, BarApp, BarConfig, RuntimeError};
+use gnoblin_shell_ui::{datetime, file_mtime, find_icon, run, BarApp, BarConfig, RuntimeError};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -1394,10 +1394,6 @@ fn topbar_settings() -> TopbarSettings {
         exclusive_zone: config_i32(&cfg, "topbar", "exclusive_zone", height).max(0),
         clock_format: command("clock-format", DEFAULT_CLOCK_FORMAT),
     }
-}
-
-fn file_mtime(path: Option<&Path>) -> Option<SystemTime> {
-    path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
 }
 
 /// Run a shell command detached (for the configurable topbar buttons).
