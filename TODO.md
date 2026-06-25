@@ -132,12 +132,16 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   (cf33118); 6.6 qsplugin misattached doc + 6.11 WindowChrome 18px-not-14px (8d759b6);
   6.5 shell.rs close_app_windows doc move (HEAD). Earlier: 6.1/6.2/6.9/6.10/rounded.h/
   lock.cpp.
-- [ ] Theme 6 remaining: 6.4 (lib.rs load_backdrop doc), 6.7 (gnoblin-shell.cpp hotplug
-  comment), 6.12 (Tokens overlay-motion rewrite), 6.15 (config.h docs); 6.3 topbar 4×
-  needs clippy (dead #[allow]). SKIP 6.8 (dock-frost block already cleaned in 203274a;
-  remaining note is coherent). DEFER 6.13 (control-centre-popout premise shaky — popout
-  still exists/instantiated; needs data-flow trace, not a blind reword).
-- [ ] more spec-util dedup (1.3 nonneg_int, 1.5 hex colour); residual small dead code (8.x)
+- [x] Theme 6 comments (this loop, cont.): 6.4 lib.rs load_backdrop doc + 6.15 config.h
+  header docs (c19d31d); 6.12 Tokens overlay-motion rewrite (f1a513c). 6.7 was already
+  done (76d9606).
+- [ ] Theme 6 leftovers (low ROI): 6.3 topbar 4× misattached + dead #[allow(too_many_
+  args)] — the allow needs clippy to confirm removable; lower-value comment batch
+  (shadow.h, blur.cpp:38-60 Gaussian, anim.h, overview.cpp:205, prefs.rs dead_code,
+  Dock.slint/ContextMenu.slint/IconButton.slint headers, launcher/main.rs:64/82).
+  SKIP 6.8 (already clean). DEFER 6.13 (premise shaky — needs data-flow trace).
+- [ ] NEXT: spec-util dedup (1.3 nonneg_int, 1.5 hex colour) into gnoblin-spec-util;
+  residual small dead code (8.x)
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
     props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
