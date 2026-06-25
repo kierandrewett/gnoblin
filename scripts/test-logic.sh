@@ -28,6 +28,7 @@ cc "$ROOT/tests/rules-parser-test.c" "$ROOT/src/compositor/gnoblin-rules-spec.c"
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-rules-parser-test
 cc "$ROOT/tests/shadow-parser-test.c" "$ROOT/src/compositor/gnoblin-shadow-spec.c" \
+    "$ROOT/src/compositor/gnoblin-color-spec.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-shadow-parser-test
 cc "$ROOT/tests/config-test.c" "$ROOT/src/config/gnoblin-config.c" \

@@ -4,28 +4,14 @@
 
 #include "gnoblin-shadow-spec.h"
 
+#include "gnoblin-color-spec.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-
-static gboolean parse_hex_pair(const char* s, unsigned* out) {
-    int hi;
-    int lo;
-
-    if (!g_ascii_isxdigit(s[0]) || !g_ascii_isxdigit(s[1]))
-        return FALSE;
-
-    hi = g_ascii_xdigit_value(s[0]);
-    lo = g_ascii_xdigit_value(s[1]);
-    if (hi < 0 || lo < 0)
-        return FALSE;
-
-    *out = (unsigned)((hi << 4) | lo);
-    return TRUE;
-}
 
 static gboolean parse_finite_float(const char* s, char** end, float* out) {
     char* local_end = NULL;
@@ -54,14 +40,11 @@ gboolean gnoblin_shadow_parse_css_color(const char* s, float out[4]) {
     copy = g_strdup(s);
     s = g_strstrip(copy);
     if (s[0] == '#') {
-        unsigned r, g, b, a = 255;
-        size_t len = strlen(s);
+        /* Delegate strict #rrggbb[aa] parsing to the shared colour parser;
+         * shadow only adds the 0-1 float form on top. */
+        guint8 r, g, b, a;
 
-        if (len != 7 && len != 9)
-            return FALSE;
-        if (!parse_hex_pair(s + 1, &r) || !parse_hex_pair(s + 3, &g) || !parse_hex_pair(s + 5, &b))
-            return FALSE;
-        if (len == 9 && !parse_hex_pair(s + 7, &a))
+        if (!gnoblin_color_parse_hex(s, &r, &g, &b, &a))
             return FALSE;
 
         out[0] = r / 255.0f;
