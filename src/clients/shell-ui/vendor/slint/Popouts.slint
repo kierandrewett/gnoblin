@@ -1,5 +1,5 @@
 // Popouts.slint — Two small floating panels triggered from the top bar.
-//   DatetimePopout    — clock click → date / day / time card
+//   DatetimePopout    — clock click → date / day + calendar card
 //   ControlCentrePopout — system icons click → quick toggles card
 //
 // Both are styled like the dock pill: rounded rectangle, theme-aware bg,
@@ -887,7 +887,6 @@ export component ShellMediaCard inherits Rectangle {
 export component DatetimePopout {
     in property <bool>   open;
     in property <string> date-text: "";       // e.g. "Sunday, 27 April"
-    in property <string> clock-text: "00:00:00";
     in property <string> day-text: "Today";
     /// Header for the calendar grid, e.g. "April 2026".
     in property <string> calendar-month-text: "";
