@@ -111,6 +111,32 @@ poll async" + "prefix commands with gnoblin" + "no graceful fallback".
 ## Other in progress
 - (nothing actively in flight — blocked items are below)
 
+## Code sweep (docs/code-sweep-2026-06.md) — autonomous-loop cleanup
+Applying the report's verified "safe" findings one batch per loop tick; each
+batch builds/tests/fmts clean and lands as its own commit. mutter gitlink stays
+pristine (86e92a2); only working-tree edits, never the submodule pointer.
+- [x] spec-util cursor tokenizer dedup (1.1, d9c3653); config empty-key C↔Rust
+  parity (9ca0bc6); inspector finite-float JSON guards (203274a)
+- [x] dead-code/comment cleanups across control/rules/switcher/overview/shell
+  (203274a, efa3214, 76d9606, 7379e66, e71240f)
+- [x] night-light gamma re-create→re-fail loop fix (b45d9f4)
+- [x] FileFlag dedup for dnd/nightlight runtime flags (2.3, 3946eeb)
+- [x] notifcenter legacy flag → clear_legacy_flag(), dead toggle() removed (8.7, 740d9e9)
+- [x] ControlCentrePopout 6 dead colour props + 3 dead animates (7.1, c7364be)
+- [x] Panel.icon-bluetooth dead in-property (7.5, 44ad95d)
+- [ ] Theme 7.4 dead tokens (highlight-*-top ×4, motion-overlay-curve/-duration
+  aliases, panel-corner-radius) — grep-verify zero consumers, then delete
+- [ ] Theme 7.2 DatetimePopout.clock-text (declared + fed from Compositor, never
+  rendered) — remove both ends
+- [ ] Theme 7.3 Dock backdrop props never rendered (props + Compositor assigns +
+  false "backdrop+tint" comments)
+- [ ] Theme 6 stale/misattached comments batch (6.10 blur radius, 6.11 WindowChrome
+  18px-not-14px, 6.12 overlay-motion, 6.14 entries_with_prefix, …)
+- [ ] more spec-util dedup (1.3 nonneg_int, 1.5 hex colour); residual small dead code (8.x)
+- NEEDS-KIERAN (not done blind): lib.rs 3422-line split (4.6); shared SDF GLSL
+  extract blur↔rounded (4.1); PopoutChrome + overlay grab/teardown dedup (4.5/4.3);
+  control-center GSettings ↔ gnoblin.conf source-of-truth question
+
 ## To do (open-ended — "whatever gnoblin needs")
 - [ ] More launcher providers if wanted (dictionary define, ssh hosts, window
   switcher) — trivial to add. (convert + color shipped.)
