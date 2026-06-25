@@ -1529,32 +1529,11 @@ export component ControlCentrePopout {
     property <color> resolved-border: Theme.mode == TokenMode.Dark
         ? rgba(255, 255, 255, 0.10)
         : rgba(0, 0, 0, 0.08);
-    property <color> resolved-tile-bg: ShellPalette.tile-bg;
-    property <color> resolved-tile-bg-hover: ShellPalette.tile-bg-hover;
-    // Accent + icon-circle colours used by every active toggle. At
-    // root level so child tile rectangles can read `root.accent` etc.
-    // Inactive circles want to recede but not vanish — at 0.06 they
-    // disappeared into the backdrop blur, making disabled status glyphs look
-    // lost. Keep the circle visible so the icon reads as a deliberate chip.
-    property <color> accent:           ShellPalette.accent;
-    property <color> icon-on-active:   rgba(255, 255, 255, 0.95);
-    property <color> icon-bg-inactive: Theme.mode == TokenMode.Dark
-        ? rgba(255, 255, 255, 0.08)
-        : rgba(0, 0, 0, 0.06);
-    // Footer hairline — slightly more visible than `resolved-border`
-    // (which is calibrated for outer-frame edges); the footer divider
-    // needs to read against the panel bg, not at the chrome edge.
-    property <color> footer-divider: Theme.mode == TokenMode.Dark
-        ? rgba(255, 255, 255, 0.12)
-        : rgba(0, 0, 0, 0.12);
 
     animate resolved-bg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
     animate resolved-fg            { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
     animate resolved-fg-secondary  { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
     animate resolved-border        { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
-    animate resolved-tile-bg       { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
-    animate resolved-tile-bg-hover { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
-    animate icon-bg-inactive       { duration: Tokens.motion-fade-duration; easing: Tokens.motion-fade-curve; }
 
     // Standardised overlay motion (see Tokens.motion-overlay-*).
     // Direction-conditional easing for a visible open ramp + snappy
