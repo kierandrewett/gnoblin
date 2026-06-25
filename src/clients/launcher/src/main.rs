@@ -61,9 +61,9 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
-/// What activating a result does. Apps launch; computed results (calculator,
-/// future providers) copy their payload. The process-command provider host
-/// (file search, web, custom) will add a `Run(String)` variant here.
+/// What activating a result does. Apps launch; computed results (calculator)
+/// copy their payload; provider results (file search, web, custom) run a shell
+/// command via `Run`.
 enum Action {
     Launch(String),
     Copy(String),
@@ -79,7 +79,7 @@ struct Row {
     icon: String,
     /// "app" | "calc" — lets the view pick a built-in glyph + styling.
     kind: String,
-    /// Right-aligned accessory text (unused for now; reserved for providers).
+    /// Right-aligned accessory text, e.g. a calculator result like "= 4".
     accessory: String,
     action: Action,
 }

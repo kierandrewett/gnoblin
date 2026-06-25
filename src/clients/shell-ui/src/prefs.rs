@@ -48,9 +48,7 @@ const CURVE_STANDARD: i32 = 29;
 const CURVE_SPRING: i32 = 30;
 // Signature reveal vocabulary (see MotionCurves c31-c33 in Tokens.slint).
 const CURVE_SMOOTH: i32 = 31;
-#[allow(dead_code)]
 const CURVE_POP: i32 = 32;
-#[allow(dead_code)]
 const CURVE_POP_BACK: i32 = 33;
 
 #[derive(Clone, Copy, Debug)]
