@@ -219,12 +219,6 @@ export global Theme {
     out property <color> border-light-active:   rgba(0, 0, 0, 0.22);
     out property <color> border-light-inactive: rgba(0, 0, 0, 0.15);
 
-    // ── Window chrome — inner highlight (top edge) ────────────────────────────
-    out property <color> highlight-dark-active-top:   rgba(255, 255, 255, 0.08);
-    out property <color> highlight-dark-inactive-top: rgba(255, 255, 255, 0.04);
-    out property <color> highlight-light-active-top:  rgba(255, 255, 255, 0.50);
-    out property <color> highlight-light-inactive-top:rgba(255, 255, 255, 0.25);
-
     // ── Content area background ────────────────────────────────────────────────
     out property <color> window-content-bg: mode == TokenMode.Dark
         ? #1d1d1d
@@ -312,7 +306,6 @@ export global Tokens {
     out property <length> control-shadow-offset-y: Theme.control-shadow-offset-y;
     out property <length> window-shadow-blur: Theme.window-shadow-blur;
     out property <length> window-shadow-offset-y: Theme.window-shadow-offset-y;
-    out property <length> panel-corner-radius: 0px;
 
     // ── Panel ────────────────────────────────────────────────────────────────
     out property <length>  panel-height: 34px;
@@ -368,10 +361,6 @@ export global Tokens {
     out property <color>   border-light-active: Theme.border-light-active;
     out property <color>   border-light-inactive: Theme.border-light-inactive;
 
-    // ── Window chrome — inner highlight ──────────────────────────────────────
-    out property <color>   highlight-dark-active-top: Theme.highlight-dark-active-top;
-    out property <color>   highlight-dark-active-bottom: rgba(255, 255, 255, 0.00);
-
     // ── Window controls ───────────────────────────────────────────────────────
     out property <length>  control-size: 21px;
     out property <length>  control-gap: 4px;
@@ -407,11 +396,8 @@ export global Tokens {
     // y is 3 % at 23 ms, 50 % at 77 ms, 97 % at 174 ms.
     out property <duration>  motion-overlay-open-duration: 1ms * Theme.motion-overlay-open-ms * Theme.motion-scale;
     out property <duration>  motion-overlay-close-duration: 1ms * Theme.motion-overlay-close-ms * Theme.motion-scale;
-    out property <duration>  motion-overlay-duration: motion-overlay-open-duration;
     out property <easing>    motion-overlay-curve-in: MotionCurves.curve-by-index(Theme.motion-overlay-open-style, MotionCurves.c29);
     out property <easing>    motion-overlay-curve-out: MotionCurves.curve-by-index(Theme.motion-overlay-close-style, MotionCurves.c30);
-    // Back-compat alias for callers that haven't been migrated yet.
-    out property <easing>    motion-overlay-curve:     motion-overlay-curve-out;
 
     // Slide distance and scale endpoints for overlays. Centralised so a
     // tweak here propagates to every menu and popout consistently.
