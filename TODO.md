@@ -148,11 +148,17 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
 - [x] Theme 1.5 hex-colour unify — shadow-spec # branch delegates to gnoblin_color_parse_
   hex; deleted the dup parse_hex_pair (unsigned* vs guint8* type diff); wired color-spec.c
   into the standalone shadow test (ea9b498). Verified: build + parser tests pass.
-- [ ] NEXT: Theme 1.2 (workspace/monitor/percent parser clones actions↔rules → gnoblin_
-  spec_parse_*; pure dedup, both test files may need wrapper names). CAREFUL-LATER: 1.4
-  (strtod scaffold dedup — has a real behavioural inconsistency in the trailing-garbage
-  rule, *g_strstrip(end)!='\0' vs at_end(end); resolve deliberately, not blindly).
-- [ ] residual small dead code (8.x)
+- [x] Theme 1.2 workspace/monitor/percent parser dedup — logic moved to gnoblin-spec-util
+  (workspace_index + percent new; monitor_index reuses nonneg_int); rules/actions keep thin
+  wrappers (both test files need the names). (30725cf) Verified: build + parser tests pass.
+  → Theme 1 now done except 1.4.
+- [ ] NEXT: Theme 1.4 strtod-scaffold dedup (anim/input/output/shadow-spec) → gnoblin_spec_
+  parse_double. Re-examined the "trailing-garbage inconsistency": *g_strstrip(end)!='\0' and
+  at_end(end) look behaviourally equivalent (both reject non-ws trailing), so consolidation
+  is likely behaviour-preserving — but VERIFY each parser's test + check trailing-ws edge
+  cases before committing. Keep actions-spec's cursor parse_double separate.
+- [ ] residual small dead code (8.x — note: 8.2/8.3 layer-shell dead fields are in
+  meta-wayland-layer-shell.c = protocol/mutter; need the patch-regen workflow, DEFER)
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
     props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
