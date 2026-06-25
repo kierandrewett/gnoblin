@@ -152,13 +152,18 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   (workspace_index + percent new; monitor_index reuses nonneg_int); rules/actions keep thin
   wrappers (both test files need the names). (30725cf) Verified: build + parser tests pass.
   → Theme 1 now done except 1.4.
-- [ ] NEXT: Theme 1.4 strtod-scaffold dedup (anim/input/output/shadow-spec) → gnoblin_spec_
-  parse_double. Re-examined the "trailing-garbage inconsistency": *g_strstrip(end)!='\0' and
-  at_end(end) look behaviourally equivalent (both reject non-ws trailing), so consolidation
-  is likely behaviour-preserving — but VERIFY each parser's test + check trailing-ws edge
-  cases before committing. Keep actions-spec's cursor parse_double separate.
-- [ ] residual small dead code (8.x — note: 8.2/8.3 layer-shell dead fields are in
-  meta-wayland-layer-shell.c = protocol/mutter; need the patch-regen workflow, DEFER)
+- [x] Theme 1.4 strtod-scaffold dedup → gnoblin_spec_parse_double (anim parse_scale, input
+  pointer_speed, output parse_double_full); each keeps its own range/clamp. Confirmed the
+  trailing-garbage rules are behaviourally identical; standardised on at_end. Dropped orphaned
+  errno/math includes; wired spec-util.c into anim+input tests. (77beab7) The harness caught a
+  NULL-out segfault I'd introduced (wrappers must re-guard !out) — fixed + verified.
+  → **THEME 1 COMPLETE** (1.1–1.5).
+- [ ] NEXT (lower-value, safe): residual Theme 6 comments (shadow.h, anim.h, overview.cpp:205,
+  prefs.rs dead_code, Dock/ContextMenu/IconButton.slint headers, launcher/main.rs:64/82);
+  Theme 8.8 (maybe_add_blur unused param — check it's compositor not protocol). 6.3 needs clippy.
+- [ ] DEFER (not for headless loop): 8.2/8.3 layer-shell dead fields (meta-wayland-layer-shell.c
+  = protocol/mutter, need patch-regen workflow); 7.3 Dock backdrop (real-HW); 1.4-adjacent uint
+  parser dup (anim duration_ms ↔ actions parse_uint) — minor, optional.
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
     props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
