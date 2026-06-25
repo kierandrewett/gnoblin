@@ -3,9 +3,9 @@
  */
 
 #include "gnoblin-anim-spec.h"
+#include "gnoblin-spec-util.h"
 
 #include <errno.h>
-#include <math.h>
 
 gboolean gnoblin_anim_parse_duration_ms(const char* text, guint* out) {
     g_autofree char* copy = NULL;
@@ -31,23 +31,9 @@ gboolean gnoblin_anim_parse_duration_ms(const char* text, guint* out) {
 }
 
 gboolean gnoblin_anim_parse_scale(const char* text, double* out) {
-    g_autofree char* copy = NULL;
-    char* s;
-    char* end = NULL;
     double value;
 
-    if (!text || !out)
-        return FALSE;
-
-    copy = g_strdup(text);
-    s = g_strstrip(copy);
-    if (*s == '\0')
-        return FALSE;
-
-    errno = 0;
-    value = g_ascii_strtod(s, &end);
-    if (errno != 0 || end == s || *g_strstrip(end) != '\0' || !isfinite(value) ||
-        value < 0.0 || value > 2.0)
+    if (!out || !gnoblin_spec_parse_double(text, &value) || value < 0.0 || value > 2.0)
         return FALSE;
 
     *out = value;

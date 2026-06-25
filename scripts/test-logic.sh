@@ -7,6 +7,7 @@ cc "$ROOT/tests/lock-pam-test.c" -lpam -o /tmp/gnoblin-lock-pam-test
 cc "$ROOT/tests/lock-pam-accept-test.c" -lpam -o /tmp/gnoblin-lock-accept-test
 cc "$ROOT/tests/sdf-test.c" -lm -o /tmp/gnoblin-sdf-test
 cc "$ROOT/tests/anim-parser-test.c" "$ROOT/src/compositor/gnoblin-anim-spec.c" \
+    "$ROOT/src/compositor/gnoblin-spec-util.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-anim-parser-test
 cc "$ROOT/tests/actions-parser-test.c" "$ROOT/src/compositor/gnoblin-actions-spec.c" \
@@ -17,6 +18,7 @@ cc "$ROOT/tests/color-parser-test.c" "$ROOT/src/compositor/gnoblin-color-spec.c"
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-color-parser-test
 cc "$ROOT/tests/input-parser-test.c" "$ROOT/src/compositor/gnoblin-input-spec.c" \
+    "$ROOT/src/compositor/gnoblin-spec-util.c" \
     -I "$ROOT/src/compositor" $(pkg-config --cflags --libs glib-2.0) -lm \
     -o /tmp/gnoblin-input-parser-test
 cc "$ROOT/tests/output-parser-test.c" "$ROOT/src/compositor/gnoblin-output-spec.c" \

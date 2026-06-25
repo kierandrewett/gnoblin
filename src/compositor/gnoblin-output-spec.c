@@ -5,32 +5,7 @@
 #include "gnoblin-output-spec.h"
 #include "gnoblin-spec-util.h"
 
-#include <errno.h>
-#include <math.h>
 #include <string.h>
-
-static gboolean parse_double_full(const char* text, double* out) {
-    g_autofree char* copy = NULL;
-    char* s;
-    char* end = NULL;
-    double value;
-
-    if (!text || !out)
-        return FALSE;
-
-    copy = g_strdup(text);
-    s = g_strstrip(copy);
-    if (*s == '\0')
-        return FALSE;
-
-    errno = 0;
-    value = g_ascii_strtod(s, &end);
-    if (errno != 0 || end == s || !isfinite(value) || !gnoblin_spec_at_end(end))
-        return FALSE;
-
-    *out = value;
-    return TRUE;
-}
 
 static const char* token_argument(const char* token, const char* keyword) {
     gsize len = strlen(keyword);
@@ -95,7 +70,7 @@ static gboolean parse_mode(const char* text, GnoblinOutputSpec* out) {
     gnoblin_spec_skip_spaces(&p);
     if (*p == '@') {
         p++;
-        if (!parse_double_full(p, &refresh) || refresh <= 0.0)
+        if (!gnoblin_spec_parse_double(p, &refresh) || refresh <= 0.0)
             return FALSE;
     } else if (!gnoblin_spec_at_end(p)) {
         return FALSE;
@@ -111,7 +86,7 @@ static gboolean parse_mode(const char* text, GnoblinOutputSpec* out) {
 static gboolean parse_scale(const char* text, GnoblinOutputSpec* out) {
     double scale;
 
-    if (!parse_double_full(text, &scale) || scale <= 0.0)
+    if (!gnoblin_spec_parse_double(text, &scale) || scale <= 0.0)
         return FALSE;
 
     out->has_scale = TRUE;

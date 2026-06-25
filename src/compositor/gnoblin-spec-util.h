@@ -35,4 +35,8 @@ gboolean gnoblin_spec_parse_workspace_index(const char* text, int* zero_based_in
 /* Parse an integer percentage, clamped to [0, 100] (rejects trailing junk). */
 gboolean gnoblin_spec_parse_percent(const char* text, int* percent);
 
+/* Parse `text` as a single finite double with only whitespace around it (no
+ * range — the caller clamps/range-checks the result). */
+gboolean gnoblin_spec_parse_double(const char* text, double* out);
+
 G_END_DECLS

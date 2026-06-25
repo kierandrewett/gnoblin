@@ -5,6 +5,7 @@
 #include "gnoblin-spec-util.h"
 
 #include <errno.h>
+#include <math.h>
 
 void gnoblin_spec_skip_spaces(char** p) {
     while (**p && g_ascii_isspace(**p))
@@ -70,5 +71,28 @@ gboolean gnoblin_spec_parse_percent(const char* text, int* percent) {
         return FALSE;
 
     *percent = CLAMP(value, 0, 100);
+    return TRUE;
+}
+
+gboolean gnoblin_spec_parse_double(const char* text, double* out) {
+    g_autofree char* copy = NULL;
+    char* s;
+    char* end = NULL;
+    double value;
+
+    if (!text || !out)
+        return FALSE;
+
+    copy = g_strdup(text);
+    s = g_strstrip(copy);
+    if (*s == '\0')
+        return FALSE;
+
+    errno = 0;
+    value = g_ascii_strtod(s, &end);
+    if (errno != 0 || end == s || !isfinite(value) || !gnoblin_spec_at_end(end))
+        return FALSE;
+
+    *out = value;
     return TRUE;
 }
