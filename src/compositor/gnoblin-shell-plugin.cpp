@@ -610,13 +610,12 @@ static ClutterEffect* get_actor_blur(ClutterActor* actor) {
     return clutter_actor_get_effect(actor, GNOBLIN_BLUR_EFFECT_NAME);
 }
 
-static void maybe_add_blur(MetaPlugin* plugin, MetaWindowActor* window_actor) {
+static void maybe_add_blur(MetaWindowActor* window_actor) {
     ClutterActor* actor = CLUTTER_ACTOR(window_actor);
     MetaWindow* window = meta_window_actor_get_meta_window(window_actor);
     GnoblinEffects fx;
     ClutterEffect* blur;
 
-    (void)plugin;
     if (!wants_effects(window))
         return;
     gnoblin_rules_effects(window, &fx);
@@ -867,7 +866,7 @@ static void apply_layer_surface_effects(MetaWindow* window) {
     window_actor = META_WINDOW_ACTOR(priv);
 
     gnoblin_rules_apply(window);
-    maybe_add_blur(META_PLUGIN(the_plugin), window_actor);
+    maybe_add_blur(window_actor);
     maybe_round_corners(window_actor);
     update_window_effects(window_actor);
 }
@@ -897,7 +896,7 @@ static void gnoblin_shell_plugin_map(MetaPlugin* plugin, MetaWindowActor* window
     /* Apply [window-rules] first so its no-round/no-shadow/opacity hints are set
      * before we add decorations. */
     gnoblin_rules_apply(window);
-    maybe_add_blur(plugin, window_actor); /* below the actor, before rounding/shadow */
+    maybe_add_blur(window_actor); /* below the actor, before rounding/shadow */
     maybe_round_corners(window_actor);
     maybe_add_shadow(plugin, window_actor);
     update_window_effects(window_actor); /* a window can map already-maximized */
