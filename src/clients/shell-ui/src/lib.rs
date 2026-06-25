@@ -69,6 +69,48 @@ pub fn file_mtime(path: Option<&std::path::Path>) -> Option<std::time::SystemTim
     path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
 }
 
+/// A cross-process boolean flag backed by the presence of a file in
+/// `$XDG_RUNTIME_DIR` (the lightweight, no-D-Bus mechanism the control-centre
+/// tiles use to signal daemons — e.g. do-not-disturb, night-light).
+pub struct FileFlag {
+    name: &'static str,
+}
+
+impl FileFlag {
+    pub const fn new(name: &'static str) -> Self {
+        Self { name }
+    }
+
+    fn path(&self) -> Option<std::path::PathBuf> {
+        std::env::var("XDG_RUNTIME_DIR")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|d| std::path::PathBuf::from(d).join(self.name))
+    }
+
+    /// Is the flag currently set?
+    pub fn is_on(&self) -> bool {
+        self.path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    /// Set or clear the flag.
+    pub fn set(&self, on: bool) {
+        let Some(p) = self.path() else { return };
+        if on {
+            let _ = std::fs::write(&p, b"");
+        } else {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+
+    /// Flip the flag, returning the new state.
+    pub fn toggle(&self) -> bool {
+        let next = !self.is_on();
+        self.set(next);
+        next
+    }
+}
+
 pub mod app_context_menu;
 pub mod appmenu;
 pub mod args;
