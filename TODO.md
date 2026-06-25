@@ -158,12 +158,22 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   errno/math includes; wired spec-util.c into anim+input tests. (77beab7) The harness caught a
   NULL-out segfault I'd introduced (wrappers must re-guard !out) — fixed + verified.
   → **THEME 1 COMPLETE** (1.1–1.5).
-- [ ] NEXT (lower-value, safe): residual Theme 6 comments (shadow.h, anim.h, overview.cpp:205,
-  prefs.rs dead_code, Dock/ContextMenu/IconButton.slint headers, launcher/main.rs:64/82);
-  Theme 8.8 (maybe_add_blur unused param — check it's compositor not protocol). 6.3 needs clippy.
-- [ ] DEFER (not for headless loop): 8.2/8.3 layer-shell dead fields (meta-wayland-layer-shell.c
-  = protocol/mutter, need patch-regen workflow); 7.3 Dock backdrop (real-HW); 1.4-adjacent uint
-  parser dup (anim duration_ms ↔ actions parse_uint) — minor, optional.
+- [x] Theme 8.8 maybe_add_blur unused plugin param removed (aa39add); prefs.rs stale
+  #[allow(dead_code)] + 2 stale launcher docs fixed (ba7598e). Verified.
+
+### Autonomous code-sweep: SAFE QUEUE EXHAUSTED (paused 2026-06-25)
+Landed this loop (~25 verified commits, each build/test/fmt-clean, mutter gitlink pristine):
+Theme 1 parser dedup COMPLETE (1.1–1.5); Theme 2 dedup (FileFlag, file_mtime); Theme 6
+comments (6.4/6.5/6.6/6.11/6.12/6.14/6.15 + earlier); Theme 7 dead props (7.1/7.2/7.4/7.5);
+Theme 8 dead code (8.7/8.8 + earlier); plus night-light gamma-loop + config C↔Rust parity.
+What's left is NOT headless-safe — needs Kieran or a different workflow:
+- **Marginal comment nits, low ROI + several stale**: anim.h maximize example, overview.cpp
+  opaque-backdrop note, shadow.h 50% edge, blur.cpp "Gaussian sums to 0.90" (needs a
+  normalise-vs-relabel decision), Dock/ContextMenu.slint header numbers. (IconButton.slint
+  + StatusIcon.slint no longer exist — report refs stale.) 6.3's dead #[allow] needs clippy.
+- **Protocol patch-regen workflow**: 8.2/8.3 layer-shell write-only serial fields + redundant
+  window->type set (meta-wayland-layer-shell.c — editing mutter needs the overlay/patch flow).
+- **Real-HW (llvmpipe can't repro)**: 7.3 Dock backdrop teardown (the WIDE dead chain below).
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
     props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
