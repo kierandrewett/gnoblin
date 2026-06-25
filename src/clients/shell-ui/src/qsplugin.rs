@@ -639,9 +639,6 @@ pub fn parse_interval(raw: &str, fallback: Duration) -> Duration {
     }
 }
 
-/// Read every `[qs-plugin.NAME]` section plus the `[providers]` shorthand into a
-/// list of [`PluginConfig`], in config (file) order. The `[providers]`
-/// shorthand maps each `get-foo = cmd` to a oneshot plugin with id `foo`.
 /// Read the `[qs-plugin.NAME]` sections of one config into `out`, overlaying:
 /// a section whose id already exists replaces it; `enabled = off` removes it;
 /// otherwise it's appended (declaration order).

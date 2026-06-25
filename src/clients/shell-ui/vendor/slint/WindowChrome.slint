@@ -170,8 +170,10 @@ export component WindowChrome {
         // corners". Transparent here lets the wallpaper / windows
         // beneath show through the same alpha gradient the buffer
         // intends, so the corner blend reads correctly. The clip
-        // radius matches GTK's default (14 px) so visible area
-        // matches.
+        // radius (root.corner-radius, 18 px) rounds at least as much
+        // as GTK's own ~15-16 px, so the clip arc sits at or outside
+        // the app's corner — never inside it (14 px was the old bug
+        // that glowed; see Tokens window-corner-radius-outer).
         border-radius: root.corner-radius;
         border-width:  root.csd ? 0px : Tokens.chrome-hairline-width;
         border-color:  root.resolved-border;
