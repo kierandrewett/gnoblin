@@ -42,3 +42,13 @@ gboolean gnoblin_spec_parse_whole_int(const char* text, int* out) {
     p = copy;
     return gnoblin_spec_parse_int(&p, out) && gnoblin_spec_at_end(p);
 }
+
+gboolean gnoblin_spec_parse_nonneg_int(const char* text, int* out) {
+    int value;
+
+    if (!gnoblin_spec_parse_whole_int(text, &value) || value < 0 || !out)
+        return FALSE;
+
+    *out = value;
+    return TRUE;
+}

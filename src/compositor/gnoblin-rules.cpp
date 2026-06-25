@@ -20,6 +20,7 @@ extern "C" {
 #include "gnoblin-color-spec.h"
 #include "gnoblin-config.h"
 #include "gnoblin-rules-spec.h"
+#include "gnoblin-spec-util.h"
 
 /* Resolved hints we cache on the window for the plugin (decoration + opacity +
  * the per-rule effect overrides). Geometry/workspace/state actions are applied
@@ -316,7 +317,7 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
         hints->rounding = 0;
     } else if (!g_strcmp0(verb, "rounding") && arg) {
         int px;
-        if (gnoblin_rules_parse_monitor_index(arg, &px)) { /* a non-negative int */
+        if (gnoblin_spec_parse_nonneg_int(arg, &px)) {
             hints->rounding_set = TRUE;
             hints->rounding = px;
             hints->no_round = (px <= 0);
@@ -337,7 +338,7 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
         /* `border <width> [#color]` — width in px, optional colour. */
         g_auto(GStrv) bt = g_strsplit(g_strstrip((char*)arg), " ", 2);
         int w = 0;
-        if (bt[0] && gnoblin_rules_parse_monitor_index(g_strstrip(bt[0]), &w)) {
+        if (bt[0] && gnoblin_spec_parse_nonneg_int(g_strstrip(bt[0]), &w)) {
             hints->border_set = TRUE;
             hints->border_width = (float)w;
             /* default colour: faint white, like the chrome hairlines */
@@ -371,7 +372,7 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
         hints->blur_on = TRUE;
         if (arg) {
             int px;
-            if (gnoblin_rules_parse_monitor_index(arg, &px)) {
+            if (gnoblin_spec_parse_nonneg_int(arg, &px)) {
                 hints->blur_radius_set = TRUE;
                 hints->blur_radius = (float)px;
             }

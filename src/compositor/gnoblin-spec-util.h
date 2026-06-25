@@ -9,6 +9,8 @@
 
 #include <glib.h>
 
+G_BEGIN_DECLS
+
 /* Advance *p past ASCII whitespace. */
 void gnoblin_spec_skip_spaces(char** p);
 
@@ -21,3 +23,9 @@ gboolean gnoblin_spec_parse_int(char** p, int* out);
 
 /* Parse `text` as a single whole int with nothing but whitespace around it. */
 gboolean gnoblin_spec_parse_whole_int(const char* text, int* out);
+
+/* Parse `text` as a whole non-negative int (rejects negatives and trailing
+ * junk). For sizes that can't be < 0 — rounding, border-width, blur-radius. */
+gboolean gnoblin_spec_parse_nonneg_int(const char* text, int* out);
+
+G_END_DECLS
