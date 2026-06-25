@@ -15,9 +15,13 @@
  *     [protocols]
  *     ext-data-control = on
  *
- * Values are bools (on/off/true/false), ints, or strings. Missing file/keys
- * fall back to the caller's default. gnoblin-shell watches the file and calls
- * gnoblin_config_reload() on change.
+ * Values are bools (on/off/true/false/yes/no/1/0), ints, or strings. Missing
+ * file/keys fall back to the caller's default. gnoblin-shell watches the file
+ * and calls gnoblin_config_reload() on change.
+ *
+ * In the compositor build the shipped gnoblin.defaults.conf is compiled in as a
+ * base layer under the user's file (GNOBLIN_EMBED_DEFAULTS), so unset keys still
+ * resolve to gnoblin's defaults; the Rust shell embeds the same file.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -46,7 +50,7 @@ char* gnoblin_config_get_string(const char* section, const char* key); /* g_free
 char** gnoblin_config_get_list(const char* section, const char* key);
 
 /* Every key in `[section]`, in file order (e.g. each accelerator in [bind] or
- * region in [snap]). g_strfreev, or NULL if the section is empty/absent. */
+ * connector in [output]). g_strfreev, or NULL if the section is empty/absent. */
 char** gnoblin_config_get_keys(const char* section);
 
 G_END_DECLS

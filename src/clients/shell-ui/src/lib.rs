@@ -3454,9 +3454,6 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
     Ok(())
 }
 
-/// Load the configured wallpaper (`[appearance] wallpaper`), downscale + blur it
-/// into a Slint image for de's "glass" backdrop. None when unset/unreadable, in
-/// which case the bars fall back to their solid panel/dock background.
 /// A human-friendly app name from an app-id: drop `.desktop`, take the segment
 /// after the last `.` (reverse-DNS tail), and capitalise — e.g.
 /// "org.gnome.Calculator" → "Calculator", "firefox" → "Firefox".
@@ -3477,6 +3474,9 @@ pub fn prettify_app(app_id: &str) -> String {
     }
 }
 
+/// Load the configured wallpaper (`[appearance] wallpaper`), downscale + blur it
+/// into a Slint image for de's "glass" backdrop. None when unset/unreadable, in
+/// which case the bars fall back to their solid panel/dock background.
 pub fn load_backdrop() -> Option<slint::Image> {
     let cfg = config::Config::load();
     let path = cfg.get("appearance", "wallpaper")?;
