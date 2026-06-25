@@ -140,8 +140,15 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   (shadow.h, blur.cpp:38-60 Gaussian, anim.h, overview.cpp:205, prefs.rs dead_code,
   Dock.slint/ContextMenu.slint/IconButton.slint headers, launcher/main.rs:64/82).
   SKIP 6.8 (already clean). DEFER 6.13 (premise shaky — needs data-flow trace).
-- [ ] NEXT: spec-util dedup (1.3 nonneg_int, 1.5 hex colour) into gnoblin-spec-util;
-  residual small dead code (8.x)
+- [x] Theme 1.3 gnoblin_spec_parse_nonneg_int — rules.cpp rounding/border-width/blur-
+  radius stop borrowing the monitor parser; also fixed a latent missing extern-C guard
+  (G_BEGIN/END_DECLS) in gnoblin-spec-util.h that the first C++ caller exposed (fd96f76).
+  Verified: compositor links + all parser tests pass. NOTE: rules.cpp has pre-existing
+  clang-format drift (lines 106/115/560, unrelated to edits) — left as-is.
+- [ ] NEXT: Theme 1.5 hex-colour unify (shadow-spec # branch → gnoblin_color_parse_hex;
+  drop the dup parse_hex_pair / type diff). Then 1.2 (workspace/monitor/percent parser
+  clones actions↔rules), 1.4 (strtod scaffold + the trailing-garbage inconsistency).
+- [ ] residual small dead code (8.x)
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
     props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
