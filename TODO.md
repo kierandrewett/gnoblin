@@ -145,9 +145,13 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   (G_BEGIN/END_DECLS) in gnoblin-spec-util.h that the first C++ caller exposed (fd96f76).
   Verified: compositor links + all parser tests pass. NOTE: rules.cpp has pre-existing
   clang-format drift (lines 106/115/560, unrelated to edits) — left as-is.
-- [ ] NEXT: Theme 1.5 hex-colour unify (shadow-spec # branch → gnoblin_color_parse_hex;
-  drop the dup parse_hex_pair / type diff). Then 1.2 (workspace/monitor/percent parser
-  clones actions↔rules), 1.4 (strtod scaffold + the trailing-garbage inconsistency).
+- [x] Theme 1.5 hex-colour unify — shadow-spec # branch delegates to gnoblin_color_parse_
+  hex; deleted the dup parse_hex_pair (unsigned* vs guint8* type diff); wired color-spec.c
+  into the standalone shadow test (ea9b498). Verified: build + parser tests pass.
+- [ ] NEXT: Theme 1.2 (workspace/monitor/percent parser clones actions↔rules → gnoblin_
+  spec_parse_*; pure dedup, both test files may need wrapper names). CAREFUL-LATER: 1.4
+  (strtod scaffold dedup — has a real behavioural inconsistency in the trailing-garbage
+  rule, *g_strstrip(end)!='\0' vs at_end(end); resolve deliberately, not blindly).
 - [ ] residual small dead code (8.x)
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
