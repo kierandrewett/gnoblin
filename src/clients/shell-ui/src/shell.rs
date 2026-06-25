@@ -65,8 +65,6 @@ pub fn dispatch_window_action(window: u64, action: &str, arg: &str) {
     });
 }
 
-/// Close every window belonging to `app_id` (fuzzy-matched). Used by the dock's
-/// right-click "Close" — activate each match, then dispatch the close verb.
 /// Focus the first window belonging to `app_id` (so a dock click on a running
 /// app raises it instead of launching a duplicate). No-op if none match.
 pub fn activate_app(app_id: &str) {
@@ -82,6 +80,8 @@ pub fn activate_app(app_id: &str) {
     });
 }
 
+/// Close every window belonging to `app_id` (fuzzy-matched). Used by the dock's
+/// right-click "Close" — activate each match, then dispatch the close verb.
 pub fn close_app_windows(app_id: &str) {
     let app_id = app_id.to_string();
     let _ = zbus::block_on(async move {
