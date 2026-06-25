@@ -124,18 +124,23 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
 - [x] notifcenter legacy flag → clear_legacy_flag(), dead toggle() removed (8.7, 740d9e9)
 - [x] ControlCentrePopout 6 dead colour props + 3 dead animates (7.1, c7364be)
 - [x] Panel.icon-bluetooth dead in-property (7.5, 44ad95d)
-- [ ] Theme 7.4 dead tokens (highlight-*-top ×4, motion-overlay-curve/-duration
-  aliases, panel-corner-radius) — grep-verify zero consumers, then delete
-- [ ] Theme 7.2 DatetimePopout.clock-text (declared + fed from Compositor, never
-  rendered) — remove both ends
-- [ ] Theme 7.3 Dock backdrop props never rendered (props + Compositor assigns +
-  false "backdrop+tint" comments)
+- [x] Theme 7.4 dead tokens — highlight-*-top ×4 + 2 re-exports, panel-corner-radius,
+  motion-overlay-duration, motion-overlay-curve alias (8731cab)
+- [x] Theme 7.2 DatetimePopout.clock-text inert — decl + BOTH feeds (Compositor +
+  topbar; report missed the topbar one, compiler caught it) + header (87113e4)
 - [ ] Theme 6 stale/misattached comments batch (6.10 blur radius, 6.11 WindowChrome
-  18px-not-14px, 6.12 overlay-motion, 6.14 entries_with_prefix, …)
+  18px-not-14px, 6.12 overlay-motion, 6.14 entries_with_prefix, …) — NEXT
 - [ ] more spec-util dedup (1.3 nonneg_int, 1.5 hex colour); residual small dead code (8.x)
-- NEEDS-KIERAN (not done blind): lib.rs 3422-line split (4.6); shared SDF GLSL
-  extract blur↔rounded (4.1); PopoutChrome + overlay grab/teardown dedup (4.5/4.3);
-  control-center GSettings ↔ gnoblin.conf source-of-truth question
+- NEEDS-KIERAN / careful pass (not done blind in the headless loop):
+  - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
+    props (304-307) → dock/ui/dock.slint wrapper (2 instantiations) → dock/src/
+    main.rs:81-84 (load_backdrop + 4 setters, load_backdrop shared w/ topbar) +
+    Compositor feed. Dock component provably never renders it (only icon Image),
+    but this touches frost/backdrop behaviour the memory says needs REAL-HW verify
+    (llvmpipe can't repro). Don't rip the plumbing headless.
+  - lib.rs 3422-line split (4.6); shared SDF GLSL extract blur↔rounded (4.1);
+    PopoutChrome + overlay grab/teardown dedup (4.5/4.3); control-center GSettings
+    ↔ gnoblin.conf source-of-truth question
 
 ## To do (open-ended — "whatever gnoblin needs")
 - [ ] More launcher providers if wanted (dictionary define, ssh hosts, window
