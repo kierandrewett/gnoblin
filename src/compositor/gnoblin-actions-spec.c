@@ -46,34 +46,19 @@ gboolean gnoblin_actions_parse_snap_region(const char* text, double* x, double* 
     return TRUE;
 }
 
+/* Thin wrappers over the shared gnoblin-spec-util parsers; rules-spec exposes
+ * the same logic under gnoblin_rules_parse_*. */
 gboolean gnoblin_actions_parse_workspace_index(const char* text, int* zero_based_index) {
-    int value;
-
-    if (!gnoblin_spec_parse_whole_int(text, &value) || value <= 0 || !zero_based_index)
-        return FALSE;
-
-    *zero_based_index = value - 1;
-    return TRUE;
+    return gnoblin_spec_parse_workspace_index(text, zero_based_index);
 }
 
 gboolean gnoblin_actions_parse_monitor_index(const char* text, int* index) {
-    int value;
-
-    if (!gnoblin_spec_parse_whole_int(text, &value) || value < 0 || !index)
-        return FALSE;
-
-    *index = value;
-    return TRUE;
+    /* A monitor index is just a non-negative int. */
+    return gnoblin_spec_parse_nonneg_int(text, index);
 }
 
 gboolean gnoblin_actions_parse_percent(const char* text, int* percent) {
-    int value;
-
-    if (!gnoblin_spec_parse_whole_int(text, &value) || !percent)
-        return FALSE;
-
-    *percent = CLAMP(value, 0, 100);
-    return TRUE;
+    return gnoblin_spec_parse_percent(text, percent);
 }
 
 gboolean gnoblin_actions_parse_uint(const char* text, guint* out) {

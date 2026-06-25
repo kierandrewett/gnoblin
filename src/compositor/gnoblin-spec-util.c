@@ -52,3 +52,23 @@ gboolean gnoblin_spec_parse_nonneg_int(const char* text, int* out) {
     *out = value;
     return TRUE;
 }
+
+gboolean gnoblin_spec_parse_workspace_index(const char* text, int* zero_based_index) {
+    int value;
+
+    if (!gnoblin_spec_parse_whole_int(text, &value) || value <= 0 || !zero_based_index)
+        return FALSE;
+
+    *zero_based_index = value - 1;
+    return TRUE;
+}
+
+gboolean gnoblin_spec_parse_percent(const char* text, int* percent) {
+    int value;
+
+    if (!gnoblin_spec_parse_whole_int(text, &value) || !percent)
+        return FALSE;
+
+    *percent = CLAMP(value, 0, 100);
+    return TRUE;
+}

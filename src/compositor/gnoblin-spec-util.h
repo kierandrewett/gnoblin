@@ -28,4 +28,11 @@ gboolean gnoblin_spec_parse_whole_int(const char* text, int* out);
  * junk). For sizes that can't be < 0 — rounding, border-width, blur-radius. */
 gboolean gnoblin_spec_parse_nonneg_int(const char* text, int* out);
 
+/* Parse a 1-based workspace number into a 0-based index (rejects <= 0 and
+ * trailing junk). */
+gboolean gnoblin_spec_parse_workspace_index(const char* text, int* zero_based_index);
+
+/* Parse an integer percentage, clamped to [0, 100] (rejects trailing junk). */
+gboolean gnoblin_spec_parse_percent(const char* text, int* percent);
+
 G_END_DECLS
