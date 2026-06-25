@@ -62,14 +62,14 @@ impl Config {
             .collect()
     }
 
-    /// Every `(key, value)` in `[section]` whose key begins with `prefix`, in
-    /// first-seen file order. Used for the `[providers] get-NAME = cmd`
-    /// shorthand where the key names aren't known ahead of time.
+    /// Every `(key, value)` in `[section]` whose key begins with `prefix`,
+    /// sorted alphabetically by key. Used for the `[providers] get-NAME = cmd`
+    /// shorthand where the key names aren't known ahead of time. (Keys are
+    /// unique per section, so no dedup is needed before the sort.)
     pub fn entries_with_prefix(&self, section: &str, prefix: &str) -> Vec<(String, String)> {
         let mut out = Vec::new();
-        let mut seen = std::collections::HashSet::new();
         for ((sec, key), value) in &self.values {
-            if sec == section && key.starts_with(prefix) && seen.insert(key.clone()) {
+            if sec == section && key.starts_with(prefix) {
                 out.push((key.clone(), value.clone()));
             }
         }
