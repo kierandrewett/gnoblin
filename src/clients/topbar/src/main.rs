@@ -564,7 +564,7 @@ impl BarApp for TopBarApp {
             panel.on_toggle_datetime_popout(move |anchor_x| {
                 let open = !pop.dt_open.get();
                 if open {
-                    gnoblin_shell_ui::notifcenter::set(false);
+                    gnoblin_shell_ui::notifcenter::clear_legacy_flag();
                 }
                 pop.dt_open.set(open);
                 pop.cc_open.set(false);
@@ -591,7 +591,7 @@ impl BarApp for TopBarApp {
             panel.on_toggle_control_centre(move |anchor_x| {
                 let open = !pop.cc_open.get();
                 if open {
-                    gnoblin_shell_ui::notifcenter::set(false);
+                    gnoblin_shell_ui::notifcenter::clear_legacy_flag();
                 }
                 pop.cc_open.set(open);
                 pop.dt_open.set(false);
@@ -763,7 +763,7 @@ impl BarApp for TopBarApp {
             let app_open = self.app_menu_open.clone();
             let plugins = self.qs_plugins.clone();
             panel.on_bell_clicked(move || {
-                gnoblin_shell_ui::notifcenter::set(false);
+                gnoblin_shell_ui::notifcenter::clear_legacy_flag();
                 pop.dt_open.set(false);
                 pop.cc_open.set(true);
                 if let Some(p) = weak.upgrade() {

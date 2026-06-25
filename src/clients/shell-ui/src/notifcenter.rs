@@ -34,21 +34,12 @@ pub fn is_open() -> bool {
     path().map(|p| p.exists()).unwrap_or(false)
 }
 
-/// Set/clear the legacy notification-center compatibility flag.
-pub fn set(open: bool) {
+/// Clear the legacy notification-center compatibility flag if present. Nothing
+/// sets it any more — the center folded into the quick-settings popout — so this
+/// only cleans up a stale on-disk flag left by an older binary.
+pub fn clear_legacy_flag() {
     let Some(p) = path() else { return };
-    if open {
-        let _ = std::fs::write(&p, b"");
-    } else {
-        let _ = std::fs::remove_file(&p);
-    }
-}
-
-/// Flip the legacy notification-center compatibility flag, returning the new state.
-pub fn toggle() -> bool {
-    let next = !is_open();
-    set(next);
-    next
+    let _ = std::fs::remove_file(&p);
 }
 
 fn pending_path() -> Option<PathBuf> {

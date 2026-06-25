@@ -351,7 +351,7 @@ impl BarApp for NotifyApp {
         // The old right-side notification center has been folded into the
         // quick-settings popout. Keep the compatibility flag inert.
         if gnoblin_shell_ui::notifcenter::is_open() {
-            gnoblin_shell_ui::notifcenter::set(false);
+            gnoblin_shell_ui::notifcenter::clear_legacy_flag();
         }
 
         if self.dirty.replace(false) {
