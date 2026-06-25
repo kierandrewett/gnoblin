@@ -378,22 +378,13 @@ export global Tokens {
     // overlay (context menus, popouts, window chrome lifecycle) reads
     // these so the whole shell feels coherent.
     //
-    // Open and close use DIFFERENT curves on purpose. The close uses
-    // GNOME-libadwaita's "spring" — very fast acceleration up front
-    // with a soft tail. Mapped onto a 1 → 0 fade this reads as a
-    // visible long decay (drops to ~30 % almost instantly, then
-    // slow tail), which feels like a snappy dismissal.
-    //
-    // The SAME curve mapped onto a 0 → 1 fade is invisible: ~70 % of
-    // the rise lands in the first 30 ms, so the menu effectively pops
-    // to full size with no perceivable ramp. Open therefore uses an
-    // ease-in-out curve (slow start, smooth ramp through the middle,
-    // gentle settle) — the entire 220 ms window is visible.
-    //
-    // Curve choice: `cubic-bezier(0.4, 0, 0.2, 1)` is Material
-    // Design's "standard" easing — well-known to read as smooth in
-    // both directions, balanced acceleration. Verified arithmetically:
-    // y is 3 % at 23 ms, 50 % at 77 ms, 97 % at 174 ms.
+    // Durations and curves are config-driven. Defaults give a visible open
+    // ramp and a snappier close: open 250 ms / close 150 ms ([appearance]
+    // motion-overlay-open-ms / -close-ms), both on the signature "smooth"
+    // reveal curve c31 (motion-overlay-open-style / -close-style, an index
+    // into MotionCurves — set them apart for an asymmetric feel). An
+    // out-of-range style index falls back to Material's "standard"
+    // cubic-bezier(0.4, 0, 0.2, 1) (c29 open / c30 close).
     out property <duration>  motion-overlay-open-duration: 1ms * Theme.motion-overlay-open-ms * Theme.motion-scale;
     out property <duration>  motion-overlay-close-duration: 1ms * Theme.motion-overlay-close-ms * Theme.motion-scale;
     out property <easing>    motion-overlay-curve-in: MotionCurves.curve-by-index(Theme.motion-overlay-open-style, MotionCurves.c29);
