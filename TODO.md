@@ -128,8 +128,15 @@ pristine (86e92a2); only working-tree edits, never the submodule pointer.
   motion-overlay-duration, motion-overlay-curve alias (8731cab)
 - [x] Theme 7.2 DatetimePopout.clock-text inert — decl + BOTH feeds (Compositor +
   topbar; report missed the topbar one, compiler caught it) + header (87113e4)
-- [ ] Theme 6 stale/misattached comments batch (6.10 blur radius, 6.11 WindowChrome
-  18px-not-14px, 6.12 overlay-motion, 6.14 entries_with_prefix, …) — NEXT
+- [x] Theme 6 comments (this loop): 6.14 entries_with_prefix doc + drop no-op seen
+  (cf33118); 6.6 qsplugin misattached doc + 6.11 WindowChrome 18px-not-14px (8d759b6);
+  6.5 shell.rs close_app_windows doc move (HEAD). Earlier: 6.1/6.2/6.9/6.10/rounded.h/
+  lock.cpp.
+- [ ] Theme 6 remaining: 6.4 (lib.rs load_backdrop doc), 6.7 (gnoblin-shell.cpp hotplug
+  comment), 6.12 (Tokens overlay-motion rewrite), 6.15 (config.h docs); 6.3 topbar 4×
+  needs clippy (dead #[allow]). SKIP 6.8 (dock-frost block already cleaned in 203274a;
+  remaining note is coherent). DEFER 6.13 (control-centre-popout premise shaky — popout
+  still exists/instantiated; needs data-flow trace, not a blind reword).
 - [ ] more spec-util dedup (1.3 nonneg_int, 1.5 hex colour); residual small dead code (8.x)
 - NEEDS-KIERAN / careful pass (not done blind in the headless loop):
   - Theme 7.3 Dock backdrop — WIDER than the report: dead chain spans Dock.slint
