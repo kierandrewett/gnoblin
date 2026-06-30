@@ -103,7 +103,7 @@ export component ShellRoundButton inherits Rectangle {
 
     width:  36px;
     height: 36px;
-    border-radius: self.height / 2;
+    border-radius: self.height / 2 - 1px;
     // Persistent fill so the button clearly reads as a circular control (like
     // the GNOME quick-settings header), brightening on hover. A touch stronger
     // than a tile so a bare-glyph button never disappears into the panel.
@@ -145,7 +145,7 @@ export component ShellSliderRow inherits Rectangle {
     height: root.minimal ? 46px : 52px;
     min-width: 100px;
     horizontal-stretch: 1;
-    border-radius: self.height / 2;
+    border-radius: self.height / 2 - 1px;
     border-width: 1px;
     border-color: ShellPalette.tile-border;
     background: ShellPalette.tile-bg;
@@ -160,7 +160,7 @@ export component ShellSliderRow inherits Rectangle {
         y: (parent.height - 32px) / 2;
         width: 32px;
         height: 32px;
-        border-radius: self.height / 2;
+        border-radius: self.height / 2 - 1px;
         background: ShellPalette.icon-bg-inactive;
 
         Image {
@@ -261,7 +261,7 @@ export component ShellSliderRow inherits Rectangle {
             x: clamp(parent.width * root.value - self.width / 2, 0px, parent.width - self.width);
             y: (parent.height - 18px) / 2;
             width: 18px; height: 18px;
-            border-radius: self.height / 2;
+            border-radius: self.height / 2 - 1px;
             background: white;
             // A hairline ring + soft shadow define the thumb against the bright
             // fill so it reads as a grabbable knob, not a gap in the bar.
@@ -372,7 +372,7 @@ export component ShellTile inherits Rectangle {
         y: (parent.height - parent.circle-size) / 2;
         width:  parent.circle-size;
         height: parent.circle-size;
-        border-radius: self.height / 2;
+        border-radius: self.height / 2 - 1px;
         background: root.active
             ? rgba(255, 255, 255, 0.22)
             : ShellPalette.icon-bg-inactive;
@@ -587,7 +587,7 @@ export component ShellNotificationCard inherits Rectangle {
                 spacing: 4px;
                 if root.show-expand: Rectangle {
                     width: 28px; height: 28px;
-                    border-radius: self.height / 2;
+                    border-radius: self.height / 2 - 1px;
                     background: exp-ta.has-hover ? Theme.surface-hover-bg : transparent;
                     animate background { duration: Motion.fast; easing: Motion.fast-curve; }
                     exp-ta := TouchArea {
@@ -607,7 +607,7 @@ export component ShellNotificationCard inherits Rectangle {
                 }
                 Rectangle {
                     width: 28px; height: 28px;
-                    border-radius: self.height / 2;
+                    border-radius: self.height / 2 - 1px;
                     background: close-ta.has-hover ? Theme.surface-hover-bg : transparent;
                     visible: root.card-enabled;
                     animate background { duration: Motion.fast; easing: Motion.fast-curve; }
@@ -723,7 +723,7 @@ export component ShellNotificationStack inherits Rectangle {
             y: 7px;
             width: 26px;
             height: 26px;
-            border-radius: self.height / 2;
+            border-radius: self.height / 2 - 1px;
             background: header-ta.has-hover ? Theme.surface-hover-bg : transparent;
             Image {
                 x: 7px;
@@ -861,7 +861,7 @@ export component ShellMediaCard inherits Rectangle {
             { id: "next",      glyph: @image-url("../assets/icons/symbolic/forward.svg"), big: false },
         ]: Rectangle {
             width: 36px; height: 36px;
-            border-radius: self.height / 2;
+            border-radius: self.height / 2 - 1px;
             background: btn-ta.pressed
                 ? (Theme.mode == TokenMode.Dark ? rgba(255,255,255,0.16) : rgba(0,0,0,0.12))
                 : (btn-ta.has-hover ? ShellPalette.tile-bg-hover : transparent);
@@ -1207,7 +1207,7 @@ export component DatetimePopout {
                 background: d.is-today
                     ? rgba(96, 165, 250, 0.85)
                     : (day-ta.has-hover ? Theme.surface-hover-bg : transparent);
-                border-radius: self.height / 2;
+                border-radius: self.height / 2 - 1px;
                 animate background { duration: Motion.fast; easing: Motion.fast-curve; }
             }
             Text {
@@ -1813,7 +1813,7 @@ export component ControlCentrePopout {
                 }
                 Rectangle {
                     x: Spacing.sm; y: 8px; width: 40px; height: 36px;
-                    border-radius: self.height / 2;
+                    border-radius: self.height / 2 - 1px;
                     background: back-ta.has-hover ? ShellPalette.tile-bg-hover : transparent;
                     animate background { duration: Motion.fast; easing: Motion.fast-curve; }
                     Image {

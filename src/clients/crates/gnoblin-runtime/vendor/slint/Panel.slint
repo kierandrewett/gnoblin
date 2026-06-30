@@ -202,7 +202,11 @@ component PanelArea {
                 width: parent.width;
                 height: parent.height - 2 * Spacing.xs;
                 y: Spacing.xs;
-                border-radius: self.height / 2;
+                // -1px keeps a full-pill look while dodging a FemtoVG renderer bug:
+                // border-radius == height/2 (a true stadium) renders as a hard SQUARE.
+                // Staying just under half restores the rounded ends. Applies to every
+                // pill button below (bell/cc/launcher) and the pills in Popouts.slint.
+                border-radius: self.height / 2 - 1px;
                 background: clock-touch.has-hover
                     ? root.resolved-hover-bg
                     : transparent;
@@ -253,7 +257,7 @@ component PanelArea {
                 width: parent.width;
                 height: parent.height - 2 * Spacing.xs;
                 y: Spacing.xs;
-                border-radius: self.height / 2;
+                border-radius: self.height / 2 - 1px; // pill; see clock-btn note re FemtoVG
                 background: bell-ta.has-hover ? root.resolved-hover-bg : transparent;
                 animate background { duration: Motion.fast; easing: Motion.fast-curve; }
 
@@ -327,7 +331,7 @@ component PanelArea {
                 width: parent.width;
                 height: parent.height - 2 * Spacing.xs;
                 y: Spacing.xs;
-                border-radius: self.height / 2;
+                border-radius: self.height / 2 - 1px; // pill; see clock-btn note re FemtoVG
                 background: cc-touch.has-hover
                     ? root.resolved-hover-bg
                     : transparent;
@@ -396,7 +400,7 @@ component PanelArea {
                 width: parent.width;
                 height: parent.height - 2 * Spacing.xs;
                 y: Spacing.xs;
-                border-radius: self.height / 2;
+                border-radius: self.height / 2 - 1px; // pill; see clock-btn note re FemtoVG
                 background: launcher-ta.has-hover ? root.resolved-hover-bg : transparent;
                 animate background { duration: Motion.fast; easing: Motion.fast-curve; }
 
