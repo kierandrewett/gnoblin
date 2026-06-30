@@ -80,7 +80,7 @@ if grep -q 'export PATH="\$PREFIX/bin:\$PATH"' "$ROOT/scripts/run-devkit.sh" &&
    grep -q "rm -rf \"\$PREFIX/libexec/gnoblin\"" "$ROOT/scripts/install-userspace.sh" &&
    grep -q "warn_if_stale_artifacts" "$ROOT/scripts/run-devkit.sh" &&
    grep -Fq 'crate="${bin#gnoblin-}"' "$ROOT/scripts/run-devkit.sh" &&
-   grep -Fq '"$ROOT/src/clients/$crate"' "$ROOT/scripts/run-devkit.sh" &&
+   grep -Fq '"$ROOT/src/clients/bin/$crate"' "$ROOT/scripts/run-devkit.sh" &&
    ! grep -Fq 'find "$ROOT/src/clients" \' "$ROOT/scripts/run-devkit.sh" &&
    grep -q "installed Slint/userspace clients may be stale" "$ROOT/scripts/run-devkit.sh"; then
   ok "devkit resolves installed clients from prefix bin and warns on per-client stale artifacts"
@@ -200,7 +200,7 @@ if grep -q "prefix_from_pid" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "gnoblin-shell" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "bin/gnoblin-topbar" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "bin/gnoblin-dock" "$ROOT/scripts/devkit-compare-topbar.sh" &&
-   ! grep -Eq "build/gnome-shell|org\\.gnome\\.Shell|src/clients/(topbar|dock)/gnoblin-|gnoblin-(topbar|dock)\\.js" \
+   ! grep -Eq "build/gnome-shell|org\\.gnome\\.Shell|src/clients/bin/(topbar|dock)/gnoblin-|gnoblin-(topbar|dock)\\.js" \
      "$ROOT/scripts/devkit-compare-topbar.sh"; then
   ok "devkit compare helper targets installed gnoblin clients"
 else
@@ -220,7 +220,7 @@ if grep -q 'TOPBAR_BIN="\$GNOBLIN_PREFIX/bin/gnoblin-topbar"' "$ROOT/scripts/tes
    grep -q 'DOCK_BIN="\$GNOBLIN_PREFIX/bin/gnoblin-dock"' "$ROOT/scripts/test-nested.sh" &&
    grep -q 'RUN_GNOBLIN_CLIENTS="${RUN_GNOBLIN_CLIENTS:-0}"' "$ROOT/scripts/test-nested.sh" &&
    grep -q "legacy GNOME Shell gnoblin autostart is retired" "$ROOT/scripts/test-nested.sh" &&
-   ! grep -Eq "GNOBLIN_LAYER_SHELL_COMPONENT_DIR|src/clients/(topbar|dock)/gnoblin-" \
+   ! grep -Eq "GNOBLIN_LAYER_SHELL_COMPONENT_DIR|src/clients/bin/(topbar|dock)/gnoblin-" \
      "$ROOT/scripts/test-nested.sh"; then
   ok "legacy nested test keeps gnoblin clients opt-in and avoids retired source paths"
 else
@@ -310,9 +310,9 @@ targets = [
     root / "src/clients/crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint",
 ]
 standalone_targets = [
-    root / "src/clients/launcher/ui/launcher.slint",
-    root / "src/clients/notifyd/ui/notifications.slint",
-    root / "src/clients/osd/ui/osd.slint",
+    root / "src/clients/bin/launcher/ui/launcher.slint",
+    root / "src/clients/bin/notifyd/ui/notifications.slint",
+    root / "src/clients/bin/osd/ui/osd.slint",
     root / "src/clients/crates/gnoblin-runtime/vendor/slint/Compositor.slint",
     root / "src/clients/crates/gnoblin-runtime/vendor/slint/WindowChrome.slint",
 ]
@@ -360,9 +360,9 @@ for path in standalone_targets:
             )
 
 floating_standalone_targets = [
-    root / "src/clients/launcher/ui/launcher.slint",
-    root / "src/clients/notifyd/ui/notifications.slint",
-    root / "src/clients/osd/ui/osd.slint",
+    root / "src/clients/bin/launcher/ui/launcher.slint",
+    root / "src/clients/bin/notifyd/ui/notifications.slint",
+    root / "src/clients/bin/osd/ui/osd.slint",
 ]
 for path in floating_standalone_targets:
     text = path.read_text(encoding="utf-8")
@@ -579,7 +579,7 @@ for path in sorted((root / "src/clients").glob("**/*.slint")):
                     f"{path.relative_to(root)}:{idx}: Motion.{band} duration does not use Motion.{band}-curve"
                 )
 
-for path in sorted((root / "src/clients").glob("*/src/main.rs")):
+for path in sorted((root / "src/clients").glob("bin/*/src/main.rs")):
     if path.match("*/gnoblin-runtime/*"):
         continue
     text = path.read_text(encoding="utf-8")
@@ -984,24 +984,24 @@ if [ -f "$cargo_toml" ] &&
    grep -q '"crates/gnoblin-core"' "$cargo_toml" &&
    grep -q '"crates/gnoblin-desktop"' "$cargo_toml" &&
    grep -q '"crates/gnoblin-runtime"' "$cargo_toml" &&
-   grep -q '"topbar"' "$cargo_toml" &&
-   grep -q '"dock"' "$cargo_toml"; then
+   grep -q '"bin/topbar"' "$cargo_toml" &&
+   grep -q '"bin/dock"' "$cargo_toml"; then
   ok "client workspace declares split shared crates + topbar/dock members"
 else
   bad "client workspace is missing split shared crates or topbar/dock members"
 fi
-if grep -q "gnoblin_runtime::.*BarApp" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_runtime::.*BarConfig" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_runtime::.*run" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_runtime::.*BarApp" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_runtime::.*BarConfig" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_runtime::.*run" "$clients/dock/src/main.rs" &&
-   grep -q "impl BarApp" "$clients/topbar/src/main.rs" &&
-   grep -q "impl BarApp" "$clients/dock/src/main.rs" &&
-   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/topbar/src/main.rs" &&
-   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/dock/src/main.rs" &&
-   [ -f "$clients/topbar/ui/topbar.slint" ] &&
-   [ -f "$clients/dock/ui/dock.slint" ]; then
+if grep -q "gnoblin_runtime::.*BarApp" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarApp" "$clients/bin/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/bin/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/bin/dock/src/main.rs" &&
+   grep -q "impl BarApp" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "impl BarApp" "$clients/bin/dock/src/main.rs" &&
+   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/bin/dock/src/main.rs" &&
+   [ -f "$clients/bin/topbar/ui/topbar.slint" ] &&
+   [ -f "$clients/bin/dock/ui/dock.slint" ]; then
   ok "topbar and dock are Slint wlr-layer-shell clients on the shared runtime"
 else
   bad "topbar/dock are not Slint wlr-layer-shell clients on the shared runtime"
@@ -1150,13 +1150,13 @@ else
 fi
 
 slint_layer_clients=(
-  "$clients/topbar/src/main.rs"
-  "$clients/dock/src/main.rs"
-  "$clients/launcher/src/main.rs"
-  "$clients/notifyd/src/main.rs"
-  "$clients/osd/src/main.rs"
-  "$clients/window-menu/src/main.rs"
-  "$clients/power-menu/src/main.rs"
+  "$clients/bin/topbar/src/main.rs"
+  "$clients/bin/dock/src/main.rs"
+  "$clients/bin/launcher/src/main.rs"
+  "$clients/bin/notifyd/src/main.rs"
+  "$clients/bin/osd/src/main.rs"
+  "$clients/bin/window-menu/src/main.rs"
+  "$clients/bin/power-menu/src/main.rs"
 )
 slint_layer_ok=1
 for client_src in "${slint_layer_clients[@]}"; do
@@ -1301,8 +1301,8 @@ else
   bad "Rust client runtime paths still contain panic-prone calls"
 fi
 
-wallpaper_client="$clients/wallpaper/src/main.rs"
-night_light_client="$clients/night-light/src/main.rs"
+wallpaper_client="$clients/bin/wallpaper/src/main.rs"
+night_light_client="$clients/bin/night-light/src/main.rs"
 if [ -f "$wallpaper_client" ] &&
    [ -f "$night_light_client" ] &&
    grep -q "fn try_main() -> Result<(), RuntimeError>" "$wallpaper_client" &&

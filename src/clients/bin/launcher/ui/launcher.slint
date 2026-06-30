@@ -1,0 +1,305 @@
+// Application launcher — macOS Spotlight-style. A frosted panel in the upper
+// third: a big search field (magnifier + large query) on top, a hairline, then
+// rich result rows (icon + title + subtitle + right accessory). Rust owns the
+// input (query, selection, scroll) and pushes it down; clicks/Enter activate by
+// index. `--grid` (Super+A) keeps the full-screen icon grid.
+import { Theme, TokenMode, Spacing, Radius, Motion, Tokens, ShellPalette } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
+export { Theme, TokenMode }
+
+export struct AppEntry {
+    name:      string,
+    // Secondary line under the name — "Application", "Calculator", a path, etc.
+    subtitle:  string,
+    icon:      image,
+    has-icon:  bool,
+    // Result kind, so the view can pick a built-in glyph (e.g. calc) and styling.
+    kind:      string,
+    // Right-aligned accessory, e.g. the computed value "= 4" or a hint.
+    accessory: string,
+}
+
+export component Launcher inherits Window {
+    in property <string> query: "";
+    in property <[AppEntry]> apps;
+    in property <int> selected: 0;
+    in property <length> scroll-y: 0px;
+    in property <bool> grid-mode: false;
+    in property <int> columns: 5;
+    callback activated(int);
+    background: transparent;
+    default-font-family: Tokens.font-family;
+
+    property <length> panel-w: root.grid-mode ? 680px : 600px;
+    property <length> panel-h: root.grid-mode ? 560px : 432px;
+    property <length> search-h: 60px;
+    property <length> row-h: 52px;
+    property <length> cell-w: (root.panel-w - 32px) / root.columns;
+    property <length> cell-h: 112px;
+
+    // Frosted panel tint (the compositor blurs gnoblin-launcher chrome behind
+    // it, so keep this translucent — the blur reads as glass, not flat grey).
+    property <color> panel-tint: Theme.mode == TokenMode.Dark
+        ? rgba(30, 30, 32, 0.78)
+        : rgba(250, 250, 252, 0.80);
+    property <color> field-tint: Theme.mode == TokenMode.Dark
+        ? rgba(255, 255, 255, 0.07)
+        : rgba(0, 0, 0, 0.045);
+
+    property <bool> shown: false;
+    init => { root.shown = true; }
+
+    panel := Rectangle {
+        x: (parent.width - root.panel-w) / 2;
+        // Upper third, Spotlight-style — not dead centre.
+        y: root.grid-mode ? (parent.height - root.panel-h) / 2 : parent.height * 0.16;
+        width: root.panel-w;
+        height: root.panel-h;
+        background: transparent;
+        clip: false;
+
+        // Pop-in: fade up + scale from ~0.97 about the panel's top-centre, so it
+        // drops out of the search field like Spotlight.
+        opacity: root.shown ? 1.0 : 0.0;
+        transform-origin: { x: self.width / 2, y: 0px };
+        transform-scale-x: root.shown ? 1.0 : 0.97;
+        transform-scale-y: root.shown ? 1.0 : 0.97;
+        animate opacity, transform-scale-x, transform-scale-y {
+            duration: Motion.overlay;
+            easing: Motion.overlay-curve;
+        }
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: Theme.chrome-shadow-source;
+            border-radius: Tokens.popout-corner-radius;
+            drop-shadow-color: Theme.chrome-shadow;
+            drop-shadow-blur: Tokens.popout-shadow-blur;
+            drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
+        }
+
+        body := Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: root.panel-tint;
+            border-radius: Tokens.popout-corner-radius;
+            clip: true;
+
+            // ── Search field — the hero. Magnifier + large query text. ──
+            search := Rectangle {
+                x: 0; y: 0;
+                width: parent.width;
+                height: root.search-h;
+                background: transparent;
+
+                Image {
+                    x: Spacing.lg + 2px;
+                    y: (parent.height - 22px) / 2;
+                    width: 22px; height: 22px;
+                    source: @image-url("../../../crates/gnoblin-runtime/vendor/assets/icons/symbolic/search.svg");
+                    colorize: Theme.text-secondary;
+                    image-fit: contain;
+                }
+                Text {
+                    x: Spacing.lg + 2px + 22px + Spacing.md;
+                    y: 0;
+                    width: parent.width - (Spacing.lg + 2px + 22px + Spacing.md) - Spacing.lg;
+                    height: parent.height;
+                    text: root.query == ""
+                        ? (root.grid-mode ? "Search all applications" : "Spotlight Search")
+                        : root.query;
+                    color: root.query == "" ? Theme.text-secondary : Theme.text-primary;
+                    font-size: 22px;
+                    font-weight: 400;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    overflow: elide;
+                }
+                // Blinking caret after the query (a Spotlight touch).
+                Rectangle {
+                    property <bool> blink: true;
+                    Timer { interval: 560ms; running: true; triggered => { parent.blink = !parent.blink; } }
+                    visible: root.query != "" && self.blink && !root.grid-mode;
+                    x: Spacing.lg + 2px + 22px + Spacing.md + query-meas.preferred-width + 2px;
+                    y: (parent.height - 26px) / 2;
+                    width: 2px; height: 26px;
+                    background: ShellPalette.accent;
+                }
+                query-meas := Text {
+                    visible: false;
+                    text: root.query;
+                    font-size: 22px;
+                    font-weight: 400;
+                }
+            }
+
+            // Hairline under the search field (only when there are results).
+            if root.apps.length > 0 && !root.grid-mode: Rectangle {
+                x: 0; y: root.search-h;
+                width: parent.width; height: 1px;
+                background: Theme.mode == TokenMode.Dark
+                    ? rgba(255, 255, 255, 0.08) : rgba(0, 0, 0, 0.08);
+            }
+
+            // ── Results — a vertical list of rich rows. ──
+            if !root.grid-mode: Flickable {
+                x: 0; y: root.search-h + 1px;
+                width: parent.width;
+                height: parent.height - root.search-h - 1px;
+                viewport-height: root.apps.length * root.row-h + Spacing.sm;
+                viewport-y: root.scroll-y;
+                interactive: false;
+
+                VerticalLayout {
+                    padding-top: Spacing.xs;
+                    alignment: start;
+                    for app[i] in root.apps: Rectangle {
+                        height: root.row-h;
+
+                        // Inset rounded selection/hover pill.
+                        Rectangle {
+                            x: Spacing.sm;
+                            width: parent.width - 2 * Spacing.sm;
+                            height: parent.height - 4px;
+                            y: 2px;
+                            border-radius: Radius.md;
+                            background: i == root.selected
+                                ? ShellPalette.accent
+                                : (touch.has-hover ? Theme.surface-hover-bg : transparent);
+                            animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                        }
+
+                        touch := TouchArea {
+                            clicked => { root.activated(i); }
+                        }
+
+                        // Leading icon — built-in glyph for computed kinds (calc),
+                        // otherwise the resolved app icon.
+                        Image {
+                            x: Spacing.md + Spacing.xs;
+                            y: (parent.height - 34px) / 2;
+                            width: 34px; height: 34px;
+                            source: app.kind == "calc"
+                                ? @image-url("../../../crates/gnoblin-runtime/vendor/assets/icons/symbolic/calculator.svg")
+                                : app.icon;
+                            colorize: app.kind == "calc"
+                                ? (i == root.selected ? rgba(255, 255, 255, 0.98) : ShellPalette.accent)
+                                : transparent;
+                            image-fit: contain;
+                            visible: app.has-icon || app.kind == "calc";
+                        }
+
+                        // Title + subtitle block.
+                        VerticalLayout {
+                            x: Spacing.md + Spacing.xs + 34px + Spacing.md;
+                            y: 0;
+                            width: parent.width - (Spacing.md + Spacing.xs + 34px + Spacing.md)
+                                - accessory.width - Spacing.lg - Spacing.sm;
+                            height: parent.height;
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: app.name;
+                                color: i == root.selected ? rgba(255, 255, 255, 0.98) : Theme.text-primary;
+                                font-size: 15px;
+                                font-weight: 500;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                            }
+                            if app.subtitle != "": Text {
+                                text: app.subtitle;
+                                color: i == root.selected ? rgba(255, 255, 255, 0.78) : Theme.text-secondary;
+                                font-size: 12px;
+                                font-weight: 400;
+                                horizontal-alignment: left;
+                                overflow: elide;
+                            }
+                        }
+
+                        // Right accessory — e.g. "= 4" for a calc result.
+                        accessory := Text {
+                            x: parent.width - self.width - Spacing.lg - Spacing.sm;
+                            y: 0;
+                            width: app.accessory == "" ? 0px : self.preferred-width;
+                            height: parent.height;
+                            text: app.accessory;
+                            color: i == root.selected ? rgba(255, 255, 255, 0.92) : Theme.text-secondary;
+                            font-size: 15px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+
+            // ── App grid (Super+A). ──
+            if root.grid-mode: Flickable {
+                x: 0; y: root.search-h + 1px;
+                width: parent.width;
+                height: parent.height - root.search-h - 1px;
+                viewport-height: Math.ceil(root.apps.length / root.columns) * root.cell-h;
+                viewport-y: root.scroll-y;
+                interactive: false;
+
+                for app[i] in root.apps: Rectangle {
+                    x: 16px + Math.mod(i, root.columns) * root.cell-w;
+                    y: Math.floor(i / root.columns) * root.cell-h;
+                    width: root.cell-w;
+                    height: root.cell-h;
+
+                    tile := Rectangle {
+                        x: Spacing.xs; y: Spacing.xs;
+                        width: parent.width - 2 * Spacing.xs;
+                        height: parent.height - 2 * Spacing.xs;
+                        border-radius: 14px;
+                        background: i == root.selected
+                            ? ShellPalette.accent
+                            : (gtouch.has-hover ? Theme.surface-hover-bg : transparent);
+                        animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+
+                        gtouch := TouchArea { clicked => { root.activated(i); } }
+                        VerticalLayout {
+                            padding: Spacing.sm;
+                            spacing: Spacing.sm;
+                            alignment: center;
+                            if app.has-icon: Image {
+                                width: 52px; height: 52px;
+                                horizontal-alignment: center;
+                                source: app.icon;
+                            }
+                            Text {
+                                text: app.name;
+                                color: i == root.selected ? rgba(255, 255, 255, 0.98) : Theme.text-primary;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                wrap: word-wrap;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            x: Tokens.chrome-hairline-width;
+            y: Tokens.chrome-hairline-width;
+            width: parent.width - 2 * Tokens.chrome-hairline-width;
+            height: parent.height - 2 * Tokens.chrome-hairline-width;
+            background: transparent;
+            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
+            border-width: Tokens.chrome-hairline-width;
+            border-color: Theme.surface-border;
+        }
+
+        Rectangle {
+            x: Tokens.popout-corner-radius;
+            y: Tokens.chrome-hairline-width / 2;
+            width: parent.width - 2 * Tokens.popout-corner-radius;
+            height: Tokens.chrome-highlight-height;
+            background: Theme.menu-highlight;
+        }
+    }
+}

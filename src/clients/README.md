@@ -13,16 +13,16 @@ the crates under `crates/`.
 - `crates/gnoblin-runtime/` owns Slint/layer-shell runtime code, theme/prefs,
   shell D-Bus wrappers, notification-center state, app context menus, and shared
   Slint assets/widgets.
-- `topbar/` owns the top layer-shell bar. Its layout is driven by `[topbar]`
+- `bin/topbar/` owns the top layer-shell bar. Its layout is driven by `[topbar]`
   config arrays, including flexible spacers, focused-app, appmenu, status, tray,
   notifications, and clock widgets.
-- `dock/` owns the bottom layer-shell dock and uses `gnoblin_runtime::app_context_menu`
+- `bin/dock/` owns the bottom layer-shell dock and uses `gnoblin_runtime::app_context_menu`
   so dock right-clicks match the focused-app menu.
-- `wallpaper/` owns the background layer-shell surface and must stay
+- `bin/wallpaper/` owns the background layer-shell surface and must stay
   input-transparent.
-- `window-menu/` owns the compositor window action menu used by the shell.
-- `launcher/`, `notifyd/`, `osd/`, `night-light`, and `power-menu/` are shell
-  service or utility clients.
+- `bin/window-menu/` owns the compositor window action menu used by the shell.
+- `bin/launcher/`, `bin/notifyd/`, `bin/osd/`, `bin/night-light`, and
+  `bin/power-menu/` are shell service or utility clients.
 - `control-center/` is a C/GTK settings panel and is excluded from the Rust
   workspace.
 
