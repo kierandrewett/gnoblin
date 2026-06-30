@@ -15,7 +15,8 @@ mod results;
 mod usage;
 
 use desktop::App;
-use gnoblin_shell_ui::{run, BarApp, BarConfig, ClientArgs, RuntimeError};
+use gnoblin_core::{ClientArgs, RuntimeError};
+use gnoblin_runtime::{run, BarApp, BarConfig};
 slint::include_modules!(); // Launcher, AppEntry
 use slint::platform::Key;
 use slint::{ComponentHandle, SharedString};
@@ -50,7 +51,7 @@ struct LauncherApp {
 }
 
 fn apply_theme(win: &Launcher) {
-    gnoblin_shell_ui::apply_shell_theme!(win);
+    gnoblin_runtime::apply_shell_theme!(win);
 }
 
 impl LauncherApp {
@@ -162,11 +163,11 @@ impl BarApp for LauncherApp {
         _screen_h: u32,
     ) -> Result<(), RuntimeError> {
         let win = Launcher::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("Launcher::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("Launcher::new: {e}")))?;
         apply_theme(&win);
-        gnoblin_shell_ui::apply_shell_motion_to_theme!(
+        gnoblin_runtime::apply_shell_motion_to_theme!(
             win.global::<Theme>(),
-            gnoblin_shell_ui::prefs::shell_motion()
+            gnoblin_runtime::prefs::shell_motion()
         );
         win.set_grid_mode(self.grid);
         win.set_columns(COLUMNS as i32);
@@ -179,7 +180,7 @@ impl BarApp for LauncherApp {
             exit.set(true);
         });
         win.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("launcher.show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("launcher.show: {e}")))?;
         self.win = Some(win);
         self.refilter();
         Ok(())
@@ -285,7 +286,7 @@ fn main() {
             web_search: if grid {
                 None
             } else {
-                gnoblin_shell_ui::config::Config::load()
+                gnoblin_core::config::Config::load()
                     .get("launcher", "web-search")
                     .map(str::trim)
                     .filter(|s| !s.is_empty())

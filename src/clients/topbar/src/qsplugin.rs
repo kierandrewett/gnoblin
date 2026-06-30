@@ -144,6 +144,7 @@ impl From<MenuRowWire> for MenuRowSpec {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct MenuSpec {
     #[serde(default)]
+    #[allow(dead_code)]
     pub title: String,
     #[serde(default)]
     pub rows: Vec<MenuRowSpec>,
@@ -642,7 +643,7 @@ pub fn parse_interval(raw: &str, fallback: Duration) -> Duration {
 /// Read the `[qs-plugin.NAME]` sections of one config into `out`, overlaying:
 /// a section whose id already exists replaces it; `enabled = off` removes it;
 /// otherwise it's appended (declaration order).
-fn read_qs_sections(cfg: &crate::config::Config, out: &mut Vec<PluginConfig>) {
+fn read_qs_sections(cfg: &gnoblin_core::config::Config, out: &mut Vec<PluginConfig>) {
     for section in cfg.sections_with_prefix("qs-plugin.") {
         let id = section.trim_start_matches("qs-plugin.").trim();
         if id.is_empty() {
@@ -681,9 +682,9 @@ fn read_qs_sections(cfg: &crate::config::Config, out: &mut Vec<PluginConfig>) {
 /// user can override a plugin by id, disable one with `enabled = off`, add new
 /// ones, and reorder them all with `[quicksettings] order = a, b, c`. The tiles
 /// are config-declared plugins, NOT hardcoded in the shell.
-pub fn load_configs(cfg: &crate::config::Config) -> Vec<PluginConfig> {
+pub fn load_configs(cfg: &gnoblin_core::config::Config) -> Vec<PluginConfig> {
     let defaults =
-        crate::config::Config::from_text(include_str!("../../../data/gnoblin.defaults.conf"));
+        gnoblin_core::config::Config::from_text(include_str!("../../../data/gnoblin.defaults.conf"));
     let mut out = Vec::new();
     read_qs_sections(&defaults, &mut out);
     read_qs_sections(cfg, &mut out);
@@ -823,14 +824,14 @@ mod tests {
     fn load_configs_overlays_user_onto_defaults() {
         // Empty user config → the shipped defaults, ordered by the defaults'
         // [quicksettings] order (wifi first).
-        let defs = load_configs(&crate::config::Config::from_text(""));
+        let defs = load_configs(&gnoblin_core::config::Config::from_text(""));
         assert!(defs.iter().any(|p| p.id == "wifi"));
         assert!(defs.iter().any(|p| p.id == "darkstyle"));
         assert_eq!(defs.first().map(|p| p.id.as_str()), Some("wifi"));
 
         // User overrides wifi (command/mode/interval win), adds mpris + a
         // [providers] shorthand; defaults stay present.
-        let cfg = crate::config::Config::from_text(
+        let cfg = gnoblin_core::config::Config::from_text(
             "[qs-plugin.wifi]\n\
              command = /my/wifi\n\
              mode = persistent\n\
@@ -851,7 +852,7 @@ mod tests {
         assert!(p.iter().any(|x| x.id == "bluetooth")); // default still there
 
         // `enabled = off` removes a default.
-        let off = load_configs(&crate::config::Config::from_text(
+        let off = load_configs(&gnoblin_core::config::Config::from_text(
             "[qs-plugin.bluetooth]\nenabled = off\n",
         ));
         assert!(!off.iter().any(|x| x.id == "bluetooth"));

@@ -1,6 +1,6 @@
 use crate::desktop::App;
 use crate::{provider, usage, AppEntry};
-use gnoblin_shell_ui::find_icon;
+use gnoblin_desktop::{find_icon, launch_desktop_app};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -118,7 +118,7 @@ fn launch_app(id: &str, usage_counts: &Rc<RefCell<HashMap<String, u32>>>) {
         *usage_counts.entry(id.to_string()).or_insert(0) += 1;
         usage::save(&usage_counts);
     }
-    gnoblin_shell_ui::launch_desktop_app(id);
+    launch_desktop_app(id);
 }
 
 /// Put `text` on the Wayland clipboard. Best-effort: if `wl-copy` is missing,

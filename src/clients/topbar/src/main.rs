@@ -1,14 +1,18 @@
 //! gnoblin-topbar — de's Panel as a top wlr-layer-shell client.
 mod notifications;
+mod qsplugin;
 mod quick_settings;
+mod quicksettings;
 mod settings;
 
-use gnoblin_shell_ui::app_context_menu;
-use gnoblin_shell_ui::appmenu::{self, BarEntry, MenuAddr, MenuCommand, MenuReply};
-use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::shell::{self, WindowState};
-use gnoblin_shell_ui::tray::{self, TrayCommand, TrayItem};
-use gnoblin_shell_ui::{datetime, file_mtime, find_icon, run, BarApp, BarConfig, RuntimeError};
+use gnoblin_core::config::Config;
+use gnoblin_core::{file_mtime, prettify_app, RuntimeError};
+use gnoblin_desktop::appmenu::{self, BarEntry, MenuAddr, MenuCommand, MenuReply};
+use gnoblin_desktop::find_icon;
+use gnoblin_desktop::tray::{self, TrayCommand, TrayItem};
+use gnoblin_runtime::app_context_menu;
+use gnoblin_runtime::shell::{self, WindowState};
+use gnoblin_runtime::{datetime, run, BarApp, BarConfig};
 use settings::{
     topbar_settings, TopbarCommands, TopbarGeometry, TopbarLayout, WidgetSpec, DEFAULT_CLOCK_FORMAT,
 };
@@ -91,27 +95,27 @@ fn topbar_clock_text(format: &str) -> String {
 
 /// Apply the current light/dark preference to the Slint theme global.
 fn apply_theme(p: &TopBar) {
-    gnoblin_shell_ui::apply_shell_theme!(p);
+    gnoblin_runtime::apply_shell_theme!(p);
 }
 
 fn apply_shell_chrome(p: &TopBar) {
-    apply_shell_chrome_with(p, gnoblin_shell_ui::theme::is_dark());
+    apply_shell_chrome_with(p, gnoblin_runtime::theme::is_dark());
 }
 
 fn apply_shell_chrome_with(p: &TopBar, dark: bool) {
-    let chrome = gnoblin_shell_ui::theme::shell_chrome(dark);
+    let chrome = gnoblin_runtime::theme::shell_chrome(dark);
     let theme = p.global::<Theme>();
-    gnoblin_shell_ui::apply_shell_chrome_to_theme!(theme, chrome);
+    gnoblin_runtime::apply_shell_chrome_to_theme!(theme, chrome);
 }
 
 fn apply_shell_motion(p: &TopBar) -> bool {
-    gnoblin_shell_ui::apply_shell_motion!(p)
+    gnoblin_runtime::apply_shell_motion!(p)
 }
 
 fn apply_backdrop(p: &TopBar, screen_w: u32, screen_h: u32) {
     p.set_backdrop_screen_w(screen_w as f32);
     p.set_backdrop_screen_h(screen_h as f32);
-    p.set_backdrop(gnoblin_shell_ui::load_backdrop().unwrap_or_default());
+    p.set_backdrop(gnoblin_runtime::load_backdrop().unwrap_or_default());
 }
 
 fn topbar_rect(screen_w: u32, geometry: &TopbarGeometry) -> (i32, i32) {
@@ -187,17 +191,17 @@ struct TopBarApp {
     // id -> (service, object_path), so a tray-click can fire the right RPC.
     endpoints: Rc<RefCell<HashMap<i32, (String, String)>>>,
     win_rx: Receiver<WindowState>,
-    qs_rx: Receiver<gnoblin_shell_ui::quicksettings::QuickState>,
+    qs_rx: Receiver<quicksettings::QuickState>,
     // Command/process-driven QS plugin host (spawns + drives declared plugins).
-    qs_host: Rc<RefCell<gnoblin_shell_ui::qsplugin::Host>>,
+    qs_host: Rc<RefCell<qsplugin::Host>>,
     // Latest built-in quick-settings snapshot + plugin tiles. Both feed the one
     // unified CC tile grid, so both are cached to rebuild it on either change.
-    qs_state: gnoblin_shell_ui::quicksettings::QuickState,
-    qs_plugins: Rc<RefCell<Vec<gnoblin_shell_ui::qsplugin::PluginState>>>,
+    qs_state: quicksettings::QuickState,
+    qs_plugins: Rc<RefCell<Vec<qsplugin::PluginState>>>,
     last_focused: String,
     last_workspaces: (u32, u32), // (active, count) last pushed to the panel
     last_pending: bool,          // notification-history unread dot
-    last_notif_summary: gnoblin_shell_ui::notifcenter::Summary,
+    last_notif_summary: gnoblin_runtime::notifcenter::Summary,
     // Global menu (appmenu).
     menu_state: MenuState,
     menu_bar: Vec<BarEntry>,
@@ -236,11 +240,6 @@ struct TopBarApp {
     bar_x: Cell<i32>,
     bar_w: Cell<i32>,
 }
-
-/// Turn an app-id into a friendly label: drop the reverse-DNS prefix and the
-/// `.desktop` suffix, then title-case the remainder. `org.gnome.TextEditor` →
-/// `TextEditor`; `firefox` → `Firefox`.
-use gnoblin_shell_ui::prettify_app;
 
 impl TopBarApp {
     /// Populate + open the dropdown with rows fetched for a clicked entry.
@@ -287,10 +286,10 @@ impl TopBarApp {
 impl BarApp for TopBarApp {
     fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         let panel = TopBar::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("TopBar::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("TopBar::new: {e}")))?;
         apply_theme(&panel);
         apply_shell_motion(&panel);
-        self.theme_dark.set(gnoblin_shell_ui::theme::is_dark());
+        self.theme_dark.set(gnoblin_runtime::theme::is_dark());
         let clock = topbar_clock_text(&self.clock_format);
         panel.set_clock_text(clock.clone().into());
         panel.set_date_text("".into());
@@ -332,7 +331,7 @@ impl BarApp for TopBarApp {
             panel.on_toggle_datetime_popout(move |anchor_x| {
                 let open = !pop.dt_open.get();
                 if open {
-                    gnoblin_shell_ui::notifcenter::clear_legacy_flag();
+                    gnoblin_runtime::notifcenter::clear_legacy_flag();
                 }
                 pop.dt_open.set(open);
                 pop.cc_open.set(false);
@@ -359,7 +358,7 @@ impl BarApp for TopBarApp {
             panel.on_toggle_control_centre(move |anchor_x| {
                 let open = !pop.cc_open.get();
                 if open {
-                    gnoblin_shell_ui::notifcenter::clear_legacy_flag();
+                    gnoblin_runtime::notifcenter::clear_legacy_flag();
                 }
                 pop.cc_open.set(open);
                 pop.dt_open.set(false);
@@ -439,7 +438,7 @@ impl BarApp for TopBarApp {
                 spawn_cmd(&cmd);
             });
         }
-        panel.on_cc_lock_clicked(|| gnoblin_shell_ui::shell::dispatch_window_action(0, "lock", ""));
+        panel.on_cc_lock_clicked(|| gnoblin_runtime::shell::dispatch_window_action(0, "lock", ""));
         {
             let commands = self.commands.clone();
             panel.on_cc_power_clicked(move || {
@@ -456,7 +455,7 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_tile_clicked(move |id| {
                 host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::TileClicked {
+                    .send_event(qsplugin::PluginEvent::TileClicked {
                         id: id.to_string(),
                     });
             });
@@ -465,7 +464,7 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_tile_slider(move |id, v| {
                 host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
+                    .send_event(qsplugin::PluginEvent::Slider {
                         id: id.to_string(),
                         row_id: String::new(),
                         value: v,
@@ -480,7 +479,7 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_row(move |id, row| {
                 host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Row {
+                    .send_event(qsplugin::PluginEvent::Row {
                         id: id.to_string(),
                         row_id: row.to_string(),
                     });
@@ -490,7 +489,7 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_toggle(move |id, row, v| {
                 host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Toggle {
+                    .send_event(qsplugin::PluginEvent::Toggle {
                         id: id.to_string(),
                         row_id: row.to_string(),
                         value: v,
@@ -501,7 +500,7 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_slider(move |id, row, v| {
                 host.borrow()
-                    .send_event(gnoblin_shell_ui::qsplugin::PluginEvent::Slider {
+                    .send_event(qsplugin::PluginEvent::Slider {
                         id: id.to_string(),
                         row_id: row.to_string(),
                         value: v,
@@ -512,7 +511,7 @@ impl BarApp for TopBarApp {
             let weak = panel.as_weak();
             panel.on_cc_notification_dismissed(move |index| {
                 if index >= 0 {
-                    gnoblin_shell_ui::notifcenter::dismiss_history_index(index as usize);
+                    gnoblin_runtime::notifcenter::dismiss_history_index(index as usize);
                 }
                 if let Some(p) = weak.upgrade() {
                     notifications::apply(&p);
@@ -531,7 +530,7 @@ impl BarApp for TopBarApp {
             let app_open = self.app_menu_open.clone();
             let plugins = self.qs_plugins.clone();
             panel.on_bell_clicked(move || {
-                gnoblin_shell_ui::notifcenter::clear_legacy_flag();
+                gnoblin_runtime::notifcenter::clear_legacy_flag();
                 pop.dt_open.set(false);
                 pop.cc_open.set(true);
                 if let Some(p) = weak.upgrade() {
@@ -701,13 +700,13 @@ impl BarApp for TopBarApp {
         if let Some(plugins) = self.qs_host.borrow().poll() {
             *self.qs_plugins.borrow_mut() = plugins;
         }
-        self.qs_state = gnoblin_shell_ui::quicksettings::read();
+        self.qs_state = quicksettings::read();
         quick_settings::push(&panel, &self.qs_state, &self.qs_plugins.borrow());
         self.last_notif_summary = notifications::apply(&panel);
 
         panel
             .show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("panel.show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("panel.show: {e}")))?;
         self.last_clock = clock;
         self.panel = Some(panel);
         Ok(())
@@ -729,7 +728,7 @@ impl BarApp for TopBarApp {
         let mut changed = false;
 
         // Notification-center unread dot (notifyd maintains the flag).
-        let pending = gnoblin_shell_ui::notifcenter::has_pending();
+        let pending = gnoblin_runtime::notifcenter::has_pending();
         if pending != self.last_pending {
             self.last_pending = pending;
             if let Some(p) = &self.panel {
@@ -737,7 +736,7 @@ impl BarApp for TopBarApp {
             }
             changed = true;
         }
-        let notif_summary = gnoblin_shell_ui::notifcenter::summary();
+        let notif_summary = gnoblin_runtime::notifcenter::summary();
         if notif_summary != self.last_notif_summary {
             self.last_notif_summary = notif_summary;
             if let Some(p) = &self.panel {
@@ -747,7 +746,7 @@ impl BarApp for TopBarApp {
         }
 
         // Follow external light/dark changes (e.g. another client's toggle).
-        let dark = gnoblin_shell_ui::theme::is_dark();
+        let dark = gnoblin_runtime::theme::is_dark();
         if dark != self.theme_dark.get() {
             self.theme_dark.set(dark);
             if let Some(p) = &self.panel {
@@ -800,7 +799,7 @@ impl BarApp for TopBarApp {
         if config_mtime != self.config_mtime {
             self.config_mtime = config_mtime;
             // Re-spawn QS plugins to match the (possibly changed) declarations.
-            let plugin_cfgs = gnoblin_shell_ui::qsplugin::load_configs(&Config::load());
+            let plugin_cfgs = qsplugin::load_configs(&Config::load());
             if self.qs_host.borrow().configs() != plugin_cfgs.as_slice() {
                 self.qs_host.borrow_mut().apply(plugin_cfgs);
                 changed = true;
@@ -998,7 +997,7 @@ fn main() {
     shell::spawn(wtx);
 
     let (qtx, qrx) = std::sync::mpsc::channel();
-    gnoblin_shell_ui::quicksettings::spawn(qtx);
+    quicksettings::spawn(qtx);
 
     let (menu_tx, menu_cmd_rx) = std::sync::mpsc::channel();
     let (menu_reply_tx, menu_rx) = std::sync::mpsc::channel();
@@ -1009,8 +1008,8 @@ fn main() {
 
     // Spawn the command/process-driven QS plugin host from the declared
     // [qs-plugin.*] / [providers] config.
-    let qs_host = Rc::new(RefCell::new(gnoblin_shell_ui::qsplugin::Host::spawn(
-        gnoblin_shell_ui::qsplugin::load_configs(&Config::load()),
+    let qs_host = Rc::new(RefCell::new(qsplugin::Host::spawn(
+        qsplugin::load_configs(&Config::load()),
     )));
 
     run(
@@ -1033,12 +1032,12 @@ fn main() {
             win_rx: wrx,
             qs_rx: qrx,
             qs_host,
-            qs_state: gnoblin_shell_ui::quicksettings::QuickState::default(),
+            qs_state: quicksettings::QuickState::default(),
             qs_plugins: Rc::new(RefCell::new(Vec::new())),
             last_focused: String::new(),
             last_workspaces: (0, 0),
             last_pending: false,
-            last_notif_summary: gnoblin_shell_ui::notifcenter::Summary::default(),
+            last_notif_summary: gnoblin_runtime::notifcenter::Summary::default(),
             menu_state: Rc::new(RefCell::new((MenuAddr::default(), Vec::new()))),
             menu_bar: Vec::new(),
             menu_tx,

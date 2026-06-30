@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub(crate) fn data_home() -> Option<PathBuf> {
+pub fn data_home() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
@@ -12,7 +12,7 @@ pub(crate) fn data_home() -> Option<PathBuf> {
         })
 }
 
-pub(crate) fn data_dirs() -> Vec<PathBuf> {
+pub fn data_dirs() -> Vec<PathBuf> {
     let Some(raw_dirs) = std::env::var_os("XDG_DATA_DIRS").filter(|s| !s.is_empty()) else {
         return default_data_dirs();
     };

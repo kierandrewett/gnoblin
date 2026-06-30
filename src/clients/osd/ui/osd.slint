@@ -1,7 +1,7 @@
 // On-screen display (volume / brightness): a glass pill centred near the bottom
 // of a full-screen, input-passthrough overlay. Rust sets the level + kind and
 // tears the surface down after a short timeout.
-import { Theme, TokenMode, Tokens, Spacing, Motion } from "../../shell-ui/vendor/slint/Tokens.slint";
+import { Theme, TokenMode, Tokens, Spacing, Motion } from "../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { Theme, TokenMode }
 
 export component Osd inherits Window {
@@ -60,8 +60,8 @@ export component Osd inherits Window {
                         // Crossfade the muted-dim (and soften the volume/brightness swap).
                         animate opacity { duration: Motion.fast; easing: Motion.fast-curve; }
                         source: root.is-brightness
-                            ? @image-url("../../shell-ui/vendor/assets/icons/sun.svg")
-                            : @image-url("../../shell-ui/vendor/assets/icons/audio.svg");
+                            ? @image-url("../../crates/gnoblin-runtime/vendor/assets/icons/sun.svg")
+                            : @image-url("../../crates/gnoblin-runtime/vendor/assets/icons/audio.svg");
                     }
                     // Mute slash — matches the topbar's audio glyph.
                     if root.muted: Path {

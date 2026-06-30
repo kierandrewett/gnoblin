@@ -4,10 +4,10 @@ use std::process::{Command, Stdio};
 
 fn applications_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(d) = crate::xdg::data_home() {
+    if let Some(d) = gnoblin_core::xdg::data_home() {
         dirs.push(d.join("applications"));
     }
-    for d in crate::xdg::data_dirs() {
+    for d in gnoblin_core::xdg::data_dirs() {
         dirs.push(d.join("applications"));
     }
     dirs
@@ -694,7 +694,7 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(test)]
 mod desktop_entry_tests {
     use super::*;
-    use crate::test_support::{env_lock, temp_root, EnvVar};
+    use gnoblin_core::test_support::{env_lock, temp_root, EnvVar};
     use std::path::{Path, PathBuf};
 
     fn write_executable(path: &Path, text: &str) {

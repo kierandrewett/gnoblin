@@ -1,4 +1,4 @@
-use gnoblin_shell_ui::config::Config;
+use gnoblin_core::config::Config;
 
 pub(crate) const DEFAULT_CLOCK_FORMAT: &str = "%a %d %b  %H:%M:%S";
 

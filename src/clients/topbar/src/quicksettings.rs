@@ -85,6 +85,7 @@ async fn power_profile() -> Option<String> {
 }
 
 /// Cycle the active power profile (power-saver → balanced → performance → …).
+#[allow(dead_code)]
 pub fn cycle_power_profile() {
     let _ = zbus::block_on(async {
         let conn = zbus::Connection::system().await?;

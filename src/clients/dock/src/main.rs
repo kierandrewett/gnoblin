@@ -4,10 +4,11 @@
 //! right-click context menu renders above an icon inside our own surface. The
 //! band is bottom-anchored; the headroom is click-through — `input_rects()`
 //! restricts pointer input to the band (+ the open menu).
-use gnoblin_shell_ui::app_context_menu;
-use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::shell::{self, WindowState};
-use gnoblin_shell_ui::{file_mtime, run, BarApp, BarConfig, RuntimeError};
+use gnoblin_core::config::Config;
+use gnoblin_core::{file_mtime, RuntimeError};
+use gnoblin_runtime::app_context_menu;
+use gnoblin_runtime::shell::{self, WindowState};
+use gnoblin_runtime::{run, BarApp, BarConfig};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
@@ -60,25 +61,25 @@ struct DockApp {
 
 /// Apply the current light/dark preference to the Slint theme global.
 fn apply_theme(d: &DockBar) {
-    gnoblin_shell_ui::apply_shell_theme!(d);
+    gnoblin_runtime::apply_shell_theme!(d);
 }
 
 fn apply_shell_chrome(d: &DockBar) {
-    apply_shell_chrome_with(d, gnoblin_shell_ui::theme::is_dark());
+    apply_shell_chrome_with(d, gnoblin_runtime::theme::is_dark());
 }
 
 fn apply_shell_chrome_with(d: &DockBar, dark: bool) {
-    let chrome = gnoblin_shell_ui::theme::shell_chrome(dark);
+    let chrome = gnoblin_runtime::theme::shell_chrome(dark);
     let theme = d.global::<Theme>();
-    gnoblin_shell_ui::apply_shell_chrome_to_theme!(theme, chrome);
+    gnoblin_runtime::apply_shell_chrome_to_theme!(theme, chrome);
 }
 
 fn apply_shell_motion(d: &DockBar) -> bool {
-    gnoblin_shell_ui::apply_shell_motion!(d)
+    gnoblin_runtime::apply_shell_motion!(d)
 }
 
 fn apply_backdrop(d: &DockBar, screen_w: u32, screen_h: u32) {
-    d.set_backdrop(gnoblin_shell_ui::load_backdrop().unwrap_or_default());
+    d.set_backdrop(gnoblin_runtime::load_backdrop().unwrap_or_default());
     d.set_backdrop_screen_w(screen_w as f32);
     d.set_backdrop_screen_h(screen_h as f32);
     d.set_backdrop_offset_y(-((screen_h as f32) - BAND_H));
@@ -151,7 +152,7 @@ impl DockApp {
                     DockItem {
                         icon: icon.clone(),
                         app_id: id.clone().into(),
-                        name: gnoblin_shell_ui::prettify_app(id).into(),
+                        name: gnoblin_core::prettify_app(id).into(),
                         running,
                         focused,
                         window_count: window_count as i32,
@@ -166,7 +167,7 @@ impl DockApp {
                 if app.is_empty() || self.favs.iter().any(|(id, _)| shell::matches(id, app)) {
                     continue;
                 }
-                let Some(icon) = gnoblin_shell_ui::find_icon_at_size(app, "", DOCK_ICON_SIZE)
+                let Some(icon) = gnoblin_desktop::find_icon_at_size(app, "", DOCK_ICON_SIZE)
                 else {
                     continue;
                 };
@@ -175,7 +176,7 @@ impl DockApp {
                 items.push(DockItem {
                     icon,
                     app_id: app.clone().into(),
-                    name: gnoblin_shell_ui::prettify_app(app).into(),
+                    name: gnoblin_core::prettify_app(app).into(),
                     running: true,
                     focused,
                     window_count: window_count as i32,
@@ -201,7 +202,7 @@ impl BarApp for DockApp {
     fn show(&mut self, w: u32, h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         self.surface_w.set(if w > 0 { w } else { screen_w });
         let dock = DockBar::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("DockBar::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("DockBar::new: {e}")))?;
 
         // Left-click: focus the app if it's already running, else launch it.
         // Also dismiss any open menu.
@@ -289,9 +290,9 @@ impl BarApp for DockApp {
         apply_backdrop(&dock, screen_w, screen_h);
         apply_theme(&dock);
         apply_shell_motion(&dock);
-        self.theme_dark = gnoblin_shell_ui::theme::is_dark();
+        self.theme_dark = gnoblin_runtime::theme::is_dark();
         dock.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("dock.show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("dock.show: {e}")))?;
 
         // Headless validation hook: GNOBLIN_DOCK_MENU=<app-id> auto-opens the
         // menu (GNOBLIN_DOCK_MENU_RUNNING=1 forces the running variant).
@@ -332,7 +333,7 @@ impl BarApp for DockApp {
         let mut changed = false;
 
         // Follow external light/dark changes (e.g. the topbar's toggle).
-        let dark = gnoblin_shell_ui::theme::is_dark();
+        let dark = gnoblin_runtime::theme::is_dark();
         if dark != self.theme_dark {
             self.theme_dark = dark;
             if let Some(d) = &self.dock {
@@ -440,12 +441,12 @@ fn default_favourites() -> Vec<(String, slint::Image)> {
     app_context_menu::favorite_ids_from_config()
         .iter()
         .filter_map(|id| {
-            let resolved = gnoblin_shell_ui::resolve_desktop_id(id);
-            gnoblin_shell_ui::find_icon_at_size(id, "", DOCK_ICON_SIZE)
+            let resolved = gnoblin_desktop::resolve_desktop_id(id);
+            gnoblin_desktop::find_icon_at_size(id, "", DOCK_ICON_SIZE)
                 .or_else(|| {
                     resolved
                         .as_deref()
-                        .and_then(|r| gnoblin_shell_ui::find_icon_at_size(r, "", DOCK_ICON_SIZE))
+                        .and_then(|r| gnoblin_desktop::find_icon_at_size(r, "", DOCK_ICON_SIZE))
                 })
                 .map(|img| (id.clone(), img))
         })
@@ -455,7 +456,7 @@ fn default_favourites() -> Vec<(String, slint::Image)> {
 /// Launch an app by its .desktop id (the dock item's app-id), accepting legacy
 /// short ids such as `firefox` when the installed id is reverse-DNS.
 fn launch(app_id: &str) {
-    gnoblin_shell_ui::launch_desktop_app(app_id);
+    gnoblin_desktop::launch_desktop_app(app_id);
 }
 
 fn main() {

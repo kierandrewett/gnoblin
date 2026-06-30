@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::xdg;
+use gnoblin_core::xdg;
 
 fn load_icon_path_sized(path: &Path, target_size: Option<u32>) -> Option<slint::Image> {
     if !path.exists() {
@@ -316,7 +316,7 @@ fn find_icon_uncached(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{env_lock, temp_root, EnvVar};
+    use gnoblin_core::test_support::{env_lock, temp_root, EnvVar};
 
     #[test]
     fn find_icon_searches_xdg_data_home_hicolor_theme() {

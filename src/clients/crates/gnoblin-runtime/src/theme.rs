@@ -64,7 +64,7 @@ pub fn is_dark() -> bool {
             return s.trim() != "light";
         }
     }
-    let cfg = crate::config::Config::load();
+    let cfg = gnoblin_core::config::Config::load();
     cfg.get("appearance", "theme")
         .map(|t| t.trim() != "light")
         .unwrap_or(true)
@@ -78,7 +78,7 @@ pub fn set_dark(dark: bool) {
 }
 
 pub fn shell_chrome(dark: bool) -> ShellChrome {
-    let cfg = crate::config::Config::load();
+    let cfg = gnoblin_core::config::Config::load();
     let mut chrome = if dark {
         ShellChrome {
             panel_bg: argb(0xdb, 0x24, 0x24, 0x24),
@@ -288,15 +288,15 @@ pub fn shell_chrome(dark: bool) -> ShellChrome {
     chrome
 }
 
-fn config_color(cfg: &crate::config::Config, key: &str) -> Option<Color> {
+fn config_color(cfg: &gnoblin_core::config::Config, key: &str) -> Option<Color> {
     cfg.get("appearance", key).and_then(parse_color)
 }
 
-fn config_px(cfg: &crate::config::Config, key: &str) -> Option<f32> {
+fn config_px(cfg: &gnoblin_core::config::Config, key: &str) -> Option<f32> {
     cfg.get("appearance", key).and_then(parse_px)
 }
 
-fn configured_font_family(cfg: &crate::config::Config) -> String {
+fn configured_font_family(cfg: &gnoblin_core::config::Config) -> String {
     cfg.get("appearance", "font-family")
         .and_then(config_font_family)
         .or_else(system_font_family)

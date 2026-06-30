@@ -1,10 +1,10 @@
-use crate::{QsMenuRow, QsTile, QsTileRow, TopBar};
-use gnoblin_shell_ui::find_icon;
+use crate::{qsplugin, quicksettings, QsMenuRow, QsTile, QsTileRow, TopBar};
+use gnoblin_desktop::find_icon;
 use std::rc::Rc;
 
 /// Push a quick-settings snapshot into the control-centre popout + the status
 /// cluster (network glyph, mute). Shared by the one-shot read and the poller.
-fn apply_cluster(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
+fn apply_cluster(p: &TopBar, st: &quicksettings::QuickState) {
     // Cluster network glyph: wired wins when both are up (the active route, as
     // GNOME does); else wifi; else disconnected. GNOBLIN_NET_MODE overrides for
     // headless validation of the wifi/disconnected variants.
@@ -58,7 +58,7 @@ fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
 
 /// Build the unified tile list from every ready plugin tile. The host preserves
 /// declared config order; this module only maps snapshots to Slint rows.
-fn build_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<QsTile> {
+fn build_tiles(plugins: &[qsplugin::PluginState]) -> Vec<QsTile> {
     let mut tiles = Vec::new();
     for pl in plugins {
         let spec = &pl.update.tile;
@@ -120,8 +120,8 @@ fn build_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<QsTil
 /// state snapshot.
 pub(crate) fn push(
     p: &TopBar,
-    st: &gnoblin_shell_ui::quicksettings::QuickState,
-    plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
+    st: &quicksettings::QuickState,
+    plugins: &[qsplugin::PluginState],
 ) {
     apply_cluster(p, st);
     let tiles = build_tiles(plugins);
@@ -138,7 +138,7 @@ pub(crate) fn push(
 }
 
 /// Re-read live built-in state and rebuild the control-centre tile grid.
-pub(crate) fn refresh(p: &TopBar, plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) {
-    let st = gnoblin_shell_ui::quicksettings::read();
+pub(crate) fn refresh(p: &TopBar, plugins: &[qsplugin::PluginState]) {
+    let st = quicksettings::read();
     push(p, &st, plugins);
 }

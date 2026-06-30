@@ -1,14 +1,14 @@
 //! gnoblin-night-light — warms the screen gamma when Night Light is on.
 //!
 //! A tiny headless wlr-gamma-control client (no UI). It watches the cross-process
-//! flag in [`gnoblin_shell_ui::nightlight`] (toggled by the topbar's control-centre
+//! flag in [`gnoblin_core::nightlight`] (toggled by the topbar's control-centre
 //! tile) and, while on, sets a warm gamma ramp on every output via
 //! `zwlr_gamma_control_v1`. While off it destroys its gamma controls, which
 //! restores the original tables and releases the per-output exclusivity (so a
 //! user can run wlsunset/gammastep instead). This is also the first real consumer
 //! of gnoblin's compositor-side gamma-control protocol.
 
-use gnoblin_shell_ui::nightlight;
+use gnoblin_core::nightlight;
 use std::error::Error;
 use std::io::{Seek, Write};
 use std::os::fd::AsFd;

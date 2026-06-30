@@ -181,7 +181,7 @@ async fn run(updates: Sender<Vec<TrayItem>>, commands: Receiver<TrayCommand>) ->
             last = out;
         }
 
-        async_io::Timer::after(Duration::from_millis(1500)).await;
+        std::thread::sleep(Duration::from_millis(1500));
     }
 }
 

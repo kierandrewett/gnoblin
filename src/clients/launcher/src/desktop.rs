@@ -241,7 +241,7 @@ fn is_executable(path: &Path) -> bool {
 pub fn scan() -> Vec<App> {
     let mut seen = HashSet::new();
     let mut apps = Vec::new();
-    for entry in gnoblin_shell_ui::installed_desktop_entries() {
+    for entry in gnoblin_desktop::installed_desktop_entries() {
         if let Some(app) = parse(&entry.path, entry.id) {
             if seen.insert(app.id.clone()) {
                 apps.push(app);

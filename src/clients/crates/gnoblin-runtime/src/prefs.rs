@@ -11,7 +11,7 @@
 //! stall the first paint. The CLI reads the identical GSetting and returns
 //! immediately. Defaults to animations-on if the value can't be read.
 
-use crate::config::Config;
+use gnoblin_core::config::Config;
 use std::process::Command;
 use std::time::Duration;
 
@@ -382,7 +382,7 @@ fn parse_float(raw: &str) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Config;
+    use gnoblin_core::config::Config;
 
     use super::{
         parse_curve, parse_duration_ms, parse_motion_spec, shell_motion_from_config,

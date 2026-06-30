@@ -5,8 +5,8 @@
 //! segfaults for this surface in the mutter devkit. SHM keeps the layer-shell
 //! lifecycle simple: wait for configure, ack via SCTK, attach one ARGB buffer.
 
-use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::ClientArgs;
+use gnoblin_core::config::Config;
+use gnoblin_core::ClientArgs;
 use image::{imageops, RgbaImage};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, Region},

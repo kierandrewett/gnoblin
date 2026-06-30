@@ -1,10 +1,10 @@
 // Thin Window wrapper so de's Panel (a relative-sized child component) can be the
 // top-level of a layer-shell client. de's Panel + tokens/widgets/assets reused.
-import { Panel, GlobalMenuTopItem, TopbarWidget } from "../../shell-ui/vendor/slint/Panel.slint";
-import { TrayIconItem } from "../../shell-ui/vendor/slint/widgets/TrayItem.slint";
-import { ContextMenu, MenuItem } from "../../shell-ui/vendor/slint/widgets/ContextMenu.slint";
-import { DatetimePopout, ControlCentrePopout, CalendarDay, CalendarWeekday, NotificationItem, QsTile, QsTileRow, QsMenuRow } from "../../shell-ui/vendor/slint/Popouts.slint";
-import { Theme, TokenMode, Tokens } from "../../shell-ui/vendor/slint/Tokens.slint";
+import { Panel, GlobalMenuTopItem, TopbarWidget } from "../../crates/gnoblin-runtime/vendor/slint/Panel.slint";
+import { TrayIconItem } from "../../crates/gnoblin-runtime/vendor/slint/widgets/TrayItem.slint";
+import { ContextMenu, MenuItem } from "../../crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint";
+import { DatetimePopout, ControlCentrePopout, CalendarDay, CalendarWeekday, NotificationItem, QsTile, QsTileRow, QsMenuRow } from "../../crates/gnoblin-runtime/vendor/slint/Popouts.slint";
+import { Theme, TokenMode, Tokens } from "../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { TrayIconItem, GlobalMenuTopItem, TopbarWidget, MenuItem, CalendarDay, CalendarWeekday, NotificationItem, QsTile, QsTileRow, QsMenuRow, Theme, TokenMode }
 
 // The surface spans the whole output (see BarConfig.full_height); the bar lives

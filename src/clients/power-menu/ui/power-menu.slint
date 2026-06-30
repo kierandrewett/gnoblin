@@ -1,8 +1,8 @@
 // The power menu: an on-demand, modal full-screen overlay — a scrim that
 // dismisses on any outside click + de's ContextMenu centred on screen. Entries
 // (Lock / Log Out / Suspend / Restart / Shut Down) run system commands.
-import { ContextMenu, MenuItem } from "../../shell-ui/vendor/slint/widgets/ContextMenu.slint";
-import { Theme, TokenMode, Tokens } from "../../shell-ui/vendor/slint/Tokens.slint";
+import { ContextMenu, MenuItem } from "../../crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint";
+import { Theme, TokenMode, Tokens } from "../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { MenuItem, Theme, TokenMode }
 
 export component PowerMenu inherits Window {

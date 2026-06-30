@@ -1,7 +1,19 @@
-# Workspace for the gnoblin Rust shell clients: a shared UI/runtime lib
-# (gnoblin-shell-ui) plus one binary crate per shell role. Slint surfaces and
-# standalone utility clients share one target dir for faster rebuilds.
+# Workspace for the gnoblin Rust shell clients. Shared crates live under
+# crates/ and role binaries stay in one workspace target dir for faster rebuilds.
 [workspace]
 resolver = "2"
-members = ["shell-ui", "topbar", "dock", "window-menu", "wallpaper", "osd", "notifyd", "launcher", "night-light", "power-menu"]
+members = [
+  "crates/gnoblin-core",
+  "crates/gnoblin-desktop",
+  "crates/gnoblin-runtime",
+  "topbar",
+  "dock",
+  "window-menu",
+  "wallpaper",
+  "osd",
+  "notifyd",
+  "launcher",
+  "night-light",
+  "power-menu",
+]
 exclude = ["control-center"]

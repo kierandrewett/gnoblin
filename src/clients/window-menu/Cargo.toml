@@ -9,7 +9,8 @@ name = "gnoblin-window-menu"
 path = "src/main.rs"
 
 [dependencies]
-gnoblin-shell-ui = { path = "../shell-ui" }
+gnoblin-core = { path = "../crates/gnoblin-core" }
+gnoblin-runtime = { path = "../crates/gnoblin-runtime" }
 slint = { version = "1.16", default-features = false, features = ["compat-1-2", "std", "renderer-femtovg"] }
 smithay-client-toolkit = "0.19"
 

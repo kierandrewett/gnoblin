@@ -3,8 +3,9 @@
 //! window + anchor point on the command line; it renders the [menu] entries as
 //! a modal overlay and dispatches the chosen gnoblin action at that window.
 
-use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::{run, shell, BarApp, BarConfig, ClientArgs, RuntimeError};
+use gnoblin_core::config::Config;
+use gnoblin_core::{ClientArgs, RuntimeError};
+use gnoblin_runtime::{run, shell, BarApp, BarConfig};
 slint::include_modules!(); // WindowMenu, MenuItem
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
@@ -84,7 +85,7 @@ fn load_entries() -> Vec<Entry> {
 }
 
 fn apply_theme(menu: &WindowMenu) {
-    gnoblin_shell_ui::apply_shell_theme!(menu);
+    gnoblin_runtime::apply_shell_theme!(menu);
 }
 
 struct WindowMenuApp {
@@ -97,11 +98,11 @@ struct WindowMenuApp {
 impl BarApp for WindowMenuApp {
     fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         let menu = WindowMenu::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("WindowMenu::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("WindowMenu::new: {e}")))?;
         apply_theme(&menu);
-        gnoblin_shell_ui::apply_shell_motion_to_theme!(
+        gnoblin_runtime::apply_shell_motion_to_theme!(
             menu.global::<Theme>(),
-            gnoblin_shell_ui::prefs::shell_motion()
+            gnoblin_runtime::prefs::shell_motion()
         );
 
         let model: Vec<MenuItem> = self
@@ -120,7 +121,7 @@ impl BarApp for WindowMenuApp {
 
         self.apply_geometry(&menu, screen_w, screen_h);
 
-        if let Some(bg) = gnoblin_shell_ui::load_backdrop() {
+        if let Some(bg) = gnoblin_runtime::load_backdrop() {
             menu.set_backdrop(bg);
         }
 
@@ -144,7 +145,7 @@ impl BarApp for WindowMenuApp {
         }
 
         menu.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("window menu show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("window menu show: {e}")))?;
         self.menu = Some(menu);
         Ok(())
     }

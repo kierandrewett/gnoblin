@@ -5,8 +5,10 @@
 
 mod server;
 
-use gnoblin_shell_ui::config::Config;
-use gnoblin_shell_ui::{file_mtime, find_icon, run, BarApp, BarConfig, RuntimeError};
+use gnoblin_core::config::Config;
+use gnoblin_core::{file_mtime, RuntimeError};
+use gnoblin_desktop::find_icon;
+use gnoblin_runtime::{run, BarApp, BarConfig};
 slint::include_modules!(); // Notifications, NotifCard, NotifAction
 use server::{NotifyCommand, NotifyEvent};
 use slint::ComponentHandle;
@@ -85,11 +87,11 @@ struct NotifyApp {
 }
 
 fn apply_theme(w: &Notifications) {
-    gnoblin_shell_ui::apply_shell_theme!(w);
+    gnoblin_runtime::apply_shell_theme!(w);
 }
 
 fn apply_shell_motion(w: &Notifications) -> bool {
-    gnoblin_shell_ui::apply_shell_motion!(w)
+    gnoblin_runtime::apply_shell_motion!(w)
 }
 
 impl NotifyApp {
@@ -134,19 +136,19 @@ impl NotifyApp {
 
         // The topbar's bell reads this for its unread dot.
         let history = self.history.borrow();
-        gnoblin_shell_ui::notifcenter::set_pending(!history.is_empty());
+        gnoblin_runtime::notifcenter::set_pending(!history.is_empty());
         let summary = history.first().map_or_else(
-            gnoblin_shell_ui::notifcenter::Summary::default,
-            |latest| gnoblin_shell_ui::notifcenter::Summary {
+            gnoblin_runtime::notifcenter::Summary::default,
+            |latest| gnoblin_runtime::notifcenter::Summary {
                 count: history.len(),
                 latest_summary: latest.summary.clone(),
                 latest_body: latest.body.clone(),
             },
         );
-        gnoblin_shell_ui::notifcenter::write_summary(&summary);
-        let entries: Vec<gnoblin_shell_ui::notifcenter::Entry> = history
+        gnoblin_runtime::notifcenter::write_summary(&summary);
+        let entries: Vec<gnoblin_runtime::notifcenter::Entry> = history
             .iter()
-            .map(|h| gnoblin_shell_ui::notifcenter::Entry {
+            .map(|h| gnoblin_runtime::notifcenter::Entry {
                 app_name: h.app_name.clone(),
                 summary: h.summary.clone(),
                 body: h.body.clone(),
@@ -154,14 +156,14 @@ impl NotifyApp {
                 timestamp_secs: h.timestamp_secs,
             })
             .collect();
-        gnoblin_shell_ui::notifcenter::write_history(&entries);
+        gnoblin_runtime::notifcenter::write_history(&entries);
     }
 }
 
 impl BarApp for NotifyApp {
     fn show(&mut self, w: u32, _h: u32, _screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         let win = Notifications::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("Notifications::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("Notifications::new: {e}")))?;
         apply_theme(&win);
         apply_shell_motion(&win);
         self.surface_w.set(w as i32);
@@ -213,7 +215,7 @@ impl BarApp for NotifyApp {
         });
 
         win.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("notifications.show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("notifications.show: {e}")))?;
         self.win = Some(win);
         Ok(())
     }
@@ -275,7 +277,7 @@ impl BarApp for NotifyApp {
                         self.dirty.set(true);
                     }
                     // Do-Not-Disturb: drop the popup (the app still got its id back).
-                    if gnoblin_shell_ui::dnd::is_on() {
+                    if gnoblin_core::dnd::is_on() {
                         continue;
                     }
                     let critical = inc.urgency >= 2;
@@ -350,8 +352,8 @@ impl BarApp for NotifyApp {
 
         // The old right-side notification center has been folded into the
         // quick-settings popout. Keep the compatibility flag inert.
-        if gnoblin_shell_ui::notifcenter::is_open() {
-            gnoblin_shell_ui::notifcenter::clear_legacy_flag();
+        if gnoblin_runtime::notifcenter::is_open() {
+            gnoblin_runtime::notifcenter::clear_legacy_flag();
         }
 
         if self.dirty.replace(false) {

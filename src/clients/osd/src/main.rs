@@ -4,7 +4,8 @@
 //! binds, after the value changes). A full-screen, input-passthrough overlay
 //! showing a glass pill near the bottom; tears itself down after a short timeout.
 
-use gnoblin_shell_ui::{run, BarApp, BarConfig, RuntimeError};
+use gnoblin_core::RuntimeError;
+use gnoblin_runtime::{run, BarApp, BarConfig};
 slint::include_modules!(); // Osd
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
@@ -21,7 +22,7 @@ struct OsdApp {
 }
 
 fn apply_theme(win: &Osd) {
-    gnoblin_shell_ui::apply_shell_theme!(win);
+    gnoblin_runtime::apply_shell_theme!(win);
 }
 
 impl BarApp for OsdApp {
@@ -33,17 +34,17 @@ impl BarApp for OsdApp {
         _screen_h: u32,
     ) -> Result<(), RuntimeError> {
         let win =
-            Osd::new().map_err(|e| gnoblin_shell_ui::runtime_error(format!("Osd::new: {e}")))?;
+            Osd::new().map_err(|e| gnoblin_core::runtime_error(format!("Osd::new: {e}")))?;
         apply_theme(&win);
-        gnoblin_shell_ui::apply_shell_motion_to_theme!(
+        gnoblin_runtime::apply_shell_motion_to_theme!(
             win.global::<Theme>(),
-            gnoblin_shell_ui::prefs::shell_motion()
+            gnoblin_runtime::prefs::shell_motion()
         );
         win.set_level(self.level);
         win.set_is_brightness(self.is_brightness);
         win.set_muted(self.muted);
         win.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("osd.show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("osd.show: {e}")))?;
         self.win = Some(win);
         self.deadline = Some(Instant::now() + SHOW);
         Ok(())

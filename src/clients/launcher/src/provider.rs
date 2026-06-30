@@ -52,7 +52,7 @@ const PROVIDER_TIMEOUT: Duration = Duration::from_millis(450);
 
 /// Load all `[launcher-provider.NAME]` declarations, in config order.
 pub fn load() -> Vec<Provider> {
-    let cfg = gnoblin_shell_ui::config::Config::load();
+    let cfg = gnoblin_core::config::Config::load();
     let mut out = Vec::new();
     for section in cfg.sections_with_prefix("launcher-provider.") {
         let id = section.trim_start_matches("launcher-provider.").trim();

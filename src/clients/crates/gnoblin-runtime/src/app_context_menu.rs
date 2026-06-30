@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crate::{desktop_actions, launch_desktop_action, launch_desktop_app, resolve_desktop_id};
+use gnoblin_desktop::{desktop_actions, launch_desktop_action, launch_desktop_app, resolve_desktop_id, DesktopAction};
 
 pub const ITEM_ALL_WINDOWS: i32 = 1;
 pub const ITEM_OPEN: i32 = 2;
@@ -50,7 +50,7 @@ pub fn favorite_ids_from_config() -> Vec<String> {
         return ids;
     }
 
-    match crate::config::Config::load().get("dock", "favorites") {
+    match gnoblin_core::config::Config::load().get("dock", "favorites") {
         Some(list) => list
             .split(',')
             .map(|s| s.trim().to_string())
@@ -102,7 +102,7 @@ fn sep() -> AppMenuEntry {
     }
 }
 
-fn has_new_window_action(actions: &[crate::DesktopAction]) -> bool {
+fn has_new_window_action(actions: &[DesktopAction]) -> bool {
     actions.iter().any(|a| {
         let id = a.id.to_ascii_lowercase();
         let name = a.name.to_ascii_lowercase();

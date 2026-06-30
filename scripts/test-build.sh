@@ -305,16 +305,16 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 targets = [
-    root / "src/clients/shell-ui/vendor/slint/Dock.slint",
-    root / "src/clients/shell-ui/vendor/slint/Popouts.slint",
-    root / "src/clients/shell-ui/vendor/slint/widgets/ContextMenu.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Dock.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Popouts.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint",
 ]
 standalone_targets = [
     root / "src/clients/launcher/ui/launcher.slint",
     root / "src/clients/notifyd/ui/notifications.slint",
     root / "src/clients/osd/ui/osd.slint",
-    root / "src/clients/shell-ui/vendor/slint/Compositor.slint",
-    root / "src/clients/shell-ui/vendor/slint/WindowChrome.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Compositor.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/WindowChrome.slint",
 ]
 errors = []
 for path in targets:
@@ -381,7 +381,7 @@ for path in floating_standalone_targets:
             f"{path.relative_to(root)} casts floating surface shadow from the legacy shadow alias"
         )
 
-compositor = root / "src/clients/shell-ui/vendor/slint/Compositor.slint"
+compositor = root / "src/clients/crates/gnoblin-runtime/vendor/slint/Compositor.slint"
 compositor_text = compositor.read_text(encoding="utf-8")
 for label, start, end, needles in (
     (
@@ -452,7 +452,7 @@ for path in sorted((root / "src/clients").glob("**/*.slint")):
                 f"{path.relative_to(root)}:{idx}: raw Slint chrome colour should be a Theme/Tokens value"
             )
 
-dock_text = (root / "src/clients/shell-ui/vendor/slint/Dock.slint").read_text(encoding="utf-8")
+dock_text = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Dock.slint").read_text(encoding="utf-8")
 try:
     tooltip = dock_text.split("tip-body := Rectangle", 1)[1].split("// Active indicator", 1)[0]
 except IndexError:
@@ -473,17 +473,17 @@ else:
             errors.append(f"Dock.slint tooltip missing layered chrome token {needle}")
 
 icon_button_text = (
-    root / "src/clients/shell-ui/vendor/slint/widgets/IconButton.slint"
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/widgets/IconButton.slint"
 ).read_text(encoding="utf-8")
 if "Press-scale" in icon_button_text or "touch.pressed ? 0." in icon_button_text:
     errors.append("IconButton.slint reintroduced mouse-down press scaling")
 if "property <float> hover-scale: ta.pressed" in dock_text:
     errors.append("Dock.slint reintroduced mouse-down press scaling")
 
-popouts = (root / "src/clients/shell-ui/vendor/slint/Popouts.slint").read_text(encoding="utf-8")
-panel = (root / "src/clients/shell-ui/vendor/slint/Panel.slint").read_text(encoding="utf-8")
-tokens_text = (root / "src/clients/shell-ui/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
-zoo = root / "src/clients/shell-ui/vendor/slint/ComponentZoo.slint"
+popouts = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Popouts.slint").read_text(encoding="utf-8")
+panel = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Panel.slint").read_text(encoding="utf-8")
+tokens_text = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
+zoo = root / "src/clients/crates/gnoblin-runtime/vendor/slint/ComponentZoo.slint"
 for needle in (
     "export component ShellRoundButton",
     "export component ShellSliderRow",
@@ -525,7 +525,7 @@ for ref in (
     if ref not in popouts + panel:
         errors.append(f"quick settings/topbar missing symbolic icon {ref}")
 
-tokens = (root / "src/clients/shell-ui/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
+tokens = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
 for needle in (
     "dock-corner-radius",
     "menu-corner-radius",
@@ -580,7 +580,7 @@ for path in sorted((root / "src/clients").glob("**/*.slint")):
                 )
 
 for path in sorted((root / "src/clients").glob("*/src/main.rs")):
-    if path.match("*/shell-ui/*"):
+    if path.match("*/gnoblin-runtime/*"):
         continue
     text = path.read_text(encoding="utf-8")
     if "set_motion_scale(" in text and "apply_shell_motion_to_theme!" not in text:
@@ -978,28 +978,31 @@ fi
 echo "== repo-owned Rust/Slint shell clients are wired correctly =="
 clients="$ROOT/src/clients"
 cargo_toml="$clients/Cargo.toml"
-shell_ui="$clients/shell-ui/src/lib.rs"
+runtime_loop="$clients/crates/gnoblin-runtime/src/layer_shell_runtime.rs"
+core_lib="$clients/crates/gnoblin-core/src/lib.rs"
 if [ -f "$cargo_toml" ] &&
-   grep -q '"shell-ui"' "$cargo_toml" &&
+   grep -q '"crates/gnoblin-core"' "$cargo_toml" &&
+   grep -q '"crates/gnoblin-desktop"' "$cargo_toml" &&
+   grep -q '"crates/gnoblin-runtime"' "$cargo_toml" &&
    grep -q '"topbar"' "$cargo_toml" &&
    grep -q '"dock"' "$cargo_toml"; then
-  ok "client workspace declares the shared shell-ui runtime + topbar/dock members"
+  ok "client workspace declares split shared crates + topbar/dock members"
 else
-  bad "client workspace is missing the shell-ui/topbar/dock members"
+  bad "client workspace is missing split shared crates or topbar/dock members"
 fi
-if grep -q "gnoblin_shell_ui::.*BarApp" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarConfig" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*run" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarApp" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarConfig" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*run" "$clients/dock/src/main.rs" &&
+if grep -q "gnoblin_runtime::.*BarApp" "$clients/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarApp" "$clients/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/dock/src/main.rs" &&
    grep -q "impl BarApp" "$clients/topbar/src/main.rs" &&
    grep -q "impl BarApp" "$clients/dock/src/main.rs" &&
    grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/topbar/src/main.rs" &&
    grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/dock/src/main.rs" &&
    [ -f "$clients/topbar/ui/topbar.slint" ] &&
    [ -f "$clients/dock/ui/dock.slint" ]; then
-  ok "topbar and dock are Slint wlr-layer-shell clients on the shared shell-ui runtime"
+  ok "topbar and dock are Slint wlr-layer-shell clients on the shared runtime"
 else
   bad "topbar/dock are not Slint wlr-layer-shell clients on the shared runtime"
 fi
@@ -1089,21 +1092,21 @@ fi
 # The shared run loop must commit at most once per wl_surface frame callback.
 # Committing twice aborts mutter on frame_callback_list, while failing to request
 # a frame callback stalls Slint animations until unrelated input arrives.
-if [ -f "$shell_ui" ] &&
-   grep -q "pub trait BarApp" "$shell_ui" &&
-   grep -q "frame_pending" "$shell_ui" &&
-   grep -q "ready_to_render" "$shell_ui" &&
-   grep -q "has_active_animations" "$shell_ui" &&
-   grep -q "update_timers_and_animations" "$shell_ui" &&
-   grep -q "next_dispatch_timeout" "$shell_ui" &&
-   grep -q "surface.frame(&self.qh" "$shell_ui" &&
-   ! grep -q "stale_ticks" "$shell_ui"; then
-  ok "shell-ui run loop gates rendering, pumps Slint animations, and requests frame callbacks"
+if [ -f "$runtime_loop" ] &&
+   grep -q "pub trait BarApp" "$runtime_loop" &&
+   grep -q "frame_pending" "$runtime_loop" &&
+   grep -q "ready_to_render" "$runtime_loop" &&
+   grep -q "has_active_animations" "$runtime_loop" &&
+   grep -q "update_timers_and_animations" "$runtime_loop" &&
+   grep -q "next_dispatch_timeout" "$runtime_loop" &&
+   grep -q "surface.frame(&self.qh" "$runtime_loop" &&
+   ! grep -q "stale_ticks" "$runtime_loop"; then
+  ok "runtime run loop gates rendering, pumps Slint animations, and requests frame callbacks"
 else
-  bad "shell-ui run loop is missing Slint animation/frame callback pacing"
+  bad "runtime run loop is missing Slint animation/frame callback pacing"
 fi
 
-if python3 - "$shell_ui" <<'PY'
+if python3 - "$runtime_loop" <<'PY'
 import pathlib
 import sys
 
@@ -1123,26 +1126,27 @@ if "layer.commit();\n\n    let mut state = State" in try_run:
     sys.exit(1)
 PY
 then
-  ok "shell-ui binds input devices before the initial layer-surface commit"
+  ok "runtime binds input devices before the initial layer-surface commit"
 else
-  bad "shell-ui can still commit keyboard layer surfaces before wl_keyboard is bound"
+  bad "runtime can still commit keyboard layer surfaces before wl_keyboard is bound"
 fi
 
-if [ -f "$shell_ui" ] &&
-   grep -q "fn try_run(config: BarConfig" "$shell_ui" &&
-   grep -q "fn setup_egl(" "$shell_ui" &&
-   grep -q "Result<EglState, RuntimeError>" "$shell_ui" &&
-   grep -q "pub type RuntimeError" "$shell_ui" &&
-   grep -q "fn runtime_error" "$shell_ui" &&
-   grep -q "fn window(&self) -> Option<&slint::Window>" "$shell_ui" &&
-   ! grep -q 'expect("connect to wayland")' "$shell_ui" &&
-   ! grep -q 'expect("registry init")' "$shell_ui" &&
-   ! grep -q 'expect("wlr-layer-shell")' "$shell_ui" &&
-   ! grep -q 'expect("EGL:' "$shell_ui" &&
-   ! grep -q 'expect("FemtoVGRenderer::new")' "$shell_ui"; then
-  ok "shell-ui layer-shell startup reports errors instead of panicking"
+if [ -f "$runtime_loop" ] &&
+   [ -f "$core_lib" ] &&
+   grep -q "fn try_run(config: BarConfig" "$runtime_loop" &&
+   grep -q "fn setup_egl(" "$runtime_loop" &&
+   grep -q "Result<EglState, RuntimeError>" "$runtime_loop" &&
+   grep -q "pub type RuntimeError" "$core_lib" &&
+   grep -q "fn runtime_error" "$core_lib" &&
+   grep -q "fn window(&self) -> Option<&slint::Window>" "$runtime_loop" &&
+   ! grep -q 'expect("connect to wayland")' "$runtime_loop" &&
+   ! grep -q 'expect("registry init")' "$runtime_loop" &&
+   ! grep -q 'expect("wlr-layer-shell")' "$runtime_loop" &&
+   ! grep -q 'expect("EGL:' "$runtime_loop" &&
+   ! grep -q 'expect("FemtoVGRenderer::new")' "$runtime_loop"; then
+  ok "runtime layer-shell startup reports errors instead of panicking"
 else
-  bad "shell-ui layer-shell startup still has panic-prone setup paths"
+  bad "runtime layer-shell startup still has panic-prone setup paths"
 fi
 
 slint_layer_clients=(

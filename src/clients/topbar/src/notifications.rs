@@ -1,5 +1,6 @@
 use crate::{NotificationItem, TopBar};
-use gnoblin_shell_ui::{datetime, find_icon};
+use gnoblin_desktop::find_icon;
+use gnoblin_runtime::{datetime, notifcenter};
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,9 +17,9 @@ fn age_label(timestamp_secs: u64) -> String {
     datetime::format_unix(timestamp_secs, format).unwrap_or_default()
 }
 
-pub(crate) fn apply(p: &TopBar) -> gnoblin_shell_ui::notifcenter::Summary {
-    let summary = gnoblin_shell_ui::notifcenter::summary();
-    let entries = gnoblin_shell_ui::notifcenter::history();
+pub(crate) fn apply(p: &TopBar) -> notifcenter::Summary {
+    let summary = notifcenter::summary();
+    let entries = notifcenter::history();
     let items: Vec<NotificationItem> = entries
         .iter()
         .take(8)

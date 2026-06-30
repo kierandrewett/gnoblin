@@ -3,7 +3,7 @@
 // rich result rows (icon + title + subtitle + right accessory). Rust owns the
 // input (query, selection, scroll) and pushes it down; clicks/Enter activate by
 // index. `--grid` (Super+A) keeps the full-screen icon grid.
-import { Theme, TokenMode, Spacing, Radius, Motion, Tokens, ShellPalette } from "../../shell-ui/vendor/slint/Tokens.slint";
+import { Theme, TokenMode, Spacing, Radius, Motion, Tokens, ShellPalette } from "../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { Theme, TokenMode }
 
 export struct AppEntry {
@@ -96,7 +96,7 @@ export component Launcher inherits Window {
                     x: Spacing.lg + 2px;
                     y: (parent.height - 22px) / 2;
                     width: 22px; height: 22px;
-                    source: @image-url("../../shell-ui/vendor/assets/icons/symbolic/search.svg");
+                    source: @image-url("../../crates/gnoblin-runtime/vendor/assets/icons/symbolic/search.svg");
                     colorize: Theme.text-secondary;
                     image-fit: contain;
                 }
@@ -180,7 +180,7 @@ export component Launcher inherits Window {
                             y: (parent.height - 34px) / 2;
                             width: 34px; height: 34px;
                             source: app.kind == "calc"
-                                ? @image-url("../../shell-ui/vendor/assets/icons/symbolic/calculator.svg")
+                                ? @image-url("../../crates/gnoblin-runtime/vendor/assets/icons/symbolic/calculator.svg")
                                 : app.icon;
                             colorize: app.kind == "calc"
                                 ? (i == root.selected ? rgba(255, 255, 255, 0.98) : ShellPalette.accent)

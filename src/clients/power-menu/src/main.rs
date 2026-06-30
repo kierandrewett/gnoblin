@@ -3,7 +3,8 @@
 //! power button). Picks run the matching system command (logind/systemd) and the
 //! surface exits. A centred ContextMenu over a dismiss scrim, like the window menu.
 
-use gnoblin_shell_ui::{run, shell, BarApp, BarConfig, RuntimeError};
+use gnoblin_core::RuntimeError;
+use gnoblin_runtime::{run, shell, BarApp, BarConfig};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::Cell;
@@ -57,7 +58,7 @@ struct PowerMenuApp {
 }
 
 fn apply_theme(menu: &PowerMenu) {
-    gnoblin_shell_ui::apply_shell_theme!(menu);
+    gnoblin_runtime::apply_shell_theme!(menu);
 }
 
 fn apply_geometry(menu: &PowerMenu, screen_w: u32, screen_h: u32) {
@@ -75,11 +76,11 @@ fn apply_geometry(menu: &PowerMenu, screen_w: u32, screen_h: u32) {
 impl BarApp for PowerMenuApp {
     fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         let menu = PowerMenu::new()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("PowerMenu::new: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("PowerMenu::new: {e}")))?;
         apply_theme(&menu);
-        gnoblin_shell_ui::apply_shell_motion_to_theme!(
+        gnoblin_runtime::apply_shell_motion_to_theme!(
             menu.global::<Theme>(),
-            gnoblin_shell_ui::prefs::shell_motion()
+            gnoblin_runtime::prefs::shell_motion()
         );
 
         let model: Vec<MenuItem> = ENTRIES
@@ -97,7 +98,7 @@ impl BarApp for PowerMenuApp {
 
         apply_geometry(&menu, screen_w, screen_h);
 
-        if let Some(bg) = gnoblin_shell_ui::load_backdrop() {
+        if let Some(bg) = gnoblin_runtime::load_backdrop() {
             menu.set_backdrop(bg);
         }
 
@@ -116,7 +117,7 @@ impl BarApp for PowerMenuApp {
         }
 
         menu.show()
-            .map_err(|e| gnoblin_shell_ui::runtime_error(format!("power menu show: {e}")))?;
+            .map_err(|e| gnoblin_core::runtime_error(format!("power menu show: {e}")))?;
 
         // Headless validation: GNOBLIN_POWER_AUTO=<id> activates that row.
         if let Ok(Ok(id)) = std::env::var("GNOBLIN_POWER_AUTO").map(|s| s.parse::<i32>()) {

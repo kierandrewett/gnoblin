@@ -5,7 +5,7 @@
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use crate::appmenu::{self, BarEntry, MenuAddr};
+use gnoblin_desktop::appmenu::{self, BarEntry, MenuAddr};
 
 /// Snapshot of window state from the compositor.
 #[derive(Clone, PartialEq, Default)]

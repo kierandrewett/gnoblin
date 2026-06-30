@@ -39,7 +39,7 @@ use wayland_client::{
     Connection, EventQueue, Proxy, QueueHandle,
 };
 
-use crate::{runtime_error, ClientArgs, RuntimeError};
+use gnoblin_core::{runtime_error, ClientArgs, RuntimeError};
 
 const CONFIGURE_RENDER_DELAY: Duration = Duration::from_millis(50);
 const IDLE_DISPATCH_TIMEOUT: Duration = Duration::from_millis(200);
@@ -718,7 +718,7 @@ impl State {
                 size: LogicalSize::new(self.width as f32, self.height as f32),
             });
         } else {
-            eprintln!("gnoblin-shell-ui: Slint app window disappeared during resize; exiting.");
+            eprintln!("gnoblin-runtime: Slint app window disappeared during resize; exiting.");
             self.exit = true;
             return;
         }
@@ -855,7 +855,7 @@ impl State {
             // A render failure here means the EGL surface/display is gone (the
             // compositor exited) — stop cleanly rather than spin or abort.
             Some(Err(e)) => {
-                eprintln!("gnoblin-shell-ui: render failed ({e}); compositor gone — exiting.");
+                eprintln!("gnoblin-runtime: render failed ({e}); compositor gone — exiting.");
                 self.exit = true;
             }
             None => {}
@@ -1190,7 +1190,7 @@ impl PointerHandler for State {
                     }
                 } else {
                     eprintln!(
-                        "gnoblin-shell-ui: Slint app window disappeared during input; exiting."
+                        "gnoblin-runtime: Slint app window disappeared during input; exiting."
                     );
                     self.exit = true;
                 }
@@ -1346,7 +1346,7 @@ fn run_due_ticks(state: &mut State, next_tick: &mut Instant) {
 /// Run a Slint `BarApp` as a wlr-layer-shell client until the compositor exits.
 pub fn run(config: BarConfig, app: Box<dyn BarApp>) {
     if let Err(e) = try_run(config, app) {
-        eprintln!("gnoblin-shell-ui: {e}");
+        eprintln!("gnoblin-runtime: {e}");
     }
 }
 

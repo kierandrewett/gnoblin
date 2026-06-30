@@ -5,9 +5,9 @@
 // surface, without a separate popup. The band is bottom-anchored; the empty
 // headroom above it is click-through (the Rust side restricts `input_rects` to
 // the band + the open menu).
-import { Dock, DockItem } from "../../shell-ui/vendor/slint/Dock.slint";
-import { Tokens, Theme, TokenMode } from "../../shell-ui/vendor/slint/Tokens.slint";
-import { ContextMenu, MenuItem } from "../../shell-ui/vendor/slint/widgets/ContextMenu.slint";
+import { Dock, DockItem } from "../../crates/gnoblin-runtime/vendor/slint/Dock.slint";
+import { Tokens, Theme, TokenMode } from "../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
+import { ContextMenu, MenuItem } from "../../crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint";
 export { DockItem, MenuItem, Theme, TokenMode }
 
 export component DockBar inherits Window {

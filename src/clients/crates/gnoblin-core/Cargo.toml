@@ -1,0 +1,9 @@
+[package]
+name = "gnoblin-core"
+version = "0.1.0"
+edition = "2021"
+description = "Std-only shared helpers for gnoblin shell clients"
+
+[lib]
+name = "gnoblin_core"
+path = "src/lib.rs"

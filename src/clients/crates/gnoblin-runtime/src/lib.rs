@@ -1,102 +1,17 @@
-//! Shared runner: render a Slint component as a wlr-layer-shell client.
-//!
-//! Slint normally renders through its own winit window. Here we render the Slint
-//! scene with the FemtoVG OpenGL renderer onto an EGL surface created from a
-//! smithay-client-toolkit layer surface — so de's Slint panels run as ordinary
-//! layer-shell clients on gnoblin. GPU rendering keeps Slint's blur/drop-shadow.
-//! Slint's timer/animation pump and Wayland frame callbacks drive redraw +
-//! per-app refresh; pointer events are forwarded into Slint. The bar-specific bits
-//! (which component, where it anchors, what data it shows) live in a `BarApp`
-//! impl in each binary.
-
-use std::error::Error;
-
-pub type RuntimeError = Box<dyn Error + Send + Sync>;
-
-pub fn runtime_error(message: impl Into<String>) -> RuntimeError {
-    Box::new(std::io::Error::other(message.into()))
-}
-
-/// Last-modified time of a file, or `None` if the path is `None` or unreadable.
-/// Layer-shell clients poll this to live-reload their config/pins on change.
-pub fn file_mtime(path: Option<&std::path::Path>) -> Option<std::time::SystemTime> {
-    path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-}
-
-/// A cross-process boolean flag backed by the presence of a file in
-/// `$XDG_RUNTIME_DIR` (the lightweight, no-D-Bus mechanism the control-centre
-/// tiles use to signal daemons — e.g. do-not-disturb, night-light).
-pub struct FileFlag {
-    name: &'static str,
-}
-
-impl FileFlag {
-    pub const fn new(name: &'static str) -> Self {
-        Self { name }
-    }
-
-    fn path(&self) -> Option<std::path::PathBuf> {
-        std::env::var("XDG_RUNTIME_DIR")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .map(|d| std::path::PathBuf::from(d).join(self.name))
-    }
-
-    /// Is the flag currently set?
-    pub fn is_on(&self) -> bool {
-        self.path().map(|p| p.exists()).unwrap_or(false)
-    }
-
-    /// Set or clear the flag.
-    pub fn set(&self, on: bool) {
-        let Some(p) = self.path() else { return };
-        if on {
-            let _ = std::fs::write(&p, b"");
-        } else {
-            let _ = std::fs::remove_file(&p);
-        }
-    }
-
-    /// Flip the flag, returning the new state.
-    pub fn toggle(&self) -> bool {
-        let next = !self.is_on();
-        self.set(next);
-        next
-    }
-}
+//! Shared layer-shell windowing and Slint render runtime for gnoblin clients.
 
 pub mod app_context_menu;
-pub mod appmenu;
-pub mod args;
-pub mod config;
 pub mod datetime;
-pub mod desktop_entry;
-pub mod dnd;
-pub mod nightlight;
 pub mod notifcenter;
 pub mod prefs;
-pub mod qsplugin;
-pub mod quicksettings;
 pub mod shell;
 pub mod theme;
-pub mod tray;
 
-mod icons;
 mod layer_shell_runtime;
-#[cfg(test)]
-mod test_support;
-mod xdg;
 
-pub use args::ClientArgs;
-pub use desktop_entry::{
-    desktop_actions, installed_desktop_entries, launch_desktop_action, launch_desktop_app,
-    resolve_desktop_id, DesktopAction, DesktopEntryFile,
-};
-pub use icons::{find_icon, find_icon_at_size};
 pub use layer_shell_runtime::{run, BarApp, BarConfig};
 
-/// Push the resolved motion palette to a client's Slint `Theme` global, returning
-/// whether anything changed — replaces the per-client `apply_shell_motion` copies.
+/// Push the resolved motion palette to a client's Slint `Theme` global.
 #[macro_export]
 macro_rules! apply_shell_motion {
     ($component:expr) => {{
@@ -106,10 +21,7 @@ macro_rules! apply_shell_motion {
     }};
 }
 
-/// Apply the light/dark preference (mode + shell chrome) to a client's Slint
-/// `Theme` global — replaces the per-client `apply_theme` copies. `$component` is
-/// the client's top-level component; its generated `TokenMode`/`Theme` resolve at
-/// the call site.
+/// Apply the light/dark preference to a client's Slint `Theme` global.
 #[macro_export]
 macro_rules! apply_shell_theme {
     ($component:expr) => {{
@@ -283,34 +195,12 @@ macro_rules! apply_shell_motion_to_theme {
     }};
 }
 
-/// A human-friendly app name from an app-id: drop `.desktop`, take the segment
-/// after the last `.` (reverse-DNS tail), and capitalise — e.g.
-/// "org.gnome.Calculator" → "Calculator", "firefox" → "Firefox".
-pub fn prettify_app(app_id: &str) -> String {
-    let base = app_id
-        .strip_suffix(".desktop")
-        .unwrap_or(app_id)
-        .rsplit('.')
-        .next()
-        .unwrap_or(app_id);
-    if base.is_empty() {
-        return String::new();
-    }
-    let mut chars = base.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
-/// Load the configured wallpaper (`[appearance] wallpaper`), downscale + blur it
-/// into a Slint image for de's "glass" backdrop. None when unset/unreadable, in
-/// which case the bars fall back to their solid panel/dock background.
+/// Load the configured wallpaper (`[appearance] wallpaper`) as a blurred Slint
+/// image for the shell glass backdrop.
 pub fn load_backdrop() -> Option<slint::Image> {
-    let cfg = config::Config::load();
+    let cfg = gnoblin_core::config::Config::load();
     let path = cfg.get("appearance", "wallpaper")?;
     let img = image::open(path).ok()?;
-    // Downscale first so the Gaussian blur is cheap; Slint stretches it back up.
     let small = img.resize(640, 400, image::imageops::FilterType::Triangle);
     let blurred = image::imageops::blur(&small.to_rgba8(), 18.0);
     let (w, h) = blurred.dimensions();

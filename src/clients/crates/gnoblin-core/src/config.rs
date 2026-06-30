@@ -34,7 +34,7 @@ impl Config {
         }
     }
 
-    pub(crate) fn from_text(text: &str) -> Self {
+    pub fn from_text(text: &str) -> Self {
         let mut values = HashMap::new();
         let mut lists = HashMap::new();
         let mut sections = Vec::new();
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn shipped_example_parses_for_rust_clients() {
-        let cfg = Config::from_text(include_str!("../../../data/gnoblin.conf.example"));
+        let cfg = Config::from_text(include_str!("../../../../data/gnoblin.conf.example"));
 
         assert_eq!(cfg.get("appearance", "background"), Some("#1d1f21"));
         assert_eq!(
