@@ -118,11 +118,7 @@ fn build_tiles(plugins: &[qsplugin::PluginState]) -> Vec<QsTile> {
 
 /// Push the unified control-centre tile model + status cluster from a known
 /// state snapshot.
-pub(crate) fn push(
-    p: &TopBar,
-    st: &quicksettings::QuickState,
-    plugins: &[qsplugin::PluginState],
-) {
+pub(crate) fn push(p: &TopBar, st: &quicksettings::QuickState, plugins: &[qsplugin::PluginState]) {
     apply_cluster(p, st);
     let tiles = build_tiles(plugins);
     // If a slide-out submenu is open, refresh its rows from the freshly-built

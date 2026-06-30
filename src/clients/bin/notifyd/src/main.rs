@@ -137,14 +137,16 @@ impl NotifyApp {
         // The topbar's bell reads this for its unread dot.
         let history = self.history.borrow();
         gnoblin_runtime::notifcenter::set_pending(!history.is_empty());
-        let summary = history.first().map_or_else(
-            gnoblin_runtime::notifcenter::Summary::default,
-            |latest| gnoblin_runtime::notifcenter::Summary {
-                count: history.len(),
-                latest_summary: latest.summary.clone(),
-                latest_body: latest.body.clone(),
-            },
-        );
+        let summary =
+            history
+                .first()
+                .map_or_else(gnoblin_runtime::notifcenter::Summary::default, |latest| {
+                    gnoblin_runtime::notifcenter::Summary {
+                        count: history.len(),
+                        latest_summary: latest.summary.clone(),
+                        latest_body: latest.body.clone(),
+                    }
+                });
         gnoblin_runtime::notifcenter::write_summary(&summary);
         let entries: Vec<gnoblin_runtime::notifcenter::Entry> = history
             .iter()

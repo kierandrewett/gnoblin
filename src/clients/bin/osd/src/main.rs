@@ -33,8 +33,7 @@ impl BarApp for OsdApp {
         _screen_w: u32,
         _screen_h: u32,
     ) -> Result<(), RuntimeError> {
-        let win =
-            Osd::new().map_err(|e| gnoblin_core::runtime_error(format!("Osd::new: {e}")))?;
+        let win = Osd::new().map_err(|e| gnoblin_core::runtime_error(format!("Osd::new: {e}")))?;
         apply_theme(&win);
         gnoblin_runtime::apply_shell_motion_to_theme!(
             win.global::<Theme>(),

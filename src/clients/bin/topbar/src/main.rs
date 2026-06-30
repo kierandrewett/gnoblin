@@ -285,8 +285,8 @@ impl TopBarApp {
 
 impl BarApp for TopBarApp {
     fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
-        let panel = TopBar::new()
-            .map_err(|e| gnoblin_core::runtime_error(format!("TopBar::new: {e}")))?;
+        let panel =
+            TopBar::new().map_err(|e| gnoblin_core::runtime_error(format!("TopBar::new: {e}")))?;
         apply_theme(&panel);
         apply_shell_motion(&panel);
         self.theme_dark.set(gnoblin_runtime::theme::is_dark());
@@ -455,20 +455,17 @@ impl BarApp for TopBarApp {
             let host = self.qs_host.clone();
             panel.on_cc_tile_clicked(move |id| {
                 host.borrow()
-                    .send_event(qsplugin::PluginEvent::TileClicked {
-                        id: id.to_string(),
-                    });
+                    .send_event(qsplugin::PluginEvent::TileClicked { id: id.to_string() });
             });
         }
         {
             let host = self.qs_host.clone();
             panel.on_cc_tile_slider(move |id, v| {
-                host.borrow()
-                    .send_event(qsplugin::PluginEvent::Slider {
-                        id: id.to_string(),
-                        row_id: String::new(),
-                        value: v,
-                    });
+                host.borrow().send_event(qsplugin::PluginEvent::Slider {
+                    id: id.to_string(),
+                    row_id: String::new(),
+                    value: v,
+                });
             });
         }
         // The chevron opens the slide-out submenu in Slint; nothing extra here.
@@ -478,33 +475,30 @@ impl BarApp for TopBarApp {
         {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_row(move |id, row| {
-                host.borrow()
-                    .send_event(qsplugin::PluginEvent::Row {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                    });
+                host.borrow().send_event(qsplugin::PluginEvent::Row {
+                    id: id.to_string(),
+                    row_id: row.to_string(),
+                });
             });
         }
         {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_toggle(move |id, row, v| {
-                host.borrow()
-                    .send_event(qsplugin::PluginEvent::Toggle {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                        value: v,
-                    });
+                host.borrow().send_event(qsplugin::PluginEvent::Toggle {
+                    id: id.to_string(),
+                    row_id: row.to_string(),
+                    value: v,
+                });
             });
         }
         {
             let host = self.qs_host.clone();
             panel.on_cc_plugin_slider(move |id, row, v| {
-                host.borrow()
-                    .send_event(qsplugin::PluginEvent::Slider {
-                        id: id.to_string(),
-                        row_id: row.to_string(),
-                        value: v,
-                    });
+                host.borrow().send_event(qsplugin::PluginEvent::Slider {
+                    id: id.to_string(),
+                    row_id: row.to_string(),
+                    value: v,
+                });
             });
         }
         {
@@ -1008,9 +1002,9 @@ fn main() {
 
     // Spawn the command/process-driven QS plugin host from the declared
     // [qs-plugin.*] / [providers] config.
-    let qs_host = Rc::new(RefCell::new(qsplugin::Host::spawn(
-        qsplugin::load_configs(&Config::load()),
-    )));
+    let qs_host = Rc::new(RefCell::new(qsplugin::Host::spawn(qsplugin::load_configs(
+        &Config::load(),
+    ))));
 
     run(
         BarConfig {

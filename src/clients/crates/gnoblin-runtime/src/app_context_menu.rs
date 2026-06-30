@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use gnoblin_desktop::{desktop_actions, launch_desktop_action, launch_desktop_app, resolve_desktop_id, DesktopAction};
+use gnoblin_desktop::{
+    desktop_actions, launch_desktop_action, launch_desktop_app, resolve_desktop_id, DesktopAction,
+};
 
 pub const ITEM_ALL_WINDOWS: i32 = 1;
 pub const ITEM_OPEN: i32 = 2;

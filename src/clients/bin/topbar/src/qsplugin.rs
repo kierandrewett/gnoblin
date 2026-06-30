@@ -683,8 +683,9 @@ fn read_qs_sections(cfg: &gnoblin_core::config::Config, out: &mut Vec<PluginConf
 /// ones, and reorder them all with `[quicksettings] order = a, b, c`. The tiles
 /// are config-declared plugins, NOT hardcoded in the shell.
 pub fn load_configs(cfg: &gnoblin_core::config::Config) -> Vec<PluginConfig> {
-    let defaults =
-        gnoblin_core::config::Config::from_text(include_str!("../../../../data/gnoblin.defaults.conf"));
+    let defaults = gnoblin_core::config::Config::from_text(include_str!(
+        "../../../../data/gnoblin.defaults.conf"
+    ));
     let mut out = Vec::new();
     read_qs_sections(&defaults, &mut out);
     read_qs_sections(cfg, &mut out);

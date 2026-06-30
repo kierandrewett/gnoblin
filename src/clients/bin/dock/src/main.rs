@@ -167,8 +167,7 @@ impl DockApp {
                 if app.is_empty() || self.favs.iter().any(|(id, _)| shell::matches(id, app)) {
                     continue;
                 }
-                let Some(icon) = gnoblin_desktop::find_icon_at_size(app, "", DOCK_ICON_SIZE)
-                else {
+                let Some(icon) = gnoblin_desktop::find_icon_at_size(app, "", DOCK_ICON_SIZE) else {
                     continue;
                 };
                 let focused = shell::matches(app, &self.state.focused);
@@ -436,7 +435,6 @@ impl BarApp for DockApp {
 /// (comma-separated .desktop ids); falls back to a sensible default set when
 /// unset. Icons are resolved from the system icon theme; the app-id is used as
 /// both the icon name and the tooltip.
-
 fn default_favourites() -> Vec<(String, slint::Image)> {
     app_context_menu::favorite_ids_from_config()
         .iter()
