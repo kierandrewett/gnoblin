@@ -16,3 +16,18 @@ members = [
   "bin/night-light",
   "bin/power-menu",
 ]
+
+[patch.crates-io]
+slint = { path = "../../subprojects/slint/api/rs/slint" }
+slint-build = { path = "../../subprojects/slint/api/rs/build" }
+slint-macros = { path = "../../subprojects/slint/api/rs/macros" }
+i-slint-backend-linuxkms = { path = "../../subprojects/slint/internal/backends/linuxkms" }
+i-slint-backend-selector = { path = "../../subprojects/slint/internal/backends/selector" }
+i-slint-backend-winit = { path = "../../subprojects/slint/internal/backends/winit" }
+i-slint-common = { path = "../../subprojects/slint/internal/common" }
+i-slint-compiler = { path = "../../subprojects/slint/internal/compiler" }
+i-slint-core = { path = "../../subprojects/slint/internal/core" }
+i-slint-core-macros = { path = "../../subprojects/slint/internal/core-macros" }
+i-slint-renderer-femtovg = { path = "../../subprojects/slint/internal/renderers/femtovg" }
+i-slint-renderer-skia = { path = "../../subprojects/slint/internal/renderers/skia" }
+i-slint-renderer-software = { path = "../../subprojects/slint/internal/renderers/software" }
