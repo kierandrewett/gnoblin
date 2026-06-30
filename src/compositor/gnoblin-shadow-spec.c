@@ -6,11 +6,9 @@
 
 #include "gnoblin-color-spec.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <float.h>
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 static gboolean parse_finite_float(const char* s, char** end, float* out) {
