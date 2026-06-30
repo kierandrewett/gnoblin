@@ -1,4 +1,5 @@
 //! gnoblin-topbar — de's Panel as a top wlr-layer-shell client.
+mod notifications;
 mod quick_settings;
 mod settings;
 
@@ -18,7 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 // This client's own Slint UI (TopBar + the structs it uses + Theme/TokenMode).
 slint::include_modules!();
@@ -176,48 +177,6 @@ fn app_menu_model(app_id: &str, running: bool) -> slint::ModelRc<MenuItem> {
             })
             .collect();
     Rc::new(slint::VecModel::from(items)).into()
-}
-
-/// One-shot synchronous read (startup + popout-open, for an immediate refresh).
-fn notification_age_label(timestamp_secs: u64) -> String {
-    if timestamp_secs == 0 {
-        return String::new();
-    }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or_default();
-    let elapsed = now.saturating_sub(timestamp_secs);
-    let format = if elapsed < 86_400 { "%H:%M" } else { "%x" };
-    datetime::format_unix(timestamp_secs, format).unwrap_or_default()
-}
-
-fn apply_notifications(p: &TopBar) -> gnoblin_shell_ui::notifcenter::Summary {
-    let summary = gnoblin_shell_ui::notifcenter::summary();
-    let entries = gnoblin_shell_ui::notifcenter::history();
-    let items: Vec<NotificationItem> = entries
-        .iter()
-        .take(8)
-        .map(|entry| {
-            let icon = find_icon(&entry.icon_name, "");
-            NotificationItem {
-                app_name: if entry.app_name.is_empty() {
-                    "Notification".into()
-                } else {
-                    entry.app_name.clone().into()
-                },
-                summary: entry.summary.clone().into(),
-                body: entry.body.clone().into(),
-                age: notification_age_label(entry.timestamp_secs).into(),
-                has_icon: icon.is_some(),
-                icon: icon.unwrap_or_default(),
-            }
-        })
-        .collect();
-    let count = summary.count.max(entries.len()).min(i32::MAX as usize) as i32;
-    p.set_cc_notification_count(count);
-    p.set_cc_notifications(Rc::new(slint::VecModel::from(items)).into());
-    summary
 }
 
 struct TopBarApp {
@@ -408,7 +367,7 @@ impl BarApp for TopBarApp {
                 if let Some(p) = weak.upgrade() {
                     if open {
                         quick_settings::refresh(&p, &plugins.borrow());
-                        apply_notifications(&p);
+                        notifications::apply(&p);
                         p.set_cc_anchor_x(anchor_x);
                     }
                     p.set_cc_open(open);
@@ -556,7 +515,7 @@ impl BarApp for TopBarApp {
                     gnoblin_shell_ui::notifcenter::dismiss_history_index(index as usize);
                 }
                 if let Some(p) = weak.upgrade() {
-                    apply_notifications(&p);
+                    notifications::apply(&p);
                 }
             });
         }
@@ -577,7 +536,7 @@ impl BarApp for TopBarApp {
                 pop.cc_open.set(true);
                 if let Some(p) = weak.upgrade() {
                     quick_settings::refresh(&p, &plugins.borrow());
-                    apply_notifications(&p);
+                    notifications::apply(&p);
                     p.set_datetime_open(false);
                     p.set_cc_anchor_x(0.0);
                     p.set_cc_open(true);
@@ -744,7 +703,7 @@ impl BarApp for TopBarApp {
         }
         self.qs_state = gnoblin_shell_ui::quicksettings::read();
         quick_settings::push(&panel, &self.qs_state, &self.qs_plugins.borrow());
-        self.last_notif_summary = apply_notifications(&panel);
+        self.last_notif_summary = notifications::apply(&panel);
 
         panel
             .show()
@@ -782,7 +741,7 @@ impl BarApp for TopBarApp {
         if notif_summary != self.last_notif_summary {
             self.last_notif_summary = notif_summary;
             if let Some(p) = &self.panel {
-                apply_notifications(p);
+                notifications::apply(p);
             }
             changed = true;
         }
@@ -802,7 +761,7 @@ impl BarApp for TopBarApp {
             if let Some(p) = &self.panel {
                 p.set_clock_text(clock.clone().into());
                 p.set_date_text("".into());
-                apply_notifications(p);
+                notifications::apply(p);
             }
             self.last_clock = clock;
             changed = true;
@@ -1112,26 +1071,4 @@ fn main() {
             bar_w: Cell::new(1280),
         }),
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn notification_age_uses_locale_time_not_english_relative_text() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap();
-        let recent = notification_age_label(now.saturating_sub(90));
-        let older = notification_age_label(now.saturating_sub(172_800));
-
-        for label in [recent, older] {
-            let lower = label.to_ascii_lowercase();
-            assert!(!lower.contains("ago"));
-            assert!(!lower.contains("yesterday"));
-            assert_ne!(lower, "now");
-        }
-    }
 }
