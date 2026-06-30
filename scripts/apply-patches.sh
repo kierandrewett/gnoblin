@@ -9,17 +9,19 @@
 # never accumulates state.
 set -euo pipefail
 
-PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell>}"
+PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell|slint>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 
 case "$PROJ" in
   mutter)               TAG="49.5" ;;
   gnome-shell)          TAG="49.6" ;;
+  slint)                TAG="v1.16.1" ;;
   *) echo "unknown subproject: $PROJ" >&2; exit 1 ;;
 esac
 
-[ -d "$SM/.git" ] || { echo "submodule $PROJ not initialised; run 'just init'" >&2; exit 1; }
+git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 \
+  || { echo "submodule $PROJ not initialised; run 'just init'" >&2; exit 1; }
 
 echo ">> resetting $PROJ to pristine tag $TAG"
 git -C "$SM" am --abort >/dev/null 2>&1 || true

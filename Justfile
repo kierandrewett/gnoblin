@@ -10,7 +10,7 @@
 set shell := ["bash", "-uc"]
 
 # gnome-shell and the old settings panel are retired.
-patch_projects := "mutter"
+patch_projects := "mutter slint"
 rpm_projects := "mutter"
 
 # Local dev prefix: the whole gnoblin stack is built+installed here for the devkit.
@@ -24,6 +24,7 @@ init:
     git submodule update --init --recursive
     @echo "mutter               -> $(git -C subprojects/mutter               describe --tags)"
     @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags)"
+    @echo "slint                -> $(git -C subprojects/slint                describe --tags)"
 
 # Apply the patch series to a subproject (resets it to the pinned tag first).
 patch PROJ:
@@ -37,7 +38,7 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; slint) t=v1.16.1;; *) echo "unknown {{PROJ}}"; exit 1;; esac
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"
