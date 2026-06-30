@@ -49,6 +49,10 @@ export component ContextMenu {
     in property <image>      backdrop;
     in property <length>     backdrop-screen-w: 1px;
     in property <length>     backdrop-screen-h: 1px;
+    // Screen-y of the host surface's top edge (negative), so the slice samples
+    // the correct band of wallpaper even though the menu lives in a surface
+    // anchored at the bottom of the screen.
+    in property <length>     backdrop-offset-y: 0px;
     in property <length>     menu-x: 0px;
     in property <length>     menu-y: 0px;
 
@@ -169,20 +173,24 @@ export component ContextMenu {
         border-radius: Tokens.menu-corner-radius;
         clip: true;
 
-        // Backdrop slice — the full-screen blurred wallpaper, offset
-        // by `-menu-x / -menu-y` so the slice that lands inside the
-        // rounded clip is the slice that's actually behind us on
-        // screen. (Same trick the dock pill uses.)
+        // Backdrop slice — same glass scheme as the popouts. The full-screen
+        // pre-blurred wallpaper, offset so the slice landing in the rounded clip
+        // is the region actually behind the menu ON SCREEN. The menu lives in the
+        // dock's bottom-anchored surface, so we offset by BOTH the surface's
+        // screen position (`backdrop-offset-y`) and the menu's position within it
+        // — without the surface offset the slice sampled the wrong band of
+        // wallpaper, which is why it didn't match the dock/popouts.
+        // (The dock pill itself gets real compositor blur because the dock's blur
+        // effect covers the pill; the menu sits in the surface headroom that the
+        // effect doesn't reach, hence the slice.)
         Image {
             x: -root.menu-x;
-            y: -root.menu-y;
+            y: root.backdrop-offset-y - root.menu-y;
             width: root.backdrop-screen-w;
             height: root.backdrop-screen-h;
             source: root.backdrop;
             image-fit: fill;
         }
-        // Theme tint over the backdrop. Drops the alpha versus the
-        // old pre-blur values so the wallpaper actually shows through.
         Rectangle {
             width: parent.width;
             height: parent.height;
