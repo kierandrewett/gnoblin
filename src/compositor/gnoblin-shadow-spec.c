@@ -93,7 +93,7 @@ gboolean gnoblin_shadow_parse_css_color(const char* s, float out[4]) {
     return FALSE;
 }
 
-gboolean gnoblin_shadow_parse_layer(const char* s, GnoblinShadowLayer* out) {
+static gboolean parse_shadow_layer(const char* s, GnoblinShadowLayer* out) {
     const char *color = NULL, *c;
     g_autofree char* numpart = NULL;
     char *tok, *save = NULL;
@@ -150,7 +150,7 @@ int gnoblin_shadow_parse_box_shadow(const char* css, GnoblinShadowLayer* layers,
 
         if ((*p == ',' && depth == 0) || *p == '\0') {
             g_autofree char* seg = g_strndup(start, p - start);
-            if (count < max && gnoblin_shadow_parse_layer(g_strstrip(seg), &layers[count]))
+            if (count < max && parse_shadow_layer(g_strstrip(seg), &layers[count]))
                 count++;
             start = p + 1;
             if (*p == '\0')
@@ -161,7 +161,7 @@ int gnoblin_shadow_parse_box_shadow(const char* css, GnoblinShadowLayer* layers,
     return count;
 }
 
-float gnoblin_shadow_layer_reach(const GnoblinShadowLayer* layer) {
+static float shadow_layer_reach(const GnoblinShadowLayer* layer) {
     if (!layer)
         return 0.0f;
     return MAX(fabsf(layer->offset_x), fabsf(layer->offset_y)) + layer->blur +
@@ -175,7 +175,7 @@ float gnoblin_shadow_pad_for_layers(const GnoblinShadowLayer* layers, int count)
         return 0.0f;
 
     for (int i = 0; i < count; i++)
-        pad = MAX(pad, gnoblin_shadow_layer_reach(&layers[i]));
+        pad = MAX(pad, shadow_layer_reach(&layers[i]));
 
     return ceilf(pad) + 4.0f;
 }
