@@ -49,8 +49,9 @@ char* gnoblin_config_get_string(const char* section, const char* key); /* g_free
  * `exec` in [startup]). g_strfreev, or NULL if none. */
 char** gnoblin_config_get_list(const char* section, const char* key);
 
-/* Every key in `[section]`, in file order (e.g. each accelerator in [bind] or
- * connector in [output]). g_strfreev, or NULL if the section is empty/absent. */
+/* Every key in `[section]`, in file order, including repeated keys (e.g. each
+ * accelerator in [bind] or connector in [output]). g_strfreev, or NULL if the
+ * section is empty/absent. */
 char** gnoblin_config_get_keys(const char* section);
 
 G_END_DECLS

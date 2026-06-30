@@ -16,8 +16,10 @@ to understand where a feature lives.
   used by topbar, dock, wallpaper, notifications, OSD, launcher, and related UI
   surfaces.
 - `config/` is the shared C config parser. It is used by both the compositor and
-  some Mutter protocol overlays, so keep it C-compatible.
-- `data/` is installed runtime data: the default `gnoblin.conf.example`, schemas,
+  some Mutter protocol overlays, so keep it C-compatible and byte-compatible
+  with the Rust mirror in `clients/shell-ui/src/config.rs`.
+- `data/` is installed runtime data: `gnoblin.conf.example`, the embedded
+  `gnoblin.defaults.conf` base layer, quick-settings plugin commands, schemas,
   and manifests.
 
 ## Common Tasks
@@ -34,8 +36,14 @@ to understand where a feature lives.
 - Changing cross-client helpers: use `clients/shell-ui/src/`. That crate owns
   desktop entry launching, app context menus, appmenu/DBusMenu helpers, shell
   D-Bus wrappers, config helpers, theme data, tray, and popout models.
-- Changing shipped defaults: update `data/gnoblin.conf.example` and the relevant
-  config parser tests.
+- Changing the config parser or grammar: start in `config/`; keep the C parser,
+  Rust mirror, and parser tests in lockstep.
+- Changing shipped defaults: update `data/gnoblin.defaults.conf` for the runtime
+  base layer, `data/gnoblin.conf.example` for the user-facing reference, and the
+  relevant config parser tests.
+- Changing built-in quick-settings tiles: update the `[qs-plugin.*]` defaults in
+  `data/gnoblin.defaults.conf` and the matching `data/plugins/gnoblin-qs-*`
+  command.
 
 ## Generated Or Heavy Directories
 
