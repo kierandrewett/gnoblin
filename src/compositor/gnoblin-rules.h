@@ -70,6 +70,12 @@ typedef struct {
     /* Keep effects while maximized/fullscreen (off by default to match today). */
     gboolean keep_rounded_for_maximized;
     gboolean keep_rounded_for_fullscreen;
+
+    /* Popup surface: the compositor installs a modal grab on map and dismisses
+     * (closes) it on an outside button-press or Escape — so on-demand surfaces
+     * (menus, the launcher, popouts) can be content-sized and let the compositor
+     * own their chrome instead of hand-rolling a full-screen catcher in Slint. */
+    gboolean is_popup;
 } GnoblinEffects;
 
 /* Match `window` against [window-rules] and apply its geometry/workspace/state

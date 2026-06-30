@@ -30,6 +30,7 @@ typedef struct {
     int inactive_opacity; /* unfocused opacity %, or -1 */
     gboolean no_round;
     gboolean no_shadow;
+    gboolean popup; /* modal: compositor grabs + dismisses on outside-click/Esc */
 
     /* Per-rule effect overrides. Each *_set flag says "a rule touched this", so
      * the resolver knows to override the global default. */
@@ -311,6 +312,8 @@ static void apply_action(MetaWindow* window, GnoblinRuleHints* hints, const char
             hints->inactive_opacity = opacity;
     } else if (!g_strcmp0(verb, "no-shadow")) {
         hints->no_shadow = TRUE;
+    } else if (!g_strcmp0(verb, "popup")) {
+        hints->popup = TRUE;
     } else if (!g_strcmp0(verb, "no-round")) {
         hints->no_round = TRUE;
         hints->rounding_set = TRUE;
@@ -647,6 +650,7 @@ void gnoblin_rules_effects(MetaWindow* window, GnoblinEffects* out) {
         out->blur_alpha_threshold = hints->blur_threshold;
     if (hints->no_shadow)
         out->shadow_enabled = FALSE;
+    out->is_popup = hints->popup;
 
     /* gnoblin's own chrome (^gnoblin-*) is a full-screen / full-width layer
      * surface whose VISIBLE UI is drawn by Slint INSIDE it (the dock pill, the
