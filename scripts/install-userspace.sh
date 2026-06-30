@@ -21,7 +21,7 @@ target_dir="$(
   cargo metadata --format-version 1 --no-deps --manifest-path "$ws" |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
 )"
-for bin in gnoblin-topbar gnoblin-dock gnoblin-window-menu gnoblin-wallpaper \
+for bin in gnoblin-topbar gnoblin-dock gnoblin-menu gnoblin-window-menu gnoblin-wallpaper \
            gnoblin-notifyd gnoblin-osd gnoblin-launcher gnoblin-night-light \
            gnoblin-power-menu; do
   install -m755 "$target_dir/release/$bin" "$PREFIX/bin/$bin" \

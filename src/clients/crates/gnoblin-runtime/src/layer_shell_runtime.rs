@@ -215,13 +215,27 @@ pub trait BarApp {
     fn key_pressed(&mut self, _text: &slint::SharedString) {}
 }
 
+/// Margins passed to wlr-layer-shell, in logical px.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct BarMargins {
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub left: i32,
+}
+
 /// Where + how big the layer-shell surface is.
 pub struct BarConfig {
     pub namespace: &'static str,
     pub anchor: Anchor,
     pub layer: Layer,
+    /// Logical width in px. 0 keeps the historical behaviour: span between
+    /// horizontal anchors, or let the compositor choose when both edges are used.
+    pub width: u32,
     /// Logical height in px (width spans the anchored edges).
     pub height: u32,
+    /// Edge margins in logical px, applied before the first layer configure.
+    pub margins: BarMargins,
     /// Reserved work-area edge in px (0 = none).
     pub exclusive_zone: i32,
     /// Make the surface span the whole output (anchored on all edges) while the
@@ -243,7 +257,9 @@ impl Default for BarConfig {
             namespace: "gnoblin-bar",
             anchor: Anchor::TOP,
             layer: Layer::Top,
+            width: 0,
             height: 34,
+            margins: BarMargins::default(),
             exclusive_zone: 0,
             full_height: false,
             input_passthrough: false,
@@ -1415,8 +1431,14 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
         layer.set_size(0, 1 << 16);
     } else {
         layer.set_anchor(config.anchor);
-        layer.set_size(0, config.height);
+        layer.set_size(config.width, config.height);
     }
+    layer.set_margin(
+        config.margins.top,
+        config.margins.right,
+        config.margins.bottom,
+        config.margins.left,
+    );
     layer.set_exclusive_zone(config.exclusive_zone);
     layer.set_keyboard_interactivity(if config.keyboard {
         KeyboardInteractivity::Exclusive
@@ -1434,7 +1456,7 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
         conn: conn.clone(),
         pointer: None,
         keyboard: None,
-        width: 1280,
+        width: if config.width > 0 { config.width } else { 1280 },
         height: config.height.max(1),
         scale: 1,
         configured: false,

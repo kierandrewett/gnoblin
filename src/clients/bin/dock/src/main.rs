@@ -1,9 +1,7 @@
 //! gnoblin-dock — de's Dock as a bottom wlr-layer-shell client.
 //!
-//! The surface is taller than the visible dock band (BAND_H) by HEADROOM, so a
-//! right-click context menu renders above an icon inside our own surface. The
-//! band is bottom-anchored; the headroom is click-through — `input_rects()`
-//! restricts pointer input to the band (+ the open menu).
+//! The surface is the visible dock band. App context menus are separate
+//! content-sized layer-shell popup surfaces owned by `gnoblin-menu`.
 use gnoblin_core::config::Config;
 use gnoblin_core::{file_mtime, RuntimeError};
 use gnoblin_runtime::app_context_menu;
@@ -13,24 +11,20 @@ use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
-// This client's own Slint UI (DockBar, DockItem, MenuItem, Theme, TokenMode).
+// This client's own Slint UI (DockBar, DockItem, Theme, TokenMode).
 slint::include_modules!();
 
 /// Visible dock band height (pill + outer padding) — matches Tokens.dock-height.
 const BAND_H: f32 = 96.0;
 /// Logical app icon size in Dock.slint/Tokens.slint.
 const DOCK_ICON_SIZE: u32 = 48;
-/// Click-through headroom above the band, room for the right-click menu.
-const HEADROOM: i32 = 360;
-/// Total surface height = band + headroom.
-const SURFACE_H: f32 = BAND_H + HEADROOM as f32;
-
-type MenuRect = (i32, i32, i32, i32);
-type SharedMenuGeom = Rc<Cell<Option<MenuRect>>>;
+/// Gap between the compositor-owned app menu and the dock band.
+const MENU_GAP: i32 = 6;
 
 struct DockApp {
     dock: Option<DockBar>,
@@ -43,12 +37,8 @@ struct DockApp {
     // Shared with the Slint callbacks (which are 'static closures):
     surface_w: Rc<Cell<u32>>,
     running: Rc<RefCell<Vec<String>>>,
-    menu_geom: SharedMenuGeom,
-    menu_target: Rc<RefCell<String>>,
-    // Current favourite ids (for the menu's pinned check) + a flag the menu sets
-    // to ask tick() to reload favourites after a pin/unpin.
+    // Current favourite ids, used for the spawned menu's pinned check.
     fav_ids: Rc<RefCell<Vec<String>>>,
-    needs_reload: Rc<Cell<bool>>,
     config_path: Option<PathBuf>,
     config_mtime: Option<SystemTime>,
     pins_path: Option<PathBuf>,
@@ -85,52 +75,8 @@ fn apply_backdrop(d: &DockBar, screen_w: u32, screen_h: u32) {
     d.set_backdrop_offset_y(-((screen_h as f32) - BAND_H));
 }
 
-/// Pixel height the ContextMenu self-sizes to: 30 px rows + 2 px inter-row
-/// spacing, plus the 12 px container inset (mirrors ContextMenu.slint).
-fn menu_height(items: &[MenuItem]) -> f32 {
-    let normal = items.iter().filter(|i| !i.separator).count() as f32;
-    let seps = items.iter().filter(|i| i.separator).count() as f32;
-    let rows = normal + seps;
-    normal * 30.0 + seps * 9.0 + (rows - 1.0).max(0.0) * 2.0 + 12.0
-}
-
-/// Open the menu for `app_id` anchored under `anchor_x` (window-space slot
-/// centre). Sets the Slint props and records the menu rect for `input_rects()`.
-#[allow(clippy::too_many_arguments)]
-fn open_menu(
-    d: &DockBar,
-    surface_w: u32,
-    menu_geom: &Cell<Option<MenuRect>>,
-    menu_target: &RefCell<String>,
-    app_id: &str,
-    is_running: bool,
-    is_pinned: bool,
-    anchor_x: f32,
-) {
-    let items: Vec<MenuItem> = app_context_menu::build(app_id, is_running, is_pinned)
-        .into_iter()
-        .map(|it| MenuItem {
-            id: it.id,
-            label: it.label.into(),
-            accelerator: "".into(),
-            separator: it.separator,
-            submenu: it.submenu,
-            enabled: it.enabled,
-        })
-        .collect();
-    let mh = menu_height(&items);
-    let w = 220.0_f32;
-    let x = (anchor_x - w / 2.0).clamp(8.0, (surface_w as f32 - w - 8.0).max(8.0));
-    let y = (SURFACE_H - BAND_H - mh - 6.0).max(8.0);
-    menu_geom.set(Some((x as i32, y as i32, w as i32, mh.ceil() as i32)));
-    *menu_target.borrow_mut() = app_id.to_string();
-    d.set_menu_items(Rc::new(slint::VecModel::from(items)).into());
-    d.set_menu_anchor_x(anchor_x);
-    d.set_menu_open(true);
-}
-
 impl DockApp {
-    /// Reload favourites after a pin/unpin (the menu closure sets `needs_reload`).
+    /// Reload favourites after an external pin/unpin updates the pins file.
     fn reload_favs(&mut self) {
         self.favs = default_favourites();
         *self.fav_ids.borrow_mut() = app_context_menu::favorite_ids_from_config();
@@ -206,16 +152,9 @@ impl BarApp for DockApp {
             .map_err(|e| gnoblin_core::runtime_error(format!("DockBar::new: {e}")))?;
 
         // Left-click: focus the app if it's already running, else launch it.
-        // Also dismiss any open menu.
         {
-            let weak = dock.as_weak();
-            let geom = self.menu_geom.clone();
             let running = self.running.clone();
             dock.on_icon_clicked(move |app_id| {
-                if let Some(d) = weak.upgrade() {
-                    d.set_menu_open(false);
-                }
-                geom.set(None);
                 let is_running = running
                     .borrow()
                     .iter()
@@ -227,16 +166,12 @@ impl BarApp for DockApp {
                 }
             });
         }
-        // Right-click opens the Open/Close menu under the icon.
+        // Right-click spawns a compositor-chromed popup menu under the icon.
         {
-            let weak = dock.as_weak();
             let running = self.running.clone();
             let sw = self.surface_w.clone();
-            let geom = self.menu_geom.clone();
-            let target = self.menu_target.clone();
             let fav_ids = self.fav_ids.clone();
             dock.on_icon_right_clicked(move |app_id, anchor_x| {
-                let Some(d) = weak.upgrade() else { return };
                 let is_running = running
                     .borrow()
                     .iter()
@@ -245,44 +180,7 @@ impl BarApp for DockApp {
                     .borrow()
                     .iter()
                     .any(|f| shell::matches(f, app_id.as_str()));
-                open_menu(
-                    &d,
-                    sw.get(),
-                    &geom,
-                    &target,
-                    app_id.as_str(),
-                    is_running,
-                    is_pinned,
-                    anchor_x,
-                );
-            });
-        }
-        // Menu item chosen → act, then close.
-        {
-            let weak = dock.as_weak();
-            let geom = self.menu_geom.clone();
-            let target = self.menu_target.clone();
-            let needs_reload = self.needs_reload.clone();
-            dock.on_menu_item_clicked(move |id| {
-                let app = target.borrow().clone();
-                if app_context_menu::activate(&app, id) {
-                    needs_reload.set(true); // tick() reloads favourites
-                }
-                if let Some(d) = weak.upgrade() {
-                    d.set_menu_open(false);
-                }
-                geom.set(None);
-            });
-        }
-        // Outside-click dismiss.
-        {
-            let weak = dock.as_weak();
-            let geom = self.menu_geom.clone();
-            dock.on_menu_dismiss(move || {
-                if let Some(d) = weak.upgrade() {
-                    d.set_menu_open(false);
-                }
-                geom.set(None);
+                spawn_context_menu(app_id.as_str(), is_running, is_pinned, anchor_x, sw.get());
             });
         }
 
@@ -301,16 +199,7 @@ impl BarApp for DockApp {
             let is_running = std::env::var("GNOBLIN_DOCK_MENU_RUNNING").is_ok();
             let anchor = self.surface_w.get() as f32 / 2.0;
             let is_pinned = app_context_menu::is_pinned(&app);
-            open_menu(
-                &dock,
-                self.surface_w.get(),
-                &self.menu_geom,
-                &self.menu_target,
-                &app,
-                is_running,
-                is_pinned,
-                anchor,
-            );
+            spawn_context_menu(&app, is_running, is_pinned, anchor, self.surface_w.get());
         }
 
         self.dock = Some(dock);
@@ -350,12 +239,6 @@ impl BarApp for DockApp {
         if let Some(state) = latest {
             self.state = state;
             self.rebuild();
-            changed = true;
-        }
-
-        // A pin/unpin from the menu wrote the pins file — reload favourites.
-        if self.needs_reload.replace(false) {
-            self.reload_favs();
             changed = true;
         }
 
@@ -419,18 +302,6 @@ impl BarApp for DockApp {
     fn window(&self) -> Option<&slint::Window> {
         self.dock.as_ref().map(|d| d.window())
     }
-
-    fn input_rects(&self) -> Option<Vec<(i32, i32, i32, i32)>> {
-        let w = self.surface_w.get() as i32;
-        // While the menu is open, grab the whole surface so the full-surface
-        // dismiss catcher (behind the menu) receives outside-clicks.
-        if self.menu_geom.get().is_some() {
-            return Some(vec![(0, 0, w, SURFACE_H as i32)]);
-        }
-        // Otherwise only the band (bottom strip) is interactive; the headroom
-        // above it is click-through.
-        Some(vec![(0, HEADROOM, w, BAND_H as i32)])
-    }
 }
 
 /// Pinned apps for the dock. Read from `[dock] favorites` in gnoblin.conf
@@ -459,6 +330,40 @@ fn launch(app_id: &str) {
     gnoblin_desktop::launch_desktop_app(app_id);
 }
 
+fn spawn_context_menu(
+    app_id: &str,
+    is_running: bool,
+    is_pinned: bool,
+    anchor_x: f32,
+    screen_w: u32,
+) {
+    match Command::new("gnoblin-menu")
+        .arg("--app-id")
+        .arg(app_id)
+        .arg("--running")
+        .arg(if is_running { "1" } else { "0" })
+        .arg("--pinned")
+        .arg(if is_pinned { "1" } else { "0" })
+        .arg("--anchor-x")
+        .arg(format!("{}", anchor_x.round() as i32))
+        .arg("--screen-width")
+        .arg(screen_w.to_string())
+        .arg("--bottom-margin")
+        .arg(format!("{}", BAND_H as i32 + MENU_GAP))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(e) => eprintln!("gnoblin-dock: failed to spawn gnoblin-menu: {e}"),
+    }
+}
+
 fn main() {
     let (wtx, wrx) = std::sync::mpsc::channel();
     shell::spawn(wtx);
@@ -472,11 +377,12 @@ fn main() {
             namespace: "gnoblin-dock",
             anchor: Anchor::BOTTOM.union(Anchor::LEFT).union(Anchor::RIGHT),
             layer: Layer::Top,
-            height: SURFACE_H as u32,
+            height: BAND_H as u32,
             exclusive_zone: BAND_H as i32,
             full_height: false,
             input_passthrough: false,
             keyboard: false,
+            ..BarConfig::default()
         },
         Box::new(DockApp {
             dock: None,
@@ -487,10 +393,7 @@ fn main() {
             test_clicked: false,
             surface_w: Rc::new(Cell::new(1280)),
             running: Rc::new(RefCell::new(Vec::new())),
-            menu_geom: Rc::new(Cell::new(None)),
-            menu_target: Rc::new(RefCell::new(String::new())),
             fav_ids: Rc::new(RefCell::new(Vec::new())),
-            needs_reload: Rc::new(Cell::new(false)),
             config_path,
             config_mtime,
             pins_path,

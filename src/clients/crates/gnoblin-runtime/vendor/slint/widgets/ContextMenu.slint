@@ -29,6 +29,10 @@ export component ContextMenu {
     /// Whether the menu is open. Caller flips to `false` on item click or
     /// outside-click; the menu fades out via the animate block.
     in property <bool>       open: false;
+    /// True when the compositor owns the popup surface chrome (rounding, border,
+    /// shadow, and real content-behind blur). The menu still draws its translucent
+    /// tint and rows.
+    in property <bool>       chrome-by-compositor: false;
     /// Keyboard-selected row index. -1 means no selection (cold open).
     /// Driven by Rust on Up/Down arrow input while the menu is open;
     /// rendered as a highlight identical to the hover state. The pointer
@@ -153,6 +157,7 @@ export component ContextMenu {
         y: 0;
         width: parent.width;
         height: parent.height;
+        visible: !root.chrome-by-compositor;
         background: Theme.chrome-shadow-source;
         border-radius: Tokens.menu-corner-radius;
         drop-shadow-blur: Tokens.menu-shadow-blur;
@@ -170,8 +175,8 @@ export component ContextMenu {
         // surface colour at translucent alpha — combination reads as
         // "glass over the wallpaper".
         background: transparent;
-        border-radius: Tokens.menu-corner-radius;
-        clip: true;
+        border-radius: root.chrome-by-compositor ? 0px : Tokens.menu-corner-radius;
+        clip: !root.chrome-by-compositor;
 
         // Backdrop slice — same glass scheme as the popouts. The full-screen
         // pre-blurred wallpaper, offset so the slice landing in the rounded clip
@@ -190,6 +195,7 @@ export component ContextMenu {
             height: root.backdrop-screen-h;
             source: root.backdrop;
             image-fit: fill;
+            visible: !root.chrome-by-compositor;
         }
         Rectangle {
             width: parent.width;
@@ -203,6 +209,7 @@ export component ContextMenu {
             width: parent.width - 2 * Tokens.menu-corner-radius;
             height: Tokens.chrome-highlight-height;
             background: Theme.menu-highlight;
+            visible: !root.chrome-by-compositor;
         }
 
         items-col := VerticalLayout {
@@ -353,6 +360,7 @@ export component ContextMenu {
         border-radius: Tokens.menu-corner-radius - Tokens.chrome-hairline-width;
         border-width: Tokens.chrome-hairline-width;
         border-color: Theme.menu-border;
+        visible: !root.chrome-by-compositor;
     }
     }
 }

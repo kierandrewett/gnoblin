@@ -1517,6 +1517,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-menu"
+version = "0.1.0"
+dependencies = [
+ "gnoblin-core",
+ "gnoblin-runtime",
+ "slint",
+ "slint-build",
+ "smithay-client-toolkit",
+]
+
+[[package]]
 name = "gnoblin-night-light"
 version = "0.1.0"
 dependencies = [
