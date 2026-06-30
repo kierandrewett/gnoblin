@@ -1,10 +1,17 @@
 //! gnoblin-topbar — de's Panel as a top wlr-layer-shell client.
+mod notifications;
+mod quick_settings;
+mod settings;
+
 use gnoblin_shell_ui::app_context_menu;
 use gnoblin_shell_ui::appmenu::{self, BarEntry, MenuAddr, MenuCommand, MenuReply};
 use gnoblin_shell_ui::config::Config;
 use gnoblin_shell_ui::shell::{self, WindowState};
 use gnoblin_shell_ui::tray::{self, TrayCommand, TrayItem};
 use gnoblin_shell_ui::{datetime, file_mtime, find_icon, run, BarApp, BarConfig, RuntimeError};
+use settings::{
+    topbar_settings, TopbarCommands, TopbarGeometry, TopbarLayout, WidgetSpec, DEFAULT_CLOCK_FORMAT,
+};
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
@@ -12,62 +19,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 // This client's own Slint UI (TopBar + the structs it uses + Theme/TokenMode).
 slint::include_modules!();
 
-const DEFAULT_CLOCK_FORMAT: &str = "%a %d %b  %H:%M:%S";
-
 /// The focused window's menu address + its bar entries, shared with the
 /// global-menu click handler so a click can resolve to a (group, menu).
 type MenuState = Rc<RefCell<(MenuAddr, Vec<BarEntry>)>>;
-
-#[derive(Clone, PartialEq, Eq)]
-struct TopbarCommands {
-    launcher: String,
-    account: String,
-    settings: String,
-    power: String,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct WidgetSpec {
-    kind: i32,
-    flex: i32,
-    size: i32,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct TopbarLayout {
-    left: Vec<WidgetSpec>,
-    center: Vec<WidgetSpec>,
-    right: Vec<WidgetSpec>,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct TopbarGeometry {
-    width: i32,
-    align: i32,
-    offset_x: i32,
-    padding_left: i32,
-    padding_right: i32,
-    clock_padding: i32,
-    status_padding: i32,
-    status_icon_gap: i32,
-    cc_offset_x: i32,
-    cc_offset_y: i32,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct TopbarSettings {
-    commands: TopbarCommands,
-    layout: TopbarLayout,
-    geometry: TopbarGeometry,
-    height: i32,
-    exclusive_zone: i32,
-    clock_format: String,
-}
 
 /// Open state + displayed calendar month for the topbar popouts.
 #[derive(Default)]
@@ -218,197 +177,6 @@ fn app_menu_model(app_id: &str, running: bool) -> slint::ModelRc<MenuItem> {
             })
             .collect();
     Rc::new(slint::VecModel::from(items)).into()
-}
-
-/// Push a quick-settings snapshot into the control-centre popout + the status
-/// cluster (network glyph, mute). Shared by the one-shot read and the poller.
-/// Topbar status cluster (network glyph + mute icon) — independent of the CC
-/// tile grid, so it's set separately from the tile model.
-fn apply_cluster(p: &TopBar, st: &gnoblin_shell_ui::quicksettings::QuickState) {
-    // Cluster network glyph: wired wins when both are up (the active route, as
-    // GNOME does); else wifi; else disconnected. GNOBLIN_NET_MODE overrides for
-    // headless validation of the wifi/disconnected variants.
-    let net_mode = std::env::var("GNOBLIN_NET_MODE")
-        .ok()
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(if st.wired {
-            1
-        } else if st.wifi {
-            2
-        } else {
-            0
-        });
-    p.set_network_mode(net_mode);
-    // GNOBLIN_AUDIO_MUTED overrides for headless validation of the mute glyph.
-    let muted = std::env::var("GNOBLIN_AUDIO_MUTED")
-        .map(|v| v == "1")
-        .unwrap_or(st.muted);
-    p.set_audio_muted(muted);
-}
-
-/// One built-in tile. Its glyph is named (resolved to a bundled symbolic asset
-/// in Slint via QsIcons.glyph), not a pre-loaded image.
-#[allow(clippy::too_many_arguments)]
-/// Greedily pack tiles into rows of a 4-wide span grid, wrapping when the next
-/// tile would overflow the row's 4 columns.
-fn pack_rows(tiles: Vec<QsTile>) -> Vec<QsTileRow> {
-    let mut rows: Vec<Vec<QsTile>> = Vec::new();
-    let mut cur: Vec<QsTile> = Vec::new();
-    let mut used = 0;
-    for t in tiles {
-        let span = t.span.clamp(1, 4);
-        if used + span > 4 && !cur.is_empty() {
-            rows.push(std::mem::take(&mut cur));
-            used = 0;
-        }
-        used += span;
-        cur.push(t);
-        if used >= 4 {
-            rows.push(std::mem::take(&mut cur));
-            used = 0;
-        }
-    }
-    if !cur.is_empty() {
-        rows.push(cur);
-    }
-    rows.into_iter()
-        .map(|tiles| QsTileRow {
-            tiles: Rc::new(slint::VecModel::from(tiles)).into(),
-        })
-        .collect()
-}
-
-/// Build the unified tile list: the dogfooded built-ins (synthesised from live
-/// state) followed by every ready plugin tile. One model, one render path, no
-/// "Plugins" section — see the unified-grid design note.
-fn build_qs_tiles(plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) -> Vec<QsTile> {
-    // EVERY tile is a config-declared async plugin — there are no hardcoded
-    // built-ins. Render the host's snapshot in its order (the host preserves the
-    // declared/`[quicksettings] order` order; see qsplugin::load_configs).
-    let mut tiles = Vec::new();
-    for pl in plugins {
-        let spec = &pl.update.tile;
-        let layout = if spec.layout.is_empty() {
-            "toggle"
-        } else {
-            spec.layout.as_str()
-        };
-        let span = if spec.span == 0 {
-            if layout == "toggle" {
-                2
-            } else {
-                4
-            }
-        } else {
-            spec.span
-        };
-        let rows: Vec<QsMenuRow> = pl
-            .update
-            .menu
-            .as_ref()
-            .map(|m| {
-                m.rows
-                    .iter()
-                    .map(|r| QsMenuRow {
-                        id: r.id.clone().into(),
-                        kind: r.kind.clone().into(),
-                        label: r.label.clone().into(),
-                        sublabel: r.sublabel.clone().into(),
-                        icon: find_icon(&r.icon, "").unwrap_or_default(),
-                        value: r.value,
-                        on: r.on,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        tiles.push(QsTile {
-            id: pl.id.clone().into(),
-            span,
-            layout: layout.into(),
-            icon_name: String::new().into(),
-            icon: find_icon(&spec.icon, "").unwrap_or_default(),
-            title: spec.title.clone().into(),
-            subtitle: spec.subtitle.clone().into(),
-            active: spec.active,
-            chevron: spec.chevron || !rows.is_empty(),
-            // Clamp to the track range: a slider plugin (e.g. gnoblin-qs-output)
-            // can report >1.0 for an over-amplified PipeWire volume, which would
-            // overdraw the fill past the track.
-            value: spec.value.clamp(0.0, 1.0),
-            rows: Rc::new(slint::VecModel::from(rows)).into(),
-        });
-    }
-
-    tiles
-}
-
-/// Push the unified CC tile model + status cluster from a known state snapshot.
-fn push_cc_tiles(
-    p: &TopBar,
-    st: &gnoblin_shell_ui::quicksettings::QuickState,
-    plugins: &[gnoblin_shell_ui::qsplugin::PluginState],
-) {
-    apply_cluster(p, st);
-    let tiles = build_qs_tiles(plugins);
-    // If a slide-out submenu is open, refresh its rows from the freshly-built
-    // model so a plugin update mid-open doesn't leave the page showing a stale
-    // snapshot (the rows were captured when the chevron was tapped).
-    let open = p.get_cc_open_submenu().to_string();
-    if !open.is_empty() {
-        if let Some(t) = tiles.iter().find(|t| t.id == open) {
-            p.set_cc_submenu_rows(t.rows.clone());
-        }
-    }
-    p.set_cc_tiles(Rc::new(slint::VecModel::from(pack_rows(tiles))).into());
-}
-
-/// Re-read live built-in state and rebuild the CC tile grid (used by toggles +
-/// popout-open, where a fresh read is wanted and cheap enough).
-fn refresh_cc_tiles(p: &TopBar, plugins: &[gnoblin_shell_ui::qsplugin::PluginState]) {
-    let st = gnoblin_shell_ui::quicksettings::read();
-    push_cc_tiles(p, &st, plugins);
-}
-
-/// One-shot synchronous read (startup + popout-open, for an immediate refresh).
-fn notification_age_label(timestamp_secs: u64) -> String {
-    if timestamp_secs == 0 {
-        return String::new();
-    }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or_default();
-    let elapsed = now.saturating_sub(timestamp_secs);
-    let format = if elapsed < 86_400 { "%H:%M" } else { "%x" };
-    datetime::format_unix(timestamp_secs, format).unwrap_or_default()
-}
-
-fn apply_notifications(p: &TopBar) -> gnoblin_shell_ui::notifcenter::Summary {
-    let summary = gnoblin_shell_ui::notifcenter::summary();
-    let entries = gnoblin_shell_ui::notifcenter::history();
-    let items: Vec<NotificationItem> = entries
-        .iter()
-        .take(8)
-        .map(|entry| {
-            let icon = find_icon(&entry.icon_name, "");
-            NotificationItem {
-                app_name: if entry.app_name.is_empty() {
-                    "Notification".into()
-                } else {
-                    entry.app_name.clone().into()
-                },
-                summary: entry.summary.clone().into(),
-                body: entry.body.clone().into(),
-                age: notification_age_label(entry.timestamp_secs).into(),
-                has_icon: icon.is_some(),
-                icon: icon.unwrap_or_default(),
-            }
-        })
-        .collect();
-    let count = summary.count.max(entries.len()).min(i32::MAX as usize) as i32;
-    p.set_cc_notification_count(count);
-    p.set_cc_notifications(Rc::new(slint::VecModel::from(items)).into());
-    summary
 }
 
 struct TopBarApp {
@@ -598,8 +366,8 @@ impl BarApp for TopBarApp {
                 host.borrow().broadcast_open(open);
                 if let Some(p) = weak.upgrade() {
                     if open {
-                        refresh_cc_tiles(&p, &plugins.borrow());
-                        apply_notifications(&p);
+                        quick_settings::refresh(&p, &plugins.borrow());
+                        notifications::apply(&p);
                         p.set_cc_anchor_x(anchor_x);
                     }
                     p.set_cc_open(open);
@@ -747,7 +515,7 @@ impl BarApp for TopBarApp {
                     gnoblin_shell_ui::notifcenter::dismiss_history_index(index as usize);
                 }
                 if let Some(p) = weak.upgrade() {
-                    apply_notifications(&p);
+                    notifications::apply(&p);
                 }
             });
         }
@@ -767,8 +535,8 @@ impl BarApp for TopBarApp {
                 pop.dt_open.set(false);
                 pop.cc_open.set(true);
                 if let Some(p) = weak.upgrade() {
-                    refresh_cc_tiles(&p, &plugins.borrow());
-                    apply_notifications(&p);
+                    quick_settings::refresh(&p, &plugins.borrow());
+                    notifications::apply(&p);
                     p.set_datetime_open(false);
                     p.set_cc_anchor_x(0.0);
                     p.set_cc_open(true);
@@ -934,8 +702,8 @@ impl BarApp for TopBarApp {
             *self.qs_plugins.borrow_mut() = plugins;
         }
         self.qs_state = gnoblin_shell_ui::quicksettings::read();
-        push_cc_tiles(&panel, &self.qs_state, &self.qs_plugins.borrow());
-        self.last_notif_summary = apply_notifications(&panel);
+        quick_settings::push(&panel, &self.qs_state, &self.qs_plugins.borrow());
+        self.last_notif_summary = notifications::apply(&panel);
 
         panel
             .show()
@@ -973,7 +741,7 @@ impl BarApp for TopBarApp {
         if notif_summary != self.last_notif_summary {
             self.last_notif_summary = notif_summary;
             if let Some(p) = &self.panel {
-                apply_notifications(p);
+                notifications::apply(p);
             }
             changed = true;
         }
@@ -993,7 +761,7 @@ impl BarApp for TopBarApp {
             if let Some(p) = &self.panel {
                 p.set_clock_text(clock.clone().into());
                 p.set_date_text("".into());
-                apply_notifications(p);
+                notifications::apply(p);
             }
             self.last_clock = clock;
             changed = true;
@@ -1012,7 +780,7 @@ impl BarApp for TopBarApp {
         if let Some(st) = latest_qs {
             self.qs_state = st;
             if let Some(p) = &self.panel {
-                push_cc_tiles(p, &self.qs_state, &self.qs_plugins.borrow());
+                quick_settings::push(p, &self.qs_state, &self.qs_plugins.borrow());
             }
             changed = true;
         }
@@ -1023,7 +791,7 @@ impl BarApp for TopBarApp {
         if let Some(plugins) = self.qs_host.borrow().poll() {
             *self.qs_plugins.borrow_mut() = plugins;
             if let Some(p) = &self.panel {
-                push_cc_tiles(p, &self.qs_state, &self.qs_plugins.borrow());
+                quick_settings::push(p, &self.qs_state, &self.qs_plugins.borrow());
             }
             changed = true;
         }
@@ -1206,187 +974,6 @@ impl BarApp for TopBarApp {
     }
 }
 
-const WIDGET_SPACER: i32 = 0;
-const WIDGET_SPRING: i32 = 1;
-const WIDGET_SEPARATOR: i32 = 2;
-const WIDGET_WORKSPACES: i32 = 3;
-const WIDGET_FOCUSED_APP: i32 = 4;
-const WIDGET_APPMENU: i32 = 5;
-const WIDGET_CLOCK: i32 = 6;
-const WIDGET_NOTIFICATIONS: i32 = 7;
-const WIDGET_TRAY: i32 = 8;
-const WIDGET_STATUS: i32 = 9;
-const WIDGET_LAUNCHER: i32 = 10;
-
-fn widget(kind: i32) -> WidgetSpec {
-    WidgetSpec {
-        kind,
-        flex: if kind == WIDGET_SPRING { 1 } else { 0 },
-        size: if kind == WIDGET_SPACER { 16 } else { 0 },
-    }
-}
-
-fn parse_widget(raw: &str) -> Option<WidgetSpec> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let (name, arg) = raw
-        .split_once(':')
-        .map(|(name, arg)| (name.trim(), Some(arg.trim())))
-        .unwrap_or((raw, None));
-    let name = name.to_ascii_lowercase();
-    let mut spec = match name.as_str() {
-        "spacer" | "space" => widget(WIDGET_SPACER),
-        "spring" | "flex" | "flexible-spacer" => widget(WIDGET_SPRING),
-        "separator" | "sep" => widget(WIDGET_SEPARATOR),
-        "workspaces" | "workspace" => widget(WIDGET_WORKSPACES),
-        "focused-app" | "focused_app" | "app-title" | "app_title" => widget(WIDGET_FOCUSED_APP),
-        "appmenu" | "global-menu" | "global_menu" => widget(WIDGET_APPMENU),
-        "clock" | "datetime" => widget(WIDGET_CLOCK),
-        "notifications" | "notification" | "bell" => widget(WIDGET_NOTIFICATIONS),
-        "tray" | "status-notifier" | "status_notifier" => widget(WIDGET_TRAY),
-        "status" | "quick-settings" | "quick_settings" | "control-centre" | "control_centre" => {
-            widget(WIDGET_STATUS)
-        }
-        "launcher" | "search" | "spotlight" => widget(WIDGET_LAUNCHER),
-        _ => return None,
-    };
-    if let Some(arg) = arg.and_then(|v| v.parse::<i32>().ok()) {
-        if spec.kind == WIDGET_SPRING {
-            spec.flex = arg.max(1);
-        } else {
-            spec.size = arg.max(0);
-        }
-    }
-    Some(spec)
-}
-
-fn parse_widget_list(cfg: &Config, key: &str, fallback: &[WidgetSpec]) -> Vec<WidgetSpec> {
-    let Some(raw) = cfg.get("topbar", key) else {
-        return fallback.to_vec();
-    };
-    if raw.trim().is_empty() {
-        return Vec::new();
-    }
-    let parsed: Vec<WidgetSpec> = raw.split(',').filter_map(parse_widget).collect();
-    if parsed.is_empty() {
-        fallback.to_vec()
-    } else {
-        parsed
-    }
-}
-
-fn topbar_layout(cfg: &Config) -> TopbarLayout {
-    let default_left = vec![
-        widget(WIDGET_WORKSPACES),
-        widget(WIDGET_FOCUSED_APP),
-        widget(WIDGET_APPMENU),
-        widget(WIDGET_SPRING),
-    ];
-    let default_center = vec![widget(WIDGET_CLOCK)];
-    let default_right = vec![
-        widget(WIDGET_LAUNCHER),
-        widget(WIDGET_TRAY),
-        widget(WIDGET_STATUS),
-    ];
-    TopbarLayout {
-        left: parse_widget_list(cfg, "left", &default_left),
-        center: parse_widget_list(cfg, "center", &default_center),
-        right: parse_widget_list(cfg, "right", &default_right),
-    }
-}
-
-fn config_i32(cfg: &Config, section: &str, key: &str, fallback: i32) -> i32 {
-    cfg.get(section, key)
-        .and_then(parse_i32)
-        .unwrap_or(fallback)
-}
-
-fn config_i32_any(cfg: &Config, section: &str, keys: &[&str], fallback: i32) -> i32 {
-    keys.iter()
-        .find_map(|key| cfg.get(section, key).and_then(parse_i32))
-        .unwrap_or(fallback)
-}
-
-fn parse_i32(raw: &str) -> Option<i32> {
-    raw.trim()
-        .strip_suffix("px")
-        .unwrap_or(raw.trim())
-        .trim()
-        .parse::<i32>()
-        .ok()
-}
-
-fn parse_align(raw: Option<&str>) -> i32 {
-    match raw.unwrap_or("full").trim().to_ascii_lowercase().as_str() {
-        "left" | "start" => 0,
-        "right" | "end" => 2,
-        "center" | "centre" => 1,
-        _ => 1,
-    }
-}
-
-fn topbar_settings() -> TopbarSettings {
-    let cfg = Config::load();
-    let height = config_i32(&cfg, "topbar", "height", 34).max(1);
-    let command = |key: &str, fallback: &str| {
-        cfg.get("topbar", key)
-            .map(str::to_string)
-            .unwrap_or_else(|| fallback.to_string())
-    };
-    let commands = TopbarCommands {
-        launcher: command("launcher", "gnoblin-launcher"),
-        account: command("account", "gnome-control-center users"),
-        settings: command("control_centre", "gnome-control-center"),
-        power: command("power", "gnoblin-power-menu"),
-    };
-    TopbarSettings {
-        commands,
-        layout: topbar_layout(&cfg),
-        geometry: TopbarGeometry {
-            width: config_i32(&cfg, "topbar", "width", 0).max(0),
-            align: parse_align(cfg.get("topbar", "align")),
-            offset_x: config_i32_any(&cfg, "topbar", &["offset-x", "offset_x", "x"], 0),
-            padding_left: config_i32_any(&cfg, "topbar", &["padding-left", "padding_left"], 12)
-                .max(0),
-            padding_right: config_i32_any(&cfg, "topbar", &["padding-right", "padding_right"], 12)
-                .max(0),
-            clock_padding: config_i32_any(&cfg, "topbar", &["clock-padding", "clock_padding"], 12)
-                .max(0),
-            status_padding: config_i32_any(
-                &cfg,
-                "topbar",
-                &["status-padding", "status_padding"],
-                10,
-            )
-            .max(0),
-            status_icon_gap: config_i32_any(
-                &cfg,
-                "topbar",
-                &["status-icon-gap", "status_icon_gap"],
-                10,
-            )
-            .max(0),
-            cc_offset_x: config_i32_any(
-                &cfg,
-                "topbar",
-                &["quick-settings-offset-x", "quick_settings_offset_x"],
-                6,
-            ),
-            cc_offset_y: config_i32_any(
-                &cfg,
-                "topbar",
-                &["quick-settings-offset-y", "quick_settings_offset_y"],
-                -4,
-            ),
-        },
-        height,
-        exclusive_zone: config_i32(&cfg, "topbar", "exclusive_zone", height).max(0),
-        clock_format: command("clock-format", DEFAULT_CLOCK_FORMAT),
-    }
-}
-
 /// Run a shell command detached (for the configurable topbar buttons).
 fn spawn_cmd(cmd: &str) {
     use std::process::{Command, Stdio};
@@ -1484,177 +1071,4 @@ fn main() {
             bar_w: Cell::new(1280),
         }),
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    fn with_config(text: &str, f: impl FnOnce()) {
-        let _guard = env_lock().lock().unwrap();
-        let old = std::env::var("GNOBLIN_CONFIG").ok();
-        let path = std::env::temp_dir().join(format!(
-            "gnoblin-topbar-test-{}-{}.conf",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("unnamed")
-        ));
-        std::fs::write(&path, text).unwrap();
-        std::env::set_var("GNOBLIN_CONFIG", &path);
-
-        f();
-
-        if let Some(old) = old {
-            std::env::set_var("GNOBLIN_CONFIG", old);
-        } else {
-            std::env::remove_var("GNOBLIN_CONFIG");
-        }
-        let _ = std::fs::remove_file(path);
-    }
-
-    fn kinds(widgets: &[WidgetSpec]) -> Vec<i32> {
-        widgets.iter().map(|w| w.kind).collect()
-    }
-
-    #[test]
-    fn missing_widget_zones_use_default_desktop_layout() {
-        with_config("", || {
-            let cfg = Config::load();
-            let layout = topbar_layout(&cfg);
-
-            assert_eq!(
-                kinds(&layout.left),
-                vec![
-                    WIDGET_WORKSPACES,
-                    WIDGET_FOCUSED_APP,
-                    WIDGET_APPMENU,
-                    WIDGET_SPRING,
-                ]
-            );
-            assert_eq!(kinds(&layout.center), vec![WIDGET_CLOCK]);
-            assert_eq!(
-                kinds(&layout.right),
-                vec![WIDGET_LAUNCHER, WIDGET_TRAY, WIDGET_STATUS]
-            );
-        });
-    }
-
-    #[test]
-    fn invalid_nonempty_widget_zones_fall_back_to_defaults() {
-        with_config(
-            "[topbar]\n\
-             left = clcok\n\
-             center = misspelled\n\
-             right = nope\n",
-            || {
-                let cfg = Config::load();
-                let layout = topbar_layout(&cfg);
-
-                assert_eq!(
-                    kinds(&layout.left),
-                    vec![
-                        WIDGET_WORKSPACES,
-                        WIDGET_FOCUSED_APP,
-                        WIDGET_APPMENU,
-                        WIDGET_SPRING,
-                    ]
-                );
-                assert_eq!(kinds(&layout.center), vec![WIDGET_CLOCK]);
-                assert_eq!(
-                    kinds(&layout.right),
-                    vec![WIDGET_LAUNCHER, WIDGET_TRAY, WIDGET_STATUS]
-                );
-            },
-        );
-    }
-
-    #[test]
-    fn topbar_settings_reads_clock_and_geometry_config() {
-        with_config(
-            "[topbar]\n\
-             clock-format = %x %X\n\
-             width = 900px\n\
-             align = right\n\
-             offset-x = -6px\n\
-             padding-left = 10px\n\
-             padding-right = 6px\n\
-             clock-padding = 18px\n\
-             status-padding = 3px\n\
-             status-icon-gap = 4px\n\
-             quick-settings-offset-x = 8px\n\
-             quick-settings-offset-y = -6px\n",
-            || {
-                let settings = topbar_settings();
-                assert_eq!(settings.clock_format, "%x %X");
-                assert_eq!(settings.geometry.width, 900);
-                assert_eq!(settings.geometry.align, 2);
-                assert_eq!(settings.geometry.offset_x, -6);
-                assert_eq!(settings.geometry.padding_left, 10);
-                assert_eq!(settings.geometry.padding_right, 6);
-                assert_eq!(settings.geometry.clock_padding, 18);
-                assert_eq!(settings.geometry.status_padding, 3);
-                assert_eq!(settings.geometry.status_icon_gap, 4);
-                assert_eq!(settings.geometry.cc_offset_x, 8);
-                assert_eq!(settings.geometry.cc_offset_y, -6);
-            },
-        );
-    }
-
-    #[test]
-    fn notification_age_uses_locale_time_not_english_relative_text() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap();
-        let recent = notification_age_label(now.saturating_sub(90));
-        let older = notification_age_label(now.saturating_sub(172_800));
-
-        for label in [recent, older] {
-            let lower = label.to_ascii_lowercase();
-            assert!(!lower.contains("ago"));
-            assert!(!lower.contains("yesterday"));
-            assert_ne!(lower, "now");
-        }
-    }
-
-    #[test]
-    fn explicit_empty_widget_zones_stay_empty() {
-        with_config(
-            "[topbar]\n\
-             left =\n\
-             center =\n\
-             right =\n",
-            || {
-                let cfg = Config::load();
-                let layout = topbar_layout(&cfg);
-
-                assert!(layout.left.is_empty());
-                assert!(layout.center.is_empty());
-                assert!(layout.right.is_empty());
-            },
-        );
-    }
-
-    #[test]
-    fn mixed_invalid_widget_lists_keep_valid_entries() {
-        with_config(
-            "[topbar]\n\
-             left = nonsense, status, launcher, spring:3\n",
-            || {
-                let cfg = Config::load();
-                let layout = topbar_layout(&cfg);
-
-                assert_eq!(
-                    kinds(&layout.left),
-                    vec![WIDGET_STATUS, WIDGET_LAUNCHER, WIDGET_SPRING]
-                );
-                assert_eq!(layout.left[2].flex, 3);
-            },
-        );
-    }
 }
