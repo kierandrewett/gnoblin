@@ -11,10 +11,11 @@
 mod calc;
 mod desktop;
 mod provider;
+mod results;
 mod usage;
 
 use desktop::App;
-use gnoblin_shell_ui::{find_icon, run, BarApp, BarConfig, ClientArgs, RuntimeError};
+use gnoblin_shell_ui::{run, BarApp, BarConfig, ClientArgs, RuntimeError};
 slint::include_modules!(); // Launcher, AppEntry
 use slint::platform::Key;
 use slint::{ComponentHandle, SharedString};
@@ -32,62 +33,10 @@ const COLUMNS: usize = 5; // app-grid columns (must match the .slint default)
 const CELL_H: i32 = 112; // app-grid tile height (must match the .slint cell-h)
 const GRID_VISIBLE_H: i32 = 499; // grid viewport (panel 560 - search 60 - hairline 1)
 
-/// Bump `id`'s launch count, persist, then run it. Shared by the click + Enter
-/// paths so usage (which drives the most-used-first sort) is always recorded.
-fn launch_app(id: &str, usage: &Rc<RefCell<HashMap<String, u32>>>) {
-    {
-        let mut u = usage.borrow_mut();
-        *u.entry(id.to_string()).or_insert(0) += 1;
-        usage::save(&u);
-    }
-    gnoblin_shell_ui::launch_desktop_app(id);
-}
-
-/// Put `text` on the Wayland clipboard (used by the calculator's "Enter to
-/// copy"). Best-effort: if `wl-copy` isn't present, nothing happens.
-fn copy_to_clipboard(text: &str) {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    if let Ok(mut child) = Command::new("wl-copy")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        if let Some(stdin) = child.stdin.as_mut() {
-            let _ = stdin.write_all(text.as_bytes());
-        }
-        let _ = child.wait();
-    }
-}
-
-/// What activating a result does. Apps launch; computed results (calculator)
-/// copy their payload; provider results (file search, web, custom) run a shell
-/// command via `Run`.
-enum Action {
-    Launch(String),
-    Copy(String),
-    /// Run a shell command (a provider result's action), then close.
-    Run(String),
-}
-
-/// One result row — an app, a calculator answer, or (later) a provider hit.
-struct Row {
-    name: String,
-    subtitle: String,
-    /// Icon name for `kind == "app"` (resolved via find_icon); empty otherwise.
-    icon: String,
-    /// "app" | "calc" — lets the view pick a built-in glyph + styling.
-    kind: String,
-    /// Right-aligned accessory text, e.g. a calculator result like "= 4".
-    accessory: String,
-    action: Action,
-}
-
 struct LauncherApp {
     win: Option<Launcher>,
     all: Vec<App>,
-    filtered: Rc<RefCell<Vec<Row>>>,
+    filtered: Rc<RefCell<Vec<results::Row>>>,
     query: String,
     selected: usize,
     grid: bool,
@@ -98,51 +47,6 @@ struct LauncherApp {
     /// Optional `[launcher] web-search` URL template (with `%s`) — when set, a
     /// "Search the web" fallback appears if nothing else matches.
     web_search: Option<String>,
-}
-
-/// Minimal URL query encoder (RFC 3986 unreserved chars pass through).
-fn urlencode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{b:02X}")),
-        }
-    }
-    out
-}
-
-/// Single-quote a string for safe use inside `sh -c`.
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-/// Activate the row at `index`: launch an app (recording usage) or copy a
-/// computed answer. Shared by the click closure and the Enter key path.
-fn activate_row(
-    rows: &Rc<RefCell<Vec<Row>>>,
-    index: usize,
-    usage: &Rc<RefCell<HashMap<String, u32>>>,
-) {
-    if let Some(row) = rows.borrow().get(index) {
-        match &row.action {
-            Action::Launch(id) => launch_app(id, usage),
-            Action::Copy(text) => copy_to_clipboard(text),
-            Action::Run(cmd) => {
-                use std::process::{Command, Stdio};
-                let _ = Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn();
-            }
-        }
-    }
 }
 
 fn apply_theme(win: &Launcher) {
@@ -156,23 +60,7 @@ impl LauncherApp {
                 .filtered
                 .borrow()
                 .iter()
-                .map(|r| {
-                    // Apps + provider rows carry a (theme) icon name; calc uses a
-                    // built-in glyph resolved in the view.
-                    let icon = if r.icon.is_empty() {
-                        None
-                    } else {
-                        find_icon(&r.icon, "")
-                    };
-                    AppEntry {
-                        name: r.name.clone().into(),
-                        subtitle: r.subtitle.clone().into(),
-                        has_icon: icon.is_some(),
-                        icon: icon.unwrap_or_default(),
-                        kind: r.kind.clone().into(),
-                        accessory: r.accessory.clone().into(),
-                    }
-                })
+                .map(results::Row::entry)
                 .collect();
             win.set_apps(Rc::new(slint::VecModel::from(model)).into());
             win.set_query(self.query.clone().into());
@@ -182,20 +70,13 @@ impl LauncherApp {
 
     fn refilter(&mut self) {
         let q = self.query.to_lowercase();
-        let mut rows: Vec<Row> = Vec::new();
+        let mut rows: Vec<results::Row> = Vec::new();
 
         // Calculator: a computed answer on top when the query is arithmetic
         // (search mode only — the app grid is just apps). Enter copies it.
         if !self.grid {
             if let Some(ans) = calc::try_eval(&self.query) {
-                rows.push(Row {
-                    name: ans.clone(),
-                    subtitle: "Calculator — press ⏎ to copy".into(),
-                    icon: String::new(),
-                    kind: "calc".into(),
-                    accessory: String::new(),
-                    action: Action::Copy(ans),
-                });
+                rows.push(results::Row::calculator(ans));
             }
         }
 
@@ -204,21 +85,11 @@ impl LauncherApp {
         // searches never spawn a process. Provider hits sit above the app list.
         if !self.grid {
             for p in &self.providers {
-                for r in provider::run(p, &self.query) {
-                    let action = if r.action.is_empty() {
-                        Action::Copy(r.title.clone())
-                    } else {
-                        Action::Run(r.action)
-                    };
-                    rows.push(Row {
-                        name: r.title,
-                        subtitle: r.subtitle,
-                        icon: r.icon,
-                        kind: "provider".into(),
-                        accessory: String::new(),
-                        action,
-                    });
-                }
+                rows.extend(
+                    provider::run(p, &self.query)
+                        .into_iter()
+                        .map(results::Row::provider),
+                );
             }
         }
 
@@ -238,14 +109,7 @@ impl LauncherApp {
         });
         drop(usage);
         for a in matched.into_iter().take(300) {
-            rows.push(Row {
-                name: a.name.clone(),
-                subtitle: "Application".into(),
-                icon: a.icon.clone(),
-                kind: "app".into(),
-                accessory: String::new(),
-                action: Action::Launch(a.id.clone()),
-            });
+            rows.push(results::Row::app(a));
         }
 
         // Web-search fallback (opt-in via `[launcher] web-search = <url %s>`):
@@ -254,18 +118,7 @@ impl LauncherApp {
             let q = self.query.trim();
             if !q.is_empty() {
                 if let Some(tmpl) = &self.web_search {
-                    let enc = urlencode(q);
-                    rows.push(Row {
-                        name: format!("Search the web for “{q}”"),
-                        subtitle: "Open in your browser".into(),
-                        icon: "web-browser".into(),
-                        kind: "web".into(),
-                        accessory: String::new(),
-                        action: Action::Run(format!(
-                            "xdg-open {}",
-                            shell_quote(&tmpl.replace("%s", &enc))
-                        )),
-                    });
+                    rows.push(results::Row::web_search(q, tmpl));
                 }
             }
         }
@@ -295,7 +148,8 @@ impl LauncherApp {
     }
 
     fn launch(&self, index: usize) {
-        activate_row(&self.filtered, index, &self.usage);
+        let rows = self.filtered.borrow();
+        results::activate(rows.as_slice(), index, &self.usage);
     }
 }
 
@@ -320,7 +174,8 @@ impl BarApp for LauncherApp {
         let filtered = self.filtered.clone();
         let usage = self.usage.clone();
         win.on_activated(move |i| {
-            activate_row(&filtered, i as usize, &usage);
+            let rows = filtered.borrow();
+            results::activate(rows.as_slice(), i as usize, &usage);
             exit.set(true);
         });
         win.show()
