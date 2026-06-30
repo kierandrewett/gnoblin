@@ -5,30 +5,8 @@
 #include "gnoblin-rules-spec.h"
 #include "gnoblin-spec-util.h"
 
-#include <string.h>
-
 gboolean gnoblin_rules_parse_size(const char* text, int* width, int* height) {
-    g_autofree char* copy = NULL;
-    char* p;
-    int w = 0, h = 0;
-
-    if (!text || !width || !height)
-        return FALSE;
-
-    copy = g_strdup(text);
-    p = copy;
-    if (!gnoblin_spec_parse_int(&p, &w))
-        return FALSE;
-    gnoblin_spec_skip_spaces(&p);
-    if (*p != 'x' && *p != 'X')
-        return FALSE;
-    p++;
-    if (!gnoblin_spec_parse_int(&p, &h) || !gnoblin_spec_at_end(p) || w <= 0 || h <= 0)
-        return FALSE;
-
-    *width = w;
-    *height = h;
-    return TRUE;
+    return gnoblin_spec_parse_extent(text, width, height);
 }
 
 gboolean gnoblin_rules_parse_position(const char* text, int* x, int* y) {

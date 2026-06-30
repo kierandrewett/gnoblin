@@ -74,6 +74,49 @@ gboolean gnoblin_spec_parse_percent(const char* text, int* percent) {
     return TRUE;
 }
 
+gboolean gnoblin_spec_parse_extent_token(char** p, int* width, int* height) {
+    char* cursor;
+    int w = 0;
+    int h = 0;
+
+    if (!p || !*p || !width || !height)
+        return FALSE;
+
+    cursor = *p;
+    if (!gnoblin_spec_parse_int(&cursor, &w))
+        return FALSE;
+    gnoblin_spec_skip_spaces(&cursor);
+    if (*cursor != 'x' && *cursor != 'X')
+        return FALSE;
+    cursor++;
+    if (!gnoblin_spec_parse_int(&cursor, &h) || w <= 0 || h <= 0)
+        return FALSE;
+
+    *width = w;
+    *height = h;
+    *p = cursor;
+    return TRUE;
+}
+
+gboolean gnoblin_spec_parse_extent(const char* text, int* width, int* height) {
+    g_autofree char* copy = NULL;
+    char* p;
+    int w = 0;
+    int h = 0;
+
+    if (!text || !width || !height)
+        return FALSE;
+
+    copy = g_strdup(text);
+    p = copy;
+    if (!gnoblin_spec_parse_extent_token(&p, &w, &h) || !gnoblin_spec_at_end(p))
+        return FALSE;
+
+    *width = w;
+    *height = h;
+    return TRUE;
+}
+
 gboolean gnoblin_spec_parse_uint(const char* text, guint* out) {
     g_autofree char* copy = NULL;
     char* p;

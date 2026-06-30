@@ -56,15 +56,7 @@ static gboolean parse_mode(const char* text, GnoblinOutputSpec* out) {
 
     copy = g_strdup(text);
     p = copy;
-    if (!gnoblin_spec_parse_int(&p, &w))
-        return FALSE;
-    gnoblin_spec_skip_spaces(&p);
-    if (*p != 'x' && *p != 'X')
-        return FALSE;
-    p++;
-    if (!gnoblin_spec_parse_int(&p, &h))
-        return FALSE;
-    if (w <= 0 || h <= 0)
+    if (!gnoblin_spec_parse_extent_token(&p, &w, &h))
         return FALSE;
 
     gnoblin_spec_skip_spaces(&p);

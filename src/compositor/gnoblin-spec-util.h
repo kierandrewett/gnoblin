@@ -35,6 +35,13 @@ gboolean gnoblin_spec_parse_workspace_index(const char* text, int* zero_based_in
 /* Parse an integer percentage, clamped to [0, 100] (rejects trailing junk). */
 gboolean gnoblin_spec_parse_percent(const char* text, int* percent);
 
+/* Parse a positive WIDTHxHEIGHT pair at *p, accepting whitespace around x/X,
+ * advancing *p past the height. */
+gboolean gnoblin_spec_parse_extent_token(char** p, int* width, int* height);
+
+/* Parse `text` as a whole positive WIDTHxHEIGHT pair. */
+gboolean gnoblin_spec_parse_extent(const char* text, int* width, int* height);
+
 /* Parse a base-10 unsigned int from `text`, rejecting negatives, overflow, and
  * trailing junk. */
 gboolean gnoblin_spec_parse_uint(const char* text, guint* out);
