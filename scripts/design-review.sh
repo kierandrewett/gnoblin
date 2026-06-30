@@ -129,9 +129,9 @@ run_opencode() {
     "$prompt
 
 If your selected model cannot inspect the image, inspect these Slint files read-only and critique the implementation discipline instead:
-- src/clients/shell-ui/vendor/slint/Panel.slint
-- src/clients/shell-ui/vendor/slint/Popouts.slint
-- src/clients/shell-ui/vendor/slint/Tokens.slint
+- src/clients/crates/gnoblin-runtime/vendor/slint/Panel.slint
+- src/clients/crates/gnoblin-runtime/vendor/slint/Popouts.slint
+- src/clients/crates/gnoblin-runtime/vendor/slint/Tokens.slint
 
 Do not edit files." >>"$report" 2>&1
   local rc=$?

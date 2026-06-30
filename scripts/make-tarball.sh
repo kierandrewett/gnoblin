@@ -8,7 +8,7 @@
 # needed in the RPM/deb spec.
 set -euo pipefail
 
-PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell|gnome-control-center> [outdir]}"
+PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell> [outdir]}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
@@ -17,7 +17,6 @@ OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
 case "$PROJ" in
   mutter)               VER="49.5" ;;
   gnome-shell)          VER="49.6" ;;
-  gnome-control-center) VER="49.6" ;;
   *) echo "unknown subproject: $PROJ" >&2; exit 1 ;;
 esac
 

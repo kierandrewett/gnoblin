@@ -65,8 +65,8 @@ warn_if_stale_artifacts() {
     newer_client="$(
       find "$ROOT/src/clients/Cargo.toml" \
         "$ROOT/src/clients/Cargo.lock" \
-        "$ROOT/src/clients/shell-ui" \
-        "$ROOT/src/clients/$crate" \
+        "$ROOT/src/clients/crates" \
+        "$ROOT/src/clients/bin/$crate" \
         -type f \( -name '*.rs' -o -name '*.slint' -o -name 'Cargo.toml' -o -name 'Cargo.lock' -o -name 'build.rs' \) \
         -newer "$artifact" -print -quit 2>/dev/null || true
     )"

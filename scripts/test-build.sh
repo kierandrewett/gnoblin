@@ -80,7 +80,7 @@ if grep -q 'export PATH="\$PREFIX/bin:\$PATH"' "$ROOT/scripts/run-devkit.sh" &&
    grep -q "rm -rf \"\$PREFIX/libexec/gnoblin\"" "$ROOT/scripts/install-userspace.sh" &&
    grep -q "warn_if_stale_artifacts" "$ROOT/scripts/run-devkit.sh" &&
    grep -Fq 'crate="${bin#gnoblin-}"' "$ROOT/scripts/run-devkit.sh" &&
-   grep -Fq '"$ROOT/src/clients/$crate"' "$ROOT/scripts/run-devkit.sh" &&
+   grep -Fq '"$ROOT/src/clients/bin/$crate"' "$ROOT/scripts/run-devkit.sh" &&
    ! grep -Fq 'find "$ROOT/src/clients" \' "$ROOT/scripts/run-devkit.sh" &&
    grep -q "installed Slint/userspace clients may be stale" "$ROOT/scripts/run-devkit.sh"; then
   ok "devkit resolves installed clients from prefix bin and warns on per-client stale artifacts"
@@ -200,7 +200,7 @@ if grep -q "prefix_from_pid" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "gnoblin-shell" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "bin/gnoblin-topbar" "$ROOT/scripts/devkit-compare-topbar.sh" &&
    grep -q "bin/gnoblin-dock" "$ROOT/scripts/devkit-compare-topbar.sh" &&
-   ! grep -Eq "build/gnome-shell|org\\.gnome\\.Shell|src/clients/(topbar|dock)/gnoblin-|gnoblin-(topbar|dock)\\.js" \
+   ! grep -Eq "build/gnome-shell|org\\.gnome\\.Shell|src/clients/bin/(topbar|dock)/gnoblin-|gnoblin-(topbar|dock)\\.js" \
      "$ROOT/scripts/devkit-compare-topbar.sh"; then
   ok "devkit compare helper targets installed gnoblin clients"
 else
@@ -220,7 +220,7 @@ if grep -q 'TOPBAR_BIN="\$GNOBLIN_PREFIX/bin/gnoblin-topbar"' "$ROOT/scripts/tes
    grep -q 'DOCK_BIN="\$GNOBLIN_PREFIX/bin/gnoblin-dock"' "$ROOT/scripts/test-nested.sh" &&
    grep -q 'RUN_GNOBLIN_CLIENTS="${RUN_GNOBLIN_CLIENTS:-0}"' "$ROOT/scripts/test-nested.sh" &&
    grep -q "legacy GNOME Shell gnoblin autostart is retired" "$ROOT/scripts/test-nested.sh" &&
-   ! grep -Eq "GNOBLIN_LAYER_SHELL_COMPONENT_DIR|src/clients/(topbar|dock)/gnoblin-" \
+   ! grep -Eq "GNOBLIN_LAYER_SHELL_COMPONENT_DIR|src/clients/bin/(topbar|dock)/gnoblin-" \
      "$ROOT/scripts/test-nested.sh"; then
   ok "legacy nested test keeps gnoblin clients opt-in and avoids retired source paths"
 else
@@ -305,16 +305,16 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 targets = [
-    root / "src/clients/shell-ui/vendor/slint/Dock.slint",
-    root / "src/clients/shell-ui/vendor/slint/Popouts.slint",
-    root / "src/clients/shell-ui/vendor/slint/widgets/ContextMenu.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Dock.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Popouts.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint",
 ]
 standalone_targets = [
-    root / "src/clients/launcher/ui/launcher.slint",
-    root / "src/clients/notifyd/ui/notifications.slint",
-    root / "src/clients/osd/ui/osd.slint",
-    root / "src/clients/shell-ui/vendor/slint/Compositor.slint",
-    root / "src/clients/shell-ui/vendor/slint/WindowChrome.slint",
+    root / "src/clients/bin/launcher/ui/launcher.slint",
+    root / "src/clients/bin/notifyd/ui/notifications.slint",
+    root / "src/clients/bin/osd/ui/osd.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/Compositor.slint",
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/WindowChrome.slint",
 ]
 errors = []
 for path in targets:
@@ -360,9 +360,9 @@ for path in standalone_targets:
             )
 
 floating_standalone_targets = [
-    root / "src/clients/launcher/ui/launcher.slint",
-    root / "src/clients/notifyd/ui/notifications.slint",
-    root / "src/clients/osd/ui/osd.slint",
+    root / "src/clients/bin/launcher/ui/launcher.slint",
+    root / "src/clients/bin/notifyd/ui/notifications.slint",
+    root / "src/clients/bin/osd/ui/osd.slint",
 ]
 for path in floating_standalone_targets:
     text = path.read_text(encoding="utf-8")
@@ -381,7 +381,7 @@ for path in floating_standalone_targets:
             f"{path.relative_to(root)} casts floating surface shadow from the legacy shadow alias"
         )
 
-compositor = root / "src/clients/shell-ui/vendor/slint/Compositor.slint"
+compositor = root / "src/clients/crates/gnoblin-runtime/vendor/slint/Compositor.slint"
 compositor_text = compositor.read_text(encoding="utf-8")
 for label, start, end, needles in (
     (
@@ -452,7 +452,7 @@ for path in sorted((root / "src/clients").glob("**/*.slint")):
                 f"{path.relative_to(root)}:{idx}: raw Slint chrome colour should be a Theme/Tokens value"
             )
 
-dock_text = (root / "src/clients/shell-ui/vendor/slint/Dock.slint").read_text(encoding="utf-8")
+dock_text = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Dock.slint").read_text(encoding="utf-8")
 try:
     tooltip = dock_text.split("tip-body := Rectangle", 1)[1].split("// Active indicator", 1)[0]
 except IndexError:
@@ -473,17 +473,17 @@ else:
             errors.append(f"Dock.slint tooltip missing layered chrome token {needle}")
 
 icon_button_text = (
-    root / "src/clients/shell-ui/vendor/slint/widgets/IconButton.slint"
+    root / "src/clients/crates/gnoblin-runtime/vendor/slint/widgets/IconButton.slint"
 ).read_text(encoding="utf-8")
 if "Press-scale" in icon_button_text or "touch.pressed ? 0." in icon_button_text:
     errors.append("IconButton.slint reintroduced mouse-down press scaling")
 if "property <float> hover-scale: ta.pressed" in dock_text:
     errors.append("Dock.slint reintroduced mouse-down press scaling")
 
-popouts = (root / "src/clients/shell-ui/vendor/slint/Popouts.slint").read_text(encoding="utf-8")
-panel = (root / "src/clients/shell-ui/vendor/slint/Panel.slint").read_text(encoding="utf-8")
-tokens_text = (root / "src/clients/shell-ui/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
-zoo = root / "src/clients/shell-ui/vendor/slint/ComponentZoo.slint"
+popouts = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Popouts.slint").read_text(encoding="utf-8")
+panel = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Panel.slint").read_text(encoding="utf-8")
+tokens_text = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
+zoo = root / "src/clients/crates/gnoblin-runtime/vendor/slint/ComponentZoo.slint"
 for needle in (
     "export component ShellRoundButton",
     "export component ShellSliderRow",
@@ -525,7 +525,7 @@ for ref in (
     if ref not in popouts + panel:
         errors.append(f"quick settings/topbar missing symbolic icon {ref}")
 
-tokens = (root / "src/clients/shell-ui/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
+tokens = (root / "src/clients/crates/gnoblin-runtime/vendor/slint/Tokens.slint").read_text(encoding="utf-8")
 for needle in (
     "dock-corner-radius",
     "menu-corner-radius",
@@ -579,8 +579,8 @@ for path in sorted((root / "src/clients").glob("**/*.slint")):
                     f"{path.relative_to(root)}:{idx}: Motion.{band} duration does not use Motion.{band}-curve"
                 )
 
-for path in sorted((root / "src/clients").glob("*/src/main.rs")):
-    if path.match("*/shell-ui/*"):
+for path in sorted((root / "src/clients").glob("bin/*/src/main.rs")):
+    if path.match("*/gnoblin-runtime/*"):
         continue
     text = path.read_text(encoding="utf-8")
     if "set_motion_scale(" in text and "apply_shell_motion_to_theme!" not in text:
@@ -599,8 +599,8 @@ else
 fi
 
 echo "== patches apply cleanly to the pinned tags =="
-declare -A TAGS=( [mutter]=49.5 [gnome-shell]=49.6 [gnome-control-center]=49.6 )
-for proj in mutter gnome-shell gnome-control-center; do
+declare -A TAGS=( [mutter]=49.5 [gnome-shell]=49.6 )
+for proj in mutter gnome-shell; do
   sm="$ROOT/subprojects/$proj"
   [ -d "$sm/.git" ] || { bad "$proj submodule missing (run 'just init')"; continue; }
   reset_to_tag "$sm" "${TAGS[$proj]}"
@@ -916,90 +916,34 @@ fi
 
 reset_to_tag "$sm" 49.5
 
-echo "== applying gnome-control-center patches for content checks =="
-sm="$ROOT/subprojects/gnome-control-center"
-if [ -d "$sm/.git" ]; then
-  reset_to_tag "$sm" 49.6
-  "$ROOT/scripts/copy-overlay.sh" gnome-control-center "$sm" >/dev/null
-  while IFS= read -r p; do git -C "$sm" apply "$p" 2>/dev/null; done \
-    < <(find "$ROOT/patches/gnome-control-center" -name '*.patch' | sort)
-
-  gnoblin_panel="$sm/panels/gnoblin/cc-gnoblin-panel.c"
-  gnoblin_panel_ui="$sm/panels/gnoblin/cc-gnoblin-panel.blp"
-  gnoblin_panel_meson="$sm/panels/gnoblin/meson.build"
-  gnoblin_panel_desktop="$sm/panels/gnoblin/gnome-gnoblin-panel.desktop.in"
-  gnoblin_panel_loader="$sm/shell/cc-panel-loader.c"
-  gnoblin_panels_meson="$sm/panels/meson.build"
-  if [ -f "$gnoblin_panel" ] &&
-     [ -f "$gnoblin_panel_ui" ] &&
-     [ -f "$gnoblin_panel_meson" ] &&
-     grep -q "cc_gnoblin_panel_get_type" "$gnoblin_panel_loader" &&
-     grep -q "PANEL_TYPE(\"gnoblin\"" "$gnoblin_panel_loader" &&
-     grep -q "'gnoblin'" "$gnoblin_panels_meson" &&
-     grep -q "panels_list += cappletname" "$gnoblin_panel_meson" &&
-     grep -q "desktop = 'gnome-@0@-panel.desktop'.format(cappletname)" "$gnoblin_panel_meson" &&
-     grep -q "cc-gnoblin-panel.blp" "$gnoblin_panel_meson" &&
-     grep -q "org.gnome.Settings-gnoblin-symbolic" "$gnoblin_panel_desktop"; then
-    ok "gnome-control-center exposes the Gnoblin Settings panel"
-  else
-    bad "gnome-control-center Gnoblin panel registration is incomplete"
-  fi
-  if grep -q "GNOBLIN_SCHEMA_ID \"org.gnoblin.shell\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-monitor-mode\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-monitors\"" "$gnoblin_panel" &&
-     grep -q "\"dock-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"dock-monitor-mode\"" "$gnoblin_panel" &&
-     grep -q "\"dock-monitors\"" "$gnoblin_panel" &&
-     grep -q "\"wlr-layer-shell-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"wlr-screencopy-enabled\"" "$gnoblin_panel" &&
-     grep -q "g_settings_schema_source_lookup" "$gnoblin_panel"; then
-    ok "Gnoblin Settings panel edits the shared feature schema and guards missing schemas"
-  else
-    bad "Gnoblin Settings panel is not bound to the shared feature schema"
-  fi
-  if grep -q "Primary Display" "$gnoblin_panel_ui" &&
-     grep -q "All Displays" "$gnoblin_panel_ui" &&
-     grep -q "Selected Displays" "$gnoblin_panel_ui" &&
-     grep -q "topbar_displays_group" "$gnoblin_panel_ui" &&
-     grep -q "dock_displays_group" "$gnoblin_panel_ui" &&
-     grep -q "gdk_display_get_monitors" "$gnoblin_panel" &&
-     grep -q "monitor_id" "$gnoblin_panel" &&
-     grep -q "monitor-%u-%d,%d-%dx%d" "$gnoblin_panel"; then
-    ok "Gnoblin Settings panel supports primary/all/manual per-monitor topbar and dock policy"
-  else
-    bad "Gnoblin Settings panel is missing per-monitor topbar/dock controls"
-  fi
-  reset_to_tag "$sm" 49.6
-else
-  bad "gnome-control-center submodule missing (run 'just init')"
-fi
-
 echo "== repo-owned Rust/Slint shell clients are wired correctly =="
 clients="$ROOT/src/clients"
 cargo_toml="$clients/Cargo.toml"
-shell_ui="$clients/shell-ui/src/lib.rs"
+runtime_loop="$clients/crates/gnoblin-runtime/src/layer_shell_runtime.rs"
+core_lib="$clients/crates/gnoblin-core/src/lib.rs"
 if [ -f "$cargo_toml" ] &&
-   grep -q '"shell-ui"' "$cargo_toml" &&
-   grep -q '"topbar"' "$cargo_toml" &&
-   grep -q '"dock"' "$cargo_toml"; then
-  ok "client workspace declares the shared shell-ui runtime + topbar/dock members"
+   grep -q '"crates/gnoblin-core"' "$cargo_toml" &&
+   grep -q '"crates/gnoblin-desktop"' "$cargo_toml" &&
+   grep -q '"crates/gnoblin-runtime"' "$cargo_toml" &&
+   grep -q '"bin/topbar"' "$cargo_toml" &&
+   grep -q '"bin/dock"' "$cargo_toml"; then
+  ok "client workspace declares split shared crates + topbar/dock members"
 else
-  bad "client workspace is missing the shell-ui/topbar/dock members"
+  bad "client workspace is missing split shared crates or topbar/dock members"
 fi
-if grep -q "gnoblin_shell_ui::.*BarApp" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarConfig" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*run" "$clients/topbar/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarApp" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*BarConfig" "$clients/dock/src/main.rs" &&
-   grep -q "gnoblin_shell_ui::.*run" "$clients/dock/src/main.rs" &&
-   grep -q "impl BarApp" "$clients/topbar/src/main.rs" &&
-   grep -q "impl BarApp" "$clients/dock/src/main.rs" &&
-   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/topbar/src/main.rs" &&
-   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/dock/src/main.rs" &&
-   [ -f "$clients/topbar/ui/topbar.slint" ] &&
-   [ -f "$clients/dock/ui/dock.slint" ]; then
-  ok "topbar and dock are Slint wlr-layer-shell clients on the shared shell-ui runtime"
+if grep -q "gnoblin_runtime::.*BarApp" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarApp" "$clients/bin/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*BarConfig" "$clients/bin/dock/src/main.rs" &&
+   grep -q "gnoblin_runtime::.*run" "$clients/bin/dock/src/main.rs" &&
+   grep -q "impl BarApp" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "impl BarApp" "$clients/bin/dock/src/main.rs" &&
+   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/bin/topbar/src/main.rs" &&
+   grep -q "smithay_client_toolkit::shell::wlr_layer" "$clients/bin/dock/src/main.rs" &&
+   [ -f "$clients/bin/topbar/ui/topbar.slint" ] &&
+   [ -f "$clients/bin/dock/ui/dock.slint" ]; then
+  ok "topbar and dock are Slint wlr-layer-shell clients on the shared runtime"
 else
   bad "topbar/dock are not Slint wlr-layer-shell clients on the shared runtime"
 fi
@@ -1089,21 +1033,21 @@ fi
 # The shared run loop must commit at most once per wl_surface frame callback.
 # Committing twice aborts mutter on frame_callback_list, while failing to request
 # a frame callback stalls Slint animations until unrelated input arrives.
-if [ -f "$shell_ui" ] &&
-   grep -q "pub trait BarApp" "$shell_ui" &&
-   grep -q "frame_pending" "$shell_ui" &&
-   grep -q "ready_to_render" "$shell_ui" &&
-   grep -q "has_active_animations" "$shell_ui" &&
-   grep -q "update_timers_and_animations" "$shell_ui" &&
-   grep -q "next_dispatch_timeout" "$shell_ui" &&
-   grep -q "surface.frame(&self.qh" "$shell_ui" &&
-   ! grep -q "stale_ticks" "$shell_ui"; then
-  ok "shell-ui run loop gates rendering, pumps Slint animations, and requests frame callbacks"
+if [ -f "$runtime_loop" ] &&
+   grep -q "pub trait BarApp" "$runtime_loop" &&
+   grep -q "frame_pending" "$runtime_loop" &&
+   grep -q "ready_to_render" "$runtime_loop" &&
+   grep -q "has_active_animations" "$runtime_loop" &&
+   grep -q "update_timers_and_animations" "$runtime_loop" &&
+   grep -q "next_dispatch_timeout" "$runtime_loop" &&
+   grep -q "surface.frame(&self.qh" "$runtime_loop" &&
+   ! grep -q "stale_ticks" "$runtime_loop"; then
+  ok "runtime run loop gates rendering, pumps Slint animations, and requests frame callbacks"
 else
-  bad "shell-ui run loop is missing Slint animation/frame callback pacing"
+  bad "runtime run loop is missing Slint animation/frame callback pacing"
 fi
 
-if python3 - "$shell_ui" <<'PY'
+if python3 - "$runtime_loop" <<'PY'
 import pathlib
 import sys
 
@@ -1123,36 +1067,37 @@ if "layer.commit();\n\n    let mut state = State" in try_run:
     sys.exit(1)
 PY
 then
-  ok "shell-ui binds input devices before the initial layer-surface commit"
+  ok "runtime binds input devices before the initial layer-surface commit"
 else
-  bad "shell-ui can still commit keyboard layer surfaces before wl_keyboard is bound"
+  bad "runtime can still commit keyboard layer surfaces before wl_keyboard is bound"
 fi
 
-if [ -f "$shell_ui" ] &&
-   grep -q "fn try_run(config: BarConfig" "$shell_ui" &&
-   grep -q "fn setup_egl(" "$shell_ui" &&
-   grep -q "Result<EglState, RuntimeError>" "$shell_ui" &&
-   grep -q "pub type RuntimeError" "$shell_ui" &&
-   grep -q "fn runtime_error" "$shell_ui" &&
-   grep -q "fn window(&self) -> Option<&slint::Window>" "$shell_ui" &&
-   ! grep -q 'expect("connect to wayland")' "$shell_ui" &&
-   ! grep -q 'expect("registry init")' "$shell_ui" &&
-   ! grep -q 'expect("wlr-layer-shell")' "$shell_ui" &&
-   ! grep -q 'expect("EGL:' "$shell_ui" &&
-   ! grep -q 'expect("FemtoVGRenderer::new")' "$shell_ui"; then
-  ok "shell-ui layer-shell startup reports errors instead of panicking"
+if [ -f "$runtime_loop" ] &&
+   [ -f "$core_lib" ] &&
+   grep -q "fn try_run(config: BarConfig" "$runtime_loop" &&
+   grep -q "fn setup_egl(" "$runtime_loop" &&
+   grep -q "Result<EglState, RuntimeError>" "$runtime_loop" &&
+   grep -q "pub type RuntimeError" "$core_lib" &&
+   grep -q "fn runtime_error" "$core_lib" &&
+   grep -q "fn window(&self) -> Option<&slint::Window>" "$runtime_loop" &&
+   ! grep -q 'expect("connect to wayland")' "$runtime_loop" &&
+   ! grep -q 'expect("registry init")' "$runtime_loop" &&
+   ! grep -q 'expect("wlr-layer-shell")' "$runtime_loop" &&
+   ! grep -q 'expect("EGL:' "$runtime_loop" &&
+   ! grep -q 'expect("FemtoVGRenderer::new")' "$runtime_loop"; then
+  ok "runtime layer-shell startup reports errors instead of panicking"
 else
-  bad "shell-ui layer-shell startup still has panic-prone setup paths"
+  bad "runtime layer-shell startup still has panic-prone setup paths"
 fi
 
 slint_layer_clients=(
-  "$clients/topbar/src/main.rs"
-  "$clients/dock/src/main.rs"
-  "$clients/launcher/src/main.rs"
-  "$clients/notifyd/src/main.rs"
-  "$clients/osd/src/main.rs"
-  "$clients/window-menu/src/main.rs"
-  "$clients/power-menu/src/main.rs"
+  "$clients/bin/topbar/src/main.rs"
+  "$clients/bin/dock/src/main.rs"
+  "$clients/bin/launcher/src/main.rs"
+  "$clients/bin/notifyd/src/main.rs"
+  "$clients/bin/osd/src/main.rs"
+  "$clients/bin/window-menu/src/main.rs"
+  "$clients/bin/power-menu/src/main.rs"
 )
 slint_layer_ok=1
 for client_src in "${slint_layer_clients[@]}"; do
@@ -1297,8 +1242,8 @@ else
   bad "Rust client runtime paths still contain panic-prone calls"
 fi
 
-wallpaper_client="$clients/wallpaper/src/main.rs"
-night_light_client="$clients/night-light/src/main.rs"
+wallpaper_client="$clients/bin/wallpaper/src/main.rs"
+night_light_client="$clients/bin/night-light/src/main.rs"
 if [ -f "$wallpaper_client" ] &&
    [ -f "$night_light_client" ] &&
    grep -q "fn try_main() -> Result<(), RuntimeError>" "$wallpaper_client" &&

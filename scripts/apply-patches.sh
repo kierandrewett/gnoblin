@@ -9,14 +9,13 @@
 # never accumulates state.
 set -euo pipefail
 
-PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell|gnome-control-center>}"
+PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 
 case "$PROJ" in
   mutter)               TAG="49.5" ;;
   gnome-shell)          TAG="49.6" ;;
-  gnome-control-center) TAG="49.6" ;;
   *) echo "unknown subproject: $PROJ" >&2; exit 1 ;;
 esac
 

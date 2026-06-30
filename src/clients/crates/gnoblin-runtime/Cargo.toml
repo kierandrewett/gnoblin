@@ -1,0 +1,24 @@
+[package]
+name = "gnoblin-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Layer-shell windowing and Slint render runtime for gnoblin shell clients"
+
+[lib]
+name = "gnoblin_runtime"
+path = "src/lib.rs"
+
+[dependencies]
+gnoblin-core = { path = "../gnoblin-core" }
+gnoblin-desktop = { path = "../gnoblin-desktop" }
+async-io = "2"
+i-slint-core = "=1.16.1"
+i-slint-renderer-femtovg = { version = "1.16", features = ["opengl"] }
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+khronos-egl = { version = "6", features = ["static"] }
+libc = "0.2"
+slint = { version = "1.16", default-features = false, features = ["compat-1-2", "std", "renderer-femtovg"] }
+smithay-client-toolkit = "0.19"
+wayland-client = "0.31"
+wayland-egl = "0.32"
+zbus = "5"

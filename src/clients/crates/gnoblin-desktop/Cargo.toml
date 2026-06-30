@@ -1,0 +1,15 @@
+[package]
+name = "gnoblin-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "XDG desktop integration for gnoblin shell clients"
+
+[lib]
+name = "gnoblin_desktop"
+path = "src/lib.rs"
+
+[dependencies]
+gnoblin-core = { path = "../gnoblin-core" }
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+slint = { version = "1.16", default-features = false, features = ["compat-1-2", "std", "renderer-femtovg"] }
+zbus = "5"

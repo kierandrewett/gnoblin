@@ -1483,10 +1483,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnoblin-core"
+version = "0.1.0"
+
+[[package]]
+name = "gnoblin-desktop"
+version = "0.1.0"
+dependencies = [
+ "gnoblin-core",
+ "image 0.24.9",
+ "slint",
+ "zbus",
+]
+
+[[package]]
 name = "gnoblin-dock"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-desktop",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
@@ -1496,7 +1512,9 @@ dependencies = [
 name = "gnoblin-launcher"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-desktop",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
@@ -1506,7 +1524,7 @@ dependencies = [
 name = "gnoblin-night-light"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
  "wayland-client",
  "wayland-protocols-wlr",
 ]
@@ -1516,7 +1534,9 @@ name = "gnoblin-notifyd"
 version = "0.1.0"
 dependencies = [
  "async-io",
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-desktop",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
@@ -1527,7 +1547,8 @@ dependencies = [
 name = "gnoblin-osd"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
@@ -1537,24 +1558,25 @@ dependencies = [
 name = "gnoblin-power-menu"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
 ]
 
 [[package]]
-name = "gnoblin-shell-ui"
+name = "gnoblin-runtime"
 version = "0.1.0"
 dependencies = [
  "async-io",
+ "gnoblin-core",
+ "gnoblin-desktop",
  "i-slint-core",
  "i-slint-renderer-femtovg",
  "image 0.24.9",
  "khronos-egl",
  "libc",
- "serde",
- "serde_json",
  "slint",
  "smithay-client-toolkit",
  "wayland-client",
@@ -1566,17 +1588,22 @@ dependencies = [
 name = "gnoblin-topbar"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-desktop",
+ "gnoblin-runtime",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "smithay-client-toolkit",
+ "zbus",
 ]
 
 [[package]]
 name = "gnoblin-wallpaper"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
  "image 0.24.9",
  "libc",
  "smithay-client-toolkit",
@@ -1587,7 +1614,8 @@ dependencies = [
 name = "gnoblin-window-menu"
 version = "0.1.0"
 dependencies = [
- "gnoblin-shell-ui",
+ "gnoblin-core",
+ "gnoblin-runtime",
  "slint",
  "slint-build",
  "smithay-client-toolkit",

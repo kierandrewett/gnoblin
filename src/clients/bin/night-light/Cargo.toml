@@ -1,0 +1,13 @@
+[package]
+name = "gnoblin-night-light"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "gnoblin-night-light"
+path = "src/main.rs"
+
+[dependencies]
+gnoblin-core = { path = "../../crates/gnoblin-core" }
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

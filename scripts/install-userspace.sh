@@ -53,7 +53,7 @@ done
 install -d "$PREFIX/share/gnoblin"
 install -m644 "$ROOT/src/data/gnoblin.conf.example" "$PREFIX/share/gnoblin/"
 
-# Settings schema — used by the control-center panel for per-monitor placement.
+# Settings schema for compositor and shell-client feature/configuration keys.
 # Installed and compiled alongside mutter's.
 install -d "$PREFIX/share/glib-2.0/schemas"
 install -m644 "$ROOT/src/data/org.gnoblin.shell.gschema.xml" \

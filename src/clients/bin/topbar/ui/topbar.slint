@@ -1,0 +1,257 @@
+// Thin Window wrapper so de's Panel (a relative-sized child component) can be the
+// top-level of a layer-shell client. de's Panel + tokens/widgets/assets reused.
+import { Panel, GlobalMenuTopItem, TopbarWidget } from "../../../crates/gnoblin-runtime/vendor/slint/Panel.slint";
+import { TrayIconItem } from "../../../crates/gnoblin-runtime/vendor/slint/widgets/TrayItem.slint";
+import { ContextMenu, MenuItem } from "../../../crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint";
+import { DatetimePopout, ControlCentrePopout, CalendarDay, CalendarWeekday, NotificationItem, QsTile, QsTileRow, QsMenuRow } from "../../../crates/gnoblin-runtime/vendor/slint/Popouts.slint";
+import { Theme, TokenMode, Tokens } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
+export { TrayIconItem, GlobalMenuTopItem, TopbarWidget, MenuItem, CalendarDay, CalendarWeekday, NotificationItem, QsTile, QsTileRow, QsMenuRow, Theme, TokenMode }
+
+// The surface spans the whole output (see BarConfig.full_height); the bar lives
+// in the top BAR-H px and the appmenu dropdown drops below it. Everything else
+// is transparent + input-passthrough (the input region is the bar strip until a
+// menu opens).
+export component TopBar inherits Window {
+    in property <string> clock-text: "00:00";
+    in property <string> date-text: "";
+    in property <string> focused-app: "";
+    in property <[TrayIconItem]> tray-items;
+    in property <[GlobalMenuTopItem]> global-menu-bar;
+    in property <int> global-menu-open-index: -1;
+    in property <[MenuItem]> global-menu-items;
+    in property <bool> global-menu-open: false;
+    in property <length> global-menu-x: 0px;
+    in property <image>  backdrop;
+    in property <length> backdrop-screen-w: 1px;
+    in property <length> backdrop-screen-h: 1px;
+    in property <[TopbarWidget]> left-widgets;
+    in property <[TopbarWidget]> center-widgets;
+    in property <[TopbarWidget]> right-widgets;
+    in property <length> datetime-anchor-x: 0px;
+    in property <length> cc-anchor-x: 0px;
+    in property <[MenuItem]> app-menu-items;
+    in property <bool> app-menu-open: false;
+    in property <length> app-menu-x: 0px;
+    callback tray-clicked(int);
+    callback tray-right-clicked(int);
+    callback focused-app-clicked(length);
+    callback toggle-control-centre(length);
+    callback toggle-datetime-popout(length);
+    callback app-menu-item-activated(int);
+    callback app-menu-dismiss();
+    callback global-menu-clicked(int, length);
+    callback global-menu-item-activated(int);
+    callback global-menu-dismiss();
+
+    // Datetime + control-centre popouts (Rust owns open state + data).
+    in property <bool> datetime-open: false;
+    in property <bool> cc-open: false;
+    in property <string> popout-date-text;
+    in property <string> popout-day-text;
+    in property <string> popout-calendar-month-text;
+    in property <[CalendarDay]> popout-calendar-days;
+    in property <[int]> popout-calendar-week-numbers;
+    in property <[CalendarWeekday]> popout-weekday-labels;
+    callback popout-prev-month();
+    callback popout-next-month();
+    // Unified control-centre tile grid (built-ins + plugins, packed by Rust).
+    in property <[QsTileRow]> cc-tiles;
+    in property <[NotificationItem]> cc-notifications;
+    in property <int>    cc-notification-count: 0;
+    in-out property <bool> cc-notifications-expanded: false;
+    callback cc-tile-clicked(string /* tile-id */);
+    callback cc-tile-slider(string /* tile-id */, float);
+    callback cc-tile-chevron(string /* tile-id */);
+    // Submenu row interactions → qsplugin host (keyed by tile/plugin id).
+    callback cc-plugin-row(string /* tile-id */, string /* row-id */);
+    callback cc-plugin-toggle(string /* tile-id */, string /* row-id */, bool);
+    callback cc-plugin-slider(string /* tile-id */, string /* row-id */, float);
+    // Open slide-out submenu state, surfaced so Rust can refresh its rows live.
+    in-out property <string> cc-open-submenu: "";
+    in-out property <[QsMenuRow]> cc-submenu-rows;
+    callback cc-account-clicked();
+    callback cc-settings-clicked();
+    callback cc-lock-clicked();
+    callback cc-power-clicked();
+    callback cc-notification-dismissed(int);
+    callback popout-dismiss();
+    background: transparent;
+    default-font-family: Tokens.font-family;
+
+    in property <int> workspace-count: 0;
+    in property <int> workspace-active: 0;
+    callback workspace-clicked(int);
+    in property <int> network-mode: 1;
+    in property <bool> audio-muted: false;
+    in property <bool> notif-pending: false;
+    callback bell-clicked();
+    callback launcher-clicked();
+
+    in property <length> bar-h: Tokens.panel-height;
+    in property <length> bar-x: 0px;
+    in property <length> bar-w: 0px;
+    in property <length> panel-padding-left: 12px;
+    in property <length> panel-padding-right: 12px;
+    in property <length> clock-padding: 12px;
+    in property <length> status-padding: 4px;
+    in property <length> status-icon-gap: 5px;
+    in property <length> cc-offset-x: 6px;
+    in property <length> cc-offset-y: -4px;
+
+    Panel {
+        x: root.bar-x; y: 0;
+        width: root.bar-w <= 0px ? parent.width : root.bar-w;
+        height: root.bar-h;
+        clock-text: root.clock-text;
+        date-text: root.date-text;
+        focused-app: root.focused-app;
+        workspace-count: root.workspace-count;
+        workspace-active: root.workspace-active;
+        workspace-clicked(i) => { root.workspace-clicked(i); }
+        network-mode: root.network-mode;
+        audio-muted: root.audio-muted;
+        notif-pending: root.notif-pending;
+        bell-clicked() => { root.bell-clicked(); }
+        launcher-clicked() => { root.launcher-clicked(); }
+        left-widgets: root.left-widgets;
+        center-widgets: root.center-widgets;
+        right-widgets: root.right-widgets;
+        tray-items: root.tray-items;
+        focused-app-clicked(x) => { root.focused-app-clicked(x); }
+        global-menu-bar: root.global-menu-bar;
+        global-menu-open-index: root.global-menu-open-index;
+        backdrop: root.backdrop;
+        backdrop-screen-w: root.backdrop-screen-w;
+        backdrop-screen-h: root.backdrop-screen-h;
+        tray-clicked(id) => { root.tray-clicked(id); }
+        tray-right-clicked(id) => { root.tray-right-clicked(id); }
+        panel-padding-left: root.panel-padding-left;
+        panel-padding-right: root.panel-padding-right;
+        clock-padding: root.clock-padding;
+        status-padding: root.status-padding;
+        status-icon-gap: root.status-icon-gap;
+        toggle-control-centre(x) => { root.toggle-control-centre(x); }
+        toggle-datetime-popout(x) => { root.toggle-datetime-popout(x); }
+        global-menu-clicked(id, x) => { root.global-menu-clicked(id, x); }
+    }
+
+    // Focused-app context menu.
+    if root.app-menu-open: TouchArea {
+        x: 0; y: root.bar-h; width: 100%; height: parent.height - root.bar-h;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.app-menu-dismiss();
+            }
+        }
+    }
+
+    app-menu := ContextMenu {
+        x: max(8px, min(root.app-menu-x - self.width / 2, parent.width - self.width - 8px));
+        y: root.bar-h;
+        items: root.app-menu-items;
+        open: root.app-menu-open;
+        origin-x: self.width / 2;
+        origin-y: 0px;
+        backdrop: root.backdrop;
+        backdrop-screen-w: root.backdrop-screen-w;
+        backdrop-screen-h: root.backdrop-screen-h;
+        menu-x: self.x;
+        menu-y: root.bar-h;
+        item-clicked(id) => { root.app-menu-item-activated(id); }
+        dismiss => { root.app-menu-dismiss(); }
+    }
+
+    // Scrim: any click outside the open dropdown closes it.
+    if root.global-menu-open: TouchArea {
+        x: 0; y: root.bar-h; width: 100%; height: parent.height - root.bar-h;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.global-menu-dismiss();
+            }
+        }
+    }
+
+    // The dropdown drops straight down from the clicked bar entry.
+    global-menu := ContextMenu {
+        x: root.global-menu-x;
+        y: root.bar-h;
+        items: root.global-menu-items;
+        open: root.global-menu-open;
+        origin-x: 0px;
+        origin-y: 0px;
+        backdrop: root.backdrop;
+        backdrop-screen-w: root.backdrop-screen-w;
+        backdrop-screen-h: root.backdrop-screen-h;
+        menu-x: root.global-menu-x;
+        menu-y: root.bar-h;
+        item-clicked(id) => { root.global-menu-item-activated(id); }
+        dismiss => { root.global-menu-dismiss(); }
+    }
+
+    // Scrim for the popouts.
+    if root.datetime-open || root.cc-open: TouchArea {
+        x: 0; y: root.bar-h; width: 100%; height: parent.height - root.bar-h;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.popout-dismiss();
+            }
+        }
+    }
+
+    // Calendar / clock popout — centred under the clock.
+    DatetimePopout {
+        x: root.datetime-anchor-x <= 0px
+            ? (parent.width - self.width) / 2
+            : min(max(root.datetime-anchor-x - self.width / 2, 8px), parent.width - self.width - 8px);
+        y: root.bar-h + 8px;
+        open: root.datetime-open;
+        date-text: root.popout-date-text;
+        day-text: root.popout-day-text;
+        calendar-month-text: root.popout-calendar-month-text;
+        calendar-days: root.popout-calendar-days;
+        calendar-week-numbers: root.popout-calendar-week-numbers;
+        weekday-labels: root.popout-weekday-labels;
+        origin-x: self.width / 2;
+        origin-y: 0px;
+        backdrop: root.backdrop;
+        backdrop-screen-w: root.backdrop-screen-w;
+        backdrop-screen-h: root.backdrop-screen-h;
+        popout-x: self.x;
+        popout-y: self.y;
+        prev-month => { root.popout-prev-month(); }
+        next-month => { root.popout-next-month(); }
+    }
+
+    // Quick settings — anchored under the right-hand status cluster.
+    ControlCentrePopout {
+        x: root.cc-anchor-x <= 0px
+            ? parent.width - self.width - 8px + root.cc-offset-x
+            : min(max(root.cc-anchor-x - self.width + root.cc-offset-x, 8px), parent.width - self.width - 4px);
+        y: root.bar-h + 8px + root.cc-offset-y;
+        open: root.cc-open;
+        tiles: root.cc-tiles;
+        notifications: root.cc-notifications;
+        notification-count: root.cc-notification-count;
+        notifications-expanded <=> root.cc-notifications-expanded;
+        origin-x: self.width;
+        origin-y: 0px;
+        backdrop: root.backdrop;
+        backdrop-screen-w: root.backdrop-screen-w;
+        backdrop-screen-h: root.backdrop-screen-h;
+        popout-x: self.x;
+        popout-y: self.y;
+        tile-clicked(id) => { root.cc-tile-clicked(id); }
+        tile-slider(id, v) => { root.cc-tile-slider(id, v); }
+        tile-chevron(id) => { root.cc-tile-chevron(id); }
+        plugin-row(id, row) => { root.cc-plugin-row(id, row); }
+        plugin-toggle(id, row, v) => { root.cc-plugin-toggle(id, row, v); }
+        plugin-slider(id, row, v) => { root.cc-plugin-slider(id, row, v); }
+        open-submenu <=> root.cc-open-submenu;
+        submenu-rows <=> root.cc-submenu-rows;
+        account-clicked => { root.cc-account-clicked(); }
+        settings-clicked => { root.cc-settings-clicked(); }
+        lock-clicked => { root.cc-lock-clicked(); }
+        power-clicked => { root.cc-power-clicked(); }
+        notification-dismissed(i) => { root.cc-notification-dismissed(i); }
+    }
+}
