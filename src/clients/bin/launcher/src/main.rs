@@ -25,7 +25,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-// These MUST track the Spotlight geometry in launcher.slint (row-h 52, search-h
+// These MUST track the launcher geometry in launcher.slint (row-h 52, search-h
 // 60, panel-h 432 list / 560 grid) so keyboard nav scrolls the selected row into
 // view. List viewport = panel-h(432) - search-h(60) - hairline(1) - top pad(4).
 const ROW_H: i32 = 52;
@@ -114,7 +114,7 @@ impl LauncherApp {
         }
 
         // Web-search fallback (opt-in via `[launcher] web-search = <url %s>`):
-        // when nothing else matches, offer to search the web — like Spotlight.
+        // when nothing else matches, offer to search the web (search-engine fallback).
         if !self.grid && rows.is_empty() {
             let q = self.query.trim();
             if !q.is_empty() {
@@ -205,6 +205,12 @@ impl BarApp for LauncherApp {
     fn key_pressed(&mut self, text: &SharedString) {
         let c = text.chars().next();
         let count = self.filtered.borrow().len();
+        // The pointer can move the selection (hover-to-select); read it back so
+        // arrow keys + Enter continue from the row under the cursor, not a stale
+        // index.
+        if let Some(w) = &self.win {
+            self.selected = (w.get_selected().max(0) as usize).min(count.saturating_sub(1));
+        }
         if c == Some(char::from(Key::Escape)) {
             self.exit.set(true);
         } else if c == Some(char::from(Key::Return)) {

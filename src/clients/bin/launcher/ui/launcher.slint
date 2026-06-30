@@ -1,4 +1,4 @@
-// Application launcher — macOS Spotlight-style. A frosted panel in the upper
+// Application launcher (gnoblin). A frosted panel in the upper
 // third: a big search field (magnifier + large query) on top, a hairline, then
 // rich result rows (icon + title + subtitle + right accessory). Rust owns the
 // input (query, selection, scroll) and pushes it down; clicks/Enter activate by
@@ -21,7 +21,9 @@ export struct AppEntry {
 export component Launcher inherits Window {
     in property <string> query: "";
     in property <[AppEntry]> apps;
-    in property <int> selected: 0;
+    // in-out: the mouse can move the selection (hover-to-select), and Rust reads
+    // it back so keyboard nav + Enter continue from wherever the pointer left it.
+    in-out property <int> selected: 0;
     in property <length> scroll-y: 0px;
     in property <bool> grid-mode: false;
     in property <int> columns: 5;
@@ -50,7 +52,7 @@ export component Launcher inherits Window {
 
     panel := Rectangle {
         x: (parent.width - root.panel-w) / 2;
-        // Upper third, Spotlight-style — not dead centre.
+        // Upper third — not dead centre.
         y: root.grid-mode ? (parent.height - root.panel-h) / 2 : parent.height * 0.16;
         width: root.panel-w;
         height: root.panel-h;
@@ -58,7 +60,7 @@ export component Launcher inherits Window {
         clip: false;
 
         // Pop-in: fade up + scale from ~0.97 about the panel's top-centre, so it
-        // drops out of the search field like Spotlight.
+        // drops out of the search field.
         opacity: root.shown ? 1.0 : 0.0;
         transform-origin: { x: self.width / 2, y: 0px };
         transform-scale-x: root.shown ? 1.0 : 0.97;
@@ -106,7 +108,7 @@ export component Launcher inherits Window {
                     width: parent.width - (Spacing.lg + 2px + 22px + Spacing.md) - Spacing.lg;
                     height: parent.height;
                     text: root.query == ""
-                        ? (root.grid-mode ? "Search all applications" : "Spotlight Search")
+                        ? (root.grid-mode ? "Search all applications" : "Search apps, files & more…")
                         : root.query;
                     color: root.query == "" ? Theme.text-secondary : Theme.text-primary;
                     font-size: 22px;
@@ -115,7 +117,7 @@ export component Launcher inherits Window {
                     horizontal-alignment: left;
                     overflow: elide;
                 }
-                // Blinking caret after the query (a Spotlight touch).
+                // Blinking caret after the query.
                 Rectangle {
                     property <bool> blink: true;
                     Timer { interval: 560ms; running: true; triggered => { parent.blink = !parent.blink; } }
@@ -149,6 +151,10 @@ export component Launcher inherits Window {
                 viewport-height: root.apps.length * root.row-h + Spacing.sm;
                 viewport-y: root.scroll-y;
                 interactive: false;
+                // Smooth the keyboard-driven scroll: Rust pushes a new scroll-y
+                // when the selection moves out of view; this tweens to it instead
+                // of snapping, so paging through results glides.
+                animate viewport-y { duration: Motion.medium; easing: Motion.medium-curve; }
 
                 VerticalLayout {
                     padding-top: Spacing.xs;
@@ -163,14 +169,15 @@ export component Launcher inherits Window {
                             height: parent.height - 4px;
                             y: 2px;
                             border-radius: Radius.md;
-                            background: i == root.selected
-                                ? ShellPalette.accent
-                                : (touch.has-hover ? Theme.surface-hover-bg : transparent);
+                            background: i == root.selected ? ShellPalette.accent : transparent;
                             animate background { duration: Motion.fast; easing: Motion.fast-curve; }
                         }
 
                         touch := TouchArea {
                             clicked => { root.activated(i); }
+                            // Hover moves the selection so the accent follows the
+                            // pointer (and Enter launches whatever's under it).
+                            changed has-hover => { if (self.has-hover) { root.selected = i; } }
                         }
 
                         // Leading icon — built-in glyph for computed kinds (calc),
@@ -241,6 +248,7 @@ export component Launcher inherits Window {
                 viewport-height: Math.ceil(root.apps.length / root.columns) * root.cell-h;
                 viewport-y: root.scroll-y;
                 interactive: false;
+                animate viewport-y { duration: Motion.medium; easing: Motion.medium-curve; }
 
                 for app[i] in root.apps: Rectangle {
                     x: 16px + Math.mod(i, root.columns) * root.cell-w;
@@ -253,12 +261,13 @@ export component Launcher inherits Window {
                         width: parent.width - 2 * Spacing.xs;
                         height: parent.height - 2 * Spacing.xs;
                         border-radius: 14px;
-                        background: i == root.selected
-                            ? ShellPalette.accent
-                            : (gtouch.has-hover ? Theme.surface-hover-bg : transparent);
+                        background: i == root.selected ? ShellPalette.accent : transparent;
                         animate background { duration: Motion.fast; easing: Motion.fast-curve; }
 
-                        gtouch := TouchArea { clicked => { root.activated(i); } }
+                        gtouch := TouchArea {
+                            clicked => { root.activated(i); }
+                            changed has-hover => { if (self.has-hover) { root.selected = i; } }
+                        }
                         VerticalLayout {
                             padding: Spacing.sm;
                             spacing: Spacing.sm;
