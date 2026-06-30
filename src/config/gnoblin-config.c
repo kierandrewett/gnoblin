@@ -20,13 +20,30 @@
 #include "gnoblin-defaults-conf.h"
 #endif
 
+/*
+ * gnoblin.conf grammar, kept byte-compatible with
+ * src/clients/shell-ui/src/config.rs:
+ *
+ * - Each line is trimmed of leading space/tab and trailing space/tab/CR/LF.
+ * - Empty lines and lines whose first trimmed byte is `#` or `;` are comments.
+ * - A section line starts with `[` and uses the first later `]`; the name inside
+ *   is trimmed, trailing text is ignored, and a missing `]` discards the line.
+ * - A key/value line uses the first `=`. Empty keys are ignored. Repeated keys
+ *   are retained in file order; scalar lookups return the last value.
+ * - Values starting with a single or double quote use bytes up to the next same
+ *   quote and drop the rest of the line. There is no escape processing.
+ * - Unquoted values strip a `#` inline comment only when the `#` is introduced
+ *   by space/tab and is outside a simple quoted span. `;` is data inline.
+ */
+#define ROOT_SECTION ""
+
 typedef struct {
     char* key;
     char* value;
-} Entry;
+} ConfigEntry;
 
-/* section name -> GPtrArray<Entry*> (in file order, repeats allowed) */
-static GHashTable* sections;
+/* section name -> GPtrArray<ConfigEntry*> (in file order, repeats allowed) */
+static GHashTable* loaded_sections;
 
 const char* gnoblin_config_path(void) {
     static char* path;
@@ -43,12 +60,35 @@ const char* gnoblin_config_path(void) {
     return path;
 }
 
-static void entry_free(gpointer data) {
-    Entry* e = data;
+static void config_entry_free(gpointer data) {
+    ConfigEntry* e = data;
 
     g_free(e->key);
     g_free(e->value);
     g_free(e);
+}
+
+static GPtrArray* entry_list_new(void) {
+    return g_ptr_array_new_with_free_func(config_entry_free);
+}
+
+static GHashTable* section_table_new(void) {
+    GHashTable* table =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)g_ptr_array_unref);
+
+    /* Top-level keys before any [section] live under ROOT_SECTION. */
+    g_hash_table_replace(table, g_strdup(ROOT_SECTION), entry_list_new());
+    return table;
+}
+
+static GPtrArray* ensure_section(GHashTable* table, const char* name) {
+    GPtrArray* entries = g_hash_table_lookup(table, name);
+
+    if (!entries) {
+        entries = entry_list_new();
+        g_hash_table_replace(table, g_strdup(name), entries);
+    }
+    return entries;
 }
 
 static char* strip(char* s) {
@@ -103,74 +143,71 @@ static char* clean_value(char* s) {
     return strip(s);
 }
 
+static gboolean switch_current_section(GHashTable* table, char* line, GPtrArray** current) {
+    char* close;
+    char* name;
+
+    if (line[0] != '[')
+        return FALSE;
+
+    close = strchr(line, ']');
+    if (!close)
+        return TRUE;
+
+    *close = '\0';
+    name = strip(line + 1);
+    *current = ensure_section(table, name);
+    return TRUE;
+}
+
+static void append_entry(GPtrArray* entries, char* line) {
+    char* eq = strchr(line, '=');
+    ConfigEntry* e;
+
+    if (!eq)
+        return;
+    *eq = '\0';
+
+    e = g_new0(ConfigEntry, 1);
+    e->key = g_strdup(strip(line));
+    e->value = g_strdup(clean_value(eq + 1));
+    if (e->key[0] == '\0') {
+        config_entry_free(e);
+        return;
+    }
+    g_ptr_array_add(entries, e);
+}
+
 /* Parse `contents` into `table` (sectioned, repeats allowed, last value wins).
  * Appends to existing sections, so calling it twice — shipped defaults first,
- * then the user's file — layers the user's values on top (lookup() returns the
- * last match). Modifies a private copy of `contents`. */
+ * then the user's file — layers the user's values on top (scalar lookup returns
+ * the last match). Modifies a private copy of `contents`. */
 static void parse_into(GHashTable* table, const char* contents) {
     g_auto(GStrv) lines = NULL;
-    GPtrArray* current;
+    GPtrArray* current = ensure_section(table, ROOT_SECTION);
     int i;
 
     if (!contents)
         return;
 
-    /* Each file/buffer starts in the top-level "" section. */
-    current = g_hash_table_lookup(table, "");
-
     lines = g_strsplit(contents, "\n", -1);
     for (i = 0; lines[i]; i++) {
         char* line = strip(lines[i]);
-        char* eq;
-        Entry* e;
 
         if (line[0] == '\0' || line[0] == '#' || line[0] == ';')
             continue;
 
-        if (line[0] == '[') {
-            char* close = strchr(line, ']');
-            g_autofree char* name = NULL;
-
-            if (!close)
-                continue;
-            *close = '\0';
-            name = g_strdup(strip(line + 1));
-
-            current = g_hash_table_lookup(table, name);
-            if (!current) {
-                current = g_ptr_array_new_with_free_func(entry_free);
-                g_hash_table_replace(table, g_strdup(name), current);
-            }
+        if (switch_current_section(table, line, &current))
             continue;
-        }
-
-        eq = strchr(line, '=');
-        if (!eq)
-            continue;
-        *eq = '\0';
-
-        e = g_new0(Entry, 1);
-        e->key = g_strdup(strip(line));
-        e->value = g_strdup(clean_value(eq + 1));
-        if (e->key[0] == '\0') {
-            entry_free(e);
-            continue;
-        }
-        g_ptr_array_add(current, e);
+        append_entry(current, line);
     }
 }
 
 void gnoblin_config_reload(void) {
     g_autofree char* contents = NULL;
     GHashTable* table;
-    GPtrArray* current;
 
-    table =
-        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)g_ptr_array_unref);
-
-    /* Top-level (before any [section]) lives under "". */
-    current = g_ptr_array_new_with_free_func(entry_free);
-    g_hash_table_replace(table, g_strdup(""), current);
+    table = section_table_new();
 
 #ifdef GNOBLIN_EMBED_DEFAULTS
     /* Shipped defaults are the BASE layer (the same gnoblin.defaults.conf the
@@ -183,27 +220,27 @@ void gnoblin_config_reload(void) {
     if (g_file_get_contents(gnoblin_config_path(), &contents, NULL, NULL))
         parse_into(table, contents);
 
-    if (sections)
-        g_hash_table_unref(sections);
-    sections = table;
+    if (loaded_sections)
+        g_hash_table_unref(loaded_sections);
+    loaded_sections = table;
 }
 
-static GPtrArray* section(const char* name) {
-    if (!sections)
+static GPtrArray* loaded_section(const char* name) {
+    if (!loaded_sections)
         gnoblin_config_reload();
-    return g_hash_table_lookup(sections, name ? name : "");
+    return g_hash_table_lookup(loaded_sections, name ? name : ROOT_SECTION);
 }
 
 /* Last value wins, so a later line overrides an earlier one. */
-static const char* lookup(const char* section_name, const char* key) {
-    GPtrArray* entries = section(section_name);
+static const char* lookup_last_value(const char* section_name, const char* key) {
+    GPtrArray* entries = loaded_section(section_name);
     const char* value = NULL;
     guint i;
 
     if (!entries)
         return NULL;
     for (i = 0; i < entries->len; i++) {
-        Entry* e = g_ptr_array_index(entries, i);
+        ConfigEntry* e = g_ptr_array_index(entries, i);
 
         if (!strcmp(e->key, key))
             value = e->value;
@@ -212,7 +249,7 @@ static const char* lookup(const char* section_name, const char* key) {
 }
 
 gboolean gnoblin_config_get_bool(const char* section_name, const char* key, gboolean fallback) {
-    const char* v = lookup(section_name, key);
+    const char* v = lookup_last_value(section_name, key);
 
     if (!v)
         return fallback;
@@ -226,7 +263,7 @@ gboolean gnoblin_config_get_bool(const char* section_name, const char* key, gboo
 }
 
 int gnoblin_config_get_int(const char* section_name, const char* key, int fallback) {
-    const char* v = lookup(section_name, key);
+    const char* v = lookup_last_value(section_name, key);
     char* end;
     long n;
 
@@ -240,17 +277,15 @@ int gnoblin_config_get_int(const char* section_name, const char* key, int fallba
 }
 
 char* gnoblin_config_get_string(const char* section_name, const char* key) {
-    const char* v = lookup(section_name, key);
-    g_autofree char* dup = NULL;
+    const char* v = lookup_last_value(section_name, key);
 
     if (!v)
         return NULL;
-    dup = g_strdup(v);
-    return g_steal_pointer(&dup);
+    return g_strdup(v);
 }
 
 char** gnoblin_config_get_list(const char* section_name, const char* key) {
-    GPtrArray* entries = section(section_name);
+    GPtrArray* entries = loaded_section(section_name);
     GPtrArray* out;
     guint i;
 
@@ -259,13 +294,11 @@ char** gnoblin_config_get_list(const char* section_name, const char* key) {
 
     out = g_ptr_array_new();
     for (i = 0; i < entries->len; i++) {
-        Entry* e = g_ptr_array_index(entries, i);
-        g_autofree char* dup = NULL;
+        ConfigEntry* e = g_ptr_array_index(entries, i);
 
         if (strcmp(e->key, key))
             continue;
-        dup = g_strdup(e->value);
-        g_ptr_array_add(out, g_steal_pointer(&dup));
+        g_ptr_array_add(out, g_strdup(e->value));
     }
 
     if (out->len == 0) {
@@ -277,7 +310,7 @@ char** gnoblin_config_get_list(const char* section_name, const char* key) {
 }
 
 char** gnoblin_config_get_keys(const char* section_name) {
-    GPtrArray* entries = section(section_name);
+    GPtrArray* entries = loaded_section(section_name);
     GPtrArray* out;
     guint i;
 
@@ -286,7 +319,7 @@ char** gnoblin_config_get_keys(const char* section_name) {
 
     out = g_ptr_array_new();
     for (i = 0; i < entries->len; i++) {
-        Entry* e = g_ptr_array_index(entries, i);
+        ConfigEntry* e = g_ptr_array_index(entries, i);
 
         g_ptr_array_add(out, g_strdup(e->key));
     }
