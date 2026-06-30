@@ -63,7 +63,7 @@ export global MotionCurves {
     // home instead of being transcribed into a 34-branch ternary per resolver.
     // `fallback` is returned only for an out-of-range index (never produced by a
     // valid style value), preserving each resolver's original default.
-    pure function curve-by-index(idx: int, fallback: easing) -> easing {
+    public pure function curve-by-index(idx: int, fallback: easing) -> easing {
         return idx ==  0 ? root.c0  : idx ==  1 ? root.c1  : idx ==  2 ? root.c2  :
                idx ==  3 ? root.c3  : idx ==  4 ? root.c4  : idx ==  5 ? root.c5  :
                idx ==  6 ? root.c6  : idx ==  7 ? root.c7  : idx ==  8 ? root.c8  :
