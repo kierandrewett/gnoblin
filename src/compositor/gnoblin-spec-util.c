@@ -74,23 +74,59 @@ gboolean gnoblin_spec_parse_percent(const char* text, int* percent) {
     return TRUE;
 }
 
+gboolean gnoblin_spec_parse_uint(const char* text, guint* out) {
+    g_autofree char* copy = NULL;
+    char* p;
+    char* end = NULL;
+    guint64 value;
+
+    if (!text || !out)
+        return FALSE;
+
+    copy = g_strdup(text);
+    p = copy;
+    gnoblin_spec_skip_spaces(&p);
+    if (*p == '-')
+        return FALSE;
+
+    errno = 0;
+    value = g_ascii_strtoull(p, &end, 10);
+    if (errno != 0 || end == p || value > G_MAXUINT || !gnoblin_spec_at_end(end))
+        return FALSE;
+
+    *out = (guint)value;
+    return TRUE;
+}
+
+gboolean gnoblin_spec_parse_double_token(char** p, double* out) {
+    char* end = NULL;
+    double value;
+
+    if (!p || !*p || !out)
+        return FALSE;
+
+    gnoblin_spec_skip_spaces(p);
+    errno = 0;
+    value = g_ascii_strtod(*p, &end);
+    if (errno != 0 || end == *p || !isfinite(value))
+        return FALSE;
+
+    *out = value;
+    *p = end;
+    return TRUE;
+}
+
 gboolean gnoblin_spec_parse_double(const char* text, double* out) {
     g_autofree char* copy = NULL;
-    char* s;
-    char* end = NULL;
+    char* p;
     double value;
 
     if (!text || !out)
         return FALSE;
 
     copy = g_strdup(text);
-    s = g_strstrip(copy);
-    if (*s == '\0')
-        return FALSE;
-
-    errno = 0;
-    value = g_ascii_strtod(s, &end);
-    if (errno != 0 || end == s || !isfinite(value) || !gnoblin_spec_at_end(end))
+    p = copy;
+    if (!gnoblin_spec_parse_double_token(&p, &value) || !gnoblin_spec_at_end(p))
         return FALSE;
 
     *out = value;
