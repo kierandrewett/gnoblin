@@ -238,7 +238,9 @@ component PanelArea {
                     Text {
                         text: root.clock-text;
                         color: root.resolved-fg;
-                        font-family: Tokens.font-family;
+                        // Monospaced so the per-second digit changes don't reflow
+                        // the panel (Slint has no tabular-figures / `tnum` toggle).
+                        font-family: Tokens.mono-font-family;
                         font-size: Tokens.panel-font-size;
                         font-weight: 600;
                         vertical-alignment: center;
