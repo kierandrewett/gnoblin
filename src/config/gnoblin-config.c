@@ -278,12 +278,10 @@ int gnoblin_config_get_int(const char* section_name, const char* key, int fallba
 
 char* gnoblin_config_get_string(const char* section_name, const char* key) {
     const char* v = lookup_last_value(section_name, key);
-    g_autofree char* dup = NULL;
 
     if (!v)
         return NULL;
-    dup = g_strdup(v);
-    return g_steal_pointer(&dup);
+    return g_strdup(v);
 }
 
 char** gnoblin_config_get_list(const char* section_name, const char* key) {
@@ -297,12 +295,10 @@ char** gnoblin_config_get_list(const char* section_name, const char* key) {
     out = g_ptr_array_new();
     for (i = 0; i < entries->len; i++) {
         ConfigEntry* e = g_ptr_array_index(entries, i);
-        g_autofree char* dup = NULL;
 
         if (strcmp(e->key, key))
             continue;
-        dup = g_strdup(e->value);
-        g_ptr_array_add(out, g_steal_pointer(&dup));
+        g_ptr_array_add(out, g_strdup(e->value));
     }
 
     if (out->len == 0) {
