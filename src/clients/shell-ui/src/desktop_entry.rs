@@ -694,55 +694,8 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(test)]
 mod desktop_entry_tests {
     use super::*;
-    use crate::{find_icon, find_icon_at_size};
-    use std::ffi::OsString;
+    use crate::test_support::{env_lock, temp_root, EnvVar};
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    struct EnvVar {
-        key: &'static str,
-        old: Option<OsString>,
-    }
-
-    impl EnvVar {
-        fn set(key: &'static str, value: &Path) -> Self {
-            let old = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, old }
-        }
-
-        fn set_str(key: &'static str, value: &str) -> Self {
-            let old = std::env::var_os(key);
-            std::env::set_var(key, value);
-            Self { key, old }
-        }
-    }
-
-    impl Drop for EnvVar {
-        fn drop(&mut self) {
-            if let Some(old) = &self.old {
-                std::env::set_var(self.key, old);
-            } else {
-                std::env::remove_var(self.key);
-            }
-        }
-    }
-
-    fn temp_root(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "gnoblin-shell-ui-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
-    }
 
     fn write_executable(path: &Path, text: &str) {
         std::fs::write(path, text).unwrap();
@@ -1001,94 +954,6 @@ mod desktop_entry_tests {
             resolve_desktop_id("settings"),
             Some("org.gnome.Settings".to_string())
         );
-
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn find_icon_searches_xdg_data_home_hicolor_theme() {
-        let _lock = env_lock().lock().unwrap();
-        let root = temp_root("icon-xdg-data-home");
-        let data_home = root.join("data");
-        let icon_dir = data_home.join("icons/hicolor/48x48/apps");
-        std::fs::create_dir_all(&icon_dir).unwrap();
-        let mut img = image::RgbaImage::new(1, 1);
-        img.put_pixel(0, 0, image::Rgba([0, 128, 255, 255]));
-        img.save(icon_dir.join("local-only.png")).unwrap();
-
-        let _xdg_data_home = EnvVar::set("XDG_DATA_HOME", &data_home);
-        let _xdg_data_dirs = EnvVar::set("XDG_DATA_DIRS", &root.join("empty-data-dirs"));
-
-        assert!(find_icon("local-only", "").is_some());
-
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn find_icon_at_size_downsamples_large_raster_icons() {
-        let _lock = env_lock().lock().unwrap();
-        let root = temp_root("icon-sized-raster");
-        let data_home = root.join("data");
-        let icon_dir = data_home.join("icons/hicolor/256x256/apps");
-        std::fs::create_dir_all(&icon_dir).unwrap();
-        let mut img = image::RgbaImage::new(256, 256);
-        for y in 0..256 {
-            for x in 0..256 {
-                img.put_pixel(x, y, image::Rgba([x as u8, y as u8, 192, 255]));
-            }
-        }
-        img.save(icon_dir.join("large-only.png")).unwrap();
-
-        let _xdg_data_home = EnvVar::set("XDG_DATA_HOME", &data_home);
-        let _xdg_data_dirs = EnvVar::set("XDG_DATA_DIRS", &root.join("empty-data-dirs"));
-
-        let icon = find_icon_at_size("large-only", "", 48).unwrap();
-        let size = icon.size();
-        assert_eq!((size.width, size.height), (48, 48));
-
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn find_icon_loads_absolute_extensionless_png() {
-        let _lock = env_lock().lock().unwrap();
-        let root = temp_root("icon-extensionless-absolute");
-        std::fs::create_dir_all(&root).unwrap();
-        let icon = root.join("app-icon");
-        let mut img = image::RgbaImage::new(1, 1);
-        img.put_pixel(0, 0, image::Rgba([255, 64, 0, 255]));
-        img.write_to(
-            &mut std::io::BufWriter::new(std::fs::File::create(&icon).unwrap()),
-            image::ImageOutputFormat::Png,
-        )
-        .unwrap();
-
-        assert!(find_icon(icon.to_str().unwrap(), "").is_some());
-
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn find_icon_loads_xpm_icons() {
-        let _lock = env_lock().lock().unwrap();
-        let root = temp_root("icon-xpm");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(
-            root.join("local-xpm.xpm"),
-            r##"/* XPM */
-static const char * local_xpm[] = {
-"2 2 3 1",
-"  c None",
-". c #ff0000",
-"+ c #00ff00",
-".+",
-"+."
-};
-"##,
-        )
-        .unwrap();
-
-        assert!(find_icon("local-xpm", root.to_str().unwrap()).is_some());
 
         std::fs::remove_dir_all(&root).unwrap();
     }
