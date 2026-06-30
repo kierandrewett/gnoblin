@@ -23,8 +23,6 @@ the crates under `crates/`.
 - `bin/window-menu/` owns the compositor window action menu used by the shell.
 - `bin/launcher/`, `bin/notifyd/`, `bin/osd/`, `bin/night-light`, and
   `bin/power-menu/` are shell service or utility clients.
-- `control-center/` is a C/GTK settings panel and is excluded from the Rust
-  workspace.
 
 ## Rules Of Thumb
 

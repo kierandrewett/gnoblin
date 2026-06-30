@@ -16,4 +16,3 @@ members = [
   "bin/night-light",
   "bin/power-menu",
 ]
-exclude = ["control-center"]

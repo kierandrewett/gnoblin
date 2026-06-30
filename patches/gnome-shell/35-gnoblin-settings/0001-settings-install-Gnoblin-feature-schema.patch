@@ -5,7 +5,7 @@ Subject: [PATCH] settings: install Gnoblin feature schema
 
 Install and compile the org.gnoblin.shell schema alongside GNOME Shell's
 schemas. Gnoblin layer-shell clients, Shell autostart, Mutter protocol gates,
-and the future control-center panel all consume this one settings contract.
+and the shell clients all consume this one settings contract.
 ---
  data/meson.build | 9 +++++++--
  1 file changed, 7 insertions(+), 2 deletions(-)

@@ -599,8 +599,8 @@ else
 fi
 
 echo "== patches apply cleanly to the pinned tags =="
-declare -A TAGS=( [mutter]=49.5 [gnome-shell]=49.6 [gnome-control-center]=49.6 )
-for proj in mutter gnome-shell gnome-control-center; do
+declare -A TAGS=( [mutter]=49.5 [gnome-shell]=49.6 )
+for proj in mutter gnome-shell; do
   sm="$ROOT/subprojects/$proj"
   [ -d "$sm/.git" ] || { bad "$proj submodule missing (run 'just init')"; continue; }
   reset_to_tag "$sm" "${TAGS[$proj]}"
@@ -915,65 +915,6 @@ else
 fi
 
 reset_to_tag "$sm" 49.5
-
-echo "== applying gnome-control-center patches for content checks =="
-sm="$ROOT/subprojects/gnome-control-center"
-if [ -d "$sm/.git" ]; then
-  reset_to_tag "$sm" 49.6
-  "$ROOT/scripts/copy-overlay.sh" gnome-control-center "$sm" >/dev/null
-  while IFS= read -r p; do git -C "$sm" apply "$p" 2>/dev/null; done \
-    < <(find "$ROOT/patches/gnome-control-center" -name '*.patch' | sort)
-
-  gnoblin_panel="$sm/panels/gnoblin/cc-gnoblin-panel.c"
-  gnoblin_panel_ui="$sm/panels/gnoblin/cc-gnoblin-panel.blp"
-  gnoblin_panel_meson="$sm/panels/gnoblin/meson.build"
-  gnoblin_panel_desktop="$sm/panels/gnoblin/gnome-gnoblin-panel.desktop.in"
-  gnoblin_panel_loader="$sm/shell/cc-panel-loader.c"
-  gnoblin_panels_meson="$sm/panels/meson.build"
-  if [ -f "$gnoblin_panel" ] &&
-     [ -f "$gnoblin_panel_ui" ] &&
-     [ -f "$gnoblin_panel_meson" ] &&
-     grep -q "cc_gnoblin_panel_get_type" "$gnoblin_panel_loader" &&
-     grep -q "PANEL_TYPE(\"gnoblin\"" "$gnoblin_panel_loader" &&
-     grep -q "'gnoblin'" "$gnoblin_panels_meson" &&
-     grep -q "panels_list += cappletname" "$gnoblin_panel_meson" &&
-     grep -q "desktop = 'gnome-@0@-panel.desktop'.format(cappletname)" "$gnoblin_panel_meson" &&
-     grep -q "cc-gnoblin-panel.blp" "$gnoblin_panel_meson" &&
-     grep -q "org.gnome.Settings-gnoblin-symbolic" "$gnoblin_panel_desktop"; then
-    ok "gnome-control-center exposes the Gnoblin Settings panel"
-  else
-    bad "gnome-control-center Gnoblin panel registration is incomplete"
-  fi
-  if grep -q "GNOBLIN_SCHEMA_ID \"org.gnoblin.shell\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-monitor-mode\"" "$gnoblin_panel" &&
-     grep -q "\"topbar-monitors\"" "$gnoblin_panel" &&
-     grep -q "\"dock-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"dock-monitor-mode\"" "$gnoblin_panel" &&
-     grep -q "\"dock-monitors\"" "$gnoblin_panel" &&
-     grep -q "\"wlr-layer-shell-enabled\"" "$gnoblin_panel" &&
-     grep -q "\"wlr-screencopy-enabled\"" "$gnoblin_panel" &&
-     grep -q "g_settings_schema_source_lookup" "$gnoblin_panel"; then
-    ok "Gnoblin Settings panel edits the shared feature schema and guards missing schemas"
-  else
-    bad "Gnoblin Settings panel is not bound to the shared feature schema"
-  fi
-  if grep -q "Primary Display" "$gnoblin_panel_ui" &&
-     grep -q "All Displays" "$gnoblin_panel_ui" &&
-     grep -q "Selected Displays" "$gnoblin_panel_ui" &&
-     grep -q "topbar_displays_group" "$gnoblin_panel_ui" &&
-     grep -q "dock_displays_group" "$gnoblin_panel_ui" &&
-     grep -q "gdk_display_get_monitors" "$gnoblin_panel" &&
-     grep -q "monitor_id" "$gnoblin_panel" &&
-     grep -q "monitor-%u-%d,%d-%dx%d" "$gnoblin_panel"; then
-    ok "Gnoblin Settings panel supports primary/all/manual per-monitor topbar and dock policy"
-  else
-    bad "Gnoblin Settings panel is missing per-monitor topbar/dock controls"
-  fi
-  reset_to_tag "$sm" 49.6
-else
-  bad "gnome-control-center submodule missing (run 'just init')"
-fi
 
 echo "== repo-owned Rust/Slint shell clients are wired correctly =="
 clients="$ROOT/src/clients"
