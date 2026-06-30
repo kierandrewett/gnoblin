@@ -17,6 +17,9 @@ export struct MenuItem {
     accelerator: string,
     /// True for non-clickable separator rows.
     separator:   bool,
+    /// Row opens a submenu — drawn with a trailing chevron instead of an
+    /// accelerator (replaces the old ugly ">" baked into the label).
+    submenu:     bool,
     /// Disabled rows render at reduced opacity and don't fire `item-clicked`.
     enabled:     bool,
 }
@@ -53,9 +56,9 @@ export component ContextMenu {
     /// Fired when the user clicks outside the menu (caller closes it).
     callback dismiss();
 
-    width: 210px;
-    // Compact macOS-style chrome: a tight ~5px top/bottom inset, not 8px.
-    height: items-col.preferred-height + 10px;
+    width: 220px;
+    // Comfortable container inset: 6px above the first row and below the last.
+    height: items-col.preferred-height + 12px;
 
     // ── macOS-style click flicker ──────────────────────────────────────
     // When a row is clicked we don't fire `item-clicked` immediately —
@@ -195,17 +198,17 @@ export component ContextMenu {
         }
 
         items-col := VerticalLayout {
-            x: 0; y: 5px;
+            x: 0; y: 6px;
             width: parent.width;
-            spacing: 1px;
-            padding-left: 6px;
-            padding-right: 6px;
+            spacing: 2px;
+            padding-left: 7px;
+            padding-right: 7px;
 
             for it[i] in root.items: Rectangle {
-                // Compact macOS rows (~26px) with a hairline-margin highlight,
-                // not chunky 34px blocks.
-                height: it.separator ? 9px : 26px;
-                width: parent.width - 12px;
+                // Comfortable 30px rows with a rounded highlight inset from the
+                // menu edge; no per-item separators (grouping is by spacing).
+                height: it.separator ? 9px : 30px;
+                width: parent.width - 14px;
                 // Highlight via either input: pointer hover OR the
                 // keyboard's `selected-index`. Tried wiring hover
                 // through `selected-index` for unification, but that
@@ -298,7 +301,8 @@ export component ContextMenu {
                     // right-aligned accelerator so the label and shortcut
                     // never crowd each other.
                     width: parent.width - 24px - acc.width
-                        - (it.accelerator == "" ? 0px : 12px);
+                        - (it.accelerator == "" ? 0px : 12px)
+                        - (it.submenu ? 18px : 0px);
                     height: parent.height;
                     text: it.label;
                     color: parent.active
@@ -309,6 +313,24 @@ export component ContextMenu {
                     vertical-alignment: center;
                     overflow: elide;
                     visible: !it.separator;
+                }
+
+                // Submenu chevron — a crisp vector "›", right-aligned, replacing
+                // the old ">" character that used to be baked into the label.
+                if it.submenu: Path {
+                    x: parent.width - 21px;
+                    y: parent.height / 2 - 5px;
+                    width: 6px;
+                    height: 10px;
+                    viewbox-width: 6;
+                    viewbox-height: 10;
+                    stroke: parent.active
+                        ? rgba(255, 255, 255, 0.92)
+                        : Theme.text-secondary;
+                    stroke-width: 1.5px;
+                    MoveTo { x: 1.5; y: 1; }
+                    LineTo { x: 5; y: 5; }
+                    LineTo { x: 1.5; y: 9; }
                 }
             }
         }

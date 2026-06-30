@@ -17,6 +17,8 @@ pub struct AppMenuEntry {
     pub id: i32,
     pub label: String,
     pub separator: bool,
+    /// Row opens a submenu — rendered with a trailing chevron instead of "›" text.
+    pub submenu: bool,
     pub enabled: bool,
 }
 
@@ -91,16 +93,8 @@ fn row(id: i32, label: impl Into<String>) -> AppMenuEntry {
         id,
         label: label.into(),
         separator: false,
+        submenu: false,
         enabled: true,
-    }
-}
-
-fn sep() -> AppMenuEntry {
-    AppMenuEntry {
-        id: -1,
-        label: String::new(),
-        separator: true,
-        enabled: false,
     }
 }
 
@@ -120,8 +114,13 @@ pub fn build(app_id: &str, running: bool, pinned: bool) -> Vec<AppMenuEntry> {
     let actions = desktop_actions(app_id);
 
     if running {
-        items.push(row(ITEM_ALL_WINDOWS, "All Windows >"));
-        items.push(sep());
+        items.push(AppMenuEntry {
+            id: ITEM_ALL_WINDOWS,
+            label: "All Windows".into(),
+            separator: false,
+            submenu: true,
+            enabled: true,
+        });
     }
 
     if actions.is_empty() || !has_new_window_action(&actions) {
@@ -134,7 +133,6 @@ pub fn build(app_id: &str, running: bool, pinned: bool) -> Vec<AppMenuEntry> {
         ));
     }
 
-    items.push(sep());
     items.push(row(
         ITEM_PIN,
         if pinned {
@@ -143,10 +141,8 @@ pub fn build(app_id: &str, running: bool, pinned: bool) -> Vec<AppMenuEntry> {
             "Pin to Dock"
         },
     ));
-    items.push(sep());
     items.push(row(ITEM_APP_DETAILS, "App Details"));
     if running {
-        items.push(sep());
         items.push(row(ITEM_QUIT, "Quit"));
     }
     items

@@ -33,6 +33,11 @@ export struct DockItem {
 component DockIconSlot {
     in property <DockItem> item;
     in property <bool>     show-separator: false;
+    /// When a context menu is open, force this slot to read as un-hovered —
+    /// `has-hover` goes stale (Slint only re-evaluates it on pointer motion), so
+    /// without this the right-clicked icon keeps its tooltip + hover fill through
+    /// the menu's open animation.
+    in property <bool>     suppress-hover: false;
 
     callback icon-clicked(string);
     /// Right-click on the icon. Args: app-id, slot-centre x in WINDOW space
@@ -99,7 +104,8 @@ component DockIconSlot {
         border-radius: Radius.md;
         background: ta.pressed
             ? root.button-bg-pressed
-            : (root.item.focused ? root.button-bg-focused : (ta.has-hover ? root.button-bg-hover : transparent));
+            : (root.item.focused ? root.button-bg-focused
+               : ((ta.has-hover && !root.suppress-hover) ? root.button-bg-hover : transparent));
         // No per-icon border — the soft fill + running dot mark focus; a border
         // around the focused slot just added clutter (macOS doesn't draw one).
         animate background { duration: Motion.fast; easing: Motion.fast-curve; }
@@ -116,7 +122,7 @@ component DockIconSlot {
 
     // ── Tooltip — compact floating label above the hovered icon ──
     tip-body := Rectangle {
-        property <bool>   shown: ta.has-hover && root.item.name != "";
+        property <bool>   shown: ta.has-hover && !root.suppress-hover && root.item.name != "";
         property <float>  tip-vis: 0.0;
         states [
             shown-state when self.shown: {
@@ -249,17 +255,18 @@ component DockIconSlot {
     // Running indicators — centred round dots below the icon. One dot per
     // window, capped at five so multi-window apps read like macOS-style
     // running marks without overrunning the slot.
+    // Iterate the ACTUAL window count (not a fixed 5 with hidden slots) so the
+    // row's preferred-width is the real dot count and the centring maths lands
+    // the dots dead-centre under the icon. Multi-window apps show one dot each.
     if item.running: dots := HorizontalLayout {
-        property <int> visible-count: min(max(root.item.window-count, 1), 5);
         x: (parent.width - self.preferred-width) / 2;
-        y: parent.height - 6px;
-        height: 4px;
-        spacing: 3px;
-        for i in 5: Rectangle {
-            visible: i < dots.visible-count;
-            width: 4px;
-            height: 4px;
-            border-radius: 2px;
+        y: parent.height - 7px;
+        height: 5px;
+        spacing: 4px;
+        for i in min(max(root.item.window-count, 1), 5): Rectangle {
+            width: 5px;
+            height: 5px;
+            border-radius: 2.5px;
             background: root.dot-color;
             animate background { duration: Motion.medium; easing: Motion.medium-curve; }
         }
@@ -289,6 +296,9 @@ component DockSeparator {
 // ── Public Dock component ─────────────────────────────────────────────────────
 export component Dock {
     in property <[DockItem]> items;
+    /// True while a dock context menu is open — suppresses icon hover/tooltips
+    /// so nothing flickers underneath the menu as it opens.
+    in property <bool>       menu-open: false;
     in property <image>      backdrop;
     in property <length>     backdrop-screen-w: 1px;
     in property <length>     backdrop-screen-h: 1px;
@@ -408,6 +418,7 @@ export component Dock {
 
                     DockIconSlot {
                         item: item;
+                        suppress-hover: root.menu-open;
                         icon-clicked(id) => { root.icon-clicked(id); }
                         icon-right-clicked(id, ax) => { root.icon-right-clicked(id, ax); }
                     }

@@ -85,12 +85,13 @@ fn apply_backdrop(d: &DockBar, screen_w: u32, screen_h: u32) {
     d.set_backdrop_offset_y(-((screen_h as f32) - BAND_H));
 }
 
-/// Pixel height the ContextMenu will self-size to: 34 px comfortable rows,
-/// ~12 px separators, plus the 16 px container inset (mirrors ContextMenu.slint).
+/// Pixel height the ContextMenu self-sizes to: 30 px rows + 2 px inter-row
+/// spacing, plus the 12 px container inset (mirrors ContextMenu.slint).
 fn menu_height(items: &[MenuItem]) -> f32 {
     let normal = items.iter().filter(|i| !i.separator).count() as f32;
     let seps = items.iter().filter(|i| i.separator).count() as f32;
-    normal * 34.0 + seps * 12.0 + 16.0
+    let rows = normal + seps;
+    normal * 30.0 + seps * 9.0 + (rows - 1.0).max(0.0) * 2.0 + 12.0
 }
 
 /// Open the menu for `app_id` anchored under `anchor_x` (window-space slot
@@ -113,6 +114,7 @@ fn open_menu(
             label: it.label.into(),
             accelerator: "".into(),
             separator: it.separator,
+            submenu: it.submenu,
             enabled: it.enabled,
         })
         .collect();

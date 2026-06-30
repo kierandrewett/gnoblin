@@ -91,6 +91,7 @@ impl BarApp for PowerMenuApp {
                 label: (*label).into(),
                 accelerator: Default::default(),
                 separator: false,
+                submenu: false,
                 enabled: true,
             })
             .collect();

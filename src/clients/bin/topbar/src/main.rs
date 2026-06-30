@@ -177,6 +177,7 @@ fn app_menu_model(app_id: &str, running: bool) -> slint::ModelRc<MenuItem> {
                 label: it.label.into(),
                 accelerator: "".into(),
                 separator: it.separator,
+                submenu: it.submenu,
                 enabled: it.enabled,
             })
             .collect();
@@ -249,13 +250,10 @@ impl TopBarApp {
             .enumerate()
             .map(|(i, r)| MenuItem {
                 id: i as i32,
-                label: if r.has_submenu {
-                    format!("{} ▸", r.label).into()
-                } else {
-                    r.label.clone().into()
-                },
+                label: r.label.clone().into(),
                 accelerator: Default::default(),
                 separator: r.separator,
+                submenu: r.has_submenu,
                 enabled: r.enabled && !r.separator,
             })
             .collect();

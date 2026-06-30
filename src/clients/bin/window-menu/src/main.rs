@@ -114,6 +114,7 @@ impl BarApp for WindowMenuApp {
                 label: e.label.clone().into(),
                 accelerator: Default::default(),
                 separator: e.separator,
+                submenu: false,
                 enabled: !e.separator,
             })
             .collect();
