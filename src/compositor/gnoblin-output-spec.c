@@ -17,7 +17,7 @@ static const char* token_argument(const char* token, const char* keyword) {
     return token + len;
 }
 
-gboolean gnoblin_output_transform_from_name(const char* text, guint* out) {
+static gboolean parse_transform(const char* text, guint* out) {
     g_autofree char* copy = NULL;
     const char* s;
 
@@ -56,15 +56,7 @@ static gboolean parse_mode(const char* text, GnoblinOutputSpec* out) {
 
     copy = g_strdup(text);
     p = copy;
-    if (!gnoblin_spec_parse_int(&p, &w))
-        return FALSE;
-    gnoblin_spec_skip_spaces(&p);
-    if (*p != 'x' && *p != 'X')
-        return FALSE;
-    p++;
-    if (!gnoblin_spec_parse_int(&p, &h))
-        return FALSE;
-    if (w <= 0 || h <= 0)
+    if (!gnoblin_spec_parse_extent_token(&p, &w, &h))
         return FALSE;
 
     gnoblin_spec_skip_spaces(&p);
@@ -123,6 +115,8 @@ gboolean gnoblin_output_parse_spec(const char* value, GnoblinOutputSpec* out) {
 
     memset(out, 0, sizeof(*out));
     parts = g_strsplit(value, ",", -1);
+    /* Output specs are intentionally best-effort: malformed tokens are ignored
+     * so one bad field does not discard the rest of a monitor override. */
     for (i = 0; parts && parts[i]; i++) {
         g_autofree char* token = g_strdup(g_strstrip(parts[i]));
         const char* arg;
@@ -137,7 +131,7 @@ gboolean gnoblin_output_parse_spec(const char* value, GnoblinOutputSpec* out) {
         } else if ((arg = token_argument(token, "position"))) {
             parse_position(arg, out);
         } else if ((arg = token_argument(token, "transform"))) {
-            if (gnoblin_output_transform_from_name(arg, &transform)) {
+            if (parse_transform(arg, &transform)) {
                 out->has_transform = TRUE;
                 out->transform = transform;
             }

@@ -1,6 +1,6 @@
-# gnoblin-shell — the gnoblin compositor (Phase 2 spike)
+# gnoblin-shell — the gnoblin compositor
 
-A from-scratch, first-class C program that embeds **libmutter-17** and drives it
+A first-class C++ program that embeds **libmutter-17** and drives it
 with its own `MetaPlugin` (`GnoblinShellPlugin`), instead of running gnome-shell.
 This is the pivot's foundation: mutter is the compositor/WM library; gnome-shell is
 just its default plugin, and gnoblin-shell replaces it.
@@ -10,15 +10,17 @@ submodule), gnoblin-shell is **standalone** — concrete, owned source linking t
 *installed* `libmutter-17` via pkg-config. No submodule, no patches.
 
 ## Files
-- `gnoblin-shell.c` — `main()`: `meta_create_context` → configure → set plugin
+- `gnoblin-shell.cpp` — `main()`: `meta_create_context` → configure → set plugin
   gtype → setup → start → run main loop (modelled on mutter's `src/core/mutter.c`).
   Optional `-- COMMAND` is spawned once ready (for autostarting the session).
-- `gnoblin-shell-plugin.{c,h}` — the `MetaPlugin`. Minimal today: `start` shows the
-  stage and mutter handles windows with default (instant) effects.
+- `gnoblin-shell-plugin.{cpp,h}` — the `MetaPlugin` that owns appearance reload,
+  window effect attachment, and compositor chrome integration.
+- `gnoblin-*-spec.c` — strict config parsers for compositor-owned config values.
+  Shared cursor/numeric grammar lives in `gnoblin-spec-util.c`.
 
 ## Build
 ```sh
-meson setup build/gnoblin-shell src/shell
+meson setup build/gnoblin-shell src/compositor
 meson compile -C build/gnoblin-shell
 ./build/gnoblin-shell/gnoblin-shell --version
 ```
@@ -54,4 +56,4 @@ dumper). gnoblin-shell **boots as a full compositor** — proven via the devkit.
   devkit). Decision gate for committing fully to the pivot.
 - **Effects:** more vtable overrides (`minimize`/`switch_workspace`) + a
   `ClutterEffect` on `MetaWindowActor` for corners/shadows/blur, attach in
-  `gnoblin-shell-plugin.c`. Open/close (`map`/`destroy`) animations are done.
+  `gnoblin-shell-plugin.cpp`. Open/close (`map`/`destroy`) animations are done.

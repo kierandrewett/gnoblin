@@ -24,9 +24,7 @@ typedef struct {
 } GnoblinShadowLayer;
 
 gboolean gnoblin_shadow_parse_css_color(const char* s, float out[4]);
-gboolean gnoblin_shadow_parse_layer(const char* s, GnoblinShadowLayer* out);
 int gnoblin_shadow_parse_box_shadow(const char* css, GnoblinShadowLayer* layers, int max);
-float gnoblin_shadow_layer_reach(const GnoblinShadowLayer* layer);
 float gnoblin_shadow_pad_for_layers(const GnoblinShadowLayer* layers, int count);
 
 G_END_DECLS

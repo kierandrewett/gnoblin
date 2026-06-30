@@ -19,7 +19,6 @@ typedef struct {
     guint transform;
 } GnoblinOutputSpec;
 
-gboolean gnoblin_output_transform_from_name(const char* text, guint* out);
 gboolean gnoblin_output_parse_spec(const char* value, GnoblinOutputSpec* out);
 
 G_END_DECLS
