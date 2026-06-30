@@ -111,18 +111,6 @@ component DockIconSlot {
             height: Tokens.dock-icon-size;
             source: root.item.icon;
             image-fit: contain;
-
-            // Hover lifts the glyph slightly. Mouse-down keeps the same scale
-            // so clicks do not add the cheap "spring" dip the shell used to
-            // show on every press.
-            property <float> hover-scale: ta.has-hover ? 1.08 : 1.0;
-            transform-origin: { x: self.width / 2, y: self.height / 2 };
-            transform-scale-x: self.hover-scale;
-            transform-scale-y: self.hover-scale;
-            // Springy lift: the glyph pops a touch past 1.08 and settles, rather
-            // than easing flatly to it — gives the dock a tactile, alive feel.
-            animate transform-scale-x { duration: Motion.medium; easing: Motion.pop-curve; }
-            animate transform-scale-y { duration: Motion.medium; easing: Motion.pop-curve; }
         }
     }
 

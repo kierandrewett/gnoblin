@@ -372,11 +372,6 @@ export global Tokens {
     // `default-font-family`.
     out property <string>  font-family: Theme.shell-font-family;
     out property <string>  font-family-fallback: "Cantarell";
-    // Fixed-width face for figures that update in place (the clock seconds), so
-    // proportional digits don't make the panel reflow each tick. Slint exposes no
-    // OpenType `tnum` toggle, so we use a monospaced family instead. Promote to a
-    // Theme/config property if it ever needs to be user-tunable.
-    out property <string>  mono-font-family: "Adwaita Mono";
 
     // ── Motion ────────────────────────────────────────────────────────────────
     // ONE source of truth for open/close transitions. Every animated
