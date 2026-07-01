@@ -58,6 +58,7 @@ pub struct RuntimeControl {
 enum RuntimeCommand {
     OpenPopout(PopoutHandle, PopoutConfig),
     ClosePopout(PopoutHandle),
+    ConfigurePopout(PopoutHandle, u32, u32, BarMargins),
 }
 
 /// Read the visual properties of a Slint item if it's a (Border)Rectangle: the
@@ -335,6 +336,23 @@ impl RuntimeControl {
         self.commands
             .borrow_mut()
             .push(RuntimeCommand::ClosePopout(handle));
+    }
+
+    /// Reconfigure an existing auxiliary layer surface's requested size and
+    /// screen margins. The runtime waits for the layer-shell configure before
+    /// resizing the Slint buffer.
+    pub fn configure_popout(
+        &self,
+        handle: PopoutHandle,
+        width: u32,
+        height: u32,
+        margins: BarMargins,
+    ) {
+        self.commands
+            .borrow_mut()
+            .push(RuntimeCommand::ConfigurePopout(
+                handle, width, height, margins,
+            ));
     }
 
     fn drain(&self) -> Vec<RuntimeCommand> {
@@ -641,6 +659,9 @@ struct PopoutSurface {
     handle: PopoutHandle,
     namespace: &'static str,
     layer: LayerSurface,
+    requested_width: u32,
+    requested_height: u32,
+    margins: BarMargins,
     width: u32,
     height: u32,
     scale: u32,
@@ -977,9 +998,10 @@ impl State {
             })
             .collect::<String>();
         let path = dir.join(format!(
-            "window-{}-{}.json",
+            "window-{}-{}-{}.json",
             std::process::id(),
-            filename_ns
+            filename_ns,
+            popout.handle.0
         ));
         let _ = std::fs::write(path, json);
     }
@@ -1099,6 +1121,9 @@ impl State {
             handle,
             namespace: config.namespace,
             layer,
+            requested_width: config.width.max(1),
+            requested_height: config.height.max(1),
+            margins: config.margins,
             width: config.width.max(1),
             height: config.height.max(1),
             scale: self.scale.max(1),
@@ -1109,6 +1134,40 @@ impl State {
         });
         if let Some(popout) = self.popouts.last() {
             popout.layer.commit();
+        }
+    }
+
+    fn configure_popout_surface(
+        &mut self,
+        idx: usize,
+        width: u32,
+        height: u32,
+        margins: BarMargins,
+    ) {
+        let Some(popout) = self.popouts.get_mut(idx) else {
+            return;
+        };
+        let width = width.max(1);
+        let height = height.max(1);
+        if popout.requested_width == width
+            && popout.requested_height == height
+            && popout.margins == margins
+        {
+            return;
+        }
+
+        let size_changed = popout.requested_width != width || popout.requested_height != height;
+        popout.requested_width = width;
+        popout.requested_height = height;
+        popout.margins = margins;
+        popout.layer.set_size(width, height);
+        popout
+            .layer
+            .set_margin(margins.top, margins.right, margins.bottom, margins.left);
+        popout.layer.commit();
+
+        if !size_changed {
+            self.inspect_log_popout(idx);
         }
     }
 
@@ -1134,6 +1193,11 @@ impl State {
                 RuntimeCommand::ClosePopout(handle) => {
                     if let Some(idx) = self.popouts.iter().position(|p| p.handle == handle) {
                         self.close_popout_surface(idx);
+                    }
+                }
+                RuntimeCommand::ConfigurePopout(handle, width, height, margins) => {
+                    if let Some(idx) = self.popouts.iter().position(|p| p.handle == handle) {
+                        self.configure_popout_surface(idx, width, height, margins);
                     }
                 }
             }
@@ -1777,10 +1841,10 @@ impl LayerShellHandler for State {
                 popout.last_configure_at = Some(Instant::now());
                 let (mut w, mut h) = configure.new_size;
                 if w == 0 {
-                    w = popout.width.max(1);
+                    w = popout.requested_width.max(1);
                 }
                 if h == 0 {
-                    h = popout.height.max(1);
+                    h = popout.requested_height.max(1);
                 }
                 if !popout.configured {
                     popout.width = w;
