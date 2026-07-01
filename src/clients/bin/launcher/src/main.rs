@@ -19,7 +19,7 @@ use gnoblin_core::{ClientArgs, RuntimeError};
 use gnoblin_runtime::{run, BarApp, BarConfig, BarMargins};
 slint::include_modules!(); // Launcher, AppEntry
 use slint::platform::Key;
-use slint::{ComponentHandle, SharedString};
+use slint::{ComponentHandle, Model, SharedString};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -35,6 +35,15 @@ const LIST_PANEL_H: u32 = 432;
 const GRID_PANEL_W: u32 = 680;
 const GRID_PANEL_H: u32 = 560;
 const LIST_TOP_MARGIN: i32 = 128;
+// Icon loading is the launcher's dominant cold-start cost: resolving+decoding
+// +resizing one themed icon per row is ~0.7ms, and the empty query lists every
+// installed app (~250), so a naive rebuild spends ~175ms on icons ALONE before
+// the first frame. Only ~7 rows (list) / ~20 tiles (grid) are ever visible, so
+// we resolve the first `EAGER_ICONS` synchronously (they're on-screen) and
+// STREAM the rest in on idle `tick()`s — off-screen rows get their icons before
+// the user can scroll to them, so there's no visible pop-in.
+const EAGER_ICONS: usize = 12; // ~covers the visible list rows; grid streams fast
+const ICON_BATCH: usize = 48; // themed icons resolved per idle tick
 const COLUMNS: usize = 5; // app-grid columns (must match the .slint default)
 const CELL_H: i32 = 112; // app-grid tile height (must match the .slint cell-h)
 const GRID_VISIBLE_H: i32 = 499; // grid viewport (panel 560 - search 60 - hairline 1)
@@ -45,6 +54,9 @@ struct LauncherApp {
     filtered: Rc<RefCell<Vec<results::Row>>>,
     query: String,
     selected: usize,
+    /// Next `filtered` index whose icon still needs streaming in (see
+    /// `stream_icons`); starts past the eagerly-loaded visible rows.
+    icon_cursor: Cell<usize>,
     grid: bool,
     exit: Rc<Cell<bool>>,
     usage: Rc<RefCell<HashMap<String, u32>>>,
@@ -62,16 +74,56 @@ fn apply_theme(win: &Launcher) {
 impl LauncherApp {
     fn rebuild(&self) {
         if let Some(win) = &self.win {
+            // Resolve icons only for the rows that are actually on-screen; the
+            // rest are built icon-less and streamed in by `stream_icons` on idle
+            // ticks. This keeps the (expensive) icon work off the open path.
             let model: Vec<AppEntry> = self
                 .filtered
                 .borrow()
                 .iter()
-                .map(results::Row::entry)
+                .enumerate()
+                .map(|(i, r)| r.entry_with_icon(i < EAGER_ICONS))
                 .collect();
+            self.icon_cursor.set(EAGER_ICONS.min(model.len()));
             win.set_apps(Rc::new(slint::VecModel::from(model)).into());
             win.set_query(self.query.clone().into());
             self.sync_selection();
         }
+    }
+
+    /// Resolve the next batch of deferred icons and patch them into the live
+    /// model in place (no full rebuild). Returns true if any row changed so the
+    /// caller can request a redraw. Cheap once the cursor reaches the end.
+    fn stream_icons(&self) -> bool {
+        let start = self.icon_cursor.get();
+        let win = match &self.win {
+            Some(w) => w,
+            None => return false,
+        };
+        let model = win.get_apps();
+        let vec = match model.as_any().downcast_ref::<slint::VecModel<AppEntry>>() {
+            Some(v) => v,
+            None => return false,
+        };
+        let rows = self.filtered.borrow();
+        let end = (start + ICON_BATCH).min(rows.len());
+        let mut changed = false;
+        for i in start..end {
+            let row = &rows[i];
+            if !row.has_theme_icon() {
+                continue; // built-in glyph row (calc/web) — nothing to resolve
+            }
+            if let Some(icon) = row.resolve_icon() {
+                if let Some(mut entry) = vec.row_data(i) {
+                    entry.has_icon = true;
+                    entry.icon = icon;
+                    vec.set_row_data(i, entry);
+                    changed = true;
+                }
+            }
+        }
+        self.icon_cursor.set(end);
+        changed
     }
 
     fn refilter(&mut self) {
@@ -167,8 +219,10 @@ impl BarApp for LauncherApp {
         _screen_w: u32,
         _screen_h: u32,
     ) -> Result<(), RuntimeError> {
+        gnoblin_runtime::rt_tick("    show(): before Launcher::new()");
         let win = Launcher::new()
             .map_err(|e| gnoblin_core::runtime_error(format!("Launcher::new: {e}")))?;
+        gnoblin_runtime::rt_tick("    show(): after Launcher::new() (component instantiated)");
         apply_theme(&win);
         gnoblin_runtime::apply_shell_motion_to_theme!(
             win.global::<Theme>(),
@@ -186,13 +240,17 @@ impl BarApp for LauncherApp {
         });
         win.show()
             .map_err(|e| gnoblin_core::runtime_error(format!("launcher.show: {e}")))?;
+        gnoblin_runtime::rt_tick("    show(): after win.show()");
         self.win = Some(win);
         self.refilter();
+        gnoblin_runtime::rt_tick("    show(): after refilter()");
         Ok(())
     }
 
     fn tick(&mut self) -> bool {
-        false
+        // Stream deferred (off-screen) icons in a few batches per second until
+        // the whole list is resolved. Runs after the launcher is already up.
+        self.stream_icons()
     }
 
     fn window(&self) -> Option<&slint::Window> {
@@ -259,6 +317,15 @@ impl BarApp for LauncherApp {
 }
 
 fn main() {
+    let _t0 = std::time::Instant::now();
+    macro_rules! tick {
+        ($label:expr) => {
+            if std::env::var("GNOBLIN_TIMING").is_ok() {
+                eprintln!("[timing] {:>6.1}ms  {}", _t0.elapsed().as_secs_f64() * 1000.0, $label);
+            }
+        };
+    }
+    tick!("main entry (post exec+dynlink)");
     let _ = ClientArgs::from_env();
     // App-grid mode: `gnoblin-launcher --grid` (or GNOBLIN_LAUNCHER_MODE=grid),
     // bound to Super+A / a dock button. Same scan + usage data, grid layout.
@@ -282,6 +349,22 @@ fn main() {
             },
         )
     };
+    let all = desktop::scan();
+    tick!("desktop::scan()");
+    let usage_v = usage::load();
+    tick!("usage::load()");
+    let providers_v = if grid { Vec::new() } else { provider::load() };
+    tick!("provider::load()");
+    let web_search = if grid {
+        None
+    } else {
+        gnoblin_core::config::Config::load()
+            .get("launcher", "web-search")
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    tick!("config web-search (all sync startup work done)");
     run(
         BarConfig {
             namespace: "gnoblin-launcher",
@@ -298,25 +381,18 @@ fn main() {
         },
         Box::new(LauncherApp {
             win: None,
-            all: desktop::scan(),
+            all,
             filtered: Rc::new(RefCell::new(Vec::new())),
             // Test hook: pre-fill the query (headless validation can't type).
             query: std::env::var("GNOBLIN_LAUNCHER_QUERY").unwrap_or_default(),
             selected: 0,
+            icon_cursor: Cell::new(0),
             grid,
             exit: Rc::new(Cell::new(false)),
-            usage: Rc::new(RefCell::new(usage::load())),
+            usage: Rc::new(RefCell::new(usage_v)),
             // The app grid has no search box, so skip provider spawning there.
-            providers: if grid { Vec::new() } else { provider::load() },
-            web_search: if grid {
-                None
-            } else {
-                gnoblin_core::config::Config::load()
-                    .get("launcher", "web-search")
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-            },
+            providers: providers_v,
+            web_search,
         }),
     );
 }

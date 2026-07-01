@@ -33,7 +33,10 @@ fn load_raster_icon_path(path: &Path, target_size: Option<u32>) -> Option<slint:
     let mut img = image::load_from_memory(&bytes).ok()?;
     if let Some(size) = target_size.filter(|size| *size > 0) {
         if img.width() != size || img.height() != size {
-            img = img.resize(size, size, image::imageops::FilterType::Lanczos3);
+            // Triangle (bilinear) rather than Lanczos3: for small app icons the
+            // visual difference is negligible but it's ~2-3× faster to resize,
+            // and the launcher resizes hundreds of icons at cold start.
+            img = img.resize(size, size, image::imageops::FilterType::Triangle);
         }
     }
     let img = img.to_rgba8();
