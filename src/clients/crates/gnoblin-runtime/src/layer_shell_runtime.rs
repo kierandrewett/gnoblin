@@ -1702,6 +1702,9 @@ impl State {
         if self.layer.is_none() {
             return false;
         }
+        if !self.configured || !self.primary_egl_bound {
+            return false;
+        }
         if self.frame_pending {
             return false;
         }
