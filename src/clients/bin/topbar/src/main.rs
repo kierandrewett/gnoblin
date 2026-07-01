@@ -39,6 +39,7 @@ const DATETIME_POPOUT_H: u32 = 590;
 const CONTROL_CENTRE_POPOUT_W: u32 = 360;
 const CONTROL_CENTRE_POPOUT_H: u32 = 632;
 const POPOUT_GAP: i32 = 8;
+const POPOUT_SCRIM_NAMESPACE: &str = "gnoblin-popout-background-scrim";
 
 /// Open state + displayed calendar month for the topbar popouts.
 #[derive(Default)]
@@ -234,6 +235,51 @@ fn popout_config(
     }
 }
 
+fn popout_scrim_config(screen_w: u32, screen_h: u32) -> PopoutConfig {
+    PopoutConfig {
+        namespace: POPOUT_SCRIM_NAMESPACE,
+        anchor: Anchor::TOP.union(Anchor::LEFT),
+        layer: Layer::Overlay,
+        width: screen_w.max(1),
+        height: screen_h.max(1),
+        margins: BarMargins::default(),
+        keyboard: true,
+    }
+}
+
+fn close_popout_handle(runtime: &RuntimeControl, handle: &Rc<Cell<Option<PopoutHandle>>>) {
+    if let Some(h) = handle.take() {
+        runtime.close_popout(h);
+    }
+}
+
+fn open_popout_scrim(
+    runtime: &RuntimeControl,
+    scrim_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    screen_w: u32,
+    screen_h: u32,
+) {
+    close_popout_handle(runtime, scrim_handle);
+    let handle = runtime.open_popout(popout_scrim_config(screen_w, screen_h));
+    scrim_handle.set(Some(handle));
+}
+
+fn dismiss_topbar_popouts(
+    runtime: &RuntimeControl,
+    pop: &Rc<Popouts>,
+    dt_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    cc_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    scrim_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    host: &Rc<RefCell<qsplugin::Host>>,
+) {
+    close_popout_handle(runtime, dt_handle);
+    close_popout_handle(runtime, cc_handle);
+    close_popout_handle(runtime, scrim_handle);
+    pop.dt_open.set(false);
+    pop.cc_open.set(false);
+    host.borrow().broadcast_open(false);
+}
+
 fn apply_topbar_geometry(p: &TopBar, screen_w: u32, geometry: &TopbarGeometry, height: i32) {
     let (x, width) = topbar_rect(screen_w, geometry);
     p.set_bar_x(x as f32);
@@ -287,8 +333,10 @@ struct TopBarApp {
     runtime: Option<RuntimeControl>,
     datetime_popout: Option<DatetimePopoutWindow>,
     control_popout: Option<ControlCentrePopoutWindow>,
+    popout_scrim: Option<PopoutScrimWindow>,
     datetime_handle: Rc<Cell<Option<PopoutHandle>>>,
     control_handle: Rc<Cell<Option<PopoutHandle>>>,
+    scrim_handle: Rc<Cell<Option<PopoutHandle>>>,
     last_clock: String,
     tray_rx: Receiver<Vec<TrayItem>>,
     tray_tx: Sender<TrayCommand>,
@@ -351,6 +399,19 @@ struct TopBarApp {
 }
 
 impl TopBarApp {
+    fn dismiss_aux_popouts(&self) {
+        if let Some(runtime) = &self.runtime {
+            dismiss_topbar_popouts(
+                runtime,
+                &self.popouts,
+                &self.datetime_handle,
+                &self.control_handle,
+                &self.scrim_handle,
+                &self.qs_host,
+            );
+        }
+    }
+
     /// Populate + open the dropdown with rows fetched for a clicked entry.
     fn on_submenu(&mut self, _group: u32, _menu: u32, rows: Vec<appmenu::MenuRow>) {
         let model: Vec<MenuItem> = rows
@@ -451,18 +512,24 @@ impl BarApp for TopBarApp {
             let runtime = runtime.clone();
             let dt_handle = self.datetime_handle.clone();
             let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
             let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
             let bar_height = self.bar_height_live.clone();
             let host = self.qs_host.clone();
             panel.on_toggle_datetime_popout(move |anchor_x| {
                 let open = !pop.dt_open.get();
                 if open {
                     gnoblin_runtime::notifcenter::clear_legacy_flag();
-                    if let Some(h) = cc_handle.take() {
-                        runtime.close_popout(h);
-                    }
-                    pop.cc_open.set(false);
-                    host.borrow().broadcast_open(false);
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                    open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
                     let now = datetime::now();
                     pop.cal.set((now.year, now.month));
                     let handle = runtime.open_popout(popout_config(
@@ -472,10 +539,17 @@ impl BarApp for TopBarApp {
                         datetime_popout_margins(anchor_x, screen_w.get(), bar_height.get()),
                     ));
                     dt_handle.set(Some(handle));
-                } else if let Some(h) = dt_handle.take() {
-                    runtime.close_popout(h);
+                    pop.dt_open.set(true);
+                } else {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
                 }
-                pop.dt_open.set(open);
                 if let Some(p) = weak.upgrade() {
                     p.set_app_menu_open(false);
                     app_open.set(false);
@@ -490,7 +564,9 @@ impl BarApp for TopBarApp {
             let runtime = runtime.clone();
             let dt_handle = self.datetime_handle.clone();
             let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
             let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
             let offset_x = self.cc_offset_x.clone();
             let offset_y = self.cc_offset_y.clone();
             let bar_height = self.bar_height_live.clone();
@@ -498,10 +574,15 @@ impl BarApp for TopBarApp {
                 let open = !pop.cc_open.get();
                 if open {
                     gnoblin_runtime::notifcenter::clear_legacy_flag();
-                    if let Some(h) = dt_handle.take() {
-                        runtime.close_popout(h);
-                    }
-                    pop.dt_open.set(false);
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                    open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
                     let handle = runtime.open_popout(popout_config(
                         "gnoblin-controlcentre",
                         CONTROL_CENTRE_POPOUT_W,
@@ -515,11 +596,18 @@ impl BarApp for TopBarApp {
                         ),
                     ));
                     cc_handle.set(Some(handle));
-                } else if let Some(h) = cc_handle.take() {
-                    runtime.close_popout(h);
+                    pop.cc_open.set(true);
+                    host.borrow().broadcast_open(true);
+                } else {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
                 }
-                pop.cc_open.set(open);
-                host.borrow().broadcast_open(open);
                 if let Some(p) = weak.upgrade() {
                     p.set_app_menu_open(false);
                     app_open.set(false);
@@ -547,22 +635,24 @@ impl BarApp for TopBarApp {
             let runtime = runtime.clone();
             let dt_handle = self.datetime_handle.clone();
             let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
             let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
             let offset_x = self.cc_offset_x.clone();
             let offset_y = self.cc_offset_y.clone();
             let bar_height = self.bar_height_live.clone();
             let host = self.qs_host.clone();
             panel.on_bell_clicked(move || {
                 gnoblin_runtime::notifcenter::clear_legacy_flag();
-                if let Some(h) = dt_handle.take() {
-                    runtime.close_popout(h);
-                }
-                if let Some(h) = cc_handle.take() {
-                    runtime.close_popout(h);
-                }
-                pop.dt_open.set(false);
-                pop.cc_open.set(true);
-                host.borrow().broadcast_open(true);
+                dismiss_topbar_popouts(
+                    &runtime,
+                    &pop,
+                    &dt_handle,
+                    &cc_handle,
+                    &scrim_handle,
+                    &host,
+                );
+                open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
                 let handle = runtime.open_popout(popout_config(
                     "gnoblin-controlcentre",
                     CONTROL_CENTRE_POPOUT_W,
@@ -576,6 +666,8 @@ impl BarApp for TopBarApp {
                     ),
                 ));
                 cc_handle.set(Some(handle));
+                pop.cc_open.set(true);
+                host.borrow().broadcast_open(true);
                 if let Some(p) = weak.upgrade() {
                     p.set_app_menu_open(false);
                     app_open.set(false);
@@ -721,6 +813,12 @@ impl BarApp for TopBarApp {
         match std::env::var("GNOBLIN_POPOUT").as_deref() {
             Ok("datetime") => {
                 let now = datetime::now();
+                open_popout_scrim(
+                    &runtime,
+                    &self.scrim_handle,
+                    self.screen_w_live.get(),
+                    self.screen_h_live.get(),
+                );
                 self.popouts.dt_open.set(true);
                 self.popouts.cal.set((now.year, now.month));
                 let handle = runtime.open_popout(popout_config(
@@ -732,6 +830,12 @@ impl BarApp for TopBarApp {
                 self.datetime_handle.set(Some(handle));
             }
             Ok("cc") => {
+                open_popout_scrim(
+                    &runtime,
+                    &self.scrim_handle,
+                    self.screen_w_live.get(),
+                    self.screen_h_live.get(),
+                );
                 self.popouts.cc_open.set(true);
                 self.qs_host.borrow().broadcast_open(true);
                 let handle = runtime.open_popout(popout_config(
@@ -783,6 +887,35 @@ impl BarApp for TopBarApp {
         screen_h: u32,
     ) -> Result<(), RuntimeError> {
         match namespace {
+            POPOUT_SCRIM_NAMESPACE => {
+                let scrim = PopoutScrimWindow::new().map_err(|e| {
+                    gnoblin_core::runtime_error(format!("PopoutScrimWindow::new: {e}"))
+                })?;
+                let runtime =
+                    self.runtime.as_ref().cloned().ok_or_else(|| {
+                        gnoblin_core::runtime_error("topbar runtime handle missing")
+                    })?;
+                let pop = self.popouts.clone();
+                let dt_handle = self.datetime_handle.clone();
+                let cc_handle = self.control_handle.clone();
+                let scrim_handle = self.scrim_handle.clone();
+                let host = self.qs_host.clone();
+                scrim.on_pressed(move || {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                });
+                scrim
+                    .show()
+                    .map_err(|e| gnoblin_core::runtime_error(format!("scrim.show: {e}")))?;
+                self.scrim_handle.set(Some(handle));
+                self.popout_scrim = Some(scrim);
+            }
             "gnoblin-datetime" => {
                 let popout = DatetimePopoutWindow::new().map_err(|e| {
                     gnoblin_core::runtime_error(format!("DatetimePopoutWindow::new: {e}"))
@@ -946,6 +1079,9 @@ impl BarApp for TopBarApp {
     }
 
     fn popout_window(&self, handle: PopoutHandle) -> Option<&slint::Window> {
+        if self.scrim_handle.get() == Some(handle) {
+            return self.popout_scrim.as_ref().map(|p| p.window());
+        }
         if self.datetime_handle.get() == Some(handle) {
             return self.datetime_popout.as_ref().map(|p| p.window());
         }
@@ -956,6 +1092,10 @@ impl BarApp for TopBarApp {
     }
 
     fn popout_closed(&mut self, handle: PopoutHandle, namespace: &'static str) {
+        if self.scrim_handle.get() == Some(handle) || namespace == POPOUT_SCRIM_NAMESPACE {
+            self.scrim_handle.set(None);
+            self.popout_scrim = None;
+        }
         if self.datetime_handle.get() == Some(handle) || namespace == "gnoblin-datetime" {
             self.datetime_handle.set(None);
             self.datetime_popout = None;
@@ -966,6 +1106,14 @@ impl BarApp for TopBarApp {
             self.control_popout = None;
             self.popouts.cc_open.set(false);
             self.qs_host.borrow().broadcast_open(false);
+        }
+    }
+
+    fn key_pressed(&mut self, text: &slint::SharedString) {
+        use slint::platform::Key;
+
+        if text.as_str() == char::from(Key::Escape).to_string() {
+            self.dismiss_aux_popouts();
         }
     }
 
@@ -1241,8 +1389,8 @@ impl BarApp for TopBarApp {
 
     fn input_full(&self) -> bool {
         // In-surface dropdowns still need the full-height topbar surface to catch
-        // outside clicks. Popouts are separate layer surfaces dismissed by the
-        // compositor popup grab.
+        // outside clicks. Aux popouts use a separate transparent scrim surface so
+        // their content stays interactive.
         self.menu_open.get() || self.app_menu_open.get()
     }
 
@@ -1317,8 +1465,10 @@ fn main() {
             runtime: None,
             datetime_popout: None,
             control_popout: None,
+            popout_scrim: None,
             datetime_handle: Rc::new(Cell::new(None)),
             control_handle: Rc::new(Cell::new(None)),
+            scrim_handle: Rc::new(Cell::new(None)),
             last_clock: String::new(),
             tray_rx: urx,
             tray_tx: ctx,

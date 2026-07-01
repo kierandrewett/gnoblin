@@ -230,7 +230,7 @@ pub trait BarApp {
         _screen_h: u32,
     ) {
     }
-    /// A popout was closed either by the app or by the compositor's popup grab.
+    /// A popout was closed by the app, compositor policy, or protocol teardown.
     /// Apps should drop the matching Slint component and reset their open state.
     fn popout_closed(&mut self, _handle: PopoutHandle, _namespace: &'static str) {}
     /// The layer surface was resized after the component was shown. The Slint
