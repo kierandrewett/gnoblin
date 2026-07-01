@@ -15,11 +15,12 @@
 #                     respawns/cleans up as monitors are plugged/unplugged).
 #
 # Panels/docks/wallpapers belong on every screen, so they use exec_per_output;
-# session-global daemons (notifications) use exec.
+# session-global daemons (notifications, launcher warm process) use exec.
 exec_per_output = gnoblin-topbar   # Slint top panel (clock, tray, global appmenu)
 exec_per_output = gnoblin-dock     # Slint dock (pinned + running apps)
 exec_per_output = gnoblin-wallpaper # background layer-shell surface per monitor
 exec = gnoblin-notifyd             # notification daemon (org.freedesktop.Notifications)
+exec = gnoblin-launcher --daemon    # keep launcher warm; spawn keybinds call Show over D-Bus
 exec = gnoblin-night-light         # warms screen gamma when Night Light is toggled on
 
 [roles]
@@ -451,8 +452,9 @@ Super+Up = maximize
 Super+M = minimize
 Super+F = fullscreen
 
-# Launch any command (Hyprland-style exec bind). Super+Space opens the search
-# launcher; Super+A opens the full-screen app grid (same apps, icon layout).
+# Launch any command (Hyprland-style exec bind). With `gnoblin-launcher --daemon`
+# in startup, these wake the warm launcher over D-Bus; without it, the spawned
+# process becomes the daemon and shows immediately.
 Super+Space = spawn gnoblin-launcher
 Super+A = spawn gnoblin-launcher --grid
 Super+L = lock              # lock the session (password via PAM)

@@ -170,7 +170,8 @@ class Devkit:
         startup = ""
         if CLIENTS:
             startup = (f"{kw} = gnoblin-topbar\n{kw} = gnoblin-dock\n"
-                       f"exec = gnoblin-notifyd\n{kw} = gnoblin-wallpaper\n")
+                       f"exec = gnoblin-notifyd\nexec = gnoblin-launcher --daemon\n"
+                       f"{kw} = gnoblin-wallpaper\n")
         wallpaper = pathlib.Path(os.environ.get(
             "GNOBLIN_WALLPAPER",
             str(pathlib.Path.home() / "Documents" / "wallpaper_light.jpg"),
@@ -266,6 +267,7 @@ class Devkit:
             "appmenu-backend = auto\n"
             "[bind]\n"
             "Super+Space = spawn gnoblin-launcher\n"
+            "Super+A = spawn gnoblin-launcher --grid\n"
             "Super+F12 = spawn sh -c 'mkdir -p \"${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect\"; gnoblinctl inspect --pretty \"${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect/scene.json\"'\n"
             "Super+Q = close\n"
             "Super+Escape = window-menu\n"
