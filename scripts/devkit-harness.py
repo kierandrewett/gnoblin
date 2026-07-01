@@ -171,6 +171,7 @@ class Devkit:
         if CLIENTS:
             startup = (f"{kw} = gnoblin-topbar\n{kw} = gnoblin-dock\n"
                        f"exec = gnoblin-notifyd\nexec = gnoblin-launcher --daemon\n"
+                       f"exec = gnoblin-menu --daemon\n"
                        f"{kw} = gnoblin-wallpaper\n")
         wallpaper = pathlib.Path(os.environ.get(
             "GNOBLIN_WALLPAPER",
