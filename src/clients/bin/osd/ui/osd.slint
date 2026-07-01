@@ -1,6 +1,6 @@
-// On-screen display (volume / brightness): a glass pill centred near the bottom
-// of a full-screen, input-passthrough overlay. Rust sets the level + kind and
-// tears the surface down after a short timeout.
+// On-screen display (volume / brightness): a content-sized translucent panel
+// centered near the bottom. The compositor owns rounding, border, shadow, and
+// blur; Rust sets the level + kind and tears the surface down after a timeout.
 import { Theme, TokenMode, Tokens, Spacing, Motion } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { Theme, TokenMode }
 
@@ -10,37 +10,27 @@ export component Osd inherits Window {
     in property <bool>  muted: false;
     background: transparent;
     default-font-family: Tokens.font-family;
+    width: 280px;
+    height: 64px;
 
-    // Fade + rise in on appear (a transient overlay shouldn't just pop).
+    // Fade in on appear (surface placement is compositor-owned).
     property <bool> shown: false;
     init => { self.shown = true; }
 
     osd-panel := Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: parent.height - self.height - (root.shown ? 96px : 84px);
-        width: 280px;
-        height: 64px;
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
         opacity: root.shown ? 1.0 : 0.0;
-        animate opacity, y { duration: Motion.medium; easing: Motion.medium-curve; }
+        animate opacity { duration: Motion.medium; easing: Motion.medium-curve; }
         background: transparent;
         clip: false;
-
-        Rectangle {
-            width: parent.width;
-            height: parent.height;
-            background: Theme.chrome-shadow-source;
-            border-radius: Tokens.popout-corner-radius;
-            drop-shadow-color: Theme.chrome-shadow;
-            drop-shadow-blur: Tokens.popout-shadow-blur;
-            drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
-        }
 
         body := Rectangle {
             width: parent.width;
             height: parent.height;
             background: Theme.surface-bg;
-            border-radius: Tokens.popout-corner-radius;
-            clip: true;
 
         HorizontalLayout {
             padding: Spacing.lg;
@@ -98,25 +88,6 @@ export component Osd inherits Window {
                 }
             }
         }
-        }
-
-        Rectangle {
-            x: Tokens.chrome-hairline-width;
-            y: Tokens.chrome-hairline-width;
-            width: parent.width - 2 * Tokens.chrome-hairline-width;
-            height: parent.height - 2 * Tokens.chrome-hairline-width;
-            background: transparent;
-            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
-            border-width: Tokens.chrome-hairline-width;
-            border-color: Theme.surface-border;
-        }
-
-        Rectangle {
-            x: Tokens.popout-corner-radius;
-            y: Tokens.chrome-hairline-width / 2;
-            width: parent.width - 2 * Tokens.popout-corner-radius;
-            height: Tokens.chrome-highlight-height;
-            background: Theme.menu-highlight;
         }
     }
 }

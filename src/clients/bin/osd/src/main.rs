@@ -1,17 +1,20 @@
 //! gnoblin-osd — a Slint volume/brightness on-screen display.
 //!
 //! `gnoblin-osd volume` / `gnoblin-osd brightness` (typically from the media-key
-//! binds, after the value changes). A full-screen, input-passthrough overlay
-//! showing a glass pill near the bottom; tears itself down after a short timeout.
+//! binds, after the value changes). A content-sized input-passthrough surface
+//! near the bottom; tears itself down after a short timeout.
 
 use gnoblin_core::RuntimeError;
-use gnoblin_runtime::{run, BarApp, BarConfig};
+use gnoblin_runtime::{run, BarApp, BarConfig, BarMargins};
 slint::include_modules!(); // Osd
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::time::{Duration, Instant};
 
 const SHOW: Duration = Duration::from_millis(1500);
+const OSD_W: u32 = 280;
+const OSD_H: u32 = 64;
+const BOTTOM_MARGIN: i32 = 96;
 
 struct OsdApp {
     win: Option<Osd>,
@@ -117,14 +120,16 @@ fn main() {
     run(
         BarConfig {
             namespace: "gnoblin-osd",
-            anchor: Anchor::TOP
-                .union(Anchor::BOTTOM)
-                .union(Anchor::LEFT)
-                .union(Anchor::RIGHT),
+            anchor: Anchor::BOTTOM,
             layer: Layer::Overlay,
-            height: 1,
+            width: OSD_W,
+            height: OSD_H,
+            margins: BarMargins {
+                bottom: BOTTOM_MARGIN,
+                ..BarMargins::default()
+            },
             exclusive_zone: 0,
-            full_height: true,
+            full_height: false,
             input_passthrough: true,
             keyboard: false,
             ..BarConfig::default()

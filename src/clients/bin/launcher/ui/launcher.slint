@@ -1,8 +1,7 @@
-// Application launcher (gnoblin). A frosted panel in the upper
-// third: a big search field (magnifier + large query) on top, a hairline, then
-// rich result rows (icon + title + subtitle + right accessory). Rust owns the
-// input (query, selection, scroll) and pushes it down; clicks/Enter activate by
-// index. `--grid` (Super+A) keeps the full-screen icon grid.
+// Application launcher as a content-sized compositor-chromed panel: a big
+// search field (magnifier + large query) on top, a hairline, then rich result
+// rows or the app grid. Rust owns the input and pushes it down; clicks/Enter
+// activate by index.
 import { Theme, TokenMode, Spacing, Radius, Motion, Tokens, ShellPalette } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { Theme, TokenMode }
 
@@ -49,13 +48,14 @@ export component Launcher inherits Window {
 
     property <bool> shown: false;
     init => { root.shown = true; }
+    width: root.panel-w;
+    height: root.panel-h;
 
     panel := Rectangle {
-        x: (parent.width - root.panel-w) / 2;
-        // Upper third — not dead centre.
-        y: root.grid-mode ? (parent.height - root.panel-h) / 2 : parent.height * 0.16;
-        width: root.panel-w;
-        height: root.panel-h;
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
         background: transparent;
         clip: false;
 
@@ -70,22 +70,10 @@ export component Launcher inherits Window {
             easing: Motion.overlay-curve;
         }
 
-        Rectangle {
-            width: parent.width;
-            height: parent.height;
-            background: Theme.chrome-shadow-source;
-            border-radius: Tokens.popout-corner-radius;
-            drop-shadow-color: Theme.chrome-shadow;
-            drop-shadow-blur: Tokens.popout-shadow-blur;
-            drop-shadow-offset-y: Tokens.popout-shadow-offset-y;
-        }
-
         body := Rectangle {
             width: parent.width;
             height: parent.height;
             background: root.panel-tint;
-            border-radius: Tokens.popout-corner-radius;
-            clip: true;
 
             // ── Search field — the hero. Magnifier + large query text. ──
             search := Rectangle {
@@ -290,25 +278,6 @@ export component Launcher inherits Window {
                     }
                 }
             }
-        }
-
-        Rectangle {
-            x: Tokens.chrome-hairline-width;
-            y: Tokens.chrome-hairline-width;
-            width: parent.width - 2 * Tokens.chrome-hairline-width;
-            height: parent.height - 2 * Tokens.chrome-hairline-width;
-            background: transparent;
-            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
-            border-width: Tokens.chrome-hairline-width;
-            border-color: Theme.surface-border;
-        }
-
-        Rectangle {
-            x: Tokens.popout-corner-radius;
-            y: Tokens.chrome-hairline-width / 2;
-            width: parent.width - 2 * Tokens.popout-corner-radius;
-            height: Tokens.chrome-highlight-height;
-            background: Theme.menu-highlight;
         }
     }
 }

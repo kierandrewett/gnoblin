@@ -16,7 +16,7 @@ mod usage;
 
 use desktop::App;
 use gnoblin_core::{ClientArgs, RuntimeError};
-use gnoblin_runtime::{run, BarApp, BarConfig};
+use gnoblin_runtime::{run, BarApp, BarConfig, BarMargins};
 slint::include_modules!(); // Launcher, AppEntry
 use slint::platform::Key;
 use slint::{ComponentHandle, SharedString};
@@ -30,6 +30,11 @@ use std::rc::Rc;
 // view. List viewport = panel-h(432) - search-h(60) - hairline(1) - top pad(4).
 const ROW_H: i32 = 52;
 const VISIBLE_H: i32 = 367;
+const LIST_PANEL_W: u32 = 600;
+const LIST_PANEL_H: u32 = 432;
+const GRID_PANEL_W: u32 = 680;
+const GRID_PANEL_H: u32 = 560;
+const LIST_TOP_MARGIN: i32 = 128;
 const COLUMNS: usize = 5; // app-grid columns (must match the .slint default)
 const CELL_H: i32 = 112; // app-grid tile height (must match the .slint cell-h)
 const GRID_VISIBLE_H: i32 = 499; // grid viewport (panel 560 - search 60 - hairline 1)
@@ -194,10 +199,6 @@ impl BarApp for LauncherApp {
         self.win.as_ref().map(|w| w.window())
     }
 
-    fn input_full(&self) -> bool {
-        true
-    }
-
     fn should_exit(&self) -> bool {
         self.exit.get()
     }
@@ -263,17 +264,34 @@ fn main() {
     // bound to Super+A / a dock button. Same scan + usage data, grid layout.
     let grid = std::env::args().any(|a| a == "--grid")
         || std::env::var("GNOBLIN_LAUNCHER_MODE").as_deref() == Ok("grid");
+    let (width, height, anchor, margins) = if grid {
+        (
+            GRID_PANEL_W,
+            GRID_PANEL_H,
+            Anchor::empty(),
+            BarMargins::default(),
+        )
+    } else {
+        (
+            LIST_PANEL_W,
+            LIST_PANEL_H,
+            Anchor::TOP,
+            BarMargins {
+                top: LIST_TOP_MARGIN,
+                ..BarMargins::default()
+            },
+        )
+    };
     run(
         BarConfig {
             namespace: "gnoblin-launcher",
-            anchor: Anchor::TOP
-                .union(Anchor::BOTTOM)
-                .union(Anchor::LEFT)
-                .union(Anchor::RIGHT),
+            anchor,
             layer: Layer::Overlay,
-            height: 1,
+            width,
+            height,
+            margins,
             exclusive_zone: 0,
-            full_height: true,
+            full_height: false,
             input_passthrough: false,
             keyboard: true,
             ..BarConfig::default()

@@ -1,16 +1,19 @@
 //! gnoblin-window-menu — the WM window menu as an on-demand Slint layer-shell
 //! client. The compositor spawns it (the `window-menu` role) with the target
 //! window + anchor point on the command line; it renders the [menu] entries as
-//! a modal overlay and dispatches the chosen gnoblin action at that window.
+//! a content-sized compositor-chromed popup and dispatches the chosen gnoblin
+//! action at that window.
 
 use gnoblin_core::config::Config;
 use gnoblin_core::{ClientArgs, RuntimeError};
-use gnoblin_runtime::{run, shell, BarApp, BarConfig};
+use gnoblin_runtime::{run, shell, BarApp, BarConfig, BarMargins};
 slint::include_modules!(); // WindowMenu, MenuItem
 use slint::ComponentHandle;
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::Cell;
 use std::rc::Rc;
+
+const MENU_W: u32 = 220;
 
 /// One parsed `[menu]` entry: `Label | action [arg]`, or a separator.
 #[derive(Clone)]
@@ -84,6 +87,17 @@ fn load_entries() -> Vec<Entry> {
     entries
 }
 
+fn menu_height(entries: &[Entry]) -> u32 {
+    let mut total = 12;
+    for (idx, entry) in entries.iter().enumerate() {
+        if idx > 0 {
+            total += 2;
+        }
+        total += if entry.separator { 9 } else { 30 };
+    }
+    total.max(1)
+}
+
 fn apply_theme(menu: &WindowMenu) {
     gnoblin_runtime::apply_shell_theme!(menu);
 }
@@ -96,7 +110,13 @@ struct WindowMenuApp {
 }
 
 impl BarApp for WindowMenuApp {
-    fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
+    fn show(
+        &mut self,
+        _w: u32,
+        _h: u32,
+        _screen_w: u32,
+        _screen_h: u32,
+    ) -> Result<(), RuntimeError> {
         let menu = WindowMenu::new()
             .map_err(|e| gnoblin_core::runtime_error(format!("WindowMenu::new: {e}")))?;
         apply_theme(&menu);
@@ -119,12 +139,6 @@ impl BarApp for WindowMenuApp {
             })
             .collect();
         menu.set_items(Rc::new(slint::VecModel::from(model)).into());
-
-        self.apply_geometry(&menu, screen_w, screen_h);
-
-        if let Some(bg) = gnoblin_runtime::load_backdrop() {
-            menu.set_backdrop(bg);
-        }
 
         // Pick → dispatch the action at the target window, then exit.
         {
@@ -151,12 +165,6 @@ impl BarApp for WindowMenuApp {
         Ok(())
     }
 
-    fn resized(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) {
-        if let Some(menu) = &self.menu {
-            self.apply_geometry(menu, screen_w, screen_h);
-        }
-    }
-
     fn tick(&mut self) -> bool {
         false
     }
@@ -165,52 +173,30 @@ impl BarApp for WindowMenuApp {
         self.menu.as_ref().map(|m| m.window())
     }
 
-    // Modal: the whole surface catches input so an outside click dismisses.
-    fn input_full(&self) -> bool {
-        true
-    }
-
     fn should_exit(&self) -> bool {
         self.exit.get()
     }
 }
 
-impl WindowMenuApp {
-    fn apply_geometry(&self, menu: &WindowMenu, screen_w: u32, screen_h: u32) {
-        // Anchor at the compositor-provided point, clamped so the menu stays
-        // on screen (menu is ~220px wide; height grows with the row count).
-        let menu_w = 220i32;
-        let menu_h = (self.entries.len() as i32) * 30 + 16;
-        let x = self
-            .args
-            .x
-            .unwrap_or(0)
-            .clamp(0, (screen_w as i32 - menu_w).max(0));
-        let y = self
-            .args
-            .y
-            .unwrap_or(0)
-            .clamp(0, (screen_h as i32 - menu_h).max(0));
-        menu.set_menu_x(x as f32);
-        menu.set_menu_y(y as f32);
-        menu.set_backdrop_screen_w(screen_w as f32);
-        menu.set_backdrop_screen_h(screen_h as f32);
-    }
-}
-
 fn main() {
     let args = ClientArgs::from_env();
+    let entries = load_entries();
+    let x = args.x.unwrap_or(0).max(0);
+    let y = args.y.unwrap_or(0).max(0);
     run(
         BarConfig {
             namespace: "gnoblin-window-menu",
-            anchor: Anchor::TOP
-                .union(Anchor::BOTTOM)
-                .union(Anchor::LEFT)
-                .union(Anchor::RIGHT),
+            anchor: Anchor::TOP.union(Anchor::LEFT),
             layer: Layer::Overlay,
-            height: 1,
+            width: MENU_W,
+            height: menu_height(&entries),
+            margins: BarMargins {
+                top: y,
+                left: x,
+                ..BarMargins::default()
+            },
             exclusive_zone: 0,
-            full_height: true,
+            full_height: false,
             input_passthrough: false,
             keyboard: false,
             ..BarConfig::default()
@@ -218,7 +204,7 @@ fn main() {
         Box::new(WindowMenuApp {
             menu: None,
             args,
-            entries: load_entries(),
+            entries,
             exit: Rc::new(Cell::new(false)),
         }),
     );
