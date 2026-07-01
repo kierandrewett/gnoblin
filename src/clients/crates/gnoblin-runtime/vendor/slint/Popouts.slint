@@ -235,7 +235,9 @@ export component ShellSliderRow inherits Rectangle {
         y: track-ta.y + (track-ta.height - 10px) / 2;
         width:  track-ta.width;
         height: 10px;
-        border-radius: 5px;
+        // height/2 (==5px) renders a hard SQUARE in FemtoVG; use height/2-1 for a
+        // real rounded groove (see gnoblin-femtovg-pill-radius memory).
+        border-radius: self.height / 2 - 1px;
         // A recessed groove distinctly darker than the container, so the unfilled
         // range stays legible end-to-end (no border needed to define it).
         background: Theme.mode == TokenMode.Dark
@@ -245,7 +247,7 @@ export component ShellSliderRow inherits Rectangle {
             x: 0; y: 0;
             width:  max(parent.height, parent.width * root.value);
             height: parent.height;
-            border-radius: 5px;
+            border-radius: parent.height / 2 - 1px; // pill, not a FemtoVG square
             background: ShellPalette.accent;
             // Fill tracks the value smoothly. While actively dragging we
             // don't want a lag between cursor and fill, so the tween only
