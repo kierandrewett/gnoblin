@@ -6,6 +6,24 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
+## Launcher / layer-shell startup speed — DONE ("app launcher takes 500ms.. improve the speed")
+Profiled cold-start with a new `GNOBLIN_TIMING` profiler (`rt_tick` in the runtime). It's ALL per-process cold
+start, not layer-shell: EGL init ~33ms, first render ~30ms, and the big one — **icon loading ~176ms** (empty query
+lists ~250 apps, each row decoded+Lanczos-resized an icon serially, only ~7 visible). Font enumeration was a red
+herring.
+- [x] Deferred+streamed icons: resolve only visible rows eagerly, stream the rest on idle `tick()`s
+  (`set_row_data`, no rebuild); off-screen so no pop-in. Lanczos3→Triangle resize (helps every icon client). ~23%
+  faster. (merged `fa6e48e`)
+- [x] **Resident launcher daemon** — subsequent opens **~72ms vs ~436ms cold (6×)**. EGL context + Slint platform +
+  component kept alive (set_platform is once-per-process); only the wl/EGL window surface swaps per show (verified
+  rendering survives hide→show cycles). Single-instance `dev.gnoblin.Launcher`; `Super+Space` spawn wakes it over
+  D-Bus; `--daemon` autostart starts hidden; additive (existing `run()`/clients untouched). (merged `d15decc`)
+- [ ] **REAL-HW: verify typing/Escape/Enter/click on the daemon surface** — the headless harness can't inject keys
+  to layer-shell clients, so this is unverified. Uses `KeyboardInteractivity::Exclusive` (auto-focus) like the
+  original, so it should work, but confirm on real hardware. Also add `exec = gnoblin-launcher --daemon` to your
+  live `[startup]` (it's in gnoblin.conf.example) so the daemon is warm; without it the first Super+Space becomes
+  the daemon (~98ms) and it's fast thereafter. Multi-monitor: the trigger shows on the daemon's bound output.
+
 ## Compositor owns ALL window chrome — DONE ("shadow/border/blur all handled by the compositor!!")
 Every on-demand surface is now a content-sized layer surface drawing ONLY content;
 the compositor draws rounding/border/shadow/blur + dismiss via `[window-rules]`
