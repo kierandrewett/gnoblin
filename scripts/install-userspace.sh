@@ -30,7 +30,7 @@ done
 # Stale gtk4-era layout, if present.
 rm -rf "$PREFIX/libexec/gnoblin"
 
-# gnoblinctl — CLI for the dev.gnoblin.Shell action API.
+# gnoblinctl — CLI for the compositor control socket / action API.
 install -m755 "$ROOT/dist/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 
 # gnoblin-screenshot — grim/slurp wrapper bound to the Print keys.

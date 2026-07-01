@@ -266,6 +266,7 @@ class Devkit:
             "appmenu-backend = auto\n"
             "[bind]\n"
             "Super+Space = spawn gnoblin-launcher\n"
+            "Super+F12 = spawn sh -c 'mkdir -p \"${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect\"; gnoblinctl inspect --pretty \"${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect/scene.json\"'\n"
             "Super+Q = close\n"
             "Super+Escape = window-menu\n"
             + qs_conf
@@ -467,6 +468,8 @@ class Devkit:
         "space": 57, "return": 28, "enter": 28, "escape": 1, "esc": 1,
         "tab": 15, "backspace": 14, "delete": 111, "up": 103, "down": 108,
         "left": 105, "right": 106,
+        **{f"f{i}": kc for i, kc in enumerate(
+            [59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88], start=1)},
         **{c: kc for c, kc in zip("1234567890", range(2, 12))},
         **{c: kc for c, kc in zip(
             "qwertyuiop", [16,17,18,19,20,21,22,23,24,25])},

@@ -19,7 +19,7 @@ project('gnoblin-shell', ['c', 'cpp'],
 )
 
 libmutter_dep = dependency('libmutter-17')
-gio_dep = dependency('gio-2.0')
+gio_unix_dep = dependency('gio-unix-2.0')
 
 # GLib/Clutter vtable callbacks have fixed signatures with unavoidably-unused
 # parameters; keep warning_level=2 otherwise.
@@ -78,7 +78,7 @@ executable('gnoblin-shell',
     '../config/gnoblin-config.c',
   ],
   include_directories : include_directories('../config'),
-  dependencies : [libmutter_dep, gio_dep, pam_dep],
+  dependencies : [libmutter_dep, gio_unix_dep, pam_dep],
   c_args : [
     '-DGNOBLIN_EMBED_DEFAULTS',
   ],

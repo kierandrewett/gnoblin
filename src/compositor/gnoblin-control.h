@@ -14,9 +14,10 @@ extern "C" {
 #include <meta/display.h>
 }
 
-/* Grab the config's `bind = [...]` keybindings and claim dev.gnoblin.Shell on
- * the session bus. Both route to gnoblin_actions_dispatch(). Call once on
- * startup; re-call after a config reload to pick up changed keybindings. */
+/* Grab the config's `bind = [...]` keybindings, claim dev.gnoblin.Shell on the
+ * session bus, and expose the local control socket used by gnoblinctl. All
+ * action entry points route to gnoblin_actions_dispatch(). Call once on startup;
+ * re-call after a config reload to pick up changed keybindings. */
 void gnoblin_control_init(MetaDisplay* display);
 void gnoblin_control_reload_keybindings(MetaDisplay* display);
 
