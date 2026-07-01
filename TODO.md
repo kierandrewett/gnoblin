@@ -6,6 +6,29 @@ task tool). Newest asks bubble to the top of **To do**.
 Ethos: everything customisable (config / process-command); chrome follows macOS
 HIG; animations buttery + customisable (easing/length/scale).
 
+## Compositor owns ALL window chrome — DONE ("shadow/border/blur all handled by the compositor!!")
+Every on-demand surface is now a content-sized layer surface drawing ONLY content;
+the compositor draws rounding/border/shadow/blur + dismiss via `[window-rules]`
+`layer=` matchers. Net-negative LOC (Slint chrome deleted). 8/8 surfaces: dock
+menu, window-menu, power-menu, launcher, osd, datetime popout, control-centre
+popout, notifyd (per-card surfaces). Merges `42379f4` (2a) → `9857286` (2b) →
+`001d1b9` (2c), all pushed.
+- [x] `popup` rule action → `clutter_stage_grab` (dismiss on outside-click/Esc)
+  for standalone popups (menu/launcher/window-menu/power-menu).
+- [x] Multi-surface runtime (`open_popout`/`close_popout` + `BarApp` hooks) so a
+  client owns >1 content-sized layer surface. Topbar keeps its popout logic
+  (calendar, QS plugin host), just renders into child surfaces; notifyd opens one
+  surface per card.
+- [x] **Lesson (cost 2 codex runs):** the `popup` grab STARVES wayland pointer
+  delivery to a surface owned alongside a primary surface (topbar popouts,
+  notifyd) — renders+dismisses fine but content is dead to clicks. Fix: topbar
+  popouts dismiss via a transparent scrim aux surface (no grab); notifyd cards use
+  no grab (click/timer dismiss). Standalone popups keep the grab.
+- [ ] **NB: all verified HEADLESS (llvmpipe/harness) only.** Needs a real-instance
+  smoke test — restart the live shell and eyeball each surface. Watch the notifyd
+  card frost specifically (looked a touch opaque vs the control-centre popout in
+  the headless shot — may want a more translucent card tint on real HW).
+
 ## Inspector huge pass — DONE + 1 bug found ("check the inspector.. let's do a huge pass")
 The scene inspector dumped geometry + pre-composite textures, but every rendering
 bug this session lived in the FINAL composited frame (cropped + sampled by hand
