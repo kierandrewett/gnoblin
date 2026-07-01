@@ -1,7 +1,7 @@
 //! gnoblin-power-menu — a Slint wlr-layer-shell modal offering Lock / Log Out /
 //! Suspend / Restart / Shut Down. Spawned on demand (e.g. the control-centre
 //! power button). Picks run the matching system command (logind/systemd) and the
-//! surface exits. A centred ContextMenu over a dismiss scrim, like the window menu.
+//! surface exits. The compositor owns the centered popup chrome and modal grab.
 
 use gnoblin_core::RuntimeError;
 use gnoblin_runtime::{run, shell, BarApp, BarConfig};
@@ -12,6 +12,8 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 
 slint::include_modules!(); // PowerMenu, MenuItem
+
+const MENU_W: u32 = 220;
 
 /// (label, kind) for each row. `kind` selects the action in `run_power`.
 const ENTRIES: &[(&str, &str)] = &[
@@ -52,6 +54,10 @@ fn run_power(kind: &str) {
     }
 }
 
+fn menu_height() -> u32 {
+    12 + ENTRIES.len() as u32 * 30 + ENTRIES.len().saturating_sub(1) as u32 * 2
+}
+
 struct PowerMenuApp {
     menu: Option<PowerMenu>,
     exit: Rc<Cell<bool>>,
@@ -61,20 +67,14 @@ fn apply_theme(menu: &PowerMenu) {
     gnoblin_runtime::apply_shell_theme!(menu);
 }
 
-fn apply_geometry(menu: &PowerMenu, screen_w: u32, screen_h: u32) {
-    // Centre the menu (220px wide; height grows with the row count).
-    let menu_w = 220i32;
-    let menu_h = (ENTRIES.len() as i32) * 34 + 16;
-    let x = ((screen_w as i32 - menu_w) / 2).max(0);
-    let y = ((screen_h as i32 - menu_h) / 2).max(0);
-    menu.set_menu_x(x as f32);
-    menu.set_menu_y(y as f32);
-    menu.set_backdrop_screen_w(screen_w as f32);
-    menu.set_backdrop_screen_h(screen_h as f32);
-}
-
 impl BarApp for PowerMenuApp {
-    fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
+    fn show(
+        &mut self,
+        _w: u32,
+        _h: u32,
+        _screen_w: u32,
+        _screen_h: u32,
+    ) -> Result<(), RuntimeError> {
         let menu = PowerMenu::new()
             .map_err(|e| gnoblin_core::runtime_error(format!("PowerMenu::new: {e}")))?;
         apply_theme(&menu);
@@ -96,12 +96,6 @@ impl BarApp for PowerMenuApp {
             })
             .collect();
         menu.set_items(Rc::new(slint::VecModel::from(model)).into());
-
-        apply_geometry(&menu, screen_w, screen_h);
-
-        if let Some(bg) = gnoblin_runtime::load_backdrop() {
-            menu.set_backdrop(bg);
-        }
 
         {
             let exit = self.exit.clone();
@@ -129,23 +123,12 @@ impl BarApp for PowerMenuApp {
         Ok(())
     }
 
-    fn resized(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) {
-        if let Some(menu) = &self.menu {
-            apply_geometry(menu, screen_w, screen_h);
-        }
-    }
-
     fn tick(&mut self) -> bool {
         false
     }
 
     fn window(&self) -> Option<&slint::Window> {
         self.menu.as_ref().map(|m| m.window())
-    }
-
-    // Modal: the whole surface catches input so an outside click dismisses.
-    fn input_full(&self) -> bool {
-        true
     }
 
     fn should_exit(&self) -> bool {
@@ -157,14 +140,12 @@ fn main() {
     run(
         BarConfig {
             namespace: "gnoblin-power-menu",
-            anchor: Anchor::TOP
-                .union(Anchor::BOTTOM)
-                .union(Anchor::LEFT)
-                .union(Anchor::RIGHT),
+            anchor: Anchor::empty(),
             layer: Layer::Overlay,
-            height: 1,
+            width: MENU_W,
+            height: menu_height(),
             exclusive_zone: 0,
-            full_height: true,
+            full_height: false,
             input_passthrough: false,
             keyboard: false,
             ..BarConfig::default()
