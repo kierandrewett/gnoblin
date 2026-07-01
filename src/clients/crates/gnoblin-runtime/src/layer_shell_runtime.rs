@@ -753,6 +753,7 @@ struct State {
     platform_state: Option<Rc<BarPlatformState>>,
     runtime: RuntimeControl,
     popouts: Vec<PopoutSurface>,
+    first_render_done: bool,
 }
 
 impl State {
@@ -778,9 +779,12 @@ impl State {
         if self.scale != 1 {
             surface.set_buffer_scale(self.scale as i32);
         }
+        rt_tick("init_slint: begin (first configure received)");
         let egl = setup_egl(&self.conn, &surface, pw, ph)?;
+        rt_tick("  setup_egl done (EGL ctx + surface)");
         let platform_state = Rc::new(BarPlatformState::new());
         let shared = platform_state.queue_adapter(egl, (pw, ph));
+        rt_tick("  FemtoVG renderer ready");
         let platform = BarPlatform {
             state: platform_state.clone(),
         };
@@ -790,6 +794,7 @@ impl State {
 
         let (screen_w, screen_h) = self.screen_size();
         self.app.show(self.width, self.height, screen_w, screen_h)?;
+        rt_tick("  app.show() (Slint component tree built)");
         let window = self
             .app
             .window()
@@ -1389,6 +1394,10 @@ impl State {
         });
         match result {
             Some(Ok(())) => {
+                if !self.first_render_done {
+                    self.first_render_done = true;
+                    rt_tick("FIRST render() done (surface has pixels)");
+                }
                 self.input_region_committed_with_render();
                 self.frame_pending = true;
             }
@@ -1999,6 +2008,21 @@ fn run_due_ticks(state: &mut State, next_tick: &mut Instant) {
 }
 
 /// Run a Slint `BarApp` as a wlr-layer-shell client until the compositor exits.
+/// Env-gated (`GNOBLIN_TIMING`) startup profiler. The first call seeds t0, so
+/// call it at `try_run` entry. Cheap no-op otherwise.
+pub fn rt_tick(label: &str) {
+    thread_local! { static T0: Instant = Instant::now(); }
+    if std::env::var_os("GNOBLIN_TIMING").is_some() {
+        T0.with(|t0| {
+            eprintln!(
+                "[timing/rt] {:>6.1}ms  {}",
+                t0.elapsed().as_secs_f64() * 1000.0,
+                label
+            )
+        });
+    }
+}
+
 pub fn run(config: BarConfig, app: Box<dyn BarApp>) {
     if let Err(e) = try_run(config, app) {
         eprintln!("gnoblin-runtime: {e}");
@@ -2021,6 +2045,7 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         }));
     }
 
+    rt_tick("try_run: begin");
     let conn = Connection::connect_to_env()
         .map_err(|e| runtime_error(format!("connect to Wayland: {e}")))?;
     let (globals, mut event_queue) =
@@ -2031,6 +2056,7 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         .map_err(|e| runtime_error(format!("bind wl_compositor: {e}")))?;
     let layer_shell = LayerShell::bind(&globals, &qh)
         .map_err(|e| runtime_error(format!("bind wlr-layer-shell: {e}")))?;
+    rt_tick("wayland connect + registry + binds");
 
     // Multi-monitor: bind to the output named by `--output` if the compositor
     // launched us for a specific monitor; otherwise let it choose.
@@ -2118,6 +2144,7 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         platform_state: None,
         runtime,
         popouts: Vec::new(),
+        first_render_done: false,
     };
 
     // Bind pointer/keyboard resources before the initial layer-surface commit.
@@ -2128,6 +2155,7 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         .roundtrip(&mut state)
         .map_err(|e| runtime_error(format!("initial input registry roundtrip: {e}")))?;
     state.layer.commit();
+    rt_tick("initial roundtrip + first commit (now waiting for configure)");
 
     let mut next_tick = Instant::now();
     while !state.exit {

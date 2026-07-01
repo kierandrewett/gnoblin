@@ -81,11 +81,16 @@ impl Row {
     }
 
     pub(crate) fn entry(&self) -> AppEntry {
-        let icon = if self.icon.is_empty() {
-            None
-        } else {
-            find_icon(&self.icon, "")
-        };
+        self.entry_with_icon(true)
+    }
+
+    /// Build the Slint entry. When `load_icon` is false the (expensive) theme
+    /// lookup + decode + resize is skipped and the row shows icon-less; the
+    /// launcher streams those icons in later via `resolve_icon` on idle ticks so
+    /// they never sit on the open critical path. Rows with a built-in glyph
+    /// (calc, web) don't use `icon` at all, so deferral never affects them.
+    pub(crate) fn entry_with_icon(&self, load_icon: bool) -> AppEntry {
+        let icon = if load_icon { self.resolve_icon() } else { None };
         AppEntry {
             name: self.name.clone().into(),
             subtitle: self.subtitle.clone().into(),
@@ -93,6 +98,21 @@ impl Row {
             icon: icon.unwrap_or_default(),
             kind: self.kind.clone().into(),
             accessory: self.accessory.clone().into(),
+        }
+    }
+
+    /// True if this row carries a theme icon to resolve (vs a built-in glyph).
+    pub(crate) fn has_theme_icon(&self) -> bool {
+        !self.icon.is_empty()
+    }
+
+    /// Resolve this row's theme icon (cached in gnoblin-desktop). Cheap on a
+    /// cache hit; the first cold lookup does the dir stats + decode + resize.
+    pub(crate) fn resolve_icon(&self) -> Option<slint::Image> {
+        if self.icon.is_empty() {
+            None
+        } else {
+            find_icon(&self.icon, "")
         }
     }
 }
