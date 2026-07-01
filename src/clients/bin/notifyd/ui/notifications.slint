@@ -1,7 +1,6 @@
-// Notification popups: a top-right column of glass cards on a full-screen,
-// mostly-passthrough overlay. Rust computes each card's y + height (so cards
-// with action buttons are taller) and mirrors them into the input region; the
-// card body dismisses on click, action buttons fire ActionInvoked.
+// Notification popups: Rust owns one content-sized layer surface per active
+// card. The compositor owns card chrome (rounding, border, shadow, blur); this
+// Slint surface only paints the translucent tint and notification content.
 import { Theme, TokenMode, Tokens, Spacing, Radius, Motion } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
 export { Theme, TokenMode }
 
@@ -11,159 +10,128 @@ export struct NotifAction {
 }
 
 export struct NotifCard {
-    id:      int,
-    summary: string,
-    body:    string,
-    icon:    image,
+    id:       int,
+    summary:  string,
+    body:     string,
+    icon:     image,
     has-icon: bool,
     critical: bool,
-    actions: [NotifAction],
-    card-y:  length,
-    card-h:  length,
+    actions:  [NotifAction],
+    card-h:   length,
 }
 
-export component Notifications inherits Window {
-    in property <[NotifCard]> cards;
-    callback dismissed(int);
-    callback action-invoked(int, string);
+export component NotificationHost inherits Window {
     background: transparent;
     default-font-family: Tokens.font-family;
+}
 
-    // Public so Rust mirrors the geometry for the input region.
-    out property <length> card-w: 360px;
-    out property <length> margin: Spacing.sm;
+component NotificationCardContent inherits Rectangle {
+    in property <NotifCard> card;
+    callback dismissed(int);
+    callback action-invoked(int, string);
 
-    for card[i] in root.cards: Rectangle {
-        x: parent.width - root.card-w - root.margin;
-        y: card.card-y;
-        width: root.card-w;
-        height: card.card-h;
-        background: transparent;
-        clip: false;
+    width: 360px;
+    height: root.card.card-h;
+    background: Theme.surface-bg;
+    clip: false;
 
-        // When a notification above is dismissed/expires, the cards below
-        // slide up into their new slot rather than snapping.
-        animate y { duration: Motion.medium; easing: Motion.medium-curve; }
-        // A subtle settle as a card re-seats / the stack reshuffles.
-        animate opacity { duration: Motion.fast; easing: Motion.fast-curve; }
-
-        Rectangle {
-            width: parent.width;
-            height: parent.height;
-            background: Theme.chrome-shadow-source;
-            border-radius: Tokens.popout-corner-radius;
-            drop-shadow-color: Theme.chrome-shadow;
-            drop-shadow-blur: Tokens.menu-shadow-blur;
-            drop-shadow-offset-y: Tokens.menu-shadow-offset-y;
-        }
-
-        body := Rectangle {
-            width: parent.width;
-            height: parent.height;
-            background: Theme.surface-bg;
-            border-radius: Tokens.popout-corner-radius;
-            clip: true;
-
-        // Critical urgency accent — a red bar down the leading edge.
-        if card.critical: Rectangle {
-            x: 0;
-            width: 4px;
-            height: parent.height;
-            background: Theme.critical-accent;
-        }
-
-        // Full-card dismiss target, behind the content. Action button
-        // TouchAreas sit on top and capture their own clicks.
-        TouchArea {
-            clicked => { root.dismissed(card.id); }
-        }
-
-        VerticalLayout {
-            padding: Spacing.lg;
-            spacing: Spacing.lg;
-
-            // Header — icon + title/body.
-            HorizontalLayout {
-                spacing: Spacing.md;
-                alignment: stretch;
-
-                if card.has-icon: Image {
-                    width: 36px;
-                    height: 36px;
-                    y: 2px;
-                    source: card.icon;
-                }
-
-                VerticalLayout {
-                    spacing: Spacing.xs;
-                    alignment: center;
-
-                    Text {
-                        text: card.summary;
-                        color: Theme.text-primary;
-                        font-size: 15px;
-                        font-weight: 700;
-                        overflow: elide;
-                        horizontal-alignment: left;
-                    }
-                    if card.body != "": Text {
-                        text: card.body;
-                        color: Theme.text-secondary;
-                        font-size: 13px;
-                        overflow: elide;
-                        wrap: word-wrap;
-                        horizontal-alignment: left;
-                        max-height: 34px;
-                    }
-                }
-            }
-
-            // Action buttons row (when the app declared actions).
-            if card.actions.length > 0: HorizontalLayout {
-                spacing: Spacing.sm;
-
-                for action[ai] in card.actions: Rectangle {
-                    height: 38px;
-                    background: btn-touch.has-hover ? Theme.surface-hover-bg : Theme.surface-raised-bg;
-                    border-radius: Radius.sm;
-                    border-width: Tokens.chrome-hairline-width;
-                    border-color: Theme.surface-border;
-                    animate background { duration: Motion.fast; easing: Motion.fast-curve; }
-                    btn-touch := TouchArea {
-                        clicked => { root.action-invoked(card.id, action.id); }
-                    }
-                    Text {
-                        text: action.label;
-                        color: Theme.text-primary;
-                        font-size: 13px;
-                        font-weight: 500;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                }
-            }
-        }
-        }
-
-        Rectangle {
-            x: Tokens.chrome-hairline-width;
-            y: Tokens.chrome-hairline-width;
-            width: parent.width - 2 * Tokens.chrome-hairline-width;
-            height: parent.height - 2 * Tokens.chrome-hairline-width;
-            background: transparent;
-            border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
-            border-width: Tokens.chrome-hairline-width;
-            border-color: card.critical ? Theme.critical-accent : Theme.surface-border;
-        }
-
-        Rectangle {
-            x: Tokens.popout-corner-radius;
-            y: Tokens.chrome-hairline-width / 2;
-            width: parent.width - 2 * Tokens.popout-corner-radius;
-            height: Tokens.chrome-highlight-height;
-            background: Theme.menu-highlight;
-        }
+    // Critical urgency accent — a red bar down the leading edge.
+    if root.card.critical: Rectangle {
+        x: 0;
+        width: 4px;
+        height: parent.height;
+        background: Theme.critical-accent;
     }
 
+    // Full-card dismiss target, behind the content. Action button TouchAreas sit
+    // on top and capture their own clicks.
+    TouchArea {
+        clicked => { root.dismissed(root.card.id); }
+    }
+
+    VerticalLayout {
+        padding: Spacing.lg;
+        spacing: Spacing.lg;
+
+        // Header — icon + title/body.
+        HorizontalLayout {
+            spacing: Spacing.md;
+            alignment: stretch;
+
+            if root.card.has-icon: Image {
+                width: 36px;
+                height: 36px;
+                y: 2px;
+                source: root.card.icon;
+            }
+
+            VerticalLayout {
+                spacing: Spacing.xs;
+                alignment: center;
+
+                Text {
+                    text: root.card.summary;
+                    color: Theme.text-primary;
+                    font-size: 15px;
+                    font-weight: 700;
+                    overflow: elide;
+                    horizontal-alignment: left;
+                }
+                if root.card.body != "": Text {
+                    text: root.card.body;
+                    color: Theme.text-secondary;
+                    font-size: 13px;
+                    overflow: elide;
+                    wrap: word-wrap;
+                    horizontal-alignment: left;
+                    max-height: 34px;
+                }
+            }
+        }
+
+        // Action buttons row (when the app declared actions).
+        if root.card.actions.length > 0: HorizontalLayout {
+            spacing: Spacing.sm;
+
+            for action[ai] in root.card.actions: Rectangle {
+                height: 38px;
+                background: btn-touch.has-hover ? Theme.surface-hover-bg : Theme.surface-raised-bg;
+                border-radius: Radius.sm;
+                border-width: Tokens.chrome-hairline-width;
+                border-color: Theme.surface-border;
+                animate background { duration: Motion.fast; easing: Motion.fast-curve; }
+                btn-touch := TouchArea {
+                    clicked => { root.action-invoked(root.card.id, action.id); }
+                }
+                Text {
+                    text: action.label;
+                    color: Theme.text-primary;
+                    font-size: 13px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+export component NotificationCardSurface inherits Window {
+    in property <NotifCard> card;
+    callback dismissed(int);
+    callback action-invoked(int, string);
+
+    background: transparent;
+    default-font-family: Tokens.font-family;
+    width: 360px;
+    height: root.card.card-h;
+
+    NotificationCardContent {
+        width: parent.width;
+        height: parent.height;
+        card: root.card;
+        dismissed(id) => { root.dismissed(id); }
+        action-invoked(id, action) => { root.action-invoked(id, action); }
+    }
 }
