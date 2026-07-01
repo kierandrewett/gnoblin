@@ -43,38 +43,6 @@ export component TopBar inherits Window {
     callback global-menu-item-activated(int);
     callback global-menu-dismiss();
 
-    // Datetime + control-centre popouts (Rust owns open state + data).
-    in property <bool> datetime-open: false;
-    in property <bool> cc-open: false;
-    in property <string> popout-date-text;
-    in property <string> popout-day-text;
-    in property <string> popout-calendar-month-text;
-    in property <[CalendarDay]> popout-calendar-days;
-    in property <[int]> popout-calendar-week-numbers;
-    in property <[CalendarWeekday]> popout-weekday-labels;
-    callback popout-prev-month();
-    callback popout-next-month();
-    // Unified control-centre tile grid (built-ins + plugins, packed by Rust).
-    in property <[QsTileRow]> cc-tiles;
-    in property <[NotificationItem]> cc-notifications;
-    in property <int>    cc-notification-count: 0;
-    in-out property <bool> cc-notifications-expanded: false;
-    callback cc-tile-clicked(string /* tile-id */);
-    callback cc-tile-slider(string /* tile-id */, float);
-    callback cc-tile-chevron(string /* tile-id */);
-    // Submenu row interactions → qsplugin host (keyed by tile/plugin id).
-    callback cc-plugin-row(string /* tile-id */, string /* row-id */);
-    callback cc-plugin-toggle(string /* tile-id */, string /* row-id */, bool);
-    callback cc-plugin-slider(string /* tile-id */, string /* row-id */, float);
-    // Open slide-out submenu state, surfaced so Rust can refresh its rows live.
-    in-out property <string> cc-open-submenu: "";
-    in-out property <[QsMenuRow]> cc-submenu-rows;
-    callback cc-account-clicked();
-    callback cc-settings-clicked();
-    callback cc-lock-clicked();
-    callback cc-power-clicked();
-    callback cc-notification-dismissed(int);
-    callback popout-dismiss();
     background: transparent;
     default-font-family: Tokens.font-family;
 
@@ -188,70 +156,100 @@ export component TopBar inherits Window {
         dismiss => { root.global-menu-dismiss(); }
     }
 
-    // Scrim for the popouts.
-    if root.datetime-open || root.cc-open: TouchArea {
-        x: 0; y: root.bar-h; width: 100%; height: parent.height - root.bar-h;
-        pointer-event(e) => {
-            if (e.kind == PointerEventKind.down) {
-                root.popout-dismiss();
-            }
-        }
-    }
+}
 
-    // Calendar / clock popout — centred under the clock.
+export component DatetimePopoutWindow inherits Window {
+    in property <bool> open: false;
+    in property <bool> chrome-by-compositor: true;
+    in property <string> date-text: "";
+    in property <string> day-text: "Today";
+    in property <string> calendar-month-text: "";
+    in property <[CalendarDay]> calendar-days;
+    in property <[int]> calendar-week-numbers;
+    in property <[CalendarWeekday]> weekday-labels;
+    in property <length> origin-x: 0px;
+    in property <length> origin-y: 0px;
+    callback prev-month();
+    callback next-month();
+    callback day-clicked(int);
+
+    background: transparent;
+    no-frame: true;
+    default-font-family: Tokens.font-family;
+
     DatetimePopout {
-        x: root.datetime-anchor-x <= 0px
-            ? (parent.width - self.width) / 2
-            : min(max(root.datetime-anchor-x - self.width / 2, 8px), parent.width - self.width - 8px);
-        y: root.bar-h + 8px;
-        open: root.datetime-open;
-        date-text: root.popout-date-text;
-        day-text: root.popout-day-text;
-        calendar-month-text: root.popout-calendar-month-text;
-        calendar-days: root.popout-calendar-days;
-        calendar-week-numbers: root.popout-calendar-week-numbers;
-        weekday-labels: root.popout-weekday-labels;
-        origin-x: self.width / 2;
-        origin-y: 0px;
-        backdrop: root.backdrop;
-        backdrop-screen-w: root.backdrop-screen-w;
-        backdrop-screen-h: root.backdrop-screen-h;
-        popout-x: self.x;
-        popout-y: self.y;
-        prev-month => { root.popout-prev-month(); }
-        next-month => { root.popout-next-month(); }
+        width: parent.width;
+        height: parent.height;
+        open: root.open;
+        chrome-by-compositor: root.chrome-by-compositor;
+        date-text: root.date-text;
+        day-text: root.day-text;
+        calendar-month-text: root.calendar-month-text;
+        calendar-days: root.calendar-days;
+        calendar-week-numbers: root.calendar-week-numbers;
+        weekday-labels: root.weekday-labels;
+        origin-x: root.origin-x;
+        origin-y: root.origin-y;
+        prev-month => { root.prev-month(); }
+        next-month => { root.next-month(); }
+        day-clicked(day) => { root.day-clicked(day); }
     }
+}
 
-    // Quick settings — anchored under the right-hand status cluster.
+export component ControlCentrePopoutWindow inherits Window {
+    in property <bool> open: false;
+    in property <bool> chrome-by-compositor: true;
+    in property <length> origin-x: 360px;
+    in property <length> origin-y: 0px;
+    in property <length> backdrop-screen-h: 1px;
+    in property <length> popout-y: 0px;
+    in property <[QsTileRow]> tiles;
+    in property <[NotificationItem]> notifications;
+    in property <int> notification-count: 0;
+    in-out property <bool> notifications-expanded: false;
+    in-out property <string> open-submenu: "";
+    in-out property <[QsMenuRow]> submenu-rows;
+    callback tile-clicked(string);
+    callback tile-slider(string, float);
+    callback tile-chevron(string);
+    callback plugin-row(string, string);
+    callback plugin-toggle(string, string, bool);
+    callback plugin-slider(string, string, float);
+    callback account-clicked();
+    callback settings-clicked();
+    callback lock-clicked();
+    callback power-clicked();
+    callback notification-dismissed(int);
+
+    background: transparent;
+    no-frame: true;
+    default-font-family: Tokens.font-family;
+
     ControlCentrePopout {
-        x: root.cc-anchor-x <= 0px
-            ? parent.width - self.width - 8px + root.cc-offset-x
-            : min(max(root.cc-anchor-x - self.width + root.cc-offset-x, 8px), parent.width - self.width - 4px);
-        y: root.bar-h + 8px + root.cc-offset-y;
-        open: root.cc-open;
-        tiles: root.cc-tiles;
-        notifications: root.cc-notifications;
-        notification-count: root.cc-notification-count;
-        notifications-expanded <=> root.cc-notifications-expanded;
-        origin-x: self.width;
-        origin-y: 0px;
-        backdrop: root.backdrop;
-        backdrop-screen-w: root.backdrop-screen-w;
+        width: parent.width;
+        height: parent.height;
+        open: root.open;
+        chrome-by-compositor: root.chrome-by-compositor;
+        origin-x: root.origin-x;
+        origin-y: root.origin-y;
         backdrop-screen-h: root.backdrop-screen-h;
-        popout-x: self.x;
-        popout-y: self.y;
-        tile-clicked(id) => { root.cc-tile-clicked(id); }
-        tile-slider(id, v) => { root.cc-tile-slider(id, v); }
-        tile-chevron(id) => { root.cc-tile-chevron(id); }
-        plugin-row(id, row) => { root.cc-plugin-row(id, row); }
-        plugin-toggle(id, row, v) => { root.cc-plugin-toggle(id, row, v); }
-        plugin-slider(id, row, v) => { root.cc-plugin-slider(id, row, v); }
-        open-submenu <=> root.cc-open-submenu;
-        submenu-rows <=> root.cc-submenu-rows;
-        account-clicked => { root.cc-account-clicked(); }
-        settings-clicked => { root.cc-settings-clicked(); }
-        lock-clicked => { root.cc-lock-clicked(); }
-        power-clicked => { root.cc-power-clicked(); }
-        notification-dismissed(i) => { root.cc-notification-dismissed(i); }
+        popout-y: root.popout-y;
+        tiles: root.tiles;
+        notifications: root.notifications;
+        notification-count: root.notification-count;
+        notifications-expanded <=> root.notifications-expanded;
+        open-submenu <=> root.open-submenu;
+        submenu-rows <=> root.submenu-rows;
+        tile-clicked(id) => { root.tile-clicked(id); }
+        tile-slider(id, v) => { root.tile-slider(id, v); }
+        tile-chevron(id) => { root.tile-chevron(id); }
+        plugin-row(id, row) => { root.plugin-row(id, row); }
+        plugin-toggle(id, row, v) => { root.plugin-toggle(id, row, v); }
+        plugin-slider(id, row, v) => { root.plugin-slider(id, row, v); }
+        account-clicked => { root.account-clicked(); }
+        settings-clicked => { root.settings-clicked(); }
+        lock-clicked => { root.lock-clicked(); }
+        power-clicked => { root.power-clicked(); }
+        notification-dismissed(i) => { root.notification-dismissed(i); }
     }
 }

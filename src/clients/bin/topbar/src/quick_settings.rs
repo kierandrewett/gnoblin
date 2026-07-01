@@ -1,4 +1,6 @@
-use crate::{qsplugin, quicksettings, QsMenuRow, QsTile, QsTileRow, TopBar};
+use crate::{
+    qsplugin, quicksettings, ControlCentrePopoutWindow, QsMenuRow, QsTile, QsTileRow, TopBar,
+};
 use gnoblin_desktop::find_icon;
 use std::rc::Rc;
 
@@ -118,23 +120,28 @@ fn build_tiles(plugins: &[qsplugin::PluginState]) -> Vec<QsTile> {
 
 /// Push the unified control-centre tile model + status cluster from a known
 /// state snapshot.
-pub(crate) fn push(p: &TopBar, st: &quicksettings::QuickState, plugins: &[qsplugin::PluginState]) {
+pub(crate) fn push(
+    p: &TopBar,
+    cc: Option<&ControlCentrePopoutWindow>,
+    st: &quicksettings::QuickState,
+    plugins: &[qsplugin::PluginState],
+) {
     apply_cluster(p, st);
+    if let Some(cc) = cc {
+        push_popout(cc, plugins);
+    }
+}
+
+pub(crate) fn push_popout(p: &ControlCentrePopoutWindow, plugins: &[qsplugin::PluginState]) {
     let tiles = build_tiles(plugins);
     // If a slide-out submenu is open, refresh its rows from the freshly-built
     // model so a plugin update mid-open doesn't leave the page showing a stale
     // snapshot (the rows were captured when the chevron was tapped).
-    let open = p.get_cc_open_submenu().to_string();
+    let open = p.get_open_submenu().to_string();
     if !open.is_empty() {
         if let Some(t) = tiles.iter().find(|t| t.id == open) {
-            p.set_cc_submenu_rows(t.rows.clone());
+            p.set_submenu_rows(t.rows.clone());
         }
     }
-    p.set_cc_tiles(Rc::new(slint::VecModel::from(pack_rows(tiles))).into());
-}
-
-/// Re-read live built-in state and rebuild the control-centre tile grid.
-pub(crate) fn refresh(p: &TopBar, plugins: &[qsplugin::PluginState]) {
-    let st = quicksettings::read();
-    push(p, &st, plugins);
+    p.set_tiles(Rc::new(slint::VecModel::from(pack_rows(tiles))).into());
 }

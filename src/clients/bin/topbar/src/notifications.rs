@@ -1,4 +1,4 @@
-use crate::{NotificationItem, TopBar};
+use crate::{ControlCentrePopoutWindow, NotificationItem};
 use gnoblin_desktop::find_icon;
 use gnoblin_runtime::{datetime, notifcenter};
 use std::rc::Rc;
@@ -17,7 +17,7 @@ fn age_label(timestamp_secs: u64) -> String {
     datetime::format_unix(timestamp_secs, format).unwrap_or_default()
 }
 
-pub(crate) fn apply(p: &TopBar) -> notifcenter::Summary {
+pub(crate) fn apply(p: Option<&ControlCentrePopoutWindow>) -> notifcenter::Summary {
     let summary = notifcenter::summary();
     let entries = notifcenter::history();
     let items: Vec<NotificationItem> = entries
@@ -40,8 +40,10 @@ pub(crate) fn apply(p: &TopBar) -> notifcenter::Summary {
         })
         .collect();
     let count = summary.count.max(entries.len()).min(i32::MAX as usize) as i32;
-    p.set_cc_notification_count(count);
-    p.set_cc_notifications(Rc::new(slint::VecModel::from(items)).into());
+    if let Some(p) = p {
+        p.set_notification_count(count);
+        p.set_notifications(Rc::new(slint::VecModel::from(items)).into());
+    }
     summary
 }
 

@@ -968,9 +968,19 @@ impl State {
         let filename_ns = popout
             .namespace
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
-        let path = dir.join(format!("window-{}-{}.json", std::process::id(), filename_ns));
+        let path = dir.join(format!(
+            "window-{}-{}.json",
+            std::process::id(),
+            filename_ns
+        ));
         let _ = std::fs::write(path, json);
     }
 
@@ -1181,7 +1191,8 @@ impl State {
         let Some(popout) = self.popouts.get(idx) else {
             return;
         };
-        let (handle, width, height, scale) = (popout.handle, popout.width, popout.height, popout.scale);
+        let (handle, width, height, scale) =
+            (popout.handle, popout.width, popout.height, popout.scale);
         let (pw, ph) = (width * scale, height * scale);
         if let Some(adapter) = &popout.adapter {
             adapter.size.set(PhysicalSize::new(pw.max(1), ph.max(1)));
