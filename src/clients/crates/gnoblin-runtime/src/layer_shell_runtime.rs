@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::error::Error;
 use std::ffi::{c_void, CStr};
 use std::io::ErrorKind;
@@ -44,6 +45,20 @@ use gnoblin_core::{runtime_error, ClientArgs, RuntimeError};
 const CONFIGURE_RENDER_DELAY: Duration = Duration::from_millis(50);
 const IDLE_DISPATCH_TIMEOUT: Duration = Duration::from_millis(200);
 const APP_TICK_INTERVAL: Duration = Duration::from_millis(100);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct PopoutHandle(u32);
+
+#[derive(Clone)]
+pub struct RuntimeControl {
+    commands: Rc<RefCell<Vec<RuntimeCommand>>>,
+    next_popout_id: Rc<Cell<u32>>,
+}
+
+enum RuntimeCommand {
+    OpenPopout(PopoutHandle, PopoutConfig),
+    ClosePopout(PopoutHandle),
+}
 
 /// Read the visual properties of a Slint item if it's a (Border)Rectangle: the
 /// per-corner border radius, border width, and the background + border colours
@@ -182,6 +197,42 @@ pub trait BarApp {
         screen_w: u32,
         screen_h: u32,
     ) -> Result<(), RuntimeError>;
+    /// Runtime control for auxiliary content-sized layer surfaces owned by this
+    /// client. Existing single-surface clients can ignore it.
+    fn set_runtime(&mut self, _runtime: RuntimeControl) {}
+    /// Create and show the Slint component for an auxiliary popout surface.
+    /// The runtime has already installed a WindowAdapter for the next component
+    /// constructed by this call.
+    fn show_popout(
+        &mut self,
+        _handle: PopoutHandle,
+        _namespace: &'static str,
+        _width: u32,
+        _height: u32,
+        _screen_w: u32,
+        _screen_h: u32,
+    ) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+    /// The Slint window for a popout, used by the runtime for input and render
+    /// invalidation. Apps that open popouts must return the matching component's
+    /// window after `show_popout`.
+    fn popout_window(&self, _handle: PopoutHandle) -> Option<&slint::Window> {
+        None
+    }
+    /// A popout surface was resized after the component was shown.
+    fn popout_resized(
+        &mut self,
+        _handle: PopoutHandle,
+        _width: u32,
+        _height: u32,
+        _screen_w: u32,
+        _screen_h: u32,
+    ) {
+    }
+    /// A popout was closed by the app, compositor policy, or protocol teardown.
+    /// Apps should drop the matching Slint component and reset their open state.
+    fn popout_closed(&mut self, _handle: PopoutHandle, _namespace: &'static str) {}
     /// The layer surface was resized after the component was shown. The Slint
     /// window itself has already received `WindowEvent::Resized`; clients that
     /// cache output-sized geometry can update their own properties here.
@@ -249,6 +300,46 @@ pub struct BarConfig {
     /// Request keyboard focus (KeyboardInteractivity::OnDemand) and forward key
     /// events into Slint — for clients with text input (e.g. the launcher).
     pub keyboard: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PopoutConfig {
+    pub namespace: &'static str,
+    pub anchor: Anchor,
+    pub layer: Layer,
+    pub width: u32,
+    pub height: u32,
+    pub margins: BarMargins,
+    pub keyboard: bool,
+}
+
+impl RuntimeControl {
+    fn new() -> Self {
+        Self {
+            commands: Rc::new(RefCell::new(Vec::new())),
+            next_popout_id: Rc::new(Cell::new(1)),
+        }
+    }
+
+    pub fn open_popout(&self, config: PopoutConfig) -> PopoutHandle {
+        let id = self.next_popout_id.get();
+        self.next_popout_id.set(id.saturating_add(1).max(1));
+        let handle = PopoutHandle(id);
+        self.commands
+            .borrow_mut()
+            .push(RuntimeCommand::OpenPopout(handle, config));
+        handle
+    }
+
+    pub fn close_popout(&self, handle: PopoutHandle) {
+        self.commands
+            .borrow_mut()
+            .push(RuntimeCommand::ClosePopout(handle));
+    }
+
+    fn drain(&self) -> Vec<RuntimeCommand> {
+        self.commands.borrow_mut().drain(..).collect()
+    }
 }
 
 impl Default for BarConfig {
@@ -423,26 +514,58 @@ impl WindowAdapter for BarAdapter {
     }
 }
 
-struct BarPlatform {
-    egl: RefCell<Option<EglState>>,
+struct PendingAdapter {
+    egl: EglState,
     size: (u32, u32),
     shared: Rc<RefCell<Option<Rc<BarAdapter>>>>,
+}
+
+struct BarPlatformState {
+    pending: RefCell<VecDeque<PendingAdapter>>,
     start: Instant,
+}
+
+impl BarPlatformState {
+    fn new() -> Self {
+        Self {
+            pending: RefCell::new(VecDeque::new()),
+            start: Instant::now(),
+        }
+    }
+
+    fn queue_adapter(
+        &self,
+        egl: EglState,
+        size: (u32, u32),
+    ) -> Rc<RefCell<Option<Rc<BarAdapter>>>> {
+        let shared = Rc::new(RefCell::new(None));
+        self.pending.borrow_mut().push_back(PendingAdapter {
+            egl,
+            size,
+            shared: shared.clone(),
+        });
+        shared
+    }
+}
+
+struct BarPlatform {
+    state: Rc<BarPlatformState>,
 }
 
 impl Platform for BarPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        let egl = self
-            .egl
+        let pending = self
+            .state
+            .pending
             .borrow_mut()
-            .take()
-            .ok_or_else(|| slint::PlatformError::from("EGL context already taken"))?;
-        let adapter = BarAdapter::new(egl, self.size.0, self.size.1)?;
-        *self.shared.borrow_mut() = Some(adapter.clone());
+            .pop_front()
+            .ok_or_else(|| slint::PlatformError::from("no pending layer surface adapter"))?;
+        let adapter = BarAdapter::new(pending.egl, pending.size.0, pending.size.1)?;
+        *pending.shared.borrow_mut() = Some(adapter.clone());
         Ok(adapter)
     }
     fn duration_since_start(&self) -> Duration {
-        self.start.elapsed()
+        self.state.start.elapsed()
     }
 }
 
@@ -514,14 +637,69 @@ fn resolve_output(
 
 // ── sctk layer-shell client state ───────────────────────────────────────────
 
+struct PopoutSurface {
+    handle: PopoutHandle,
+    namespace: &'static str,
+    layer: LayerSurface,
+    width: u32,
+    height: u32,
+    scale: u32,
+    configured: bool,
+    adapter: Option<Rc<BarAdapter>>,
+    frame_pending: bool,
+    last_configure_at: Option<Instant>,
+}
+
+impl PopoutSurface {
+    fn has_active_animations(&self) -> bool {
+        self.adapter
+            .as_ref()
+            .map(|a| a.window.has_active_animations())
+            .unwrap_or(false)
+    }
+
+    fn configure_settle_remaining(&self) -> Option<Duration> {
+        let elapsed = self.last_configure_at?.elapsed();
+        if elapsed >= CONFIGURE_RENDER_DELAY {
+            None
+        } else {
+            Some(CONFIGURE_RENDER_DELAY - elapsed)
+        }
+    }
+
+    fn ready_to_render(&mut self) -> bool {
+        if self.frame_pending {
+            return false;
+        }
+        if self.configure_settle_remaining().is_some() {
+            return false;
+        }
+        if self.last_configure_at.is_some() {
+            self.last_configure_at = None;
+        }
+        true
+    }
+
+    fn wants_redraw(&self) -> bool {
+        let dirty = self
+            .adapter
+            .as_ref()
+            .map(|a| a.needs_redraw.get())
+            .unwrap_or(false);
+        dirty || self.has_active_animations()
+    }
+}
+
 struct State {
     registry_state: RegistryState,
     output_state: OutputState,
     seat_state: SeatState,
     compositor: CompositorState,
+    layer_shell: LayerShell,
     layer: LayerSurface,
     qh: QueueHandle<State>,
     conn: Connection,
+    target_output: Option<wl_output::WlOutput>,
     pointer: Option<wl_pointer::WlPointer>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     // Logical surface size + the output's integer buffer scale (HiDPI). The EGL
@@ -551,6 +729,9 @@ struct State {
     // ack_configure". Delay the first post-configure buffer by one tick.
     last_configure_at: Option<Instant>,
     startup_error: Option<String>,
+    platform_state: Option<Rc<BarPlatformState>>,
+    runtime: RuntimeControl,
+    popouts: Vec<PopoutSurface>,
 }
 
 impl State {
@@ -577,15 +758,14 @@ impl State {
             surface.set_buffer_scale(self.scale as i32);
         }
         let egl = setup_egl(&self.conn, &surface, pw, ph)?;
-        let shared = Rc::new(RefCell::new(None));
+        let platform_state = Rc::new(BarPlatformState::new());
+        let shared = platform_state.queue_adapter(egl, (pw, ph));
         let platform = BarPlatform {
-            egl: RefCell::new(Some(egl)),
-            size: (pw, ph),
-            shared: shared.clone(),
-            start: Instant::now(),
+            state: platform_state.clone(),
         };
         slint::platform::set_platform(Box::new(platform))
             .map_err(|e| runtime_error(format!("set Slint platform: {e}")))?;
+        self.platform_state = Some(platform_state);
 
         let (screen_w, screen_h) = self.screen_size();
         self.app.show(self.width, self.height, screen_w, screen_h)?;
@@ -715,6 +895,95 @@ impl State {
         let _ = std::fs::write(path, out);
     }
 
+    fn inspect_log_popout(&self, idx: usize) {
+        if std::env::var_os("GNOBLIN_INSPECT").is_none() {
+            return;
+        }
+        let Some(popout) = self.popouts.get(idx) else {
+            return;
+        };
+        let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
+            Some(d) => std::path::PathBuf::from(d).join("gnoblin-inspect"),
+            None => return,
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        let (ol, osf, om) = self
+            .output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .map(|i| {
+                let mode = i
+                    .modes
+                    .iter()
+                    .find(|m| m.current)
+                    .map(|m| m.dimensions)
+                    .unwrap_or((0, 0));
+                (i.logical_size, i.scale_factor, mode)
+            })
+            .unwrap_or((None, 1, (0, 0)));
+        let ol = ol
+            .map(|(w, h)| format!("[{w},{h}]"))
+            .unwrap_or_else(|| "null".into());
+        let buf = popout
+            .adapter
+            .as_ref()
+            .map(|a| {
+                let s = a.size.get();
+                format!("[{},{}]", s.width, s.height)
+            })
+            .unwrap_or_else(|| "null".into());
+        let (slint_win, slint_sc) = self
+            .app
+            .popout_window(popout.handle)
+            .map(|w| {
+                let s = w.size();
+                let sc = i_slint_core::window::WindowInner::from_pub(w).scale_factor();
+                (format!("[{},{}]", s.width, s.height), sc)
+            })
+            .unwrap_or_else(|| ("null".into(), 0.0));
+        let namespace = popout.namespace.replace('"', "\\\"");
+        let json = format!(
+            "{{\"pid\":{},\"namespace\":\"{}\",\"theme_dark\":{},\"scale\":{},\"logical\":[{},{}],\
+             \"physical\":[{},{}],\"egl_buffer\":{},\"slint_win\":{},\"slint_scale\":{:.2},\
+             \"full_height\":false,\"input_height\":{},\
+             \"out_logical\":{},\"out_scale\":{},\"out_mode\":[{},{}]}}\n",
+            std::process::id(),
+            namespace,
+            crate::theme::is_dark(),
+            popout.scale,
+            popout.width,
+            popout.height,
+            popout.width * popout.scale,
+            popout.height * popout.scale,
+            buf,
+            slint_win,
+            slint_sc,
+            popout.height,
+            ol,
+            osf,
+            om.0,
+            om.1,
+        );
+        let filename_ns = popout
+            .namespace
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        let path = dir.join(format!(
+            "window-{}-{}.json",
+            std::process::id(),
+            filename_ns
+        ));
+        let _ = std::fs::write(path, json);
+    }
+
     /// Re-apply the current logical size + scale to the live surface: the EGL
     /// buffer becomes PHYSICAL (logical × scale), the Slint window keeps LOGICAL
     /// coords. Called on a configure resize or an output scale change.
@@ -765,6 +1034,10 @@ impl State {
         if self.full_height && self.configured {
             return (self.width.max(1), self.height.max(1));
         }
+        self.output_screen_size()
+    }
+
+    fn output_screen_size(&self) -> (u32, u32) {
         self.output_state
             .outputs()
             .next()
@@ -786,11 +1059,180 @@ impl State {
             .unwrap_or((self.width.max(1), self.height.max(1)))
     }
 
+    fn popout_index_for_surface(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
+        self.popouts
+            .iter()
+            .position(|p| p.layer.wl_surface() == surface)
+    }
+
+    fn popout_index_for_layer(&self, layer: &LayerSurface) -> Option<usize> {
+        self.popouts.iter().position(|p| &p.layer == layer)
+    }
+
+    fn open_popout_surface(&mut self, handle: PopoutHandle, config: PopoutConfig) {
+        if self.popouts.iter().any(|p| p.handle == handle) {
+            return;
+        }
+        let surface = self.compositor.create_surface(&self.qh);
+        let layer = self.layer_shell.create_layer_surface(
+            &self.qh,
+            surface,
+            config.layer,
+            Some(config.namespace),
+            self.target_output.as_ref(),
+        );
+        layer.set_anchor(config.anchor);
+        layer.set_size(config.width.max(1), config.height.max(1));
+        layer.set_margin(
+            config.margins.top,
+            config.margins.right,
+            config.margins.bottom,
+            config.margins.left,
+        );
+        layer.set_exclusive_zone(0);
+        layer.set_keyboard_interactivity(if config.keyboard {
+            KeyboardInteractivity::OnDemand
+        } else {
+            KeyboardInteractivity::None
+        });
+        self.popouts.push(PopoutSurface {
+            handle,
+            namespace: config.namespace,
+            layer,
+            width: config.width.max(1),
+            height: config.height.max(1),
+            scale: self.scale.max(1),
+            configured: false,
+            adapter: None,
+            frame_pending: false,
+            last_configure_at: None,
+        });
+        if let Some(popout) = self.popouts.last() {
+            popout.layer.commit();
+        }
+    }
+
+    fn close_popout_surface(&mut self, idx: usize) {
+        if idx >= self.popouts.len() {
+            return;
+        }
+        let popout = self.popouts.remove(idx);
+        self.app.popout_closed(popout.handle, popout.namespace);
+        match popout.layer.kind().clone() {
+            smithay_client_toolkit::shell::wlr_layer::SurfaceKind::Wlr(wlr) => wlr.destroy(),
+            _ => {}
+        }
+        popout.layer.wl_surface().destroy();
+    }
+
+    fn process_runtime_commands(&mut self) -> Result<(), RuntimeError> {
+        for command in self.runtime.drain() {
+            match command {
+                RuntimeCommand::OpenPopout(handle, config) => {
+                    self.open_popout_surface(handle, config);
+                }
+                RuntimeCommand::ClosePopout(handle) => {
+                    if let Some(idx) = self.popouts.iter().position(|p| p.handle == handle) {
+                        self.close_popout_surface(idx);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn init_popout_slint(&mut self, idx: usize) -> Result<(), RuntimeError> {
+        let platform_state = self
+            .platform_state
+            .as_ref()
+            .ok_or_else(|| runtime_error("Slint platform not ready for popout"))?
+            .clone();
+        let (handle, namespace, width, height, scale, surface) = {
+            let popout = self
+                .popouts
+                .get(idx)
+                .ok_or_else(|| runtime_error("popout disappeared before init"))?;
+            (
+                popout.handle,
+                popout.namespace,
+                popout.width,
+                popout.height,
+                popout.scale,
+                popout.layer.wl_surface().clone(),
+            )
+        };
+        let (pw, ph) = (width * scale, height * scale);
+        if scale != 1 {
+            surface.set_buffer_scale(scale as i32);
+        }
+        let egl = setup_egl(&self.conn, &surface, pw, ph)?;
+        let shared = platform_state.queue_adapter(egl, (pw, ph));
+        let (screen_w, screen_h) = self.output_screen_size();
+        self.app
+            .show_popout(handle, namespace, width, height, screen_w, screen_h)?;
+        let window = self
+            .app
+            .popout_window(handle)
+            .ok_or_else(|| runtime_error("Slint popout did not create a window"))?;
+        window.dispatch_event(WindowEvent::ScaleFactorChanged {
+            scale_factor: scale as f32,
+        });
+        window.dispatch_event(WindowEvent::Resized {
+            size: LogicalSize::new(width as f32, height as f32),
+        });
+        if let Some(popout) = self.popouts.get_mut(idx) {
+            popout.adapter = shared.borrow().clone();
+        }
+        self.inspect_log_popout(idx);
+        Ok(())
+    }
+
+    fn apply_popout_size(&mut self, idx: usize) {
+        let Some(popout) = self.popouts.get(idx) else {
+            return;
+        };
+        let (handle, width, height, scale) =
+            (popout.handle, popout.width, popout.height, popout.scale);
+        let (pw, ph) = (width * scale, height * scale);
+        if let Some(adapter) = &popout.adapter {
+            adapter.size.set(PhysicalSize::new(pw.max(1), ph.max(1)));
+        }
+        if let Some(window) = self.app.popout_window(handle) {
+            window.dispatch_event(WindowEvent::ScaleFactorChanged {
+                scale_factor: scale as f32,
+            });
+            window.dispatch_event(WindowEvent::Resized {
+                size: LogicalSize::new(width as f32, height as f32),
+            });
+        } else {
+            eprintln!("gnoblin-runtime: Slint popout window disappeared during resize; closing.");
+            self.close_popout_surface(idx);
+            return;
+        }
+        let (screen_w, screen_h) = self.output_screen_size();
+        self.app
+            .popout_resized(handle, width, height, screen_w, screen_h);
+        if let Some(popout) = self.popouts.get(idx) {
+            if let Some(a) = &popout.adapter {
+                a.needs_redraw.set(true);
+            }
+        }
+        self.inspect_log_popout(idx);
+    }
+
     fn has_active_animations(&self) -> bool {
         self.adapter
             .as_ref()
             .map(|a| a.window.has_active_animations())
             .unwrap_or(false)
+    }
+
+    fn has_any_ready_animation(&self) -> bool {
+        (self.has_active_animations() && !self.frame_pending)
+            || self
+                .popouts
+                .iter()
+                .any(|p| p.has_active_animations() && !p.frame_pending)
     }
 
     fn configure_settle_remaining(&self) -> Option<Duration> {
@@ -802,11 +1244,22 @@ impl State {
         }
     }
 
+    fn any_configure_settle_remaining(&self) -> Option<Duration> {
+        self.configure_settle_remaining()
+            .into_iter()
+            .chain(
+                self.popouts
+                    .iter()
+                    .filter_map(PopoutSurface::configure_settle_remaining),
+            )
+            .min()
+    }
+
     fn next_dispatch_timeout(&self) -> Duration {
-        if let Some(remaining) = self.configure_settle_remaining() {
+        if let Some(remaining) = self.any_configure_settle_remaining() {
             return remaining.min(IDLE_DISPATCH_TIMEOUT);
         }
-        if self.has_active_animations() && !self.frame_pending {
+        if self.has_any_ready_animation() {
             return Duration::ZERO;
         }
         slint::platform::duration_until_next_timer_update()
@@ -827,6 +1280,13 @@ impl State {
         if had_active_animations {
             if let Some(a) = &self.adapter {
                 a.needs_redraw.set(true);
+            }
+        }
+        for popout in &self.popouts {
+            if popout.has_active_animations() {
+                if let Some(a) = &popout.adapter {
+                    a.needs_redraw.set(true);
+                }
             }
         }
     }
@@ -878,10 +1338,39 @@ impl State {
         }
     }
 
+    fn render_popout(&mut self, idx: usize) {
+        let Some(popout) = self.popouts.get(idx) else {
+            return;
+        };
+        let surface = popout.layer.wl_surface().clone();
+        surface.frame(&self.qh, surface.clone());
+        let result = popout.adapter.as_ref().map(|adapter| {
+            adapter.needs_redraw.set(false);
+            adapter.renderer.render()
+        });
+        match result {
+            Some(Ok(())) => {
+                if let Some(popout) = self.popouts.get_mut(idx) {
+                    popout.frame_pending = true;
+                }
+            }
+            Some(Err(e)) => {
+                eprintln!("gnoblin-runtime: popout render failed ({e}); closing surface.");
+                self.close_popout_surface(idx);
+            }
+            None => {}
+        }
+    }
+
     fn tick(&mut self) {
         if self.app.tick() {
             if let Some(a) = &self.adapter {
                 a.needs_redraw.set(true);
+            }
+            for popout in &self.popouts {
+                if let Some(a) = &popout.adapter {
+                    a.needs_redraw.set(true);
+                }
             }
         }
         self.input_region_dirty = true;
@@ -979,6 +1468,22 @@ impl CompositorHandler for State {
         surface: &wl_surface::WlSurface,
         new_scale: i32,
     ) {
+        if let Some(idx) = self.popout_index_for_surface(surface) {
+            let scale = new_scale.max(1) as u32;
+            let configured = {
+                let popout = &mut self.popouts[idx];
+                if scale == popout.scale {
+                    return;
+                }
+                popout.scale = scale;
+                popout.configured
+            };
+            surface.set_buffer_scale(new_scale.max(1));
+            if configured {
+                self.apply_popout_size(idx);
+            }
+            return;
+        }
         // HiDPI: render the buffer at `new_scale`× so content is crisp + correctly
         // sized on a scaled output, instead of a 1× buffer the compositor upscales.
         let scale = new_scale.max(1) as u32;
@@ -999,7 +1504,19 @@ impl CompositorHandler for State {
         _: wl_output::Transform,
     ) {
     }
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
+    fn frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        surface: &wl_surface::WlSurface,
+        _: u32,
+    ) {
+        if let Some(idx) = self.popout_index_for_surface(surface) {
+            if let Some(popout) = self.popouts.get_mut(idx) {
+                popout.frame_pending = false;
+            }
+            return;
+        }
         // The throttling callback for our last commit arrived — free to draw the
         // next frame (continuing an animation only if there's still work).
         self.frame_pending = false;
@@ -1169,7 +1686,12 @@ impl PointerHandler for State {
         use PointerEventKind::*;
         let our_surface = self.layer.wl_surface().clone();
         for e in events {
-            if e.surface != our_surface {
+            let popout_idx = if e.surface == our_surface {
+                None
+            } else {
+                self.popout_index_for_surface(&e.surface)
+            };
+            if e.surface != our_surface && popout_idx.is_none() {
                 continue;
             }
             let pos = LogicalPosition::new(e.position.0 as f32, e.position.1 as f32);
@@ -1195,7 +1717,20 @@ impl PointerHandler for State {
                 }),
             };
             if let Some(ev) = ev {
-                if let Some(window) = self.app.window() {
+                if let Some(idx) = popout_idx {
+                    let handle = self.popouts[idx].handle;
+                    if let Some(window) = self.app.popout_window(handle) {
+                        window.dispatch_event(ev);
+                        if let Some(a) = &self.popouts[idx].adapter {
+                            a.needs_redraw.set(true);
+                        }
+                    } else {
+                        eprintln!(
+                            "gnoblin-runtime: Slint popout window disappeared during input; closing."
+                        );
+                        self.close_popout_surface(idx);
+                    }
+                } else if let Some(window) = self.app.window() {
                     window.dispatch_event(ev);
                     // Slint callbacks can open/close menus/popouts, which changes
                     // BarApp::input_full()/input_rects(). Recompute hit testing in
@@ -1217,17 +1752,57 @@ impl PointerHandler for State {
 }
 
 impl LayerShellHandler for State {
-    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
+    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
+        if let Some(idx) = self.popout_index_for_layer(layer) {
+            self.close_popout_surface(idx);
+            return;
+        }
         self.exit = true;
     }
     fn configure(
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &LayerSurface,
+        layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
+        if let Some(idx) = self.popout_index_for_layer(layer) {
+            let mut init = false;
+            let mut resize = false;
+            {
+                let Some(popout) = self.popouts.get_mut(idx) else {
+                    return;
+                };
+                popout.last_configure_at = Some(Instant::now());
+                let (mut w, mut h) = configure.new_size;
+                if w == 0 {
+                    w = popout.width.max(1);
+                }
+                if h == 0 {
+                    h = popout.height.max(1);
+                }
+                if !popout.configured {
+                    popout.width = w;
+                    popout.height = h;
+                    popout.configured = true;
+                    init = true;
+                } else if w != popout.width || h != popout.height {
+                    popout.width = w;
+                    popout.height = h;
+                    resize = true;
+                }
+            }
+            if init {
+                if let Err(e) = self.init_popout_slint(idx) {
+                    eprintln!("gnoblin-runtime: popout startup failed ({e}); closing.");
+                    self.close_popout_surface(idx);
+                }
+            } else if resize {
+                self.apply_popout_size(idx);
+            }
+            return;
+        }
         self.last_configure_at = Some(Instant::now());
         // The compositor's chosen size. For an edge a dimension it leaves to us
         // comes back 0 — fall back to the output's size so we always span it.
@@ -1366,7 +1941,7 @@ pub fn run(config: BarConfig, app: Box<dyn BarApp>) {
     }
 }
 
-fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> {
+fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeError> {
     // khronos-egl panics (caught in guard_egl) when the compositor disappears —
     // silence their verbose backtrace; keep the default hook for real bugs.
     {
@@ -1446,14 +2021,19 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
         KeyboardInteractivity::None
     });
 
+    let runtime = RuntimeControl::new();
+    app.set_runtime(runtime.clone());
+
     let mut state = State {
         registry_state: RegistryState::new(&globals),
         output_state: OutputState::new(&globals, &qh),
         seat_state: SeatState::new(&globals, &qh),
         compositor,
+        layer_shell,
         layer,
         qh: qh.clone(),
         conn: conn.clone(),
+        target_output,
         pointer: None,
         keyboard: None,
         width: if config.width > 0 { config.width } else { 1280 },
@@ -1471,6 +2051,9 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
         frame_pending: false,
         last_configure_at: None,
         startup_error: None,
+        platform_state: None,
+        runtime,
+        popouts: Vec::new(),
     };
 
     // Bind pointer/keyboard resources before the initial layer-surface commit.
@@ -1509,6 +2092,7 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
             break;
         }
         run_due_ticks(&mut state, &mut next_tick);
+        state.process_runtime_commands()?;
         state.pump_slint();
         let will_render = state.ready_to_render() && state.wants_redraw();
         state.apply_input_region(!will_render);
@@ -1520,6 +2104,17 @@ fn try_run(config: BarConfig, app: Box<dyn BarApp>) -> Result<(), RuntimeError> 
         // race; everything just marks dirty and we draw here.)
         if will_render {
             state.render();
+        }
+        let mut idx = 0;
+        while idx < state.popouts.len() {
+            let will_render_popout = {
+                let popout = &mut state.popouts[idx];
+                popout.ready_to_render() && popout.wants_redraw()
+            };
+            if will_render_popout {
+                state.render_popout(idx);
+            }
+            idx += 1;
         }
         // If a protocol error did slip through anyway, the connection is dead —
         // exit cleanly instead of busy-looping on it.

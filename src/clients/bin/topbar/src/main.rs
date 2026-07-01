@@ -12,7 +12,9 @@ use gnoblin_desktop::find_icon;
 use gnoblin_desktop::tray::{self, TrayCommand, TrayItem};
 use gnoblin_runtime::app_context_menu;
 use gnoblin_runtime::shell::{self, WindowState};
-use gnoblin_runtime::{datetime, run, BarApp, BarConfig};
+use gnoblin_runtime::{
+    datetime, run, BarApp, BarConfig, BarMargins, PopoutConfig, PopoutHandle, RuntimeControl,
+};
 use settings::{
     topbar_settings, TopbarCommands, TopbarGeometry, TopbarLayout, WidgetSpec, DEFAULT_CLOCK_FORMAT,
 };
@@ -32,6 +34,13 @@ slint::include_modules!();
 /// global-menu click handler so a click can resolve to a (group, menu).
 type MenuState = Rc<RefCell<(MenuAddr, Vec<BarEntry>)>>;
 
+const DATETIME_POPOUT_W: u32 = 350;
+const DATETIME_POPOUT_H: u32 = 590;
+const CONTROL_CENTRE_POPOUT_W: u32 = 360;
+const CONTROL_CENTRE_POPOUT_H: u32 = 632;
+const POPOUT_GAP: i32 = 8;
+const POPOUT_SCRIM_NAMESPACE: &str = "gnoblin-popout-background-scrim";
+
 /// Open state + displayed calendar month for the topbar popouts.
 #[derive(Default)]
 struct Popouts {
@@ -41,7 +50,7 @@ struct Popouts {
 }
 
 /// Rebuild the calendar/date strings for the currently displayed month.
-fn refresh_datetime(p: &TopBar, pop: &Popouts) {
+fn refresh_datetime(p: &DatetimePopoutWindow, pop: &Popouts) {
     let now = datetime::now();
     let (y, m) = pop.cal.get();
     let today = (y == now.year && m == now.month).then_some(now.day);
@@ -54,8 +63,8 @@ fn refresh_datetime(p: &TopBar, pop: &Popouts) {
             is_weekend: c.is_weekend,
         })
         .collect();
-    p.set_popout_calendar_days(Rc::new(slint::VecModel::from(cells)).into());
-    p.set_popout_calendar_week_numbers(
+    p.set_calendar_days(Rc::new(slint::VecModel::from(cells)).into());
+    p.set_calendar_week_numbers(
         Rc::new(slint::VecModel::from(datetime::week_numbers(y, m))).into(),
     );
     let weekdays: Vec<CalendarWeekday> = datetime::weekday_labels_monday_first()
@@ -64,20 +73,20 @@ fn refresh_datetime(p: &TopBar, pop: &Popouts) {
             label: label.into(),
         })
         .collect();
-    p.set_popout_weekday_labels(Rc::new(slint::VecModel::from(weekdays)).into());
-    p.set_popout_calendar_month_text(
+    p.set_weekday_labels(Rc::new(slint::VecModel::from(weekdays)).into());
+    p.set_calendar_month_text(
         datetime::format_date(y, m, 1, "%B")
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("{y:04}-{m:02}"))
             .into(),
     );
-    p.set_popout_date_text(
+    p.set_date_text(
         datetime::format_local("%d %B %Y")
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("{:04}-{:02}-{:02}", now.year, now.month, now.day))
             .into(),
     );
-    p.set_popout_day_text(
+    p.set_day_text(
         (if now.day_name.is_empty() {
             format!("{:04}-{:02}-{:02}", now.year, now.month, now.day)
         } else {
@@ -98,8 +107,24 @@ fn apply_theme(p: &TopBar) {
     gnoblin_runtime::apply_shell_theme!(p);
 }
 
+fn apply_theme_datetime(p: &DatetimePopoutWindow) {
+    gnoblin_runtime::apply_shell_theme!(p);
+}
+
+fn apply_theme_control(p: &ControlCentrePopoutWindow) {
+    gnoblin_runtime::apply_shell_theme!(p);
+}
+
 fn apply_shell_chrome(p: &TopBar) {
     apply_shell_chrome_with(p, gnoblin_runtime::theme::is_dark());
+}
+
+fn apply_shell_chrome_datetime(p: &DatetimePopoutWindow) {
+    apply_shell_chrome_with_datetime(p, gnoblin_runtime::theme::is_dark());
+}
+
+fn apply_shell_chrome_control(p: &ControlCentrePopoutWindow) {
+    apply_shell_chrome_with_control(p, gnoblin_runtime::theme::is_dark());
 }
 
 fn apply_shell_chrome_with(p: &TopBar, dark: bool) {
@@ -108,7 +133,27 @@ fn apply_shell_chrome_with(p: &TopBar, dark: bool) {
     gnoblin_runtime::apply_shell_chrome_to_theme!(theme, chrome);
 }
 
+fn apply_shell_chrome_with_datetime(p: &DatetimePopoutWindow, dark: bool) {
+    let chrome = gnoblin_runtime::theme::shell_chrome(dark);
+    let theme = p.global::<Theme>();
+    gnoblin_runtime::apply_shell_chrome_to_theme!(theme, chrome);
+}
+
+fn apply_shell_chrome_with_control(p: &ControlCentrePopoutWindow, dark: bool) {
+    let chrome = gnoblin_runtime::theme::shell_chrome(dark);
+    let theme = p.global::<Theme>();
+    gnoblin_runtime::apply_shell_chrome_to_theme!(theme, chrome);
+}
+
 fn apply_shell_motion(p: &TopBar) -> bool {
+    gnoblin_runtime::apply_shell_motion!(p)
+}
+
+fn apply_shell_motion_datetime(p: &DatetimePopoutWindow) -> bool {
+    gnoblin_runtime::apply_shell_motion!(p)
+}
+
+fn apply_shell_motion_control(p: &ControlCentrePopoutWindow) -> bool {
     gnoblin_runtime::apply_shell_motion!(p)
 }
 
@@ -134,6 +179,105 @@ fn topbar_rect(screen_w: u32, geometry: &TopbarGeometry) -> (i32, i32) {
         (base_x + geometry.offset_x).clamp(0, screen_w - width),
         width,
     )
+}
+
+fn clamp_popout_left(left: i32, width: u32, screen_w: u32, right_pad: i32) -> i32 {
+    let max_left = (screen_w as i32 - width as i32 - right_pad).max(POPOUT_GAP);
+    left.clamp(POPOUT_GAP, max_left)
+}
+
+fn datetime_popout_margins(anchor_x: f32, screen_w: u32, bar_height: i32) -> BarMargins {
+    let left = if anchor_x <= 0.0 {
+        (screen_w as i32 - DATETIME_POPOUT_W as i32) / 2
+    } else {
+        anchor_x.round() as i32 - DATETIME_POPOUT_W as i32 / 2
+    };
+    BarMargins {
+        top: bar_height + POPOUT_GAP,
+        left: clamp_popout_left(left, DATETIME_POPOUT_W, screen_w, POPOUT_GAP),
+        ..BarMargins::default()
+    }
+}
+
+fn control_centre_popout_margins(
+    anchor_x: f32,
+    screen_w: u32,
+    bar_height: i32,
+    offset_x: i32,
+    offset_y: i32,
+) -> BarMargins {
+    let left = if anchor_x <= 0.0 {
+        screen_w as i32 - CONTROL_CENTRE_POPOUT_W as i32 - POPOUT_GAP + offset_x
+    } else {
+        anchor_x.round() as i32 - CONTROL_CENTRE_POPOUT_W as i32 + offset_x
+    };
+    BarMargins {
+        top: (bar_height + POPOUT_GAP + offset_y).max(0),
+        left: clamp_popout_left(left, CONTROL_CENTRE_POPOUT_W, screen_w, 4),
+        ..BarMargins::default()
+    }
+}
+
+fn popout_config(
+    namespace: &'static str,
+    width: u32,
+    height: u32,
+    margins: BarMargins,
+) -> PopoutConfig {
+    PopoutConfig {
+        namespace,
+        anchor: Anchor::TOP.union(Anchor::LEFT),
+        layer: Layer::Overlay,
+        width,
+        height,
+        margins,
+        keyboard: false,
+    }
+}
+
+fn popout_scrim_config(screen_w: u32, screen_h: u32) -> PopoutConfig {
+    PopoutConfig {
+        namespace: POPOUT_SCRIM_NAMESPACE,
+        anchor: Anchor::TOP.union(Anchor::LEFT),
+        layer: Layer::Overlay,
+        width: screen_w.max(1),
+        height: screen_h.max(1),
+        margins: BarMargins::default(),
+        keyboard: true,
+    }
+}
+
+fn close_popout_handle(runtime: &RuntimeControl, handle: &Rc<Cell<Option<PopoutHandle>>>) {
+    if let Some(h) = handle.take() {
+        runtime.close_popout(h);
+    }
+}
+
+fn open_popout_scrim(
+    runtime: &RuntimeControl,
+    scrim_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    screen_w: u32,
+    screen_h: u32,
+) {
+    close_popout_handle(runtime, scrim_handle);
+    let handle = runtime.open_popout(popout_scrim_config(screen_w, screen_h));
+    scrim_handle.set(Some(handle));
+}
+
+fn dismiss_topbar_popouts(
+    runtime: &RuntimeControl,
+    pop: &Rc<Popouts>,
+    dt_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    cc_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    scrim_handle: &Rc<Cell<Option<PopoutHandle>>>,
+    host: &Rc<RefCell<qsplugin::Host>>,
+) {
+    close_popout_handle(runtime, dt_handle);
+    close_popout_handle(runtime, cc_handle);
+    close_popout_handle(runtime, scrim_handle);
+    pop.dt_open.set(false);
+    pop.cc_open.set(false);
+    host.borrow().broadcast_open(false);
 }
 
 fn apply_topbar_geometry(p: &TopBar, screen_w: u32, geometry: &TopbarGeometry, height: i32) {
@@ -186,6 +330,13 @@ fn app_menu_model(app_id: &str, running: bool) -> slint::ModelRc<MenuItem> {
 
 struct TopBarApp {
     panel: Option<TopBar>,
+    runtime: Option<RuntimeControl>,
+    datetime_popout: Option<DatetimePopoutWindow>,
+    control_popout: Option<ControlCentrePopoutWindow>,
+    popout_scrim: Option<PopoutScrimWindow>,
+    datetime_handle: Rc<Cell<Option<PopoutHandle>>>,
+    control_handle: Rc<Cell<Option<PopoutHandle>>>,
+    scrim_handle: Rc<Cell<Option<PopoutHandle>>>,
     last_clock: String,
     tray_rx: Receiver<Vec<TrayItem>>,
     tray_tx: Sender<TrayCommand>,
@@ -237,12 +388,30 @@ struct TopBarApp {
     config_mtime: Option<SystemTime>,
     screen_w: u32,
     screen_h: u32,
+    screen_w_live: Rc<Cell<u32>>,
+    screen_h_live: Rc<Cell<u32>>,
     bar_height: i32,
+    bar_height_live: Rc<Cell<i32>>,
     bar_x: Cell<i32>,
     bar_w: Cell<i32>,
+    cc_offset_x: Rc<Cell<i32>>,
+    cc_offset_y: Rc<Cell<i32>>,
 }
 
 impl TopBarApp {
+    fn dismiss_aux_popouts(&self) {
+        if let Some(runtime) = &self.runtime {
+            dismiss_topbar_popouts(
+                runtime,
+                &self.popouts,
+                &self.datetime_handle,
+                &self.control_handle,
+                &self.scrim_handle,
+                &self.qs_host,
+            );
+        }
+    }
+
     /// Populate + open the dropdown with rows fetched for a clicked entry.
     fn on_submenu(&mut self, _group: u32, _menu: u32, rows: Vec<appmenu::MenuRow>) {
         let model: Vec<MenuItem> = rows
@@ -282,6 +451,10 @@ impl TopBarApp {
 }
 
 impl BarApp for TopBarApp {
+    fn set_runtime(&mut self, runtime: RuntimeControl) {
+        self.runtime = Some(runtime);
+    }
+
     fn show(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         let panel =
             TopBar::new().map_err(|e| gnoblin_core::runtime_error(format!("TopBar::new: {e}")))?;
@@ -299,6 +472,16 @@ impl BarApp for TopBarApp {
         apply_topbar_geometry(&panel, screen_w, &self.geometry, self.bar_height);
         apply_topbar_layout(&panel, &self.layout.borrow());
         apply_backdrop(&panel, screen_w, screen_h);
+        self.screen_w_live.set(screen_w);
+        self.screen_h_live.set(screen_h);
+        self.bar_height_live.set(self.bar_height);
+        self.cc_offset_x.set(self.geometry.cc_offset_x);
+        self.cc_offset_y.set(self.geometry.cc_offset_y);
+        let runtime = self
+            .runtime
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| gnoblin_core::runtime_error("topbar runtime handle missing"))?;
 
         // Tray clicks -> Activate / ContextMenu on the item's D-Bus endpoint.
         for (cb, ctx) in [(false, "activate"), (true, "context")] {
@@ -326,22 +509,48 @@ impl BarApp for TopBarApp {
             let pop = self.popouts.clone();
             let weak = panel.as_weak();
             let app_open = self.app_menu_open.clone();
+            let runtime = runtime.clone();
+            let dt_handle = self.datetime_handle.clone();
+            let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
+            let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
+            let bar_height = self.bar_height_live.clone();
+            let host = self.qs_host.clone();
             panel.on_toggle_datetime_popout(move |anchor_x| {
                 let open = !pop.dt_open.get();
                 if open {
                     gnoblin_runtime::notifcenter::clear_legacy_flag();
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                    open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
+                    let now = datetime::now();
+                    pop.cal.set((now.year, now.month));
+                    let handle = runtime.open_popout(popout_config(
+                        "gnoblin-datetime",
+                        DATETIME_POPOUT_W,
+                        DATETIME_POPOUT_H,
+                        datetime_popout_margins(anchor_x, screen_w.get(), bar_height.get()),
+                    ));
+                    dt_handle.set(Some(handle));
+                    pop.dt_open.set(true);
+                } else {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
                 }
-                pop.dt_open.set(open);
-                pop.cc_open.set(false);
                 if let Some(p) = weak.upgrade() {
-                    if open {
-                        let now = datetime::now();
-                        pop.cal.set((now.year, now.month));
-                        refresh_datetime(&p, &pop);
-                        p.set_datetime_anchor_x(anchor_x);
-                    }
-                    p.set_datetime_open(open);
-                    p.set_cc_open(false);
                     p.set_app_menu_open(false);
                     app_open.set(false);
                 }
@@ -352,162 +561,65 @@ impl BarApp for TopBarApp {
             let weak = panel.as_weak();
             let app_open = self.app_menu_open.clone();
             let host = self.qs_host.clone();
-            let plugins = self.qs_plugins.clone();
+            let runtime = runtime.clone();
+            let dt_handle = self.datetime_handle.clone();
+            let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
+            let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
+            let offset_x = self.cc_offset_x.clone();
+            let offset_y = self.cc_offset_y.clone();
+            let bar_height = self.bar_height_live.clone();
             panel.on_toggle_control_centre(move |anchor_x| {
                 let open = !pop.cc_open.get();
                 if open {
                     gnoblin_runtime::notifcenter::clear_legacy_flag();
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                    open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
+                    let handle = runtime.open_popout(popout_config(
+                        "gnoblin-controlcentre",
+                        CONTROL_CENTRE_POPOUT_W,
+                        CONTROL_CENTRE_POPOUT_H,
+                        control_centre_popout_margins(
+                            anchor_x,
+                            screen_w.get(),
+                            bar_height.get(),
+                            offset_x.get(),
+                            offset_y.get(),
+                        ),
+                    ));
+                    cc_handle.set(Some(handle));
+                    pop.cc_open.set(true);
+                    host.borrow().broadcast_open(true);
+                } else {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
                 }
-                pop.cc_open.set(open);
-                pop.dt_open.set(false);
-                host.borrow().broadcast_open(open);
                 if let Some(p) = weak.upgrade() {
-                    if open {
-                        quick_settings::refresh(&p, &plugins.borrow());
-                        notifications::apply(&p);
-                        p.set_cc_anchor_x(anchor_x);
-                    }
-                    p.set_cc_open(open);
-                    p.set_datetime_open(false);
                     p.set_app_menu_open(false);
                     app_open.set(false);
                 }
             });
         }
-        for next in [false, true] {
-            let pop = self.popouts.clone();
-            let weak = panel.as_weak();
-            let handler = move || {
-                let (y, m) = pop.cal.get();
-                let stepped = if next {
-                    if m == 12 {
-                        (y + 1, 1)
-                    } else {
-                        (y, m + 1)
-                    }
-                } else if m == 1 {
-                    (y - 1, 12)
-                } else {
-                    (y, m - 1)
-                };
-                pop.cal.set(stepped);
-                if let Some(p) = weak.upgrade() {
-                    refresh_datetime(&p, &pop);
-                }
-            };
-            if next {
-                panel.on_popout_next_month(handler);
-            } else {
-                panel.on_popout_prev_month(handler);
-            }
-        }
-        {
-            let pop = self.popouts.clone();
-            let weak = panel.as_weak();
-            panel.on_popout_dismiss(move || {
-                pop.dt_open.set(false);
-                pop.cc_open.set(false);
-                if let Some(p) = weak.upgrade() {
-                    p.set_datetime_open(false);
-                    p.set_cc_open(false);
-                }
-            });
-        }
-        // Control-centre actions.
+        // Control-centre actions live on the auxiliary ControlCentrePopout.
         {
             let commands = self.commands.clone();
             panel.on_launcher_clicked(move || {
                 let cmd = commands.borrow().launcher.clone();
                 spawn_cmd(&cmd);
-            });
-        }
-        // ── Header actions (account / settings / lock / power) ───────────────
-        {
-            let commands = self.commands.clone();
-            panel.on_cc_account_clicked(move || {
-                let cmd = commands.borrow().account.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        {
-            let commands = self.commands.clone();
-            panel.on_cc_settings_clicked(move || {
-                let cmd = commands.borrow().settings.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        panel.on_cc_lock_clicked(|| gnoblin_runtime::shell::dispatch_window_action(0, "lock", ""));
-        {
-            let commands = self.commands.clone();
-            panel.on_cc_power_clicked(move || {
-                let cmd = commands.borrow().power.clone();
-                spawn_cmd(&cmd);
-            });
-        }
-        // ── Unified tile dispatch ────────────────────────────────────────────
-        // Every tile is a config-declared plugin: tap and slide events go
-        // straight to the qsplugin host, which forwards them to the owning plugin
-        // process (gnoblin-qs-* etc.). The plugin performs the action (flip a
-        // state file, run wpctl/nmcli, …) and its next poll reflects the result.
-        {
-            let host = self.qs_host.clone();
-            panel.on_cc_tile_clicked(move |id| {
-                host.borrow()
-                    .send_event(qsplugin::PluginEvent::TileClicked { id: id.to_string() });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_cc_tile_slider(move |id, v| {
-                host.borrow().send_event(qsplugin::PluginEvent::Slider {
-                    id: id.to_string(),
-                    row_id: String::new(),
-                    value: v,
-                });
-            });
-        }
-        // The chevron opens the slide-out submenu in Slint; nothing extra here.
-        panel.on_cc_tile_chevron(|_id| {});
-        // Submenu row interactions → the qsplugin host (keyed by the tile/plugin
-        // id; built-in tiles have no host rows, so these only fire for plugins).
-        {
-            let host = self.qs_host.clone();
-            panel.on_cc_plugin_row(move |id, row| {
-                host.borrow().send_event(qsplugin::PluginEvent::Row {
-                    id: id.to_string(),
-                    row_id: row.to_string(),
-                });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_cc_plugin_toggle(move |id, row, v| {
-                host.borrow().send_event(qsplugin::PluginEvent::Toggle {
-                    id: id.to_string(),
-                    row_id: row.to_string(),
-                    value: v,
-                });
-            });
-        }
-        {
-            let host = self.qs_host.clone();
-            panel.on_cc_plugin_slider(move |id, row, v| {
-                host.borrow().send_event(qsplugin::PluginEvent::Slider {
-                    id: id.to_string(),
-                    row_id: row.to_string(),
-                    value: v,
-                });
-            });
-        }
-        {
-            let weak = panel.as_weak();
-            panel.on_cc_notification_dismissed(move |index| {
-                if index >= 0 {
-                    gnoblin_runtime::notifcenter::dismiss_history_index(index as usize);
-                }
-                if let Some(p) = weak.upgrade() {
-                    notifications::apply(&p);
-                }
             });
         }
         {
@@ -520,17 +632,43 @@ impl BarApp for TopBarApp {
             let pop = self.popouts.clone();
             let weak = panel.as_weak();
             let app_open = self.app_menu_open.clone();
-            let plugins = self.qs_plugins.clone();
+            let runtime = runtime.clone();
+            let dt_handle = self.datetime_handle.clone();
+            let cc_handle = self.control_handle.clone();
+            let scrim_handle = self.scrim_handle.clone();
+            let screen_w = self.screen_w_live.clone();
+            let screen_h = self.screen_h_live.clone();
+            let offset_x = self.cc_offset_x.clone();
+            let offset_y = self.cc_offset_y.clone();
+            let bar_height = self.bar_height_live.clone();
+            let host = self.qs_host.clone();
             panel.on_bell_clicked(move || {
                 gnoblin_runtime::notifcenter::clear_legacy_flag();
-                pop.dt_open.set(false);
+                dismiss_topbar_popouts(
+                    &runtime,
+                    &pop,
+                    &dt_handle,
+                    &cc_handle,
+                    &scrim_handle,
+                    &host,
+                );
+                open_popout_scrim(&runtime, &scrim_handle, screen_w.get(), screen_h.get());
+                let handle = runtime.open_popout(popout_config(
+                    "gnoblin-controlcentre",
+                    CONTROL_CENTRE_POPOUT_W,
+                    CONTROL_CENTRE_POPOUT_H,
+                    control_centre_popout_margins(
+                        0.0,
+                        screen_w.get(),
+                        bar_height.get(),
+                        offset_x.get(),
+                        offset_y.get(),
+                    ),
+                ));
+                cc_handle.set(Some(handle));
                 pop.cc_open.set(true);
+                host.borrow().broadcast_open(true);
                 if let Some(p) = weak.upgrade() {
-                    quick_settings::refresh(&p, &plugins.borrow());
-                    notifications::apply(&p);
-                    p.set_datetime_open(false);
-                    p.set_cc_anchor_x(0.0);
-                    p.set_cc_open(true);
                     p.set_app_menu_open(false);
                     app_open.set(false);
                 }
@@ -675,14 +813,44 @@ impl BarApp for TopBarApp {
         match std::env::var("GNOBLIN_POPOUT").as_deref() {
             Ok("datetime") => {
                 let now = datetime::now();
+                open_popout_scrim(
+                    &runtime,
+                    &self.scrim_handle,
+                    self.screen_w_live.get(),
+                    self.screen_h_live.get(),
+                );
                 self.popouts.dt_open.set(true);
                 self.popouts.cal.set((now.year, now.month));
-                refresh_datetime(&panel, &self.popouts);
-                panel.set_datetime_open(true);
+                let handle = runtime.open_popout(popout_config(
+                    "gnoblin-datetime",
+                    DATETIME_POPOUT_W,
+                    DATETIME_POPOUT_H,
+                    datetime_popout_margins(0.0, self.screen_w_live.get(), self.bar_height),
+                ));
+                self.datetime_handle.set(Some(handle));
             }
             Ok("cc") => {
+                open_popout_scrim(
+                    &runtime,
+                    &self.scrim_handle,
+                    self.screen_w_live.get(),
+                    self.screen_h_live.get(),
+                );
                 self.popouts.cc_open.set(true);
-                panel.set_cc_open(true);
+                self.qs_host.borrow().broadcast_open(true);
+                let handle = runtime.open_popout(popout_config(
+                    "gnoblin-controlcentre",
+                    CONTROL_CENTRE_POPOUT_W,
+                    CONTROL_CENTRE_POPOUT_H,
+                    control_centre_popout_margins(
+                        0.0,
+                        self.screen_w_live.get(),
+                        self.bar_height,
+                        self.cc_offset_x.get(),
+                        self.cc_offset_y.get(),
+                    ),
+                ));
+                self.control_handle.set(Some(handle));
             }
             _ => {}
         }
@@ -693,8 +861,13 @@ impl BarApp for TopBarApp {
             *self.qs_plugins.borrow_mut() = plugins;
         }
         self.qs_state = quicksettings::read();
-        quick_settings::push(&panel, &self.qs_state, &self.qs_plugins.borrow());
-        self.last_notif_summary = notifications::apply(&panel);
+        quick_settings::push(
+            &panel,
+            self.control_popout.as_ref(),
+            &self.qs_state,
+            &self.qs_plugins.borrow(),
+        );
+        self.last_notif_summary = notifications::apply(self.control_popout.as_ref());
 
         panel
             .show()
@@ -704,9 +877,252 @@ impl BarApp for TopBarApp {
         Ok(())
     }
 
+    fn show_popout(
+        &mut self,
+        handle: PopoutHandle,
+        namespace: &'static str,
+        width: u32,
+        _height: u32,
+        _screen_w: u32,
+        screen_h: u32,
+    ) -> Result<(), RuntimeError> {
+        match namespace {
+            POPOUT_SCRIM_NAMESPACE => {
+                let scrim = PopoutScrimWindow::new().map_err(|e| {
+                    gnoblin_core::runtime_error(format!("PopoutScrimWindow::new: {e}"))
+                })?;
+                let runtime =
+                    self.runtime.as_ref().cloned().ok_or_else(|| {
+                        gnoblin_core::runtime_error("topbar runtime handle missing")
+                    })?;
+                let pop = self.popouts.clone();
+                let dt_handle = self.datetime_handle.clone();
+                let cc_handle = self.control_handle.clone();
+                let scrim_handle = self.scrim_handle.clone();
+                let host = self.qs_host.clone();
+                scrim.on_pressed(move || {
+                    dismiss_topbar_popouts(
+                        &runtime,
+                        &pop,
+                        &dt_handle,
+                        &cc_handle,
+                        &scrim_handle,
+                        &host,
+                    );
+                });
+                scrim
+                    .show()
+                    .map_err(|e| gnoblin_core::runtime_error(format!("scrim.show: {e}")))?;
+                self.scrim_handle.set(Some(handle));
+                self.popout_scrim = Some(scrim);
+            }
+            "gnoblin-datetime" => {
+                let popout = DatetimePopoutWindow::new().map_err(|e| {
+                    gnoblin_core::runtime_error(format!("DatetimePopoutWindow::new: {e}"))
+                })?;
+                apply_theme_datetime(&popout);
+                apply_shell_motion_datetime(&popout);
+                popout.set_chrome_by_compositor(true);
+                popout.set_open(true);
+                popout.set_origin_x(width as f32 / 2.0);
+                popout.set_origin_y(0.0);
+                refresh_datetime(&popout, &self.popouts);
+
+                for next in [false, true] {
+                    let pop = self.popouts.clone();
+                    let weak = popout.as_weak();
+                    let handler = move || {
+                        let (y, m) = pop.cal.get();
+                        let stepped = if next {
+                            if m == 12 {
+                                (y + 1, 1)
+                            } else {
+                                (y, m + 1)
+                            }
+                        } else if m == 1 {
+                            (y - 1, 12)
+                        } else {
+                            (y, m - 1)
+                        };
+                        pop.cal.set(stepped);
+                        if let Some(p) = weak.upgrade() {
+                            refresh_datetime(&p, &pop);
+                        }
+                    };
+                    if next {
+                        popout.on_next_month(handler);
+                    } else {
+                        popout.on_prev_month(handler);
+                    }
+                }
+                popout.on_day_clicked(|_day| {});
+
+                popout
+                    .show()
+                    .map_err(|e| gnoblin_core::runtime_error(format!("datetime.show: {e}")))?;
+                self.datetime_handle.set(Some(handle));
+                self.datetime_popout = Some(popout);
+            }
+            "gnoblin-controlcentre" => {
+                let popout = ControlCentrePopoutWindow::new().map_err(|e| {
+                    gnoblin_core::runtime_error(format!("ControlCentrePopoutWindow::new: {e}"))
+                })?;
+                apply_theme_control(&popout);
+                apply_shell_motion_control(&popout);
+                popout.set_chrome_by_compositor(true);
+                popout.set_open(true);
+                popout.set_origin_x(width as f32);
+                popout.set_origin_y(0.0);
+                popout.set_backdrop_screen_h(screen_h as f32);
+                popout.set_popout_y(
+                    (self.bar_height + POPOUT_GAP + self.cc_offset_y.get()).max(0) as f32,
+                );
+                quick_settings::push_popout(&popout, &self.qs_plugins.borrow());
+                self.last_notif_summary = notifications::apply(Some(&popout));
+
+                {
+                    let commands = self.commands.clone();
+                    popout.on_account_clicked(move || {
+                        let cmd = commands.borrow().account.clone();
+                        spawn_cmd(&cmd);
+                    });
+                }
+                {
+                    let commands = self.commands.clone();
+                    popout.on_settings_clicked(move || {
+                        let cmd = commands.borrow().settings.clone();
+                        spawn_cmd(&cmd);
+                    });
+                }
+                popout.on_lock_clicked(|| {
+                    gnoblin_runtime::shell::dispatch_window_action(0, "lock", "")
+                });
+                {
+                    let commands = self.commands.clone();
+                    popout.on_power_clicked(move || {
+                        let cmd = commands.borrow().power.clone();
+                        spawn_cmd(&cmd);
+                    });
+                }
+                {
+                    let host = self.qs_host.clone();
+                    popout.on_tile_clicked(move |id| {
+                        host.borrow()
+                            .send_event(qsplugin::PluginEvent::TileClicked { id: id.to_string() });
+                    });
+                }
+                {
+                    let host = self.qs_host.clone();
+                    popout.on_tile_slider(move |id, v| {
+                        host.borrow().send_event(qsplugin::PluginEvent::Slider {
+                            id: id.to_string(),
+                            row_id: String::new(),
+                            value: v,
+                        });
+                    });
+                }
+                popout.on_tile_chevron(|_id| {});
+                {
+                    let host = self.qs_host.clone();
+                    popout.on_plugin_row(move |id, row| {
+                        host.borrow().send_event(qsplugin::PluginEvent::Row {
+                            id: id.to_string(),
+                            row_id: row.to_string(),
+                        });
+                    });
+                }
+                {
+                    let host = self.qs_host.clone();
+                    popout.on_plugin_toggle(move |id, row, v| {
+                        host.borrow().send_event(qsplugin::PluginEvent::Toggle {
+                            id: id.to_string(),
+                            row_id: row.to_string(),
+                            value: v,
+                        });
+                    });
+                }
+                {
+                    let host = self.qs_host.clone();
+                    popout.on_plugin_slider(move |id, row, v| {
+                        host.borrow().send_event(qsplugin::PluginEvent::Slider {
+                            id: id.to_string(),
+                            row_id: row.to_string(),
+                            value: v,
+                        });
+                    });
+                }
+                {
+                    let weak = popout.as_weak();
+                    popout.on_notification_dismissed(move |index| {
+                        if index >= 0 {
+                            gnoblin_runtime::notifcenter::dismiss_history_index(index as usize);
+                        }
+                        if let Some(p) = weak.upgrade() {
+                            notifications::apply(Some(&p));
+                        }
+                    });
+                }
+
+                popout
+                    .show()
+                    .map_err(|e| gnoblin_core::runtime_error(format!("controlcentre.show: {e}")))?;
+                self.control_handle.set(Some(handle));
+                self.control_popout = Some(popout);
+            }
+            other => {
+                return Err(gnoblin_core::runtime_error(format!(
+                    "unknown topbar popout namespace: {other}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn popout_window(&self, handle: PopoutHandle) -> Option<&slint::Window> {
+        if self.scrim_handle.get() == Some(handle) {
+            return self.popout_scrim.as_ref().map(|p| p.window());
+        }
+        if self.datetime_handle.get() == Some(handle) {
+            return self.datetime_popout.as_ref().map(|p| p.window());
+        }
+        if self.control_handle.get() == Some(handle) {
+            return self.control_popout.as_ref().map(|p| p.window());
+        }
+        None
+    }
+
+    fn popout_closed(&mut self, handle: PopoutHandle, namespace: &'static str) {
+        if self.scrim_handle.get() == Some(handle) || namespace == POPOUT_SCRIM_NAMESPACE {
+            self.scrim_handle.set(None);
+            self.popout_scrim = None;
+        }
+        if self.datetime_handle.get() == Some(handle) || namespace == "gnoblin-datetime" {
+            self.datetime_handle.set(None);
+            self.datetime_popout = None;
+            self.popouts.dt_open.set(false);
+        }
+        if self.control_handle.get() == Some(handle) || namespace == "gnoblin-controlcentre" {
+            self.control_handle.set(None);
+            self.control_popout = None;
+            self.popouts.cc_open.set(false);
+            self.qs_host.borrow().broadcast_open(false);
+        }
+    }
+
+    fn key_pressed(&mut self, text: &slint::SharedString) {
+        use slint::platform::Key;
+
+        if text.as_str() == char::from(Key::Escape).to_string() {
+            self.dismiss_aux_popouts();
+        }
+    }
+
     fn resized(&mut self, _w: u32, _h: u32, screen_w: u32, screen_h: u32) {
         self.screen_w = screen_w;
         self.screen_h = screen_h;
+        self.screen_w_live.set(screen_w);
+        self.screen_h_live.set(screen_h);
+        self.bar_height_live.set(self.bar_height);
         let (bar_x, bar_w) = topbar_rect(screen_w, &self.geometry);
         self.bar_x.set(bar_x);
         self.bar_w.set(bar_w);
@@ -731,9 +1147,7 @@ impl BarApp for TopBarApp {
         let notif_summary = gnoblin_runtime::notifcenter::summary();
         if notif_summary != self.last_notif_summary {
             self.last_notif_summary = notif_summary;
-            if let Some(p) = &self.panel {
-                notifications::apply(p);
-            }
+            notifications::apply(self.control_popout.as_ref());
             changed = true;
         }
 
@@ -744,6 +1158,12 @@ impl BarApp for TopBarApp {
             if let Some(p) = &self.panel {
                 apply_theme(p);
             }
+            if let Some(p) = &self.datetime_popout {
+                apply_theme_datetime(p);
+            }
+            if let Some(p) = &self.control_popout {
+                apply_theme_control(p);
+            }
             changed = true;
         }
 
@@ -752,8 +1172,11 @@ impl BarApp for TopBarApp {
             if let Some(p) = &self.panel {
                 p.set_clock_text(clock.clone().into());
                 p.set_date_text("".into());
-                notifications::apply(p);
             }
+            if let Some(p) = &self.datetime_popout {
+                refresh_datetime(p, &self.popouts);
+            }
+            notifications::apply(self.control_popout.as_ref());
             self.last_clock = clock;
             changed = true;
         }
@@ -771,7 +1194,12 @@ impl BarApp for TopBarApp {
         if let Some(st) = latest_qs {
             self.qs_state = st;
             if let Some(p) = &self.panel {
-                quick_settings::push(p, &self.qs_state, &self.qs_plugins.borrow());
+                quick_settings::push(
+                    p,
+                    self.control_popout.as_ref(),
+                    &self.qs_state,
+                    &self.qs_plugins.borrow(),
+                );
             }
             changed = true;
         }
@@ -782,7 +1210,12 @@ impl BarApp for TopBarApp {
         if let Some(plugins) = self.qs_host.borrow().poll() {
             *self.qs_plugins.borrow_mut() = plugins;
             if let Some(p) = &self.panel {
-                quick_settings::push(p, &self.qs_state, &self.qs_plugins.borrow());
+                quick_settings::push(
+                    p,
+                    self.control_popout.as_ref(),
+                    &self.qs_state,
+                    &self.qs_plugins.borrow(),
+                );
             }
             changed = true;
         }
@@ -808,6 +1241,8 @@ impl BarApp for TopBarApp {
             }
             if self.geometry != settings.geometry {
                 self.geometry = settings.geometry;
+                self.cc_offset_x.set(self.geometry.cc_offset_x);
+                self.cc_offset_y.set(self.geometry.cc_offset_y);
                 let (bar_x, bar_w) = topbar_rect(self.screen_w, &self.geometry);
                 self.bar_x.set(bar_x);
                 self.bar_w.set(bar_w);
@@ -818,6 +1253,7 @@ impl BarApp for TopBarApp {
             }
             if self.bar_height != settings.height {
                 self.bar_height = settings.height;
+                self.bar_height_live.set(self.bar_height);
                 if let Some(p) = &self.panel {
                     apply_topbar_geometry(p, self.screen_w, &self.geometry, self.bar_height);
                 }
@@ -832,6 +1268,14 @@ impl BarApp for TopBarApp {
                 apply_shell_chrome(p);
                 apply_backdrop(p, self.screen_w, self.screen_h);
                 changed = true;
+            }
+            if let Some(p) = &self.datetime_popout {
+                let _ = apply_shell_motion_datetime(p);
+                apply_shell_chrome_datetime(p);
+            }
+            if let Some(p) = &self.control_popout {
+                let _ = apply_shell_motion_control(p);
+                apply_shell_chrome_control(p);
             }
         }
 
@@ -944,12 +1388,10 @@ impl BarApp for TopBarApp {
     }
 
     fn input_full(&self) -> bool {
-        // When a dropdown or popout is open the whole surface must catch input so
-        // an outside-click dismisses it; otherwise only the bar strip does.
-        self.menu_open.get()
-            || self.app_menu_open.get()
-            || self.popouts.dt_open.get()
-            || self.popouts.cc_open.get()
+        // In-surface dropdowns still need the full-height topbar surface to catch
+        // outside clicks. Aux popouts use a separate transparent scrim surface so
+        // their content stays interactive.
+        self.menu_open.get() || self.app_menu_open.get()
     }
 
     fn input_rects(&self) -> Option<Vec<(i32, i32, i32, i32)>> {
@@ -997,6 +1439,8 @@ fn main() {
     let config_path = Config::path();
     let config_mtime = file_mtime(config_path.as_deref());
     let settings = topbar_settings();
+    let initial_cc_offset_x = settings.geometry.cc_offset_x;
+    let initial_cc_offset_y = settings.geometry.cc_offset_y;
 
     // Spawn the command/process-driven QS plugin host from the declared
     // [qs-plugin.*] / [providers] config.
@@ -1018,6 +1462,13 @@ fn main() {
         },
         Box::new(TopBarApp {
             panel: None,
+            runtime: None,
+            datetime_popout: None,
+            control_popout: None,
+            popout_scrim: None,
+            datetime_handle: Rc::new(Cell::new(None)),
+            control_handle: Rc::new(Cell::new(None)),
+            scrim_handle: Rc::new(Cell::new(None)),
             last_clock: String::new(),
             tray_rx: urx,
             tray_tx: ctx,
@@ -1058,9 +1509,14 @@ fn main() {
             config_mtime,
             screen_w: 1280,
             screen_h: 800,
+            screen_w_live: Rc::new(Cell::new(1280)),
+            screen_h_live: Rc::new(Cell::new(800)),
             bar_height: settings.height,
+            bar_height_live: Rc::new(Cell::new(settings.height)),
             bar_x: Cell::new(0),
             bar_w: Cell::new(1280),
+            cc_offset_x: Rc::new(Cell::new(initial_cc_offset_x)),
+            cc_offset_y: Rc::new(Cell::new(initial_cc_offset_y)),
         }),
     );
 }

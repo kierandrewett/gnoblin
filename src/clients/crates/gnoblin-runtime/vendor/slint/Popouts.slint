@@ -886,6 +886,9 @@ export component ShellMediaCard inherits Rectangle {
 // ── Datetime popout ──────────────────────────────────────────────────────────
 export component DatetimePopout {
     in property <bool>   open;
+    /// True when this component is rendered in a content-sized layer surface
+    /// whose rounding, border, shadow, and blur are owned by the compositor.
+    in property <bool>   chrome-by-compositor: false;
     in property <string> date-text: "";       // e.g. "Sunday, 27 April"
     in property <string> day-text: "Today";
     /// Header for the calendar grid, e.g. "April 2026".
@@ -1008,6 +1011,7 @@ export component DatetimePopout {
         y: 0;
         width: parent.width;
         height: parent.height;
+        visible: !root.chrome-by-compositor;
         background: Theme.chrome-shadow-source;
         border-radius: Tokens.popout-corner-radius;
         drop-shadow-blur: Tokens.popout-shadow-blur;
@@ -1022,8 +1026,8 @@ export component DatetimePopout {
         height: parent.height;
 
         background: transparent;
-        border-radius: Tokens.popout-corner-radius;
-        clip: true;
+        border-radius: root.chrome-by-compositor ? 0px : Tokens.popout-corner-radius;
+        clip: !root.chrome-by-compositor;
 
         // Translucent tint only — the frosted-glass blur is provided by the
         // COMPOSITOR (gnoblin frosts ^gnoblin- layer surfaces), so the client
@@ -1040,6 +1044,7 @@ export component DatetimePopout {
             width: parent.width - 2 * Tokens.popout-corner-radius;
             height: Tokens.chrome-highlight-height;
             background: Theme.menu-highlight;
+            visible: !root.chrome-by-compositor;
         }
 
         // Date header.
@@ -1326,6 +1331,7 @@ export component DatetimePopout {
             border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
             border-width: Tokens.chrome-hairline-width;
             border-color: root.resolved-border;
+            visible: !root.chrome-by-compositor;
         }
     }
     }
@@ -1454,6 +1460,9 @@ export component QsPluginRow inherits Rectangle {
 
 export component ControlCentrePopout {
     in property <bool> open;
+    /// True when this component is rendered in a content-sized layer surface
+    /// whose rounding, border, shadow, and blur are owned by the compositor.
+    in property <bool> chrome-by-compositor: false;
     in property <length> origin-x: 400px;
     in property <length> origin-y: 0px;
 
@@ -1588,6 +1597,7 @@ export component ControlCentrePopout {
         y: 0;
         width: parent.width;
         height: parent.height;
+        visible: !root.chrome-by-compositor;
         background: Theme.chrome-shadow-source;
         border-radius: Tokens.popout-corner-radius;
         drop-shadow-blur: Tokens.popout-shadow-blur;
@@ -1602,8 +1612,8 @@ export component ControlCentrePopout {
         height: parent.height;
 
         background: transparent;
-        border-radius: Tokens.popout-corner-radius;
-        clip: true;
+        border-radius: root.chrome-by-compositor ? 0px : Tokens.popout-corner-radius;
+        clip: !root.chrome-by-compositor;
 
         // Translucent tint only — frosted blur comes from the compositor.
         Rectangle {
@@ -1618,6 +1628,7 @@ export component ControlCentrePopout {
             width: parent.width - 2 * Tokens.popout-corner-radius;
             height: Tokens.chrome-highlight-height;
             background: Theme.menu-highlight;
+            visible: !root.chrome-by-compositor;
         }
 
         // ── Body ─────────────────────────────────────────────────────
@@ -1877,6 +1888,7 @@ export component ControlCentrePopout {
             border-radius: Tokens.popout-corner-radius - Tokens.chrome-hairline-width;
             border-width: Tokens.chrome-hairline-width;
             border-color: root.resolved-border;
+            visible: !root.chrome-by-compositor;
         }
     }
     }

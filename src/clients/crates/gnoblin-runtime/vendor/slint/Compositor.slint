@@ -35,7 +35,6 @@ import { Dock, DockItem } from "./Dock.slint";
 import { WindowChrome } from "./WindowChrome.slint";
 import { SurfaceItem } from "./SurfaceItem.slint";
 import { LayerSurface } from "./LayerSurface.slint";
-import { DatetimePopout, ControlCentrePopout, CalendarDay, CalendarWeekday } from "./Popouts.slint";
 import { LayerShellComponentZoo } from "./ComponentZoo.slint";
 import { ContextMenu, MenuItem } from "./widgets/ContextMenu.slint";
 import { TrayIconItem } from "./widgets/TrayItem.slint";
@@ -182,24 +181,6 @@ export component Compositor inherits Window {
     // Pre-blurred wallpaper used as the panel/dock backdrop.
     in property <image>         wallpaper-blurred;
 
-    // ── Popouts ───────────────────────────────────────────────────────────────
-    in-out property <bool>      datetime-popout-open: false;
-    in-out property <bool>      control-centre-open:  false;
-    in property <string>        popout-date-text: "";
-    in property <string>        popout-day-text:  "";
-    /// Header for the calendar widget — e.g. "April 2026".
-    in property <string>        popout-calendar-month-text: "";
-    /// 42-cell calendar grid (6 rows × 7 cols).
-    in property <[CalendarDay]> popout-calendar-days;
-    /// Six ISO week labels, one per visible calendar row.
-    in property <[int]>         popout-calendar-week-numbers;
-    /// Seven localized weekday labels, Monday first.
-    in property <[CalendarWeekday]> popout-weekday-labels;
-    /// Calendar navigation — Rust handles the offset accounting.
-    callback popout-calendar-prev();
-    callback popout-calendar-next();
-    callback popout-calendar-day-clicked(int);
-
     // ── Window (per-titlebar) context menu ───────────────────────────────────
     // Right-clicking a window's titlebar opens this. Same machinery as the
     // desktop menu — Rust pushes items + position, slint owns the open
@@ -335,9 +316,6 @@ export component Compositor inherits Window {
     callback activate-window(int);
     callback launch-app(string);
 
-    // Panel forwarding.
-    callback toggle-datetime-popout();
-    callback toggle-control-centre();
     // Theme-mode toggle (control centre tile).
     callback toggle-theme();
 
@@ -513,16 +491,6 @@ export component Compositor inherits Window {
         backdrop: root.wallpaper-blurred;
         backdrop-screen-w: parent.width;
         backdrop-screen-h: parent.height;
-        toggle-datetime-popout => {
-            root.datetime-popout-open = !root.datetime-popout-open;
-            if (root.datetime-popout-open) { root.control-centre-open = false; }
-            root.toggle-datetime-popout();
-        }
-        toggle-control-centre => {
-            root.control-centre-open = !root.control-centre-open;
-            if (root.control-centre-open) { root.datetime-popout-open = false; }
-            root.toggle-control-centre();
-        }
     }
 
     // ── Layer 5c: Desktop / appindicator context menu ────────────────────────
@@ -799,64 +767,6 @@ export component Compositor inherits Window {
         background: rgba(96, 165, 250, 0.18);
         opacity: root.snap-preview-visible ? 1.0 : 0.0;
         animate opacity { duration: Motion.fast; easing: Motion.fast-curve; }
-    }
-
-    // ── Layer 6: Popouts ─────────────────────────────────────────────────────
-    if root.datetime-popout-open || root.control-centre-open: TouchArea {
-        x: 0; y: 0;
-        width: parent.width;
-        height: parent.height;
-        z: 55;
-        clicked => {
-            root.datetime-popout-open = false;
-            root.control-centre-open  = false;
-        }
-    }
-
-    datetime-popout := DatetimePopout {
-        x: (parent.width - self.width) / 2;
-        y: Tokens.panel-height + 6px;
-        z: 60;
-        open: root.datetime-popout-open;
-        date-text: root.popout-date-text;
-        day-text: root.popout-day-text;
-        calendar-month-text: root.popout-calendar-month-text;
-        calendar-days: root.popout-calendar-days;
-        calendar-week-numbers: root.popout-calendar-week-numbers;
-        weekday-labels: root.popout-weekday-labels;
-        // Centred under the clock — scale grows out of the top-centre,
-        // i.e. the panel edge directly above where the clock lives.
-        origin-x: self.width / 2;
-        origin-y: 0px;
-        // Backdrop blur — pass the full-screen blurred wallpaper plus
-        // the popout's own screen position so the inner Image samples
-        // the right slice.
-        backdrop: root.wallpaper-blurred;
-        backdrop-screen-w: parent.width;
-        backdrop-screen-h: parent.height;
-        popout-x: self.x;
-        popout-y: self.y;
-        prev-month => { root.popout-calendar-prev(); }
-        next-month => { root.popout-calendar-next(); }
-        day-clicked(day) => { root.popout-calendar-day-clicked(day); }
-    }
-
-    control-centre-popout := ControlCentrePopout {
-        x: parent.width - self.width - 14px;
-        y: Tokens.panel-height + 6px;
-        z: 60;
-        open: root.control-centre-open;
-        // Dark Style is now a tile in the unified grid; theme toggling flows
-        // through tile-clicked("dark-style") via the topbar's dispatcher.
-        // Anchored to the panel's right edge (system icons cluster) —
-        // origin top-right so the panel "unfolds out" of the icons.
-        origin-x: self.width;
-        origin-y: 0px;
-        backdrop: root.wallpaper-blurred;
-        backdrop-screen-w: parent.width;
-        backdrop-screen-h: parent.height;
-        popout-x: self.x;
-        popout-y: self.y;
     }
 
     // ── Layer 69: Hit-rect inspector (visual) ────────────────────────────────
