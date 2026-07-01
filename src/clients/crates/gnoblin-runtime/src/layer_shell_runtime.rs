@@ -4,8 +4,10 @@ use std::error::Error;
 use std::ffi::{c_void, CStr};
 use std::io::ErrorKind;
 use std::num::NonZeroU32;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use khronos_egl as egl;
@@ -51,11 +53,15 @@ pub struct PopoutHandle(u32);
 
 #[derive(Clone)]
 pub struct RuntimeControl {
-    commands: Rc<RefCell<Vec<RuntimeCommand>>>,
-    next_popout_id: Rc<Cell<u32>>,
+    commands: Arc<Mutex<Vec<RuntimeCommand>>>,
+    next_popout_id: Arc<AtomicU32>,
+    wake_fd: Arc<OwnedFd>,
 }
 
 enum RuntimeCommand {
+    ShowPrimary { mode: String, requested_at: Instant },
+    TogglePrimary { mode: String, requested_at: Instant },
+    HidePrimary,
     OpenPopout(PopoutHandle, PopoutConfig),
     ClosePopout(PopoutHandle),
     ConfigurePopout(PopoutHandle, u32, u32, BarMargins),
@@ -201,6 +207,15 @@ pub trait BarApp {
     /// Runtime control for auxiliary content-sized layer surfaces owned by this
     /// client. Existing single-surface clients can ignore it.
     fn set_runtime(&mut self, _runtime: RuntimeControl) {}
+    /// For resident clients, translate a show mode (for example "list"/"grid")
+    /// into the primary layer-surface config and reset any transient app state
+    /// before the surface is mapped. One-shot clients can ignore it.
+    fn primary_config_for_mode(&mut self, _mode: &str, config: BarConfig) -> BarConfig {
+        config
+    }
+    /// The resident primary surface was hidden and unmapped. One-shot clients can
+    /// ignore it.
+    fn primary_hidden(&mut self) {}
     /// Create and show the Slint component for an auxiliary popout surface.
     /// The runtime has already installed a WindowAdapter for the next component
     /// constructed by this call.
@@ -277,6 +292,7 @@ pub struct BarMargins {
 }
 
 /// Where + how big the layer-shell surface is.
+#[derive(Clone, Copy, Debug)]
 pub struct BarConfig {
     pub namespace: &'static str,
     pub anchor: Anchor,
@@ -315,27 +331,69 @@ pub struct PopoutConfig {
 }
 
 impl RuntimeControl {
-    fn new() -> Self {
-        Self {
-            commands: Rc::new(RefCell::new(Vec::new())),
-            next_popout_id: Rc::new(Cell::new(1)),
+    pub fn new() -> Result<Self, RuntimeError> {
+        let fd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
+        if fd < 0 {
+            return Err(runtime_error(format!(
+                "runtime eventfd: {}",
+                std::io::Error::last_os_error()
+            )));
         }
+        Ok(Self {
+            commands: Arc::new(Mutex::new(Vec::new())),
+            next_popout_id: Arc::new(AtomicU32::new(1)),
+            wake_fd: Arc::new(unsafe { OwnedFd::from_raw_fd(fd) }),
+        })
+    }
+
+    fn push_command(&self, command: RuntimeCommand) {
+        if let Ok(mut commands) = self.commands.lock() {
+            commands.push(command);
+        }
+        self.wake();
+    }
+
+    fn wake(&self) {
+        let value: u64 = 1;
+        let ptr = &value as *const u64 as *const c_void;
+        let _ = unsafe { libc::write(self.wake_fd.as_raw_fd(), ptr, std::mem::size_of::<u64>()) };
+    }
+
+    fn wake_fd(&self) -> &OwnedFd {
+        &self.wake_fd
+    }
+
+    pub fn show_primary(&self, mode: impl Into<String>) {
+        self.push_command(RuntimeCommand::ShowPrimary {
+            mode: mode.into(),
+            requested_at: Instant::now(),
+        });
+    }
+
+    pub fn toggle_primary(&self, mode: impl Into<String>) {
+        self.push_command(RuntimeCommand::TogglePrimary {
+            mode: mode.into(),
+            requested_at: Instant::now(),
+        });
+    }
+
+    pub fn hide_primary(&self) {
+        self.push_command(RuntimeCommand::HidePrimary);
     }
 
     pub fn open_popout(&self, config: PopoutConfig) -> PopoutHandle {
-        let id = self.next_popout_id.get();
-        self.next_popout_id.set(id.saturating_add(1).max(1));
+        let id = self.next_popout_id.fetch_add(1, Ordering::Relaxed);
+        if id == u32::MAX {
+            self.next_popout_id.store(1, Ordering::Relaxed);
+        }
+        let id = id.max(1);
         let handle = PopoutHandle(id);
-        self.commands
-            .borrow_mut()
-            .push(RuntimeCommand::OpenPopout(handle, config));
+        self.push_command(RuntimeCommand::OpenPopout(handle, config));
         handle
     }
 
     pub fn close_popout(&self, handle: PopoutHandle) {
-        self.commands
-            .borrow_mut()
-            .push(RuntimeCommand::ClosePopout(handle));
+        self.push_command(RuntimeCommand::ClosePopout(handle));
     }
 
     /// Reconfigure an existing auxiliary layer surface's requested size and
@@ -348,15 +406,16 @@ impl RuntimeControl {
         height: u32,
         margins: BarMargins,
     ) {
-        self.commands
-            .borrow_mut()
-            .push(RuntimeCommand::ConfigurePopout(
-                handle, width, height, margins,
-            ));
+        self.push_command(RuntimeCommand::ConfigurePopout(
+            handle, width, height, margins,
+        ));
     }
 
     fn drain(&self) -> Vec<RuntimeCommand> {
-        self.commands.borrow_mut().drain(..).collect()
+        self.commands
+            .lock()
+            .map(|mut commands| commands.drain(..).collect())
+            .unwrap_or_default()
     }
 }
 
@@ -382,9 +441,56 @@ impl Default for BarConfig {
 struct EglState {
     egl: egl::Instance<egl::Static>,
     display: egl::Display,
-    surface: egl::Surface,
+    config: egl::Config,
+    surface: Cell<egl::Surface>,
     context: egl::Context,
-    _wl_egl: wayland_egl::WlEglSurface,
+    _wl_egl: RefCell<Option<wayland_egl::WlEglSurface>>,
+}
+
+impl EglState {
+    fn create_window_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+        w: u32,
+        h: u32,
+    ) -> Result<(egl::Surface, wayland_egl::WlEglSurface), RuntimeError> {
+        let wl_egl = wayland_egl::WlEglSurface::new(surface.id(), w.max(1) as i32, h.max(1) as i32)
+            .map_err(|e| runtime_error(format!("wl_egl_window: {e}")))?;
+        let egl_surface = unsafe {
+            self.egl
+                .create_window_surface(self.display, self.config, wl_egl.ptr() as *mut c_void, None)
+                .map_err(|e| runtime_error(format!("EGL: window surface: {e}")))?
+        };
+        Ok((egl_surface, wl_egl))
+    }
+
+    fn bind_window_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+        w: u32,
+        h: u32,
+    ) -> Result<(), RuntimeError> {
+        let (egl_surface, wl_egl) = self.create_window_surface(surface, w, h)?;
+        if let Err(e) = self.egl.make_current(
+            self.display,
+            Some(egl_surface),
+            Some(egl_surface),
+            Some(self.context),
+        ) {
+            let _ = self.egl.destroy_surface(self.display, egl_surface);
+            return Err(runtime_error(format!("EGL: make current: {e}")));
+        }
+
+        let old_surface = self.surface.replace(egl_surface);
+        let old_wl_egl = self._wl_egl.replace(Some(wl_egl));
+        if old_surface.as_ptr() != egl::NO_SURFACE {
+            let _ = guard_egl("destroy_surface", || {
+                self.egl.destroy_surface(self.display, old_surface)
+            });
+        }
+        drop(old_wl_egl);
+        Ok(())
+    }
 }
 
 // When the compositor goes away, eglSwapBuffers/eglMakeCurrent fail but
@@ -403,20 +509,36 @@ fn guard_egl<T>(
     }
 }
 
-unsafe impl OpenGLInterface for EglState {
+#[derive(Clone)]
+struct SharedEgl(Rc<EglState>);
+
+impl SharedEgl {
+    fn bind_window_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+        w: u32,
+        h: u32,
+    ) -> Result<(), RuntimeError> {
+        self.0.bind_window_surface(surface, w, h)
+    }
+}
+
+unsafe impl OpenGLInterface for SharedEgl {
     fn ensure_current(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let surface = self.0.surface.get();
         guard_egl("make_current", || {
-            self.egl.make_current(
-                self.display,
-                Some(self.surface),
-                Some(self.surface),
-                Some(self.context),
+            self.0.egl.make_current(
+                self.0.display,
+                Some(surface),
+                Some(surface),
+                Some(self.0.context),
             )
         })
     }
     fn swap_buffers(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let surface = self.0.surface.get();
         guard_egl("swap_buffers", || {
-            self.egl.swap_buffers(self.display, self.surface)
+            self.0.egl.swap_buffers(self.0.display, surface)
         })
     }
     fn resize(
@@ -424,15 +546,16 @@ unsafe impl OpenGLInterface for EglState {
         width: NonZeroU32,
         height: NonZeroU32,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self._wl_egl
-            .resize(width.get() as i32, height.get() as i32, 0, 0);
+        if let Some(wl_egl) = self.0._wl_egl.borrow().as_ref() {
+            wl_egl.resize(width.get() as i32, height.get() as i32, 0, 0);
+        }
         Ok(())
     }
     fn get_proc_address(&self, name: &CStr) -> *const c_void {
         match name
             .to_str()
             .ok()
-            .and_then(|n| self.egl.get_proc_address(n))
+            .and_then(|n| self.0.egl.get_proc_address(n))
         {
             Some(p) => p as *const c_void,
             None => std::ptr::null(),
@@ -478,25 +601,23 @@ fn setup_egl(
     let context = egl
         .create_context(display, config, None, &context_attribs)
         .map_err(|e| runtime_error(format!("EGL: create context: {e}")))?;
-    let wl_egl = wayland_egl::WlEglSurface::new(surface.id(), w.max(1) as i32, h.max(1) as i32)
-        .map_err(|e| runtime_error(format!("wl_egl_window: {e}")))?;
-    let egl_surface = unsafe {
-        egl.create_window_surface(display, config, wl_egl.ptr() as *mut c_void, None)
-            .map_err(|e| runtime_error(format!("EGL: window surface: {e}")))?
-    };
-    Ok(EglState {
+    let state = EglState {
         egl,
         display,
-        surface: egl_surface,
+        config,
+        surface: Cell::new(unsafe { egl::Surface::from_ptr(egl::NO_SURFACE) }),
         context,
-        _wl_egl: wl_egl,
-    })
+        _wl_egl: RefCell::new(None),
+    };
+    state.bind_window_surface(surface, w, h)?;
+    Ok(state)
 }
 
 // ── Slint WindowAdapter backed by the FemtoVG/EGL renderer ──────────────────
 
 struct BarAdapter {
     window: slint::Window,
+    egl: SharedEgl,
     renderer: FemtoVGRenderer,
     size: Cell<PhysicalSize>,
     needs_redraw: Cell<bool>,
@@ -504,16 +625,30 @@ struct BarAdapter {
 
 impl BarAdapter {
     fn new(egl: EglState, w: u32, h: u32) -> Result<Rc<Self>, slint::PlatformError> {
+        let egl = SharedEgl(Rc::new(egl));
         // FemtoVGRenderer::new reads GL_VERSION immediately, so the context must
         // already be current — it does not call ensure_current() for us.
         egl.ensure_current()?;
-        let renderer = FemtoVGRenderer::new(egl)?;
+        let renderer = FemtoVGRenderer::new(egl.clone())?;
         Ok(Rc::new_cyclic(|weak: &Weak<BarAdapter>| BarAdapter {
             window: slint::Window::new(weak.clone()),
+            egl,
             renderer,
             size: Cell::new(PhysicalSize::new(w, h)),
             needs_redraw: Cell::new(true),
         }))
+    }
+
+    fn bind_window_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+        w: u32,
+        h: u32,
+    ) -> Result<(), RuntimeError> {
+        self.egl.bind_window_surface(surface, w, h)?;
+        self.size.set(PhysicalSize::new(w.max(1), h.max(1)));
+        self.needs_redraw.set(true);
+        Ok(())
     }
 }
 
@@ -711,13 +846,48 @@ impl PopoutSurface {
     }
 }
 
+fn apply_layer_config(layer: &LayerSurface, config: BarConfig) {
+    if config.full_height && config.exclusive_zone == 0 {
+        // Span the whole output (all edges) so dropdowns can render below the
+        // bar; nothing is reserved, so the ambiguous all-edges anchor is fine.
+        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        layer.set_size(0, 0);
+    } else if config.full_height {
+        // A bar that BOTH spans the output (for drop-downs) AND reserves an edge
+        // (exclusive_zone): keep the real anchor (so the compositor can resolve
+        // which edge the exclusive zone reserves — all-four anchors are
+        // ambiguous and sctk has no v5 set_exclusive_edge), and request a huge
+        // height that the compositor clamps to the output. We learn the real
+        // size back from the configure event.
+        layer.set_anchor(config.anchor);
+        layer.set_size(0, 1 << 16);
+    } else {
+        layer.set_anchor(config.anchor);
+        layer.set_size(config.width, config.height);
+    }
+    layer.set_margin(
+        config.margins.top,
+        config.margins.right,
+        config.margins.bottom,
+        config.margins.left,
+    );
+    layer.set_exclusive_zone(config.exclusive_zone);
+    layer.set_keyboard_interactivity(if config.keyboard {
+        KeyboardInteractivity::Exclusive
+    } else {
+        KeyboardInteractivity::None
+    });
+}
+
 struct State {
     registry_state: RegistryState,
     output_state: OutputState,
     seat_state: SeatState,
     compositor: CompositorState,
     layer_shell: LayerShell,
-    layer: LayerSurface,
+    layer: Option<LayerSurface>,
+    base_config: BarConfig,
+    dummy_surface: Option<wl_surface::WlSurface>,
     qh: QueueHandle<State>,
     conn: Connection,
     target_output: Option<wl_output::WlOutput>,
@@ -754,11 +924,18 @@ struct State {
     runtime: RuntimeControl,
     popouts: Vec<PopoutSurface>,
     first_render_done: bool,
+    resident: bool,
+    show_started_at: Option<Instant>,
 }
 
 impl State {
     fn init_slint(&mut self) -> Result<(), RuntimeError> {
-        let surface = self.layer.wl_surface().clone();
+        let surface = self
+            .layer
+            .as_ref()
+            .ok_or_else(|| runtime_error("primary layer surface not mapped"))?
+            .wl_surface()
+            .clone();
         // The Slint platform + EGL buffer are created ONCE here. The
         // scale_factor_changed event may not have fired before this first
         // configure, leaving self.scale at 1 — which would build the platform at
@@ -795,6 +972,56 @@ impl State {
         let (screen_w, screen_h) = self.screen_size();
         self.app.show(self.width, self.height, screen_w, screen_h)?;
         rt_tick("  app.show() (Slint component tree built)");
+        let window = self
+            .app
+            .window()
+            .ok_or_else(|| runtime_error("Slint app did not create a window"))?;
+        window.dispatch_event(WindowEvent::ScaleFactorChanged {
+            scale_factor: self.scale as f32,
+        });
+        window.dispatch_event(WindowEvent::Resized {
+            size: LogicalSize::new(self.width as f32, self.height as f32),
+        });
+        self.adapter = shared.borrow().clone();
+        self.inspect_log_window();
+        Ok(())
+    }
+
+    fn init_daemon_slint(&mut self) -> Result<(), RuntimeError> {
+        let surface = self
+            .dummy_surface
+            .as_ref()
+            .ok_or_else(|| runtime_error("daemon dummy surface missing"))?
+            .clone();
+        if let Some(s) = self
+            .output_state
+            .outputs()
+            .next()
+            .and_then(|o| self.output_state.info(&o))
+            .map(|i| i.scale_factor.max(1) as u32)
+        {
+            self.scale = s;
+        }
+        let (pw, ph) = (self.width * self.scale, self.height * self.scale);
+        if self.scale != 1 {
+            surface.set_buffer_scale(self.scale as i32);
+        }
+        rt_tick("daemon init_slint: begin (hidden dummy surface)");
+        let egl = setup_egl(&self.conn, &surface, pw, ph)?;
+        rt_tick("  daemon setup_egl done (persistent EGL ctx)");
+        let platform_state = Rc::new(BarPlatformState::new());
+        let shared = platform_state.queue_adapter(egl, (pw, ph));
+        rt_tick("  daemon FemtoVG renderer ready");
+        let platform = BarPlatform {
+            state: platform_state.clone(),
+        };
+        slint::platform::set_platform(Box::new(platform))
+            .map_err(|e| runtime_error(format!("set Slint platform: {e}")))?;
+        self.platform_state = Some(platform_state);
+
+        let (screen_w, screen_h) = self.screen_size();
+        self.app.show(self.width, self.height, screen_w, screen_h)?;
+        rt_tick("  daemon app.show() (component tree built once)");
         let window = self
             .app
             .window()
@@ -1086,6 +1313,82 @@ impl State {
             .unwrap_or((self.width.max(1), self.height.max(1)))
     }
 
+    fn show_primary_surface(
+        &mut self,
+        mode: String,
+        requested_at: Instant,
+    ) -> Result<(), RuntimeError> {
+        if self.layer.is_some() {
+            self.hide_primary_surface();
+        }
+
+        let config = self.app.primary_config_for_mode(&mode, self.base_config);
+        self.full_height = config.full_height;
+        self.input_height = config.height.max(1);
+        self.input_passthrough = config.input_passthrough;
+        self.input_rects_applied = None;
+        self.input_region_dirty = true;
+        self.frame_pending = false;
+        self.last_configure_at = None;
+        self.configured = false;
+        self.first_render_done = false;
+        self.show_started_at = Some(requested_at);
+
+        let surface = self.compositor.create_surface(&self.qh);
+        let egl_surface = surface.clone();
+        let layer = self.layer_shell.create_layer_surface(
+            &self.qh,
+            surface,
+            config.layer,
+            Some(config.namespace),
+            self.target_output.as_ref(),
+        );
+        apply_layer_config(&layer, config);
+
+        if self.scale != 1 {
+            egl_surface.set_buffer_scale(self.scale as i32);
+        }
+        let (pw, ph) = (
+            config.width.max(1) * self.scale.max(1),
+            config.height.max(1) * self.scale.max(1),
+        );
+        if let Some(adapter) = &self.adapter {
+            adapter.bind_window_surface(&egl_surface, pw, ph)?;
+        }
+
+        self.width = if config.width > 0 { config.width } else { 1280 };
+        self.height = config.height.max(1);
+        self.layer = Some(layer);
+        if let Some(layer) = &self.layer {
+            layer.commit();
+        }
+        rt_tick("SHOW primary committed (waiting for configure)");
+        Ok(())
+    }
+
+    fn hide_primary_surface(&mut self) {
+        let Some(layer) = self.layer.take() else {
+            return;
+        };
+        if let (Some(adapter), Some(dummy)) = (&self.adapter, &self.dummy_surface) {
+            let _ = adapter.bind_window_surface(dummy, 1, 1);
+        }
+        match layer.kind().clone() {
+            smithay_client_toolkit::shell::wlr_layer::SurfaceKind::Wlr(wlr) => wlr.destroy(),
+            _ => {}
+        }
+        layer.wl_surface().destroy();
+        self.configured = false;
+        self.frame_pending = false;
+        self.last_configure_at = None;
+        self.input_rects_applied = None;
+        self.input_region_dirty = false;
+        self.first_render_done = false;
+        self.show_started_at = None;
+        self.app.primary_hidden();
+        rt_tick("HIDE primary destroyed (EGL context kept)");
+    }
+
     fn popout_index_for_surface(&self, surface: &wl_surface::WlSurface) -> Option<usize> {
         self.popouts
             .iter()
@@ -1192,6 +1495,19 @@ impl State {
     fn process_runtime_commands(&mut self) -> Result<(), RuntimeError> {
         for command in self.runtime.drain() {
             match command {
+                RuntimeCommand::ShowPrimary { mode, requested_at } => {
+                    self.show_primary_surface(mode, requested_at)?;
+                }
+                RuntimeCommand::TogglePrimary { mode, requested_at } => {
+                    if self.layer.is_some() {
+                        self.hide_primary_surface();
+                    } else {
+                        self.show_primary_surface(mode, requested_at)?;
+                    }
+                }
+                RuntimeCommand::HidePrimary => {
+                    self.hide_primary_surface();
+                }
                 RuntimeCommand::OpenPopout(handle, config) => {
                     self.open_popout_surface(handle, config);
                 }
@@ -1372,6 +1688,9 @@ impl State {
     }
 
     fn ready_to_render(&mut self) -> bool {
+        if self.layer.is_none() {
+            return false;
+        }
         if self.frame_pending {
             return false;
         }
@@ -1386,7 +1705,10 @@ impl State {
 
     /// Draw + commit ONE frame.
     fn render(&mut self) {
-        let surface = self.layer.wl_surface().clone();
+        let Some(layer) = &self.layer else {
+            return;
+        };
+        let surface = layer.wl_surface().clone();
         surface.frame(&self.qh, surface.clone());
         let result = self.adapter.as_ref().map(|adapter| {
             adapter.needs_redraw.set(false);
@@ -1397,6 +1719,14 @@ impl State {
                 if !self.first_render_done {
                     self.first_render_done = true;
                     rt_tick("FIRST render() done (surface has pixels)");
+                    if let Some(show_started_at) = self.show_started_at.take() {
+                        if std::env::var_os("GNOBLIN_TIMING").is_some() {
+                            eprintln!(
+                                "[timing/rt] {:>6.1}ms  SHOW to first render() done",
+                                show_started_at.elapsed().as_secs_f64() * 1000.0
+                            );
+                        }
+                    }
                 }
                 self.input_region_committed_with_render();
                 self.frame_pending = true;
@@ -1458,6 +1788,7 @@ impl State {
     /// cards) → whole surface while `input_full()` (open menu/launcher) → the
     /// bar strip.
     fn desired_input_rects(&self) -> Option<Vec<(i32, i32, i32, i32)>> {
+        self.layer.as_ref()?;
         if self.input_passthrough {
             Some(Vec::new())
         } else if let Some(r) = self.app.input_rects() {
@@ -1479,6 +1810,10 @@ impl State {
     /// Apply pending input-region changes from the main post-dispatch path. This
     /// keeps all layer-surface commits behind the configure-drain barrier.
     fn apply_input_region(&mut self, commit: bool) {
+        let Some(layer) = &self.layer else {
+            self.input_region_dirty = false;
+            return;
+        };
         if !self.input_region_dirty {
             return;
         }
@@ -1487,7 +1822,7 @@ impl State {
             self.input_region_dirty = false;
             return;
         }
-        let surface = self.layer.wl_surface();
+        let surface = layer.wl_surface();
         if let Some(rects) = rects {
             if let Ok(region) = Region::new(&self.compositor) {
                 for (x, y, w, h) in &rects {
@@ -1557,6 +1892,12 @@ impl CompositorHandler for State {
             }
             return;
         }
+        let Some(primary) = &self.layer else {
+            return;
+        };
+        if primary.wl_surface() != surface {
+            return;
+        }
         // HiDPI: render the buffer at `new_scale`× so content is crisp + correctly
         // sized on a scaled output, instead of a 1× buffer the compositor upscales.
         let scale = new_scale.max(1) as u32;
@@ -1588,6 +1929,12 @@ impl CompositorHandler for State {
             if let Some(popout) = self.popouts.get_mut(idx) {
                 popout.frame_pending = false;
             }
+            return;
+        }
+        let Some(primary) = &self.layer else {
+            return;
+        };
+        if primary.wl_surface() != surface {
             return;
         }
         // The throttling callback for our last commit arrived — free to draw the
@@ -1720,6 +2067,9 @@ impl KeyboardHandler for State {
         _: u32,
         event: KeyEvent,
     ) {
+        if self.layer.is_none() {
+            return;
+        }
         if let Some(text) = key_to_text(&event) {
             self.app.key_pressed(&text);
             if let Some(a) = &self.adapter {
@@ -1757,14 +2107,18 @@ impl PointerHandler for State {
         events: &[PointerEvent],
     ) {
         use PointerEventKind::*;
-        let our_surface = self.layer.wl_surface().clone();
+        let our_surface = self.layer.as_ref().map(|layer| layer.wl_surface().clone());
         for e in events {
-            let popout_idx = if e.surface == our_surface {
+            let is_primary = our_surface
+                .as_ref()
+                .map(|surface| e.surface == *surface)
+                .unwrap_or(false);
+            let popout_idx = if is_primary {
                 None
             } else {
                 self.popout_index_for_surface(&e.surface)
             };
-            if e.surface != our_surface && popout_idx.is_none() {
+            if !is_primary && popout_idx.is_none() {
                 continue;
             }
             let pos = LogicalPosition::new(e.position.0 as f32, e.position.1 as f32);
@@ -1803,7 +2157,14 @@ impl PointerHandler for State {
                         );
                         self.close_popout_surface(idx);
                     }
-                } else if let Some(window) = self.app.window() {
+                } else if is_primary {
+                    let Some(window) = self.app.window() else {
+                        eprintln!(
+                            "gnoblin-runtime: Slint app window disappeared during input; exiting."
+                        );
+                        self.exit = true;
+                        continue;
+                    };
                     window.dispatch_event(ev);
                     // Slint callbacks can open/close menus/popouts, which changes
                     // BarApp::input_full()/input_rects(). Recompute hit testing in
@@ -1812,11 +2173,6 @@ impl PointerHandler for State {
                     if let Some(a) = &self.adapter {
                         a.needs_redraw.set(true);
                     }
-                } else {
-                    eprintln!(
-                        "gnoblin-runtime: Slint app window disappeared during input; exiting."
-                    );
-                    self.exit = true;
                 }
             }
         }
@@ -1830,7 +2186,16 @@ impl LayerShellHandler for State {
             self.close_popout_surface(idx);
             return;
         }
-        self.exit = true;
+        let is_primary = self
+            .layer
+            .as_ref()
+            .map(|primary| primary == layer)
+            .unwrap_or(false);
+        if is_primary && self.resident {
+            self.hide_primary_surface();
+        } else if is_primary {
+            self.exit = true;
+        }
     }
     fn configure(
         &mut self,
@@ -1876,6 +2241,14 @@ impl LayerShellHandler for State {
             }
             return;
         }
+        let is_primary = self
+            .layer
+            .as_ref()
+            .map(|primary| primary == layer)
+            .unwrap_or(false);
+        if !is_primary {
+            return;
+        }
         self.last_configure_at = Some(Instant::now());
         // The compositor's chosen size. For an edge a dimension it leaves to us
         // comes back 0 — fall back to the output's size so we always span it.
@@ -1893,16 +2266,20 @@ impl LayerShellHandler for State {
             self.width = w;
             self.height = h;
             self.configured = true;
-            match self.init_slint() {
-                Ok(()) => {
-                    self.input_region_dirty = true;
-                    // init_slint() leaves needs_redraw set; the post-dispatch render in
-                    // run()'s loop draws the first frame once this configure is acked.
+            if self.adapter.is_none() {
+                match self.init_slint() {
+                    Ok(()) => {
+                        self.input_region_dirty = true;
+                        // init_slint() leaves needs_redraw set; the post-dispatch render in
+                        // run()'s loop draws the first frame once this configure is acked.
+                    }
+                    Err(e) => {
+                        self.startup_error = Some(e.to_string());
+                        self.exit = true;
+                    }
                 }
-                Err(e) => {
-                    self.startup_error = Some(e.to_string());
-                    self.exit = true;
-                }
+            } else {
+                self.apply_size();
             }
         } else if w != self.width || h != self.height {
             // The output changed size (or sent the real size after a placeholder)
@@ -1944,6 +2321,27 @@ fn flush_wayland_queue(event_queue: &mut EventQueue<State>) -> Result<(), Waylan
     }
 }
 
+fn drain_wake_fd(fd: &OwnedFd) {
+    let mut value: u64 = 0;
+    loop {
+        let read = unsafe {
+            libc::read(
+                fd.as_raw_fd(),
+                &mut value as *mut u64 as *mut c_void,
+                std::mem::size_of::<u64>(),
+            )
+        };
+        if read as usize == std::mem::size_of::<u64>() {
+            continue;
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::Interrupted {
+            break;
+        }
+        break;
+    }
+}
+
 fn dispatch_wayland(
     event_queue: &mut EventQueue<State>,
     state: &mut State,
@@ -1961,14 +2359,27 @@ fn dispatch_wayland(
         return Ok(());
     };
 
-    let mut pollfd = libc::pollfd {
-        fd: guard.connection_fd().as_raw_fd(),
-        events: libc::POLLIN | libc::POLLERR | libc::POLLHUP,
-        revents: 0,
-    };
+    let mut pollfds = [
+        libc::pollfd {
+            fd: guard.connection_fd().as_raw_fd(),
+            events: libc::POLLIN | libc::POLLERR | libc::POLLHUP,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: state.runtime.wake_fd().as_raw_fd(),
+            events: libc::POLLIN | libc::POLLERR | libc::POLLHUP,
+            revents: 0,
+        },
+    ];
     let timeout_ms = poll_timeout_ms(timeout);
     let ready = loop {
-        let ready = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+        let ready = unsafe {
+            libc::poll(
+                pollfds.as_mut_ptr(),
+                pollfds.len() as libc::nfds_t,
+                timeout_ms,
+            )
+        };
         if ready >= 0 {
             break ready;
         }
@@ -1979,7 +2390,10 @@ fn dispatch_wayland(
         }
     };
 
-    if ready > 0 && pollfd.revents != 0 {
+    let wayland_ready = ready > 0 && pollfds[0].revents != 0;
+    let wake_ready = ready > 0 && pollfds[1].revents != 0;
+
+    if wayland_ready {
         match guard.read() {
             Err(WaylandError::Io(err)) if err.kind() == ErrorKind::WouldBlock => {}
             result => {
@@ -1989,6 +2403,9 @@ fn dispatch_wayland(
         event_queue.dispatch_pending(state)?;
     } else {
         drop(guard);
+    }
+    if wake_ready {
+        drain_wake_fd(state.runtime.wake_fd());
     }
 
     Ok(())
@@ -2005,6 +2422,74 @@ fn run_due_ticks(state: &mut State, next_tick: &mut Instant) {
     if now >= *next_tick {
         *next_tick = now + APP_TICK_INTERVAL;
     }
+}
+
+fn run_state_loop(
+    event_queue: &mut EventQueue<State>,
+    state: &mut State,
+    conn: &Connection,
+) -> Result<(), RuntimeError> {
+    let mut next_tick = Instant::now();
+    while !state.exit {
+        let tick_timeout = next_tick.saturating_duration_since(Instant::now());
+        let timeout = state.next_dispatch_timeout().min(tick_timeout);
+        if dispatch_wayland(event_queue, state, timeout).is_err() {
+            break;
+        }
+        // Drain any wayland events that arrived during/just after the blocking
+        // dispatch above (e.g. the burst of placeholder→real-size configures while
+        // the output settles at startup) so EVERY pending configure is read + acked
+        // by sctk before we attach a buffer below. Without this, a commit can race
+        // an unread configure → the compositor posts `cannot attach a buffer before
+        // ack_configure` and the client dies.
+        for _ in 0..4 {
+            if dispatch_wayland(event_queue, state, Duration::ZERO).is_err() {
+                state.exit = true;
+                break;
+            }
+            if conn.protocol_error().is_some() {
+                state.exit = true;
+                break;
+            }
+        }
+        if state.exit {
+            break;
+        }
+        run_due_ticks(state, &mut next_tick);
+        state.process_runtime_commands()?;
+        state.pump_slint();
+        let will_render = state.ready_to_render() && state.wants_redraw();
+        state.apply_input_region(!will_render);
+        if conn.protocol_error().is_some() {
+            break;
+        }
+        // Render exactly once per iteration, now that all readable configures are
+        // acked. (Committing from inside a handler or the timer was the original
+        // race; everything just marks dirty and we draw here.)
+        if will_render {
+            state.render();
+        }
+        let mut idx = 0;
+        while idx < state.popouts.len() {
+            let will_render_popout = {
+                let popout = &mut state.popouts[idx];
+                popout.ready_to_render() && popout.wants_redraw()
+            };
+            if will_render_popout {
+                state.render_popout(idx);
+            }
+            idx += 1;
+        }
+        // If a protocol error did slip through anyway, the connection is dead —
+        // exit cleanly instead of busy-looping on it.
+        if conn.protocol_error().is_some() {
+            break;
+        }
+        if !state.resident && state.app.should_exit() {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Run a Slint `BarApp` as a wlr-layer-shell client until the compositor exits.
@@ -2029,21 +2514,45 @@ pub fn run(config: BarConfig, app: Box<dyn BarApp>) {
     }
 }
 
-fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeError> {
+pub fn run_daemon(config: BarConfig, app: Box<dyn BarApp>, initial_mode: Option<&str>) {
+    let runtime = match RuntimeControl::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("gnoblin-runtime: {e}");
+            return;
+        }
+    };
+    run_daemon_with_runtime(config, app, runtime, initial_mode);
+}
+
+pub fn run_daemon_with_runtime(
+    config: BarConfig,
+    app: Box<dyn BarApp>,
+    runtime: RuntimeControl,
+    initial_mode: Option<&str>,
+) {
+    if let Err(e) = try_run_daemon(config, app, runtime, initial_mode) {
+        eprintln!("gnoblin-runtime: {e}");
+    }
+}
+
+fn install_egl_panic_hook() {
     // khronos-egl panics (caught in guard_egl) when the compositor disappears —
     // silence their verbose backtrace; keep the default hook for real bugs.
-    {
-        let default = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            let from_egl = info
-                .location()
-                .map(|l| l.file().contains("khronos-egl"))
-                .unwrap_or(false);
-            if !from_egl {
-                default(info);
-            }
-        }));
-    }
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let from_egl = info
+            .location()
+            .map(|l| l.file().contains("khronos-egl"))
+            .unwrap_or(false);
+        if !from_egl {
+            default(info);
+        }
+    }));
+}
+
+fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeError> {
+    install_egl_panic_hook();
 
     rt_tick("try_run: begin");
     let conn = Connection::connect_to_env()
@@ -2080,38 +2589,9 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         Some(config.namespace),
         target_output.as_ref(),
     );
-    if config.full_height && config.exclusive_zone == 0 {
-        // Span the whole output (all edges) so dropdowns can render below the
-        // bar; nothing is reserved, so the ambiguous all-edges anchor is fine.
-        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        layer.set_size(0, 0);
-    } else if config.full_height {
-        // A bar that BOTH spans the output (for drop-downs) AND reserves an edge
-        // (exclusive_zone): keep the real anchor (so the compositor can resolve
-        // which edge the exclusive zone reserves — all-four anchors are
-        // ambiguous and sctk has no v5 set_exclusive_edge), and request a huge
-        // height that the compositor clamps to the output. We learn the real
-        // size back from the configure event.
-        layer.set_anchor(config.anchor);
-        layer.set_size(0, 1 << 16);
-    } else {
-        layer.set_anchor(config.anchor);
-        layer.set_size(config.width, config.height);
-    }
-    layer.set_margin(
-        config.margins.top,
-        config.margins.right,
-        config.margins.bottom,
-        config.margins.left,
-    );
-    layer.set_exclusive_zone(config.exclusive_zone);
-    layer.set_keyboard_interactivity(if config.keyboard {
-        KeyboardInteractivity::Exclusive
-    } else {
-        KeyboardInteractivity::None
-    });
+    apply_layer_config(&layer, config);
 
-    let runtime = RuntimeControl::new();
+    let runtime = RuntimeControl::new()?;
     app.set_runtime(runtime.clone());
 
     let mut state = State {
@@ -2120,7 +2600,9 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         seat_state: SeatState::new(&globals, &qh),
         compositor,
         layer_shell,
-        layer,
+        layer: Some(layer),
+        base_config: config,
+        dummy_surface: None,
         qh: qh.clone(),
         conn: conn.clone(),
         target_output,
@@ -2145,6 +2627,8 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         runtime,
         popouts: Vec::new(),
         first_render_done: false,
+        resident: false,
+        show_started_at: None,
     };
 
     // Bind pointer/keyboard resources before the initial layer-surface commit.
@@ -2154,69 +2638,99 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
     event_queue
         .roundtrip(&mut state)
         .map_err(|e| runtime_error(format!("initial input registry roundtrip: {e}")))?;
-    state.layer.commit();
+    if let Some(layer) = &state.layer {
+        layer.commit();
+    }
     rt_tick("initial roundtrip + first commit (now waiting for configure)");
 
-    let mut next_tick = Instant::now();
-    while !state.exit {
-        let tick_timeout = next_tick.saturating_duration_since(Instant::now());
-        let timeout = state.next_dispatch_timeout().min(tick_timeout);
-        if dispatch_wayland(&mut event_queue, &mut state, timeout).is_err() {
-            break;
-        }
-        // Drain any wayland events that arrived during/just after the blocking
-        // dispatch above (e.g. the burst of placeholder→real-size configures while
-        // the output settles at startup) so EVERY pending configure is read + acked
-        // by sctk before we attach a buffer below. Without this, a commit can race
-        // an unread configure → the compositor posts `cannot attach a buffer before
-        // ack_configure` and the client dies.
-        for _ in 0..4 {
-            if dispatch_wayland(&mut event_queue, &mut state, Duration::ZERO).is_err() {
-                state.exit = true;
-                break;
-            }
-            if conn.protocol_error().is_some() {
-                state.exit = true;
-                break;
-            }
-        }
-        if state.exit {
-            break;
-        }
-        run_due_ticks(&mut state, &mut next_tick);
-        state.process_runtime_commands()?;
-        state.pump_slint();
-        let will_render = state.ready_to_render() && state.wants_redraw();
-        state.apply_input_region(!will_render);
-        if conn.protocol_error().is_some() {
-            break;
-        }
-        // Render exactly once per iteration, now that all readable configures are
-        // acked. (Committing from inside a handler or the timer was the original
-        // race; everything just marks dirty and we draw here.)
-        if will_render {
-            state.render();
-        }
-        let mut idx = 0;
-        while idx < state.popouts.len() {
-            let will_render_popout = {
-                let popout = &mut state.popouts[idx];
-                popout.ready_to_render() && popout.wants_redraw()
-            };
-            if will_render_popout {
-                state.render_popout(idx);
-            }
-            idx += 1;
-        }
-        // If a protocol error did slip through anyway, the connection is dead —
-        // exit cleanly instead of busy-looping on it.
-        if conn.protocol_error().is_some() {
-            break;
-        }
-        if state.app.should_exit() {
-            break;
-        }
+    run_state_loop(&mut event_queue, &mut state, &conn)?;
+    if let Some(e) = state.startup_error.take() {
+        return Err(runtime_error(e));
     }
+    Ok(())
+}
+
+fn try_run_daemon(
+    config: BarConfig,
+    mut app: Box<dyn BarApp>,
+    runtime: RuntimeControl,
+    initial_mode: Option<&str>,
+) -> Result<(), RuntimeError> {
+    install_egl_panic_hook();
+
+    rt_tick("try_run_daemon: begin");
+    let conn = Connection::connect_to_env()
+        .map_err(|e| runtime_error(format!("connect to Wayland: {e}")))?;
+    let (globals, mut event_queue) =
+        registry_queue_init(&conn).map_err(|e| runtime_error(format!("registry init: {e}")))?;
+    let qh = event_queue.handle();
+
+    let compositor = CompositorState::bind(&globals, &qh)
+        .map_err(|e| runtime_error(format!("bind wl_compositor: {e}")))?;
+    let layer_shell = LayerShell::bind(&globals, &qh)
+        .map_err(|e| runtime_error(format!("bind wlr-layer-shell: {e}")))?;
+    rt_tick("daemon wayland connect + registry + binds");
+
+    let target_output = ClientArgs::from_env()
+        .output
+        .or_else(|| {
+            std::env::var("GNOBLIN_ACTIVE_OUTPUT")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
+        .and_then(|name| resolve_output(&conn, &globals, &name));
+
+    app.set_runtime(runtime.clone());
+    let dummy_surface = compositor.create_surface(&qh);
+
+    let mut state = State {
+        registry_state: RegistryState::new(&globals),
+        output_state: OutputState::new(&globals, &qh),
+        seat_state: SeatState::new(&globals, &qh),
+        compositor,
+        layer_shell,
+        layer: None,
+        base_config: config,
+        dummy_surface: Some(dummy_surface),
+        qh: qh.clone(),
+        conn: conn.clone(),
+        target_output,
+        pointer: None,
+        keyboard: None,
+        width: if config.width > 0 { config.width } else { 1280 },
+        height: config.height.max(1),
+        scale: 1,
+        configured: false,
+        exit: false,
+        adapter: None,
+        app,
+        full_height: config.full_height,
+        input_height: config.height.max(1),
+        input_passthrough: config.input_passthrough,
+        input_rects_applied: None,
+        input_region_dirty: false,
+        frame_pending: false,
+        last_configure_at: None,
+        startup_error: None,
+        platform_state: None,
+        runtime,
+        popouts: Vec::new(),
+        first_render_done: false,
+        resident: true,
+        show_started_at: None,
+    };
+
+    event_queue
+        .roundtrip(&mut state)
+        .map_err(|e| runtime_error(format!("daemon initial registry roundtrip: {e}")))?;
+    state.init_daemon_slint()?;
+    rt_tick("daemon hidden and ready for Show");
+
+    if let Some(mode) = initial_mode {
+        state.runtime.show_primary(mode);
+    }
+
+    run_state_loop(&mut event_queue, &mut state, &conn)?;
     if let Some(e) = state.startup_error.take() {
         return Err(runtime_error(e));
     }

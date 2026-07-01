@@ -10,7 +10,8 @@ pub mod theme;
 mod layer_shell_runtime;
 
 pub use layer_shell_runtime::{
-    run, rt_tick, BarApp, BarConfig, BarMargins, PopoutConfig, PopoutHandle, RuntimeControl,
+    rt_tick, run, run_daemon, run_daemon_with_runtime, BarApp, BarConfig, BarMargins, PopoutConfig,
+    PopoutHandle, RuntimeControl,
 };
 
 /// Push the resolved motion palette to a client's Slint `Theme` global.
