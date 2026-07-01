@@ -16,7 +16,7 @@ mod usage;
 
 use desktop::App;
 use gnoblin_core::{ClientArgs, RuntimeError};
-use gnoblin_runtime::{run, BarApp, BarConfig, BarMargins};
+use gnoblin_runtime::{run_daemon_with_runtime, BarApp, BarConfig, BarMargins, RuntimeControl};
 slint::include_modules!(); // Launcher, AppEntry
 use slint::platform::Key;
 use slint::{ComponentHandle, Model, SharedString};
@@ -24,6 +24,9 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+
+const BUS_NAME: &str = "dev.gnoblin.Launcher";
+const BUS_PATH: &str = "/dev/gnoblin/Launcher";
 
 // These MUST track the launcher geometry in launcher.slint (row-h 52, search-h
 // 60, panel-h 432 list / 560 grid) so keyboard nav scrolls the selected row into
@@ -48,17 +51,111 @@ const COLUMNS: usize = 5; // app-grid columns (must match the .slint default)
 const CELL_H: i32 = 112; // app-grid tile height (must match the .slint cell-h)
 const GRID_VISIBLE_H: i32 = 499; // grid viewport (panel 560 - search 60 - hairline 1)
 
+fn normalize_mode(mode: &str) -> &'static str {
+    if mode.eq_ignore_ascii_case("grid") {
+        "grid"
+    } else {
+        "list"
+    }
+}
+
+fn launcher_config(grid: bool) -> BarConfig {
+    let (width, height, anchor, margins) = if grid {
+        (
+            GRID_PANEL_W,
+            GRID_PANEL_H,
+            Anchor::empty(),
+            BarMargins::default(),
+        )
+    } else {
+        (
+            LIST_PANEL_W,
+            LIST_PANEL_H,
+            Anchor::TOP,
+            BarMargins {
+                top: LIST_TOP_MARGIN,
+                ..BarMargins::default()
+            },
+        )
+    };
+    BarConfig {
+        namespace: "gnoblin-launcher",
+        anchor,
+        layer: Layer::Overlay,
+        width,
+        height,
+        margins,
+        exclusive_zone: 0,
+        full_height: false,
+        input_passthrough: false,
+        keyboard: true,
+        ..BarConfig::default()
+    }
+}
+
+struct LauncherBus {
+    runtime: RuntimeControl,
+}
+
+#[zbus::interface(name = "dev.gnoblin.Launcher")]
+impl LauncherBus {
+    fn show(&self, mode: String) {
+        self.runtime.show_primary(normalize_mode(&mode));
+    }
+
+    fn toggle(&self, mode: String) {
+        self.runtime.toggle_primary(normalize_mode(&mode));
+    }
+}
+
+#[zbus::proxy(
+    interface = "dev.gnoblin.Launcher",
+    default_service = "dev.gnoblin.Launcher",
+    default_path = "/dev/gnoblin/Launcher"
+)]
+trait LauncherDaemon {
+    fn show(&self, mode: &str) -> zbus::Result<()>;
+    fn toggle(&self, mode: &str) -> zbus::Result<()>;
+}
+
+fn own_launcher_bus(runtime: RuntimeControl) -> zbus::Result<zbus::Connection> {
+    zbus::block_on(async move {
+        let builder = zbus::connection::Builder::session()?
+            .serve_at(BUS_PATH, LauncherBus { runtime })?
+            .name(BUS_NAME)?
+            .allow_name_replacements(false)
+            .replace_existing_names(false);
+        builder.build().await
+    })
+}
+
+fn trigger_existing_daemon(mode: &str, toggle: bool) -> zbus::Result<()> {
+    let mode = normalize_mode(mode).to_string();
+    zbus::block_on(async move {
+        let conn = zbus::Connection::session().await?;
+        let proxy = LauncherDaemonProxy::new(&conn).await?;
+        if toggle {
+            proxy.toggle(&mode).await
+        } else {
+            proxy.show(&mode).await
+        }
+    })
+}
+
 struct LauncherApp {
     win: Option<Launcher>,
     all: Vec<App>,
     filtered: Rc<RefCell<Vec<results::Row>>>,
     query: String,
+    initial_query: String,
     selected: usize,
     /// Next `filtered` index whose icon still needs streaming in (see
     /// `stream_icons`); starts past the eagerly-loaded visible rows.
     icon_cursor: Cell<usize>,
     grid: bool,
     exit: Rc<Cell<bool>>,
+    runtime: Rc<RefCell<Option<RuntimeControl>>>,
+    resident: bool,
     usage: Rc<RefCell<HashMap<String, u32>>>,
     /// Process/command search sources (file search, web, convert, …).
     providers: Vec<provider::Provider>,
@@ -209,9 +306,59 @@ impl LauncherApp {
         let rows = self.filtered.borrow();
         results::activate(rows.as_slice(), index, &self.usage);
     }
+
+    fn reset_for_show(&mut self, grid: bool) {
+        self.grid = grid;
+        self.query = self.initial_query.clone();
+        self.selected = 0;
+        self.icon_cursor.set(0);
+        self.exit.set(false);
+        if let Some(win) = &self.win {
+            win.set_grid_mode(self.grid);
+            win.set_columns(COLUMNS as i32);
+            win.set_scroll_y(0.0);
+        }
+        self.refilter();
+    }
+
+    fn reset_after_hide(&mut self) {
+        self.query = self.initial_query.clone();
+        self.selected = 0;
+        self.icon_cursor.set(0);
+        self.exit.set(false);
+        if let Some(win) = &self.win {
+            win.set_query(self.query.clone().into());
+            win.set_selected(0);
+            win.set_scroll_y(0.0);
+        }
+    }
+
+    fn dismiss(&mut self) {
+        if self.resident {
+            if let Some(runtime) = self.runtime.borrow().as_ref().cloned() {
+                runtime.hide_primary();
+                return;
+            }
+        }
+        self.exit.set(true);
+    }
 }
 
 impl BarApp for LauncherApp {
+    fn set_runtime(&mut self, runtime: RuntimeControl) {
+        *self.runtime.borrow_mut() = Some(runtime);
+    }
+
+    fn primary_config_for_mode(&mut self, mode: &str, _config: BarConfig) -> BarConfig {
+        let grid = normalize_mode(mode) == "grid";
+        self.reset_for_show(grid);
+        launcher_config(grid)
+    }
+
+    fn primary_hidden(&mut self) {
+        self.reset_after_hide();
+    }
+
     fn show(
         &mut self,
         _w: u32,
@@ -219,6 +366,10 @@ impl BarApp for LauncherApp {
         _screen_w: u32,
         _screen_h: u32,
     ) -> Result<(), RuntimeError> {
+        if self.win.is_some() {
+            self.reset_for_show(self.grid);
+            return Ok(());
+        }
         gnoblin_runtime::rt_tick("    show(): before Launcher::new()");
         let win = Launcher::new()
             .map_err(|e| gnoblin_core::runtime_error(format!("Launcher::new: {e}")))?;
@@ -231,11 +382,19 @@ impl BarApp for LauncherApp {
         win.set_grid_mode(self.grid);
         win.set_columns(COLUMNS as i32);
         let exit = self.exit.clone();
+        let runtime = self.runtime.clone();
+        let resident = self.resident;
         let filtered = self.filtered.clone();
         let usage = self.usage.clone();
         win.on_activated(move |i| {
             let rows = filtered.borrow();
             results::activate(rows.as_slice(), i as usize, &usage);
+            if resident {
+                if let Some(runtime) = runtime.borrow().as_ref().cloned() {
+                    runtime.hide_primary();
+                    return;
+                }
+            }
             exit.set(true);
         });
         win.show()
@@ -271,12 +430,12 @@ impl BarApp for LauncherApp {
             self.selected = (w.get_selected().max(0) as usize).min(count.saturating_sub(1));
         }
         if c == Some(char::from(Key::Escape)) {
-            self.exit.set(true);
+            self.dismiss();
         } else if c == Some(char::from(Key::Return)) {
             if count > 0 {
                 self.launch(self.selected);
             }
-            self.exit.set(true);
+            self.dismiss();
         } else if c == Some(char::from(Key::Backspace)) {
             self.query.pop();
             self.refilter();
@@ -321,78 +480,91 @@ fn main() {
     macro_rules! tick {
         ($label:expr) => {
             if std::env::var("GNOBLIN_TIMING").is_ok() {
-                eprintln!("[timing] {:>6.1}ms  {}", _t0.elapsed().as_secs_f64() * 1000.0, $label);
+                eprintln!(
+                    "[timing] {:>6.1}ms  {}",
+                    _t0.elapsed().as_secs_f64() * 1000.0,
+                    $label
+                );
             }
         };
     }
     tick!("main entry (post exec+dynlink)");
     let _ = ClientArgs::from_env();
+    let args: Vec<String> = std::env::args().collect();
     // App-grid mode: `gnoblin-launcher --grid` (or GNOBLIN_LAUNCHER_MODE=grid),
     // bound to Super+A / a dock button. Same scan + usage data, grid layout.
-    let grid = std::env::args().any(|a| a == "--grid")
+    let grid = args.iter().any(|a| a == "--grid")
         || std::env::var("GNOBLIN_LAUNCHER_MODE").as_deref() == Ok("grid");
-    let (width, height, anchor, margins) = if grid {
-        (
-            GRID_PANEL_W,
-            GRID_PANEL_H,
-            Anchor::empty(),
-            BarMargins::default(),
-        )
-    } else {
-        (
-            LIST_PANEL_W,
-            LIST_PANEL_H,
-            Anchor::TOP,
-            BarMargins {
-                top: LIST_TOP_MARGIN,
-                ..BarMargins::default()
-            },
-        )
+    let daemon_only = args.iter().any(|a| a == "--daemon");
+    let toggle = args.iter().any(|a| a == "--toggle");
+    let requested_mode = if grid { "grid" } else { "list" };
+
+    let runtime = match RuntimeControl::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("gnoblin-launcher: {e}");
+            return;
+        }
     };
+    let _bus_conn = match own_launcher_bus(runtime.clone()) {
+        Ok(conn) => {
+            tick!("D-Bus name owned (daemon)");
+            Some(conn)
+        }
+        Err(zbus::Error::NameTaken) => {
+            tick!("D-Bus name already owned; triggering daemon");
+            if let Err(e) = trigger_existing_daemon(requested_mode, toggle) {
+                eprintln!("gnoblin-launcher: trigger failed: {e}");
+            }
+            return;
+        }
+        Err(e) => {
+            eprintln!("gnoblin-launcher: D-Bus unavailable ({e}); running without single-instance trigger");
+            if daemon_only {
+                return;
+            }
+            None
+        }
+    };
+
     let all = desktop::scan();
     tick!("desktop::scan()");
     let usage_v = usage::load();
     tick!("usage::load()");
-    let providers_v = if grid { Vec::new() } else { provider::load() };
+    let providers_v = provider::load();
     tick!("provider::load()");
-    let web_search = if grid {
-        None
-    } else {
-        gnoblin_core::config::Config::load()
-            .get("launcher", "web-search")
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
+    let web_search = gnoblin_core::config::Config::load()
+        .get("launcher", "web-search")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     tick!("config web-search (all sync startup work done)");
-    run(
-        BarConfig {
-            namespace: "gnoblin-launcher",
-            anchor,
-            layer: Layer::Overlay,
-            width,
-            height,
-            margins,
-            exclusive_zone: 0,
-            full_height: false,
-            input_passthrough: false,
-            keyboard: true,
-            ..BarConfig::default()
-        },
+    let initial_query = std::env::var("GNOBLIN_LAUNCHER_QUERY").unwrap_or_default();
+    run_daemon_with_runtime(
+        launcher_config(grid),
         Box::new(LauncherApp {
             win: None,
             all,
             filtered: Rc::new(RefCell::new(Vec::new())),
             // Test hook: pre-fill the query (headless validation can't type).
-            query: std::env::var("GNOBLIN_LAUNCHER_QUERY").unwrap_or_default(),
+            query: initial_query.clone(),
+            initial_query,
             selected: 0,
             icon_cursor: Cell::new(0),
             grid,
             exit: Rc::new(Cell::new(false)),
+            runtime: Rc::new(RefCell::new(None)),
+            resident: true,
             usage: Rc::new(RefCell::new(usage_v)),
-            // The app grid has no search box, so skip provider spawning there.
+            // The app grid does not run providers; list mode can reuse this daemon.
             providers: providers_v,
             web_search,
         }),
+        runtime,
+        if daemon_only {
+            None
+        } else {
+            Some(requested_mode)
+        },
     );
 }
