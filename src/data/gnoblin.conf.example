@@ -457,6 +457,10 @@ Super+Space = spawn gnoblin-launcher
 Super+A = spawn gnoblin-launcher --grid
 Super+L = lock              # lock the session (password via PAM)
 
+# Developer inspector dump (browser-devtools-style shortcut): writes the live
+# scene JSON to $XDG_RUNTIME_DIR/gnoblin-inspect/scene.json.
+Super+F12 = spawn sh -c 'mkdir -p "${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect"; gnoblinctl inspect --pretty "${XDG_RUNTIME_DIR:-/tmp}/gnoblin-inspect/scene.json"'
+
 # Media + brightness keys (the `spawn` action — needs wpctl, brightnessctl and
 # playerctl). The volume/brightness ones also pop the gnoblin-osd overlay.
 XF86AudioRaiseVolume = spawn sh -c "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+; gnoblin-osd volume"

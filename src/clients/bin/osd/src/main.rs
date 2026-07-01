@@ -127,6 +127,7 @@ fn main() {
             full_height: true,
             input_passthrough: true,
             keyboard: false,
+            ..BarConfig::default()
         },
         Box::new(OsdApp {
             win: None,

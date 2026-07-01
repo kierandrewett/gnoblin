@@ -647,7 +647,8 @@ static void maybe_add_blur(MetaWindowActor* window_actor) {
 static void maybe_add_shadow(MetaPlugin* plugin, MetaWindowActor* window_actor) {
     ClutterActor* actor = CLUTTER_ACTOR(window_actor);
     MetaWindow* window = meta_window_actor_get_meta_window(window_actor);
-    int radius = gnoblin_config_get_int("appearance", "rounding", 0);
+    GnoblinEffects fx;
+    int radius;
     CoglColor black = (CoglColor)COGL_COLOR_INIT(0, 0, 0, 255);
     static gboolean restack_hooked = FALSE;
     MetaDisplay* display;
@@ -660,10 +661,17 @@ static void maybe_add_shadow(MetaPlugin* plugin, MetaWindowActor* window_actor) 
     float pad = 0.0f;
     float margins[4] = {0, 0, 0, 0};
 
-    if (!wants_decoration(window) || gnoblin_rules_no_shadow(window))
+    if (!plugin)
+        return;
+    gnoblin_rules_effects(window, &fx);
+    if (!fx.shadow_enabled || gnoblin_rules_no_shadow(window))
+        return;
+    if (!wants_decoration(window) && !(gnoblin_rules_layer_namespace(window) && fx.is_popup))
         return;
     if (get_actor_shadow(actor))
         return;
+    radius = fx.rounding_enabled ? (int)lroundf(fx.rounded.radius)
+                                 : gnoblin_config_get_int("appearance", "rounding", 0);
     /* The flush, edge-to-edge top bar has no rounding and no drop shadow (a
      * GNOME-style bar); a rounded shadow at the screen edge just reads as a gap
      * around it. */
@@ -844,6 +852,97 @@ static void on_focus_window_changed(MetaDisplay* display, GParamSpec* pspec, gpo
     }
 }
 
+/* ---- compositor-owned popup dismissal for layer-shell surfaces ---- */
+
+typedef void (*GnoblinDismiss)(MetaWindow*);
+
+static const char* GNOBLIN_POPUP_GRAB_DATA_KEY = "gnoblin-popup-grab";
+
+static void clear_popup_grab(MetaWindow* window) {
+    if (window)
+        g_object_set_data(G_OBJECT(window), GNOBLIN_POPUP_GRAB_DATA_KEY, NULL);
+}
+
+static void popup_grab_data_free(gpointer data) {
+    ClutterGrab* grab = CLUTTER_GRAB(data);
+
+    if (!clutter_grab_is_revoked(grab))
+        clutter_grab_dismiss(grab);
+    g_object_unref(grab);
+}
+
+static void dismiss_popup_window(MetaWindow* window) {
+    GnoblinDismiss dismiss;
+
+    if (!window)
+        return;
+
+    dismiss = (GnoblinDismiss)g_object_get_data(G_OBJECT(window), "gnoblin-layer-dismiss");
+    clear_popup_grab(window);
+    if (dismiss)
+        dismiss(window);
+}
+
+static gboolean on_popup_window_actor_event(ClutterActor* actor, ClutterEvent* event,
+                                            gpointer user_data) {
+    MetaWindow* window = META_WINDOW(user_data);
+
+    switch (clutter_event_type(event)) {
+    case CLUTTER_KEY_PRESS:
+        if (clutter_event_get_key_symbol(event) == CLUTTER_KEY_Escape) {
+            dismiss_popup_window(window);
+            return CLUTTER_EVENT_STOP;
+        }
+        return CLUTTER_EVENT_PROPAGATE;
+    case CLUTTER_BUTTON_PRESS: {
+        ClutterActor* source = clutter_event_get_source(event);
+
+        if (!source || !clutter_actor_contains(actor, source)) {
+            dismiss_popup_window(window);
+            return CLUTTER_EVENT_STOP;
+        }
+        return CLUTTER_EVENT_PROPAGATE;
+    }
+    default:
+        return CLUTTER_EVENT_PROPAGATE;
+    }
+}
+
+static void on_popup_window_actor_destroyed(ClutterActor* actor, gpointer user_data) {
+    MetaWindow* window = META_WINDOW(user_data);
+
+    clear_popup_grab(window);
+}
+
+static void install_popup_grab(MetaWindow* window, MetaWindowActor* window_actor) {
+    MetaDisplay* display;
+    MetaCompositor* compositor;
+    ClutterActor* stage;
+    ClutterGrab* grab;
+    ClutterActor* actor;
+
+    if (!window || !window_actor)
+        return;
+    if (g_object_get_data(G_OBJECT(window), GNOBLIN_POPUP_GRAB_DATA_KEY))
+        return;
+
+    display = meta_window_get_display(window);
+    compositor = meta_display_get_compositor(display);
+    stage = CLUTTER_ACTOR(meta_compositor_get_stage(compositor));
+    actor = CLUTTER_ACTOR(window_actor);
+    grab = clutter_stage_grab(CLUTTER_STAGE(stage), actor);
+    if (!grab)
+        return;
+
+    g_object_set_data_full(G_OBJECT(window), GNOBLIN_POPUP_GRAB_DATA_KEY, grab,
+                           popup_grab_data_free);
+    g_signal_connect_object(actor, "event", G_CALLBACK(on_popup_window_actor_event), window,
+                            (GConnectFlags)0);
+    g_signal_connect_object(actor, "destroy", G_CALLBACK(on_popup_window_actor_destroyed), window,
+                            (GConnectFlags)0);
+    clutter_actor_grab_key_focus(actor);
+}
+
 /* ---- layer-shell surface effects ----
  *
  * wlr-layer-shell surfaces (the shell's own panels/dock/etc.) are backed by real
@@ -856,6 +955,7 @@ static void on_focus_window_changed(MetaDisplay* display, GParamSpec* pspec, gpo
 static void apply_layer_surface_effects(MetaWindow* window) {
     GObject* priv;
     MetaWindowActor* window_actor;
+    GnoblinEffects fx;
 
     if (!window || !gnoblin_rules_layer_namespace(window))
         return;
@@ -868,7 +968,11 @@ static void apply_layer_surface_effects(MetaWindow* window) {
     gnoblin_rules_apply(window);
     maybe_add_blur(window_actor);
     maybe_round_corners(window_actor);
+    maybe_add_shadow(META_PLUGIN(the_plugin), window_actor);
     update_window_effects(window_actor);
+    gnoblin_rules_effects(window, &fx);
+    if (fx.is_popup)
+        install_popup_grab(window, window_actor);
 }
 
 static void on_window_created(MetaDisplay* display, MetaWindow* window, gpointer user_data) {

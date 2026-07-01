@@ -167,6 +167,7 @@ fn main() {
             full_height: true,
             input_passthrough: false,
             keyboard: false,
+            ..BarConfig::default()
         },
         Box::new(PowerMenuApp {
             menu: None,

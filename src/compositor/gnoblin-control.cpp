@@ -1,5 +1,5 @@
 /*
- * gnoblin-shell: config keybindings + D-Bus/IPC -> the action dispatcher.
+ * gnoblin-shell: config keybindings + control IPC -> the action dispatcher.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -10,6 +10,9 @@
 #include "gnoblin-control.h"
 
 #include <gio/gio.h>
+#include <gio/gunixsocketaddress.h>
+#include <glib/gstdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern "C" {
@@ -40,6 +43,7 @@ extern "C" {
 
 #define GNOBLIN_DBUS_NAME "dev.gnoblin.Shell"
 #define GNOBLIN_DBUS_PATH "/dev/gnoblin/Shell"
+#define GNOBLIN_CONTROL_SOCKET_ENV "GNOBLIN_CONTROL_SOCKET"
 
 
 typedef struct {
@@ -49,6 +53,8 @@ typedef struct {
 
 static MetaDisplay* the_display;
 static GHashTable* bindings; /* accelerator action id (guint) -> Binding* */
+static GSocketService* control_socket_service;
+static char* control_socket_path;
 
 /* ---- keybindings ---- */
 
@@ -960,6 +966,141 @@ static void handle_method_call(GDBusConnection* connection, const char* sender,
 
 static const GDBusInterfaceVTable interface_vtable = {handle_method_call, NULL, NULL, {0}};
 
+/* ---- Unix control socket (hyprctl-style local IPC) ---- */
+
+static char* control_socket_name(void) {
+    const char* display = g_getenv("WAYLAND_DISPLAY");
+    g_autofree char* base = NULL;
+    GString* out;
+
+    if (!display || display[0] == '\0')
+        display = "default";
+
+    base = g_path_get_basename(display);
+    out = g_string_new(NULL);
+    for (const char* p = base; *p; p++) {
+        if (g_ascii_isalnum(*p) || *p == '.' || *p == '_' || *p == '-')
+            g_string_append_c(out, *p);
+        else
+            g_string_append_c(out, '_');
+    }
+    g_string_append(out, ".sock");
+    return g_string_free(out, FALSE);
+}
+
+static void cleanup_control_socket(void) {
+    if (control_socket_path)
+        g_unlink(control_socket_path);
+}
+
+static char* control_actions_response(void) {
+    const char* const* actions = gnoblin_actions_list();
+    GString* out = g_string_new(NULL);
+
+    for (int i = 0; actions && actions[i]; i++)
+        g_string_append_printf(out, "%s\n", actions[i]);
+
+    return g_string_free(out, FALSE);
+}
+
+static char* handle_control_socket_command(const char* line) {
+    g_autofree char* cmd = g_strdup(line ? line : "");
+
+    g_strstrip(cmd);
+    if (cmd[0] == '\0')
+        return g_strdup("error: empty command\n");
+
+    if (!g_strcmp0(cmd, "actions"))
+        return control_actions_response();
+
+    if (!g_strcmp0(cmd, "inspect")) {
+        dump_surface_textures(the_display);
+        g_autofree char* json = build_scene_json(the_display);
+        return g_strdup_printf("%s\n", json);
+    }
+
+    if (!g_strcmp0(cmd, "dispatch") || g_str_has_prefix(cmd, "dispatch ")) {
+        char* rest = cmd + strlen("dispatch");
+        g_auto(GStrv) parts = NULL;
+
+        while (g_ascii_isspace(*rest))
+            rest++;
+        if (*rest == '\0')
+            return g_strdup("error: dispatch needs an action\n");
+
+        parts = g_strsplit(rest, " ", 2);
+        if (!locked || !g_strcmp0(parts[0], "lock"))
+            gnoblin_actions_dispatch(the_display, parts[0],
+                                     (parts[1] && parts[1][0]) ? parts[1] : NULL, NULL, 0);
+        return g_strdup("ok\n");
+    }
+
+    return g_strdup_printf("error: unknown command '%s'\n", cmd);
+}
+
+static gboolean on_control_socket_incoming(GSocketService* service, GSocketConnection* connection,
+                                           GObject* source_object, gpointer user_data) {
+    GSocket* socket = g_socket_connection_get_socket(connection);
+    GInputStream* input = g_io_stream_get_input_stream(G_IO_STREAM(connection));
+    GOutputStream* output = g_io_stream_get_output_stream(G_IO_STREAM(connection));
+    g_autoptr(GDataInputStream) data = NULL;
+    g_autoptr(GError) error = NULL;
+    g_autofree char* line = NULL;
+    g_autofree char* response = NULL;
+    gsize len = 0;
+
+    g_socket_set_timeout(socket, 2);
+    data = g_data_input_stream_new(input);
+    line = g_data_input_stream_read_line(data, &len, NULL, &error);
+    if (error) {
+        response = g_strdup_printf("error: read failed: %s\n", error->message);
+    } else {
+        response = handle_control_socket_command(line);
+    }
+
+    g_output_stream_write_all(output, response, strlen(response), NULL, NULL, NULL);
+    g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
+    return TRUE;
+}
+
+static void start_control_socket(void) {
+    const char* runtime = g_get_user_runtime_dir();
+    g_autofree char* dir = NULL;
+    g_autofree char* name = NULL;
+    g_autoptr(GSocketAddress) address = NULL;
+    g_autoptr(GError) error = NULL;
+
+    if (control_socket_service)
+        return;
+
+    dir = g_build_filename(runtime ? runtime : g_get_tmp_dir(), "gnoblin", NULL);
+    if (g_mkdir_with_parents(dir, 0700) != 0) {
+        g_warning("gnoblin: failed to create control socket dir %s", dir);
+        return;
+    }
+
+    name = control_socket_name();
+    control_socket_path = g_build_filename(dir, name, NULL);
+    g_unlink(control_socket_path);
+
+    control_socket_service = g_socket_service_new();
+    address = g_unix_socket_address_new(control_socket_path);
+    if (!g_socket_listener_add_address(G_SOCKET_LISTENER(control_socket_service), address,
+                                       G_SOCKET_TYPE_STREAM, G_SOCKET_PROTOCOL_DEFAULT, NULL, NULL,
+                                       &error)) {
+        g_warning("gnoblin: failed to listen on %s: %s", control_socket_path, error->message);
+        g_clear_object(&control_socket_service);
+        g_clear_pointer(&control_socket_path, g_free);
+        return;
+    }
+
+    g_signal_connect(control_socket_service, "incoming", G_CALLBACK(on_control_socket_incoming),
+                     NULL);
+    g_socket_service_start(control_socket_service);
+    g_setenv(GNOBLIN_CONTROL_SOCKET_ENV, control_socket_path, TRUE);
+    atexit(cleanup_control_socket);
+}
+
 static void on_bus_acquired(GDBusConnection* connection, const char* name, gpointer user_data) {
     g_autoptr(GDBusNodeInfo) node = NULL;
     g_autoptr(GError) error = NULL;
@@ -985,4 +1126,5 @@ void gnoblin_control_init(MetaDisplay* display) {
 
     g_bus_own_name(G_BUS_TYPE_SESSION, GNOBLIN_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_REPLACE,
                    on_bus_acquired, NULL, NULL, NULL, NULL);
+    start_control_socket();
 }

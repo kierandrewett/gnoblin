@@ -122,6 +122,19 @@ G_DEFINE_TYPE (MetaWaylandLayerSurface,
 
 /* ------------------------------------------------------------------ */
 
+static void close_layer_surface (MetaWaylandLayerSurface *layer_surface,
+                                 gboolean                 invalidate_work_areas);
+
+static void
+gnoblin_layer_dismiss_trampoline (MetaWindow *window)
+{
+  MetaWaylandLayerSurface *layer_surface =
+    g_object_get_data (G_OBJECT (window), "gnoblin-layer-surface");
+
+  if (layer_surface)
+    close_layer_surface (layer_surface, FALSE);
+}
+
 gboolean
 meta_wayland_surface_is_layer_shell (MetaWaylandSurface *surface)
 {
@@ -903,6 +916,18 @@ layer_surface_resource_destroy (struct wl_resource *resource)
 
   disconnect_layer_surface_output (layer_surface);
 
+  {
+    MetaWaylandSurface *surface =
+      meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
+    MetaWindow *window = surface ? meta_wayland_surface_get_window (surface) : NULL;
+
+    if (window)
+      {
+        g_object_set_data (G_OBJECT (window), "gnoblin-layer-surface", NULL);
+        g_object_set_data (G_OBJECT (window), "gnoblin-layer-dismiss", NULL);
+      }
+  }
+
   if (layer_surface->destroy_window_idle_id)
     g_clear_handle_id (&layer_surface->destroy_window_idle_id, g_source_remove);
 
@@ -1262,6 +1287,9 @@ layer_shell_get_layer_surface (struct wl_client   *client,
   if (layer_surface->namespace)
     g_object_set_data_full (G_OBJECT (window), "gnoblin-layer-namespace",
                             g_strdup (layer_surface->namespace), g_free);
+  g_object_set_data (G_OBJECT (window), "gnoblin-layer-surface", layer_surface);
+  g_object_set_data (G_OBJECT (window), "gnoblin-layer-dismiss",
+                     (gpointer) gnoblin_layer_dismiss_trampoline);
   apply_window_type_and_layer (layer_surface, window);
   meta_wayland_shell_surface_set_window (META_WAYLAND_SHELL_SURFACE (layer_surface),
                                          window);

@@ -8,6 +8,7 @@ members = [
   "crates/gnoblin-runtime",
   "bin/topbar",
   "bin/dock",
+  "bin/menu",
   "bin/window-menu",
   "bin/wallpaper",
   "bin/osd",

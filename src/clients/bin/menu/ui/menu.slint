@@ -1,0 +1,30 @@
+// Dock app context menu as a content-sized layer-shell popup. The compositor
+// owns the chrome for this surface; Slint only draws the translucent menu tint
+// and rows.
+import { ContextMenu, MenuItem } from "../../../crates/gnoblin-runtime/vendor/slint/widgets/ContextMenu.slint";
+import { Theme, TokenMode, Tokens } from "../../../crates/gnoblin-runtime/vendor/slint/Tokens.slint";
+export { MenuItem, Theme, TokenMode }
+
+export component GnoblinMenu inherits Window {
+    in property <[MenuItem]> items;
+
+    callback item-activated(int);
+    callback dismiss();
+
+    background: transparent;
+    default-font-family: Tokens.font-family;
+    width: menu.width;
+    height: menu.height;
+
+    menu := ContextMenu {
+        x: 0;
+        y: 0;
+        items: root.items;
+        open: true;
+        chrome-by-compositor: true;
+        origin-x: self.width / 2;
+        origin-y: self.height;
+        item-clicked(id) => { root.item-activated(id); }
+        dismiss() => { root.dismiss(); }
+    }
+}

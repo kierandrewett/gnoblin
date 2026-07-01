@@ -276,6 +276,7 @@ fn main() {
             full_height: true,
             input_passthrough: false,
             keyboard: true,
+            ..BarConfig::default()
         },
         Box::new(LauncherApp {
             win: None,

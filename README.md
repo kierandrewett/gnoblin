@@ -93,6 +93,10 @@ just devkit-verify
 
 # Capture a screenshot of the running stack to a PNG (needs a GPU backend):
 SHOT_NESTED=1 ./scripts/run-devkit.sh shot   # -> /tmp/gnoblin-shot.png
+
+# Dump the live compositor scene inspector over gnoblinctl's control socket:
+gnoblinctl inspect
+gnoblinctl inspect /tmp/gnoblin-scene.json
 ```
 
 For a real session, install a `gnoblin.desktop` session entry pointing at
@@ -107,8 +111,8 @@ sectioned INI, watched live (saving re-applies keybinds, animations, wallpaper).
 See `src/data/gnoblin.conf.example` for every key: `[startup] exec`,
 `[appearance]` (background / wallpaper / rounding / shadow / accent),
 `[animations]`, `[input]`, `[bind]` (`Accel = action [arg]`), `[snap]`, `[menu]`,
-`[lock]`. Keybinds, `gnoblinctl`, and the `dev.gnoblin.Shell` D-Bus API all share
-one set of actions — `gnoblinctl actions` lists them.
+`[lock]`. Keybinds, `gnoblinctl`, and the `dev.gnoblin.Shell` D-Bus compatibility
+API all share one set of actions — `gnoblinctl actions` lists them.
 
 ## Tests
 
