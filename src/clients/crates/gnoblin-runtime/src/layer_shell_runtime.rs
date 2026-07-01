@@ -924,6 +924,7 @@ struct State {
     runtime: RuntimeControl,
     popouts: Vec<PopoutSurface>,
     first_render_done: bool,
+    primary_egl_bound: bool,
     resident: bool,
     show_started_at: Option<Instant>,
 }
@@ -983,6 +984,7 @@ impl State {
             size: LogicalSize::new(self.width as f32, self.height as f32),
         });
         self.adapter = shared.borrow().clone();
+        self.primary_egl_bound = true;
         self.inspect_log_window();
         Ok(())
     }
@@ -1033,7 +1035,26 @@ impl State {
             size: LogicalSize::new(self.width as f32, self.height as f32),
         });
         self.adapter = shared.borrow().clone();
+        self.primary_egl_bound = false;
         self.inspect_log_window();
+        Ok(())
+    }
+
+    fn bind_primary_adapter_surface(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+    ) -> Result<(), RuntimeError> {
+        let (pw, ph) = (
+            self.width * self.scale.max(1),
+            self.height * self.scale.max(1),
+        );
+        if self.scale != 1 {
+            surface.set_buffer_scale(self.scale as i32);
+        }
+        if let Some(adapter) = &self.adapter {
+            adapter.bind_window_surface(surface, pw, ph)?;
+        }
+        self.primary_egl_bound = true;
         Ok(())
     }
 
@@ -1332,10 +1353,10 @@ impl State {
         self.last_configure_at = None;
         self.configured = false;
         self.first_render_done = false;
+        self.primary_egl_bound = false;
         self.show_started_at = Some(requested_at);
 
         let surface = self.compositor.create_surface(&self.qh);
-        let egl_surface = surface.clone();
         let layer = self.layer_shell.create_layer_surface(
             &self.qh,
             surface,
@@ -1344,17 +1365,6 @@ impl State {
             self.target_output.as_ref(),
         );
         apply_layer_config(&layer, config);
-
-        if self.scale != 1 {
-            egl_surface.set_buffer_scale(self.scale as i32);
-        }
-        let (pw, ph) = (
-            config.width.max(1) * self.scale.max(1),
-            config.height.max(1) * self.scale.max(1),
-        );
-        if let Some(adapter) = &self.adapter {
-            adapter.bind_window_surface(&egl_surface, pw, ph)?;
-        }
 
         self.width = if config.width > 0 { config.width } else { 1280 };
         self.height = config.height.max(1);
@@ -1373,6 +1383,7 @@ impl State {
         if let (Some(adapter), Some(dummy)) = (&self.adapter, &self.dummy_surface) {
             let _ = adapter.bind_window_surface(dummy, 1, 1);
         }
+        self.primary_egl_bound = false;
         match layer.kind().clone() {
             smithay_client_toolkit::shell::wlr_layer::SurfaceKind::Wlr(wlr) => wlr.destroy(),
             _ => {}
@@ -2279,6 +2290,13 @@ impl LayerShellHandler for State {
                     }
                 }
             } else {
+                if !self.primary_egl_bound {
+                    if let Err(e) = self.bind_primary_adapter_surface(layer.wl_surface()) {
+                        self.startup_error = Some(e.to_string());
+                        self.exit = true;
+                        return;
+                    }
+                }
                 self.apply_size();
             }
         } else if w != self.width || h != self.height {
@@ -2286,6 +2304,13 @@ impl LayerShellHandler for State {
             // — resize the live surface to match instead of staying fixed.
             self.width = w;
             self.height = h;
+            if !self.primary_egl_bound {
+                if let Err(e) = self.bind_primary_adapter_surface(layer.wl_surface()) {
+                    self.startup_error = Some(e.to_string());
+                    self.exit = true;
+                    return;
+                }
+            }
             self.apply_size();
         }
     }
@@ -2627,6 +2652,7 @@ fn try_run(config: BarConfig, mut app: Box<dyn BarApp>) -> Result<(), RuntimeErr
         runtime,
         popouts: Vec::new(),
         first_render_done: false,
+        primary_egl_bound: false,
         resident: false,
         show_started_at: None,
     };
@@ -2716,6 +2742,7 @@ fn try_run_daemon(
         runtime,
         popouts: Vec::new(),
         first_render_done: false,
+        primary_egl_bound: false,
         resident: true,
         show_started_at: None,
     };
