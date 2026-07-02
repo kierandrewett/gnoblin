@@ -15,12 +15,13 @@
 #                     respawns/cleans up as monitors are plugged/unplugged).
 #
 # Panels/docks/wallpapers belong on every screen, so they use exec_per_output;
-# session-global daemons (notifications, launcher warm process) use exec.
+# session-global daemons (notifications, warm launcher/menu processes) use exec.
 exec_per_output = gnoblin-topbar   # Slint top panel (clock, tray, global appmenu)
 exec_per_output = gnoblin-dock     # Slint dock (pinned + running apps)
 exec_per_output = gnoblin-wallpaper # background layer-shell surface per monitor
 exec = gnoblin-notifyd             # notification daemon (org.freedesktop.Notifications)
 exec = gnoblin-launcher --daemon    # keep launcher warm; spawn keybinds call Show over D-Bus
+exec = gnoblin-menu --daemon        # keep dock context menu warm; dock calls Show over D-Bus
 exec = gnoblin-night-light         # warms screen gamma when Night Light is toggled on
 
 [roles]

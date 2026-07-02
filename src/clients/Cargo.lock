@@ -1502,6 +1502,7 @@ dependencies = [
  "slint",
  "slint-build",
  "smithay-client-toolkit",
+ "zbus",
 ]
 
 [[package]]
@@ -1526,6 +1527,7 @@ dependencies = [
  "slint",
  "slint-build",
  "smithay-client-toolkit",
+ "zbus",
 ]
 
 [[package]]

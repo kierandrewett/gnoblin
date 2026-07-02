@@ -51,7 +51,7 @@ to `/tmp/gnoblin-harness-last.log`.
 | `run-dock-launch.sh` | dock launch resolves nested XDG desktop IDs, handles Exec fallbacks, and launches from a real dock icon click |
 | `run-dock-live-favorites.sh` | running dock reloads `[dock] favorites` after config edits |
 | `run-osd-passthrough.sh` | full-screen OSD overlay commits an empty input region and passes clicks through to the topbar |
-| `run-dock-menu-input-region.sh` | shrinking a layer-surface input region under an idle stationary pointer refreshes compositor focus |
+| `run-dock-menu-input-region.sh` | dock opens the resident menu daemon over D-Bus; transparent scrim dismisses it without killing the daemon |
 | `run-window-menu-input.sh` | modal window-menu overlay catches a stationary outside click, exits, and releases that pointer position to the app below |
 | `run-layer-move-focus.sh` | moving a layer-shell surface under a stationary pointer refreshes compositor focus |
 | `run-layer-keyboard-focus.sh` | `keyboard_interactivity=on_demand` layer surfaces receive keyboard focus after click, and `exclusive` surfaces receive it on map |

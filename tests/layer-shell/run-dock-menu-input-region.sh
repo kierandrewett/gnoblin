@@ -13,6 +13,6 @@ if ! command -v gst-launch-1.0 >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "== dock menu input-region shrink must refresh pointer focus after idle =="
+echo "== dock context menu daemon must map via D-Bus and dismiss via scrim =="
 GNOBLIN_PREFIX="$PREFIX" python3 "$ROOT/tests/layer-shell/dock-menu-input-region-test.py" 2>&1 \
   | tee /tmp/gnoblin-dock-menu-input-region-test.log

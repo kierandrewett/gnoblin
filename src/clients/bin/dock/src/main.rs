@@ -1,7 +1,8 @@
 //! gnoblin-dock — de's Dock as a bottom wlr-layer-shell client.
 //!
 //! The surface is the visible dock band. App context menus are separate
-//! content-sized layer-shell popup surfaces owned by `gnoblin-menu`.
+//! content-sized layer-shell surfaces owned by the resident `gnoblin-menu`
+//! daemon.
 use gnoblin_core::config::Config;
 use gnoblin_core::{file_mtime, RuntimeError};
 use gnoblin_runtime::app_context_menu;
@@ -25,6 +26,26 @@ const BAND_H: f32 = 96.0;
 const DOCK_ICON_SIZE: u32 = 48;
 /// Gap between the compositor-owned app menu and the dock band.
 const MENU_GAP: i32 = 6;
+const MENU_BUS_NAME: &str = "dev.gnoblin.Menu";
+const MENU_BUS_PATH: &str = "/dev/gnoblin/Menu";
+
+#[zbus::proxy(
+    interface = "dev.gnoblin.Menu",
+    default_service = "dev.gnoblin.Menu",
+    default_path = "/dev/gnoblin/Menu"
+)]
+trait MenuDaemon {
+    fn show(
+        &self,
+        app_id: &str,
+        running: bool,
+        pinned: bool,
+        anchor_x: i32,
+        screen_width: i32,
+        screen_height: i32,
+        bottom_margin: i32,
+    ) -> zbus::Result<()>;
+}
 
 struct DockApp {
     dock: Option<DockBar>,
@@ -36,6 +57,7 @@ struct DockApp {
     test_clicked: bool, // GNOBLIN_DOCK_CLICK one-shot guard
     // Shared with the Slint callbacks (which are 'static closures):
     surface_w: Rc<Cell<u32>>,
+    screen_h_live: Rc<Cell<u32>>,
     running: Rc<RefCell<Vec<String>>>,
     // Current favourite ids, used for the spawned menu's pinned check.
     fav_ids: Rc<RefCell<Vec<String>>>,
@@ -148,6 +170,7 @@ impl DockApp {
 impl BarApp for DockApp {
     fn show(&mut self, w: u32, h: u32, screen_w: u32, screen_h: u32) -> Result<(), RuntimeError> {
         self.surface_w.set(if w > 0 { w } else { screen_w });
+        self.screen_h_live.set(screen_h);
         let dock = DockBar::new()
             .map_err(|e| gnoblin_core::runtime_error(format!("DockBar::new: {e}")))?;
 
@@ -170,6 +193,7 @@ impl BarApp for DockApp {
         {
             let running = self.running.clone();
             let sw = self.surface_w.clone();
+            let sh = self.screen_h_live.clone();
             let fav_ids = self.fav_ids.clone();
             dock.on_icon_right_clicked(move |app_id, anchor_x| {
                 let is_running = running
@@ -180,7 +204,14 @@ impl BarApp for DockApp {
                     .borrow()
                     .iter()
                     .any(|f| shell::matches(f, app_id.as_str()));
-                spawn_context_menu(app_id.as_str(), is_running, is_pinned, anchor_x, sw.get());
+                spawn_context_menu(
+                    app_id.as_str(),
+                    is_running,
+                    is_pinned,
+                    anchor_x,
+                    sw.get(),
+                    sh.get(),
+                );
             });
         }
 
@@ -199,7 +230,14 @@ impl BarApp for DockApp {
             let is_running = std::env::var("GNOBLIN_DOCK_MENU_RUNNING").is_ok();
             let anchor = self.surface_w.get() as f32 / 2.0;
             let is_pinned = app_context_menu::is_pinned(&app);
-            spawn_context_menu(&app, is_running, is_pinned, anchor, self.surface_w.get());
+            spawn_context_menu(
+                &app,
+                is_running,
+                is_pinned,
+                anchor,
+                self.surface_w.get(),
+                self.screen_h_live.get(),
+            );
         }
 
         self.dock = Some(dock);
@@ -212,6 +250,7 @@ impl BarApp for DockApp {
 
     fn resized(&mut self, w: u32, _h: u32, screen_w: u32, screen_h: u32) {
         self.surface_w.set(if w > 0 { w } else { screen_w });
+        self.screen_h_live.set(screen_h);
         self.screen_w = screen_w;
         self.screen_h = screen_h;
         if let Some(dock) = &self.dock {
@@ -336,6 +375,70 @@ fn spawn_context_menu(
     is_pinned: bool,
     anchor_x: f32,
     screen_w: u32,
+    screen_h: u32,
+) {
+    let anchor_x = anchor_x.round() as i32;
+    let bottom_margin = BAND_H as i32 + MENU_GAP;
+    if let Err(e) = show_context_menu_daemon(
+        app_id,
+        is_running,
+        is_pinned,
+        anchor_x,
+        screen_w as i32,
+        screen_h as i32,
+        bottom_margin,
+    ) {
+        eprintln!("gnoblin-dock: menu daemon Show failed ({e}); spawning fallback");
+        spawn_context_menu_process(
+            app_id,
+            is_running,
+            is_pinned,
+            anchor_x,
+            screen_w,
+            screen_h,
+            bottom_margin,
+        );
+    }
+}
+
+fn show_context_menu_daemon(
+    app_id: &str,
+    is_running: bool,
+    is_pinned: bool,
+    anchor_x: i32,
+    screen_w: i32,
+    screen_h: i32,
+    bottom_margin: i32,
+) -> zbus::Result<()> {
+    zbus::block_on(async move {
+        let conn = zbus::Connection::session().await?;
+        let proxy = MenuDaemonProxy::builder(&conn)
+            .destination(MENU_BUS_NAME)?
+            .path(MENU_BUS_PATH)?
+            .build()
+            .await?;
+        proxy
+            .show(
+                app_id,
+                is_running,
+                is_pinned,
+                anchor_x,
+                screen_w,
+                screen_h,
+                bottom_margin,
+            )
+            .await
+    })
+}
+
+fn spawn_context_menu_process(
+    app_id: &str,
+    is_running: bool,
+    is_pinned: bool,
+    anchor_x: i32,
+    screen_w: u32,
+    screen_h: u32,
+    bottom_margin: i32,
 ) {
     match Command::new("gnoblin-menu")
         .arg("--app-id")
@@ -345,11 +448,13 @@ fn spawn_context_menu(
         .arg("--pinned")
         .arg(if is_pinned { "1" } else { "0" })
         .arg("--anchor-x")
-        .arg(format!("{}", anchor_x.round() as i32))
+        .arg(anchor_x.to_string())
         .arg("--screen-width")
         .arg(screen_w.to_string())
+        .arg("--screen-height")
+        .arg(screen_h.to_string())
         .arg("--bottom-margin")
-        .arg(format!("{}", BAND_H as i32 + MENU_GAP))
+        .arg(bottom_margin.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -392,6 +497,7 @@ fn main() {
             theme_dark: true,
             test_clicked: false,
             surface_w: Rc::new(Cell::new(1280)),
+            screen_h_live: Rc::new(Cell::new(800)),
             running: Rc::new(RefCell::new(Vec::new())),
             fav_ids: Rc::new(RefCell::new(Vec::new())),
             config_path,
