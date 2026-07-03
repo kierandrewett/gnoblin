@@ -147,10 +147,6 @@ gnome-notifications-verify:
 gnome-protocol-gating-verify:
     ./scripts/test-protocol-gating.sh
 
-# Review one or more screenshots with external visual/design feedback.
-design-review *SCREENSHOTS:
-    ./scripts/design-review.sh {{SCREENSHOTS}}
-
 # Produce a patched release tarball in ~/rpmbuild/SOURCES.
 tarball PROJ:
     ./scripts/make-tarball.sh {{PROJ}}
