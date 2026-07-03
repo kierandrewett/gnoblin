@@ -110,7 +110,13 @@ dev-session:
 devkit *CLIENT:
     ./scripts/run-devkit.sh visible {{CLIENT}}
 
-# Headless: boot the gnoblin stack and list the protocols it advertises.
+# Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
+# starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
+# This is the current stack's smoke test (the C++ devkit paths below are legacy).
+gnome-verify:
+    ./scripts/run-gnome-shell.sh
+
+# Legacy (retired C++ compositor): boot the gnoblin-shell stack, list protocols.
 devkit-verify:
     ./scripts/run-devkit.sh verify
 
