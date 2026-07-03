@@ -2,8 +2,14 @@
 
 Everything in gnoblin's automated suite runs headless (`just gnome-verify`,
 `gnome-dbus-verify`, `gnome-hot-reload-verify`, `gnome-scripting-verify`,
+`gnome-notifications-verify`, `gnome-protocol-gating-verify`, `gnome-devkit-verify`,
 `test-mutter`, `test`). A few things can only be confirmed on a real GPU / a real
 login session / with root. This is that checklist.
+
+**Fastest path to eyeball it without logging out:** `just gnome-devkit` opens a *nested*
+gnoblin session (a window in your current Wayland session) + a terminal wired to it; run
+your chrome (`qs -p ~/dev/kobel-shell`) from that terminal. Everything below can be poked
+from there too. The full login-session checks (§1) still matter for GDM/session wiring.
 
 ## 0. Build & install
 
@@ -98,29 +104,48 @@ ICC profile directory, so they need a real environment with a working local file
 local file monitor type"* (exit 251), which is environmental, not a regression. The unit
 tests (no backend) pass anywhere.
 
-## 7. Unattended screensharing (rustdesk)
+## 7. Per-app persistent screencast grants (macOS-style, rustdesk)
 
 ```sh
 sudo dnf install xdg-desktop-portal-devel      # the one build dep for the portal
 just dev-portal                                # build the patched backend into ./install
 ```
 
-Enable the OPT-IN auto-grant (off by default — the stock dialog is unchanged unless you do this):
-
-```sh
-mkdir -p ~/.config/gnoblin && touch ~/.config/gnoblin/portal-autogrant
-# or: export GNOBLIN_PORTAL_AUTOGRANT=1
-```
-
 Run the patched backend so it owns `org.freedesktop.impl.portal.desktop.gnome`
 (replacing the system one for the test), then connect rustdesk:
 
 ```sh
-GNOBLIN_PORTAL_AUTOGRANT=1 ./install/libexec/xdg-desktop-portal-gnome -r
+./install/libexec/xdg-desktop-portal-gnome -r
 ```
 
-Expect: **no ScreenCast source-picker / RemoteDesktop consent dialog** — screen + input
-are granted (all monitors). Remove the flag/file → the dialog returns.
+Expect, **first** connection: the normal ScreenCast source-picker / RemoteDesktop consent
+dialog, now with an **"Always allow this app"** checkbox. Tick it and approve.
 
-Note: `persist_mode` + restore-token (unattended *after* one manual grant) already works
-with stock GNOME; the patch above is for bypassing even the first dialog.
+Expect, **every subsequent** connection from that app: **no dialog** — screen + input are
+granted straight away (all monitors). Apps you never ticked still prompt each time. This is
+the macOS "Screen Recording" model: grant once per app, never re-asked.
+
+The grant is a file per app under `~/.config/gnoblin/portal-grants/` (keyed on the app-id,
+or the app's executable name for unsandboxed apps like rustdesk). Manage it:
+
+```sh
+gnoblinctl screen-grants          # list apps with a persistent grant
+gnoblinctl revoke-grant <id>      # revoke one (or rm ~/.config/gnoblin/portal-grants/<id>)
+```
+
+(The gnoblin Settings panel — §8 — shows the same list with a Revoke button per app.)
+
+## 8. gnoblin Settings (forked gnome-control-center)
+
+```sh
+sudo dnf install accountsservice-devel colord-gtk4-devel cups-devel gsound-devel ibus-devel \
+  libgtop2-devel libnma-gtk4-devel malcontent-devel ModemManager-glib-devel libpwquality-devel \
+  libsmbclient-devel libudisks2-devel
+just dev-settings                 # builds the fork + hides the multitasking panel
+./install/bin/gnome-control-center gnoblin
+```
+
+Expect: GNOME Settings with a **gnoblin** panel — switch rows for every `gnoblinctl features`
+toggle (flip one, confirm the subsystem changes live), the screencast per-app grants with a
+Revoke button each, and a **Reload gnoblin** button. The **Multitasking** panel is gone. With
+`./install/bin` ahead on `PATH`, "open Settings" / `gnome-control-center` launches this fork.
