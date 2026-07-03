@@ -19,7 +19,11 @@ install -Dm644 "$SRC/gnome-session/gnoblin.session" \
 install -Dm644 "$SRC/gnoblin.desktop" \
   "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 
+# The gnoblinctl CLI (org.gnoblin.Shell control front-end).
+install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
+
 echo ">> installed gnoblin session data into $PREFIX/share:"
 echo "     gnome-shell/modes/gnoblin.json         (UI-strip session mode)"
 echo "     gnome-session/sessions/gnoblin.session (required components)"
 echo "     wayland-sessions/gnoblin.desktop        (login entry)"
+echo "     bin/gnoblinctl                          (control CLI)"

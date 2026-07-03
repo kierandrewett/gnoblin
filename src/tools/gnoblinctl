@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# gnoblinctl — a small CLI over the org.gnoblin.Shell control protocol.
+# gnoblin is just GNOME + mutter; this drives the one gnoblin addition (the
+# control component) from the terminal. Pure gdbus, no extra deps.
+set -euo pipefail
+
+DEST=org.gnoblin.Shell
+OBJ=/org/gnoblin/Shell
+IFACE=org.gnoblin.Shell
+
+call() { gdbus call --session --dest "$DEST" --object-path "$OBJ" --method "$IFACE.$1" "${@:2}"; }
+
+# Strip the gdbus tuple wrapper: ('x',) -> x, (true,) -> true, ([...],) -> [...]
+unwrap() { sed -E "s/^\((.*),\)$/\1/; s/^'(.*)'$/\1/"; }
+
+usage() {
+    cat <<'EOF'
+gnoblinctl — control gnoblin over org.gnoblin.Shell
+
+  gnoblinctl ping                     health check (-> pong)
+  gnoblinctl version                  shell + protocol version
+  gnoblinctl reload                   Wayland soft-reload (theme + extensions + scripts)
+
+  gnoblinctl features                 list feature toggles + state
+  gnoblinctl feature <id>             show one feature's state
+  gnoblinctl enable  <id>             turn a subsystem ON  (SetFeature true)
+  gnoblinctl disable <id>             turn a subsystem OFF (SetFeature false)
+
+  gnoblinctl extensions               list extensions + state
+  gnoblinctl reload-ext <uuid>        hot-reload one extension's code
+
+  gnoblinctl scripts                  list loaded user scripts
+  gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
+
+Examples:
+  gnoblinctl disable osd              let an external OSD own volume/brightness popups
+  gnoblinctl reload                   pick up extension/script/theme edits, keep windows
+EOF
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  ping)            call Ping | unwrap ;;
+  version)         call GetVersion | unwrap ;;
+  reload)          call Reload >/dev/null; echo "soft-reloaded" ;;
+  features)        call ListFeatures | unwrap ;;
+  feature)         call GetFeature "${1:?usage: gnoblinctl feature <id>}" | unwrap ;;
+  enable)          call SetFeature "${1:?usage: gnoblinctl enable <id>}" true  >/dev/null; echo "$1 enabled" ;;
+  disable)         call SetFeature "${1:?usage: gnoblinctl disable <id>}" false >/dev/null; echo "$1 disabled" ;;
+  extensions)      call ListExtensions | unwrap ;;
+  reload-ext)      call ReloadExtension "${1:?usage: gnoblinctl reload-ext <uuid>}" >/dev/null; echo "reloading $1" ;;
+  scripts)         call ListScripts | unwrap ;;
+  reload-scripts)  call ReloadScripts >/dev/null; echo "scripts reloaded" ;;
+  ""|-h|--help|help) usage ;;
+  *) echo "unknown command: $cmd" >&2; usage >&2; exit 1 ;;
+esac
