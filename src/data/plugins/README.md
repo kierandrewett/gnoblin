@@ -1,9 +1,9 @@
 # Quick Settings Plugin Commands
 
-This folder contains executable commands installed on `PATH` as
-`gnoblin-qs-*`. Their filenames are part of the config contract: the default
-`[qs-plugin.NAME] command = ...` entries in `../gnoblin.defaults.conf` refer to
-these names directly.
+This folder contains executable commands `gnoblin-qs-*` — legacy quick-settings
+backend scripts from the retired Slint top bar's plugin protocol. gnoblin itself
+no longer consumes them; they are kept as reference for a bring-your-own chrome
+that wants ready-made backends for volume/wifi/bluetooth/etc. tiles.
 
 ## Contract
 

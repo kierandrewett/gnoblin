@@ -16,12 +16,9 @@
  *     ext-data-control = on
  *
  * Values are bools (on/off/true/false/yes/no/1/0), ints, or strings. Missing
- * file/keys fall back to the caller's default. gnoblin-shell watches the file
- * and calls gnoblin_config_reload() on change.
- *
- * In the compositor build the shipped gnoblin.defaults.conf is compiled in as a
- * base layer under the user's file (GNOBLIN_EMBED_DEFAULTS), so unset keys still
- * resolve to gnoblin's defaults; the Rust shell embeds the same file.
+ * file/keys fall back to the caller's default. Compiled into gnoblin's Mutter
+ * protocol overlays, which read it to gate each Wayland protocol
+ * ([protocols] keys; see src/data/gnoblin.conf.example).
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free

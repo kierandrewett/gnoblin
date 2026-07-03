@@ -23,10 +23,9 @@ The public interface is intentionally small:
 - `gnoblin_config_get_list()` returns all repeated values for one key.
 - `gnoblin_config_get_keys()` returns keys in file order, including repeats.
 
-The parser also supports an optional base layer: when built with
-`GNOBLIN_EMBED_DEFAULTS`, `src/data/gnoblin.defaults.conf` is compiled in
-(via `scripts/stringify-file.py`) and parsed before the user's file, so unset
-keys still resolve to shipped defaults.
+Compiled into gnoblin's Mutter protocol overlays (`src/protocols/`), which read
+`gnoblin.conf` to gate each Wayland protocol on/off (`[protocols]` keys — see
+`src/data/gnoblin.conf.example`). Unset keys fall back to the caller's default.
 
 ## Grammar Contract
 

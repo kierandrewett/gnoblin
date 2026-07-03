@@ -16,18 +16,12 @@ treating them as passive examples.
   toggles) plus layer-shell chrome placement keys. Its `manifest` copies it into
   the patched GNOME Shell tree.
 - `gnoblin.conf.example` is the user-facing reference config for the Mutter
-  overlays (notably the `[protocols]` gates).
-- `gnoblin.defaults.conf` is the shipped base layer (embedded when the parser is
-  built with `GNOBLIN_EMBED_DEFAULTS`).
-- `plugins/gnoblin-qs-*` are executable quick-settings plugin commands consumed
-  by an external layer-shell chrome.
-
-## Config Layers
-
-`gnoblin.defaults.conf` is parsed first, then the user's
-`$XDG_CONFIG_HOME/gnoblin/gnoblin.conf` is parsed on top. Repeated keys stay in
-file order, and scalar lookups use the last value, so user keys override the
-shipped base layer.
+  overlays (the `[protocols]` gates). The overlays read
+  `$GNOBLIN_CONFIG` / `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`; unset keys fall
+  back to the caller's default (all protocols on).
+- `plugins/gnoblin-qs-*` are legacy quick-settings backend scripts (from the
+  retired Slint top bar's plugin protocol); kept as reference for a
+  bring-your-own chrome, not consumed by gnoblin itself.
 
 ## Quick Settings Plugins
 

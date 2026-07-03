@@ -20,8 +20,8 @@ a feature lives.
   toggles). Copied into the GNOME Shell submodule via its `manifest` and
   registered by `patches/gnome-shell/30-gnoblin-control`.
 - `data/` — installed runtime data: the `gnoblin` session mode + gnome-session +
-  `.desktop`, the `org.gnoblin.shell` gschema, `gnoblin.conf.example`, the
-  embedded `gnoblin.defaults.conf` base layer, and quick-settings plugin scripts.
+  `.desktop`, the `org.gnoblin.shell` gschema, `gnoblin.conf.example`, and legacy
+  quick-settings plugin scripts (reference for a bring-your-own chrome).
 
 ## Common Tasks
 
@@ -35,7 +35,6 @@ a feature lives.
   components load: edit `data/session/modes/gnoblin.json`.
 - Changing the config parser or grammar: start in `config/`; keep the C parser
   and the parser test in `tests/config-test.c` in lockstep.
-- Changing shipped defaults: update `data/gnoblin.defaults.conf` for the runtime
-  base layer and `data/gnoblin.conf.example` for the user-facing reference.
+- Changing the documented protocol gates: update `data/gnoblin.conf.example`.
 - Changing a quick-settings plugin: update the matching `data/plugins/gnoblin-qs-*`
   script.
