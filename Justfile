@@ -106,6 +106,11 @@ gnome-verify:
 gnome-dbus-verify:
     ./scripts/test-gnome-dbus.sh
 
+# Headless: prove live extension hot-reload — install a probe extension, edit its
+# code, ReloadExtension over org.gnoblin.*, confirm the new code ran (no relogin).
+gnome-hot-reload-verify:
+    ./scripts/test-hot-reload.sh
+
 # Review one or more screenshots with external visual/design feedback.
 design-review *SCREENSHOTS:
     ./scripts/design-review.sh {{SCREENSHOTS}}

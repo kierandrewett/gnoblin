@@ -1,0 +1,38 @@
+From dff02a089e5687496ef98bb3c707d680a98d6e08 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 3 Jul 2026 02:16:18 +0100
+Subject: [PATCH] extension-hot-reload: cache-bust the extension import
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ESM caches modules by URI, so reloadExtension() re-runs the constructor against the
+OLD code (the comment right below even says 'extensions can only be imported once').
+Append an incrementing query string to the import URI so each (re)load imports fresh
+source — this is what makes live hot-reload of an extension's code work without a
+relogin. Verified: GJS treats file.js?gnoblinReload=N as a distinct module.
+---
+ js/ui/extensionSystem.js | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
+index 22121c4..baa31bb 100644
+--- a/js/ui/extensionSystem.js
++++ b/js/ui/extensionSystem.js
+@@ -500,7 +500,12 @@ export class ExtensionManager extends Signals.EventEmitter {
+         let extensionState = null;
+ 
+         try {
+-            extensionModule = await import(extensionJs.get_uri());
++            // gnoblin: cache-bust the import so reloadExtension() picks up code
++            // edits live. ESM caches modules by URI; a fresh query string is a
++            // distinct module, so incrementing it re-imports the new source.
++            this._gnoblinImportSeq = (this._gnoblinImportSeq ?? 0) + 1;
++            extensionModule = await import(
++                `${extensionJs.get_uri()}?gnoblinReload=${this._gnoblinImportSeq}`);
+ 
+             // Extensions can only be imported once, so add a property to avoid
+             // attempting to re-import an extension.
+-- 
+2.53.0
+

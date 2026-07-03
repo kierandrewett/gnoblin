@@ -85,15 +85,17 @@ export function softReload(reason = 'manual') {
             const ext = em.lookup(uuid);
             if (!ext || ext.state !== ExtensionState.ACTIVE)
                 continue;
-            try {
-                em.disableExtension(uuid);
-                em.enableExtension(uuid);
-            } catch (e) {
-                logError(e, `gnoblin: soft-reload of ${uuid} failed`);
-            }
+            // reloadExtension() re-imports the extension's code (cache-busted by the
+            // 34-extension-hot-reload patch), so soft-reload picks up code edits live.
+            em.reloadExtension(ext).catch(
+                e => logError(e, `gnoblin: soft-reload of ${uuid} failed`));
         }
     }
 }
+
+// Human-readable name for an ExtensionState value.
+const STATE_NAMES = Object.fromEntries(
+    Object.entries(ExtensionState).map(([k, v]) => [v, k.toLowerCase()]));
 
 // The wire contract. Deliberately small for now; grows with Phases 2.5/3.
 const IFACE = `
@@ -109,6 +111,14 @@ const IFACE = `
     </method>
     <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
+    <!-- Extensions: [uuid, state] for every known extension. -->
+    <method name="ListExtensions">
+      <arg type="a(ss)" direction="out" name="extensions"/>
+    </method>
+    <!-- Hot-reload one extension's code in-place (re-imports fresh source). -->
+    <method name="ReloadExtension">
+      <arg type="s" direction="in" name="uuid"/>
+    </method>
     <!-- Feature toggles: gate gnome-shell subsystems on/off live. -->
     <!-- [id, human summary, enabled] for every gnoblin-gateable subsystem. -->
     <method name="ListFeatures">
@@ -236,6 +246,27 @@ export class Component {
 
     Reload() {
         softReload('org.gnoblin.Shell.Reload');
+    }
+
+    ListExtensions() {
+        const em = Main.extensionManager;
+        if (!em)
+            return [];
+        return em.getUuids().map(uuid => {
+            const ext = em.lookup(uuid);
+            return [uuid, STATE_NAMES[ext?.state] ?? 'unknown'];
+        });
+    }
+
+    ReloadExtension(uuid) {
+        const em = Main.extensionManager;
+        const ext = em?.lookup(uuid);
+        if (!ext)
+            throw new Error(`unknown extension: ${uuid}`);
+        // Fire-and-forget; reloadExtension re-imports fresh code (cache-busted).
+        em.reloadExtension(ext).catch(
+            e => logError(e, `gnoblin: hot-reload of ${uuid} failed`));
+        console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
     }
 
     get IsWayland() {
