@@ -23,6 +23,8 @@ management, and KDE appmenu.
 2. Wire new globals in `aggregator/meta-gnoblin-protocols.c`.
 3. Update `scripts/gen-gnoblin-protocols-patch.sh` if the protocol adds files.
 4. Regenerate and reapply the Mutter patches before testing.
+5. Gate the protocol on a `[protocols]` key in `gnoblin.conf`.
 
-Protocol behavior should be covered by a headless harness under
-`tests/layer-shell/` whenever possible.
+Smoke-test with `just gnome-verify` (boots gnome-shell in the gnoblin session
+mode and confirms `zwlr_layer_shell_v1` is advertised) and the Mutter in-tree
+headless suite via `just test-mutter`.

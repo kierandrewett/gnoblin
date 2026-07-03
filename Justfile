@@ -2,8 +2,8 @@
 # "just GNOME + Mutter": Mutter carries the wlr-layer-shell + protocol overlays
 # (patches/mutter/ + src/protocols/); GNOME Shell carries a thin patch set (relaxed
 # extension loading, unsafe-mode, portal auto-grant, hidden native top bar) and the
-# `gnoblin` session mode that strips its stock UI. Quickshell (repo: kobel) draws
-# the chrome as layer-shell clients.
+# `gnoblin` session mode that strips its stock UI. Chrome is bring-your-own: any
+# layer-shell client (Quickshell, waybar, a custom one, or none) draws the UI.
 #
 # The from-scratch C++ compositor + Rust/Slint clients were RETIRED; recover them
 # from the `archive/cpp-compositor` tag. Submodules are pinned + pristine; gnoblin's
@@ -15,7 +15,7 @@ set shell := ["bash", "-uc"]
 patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter"
 
-# Local dev prefix: the whole gnoblin stack is built+installed here for the devkit.
+# Local dev prefix: the whole gnoblin stack is built+installed here (no system install).
 prefix := justfile_directory() / "install"
 
 _default:
@@ -56,11 +56,10 @@ build PROJ: (patch PROJ)
 
 # --- dev stack: build the whole gnoblin stack into ./install and run it ------
 #
-#   just dev            build+install mutter (incl. Devkit viewer) + gnoblin-shell
-#                       + layer-shell clients + schema into ./install
-#   just devkit         open the Mutter Devkit window running gnoblin-shell
-#   just devkit foot    ...with `foot` running inside it
-#   just devkit-verify  headless: boot the stack, list advertised protocols
+#   just dev            build+install patched mutter + patched gnome-shell + session
+#                       data into ./install
+#   just gnome-verify   headless: boot gnome-shell in gnoblin mode, check layer-shell
+#   just gnome-dbus-verify  headless: org.gnoblin.* control protocol round-trip
 #
 mutter_dev_opts := "--prefix=" + prefix + " --libdir=lib64 -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
 mutter_test_opts := "--prefix=" + prefix + " --libdir=lib64 -Ddevkit=enabled -Dtests=enabled -Dmutter_tests=true -Dclutter_tests=false -Dcogl_tests=false -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
@@ -77,7 +76,7 @@ dev-mutter: (patch "mutter")
 # Build + install patched gnome-shell against the freshly built mutter in ./install.
 # gnome-shell is the compositor+shell again; its stock UI (panel/overview/dash) is
 # stripped via the `gnoblin` session mode + a minimal native-topbar patch, and its
-# subsystems are toggled live over org.gnoblin.* — Quickshell (kobel) draws the chrome.
+# subsystems are toggled live over org.gnoblin.* — bring-your-own chrome draws the UI.
 dev-gnome-shell: dev-mutter (patch "gnome-shell")
     # ALWAYS build clean: `patch gnome-shell` resets the submodule (git clean/checkout)
     # and re-copies the overlay every run, which resets source mtimes underneath the
@@ -98,7 +97,7 @@ dev-session:
 
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
-# This is the current stack's smoke test (the C++ devkit paths below are legacy).
+# This is the stack's headless smoke test.
 gnome-verify:
     ./scripts/run-gnome-shell.sh
 

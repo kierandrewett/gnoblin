@@ -1,52 +1,41 @@
 # Source Map
 
-`src/` is split by ownership boundary, not by language. Start here when trying
-to understand where a feature lives.
+`src/` is split by ownership boundary. gnoblin is patched GNOME (Mutter +
+GNOME Shell); everything here is either an overlay copied into a submodule at
+build time, or runtime data installed into the prefix. Start here to find where
+a feature lives.
 
 ## Top-Level Areas
 
-- `compositor/` is the standalone `gnoblin-shell` binary. It links against the
-  installed patched Mutter and owns window management policy, effects, D-Bus
-  control APIs, keybindings, rules, outputs, gestures, overview, lock, and
-  app/window animation behavior.
-- `protocols/` contains Mutter overlay sources for Wayland protocols that
-  gnoblin adds to libmutter. These files are copied into the Mutter submodule by
-  `scripts/copy-overlay.sh` and persisted as patch files under `patches/mutter/`.
-- `clients/` contains Slint/Rust shell clients and the shared Rust support crate
-  used by topbar, dock, wallpaper, notifications, OSD, launcher, and related UI
-  surfaces.
-- `config/` is the shared C config parser. It is used by both the compositor and
-  some Mutter protocol overlays, so keep it C-compatible and byte-compatible
-  with the Rust mirror in `clients/shell-ui/src/config.rs`.
-- `data/` is installed runtime data: `gnoblin.conf.example`, the embedded
-  `gnoblin.defaults.conf` base layer, quick-settings plugin commands, schemas,
-  and manifests.
+- `protocols/` — Mutter overlay sources for the Wayland protocols gnoblin adds
+  to libmutter (layer-shell, screencopy, idle-notify, data/gamma/output-power
+  control, foreign-toplevel list + management, KDE appmenu, session-lock and
+  output-management scaffolding). These files are copied into the Mutter
+  submodule by `scripts/copy-overlay.sh` and the wiring is persisted as patch
+  files under `patches/mutter/`.
+- `config/` — the shared C `gnoblin.conf` parser. It is compiled into the Mutter
+  protocol overlays (e.g. to gate protocols), so keep it C-compatible.
+- `gnome-shell-overlay/` — the `gnoblinControl.js` session component that hosts
+  the `org.gnoblin.Shell` control protocol (Ping/GetVersion/Reload + feature
+  toggles). Copied into the GNOME Shell submodule via its `manifest` and
+  registered by `patches/gnome-shell/30-gnoblin-control`.
+- `data/` — installed runtime data: the `gnoblin` session mode + gnome-session +
+  `.desktop`, the `org.gnoblin.shell` gschema, `gnoblin.conf.example`, the
+  embedded `gnoblin.defaults.conf` base layer, and quick-settings plugin scripts.
 
 ## Common Tasks
 
-- Changing compositor behavior: start in `compositor/gnoblin-shell-plugin.cpp`
-  for animation/effects hooks, or `compositor/gnoblin-control.cpp` for D-Bus
-  APIs exposed to tests and clients.
-- Adding a Wayland protocol: create a protocol directory under `protocols/`, add
-  a `manifest`, wire it in `protocols/aggregator/`, then regenerate the Mutter
-  protocol patch with `scripts/gen-gnoblin-protocols-patch.sh`.
-- Changing topbar/dock/wallpaper UI: start in `clients/<role>/src/main.rs` and
-  `clients/<role>/ui/*.slint`; shared Slint widgets live under
-  `clients/shell-ui/vendor/slint/`.
-- Changing cross-client helpers: use `clients/shell-ui/src/`. That crate owns
-  desktop entry launching, app context menus, appmenu/DBusMenu helpers, shell
-  D-Bus wrappers, config helpers, theme data, tray, and popout models.
-- Changing the config parser or grammar: start in `config/`; keep the C parser,
-  Rust mirror, and parser tests in lockstep.
+- Adding a Wayland protocol: create a directory under `protocols/`, add a
+  `manifest`, wire it in `protocols/aggregator/`, then regenerate the Mutter
+  protocol patch with `scripts/gen-gnoblin-protocols-patch.sh` and gate it with a
+  `[protocols]` key in `gnoblin.conf`.
+- Changing what the `org.gnoblin.Shell` protocol exposes: edit
+  `gnome-shell-overlay/js/ui/components/gnoblinControl.js`.
+- Changing how GNOME Shell's stock UI is stripped, or which background
+  components load: edit `data/session/modes/gnoblin.json`.
+- Changing the config parser or grammar: start in `config/`; keep the C parser
+  and the parser test in `tests/config-test.c` in lockstep.
 - Changing shipped defaults: update `data/gnoblin.defaults.conf` for the runtime
-  base layer, `data/gnoblin.conf.example` for the user-facing reference, and the
-  relevant config parser tests.
-- Changing built-in quick-settings tiles: update the `[qs-plugin.*]` defaults in
-  `data/gnoblin.defaults.conf` and the matching `data/plugins/gnoblin-qs-*`
-  command.
-
-## Generated Or Heavy Directories
-
-Cargo output is configured to live under `../build/cargo-target/`, alongside
-the Meson build trees, so `src/` stays source-only. If an older checkout created
-`clients/target/`, treat it as legacy generated output and remove it.
+  base layer and `data/gnoblin.conf.example` for the user-facing reference.
+- Changing a quick-settings plugin: update the matching `data/plugins/gnoblin-qs-*`
+  script.

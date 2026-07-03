@@ -1,12 +1,14 @@
 # Config Parser
 
-`src/config/` owns the C implementation of the `gnoblin.conf` reader used by
-the compositor and by Mutter protocol overlays.
+`src/config/` owns the C implementation of the `gnoblin.conf` reader. It is
+compiled into the Mutter protocol overlays (its `manifest` copies it to
+`src/wayland/` in the Mutter tree), where it gates protocols and other
+overlay behaviour.
 
 ## Files
 
 - `gnoblin-config.c` is the parser and in-memory section table.
-- `gnoblin-config.h` is the public interface used by compositor/protocol code.
+- `gnoblin-config.h` is the public interface used by the overlay code.
 - `manifest` copies the parser into the patched Mutter tree during overlay
   application.
 
@@ -21,15 +23,12 @@ The public interface is intentionally small:
 - `gnoblin_config_get_list()` returns all repeated values for one key.
 - `gnoblin_config_get_keys()` returns keys in file order, including repeats.
 
-The compositor build defines `GNOBLIN_EMBED_DEFAULTS`, so
-`src/data/gnoblin.defaults.conf` is parsed as a base layer before the user's
-file. Mutter protocol overlays compile the same parser without embedded
-defaults.
+The parser also supports an optional base layer: when built with
+`GNOBLIN_EMBED_DEFAULTS`, `src/data/gnoblin.defaults.conf` is compiled in
+(via `scripts/stringify-file.py`) and parsed before the user's file, so unset
+keys still resolve to shipped defaults.
 
 ## Grammar Contract
-
-Keep this byte-compatible with the Rust mirror in
-`src/clients/shell-ui/src/config.rs`.
 
 - Lines trim leading space/tab and trailing space/tab/CR/LF.
 - Empty lines and lines starting with `#` or `;` after trimming are comments.
@@ -45,12 +44,10 @@ Keep this byte-compatible with the Rust mirror in
 
 ## Verification
 
-Best-effort parser checks:
-
 ```sh
 gcc -fsyntax-only src/config/gnoblin-config.c -I src/config $(pkg-config --cflags glib-2.0)
 cc tests/config-test.c src/config/gnoblin-config.c -I src/config $(pkg-config --cflags --libs glib-2.0) -o /tmp/gnoblin-config-test
 /tmp/gnoblin-config-test
-cc tests/config-example-test.c src/config/gnoblin-config.c -I src/config $(pkg-config --cflags --libs glib-2.0) -o /tmp/gnoblin-config-example-test
-/tmp/gnoblin-config-example-test src/data/gnoblin.conf.example
 ```
+
+Or just run `just test-config`.

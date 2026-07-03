@@ -1,141 +1,129 @@
 # gnoblin
 
-A small, self-contained Wayland desktop: a **from-scratch compositor**
-(`gnoblin-shell`) that embeds **libmutter-17** as a library and drives it with
-its own `MetaPlugin`, plus a set of **Rust layer-shell clients** for the panel,
-dock, notifications, launcher and on-screen display.
+gnoblin is **patched GNOME** — a pinned **Mutter** (49.5) and **GNOME Shell**
+(49.6) with a thin, purpose-built patch set — turned into a compositor you can
+build a desktop *on top of*. Mutter gains `wlr-layer-shell` and a stack of
+Wayland protocol overlays so any layer-shell client can draw the UI. GNOME Shell
+keeps running as the compositor and session manager, but its stock chrome (top
+bar, Activities overview, dash, app grid) is stripped by a **session mode**, not
+by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
+— Quickshell, waybar, a custom layer-shell client, or nothing at all.
 
-gnoblin started as a *patched GNOME* (mutter + gnome-shell with the overview
-removed and `wlr-layer-shell` added). It has since pivoted: gnome-shell is gone,
-replaced by gnoblin-shell — a concrete, owned compositor (not a patch pile) — and
-the UI is bring-your-own layer-shell clients, with first-class ones gnoblin
-ships. mutter is still used as a library and carries a thin set of protocol
-overlays; everything else is gnoblin's own code.
+> gnoblin previously shipped a from-scratch C++ compositor plus Rust/Slint
+> layer-shell clients. That stack was **retired**; recover it from the git tag
+> `archive/cpp-compositor`. Everything below describes the current
+> patched-GNOME direction.
 
 ## What's in it
 
-**Compositor** (`src/compositor/`, C++ on `libmutter-17`):
-
-- Window management: edge snapping with customisable regions, a drag-to-edge
-  tile preview, a config-driven right-click window menu, Super+drag move/resize.
-- Effects (config-tunable curves + durations): open / close / minimize /
-  unminimize / resize / workspace-slide animations; opt-in rounded corners and
-  soft drop shadows (analytic SDF shaders); solid fallback background behind
-  the layer-shell wallpaper.
-- A session **lock screen** (overlay + Clutter input grab + PAM).
-- A dogfooded D-Bus API, `dev.gnoblin.Shell`: `Dispatch`, `ListActions`,
-  `WorkspaceState`, `ListWindows`, `ActivateWindow`, plus `spawn` (Hyprland-style
-  exec binds) and `lock` — the same verbs keybindings and `gnoblinctl` use.
-
-**Protocols** (`src/protocols/`, mutter overlays): `wlr-layer-shell`,
-`wlr-screencopy`, `ext-idle-notify`, `ext-foreign-toplevel-list`,
-`wlr-foreign-toplevel-management`, `wlr-gamma-control` (so `wlsunset` night-light
-works), `wlr-output-power-management`, `ext-data-control` (so `cliphist` works).
-
-**Clients** (`src/clients/`, Rust + Slint layer-shell clients, all themeable):
-
-| Client | Role |
-|---|---|
-| `gnoblin-topbar` | workspaces · clock · system tray (StatusNotifierWatcher + dbusmenu) · volume · network · battery · quick-settings (volume/brightness sliders, Wi-Fi/Bluetooth toggles) · power menu |
-| `gnoblin-dock` | taskbar (running windows + favourites), launch / raise |
-| `gnoblin-notifyd` | `org.freedesktop.Notifications` daemon + popups |
-| `gnoblin-launcher` | Slint app search and grid (Super+Space / Super+A) |
-| `gnoblin-osd` | volume / brightness on-screen display (media keys) |
-| `gnoblin-wallpaper` | swappable layer-shell wallpaper |
+- **Mutter overlays** (`src/protocols/`, C on top of the pinned Mutter tree):
+  `wlr-layer-shell` (v5), `wlr-screencopy`, `ext-idle-notify`,
+  `ext-foreign-toplevel-list`, `wlr-foreign-toplevel-management`,
+  `wlr-gamma-control` (so `wlsunset` night-light works),
+  `wlr-output-power-management`, `ext-data-control` (so `cliphist` works),
+  plus session-lock and output-management scaffolding. Each is gated by a
+  `gnoblin.conf` `[protocols]` key so you can turn any of them off.
+- **GNOME Shell patches** (`patches/gnome-shell/`): relaxed extension loading
+  (skip shell-version validation), unsafe-mode at startup, portal Access dialog
+  auto-grant (unattended screensharing), a `--disable-extensions` runtime flag,
+  hidden native top-bar chrome, Gnoblin branding, a Wayland soft-reload
+  (`Alt+F2` `r` reloads in-process so windows survive), and the
+  `org.gnoblin.shell` feature schema.
+- **Session mode** (`src/data/session/modes/gnoblin.json`): inherits the stock
+  `user` mode, empties the panel, sets `hasOverview: false`, and keeps only
+  the essential background components (polkit, keyring, automount, network
+  agent) plus `gnoblinControl` — the control protocol below.
+- **`org.gnoblin.Shell` control protocol** — a first-class GNOME Shell session
+  component (`src/gnome-shell-overlay/js/ui/components/gnoblinControl.js`,
+  registered via `patches/gnome-shell/30-gnoblin-control`). It exposes over
+  D-Bus:
+  - `Ping` / `GetVersion` — health + version.
+  - `Reload` — Wayland soft-reload (reloads theme + extensions in-process;
+    windows survive). Also bound to `Alt+F2` `r`.
+  - `ListFeatures` / `GetFeature` / `SetFeature` / `FeatureChanged` — toggle
+    gnome-shell subsystems (e.g. `osd`, `screenshot`) on/off at runtime so an
+    external userspace can own them. Persisted in the `org.gnoblin.shell`
+    `disabled-features` GSettings key.
 
 ## Layout
 
 ```
 src/
-  compositor/   gnoblin-shell — the C++ libmutter compositor
-  config/       shared C config parser (gnoblin.conf)
-  protocols/    mutter wayland protocol overlays + aggregator/
-  clients/      the Rust layer-shell clients (above)
-  data/         gschema, gnoblin.conf.example
-subprojects/    upstream submodules pinned to tags, kept PRISTINE (mutter @ 49.5)
-patches/        EDITS to upstream files, grouped by purpose
-scripts/        apply-patches, copy-overlay, run-devkit, install-userspace, tests
+  protocols/    Mutter Wayland protocol overlays + aggregator/
+  config/       shared C ini parser (gnoblin.conf), compiled into the overlays
+  data/         session mode, gnome-session, gschema, conf, QS plugin scripts
+  gnome-shell-overlay/  the org.gnoblin.Shell control component
+subprojects/    pinned upstream submodules, kept PRISTINE (mutter 49.5, gnome-shell 49.6)
+patches/        edits to upstream files, grouped by purpose (mutter/, gnome-shell/)
+scripts/        apply-patches, copy-overlay, install-session, verify + test scripts
 Justfile        build + test orchestration
 ```
 
-The mutter submodule is **never modified in the repo**. gnoblin's mutter changes
-come from two places, applied onto the pinned tag at build time:
+The submodules are **never modified in the repo**. gnoblin's changes come from
+two places, applied onto the pinned tags at build time:
 
-- **Overlay (`src/protocols/<feature>/`, `src/config/`)** — large new files we
-  author (the protocol implementations, the config parser) live here as real,
-  navigable source. `scripts/copy-overlay.sh` finds every `manifest`
-  (`<project> <source> <dest>`) under `src/` and copies the files into the
-  submodule; they're gitignored there and removed on reset, so it stays pristine.
+- **Overlay (`src/protocols/`, `src/config/`, `src/gnome-shell-overlay/`)** —
+  large new files we author live here as real, navigable source with a
+  `manifest` (`<project> <src> <dest>` lines). `scripts/copy-overlay.sh` copies
+  them into the submodule tree; they're gitignored there and removed on reset,
+  so the submodule stays pristine.
 - **Patches (`patches/`)** — for *editing existing* upstream files (wiring the
-  overlays into mutter's build). Applied with `git am`.
+  overlays into the build, the shell changes above). Applied with `git am`.
 
 ## Build
 
 ```sh
-just init        # fetch the pinned mutter submodule
-just dev         # build patched mutter + gnoblin-shell + the Rust clients into ./install
+just init        # fetch the pinned mutter + gnome-shell submodules
+just dev         # build patched mutter + gnome-shell + session data into ./install
 ```
 
-`just dev` builds everything into a local `./install` prefix (no system install).
-It needs the usual mutter build deps plus a Rust toolchain, `gtk4-layer-shell`,
-and `libpam`. The first Rust build compiles all of gtk4-rs (~40s); later builds
-are incremental. Individual steps: `just dev-mutter`, `just dev-shell`,
-`just dev-userspace`.
+`just dev` builds the whole stack into a local `./install` prefix (no system
+install). Individual steps: `just dev-mutter`, `just dev-gnome-shell`,
+`just dev-session`. It needs the usual mutter + gnome-shell build deps.
 
 ## Run
 
 ```sh
-# Nested/headless smoke (boots gnoblin-shell, lists the protocols it serves):
-just devkit-verify
+# Headless smoke: boot gnome-shell in the gnoblin session mode and confirm it
+# starts and advertises zwlr_layer_shell_v1 (so any layer-shell client can draw):
+just gnome-verify
 
-# Windowed nested compositor in your current Wayland session (needs a GPU):
-./scripts/run-devkit.sh visible
-
-# Capture a screenshot of the running stack to a PNG (needs a GPU backend):
-SHOT_NESTED=1 ./scripts/run-devkit.sh shot   # -> /tmp/gnoblin-shot.png
-
-# Dump the live compositor scene inspector over gnoblinctl's control socket:
-gnoblinctl inspect
-gnoblinctl inspect /tmp/gnoblin-scene.json
+# Headless: exercise the org.gnoblin.* control protocol over D-Bus
+# (Ping / GetVersion / Reload round-trip):
+just gnome-dbus-verify
 ```
 
-For a real session, install a `gnoblin.desktop` session entry pointing at
-`gnoblin-shell` and select it at the login manager. The compositor also self-
-screenshots on demand: set `GNOBLIN_SHOT=/path.png` (and optionally
-`GNOBLIN_SHOT_DELAY` ms) in its environment.
+For a real session, `just dev-session` installs a `gnoblin.desktop` /
+`gnoblin.session` entry into the prefix; select "gnoblin" at the login manager.
+Then run whatever chrome you like as layer-shell clients.
 
 ## Configure
 
-gnoblin reads `~/.config/gnoblin/gnoblin.conf` (or `$GNOBLIN_CONFIG`) — a
-sectioned INI, watched live (saving re-applies keybinds, animations, wallpaper).
-See `src/data/gnoblin.conf.example` for every key: `[startup] exec`,
-`[appearance]` (background / wallpaper / rounding / shadow / accent),
-`[animations]`, `[input]`, `[bind]` (`Accel = action [arg]`), `[snap]`, `[menu]`,
-`[lock]`. Keybinds, `gnoblinctl`, and the `dev.gnoblin.Shell` D-Bus compatibility
-API all share one set of actions — `gnoblinctl actions` lists them.
+Two configuration surfaces:
+
+- **`gnoblin.conf`** — a sectioned INI read by the Mutter overlays. Its
+  `[protocols]` section gates each Wayland protocol on/off (all on by default).
+  See `src/data/gnoblin.conf.example` for the keys; `src/data/gnoblin.defaults.conf`
+  is the shipped base layer parsed underneath the user's file.
+- **`org.gnoblin.shell` GSettings** — holds `disabled-features` (the runtime
+  feature toggles above) plus layer-shell chrome placement keys.
+
+The stock GNOME UI strip is configured entirely by the session mode
+(`src/data/session/modes/gnoblin.json`), not by editing shell JS.
 
 ## Tests
 
 ```sh
-just test            # everything runnable without a display
-  test-build         #   patches apply, protocol lints, schema default
-  test-clients       #   Rust unit tests: volume/brightness/network/dbusmenu/tray/app-match parsers
-  test-logic         #   C tests: lock PAM rejects wrong passwords; shadow/corner SDF geometry
-just test-mutter     # mutter in-tree headless layer-shell tests (needs a dev build)
-just test-devkit     # gnoblin-shell devkit integration tests (needs a dev build)
-just test-devkit-visible # exact `just devkit` visible startup/log/cleanup smoke
+just test              # config-parser logic test, no display
+just test-mutter       # mutter in-tree headless functional suite (unit/Wayland/native + focus)
+just gnome-verify      # boots gnome-shell in gnoblin mode, checks zwlr_layer_shell_v1
+just gnome-dbus-verify # org.gnoblin.* control protocol round-trip (needs ./install)
 ```
-
-Build, boot, protocol, D-Bus, and the logic/security/geometry tests run headless.
-Pixel-level rendering and interactive input (the visual look of the bar/dock/
-shadows, a typed lock password) require a real GPU Wayland session. The visible
-devkit smoke also opens a Mutter Devkit window on the host session, so it is kept
-separate from the default headless integration recipe.
 
 ## Authoring a protocol overlay
 
 Drop the implementation under `src/protocols/<feature>/` with a `manifest`
 (`mutter <src> <dest>` lines) and vendored protocol XML, add its init call to
 `src/protocols/aggregator/`, regenerate the wiring patch with
-`scripts/gen-gnoblin-protocols-patch.sh`, and gate it via
-`gnoblin_config_get_bool("protocols", "<name>", TRUE)`.
+`scripts/gen-gnoblin-protocols-patch.sh`, and gate it via a `[protocols]`
+`gnoblin.conf` key.
