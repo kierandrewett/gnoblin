@@ -28,7 +28,6 @@ EXPECTED = {
     "zwlr_gamma_control_manager_v1":    "wlr-gamma-control",
     "zwlr_output_power_manager_v1":     "wlr-output-power-management",
     "ext_data_control_manager_v1":      "ext-data-control",
-    "org_kde_kwin_appmenu_manager":     "kde-appmenu",
 }
 
 
