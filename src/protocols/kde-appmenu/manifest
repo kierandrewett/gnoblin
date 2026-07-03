@@ -1,4 +1,0 @@
-# project source destination
-mutter meta-wayland-kde-appmenu.c src/wayland/meta-wayland-kde-appmenu.c
-mutter meta-wayland-kde-appmenu.h src/wayland/meta-wayland-kde-appmenu.h
-mutter kde-appmenu.xml src/wayland/protocol/kde-appmenu.xml

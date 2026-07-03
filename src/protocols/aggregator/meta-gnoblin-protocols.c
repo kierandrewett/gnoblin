@@ -16,7 +16,6 @@
 #include "wayland/meta-wayland-foreign-toplevel-management.h"
 #include "wayland/meta-wayland-gamma-control.h"
 #include "wayland/meta-wayland-idle-notify.h"
-#include "wayland/meta-wayland-kde-appmenu.h"
 #include "wayland/meta-wayland-output-power-management.h"
 
 void
@@ -28,5 +27,4 @@ meta_gnoblin_init_protocols (MetaWaylandCompositor *compositor)
   meta_wayland_init_gamma_control (compositor);
   meta_wayland_init_output_power_management (compositor);
   meta_wayland_init_data_control (compositor);
-  meta_wayland_init_kde_appmenu (compositor);
 }

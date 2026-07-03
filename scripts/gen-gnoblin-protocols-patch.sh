@@ -41,8 +41,6 @@ SOURCES=(
   meta-wayland-output-power-management.h
   meta-wayland-data-control.c
   meta-wayland-data-control.h
-  meta-wayland-kde-appmenu.c
-  meta-wayland-kde-appmenu.h
 )
 
 # Vendored protocol XML basenames (loaded as 'private' from overlay protocol/).
@@ -53,7 +51,6 @@ PROTOCOLS=(
   wlr-gamma-control-unstable-v1
   wlr-output-power-management-unstable-v1
   ext-data-control-v1
-  kde-appmenu
 )
 
 git -C "$SM" am --abort >/dev/null 2>&1 || true
