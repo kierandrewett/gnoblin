@@ -95,42 +95,46 @@ if ! gdbus wait --session --timeout 30 org.gnoblin.Shell; then
 fi
 echo ">> gnoblin up. org.gnoblin.Shell owned; nested wayland display = $DISP"
 
-# --- env for anything you launch INTO the nested session ----------------------
-# WAYLAND_DISPLAY -> the nested gnoblin (so qs/foot render inside it)
-# DBUS_SESSION_BUS_ADDRESS -> the isolated bus (so gnoblinctl reaches org.gnoblin.Shell)
-export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland
+# --- env for anything you launch from the devkit shell ------------------------
+# DBUS_SESSION_BUS_ADDRESS + PATH are already exported. WAYLAND_DISPLAY is handled
+# per-case below: the terminal is a HOST window (renders in your real session), but
+# its shell points children (qs/foot) at the NESTED gnoblin display.
+export GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland
 
 MOTD='cat <<EOF
 ── gnoblin devkit ──────────────────────────────────────────────
-This shell is a client of the nested gnoblin session ('"$DISP"').
-Launch your chrome here, e.g.:
+This is a host terminal; commands you run here target the nested
+gnoblin session ('"$DISP"'). Launch your chrome, e.g.:
 
     qs -p ~/dev/kobel-shell        # Quickshell (kobel-shell)
     # or: waybar / your own layer-shell client
 
 Drive gnoblin:  gnoblinctl ping | version | reload | features
-Close this terminal or the nested window to end the devkit.
+Close this terminal to end the devkit.
 ────────────────────────────────────────────────────────────────
 EOF'
 
-# Plumbing/test hook: run a command instead of an interactive terminal.
+# Plumbing/test hook: run a command with children pointed at the nested session.
 if [ -n "${GNOME_DEVKIT_EXEC:-}" ]; then
   echo ">> GNOME_DEVKIT_EXEC: $GNOME_DEVKIT_EXEC"
-  bash -c "$GNOME_DEVKIT_EXEC"
+  WAYLAND_DISPLAY="$DISP" bash -c "$GNOME_DEVKIT_EXEC"
   exit $?
 fi
 
 [ -n "$TERM_BIN" ] || { echo "no terminal found (install foot/kitty/alacritty, or pass one)"; exit 1; }
-echo ">> opening $TERM_BIN inside the nested session ..."
+echo ">> opening $TERM_BIN as a host window (its shell targets the nested session) ..."
 
-# NB: exec must be on its OWN line — the MOTD ends with a heredoc terminator (EOF),
-# and a terminator line must stand alone, so ';' would fold into the heredoc body.
-INNER="$MOTD
+# The terminal renders on the HOST (WAYLAND_DISPLAY=$HOST_WAYLAND); its interactive
+# shell exports WAYLAND_DISPLAY=$DISP so qs etc. draw in the nested gnoblin.
+# NB: each statement on its own line — the MOTD ends with a heredoc terminator (EOF),
+# which must stand alone, so ';' would fold the next command into the heredoc body.
+INNER="export WAYLAND_DISPLAY='$DISP'
+$MOTD
 exec bash -i"
 case "$TERM_BIN" in
-  alacritty|wezterm|konsole|xterm) "$TERM_BIN" -e bash -c "$INNER" ;;
-  gnome-terminal)                  "$TERM_BIN" -- bash -c "$INNER" ;;
-  *)                               "$TERM_BIN" bash -c "$INNER" ;;   # foot, kitty
+  alacritty|wezterm|konsole|xterm) WAYLAND_DISPLAY="$HOST_WAYLAND" "$TERM_BIN" -e bash -c "$INNER" ;;
+  gnome-terminal)                  WAYLAND_DISPLAY="$HOST_WAYLAND" "$TERM_BIN" -- bash -c "$INNER" ;;
+  *)                               WAYLAND_DISPLAY="$HOST_WAYLAND" "$TERM_BIN" bash -c "$INNER" ;;   # foot, kitty
 esac
 
 # Terminal closed — tear the session down.
