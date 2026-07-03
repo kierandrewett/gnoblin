@@ -81,15 +81,21 @@ export function softReload(reason = 'manual') {
 
     const em = Main.extensionManager;
     if (em) {
-        for (const uuid of em.getUuids()) {
-            const ext = em.lookup(uuid);
-            if (!ext || ext.state !== ExtensionState.ACTIVE)
-                continue;
-            // reloadExtension() re-imports the extension's code (cache-busted by the
-            // 34-extension-hot-reload patch), so soft-reload picks up code edits live.
-            em.reloadExtension(ext).catch(
-                e => logError(e, `gnoblin: soft-reload of ${uuid} failed`));
-        }
+        // reloadExtension() re-imports the extension's code (cache-busted by the
+        // 34-extension-hot-reload patch), so soft-reload picks up code edits live.
+        // Serialize: reloadExtension() mutates _extensionOrder and disables/re-enables
+        // dependent extensions, so running them in parallel would race.
+        const active = em.getUuids().filter(
+            uuid => em.lookup(uuid)?.state === ExtensionState.ACTIVE);
+        (async () => {
+            for (const uuid of active) {
+                try {
+                    await em.reloadExtension(em.lookup(uuid));
+                } catch (e) {
+                    logError(e, `gnoblin: soft-reload of ${uuid} failed`);
+                }
+            }
+        })().catch(e => logError(e, 'gnoblin: soft-reload extension pass failed'));
     }
 }
 
