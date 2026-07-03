@@ -84,6 +84,10 @@ const FEATURES = {
                 ui.open = async () => {};     // no-op the built-in capture UI
         },
     },
+    // Owning org.freedesktop.Notifications. Enforced out-of-process by the fdo
+    // notification daemon (patches/gnome-shell/36-notifications-toggle) watching this
+    // same 'disabled-features' key — disable to let an external daemon own it.
+    notifications: {summary: 'Own org.freedesktop.Notifications (off → external daemon can)', apply() {}},
 };
 
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without

@@ -48,6 +48,16 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
 
     conf = tmp / "dbus-session.conf"
     service_dir_xml = html.escape(str(service_dir), quote=False)
+
+    # Also expose gnoblin's own installed D-Bus services (gnome-shell's
+    # dbusServices: notifications, screencast, calendar, …) so tests can activate
+    # them on demand. On-demand only — nothing auto-starts by adding the dir.
+    prefix_service_dir = repo_root / "install" / "share" / "dbus-1" / "services"
+    prefix_service_dir_xml = (
+        f"  <servicedir>{html.escape(str(prefix_service_dir), quote=False)}</servicedir>\n"
+        if prefix_service_dir.is_dir()
+        else ""
+    )
     conf.write_text(
         '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"\n'
         ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">\n'
@@ -57,6 +67,7 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
         "  <listen>unix:tmpdir=/tmp</listen>\n"
         "  <auth>EXTERNAL</auth>\n"
         f"  <servicedir>{service_dir_xml}</servicedir>\n"
+        f"{prefix_service_dir_xml}"
         '  <policy context="default">\n'
         '    <allow send_destination="*" eavesdrop="true"/>\n'
         '    <allow eavesdrop="true"/>\n'

@@ -1,0 +1,73 @@
+From ea2733ab2be85a25d4b94721063446fa8e0bc3e8 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 3 Jul 2026 05:27:20 +0100
+Subject: [PATCH] notifications-toggle: release the fdo bus name when gnoblin
+ disables it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The fdo notification daemon (a separate gjs service, autoShutdown=false) always owns
+org.freedesktop.Notifications, so an external daemon can never take over. Watch the
+shared org.gnoblin.shell 'disabled-features' key: when 'notifications' is off, unown
+the name (an external daemon — e.g. a quickshell notification service — can claim it);
+when on, reclaim it. Live, via the same gsettings key SetFeature writes. Falls back to
+stock always-own when the gnoblin schema isn't present (non-gnoblin sessions).
+---
+ .../notifications/notificationDaemon.js       | 40 +++++++++++++++++--
+ 1 file changed, 36 insertions(+), 4 deletions(-)
+
+diff --git a/js/dbusServices/notifications/notificationDaemon.js b/js/dbusServices/notifications/notificationDaemon.js
+index dafc0c7..cd0f723 100644
+--- a/js/dbusServices/notifications/notificationDaemon.js
++++ b/js/dbusServices/notifications/notificationDaemon.js
+@@ -90,10 +90,42 @@ export const NotificationDaemon = class extends ServiceImplementation {
+     }
+ 
+     register() {
+-        Gio.DBus.session.own_name(
+-            'org.freedesktop.Notifications',
+-            Gio.BusNameOwnerFlags.REPLACE,
+-            null, null);
++        // gnoblin: let an external notification daemon own org.freedesktop.Notifications
++        // when the 'notifications' feature is OFF. We watch the shared org.gnoblin.shell
++        // 'disabled-features' key and own/unown the name live. autoShutdown is false, so
++        // this watch persists across (un)ownership. No gnoblin schema (non-gnoblin
++        // session) => stock behaviour (always own).
++        try {
++            this._gnoblinSettings = new Gio.Settings({schema_id: 'org.gnoblin.shell'});
++        } catch {
++            this._gnoblinSettings = null;
++        }
++
++        if (!this._gnoblinSettings) {
++            Gio.DBus.session.own_name(
++                'org.freedesktop.Notifications',
++                Gio.BusNameOwnerFlags.REPLACE,
++                null, null);
++            return;
++        }
++
++        this._gnoblinSettings.connect('changed::disabled-features',
++            () => this._gnoblinSyncOwnership());
++        this._gnoblinSyncOwnership();
++    }
++
++    _gnoblinSyncOwnership() {
++        const off = this._gnoblinSettings
++            .get_strv('disabled-features').includes('notifications');
++        if (off && this._gnoblinNameId) {
++            Gio.DBus.session.unown_name(this._gnoblinNameId);
++            this._gnoblinNameId = 0;
++        } else if (!off && !this._gnoblinNameId) {
++            this._gnoblinNameId = Gio.DBus.session.own_name(
++                'org.freedesktop.Notifications',
++                Gio.BusNameOwnerFlags.REPLACE,
++                null, null);
++        }
+     }
+ 
+     async NotifyAsync(params, invocation) {
+-- 
+2.53.0
+

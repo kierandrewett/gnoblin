@@ -137,6 +137,11 @@ gnome-hot-reload-verify:
 gnome-scripting-verify:
     ./scripts/test-scripting.sh
 
+# Headless: prove the `notifications` toggle — gnoblin releases org.freedesktop.
+# Notifications when disabled (so an external daemon can own it) and reclaims it.
+gnome-notifications-verify:
+    ./scripts/test-notifications-toggle.sh
+
 # Review one or more screenshots with external visual/design feedback.
 design-review *SCREENSHOTS:
     ./scripts/design-review.sh {{SCREENSHOTS}}
