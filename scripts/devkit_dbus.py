@@ -22,6 +22,10 @@ DBUS_SERVICES = (
     "org.freedesktop.impl.portal.desktop.gnome",
     "org.freedesktop.impl.portal.desktop.gtk",
     "org.gnome.Settings.GlobalShortcutsProvider",
+    # dconf: needed for cross-process gsettings change notification in tests that
+    # verify one process reacting to another's SetFeature (e.g. the notifications
+    # toggle). The keyfile backend's file monitor is unavailable in the sandbox.
+    "ca.desrt.dconf",
 )
 
 

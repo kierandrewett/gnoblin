@@ -23,8 +23,11 @@ DK="$(mktemp -d /tmp/gnoblin-nt.XXXXXX)"
 mkdir -p "$DK"/{data,config,cache,home}
 export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GTK_A11Y=none NO_AT_BRIDGE=1
-# keyfile backend is file-shared across processes (memory backend is per-process).
-export GSETTINGS_BACKEND=keyfile
+# dconf backend: cross-process change notification via the dconf D-Bus service, so
+# the (separate-process) fdo daemon sees the shell's SetFeature — as on a real
+# session. (memory is per-process; keyfile needs a file monitor the sandbox lacks.)
+# The dconf DB is isolated under XDG_CONFIG_HOME/dconf/user.
+export GSETTINGS_BACKEND=dconf
 export DISP="gnoblin-nt-$$" GS="$SHELL_BIN"
 
 cleanup() {
