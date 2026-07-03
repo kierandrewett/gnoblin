@@ -26,7 +26,6 @@ init:
     git submodule update --init --recursive
     @echo "mutter               -> $(git -C subprojects/mutter               describe --tags)"
     @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags)"
-    @echo "slint                -> $(git -C subprojects/slint                describe --tags)"
 
 # Apply the patch series to a subproject (resets it to the pinned tag first).
 patch PROJ:
@@ -40,7 +39,7 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; slint) t=v1.16.1;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; *) echo "unknown {{PROJ}}"; exit 1;; esac
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"
@@ -89,16 +88,6 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnome-shell
 
-# Legacy: the retired C++ compositor. Kept building only off `archive/cpp-compositor`.
-# Build + install gnoblin-shell against the freshly built mutter in ./install.
-dev-shell: dev-mutter
-    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --reconfigure build/gnoblin-shell src/compositor --prefix={{prefix}} --libdir=lib64 || PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnoblin-shell src/compositor --prefix={{prefix}} --libdir=lib64
-    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnoblin-shell
-
-# Install gnoblin's layer-shell clients (topbar, dock) + settings schema.
-dev-userspace:
-    ./scripts/install-userspace.sh {{prefix}}
-
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 dev: dev-gnome-shell dev-session
     @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just gnome-verify'"
@@ -106,11 +95,6 @@ dev: dev-gnome-shell dev-session
 # Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
 dev-session:
     ./scripts/install-session.sh {{prefix}}
-
-# Open gnoblin-shell in the Mutter Devkit window (own dbus/gsettings). Optional
-# client runs inside it, e.g. `just devkit foot`. Build first with `just dev`.
-devkit *CLIENT:
-    ./scripts/run-devkit.sh visible {{CLIENT}}
 
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
@@ -122,18 +106,6 @@ gnome-verify:
 # (Ping / GetVersion / Reload → soft in-process reload).
 gnome-dbus-verify:
     ./scripts/test-gnome-dbus.sh
-
-# Legacy (retired C++ compositor): boot the gnoblin-shell stack, list protocols.
-devkit-verify:
-    ./scripts/run-devkit.sh verify
-
-# Drive a headless gnoblin-shell from the LLM/CI side with no human in the loop:
-# boot, screenshot (grim), add a late virtual monitor (ScreenCast), inject input,
-# run arbitrary clients, detect compositor aborts. Owns its own dbus + sandbox.
-#   just harness smoke | shot OUT.png | late OUT.png | storm | run CLIENT
-#   just harness keys 'Super+Space:calc' OUT.png | wm 'spawn:foot,maximize' OUT.png | boot
-harness *ARGS:
-    python3 ./scripts/devkit-harness.py {{ARGS}}
 
 # Review one or more screenshots with external visual/design feedback.
 design-review *SCREENSHOTS:
@@ -162,20 +134,6 @@ arch PROJ:
 test-build:
     ./scripts/test-build.sh
 
-# Rust client checks — formatting, clippy, and the parsers/logic behind the
-# Slint shell clients (config, client-arg protocol, app matching) + the remaining
-# gtk4 daemons. No display. The Slint clients are a workspace at src/clients
-# (shared target).
-test-clients:
-    cargo fmt --manifest-path src/clients/Cargo.toml --all -- --check
-    cargo clippy --manifest-path src/clients/Cargo.toml --all-targets -- -D warnings
-    cargo test --manifest-path src/clients/Cargo.toml
-
-# Security/geometry logic the visual + lock features rely on: PAM rejects wrong
-# passwords; the shadow/rounded-corner SDF is geometrically correct. No display.
-test-logic:
-    ./scripts/test-logic.sh
-
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
 # scheduling can starve a test long enough to trip its 60s timeout.
@@ -192,78 +150,11 @@ test-mutter: (patch "mutter")
 test-nested:
     ./scripts/test-nested.sh
 
-# Tier 3 (integration): headless behavioural regressions driving a real
-# gnoblin-shell via the devkit harness — frame-callback crash guard, keybind ->
-# launcher, maximize/strut, fullscreen cover, lock, snap regions, notifications,
-# multi-monitor, wallpaper. Needs a dev build in ./install.
-# See tests/layer-shell/README.md and scripts/devkit-harness.py.
-test-devkit:
-    ./tests/layer-shell/run-devkit-dbus.sh
-    ./tests/layer-shell/run-frame-callback-crash.sh
-    ./tests/layer-shell/run-layer-shell-protocol.sh
-    ./tests/layer-shell/run-output-destroyed-closes.sh
-    ./tests/layer-shell/run-configure-storm.sh
-    ./tests/layer-shell/run-autostart-retry.sh
-    ./tests/layer-shell/run-autostart-output-removal.sh
-    ./tests/layer-shell/run-keybind-launcher.sh
-    ./tests/layer-shell/run-launcher-activates-app.sh
-    ./tests/layer-shell/run-role-spawn-reap.sh
-    ./tests/layer-shell/run-explicit-command-reap.sh
-    ./tests/layer-shell/run-pointer-input.sh
-    ./tests/layer-shell/run-dock-launch.sh
-    ./tests/layer-shell/run-firefox-launch.sh
-    ./tests/layer-shell/run-dock-live-favorites.sh
-    ./tests/layer-shell/run-osd-passthrough.sh
-    ./tests/layer-shell/run-dock-menu-input-region.sh
-    ./tests/layer-shell/run-window-menu-input.sh
-    ./tests/layer-shell/run-layer-move-focus.sh
-    ./tests/layer-shell/run-layer-keyboard-focus.sh
-    ./tests/layer-shell/run-topbar-live-commands.sh
-    ./tests/layer-shell/run-topbar-layout-live.sh
-    ./tests/layer-shell/run-topbar-focused-app-menu.sh
-    ./tests/layer-shell/run-notification-center-input.sh
-    ./tests/layer-shell/run-maximize-strut.sh
-    ./tests/layer-shell/run-fullscreen-cover.sh
-    ./tests/layer-shell/run-lock-engage.sh
-    ./tests/layer-shell/run-snap-regions.sh
-    ./tests/layer-shell/run-notifications.sh
-    ./tests/layer-shell/run-region-lifetime.sh
-    ./tests/layer-shell/run-slint-animation-frames.sh
-    ./tests/layer-shell/run-topbar-live-motion.sh
-    ./tests/layer-shell/run-topbar-live-backdrop.sh
-    ./tests/layer-shell/run-night-light-hotplug.sh
-    ./tests/layer-shell/run-multimonitor.sh
-    ./tests/layer-shell/run-power-menu-output-size.sh
-    ./tests/layer-shell/run-power-menu-resize.sh
-    ./tests/layer-shell/run-wallpaper.sh
-    ./tests/layer-shell/run-wallpaper-output.sh
-    ./tests/layer-shell/run-background-layer-input.sh
-    ./tests/layer-shell/run-protocols.sh
-    ./tests/layer-shell/run-topbar-dbusmenu.sh
-    ./tests/layer-shell/run-effects-shadow.sh
-    ./tests/layer-shell/run-maximize-animation.sh
-    ./tests/layer-shell/run-foreign-toplevel.sh
-    ./tests/layer-shell/run-window-rules.sh
-    ./tests/layer-shell/run-tiling.sh
-    ./tests/layer-shell/run-overview.sh
-    ./tests/layer-shell/run-switcher.sh
-    ./tests/layer-shell/run-grid.sh
-    ./tests/layer-shell/run-input-config.sh
-    ./tests/layer-shell/run-output-config.sh
-    ./tests/layer-shell/run-workspaces.sh
-    ./tests/layer-shell/run-blur.sh
-    ./tests/layer-shell/run-gestures.sh
-    ./tests/layer-shell/run-maximize-effects.sh
-
-# Optional exact `just devkit` smoke. This opens the Mutter Devkit viewer on the
-# host session and interrupts it with timeout, so keep it separate from the
-# headless `test-devkit` suite.
-test-devkit-visible:
-    ./tests/layer-shell/run-visible-devkit.sh
-
-# Run every tier the environment allows.
-test: test-build test-clients test-logic
-    @echo ">> tier 2 (mutter): 'just test-mutter'  |  tier 3 (integration): 'just test-devkit' — needs ./install from 'just dev'."
+# Run every tier the environment allows. The C++/Slint integration tiers
+# (test-clients / test-logic / test-devkit) were retired with that stack.
+test:
+    @echo ">> smoke: 'just gnome-verify' + 'just gnome-dbus-verify' (need ./install from 'just dev')."
+    @echo ">> tier 2 (mutter): 'just test-mutter'."
 
 # Install the launcher shim + Super+Space keybinding for the current user.
 setup-launcher:

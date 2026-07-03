@@ -10,7 +10,3 @@
 	path = subprojects/gnome-control-center
 	url = https://gitlab.gnome.org/GNOME/gnome-control-center.git
 	shallow = true
-[submodule "subprojects/slint"]
-	path = subprojects/slint
-	url = https://github.com/slint-ui/slint
-	shallow = true
