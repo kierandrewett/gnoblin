@@ -1,16 +1,18 @@
-# gnoblin build orchestration — the gnoblin-shell compositor (src/compositor/) +
-# Rust layer-shell clients (src/clients/), on a mutter patched only for gnoblin's
-# Wayland protocol overlays. gnome-shell has been RETIRED (the compositor replaced
-# it); its submodule + patches/gnome-shell/ remain only as legacy reference and
-# are no longer built — delete them once you're sure you don't want them.
+# gnoblin build orchestration — patched GNOME Shell on patched Mutter. gnoblin is
+# "just GNOME + Mutter": Mutter carries the wlr-layer-shell + protocol overlays
+# (patches/mutter/ + src/protocols/); GNOME Shell carries a thin patch set (relaxed
+# extension loading, unsafe-mode, portal auto-grant, hidden native top bar) and the
+# `gnoblin` session mode that strips its stock UI. Quickshell (repo: kobel) draws
+# the chrome as layer-shell clients.
 #
-# mutter is a pinned submodule kept pristine; gnoblin's changes are patches/mutter/
-# + the overlays under src/. `just dev` builds the whole stack into ./install.
+# The from-scratch C++ compositor + Rust/Slint clients were RETIRED; recover them
+# from the `archive/cpp-compositor` tag. Submodules are pinned + pristine; gnoblin's
+# changes are patches/ + src/ overlays. `just dev` builds the whole stack into ./install.
 
 set shell := ["bash", "-uc"]
 
-# gnome-shell and the old settings panel are retired.
-patch_projects := "mutter slint"
+# Patched subprojects built by `just dev`. (slint + the C++ compositor are retired.)
+patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter"
 
 # Local dev prefix: the whole gnoblin stack is built+installed here for the devkit.
@@ -66,12 +68,26 @@ mutter_test_opts := "--prefix=" + prefix + " --libdir=lib64 -Ddevkit=enabled -Dt
 mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland --suite mutter:mutter/backends/native"
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
 mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
+gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=lib64 -Dtests=false -Dman=false -Dgtk_doc=false"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
 dev-mutter: (patch "mutter")
     meson setup --reconfigure build/mutter subprojects/mutter {{mutter_dev_opts}} || meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
     meson install -C build/mutter
 
+# Build + install patched gnome-shell against the freshly built mutter in ./install.
+# gnome-shell is the compositor+shell again; its stock UI (panel/overview/dash) is
+# stripped via the `gnoblin` session mode + a minimal native-topbar patch, and its
+# subsystems are toggled live over org.gnoblin.* — Quickshell (kobel) draws the chrome.
+dev-gnome-shell: dev-mutter (patch "gnome-shell")
+    # A stale build dir from a prior source/option set can wedge meson's reconfigure,
+    # so fall back to a clean wipe (the patch step re-lays the source each time anyway).
+    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --reconfigure build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}} \
+      || PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --wipe build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}} \
+      || { rm -rf build/gnome-shell; PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}; }
+    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnome-shell
+
+# Legacy: the retired C++ compositor. Kept building only off `archive/cpp-compositor`.
 # Build + install gnoblin-shell against the freshly built mutter in ./install.
 dev-shell: dev-mutter
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --reconfigure build/gnoblin-shell src/compositor --prefix={{prefix}} --libdir=lib64 || PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnoblin-shell src/compositor --prefix={{prefix}} --libdir=lib64
@@ -81,9 +97,13 @@ dev-shell: dev-mutter
 dev-userspace:
     ./scripts/install-userspace.sh {{prefix}}
 
-# Build the whole gnoblin stack (mutter + shell + userspace) into ./install.
-dev: dev-shell dev-userspace
-    @echo ">> gnoblin stack installed in {{prefix}} — run 'just devkit' or 'just devkit-verify'"
+# Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
+dev: dev-gnome-shell dev-session
+    @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just devkit-verify'"
+
+# Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
+dev-session:
+    ./scripts/install-session.sh {{prefix}}
 
 # Open gnoblin-shell in the Mutter Devkit window (own dbus/gsettings). Optional
 # client runs inside it, e.g. `just devkit foot`. Build first with `just dev`.
