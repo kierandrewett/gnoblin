@@ -61,17 +61,21 @@ export DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --config-file="$DBUS_CONF" --prin
 DBUS_PID="$(cat "$DBUS_PID_FILE" 2>/dev/null || true)"
 
 SHELL_PID=
+_cleaned=
 cleanup() {
+  [ -n "$_cleaned" ] && return; _cleaned=1
   [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
-  # sweep clients that joined the nested display
+  # sweep clients that joined the nested display (exact env-line match, not substring)
   for proc in /proc/[0-9]*; do
-    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill "${proc##*/}" 2>/dev/null || true ;; esac
+    { tr '\0' '\n' < "$proc/environ" 2>/dev/null | grep -qxF "WAYLAND_DISPLAY=$DISP"; } \
+      && kill "${proc##*/}" 2>/dev/null || true
   done
   [ -n "$DBUS_PID" ] && kill "$DBUS_PID" 2>/dev/null
   rm -rf "$DK"
 }
-trap cleanup EXIT INT TERM HUP
+# EXIT is the single cleanup site; signals just exit into it (no double-run).
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
 
 # --- boot the nested gnoblin session ------------------------------------------
 BACKEND=()
@@ -119,12 +123,14 @@ fi
 [ -n "$TERM_BIN" ] || { echo "no terminal found (install foot/kitty/alacritty, or pass one)"; exit 1; }
 echo ">> opening $TERM_BIN inside the nested session ..."
 
-INNER="$MOTD; exec bash -i"
+# NB: exec must be on its OWN line — the MOTD ends with a heredoc terminator (EOF),
+# and a terminator line must stand alone, so ';' would fold into the heredoc body.
+INNER="$MOTD
+exec bash -i"
 case "$TERM_BIN" in
-  alacritty|wezterm) "$TERM_BIN" -e bash -c "$INNER" ;;
-  gnome-terminal)    "$TERM_BIN" -- bash -c "$INNER" ;;
-  konsole)           "$TERM_BIN" -e bash -c "$INNER" ;;
-  *)                 "$TERM_BIN" bash -c "$INNER" ;;   # foot, kitty, xterm
+  alacritty|wezterm|konsole|xterm) "$TERM_BIN" -e bash -c "$INNER" ;;
+  gnome-terminal)                  "$TERM_BIN" -- bash -c "$INNER" ;;
+  *)                               "$TERM_BIN" bash -c "$INNER" ;;   # foot, kitty
 esac
 
 # Terminal closed — tear the session down.
