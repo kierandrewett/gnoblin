@@ -34,28 +34,44 @@ let activeScriptHost = null;
 // code instead of reusing the cached module.
 let scriptImportSeq = 0;
 
+// OSD subsystems gnoblin can gate individually, classified from the OSD icon.
+// The single osd gate (installed in enable()) reads these live; `osd` is the master.
+const OSD_TYPES = {
+    'osd-volume': ['audio-volume', 'audio-speaker'],
+    'osd-microphone': ['microphone', 'audio-input'],
+    'osd-brightness': ['display-brightness'],
+    'osd-keyboard-brightness': ['keyboard-brightness'],
+};
+
+// Classify an OSD by its icon → the per-type feature id, or null (unknown type,
+// gated only by the master switch). Volume/brightness/etc. pass a Gio.ThemedIcon.
+function classifyOsd(icon) {
+    let names = [];
+    try {
+        names = icon?.get_names?.() ?? (icon?.to_string ? [icon.to_string()] : []);
+    } catch {
+        names = [];
+    }
+    const hay = names.join(' ');
+    for (const [feature, prefixes] of Object.entries(OSD_TYPES)) {
+        if (prefixes.some(p => hay.includes(p)))
+            return feature;
+    }
+    return null;
+}
+
 // Runtime feature toggles. Each feature gates a gnome-shell subsystem so an
 // external userspace (Quickshell, waybar, custom) can own it instead — live, with
-// no compositor restart. apply(false) turns the subsystem OFF; apply(true) restores
-// stock behaviour. Gating is a method-shadow (own property) that a `delete` undoes,
-// so it never mutates upstream prototypes permanently. A feature is ENABLED unless
-// its id is in the org.gnoblin.shell 'disabled-features' list.
+// no compositor restart. A feature is ENABLED unless its id is in the
+// org.gnoblin.shell 'disabled-features' list. Two kinds: 'screenshot' shadows a
+// method in its apply(); the OSD family is enforced by a shared state-driven gate
+// (installed in enable()), so their apply() is a no-op — the gate reads state live.
 const FEATURES = {
-    osd: {
-        summary: 'On-screen display popups (volume / brightness)',
-        apply(enabled) {
-            const mgr = Main.osdWindowManager;
-            if (!mgr)
-                return;
-            // Gate the common chokepoint: BOTH show() and showAll() funnel through
-            // _showOsdWindow() (osdWindow.js). show() alone would miss showAll(),
-            // which is what the volume OSD uses.
-            if (enabled)
-                delete mgr._showOsdWindow;   // restore prototype method
-            else
-                mgr._showOsdWindow = () => {}; // swallow every OSD request
-        },
-    },
+    osd: {summary: 'On-screen display popups — master switch (all OSDs)', apply() {}},
+    'osd-volume': {summary: 'Volume OSD popup', apply() {}},
+    'osd-microphone': {summary: 'Microphone OSD popup', apply() {}},
+    'osd-brightness': {summary: 'Screen-brightness OSD popup', apply() {}},
+    'osd-keyboard-brightness': {summary: 'Keyboard-brightness OSD popup', apply() {}},
     screenshot: {
         summary: 'Built-in screenshot / screencast UI',
         apply(enabled) {
@@ -348,6 +364,7 @@ export class Component {
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._applyAllFeatures();
+        this._installOsdGate();
 
         this._nameId = Gio.bus_own_name(
             Gio.BusType.SESSION,
@@ -369,6 +386,7 @@ export class Component {
 
     disable() {
         // Restore every gated subsystem to stock before we go.
+        this._removeOsdGate();
         for (const id of Object.keys(FEATURES))
             FEATURES[id].apply(true);
 
@@ -411,6 +429,34 @@ export class Component {
                 logError(e, `gnoblin: applying feature ${id} failed`);
             }
         }
+    }
+
+    // Install a single state-driven wrapper on OsdWindowManager._showOsdWindow —
+    // the chokepoint both show() and showAll() funnel through. It reads the feature
+    // state live per call, so the master 'osd' switch and the per-type switches
+    // (osd-volume, osd-brightness, ...) take effect immediately with no re-apply.
+    _installOsdGate() {
+        const mgr = Main.osdWindowManager;
+        if (!mgr || this._osdGateInstalled)
+            return;
+        const control = this;
+        const orig = mgr._showOsdWindow;   // the prototype method
+        mgr._showOsdWindow = function (monitorIndex, icon, label, level, maxLevel) {
+            if (!control._isEnabled('osd'))
+                return;                                 // master off → all OSDs suppressed
+            const feature = classifyOsd(icon);
+            if (feature && !control._isEnabled(feature))
+                return;                                 // this OSD type is turned off
+            return orig.call(this, monitorIndex, icon, label, level, maxLevel);
+        };
+        this._osdGateInstalled = true;
+    }
+
+    _removeOsdGate() {
+        const mgr = Main.osdWindowManager;
+        if (mgr && this._osdGateInstalled)
+            delete mgr._showOsdWindow;   // restore the prototype method
+        this._osdGateInstalled = false;
     }
 
     ListFeatures() {

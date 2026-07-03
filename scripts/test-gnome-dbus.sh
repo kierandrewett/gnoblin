@@ -87,6 +87,13 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   gu="$(callp GetFeature bogus)";               echo "GetFeature bogus -> $gu"
   case "$gu" in *false*) echo "  ok: unknown feature -> false";; *) echo "  FAIL: unknown feature"; rc=1;; esac
 
+  # per-OSD toggles (master osd + per-type)
+  case "$feats" in *osd-volume*) echo "  ok: per-OSD features listed (osd-volume)";; *) echo "  FAIL: no per-OSD features"; rc=1;; esac
+  callp SetFeature osd-volume false >/dev/null
+  gv="$(callp GetFeature osd-volume)";          echo "GetFeature osd-volume (after off) -> $gv"
+  case "$gv" in *false*) echo "  ok: SetFeature osd-volume off";; *) echo "  FAIL: per-OSD set"; rc=1;; esac
+  callp SetFeature osd-volume true >/dev/null
+
   kill $SHELL_PID 2>/dev/null || true
   exit $rc
 '
