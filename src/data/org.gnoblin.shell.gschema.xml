@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="gnome-shell">
   <schema id="org.gnoblin.shell" path="/org/gnoblin/shell/">
+    <key name="disabled-features" type="as">
+      <default>[]</default>
+      <summary>gnome-shell subsystems gnoblin has turned off</summary>
+      <description>
+        Ids of gnome-shell subsystems (e.g. "osd", "screenshot") that gnoblin
+        gates OFF at runtime so an external userspace can own them. A subsystem is
+        enabled unless its id appears here. Driven live over org.gnoblin.Shell
+        (ListFeatures/GetFeature/SetFeature); see js/ui/components/gnoblinControl.js.
+      </description>
+    </key>
+
     <key name="topbar-enabled" type="b">
       <default>true</default>
       <summary>Enable the Gnoblin layer-shell top bar</summary>

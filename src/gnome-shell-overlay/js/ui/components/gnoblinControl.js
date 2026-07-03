@@ -23,6 +23,41 @@ import {ExtensionState} from '../../misc/extensionUtils.js';
 
 const BUS_NAME = 'org.gnoblin.Shell';
 const OBJECT_PATH = '/org/gnoblin/Shell';
+const SCHEMA_ID = 'org.gnoblin.shell';
+const DISABLED_KEY = 'disabled-features';
+
+// Runtime feature toggles. Each feature gates a gnome-shell subsystem so an
+// external userspace (Quickshell, waybar, custom) can own it instead — live, with
+// no compositor restart. apply(false) turns the subsystem OFF; apply(true) restores
+// stock behaviour. Gating is a method-shadow (own property) that a `delete` undoes,
+// so it never mutates upstream prototypes permanently. A feature is ENABLED unless
+// its id is in the org.gnoblin.shell 'disabled-features' list.
+const FEATURES = {
+    osd: {
+        summary: 'On-screen display popups (volume / brightness)',
+        apply(enabled) {
+            const mgr = Main.osdWindowManager;
+            if (!mgr)
+                return;
+            if (enabled)
+                delete mgr.show;             // restore OsdWindowManager.prototype.show
+            else
+                mgr.show = () => {};          // swallow OSD requests
+        },
+    },
+    screenshot: {
+        summary: 'Built-in screenshot / screencast UI',
+        apply(enabled) {
+            const ui = Main.screenshotUI;
+            if (!ui)
+                return;
+            if (enabled)
+                delete ui.open;              // restore ScreenshotUI.prototype.open
+            else
+                ui.open = async () => {};     // no-op the built-in capture UI
+        },
+    },
+};
 
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
 // logging out". mutter/Wayland is NEVER torn down, so windows and the (external)
@@ -71,6 +106,25 @@ const IFACE = `
     </method>
     <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
+    <!-- Feature toggles: gate gnome-shell subsystems on/off live. -->
+    <!-- [id, human summary, enabled] for every gnoblin-gateable subsystem. -->
+    <method name="ListFeatures">
+      <arg type="a(ssb)" direction="out" name="features"/>
+    </method>
+    <!-- Whether a subsystem is currently enabled (unknown id -> false). -->
+    <method name="GetFeature">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="b" direction="out" name="enabled"/>
+    </method>
+    <!-- Turn a subsystem on/off live (persisted). Emits FeatureChanged. -->
+    <method name="SetFeature">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="b" direction="in" name="enabled"/>
+    </method>
+    <signal name="FeatureChanged">
+      <arg type="s" name="id"/>
+      <arg type="b" name="enabled"/>
+    </signal>
     <!-- Whether the compositor is a Wayland session (soft-reload applies). -->
     <property name="IsWayland" type="b" access="read"/>
     <!-- The active gnome-shell session mode (expected: "gnoblin"). -->
@@ -82,11 +136,17 @@ export class Component {
     constructor() {
         this._impl = null;
         this._nameId = 0;
+        this._settings = null;
     }
 
     enable() {
+        this._settings = new Gio.Settings({schema_id: SCHEMA_ID});
+
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
+
+        // Apply the persisted feature state to the freshly-built subsystems.
+        this._applyAllFeatures();
 
         this._nameId = Gio.bus_own_name(
             Gio.BusType.SESSION,
@@ -100,6 +160,10 @@ export class Component {
     }
 
     disable() {
+        // Restore every gated subsystem to stock before we go.
+        for (const id of Object.keys(FEATURES))
+            FEATURES[id].apply(true);
+
         if (this._nameId) {
             Gio.bus_unown_name(this._nameId);
             this._nameId = 0;
@@ -108,7 +172,54 @@ export class Component {
             this._impl.unexport();
             this._impl = null;
         }
+        this._settings = null;
         console.log('gnoblin-control: disabled');
+    }
+
+    // --- feature toggles ---
+    _disabledList() {
+        return this._settings ? this._settings.get_strv(DISABLED_KEY) : [];
+    }
+
+    _isEnabled(id) {
+        return !this._disabledList().includes(id);
+    }
+
+    _applyAllFeatures() {
+        for (const id of Object.keys(FEATURES)) {
+            try {
+                FEATURES[id].apply(this._isEnabled(id));
+            } catch (e) {
+                logError(e, `gnoblin: applying feature ${id} failed`);
+            }
+        }
+    }
+
+    ListFeatures() {
+        return Object.entries(FEATURES).map(
+            ([id, f]) => [id, f.summary, this._isEnabled(id)]);
+    }
+
+    GetFeature(id) {
+        return Object.hasOwn(FEATURES, id) && this._isEnabled(id);
+    }
+
+    SetFeature(id, enabled) {
+        if (!Object.hasOwn(FEATURES, id))
+            throw new Error(`unknown feature: ${id}`);
+        if (this._isEnabled(id) === enabled)
+            return;
+
+        const disabled = new Set(this._disabledList());
+        if (enabled)
+            disabled.delete(id);
+        else
+            disabled.add(id);
+        this._settings.set_strv(DISABLED_KEY, [...disabled]);
+
+        FEATURES[id].apply(enabled);
+        this._impl?.emit_signal('FeatureChanged', new GLib.Variant('(sb)', [id, enabled]));
+        console.log(`gnoblin-control: feature '${id}' ${enabled ? 'ENABLED' : 'DISABLED'}`);
     }
 
     // --- org.gnoblin.Shell ---

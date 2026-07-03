@@ -56,6 +56,9 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   call() { gdbus call --session --dest org.gnoblin.Shell \
              --object-path /org/gnoblin/Shell --method "org.gnoblin.Shell.$1" 2>&1; }
 
+  callp() { gdbus call --session --dest org.gnoblin.Shell \
+              --object-path /org/gnoblin/Shell --method "org.gnoblin.Shell.$@" 2>&1; }
+
   ping="$(call Ping)";        echo "Ping       -> $ping"
   ver="$(call GetVersion)";   echo "GetVersion -> $ver"
   reload="$(call Reload)";    echo "Reload     -> $reload"
@@ -65,6 +68,24 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   # Reload is void; assert the soft-reload actually ran from the shell log.
   sleep 1
   if grep -q "gnoblin: soft-reload" "$SHELL_LOG"; then echo "  ok: Reload (soft-reload ran)"; else echo "  FAIL: Reload (no soft-reload log)"; rc=1; fi
+
+  # --- feature toggles ---
+  feats="$(call ListFeatures)"; echo "ListFeatures -> $feats"
+  case "$feats" in *osd*screenshot*|*screenshot*osd*) echo "  ok: ListFeatures (osd + screenshot)";; *) echo "  FAIL: ListFeatures"; rc=1;; esac
+
+  g0="$(callp GetFeature osd)";                 echo "GetFeature osd (default) -> $g0"
+  case "$g0" in *true*)  echo "  ok: osd default enabled";; *) echo "  FAIL: osd default"; rc=1;; esac
+
+  callp SetFeature osd false >/dev/null
+  g1="$(callp GetFeature osd)";                 echo "GetFeature osd (after off) -> $g1"
+  case "$g1" in *false*) echo "  ok: SetFeature osd off";; *) echo "  FAIL: SetFeature off"; rc=1;; esac
+
+  callp SetFeature osd true >/dev/null
+  g2="$(callp GetFeature osd)";                 echo "GetFeature osd (after on) -> $g2"
+  case "$g2" in *true*)  echo "  ok: SetFeature osd on";; *) echo "  FAIL: SetFeature on"; rc=1;; esac
+
+  gu="$(callp GetFeature bogus)";               echo "GetFeature bogus -> $gu"
+  case "$gu" in *false*) echo "  ok: unknown feature -> false";; *) echo "  FAIL: unknown feature"; rc=1;; esac
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc
