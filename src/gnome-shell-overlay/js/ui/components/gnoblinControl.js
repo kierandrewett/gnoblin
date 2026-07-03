@@ -29,6 +29,11 @@ const DISABLED_KEY = 'disabled-features';
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
 
+// Process-wide monotonic counter for the script import cache-bust. Module-level
+// (not per-host) so a disable→re-enable in the same process still re-imports fresh
+// code instead of reusing the cached module.
+let scriptImportSeq = 0;
+
 // Runtime feature toggles. Each feature gates a gnome-shell subsystem so an
 // external userspace (Quickshell, waybar, custom) can own it instead — live, with
 // no compositor restart. apply(false) turns the subsystem OFF; apply(true) restores
@@ -161,7 +166,8 @@ class ScriptHost {
         this._bus = bus;
         this._dir = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin', 'scripts']);
         this._loaded = [];
-        this._seq = 0;
+        this._generation = 0;   // bumped on every load/unload to drop stale in-flight imports
+        this._destroyed = false;
     }
 
     _api(name) {
@@ -201,15 +207,32 @@ class ScriptHost {
         return names.sort();
     }
 
+    _disposeApi(api) {
+        for (const d of api._disposers ?? []) {
+            try {
+                d();
+            } catch { /* ignore */ }
+        }
+    }
+
     load() {
-        this._seq++;
+        if (this._destroyed)
+            return;
+        const gen = ++this._generation;
         for (const name of this._scriptNames()) {
             const path = GLib.build_filenamev([this._dir, name]);
-            // First load: plain URI. Reloads: cache-bust so code edits take effect.
-            const uri = this._seq > 1
-                ? `file://${path}?gnoblinScript=${this._seq}`
+            // First import in the process uses the plain URI; every later (re)load
+            // cache-busts so code edits take effect. Module-level seq so a re-enable
+            // in the same process is still fresh.
+            scriptImportSeq++;
+            const uri = scriptImportSeq > 1
+                ? `file://${path}?gnoblinScript=${scriptImportSeq}`
                 : `file://${path}`;
             import(uri).then(mod => {
+                // Drop stale in-flight imports: a newer load/unload happened, or the
+                // host was destroyed, while this import was pending.
+                if (this._destroyed || gen !== this._generation)
+                    return;
                 if (typeof mod.default !== 'function') {
                     console.warn(`gnoblin-script: ${name} has no default-exported function`);
                     return;
@@ -220,6 +243,9 @@ class ScriptHost {
                     this._loaded.push({name, api});
                     console.log(`gnoblin-script: loaded ${name}`);
                 } catch (e) {
+                    // The script may have subscribed via api.on() before throwing —
+                    // dispose those so a failed load doesn't leak handlers.
+                    this._disposeApi(api);
                     logError(e, `gnoblin-script: ${name} threw on load`);
                 }
             }).catch(e => logError(e, `gnoblin-script: importing ${name} failed`));
@@ -227,19 +253,21 @@ class ScriptHost {
     }
 
     unload() {
-        for (const {api} of this._loaded) {
-            for (const d of api._disposers ?? []) {
-                try {
-                    d();
-                } catch { /* ignore */ }
-            }
-        }
+        // Invalidate any in-flight imports from the current generation.
+        this._generation++;
+        for (const {api} of this._loaded)
+            this._disposeApi(api);
         this._loaded = [];
     }
 
     reload() {
         this.unload();
         this.load();
+    }
+
+    destroy() {
+        this._destroyed = true;
+        this.unload();
     }
 
     list() {
@@ -345,7 +373,7 @@ export class Component {
             FEATURES[id].apply(true);
 
         if (this._scripts) {
-            this._scripts.unload();
+            this._scripts.destroy();
             this._scripts = null;
             activeScriptHost = null;
         }
