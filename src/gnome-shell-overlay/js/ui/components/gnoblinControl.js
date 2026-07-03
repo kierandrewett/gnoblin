@@ -39,10 +39,13 @@ const FEATURES = {
             const mgr = Main.osdWindowManager;
             if (!mgr)
                 return;
+            // Gate the common chokepoint: BOTH show() and showAll() funnel through
+            // _showOsdWindow() (osdWindow.js). show() alone would miss showAll(),
+            // which is what the volume OSD uses.
             if (enabled)
-                delete mgr.show;             // restore OsdWindowManager.prototype.show
+                delete mgr._showOsdWindow;   // restore prototype method
             else
-                mgr.show = () => {};          // swallow OSD requests
+                mgr._showOsdWindow = () => {}; // swallow every OSD request
         },
     },
     screenshot: {
