@@ -19,6 +19,11 @@
   "//hasOverview3": "and survives even if the parent mode changes upstream.",
   "hasOverview": false,
 
+  "//showWelcomeDialog": "Suppress GNOME's 'Welcome to <distro>' first-run modal (main.js",
+  "//showWelcomeDialog2": "gates it on sessionMode.showWelcomeDialog, true in the 'user' parent).",
+  "//showWelcomeDialog3": "gnoblin owns onboarding via its own chrome; the stock modal has no place.",
+  "showWelcomeDialog": false,
+
   "//components": "Keep only the essential background agents so polkit prompts,",
   "//components2": "the keyring, auto-mount and NetworkManager still work. Everything",
   "//components3": "visual (bar/dash/overview) is gone; these are headless services.",
