@@ -22,5 +22,7 @@
   "//components": "Keep only the essential background agents so polkit prompts,",
   "//components2": "the keyring, auto-mount and NetworkManager still work. Everything",
   "//components3": "visual (bar/dash/overview) is gone; these are headless services.",
-  "components": ["polkitAgent", "keyring", "autorunManager", "automountManager", "networkAgent"]
+  "//components4": "gnoblinControl hosts the org.gnoblin.* control protocol — first-class",
+  "//components5": "gnoblin source (src/gnome-shell-overlay), loaded like any core component.",
+  "components": ["polkitAgent", "keyring", "autorunManager", "automountManager", "networkAgent", "gnoblinControl"]
 }

@@ -1,0 +1,9 @@
+# gnoblin gnome-shell overlay manifest — files copied verbatim into the
+# gnome-shell submodule before the patch series is applied (scripts/copy-overlay.sh).
+# Columns: <project> <source (rel to this dir)> <dest (rel to subproject root)>
+#
+# gnoblin's own shell code lives here as real, navigable source (NOT buried in
+# patches). The only upstream edit is a one-line <file> entry in the JS gresource
+# (patches/gnome-shell/30-gnoblin-control) so gnome-shell bundles + can import it;
+# enabling is done purely via the `gnoblin` session mode's components list.
+gnome-shell  js/ui/components/gnoblinControl.js  js/ui/components/gnoblinControl.js
