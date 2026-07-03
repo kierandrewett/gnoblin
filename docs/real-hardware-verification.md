@@ -48,12 +48,18 @@ qs -p ~/path/to/shell.qml        # Quickshell
 ## 3. Feature toggles (let your chrome own subsystems)
 
 ```sh
-gnoblinctl disable osd         # your bar's OSD owns volume/brightness now
-gnoblinctl disable screenshot  # your own screenshot UI owns it
-gnoblinctl enable osd          # hand it back to gnome-shell
+gnoblinctl disable osd            # your bar's OSD owns all volume/brightness popups
+gnoblinctl disable osd-volume     # ...or just the volume OSD (per-type: osd-microphone,
+                                  #    osd-brightness, osd-keyboard-brightness)
+gnoblinctl disable screenshot     # your own screenshot UI owns it
+gnoblinctl disable notifications  # gnome releases org.freedesktop.Notifications; start
+                                  #    your external notification daemon to own it
+gnoblinctl enable osd             # hand any of them back to gnome-shell
 ```
 
-Change the volume with the media keys: with `osd` disabled, gnome-shell shows no popup.
+Change the volume with the media keys: with `osd` (or `osd-volume`) disabled, gnome-shell
+shows no popup. With `notifications` disabled, run e.g. a quickshell notification service
+and confirm it claims `org.freedesktop.Notifications` (`gdbus call ... NameHasOwner`).
 
 ## 4. Wayland soft-reload (windows survive)
 
