@@ -1,0 +1,15 @@
+# gnoblin gnome-control-center overlay manifest — files copied verbatim into the
+# gnome-control-center submodule before the patch series is applied
+# (scripts/copy-overlay.sh). Columns: <project> <source (rel to this dir)> <dest
+# (rel to subproject root)>.
+#
+# The whole gnoblin panel lives here as real, navigable source. The only upstream
+# edits are two one-line registrations (patches/gnome-control-center/10-gnoblin-panel):
+#   - shell/cc-panel-loader.c   : one PANEL_TYPE("gnoblin", ...) row + extern decl
+#   - panels/meson.build        : 'gnoblin' added to the panels list
+gnome-control-center  panels/gnoblin/cc-gnoblin-panel.h            panels/gnoblin/cc-gnoblin-panel.h
+gnome-control-center  panels/gnoblin/cc-gnoblin-panel.c            panels/gnoblin/cc-gnoblin-panel.c
+gnome-control-center  panels/gnoblin/cc-gnoblin-panel.ui           panels/gnoblin/cc-gnoblin-panel.ui
+gnome-control-center  panels/gnoblin/gnoblin.gresource.xml         panels/gnoblin/gnoblin.gresource.xml
+gnome-control-center  panels/gnoblin/gnome-gnoblin-panel.desktop.in  panels/gnoblin/gnome-gnoblin-panel.desktop.in
+gnome-control-center  panels/gnoblin/meson.build                   panels/gnoblin/meson.build

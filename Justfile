@@ -39,7 +39,7 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; gnome-control-center) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"
@@ -91,15 +91,18 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 #
 # xdg-desktop-portal-gnome is the org.freedesktop.impl.portal.desktop.gnome
 # backend that shows the ScreenCast source-picker + RemoteDesktop consent
-# dialogs (the ones rustdesk trips on Wayland). Our patch adds an OPT-IN
-# auto-grant gated on GNOBLIN_PORTAL_AUTOGRANT=1 or ~/.config/gnoblin/
-# portal-autogrant. It is NOT part of `just dev` — build it explicitly:
+# dialogs (the ones rustdesk trips on Wayland). Our patch adds macOS-style
+# PER-APP persistent grants: tick "Always allow this app" once and that app
+# never re-prompts (grant stored in ~/.config/gnoblin/portal-grants/, keyed on
+# app-id or the app's executable); other apps still prompt each time. List/revoke
+# with `gnoblinctl screen-grants` / `gnoblinctl revoke-grant <id>`. It is NOT part
+# of `just dev` — build it explicitly:
 #
 #   just dev-portal
 #
-# then enable it and (re)start the backend, e.g.:
+# then (re)start the backend so it owns the impl portal, e.g.:
 #
-#   GNOBLIN_PORTAL_AUTOGRANT=1 ./install/libexec/xdg-desktop-portal-gnome
+#   ./install/libexec/xdg-desktop-portal-gnome -r
 #
 portal_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
 
@@ -107,6 +110,43 @@ portal_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
 dev-portal: (patch "xdg-desktop-portal-gnome")
     meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
     meson install -C build/xdg-desktop-portal-gnome
+
+# --- optional: gnoblin settings (forked gnome-control-center) ---------------
+#
+# A light fork of gnome-control-center: it keeps the `gnome-control-center`
+# binary name (so "open Settings" / Exec=gnome-control-center gets this build
+# when ./install is ahead on PATH), adds a `gnoblin` panel that drives the
+# org.gnoblin.Shell control protocol (feature toggles + screencast grants +
+# soft reload), and hides panels that make no sense under gnoblin.
+#
+# Two gnoblin changes on top of the pinned 49.6 tag:
+#   - overlay:  src/control-center/panels/gnoblin/*  (the whole panel)
+#   - patch:    patches/gnome-control-center/10-gnoblin-panel  (2 one-line regs)
+# Hiding is done purely at install time below (delete the panel .desktop files),
+# so it is trivially reversible and needs no patch.
+#
+# It is NOT part of `just dev` — build it explicitly:
+#
+#   just dev-settings
+#
+settings_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
+
+# Panels that make no sense under gnoblin (no GNOME top bar / overview / dash /
+# workspaces gestures). Hidden by removing their installed panel .desktop, which
+# cc_panel_loader_fill_model() treats as "panel absent" (skips it from the list).
+settings_hidden_panels := "multitasking"
+
+# Build + install the gnoblin-forked gnome-control-center into ./install, then
+# hide the panels that don't apply under gnoblin.
+dev-settings: (patch "gnome-control-center")
+    meson setup --reconfigure build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}} || meson setup build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}}
+    meson install -C build/gnome-control-center
+    # Hide non-applicable panels (reversible: just re-run dev-settings to restore).
+    for p in {{settings_hidden_panels}}; do \
+      rm -f "{{prefix}}/share/applications/gnome-$p-panel.desktop"; \
+      echo ">> hid $p panel"; \
+    done
+    @echo ">> gnoblin settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 dev: dev-gnome-shell dev-session

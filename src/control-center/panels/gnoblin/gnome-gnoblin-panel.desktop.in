@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=gnoblin
+Comment=Configure gnoblin shell features and screen-recording access
+Exec=gnome-control-center gnoblin
+# Translators: Do NOT translate or transliterate this text (this is an icon file name)!
+Icon=preferences-desktop-symbolic
+Terminal=false
+Type=Application
+NoDisplay=true
+StartupNotify=true
+Categories=GNOME;GTK;Settings;X-GNOME-Settings-Panel;X-GNOME-SystemSettings;
+OnlyShowIn=GNOME;Unity;
+Keywords=gnoblin;shell;feature;toggle;screencast;screen recording;reload;

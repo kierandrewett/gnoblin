@@ -16,6 +16,7 @@ SM="$ROOT/subprojects/$PROJ"
 case "$PROJ" in
   mutter)                       TAG="49.5" ;;
   gnome-shell)                  TAG="49.6" ;;
+  gnome-control-center)         TAG="49.6" ;;
   xdg-desktop-portal-gnome)     TAG="49.0" ;;
   *) echo "unknown subproject: $PROJ" >&2; exit 1 ;;
 esac

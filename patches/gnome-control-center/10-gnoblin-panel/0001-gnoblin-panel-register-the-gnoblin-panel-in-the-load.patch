@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 3 Jul 2026 09:38:43 +0100
+Subject: [PATCH] gnoblin-panel: register the gnoblin panel in the loader +
+ panels list
+
+Adds the two upstream registrations for the gnoblin overlay panel
+(panels/gnoblin/, copied in via scripts/copy-overlay.sh):
+  - shell/cc-panel-loader.c: an extern decl + one PANEL_TYPE("gnoblin", ...)
+    row so the panel is discoverable and its gnome-gnoblin-panel.desktop is
+    honoured by cc_panel_loader_fill_model().
+  - panels/meson.build: 'gnoblin' added to the panels list so the static lib is
+    built and linked.
+
+The panel implementation itself is gnoblin overlay source, not a patch.
+---
+ panels/meson.build      | 1 +
+ shell/cc-panel-loader.c | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/panels/meson.build b/panels/meson.build
+index 07c7733..2c55535 100644
+--- a/panels/meson.build
++++ b/panels/meson.build
+@@ -9,6 +9,7 @@ panels = [
+   'background',
+   'color',
+   'display',
++  'gnoblin',
+   'mouse',
+   'multitasking',
+   'notifications',
+diff --git a/shell/cc-panel-loader.c b/shell/cc-panel-loader.c
+index 28a1671..019bce3 100644
+--- a/shell/cc-panel-loader.c
++++ b/shell/cc-panel-loader.c
+@@ -39,6 +39,7 @@ extern GType cc_bluetooth_panel_get_type (void);
+ extern GType cc_color_panel_get_type (void);
+ extern GType cc_date_time_panel_get_type (void);
+ extern GType cc_display_panel_get_type (void);
++extern GType cc_gnoblin_panel_get_type (void);
+ extern GType cc_keyboard_panel_get_type (void);
+ extern GType cc_mouse_panel_get_type (void);
+ extern GType cc_multitasking_panel_get_type (void);
+@@ -93,6 +94,7 @@ static CcPanelLoaderVtable default_panels[] =
+ #endif
+   PANEL_TYPE("color",            cc_color_panel_get_type,                NULL),
+   PANEL_TYPE("display",          cc_display_panel_get_type,              NULL),
++  PANEL_TYPE("gnoblin",          cc_gnoblin_panel_get_type,              NULL),
+   PANEL_TYPE("keyboard",         cc_keyboard_panel_get_type,             NULL),
+   PANEL_TYPE("mouse",            cc_mouse_panel_get_type,                NULL),
+   PANEL_TYPE("multitasking",     cc_multitasking_panel_get_type,         NULL),
