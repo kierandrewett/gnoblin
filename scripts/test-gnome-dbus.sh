@@ -26,6 +26,9 @@ export GDK_BACKEND=wayland GNOME_SHELL_SESSION_MODE=gnoblin XDG_CURRENT_DESKTOP=
 DK="$(mktemp -d /tmp/gnoblin-dbus.XXXXXX)"
 mkdir -p "$DK"/{data,config,cache,home}
 export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
+# Seed a fake per-app screencast grant so ListScreencastGrants/RevokeScreencastGrant
+# can be exercised (the portal backend would normally write this on "always allow").
+mkdir -p "$DK/config/gnoblin/portal-grants"; : > "$DK/config/gnoblin/portal-grants/testapp"
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
 export DISP="gnoblin-dbus-$$" SHELL_LOG="$DK/shell.log"
 
@@ -93,6 +96,13 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   gv="$(callp GetFeature osd-volume)";          echo "GetFeature osd-volume (after off) -> $gv"
   case "$gv" in *false*) echo "  ok: SetFeature osd-volume off";; *) echo "  FAIL: per-OSD set"; rc=1;; esac
   callp SetFeature osd-volume true >/dev/null
+
+  # screencast per-app grants: list + revoke
+  grants="$(callp ListScreencastGrants)"; echo "ListScreencastGrants -> $grants"
+  case "$grants" in *testapp*) echo "  ok: screencast grant listed";; *) echo "  FAIL: grant not listed"; rc=1;; esac
+  callp RevokeScreencastGrant testapp >/dev/null
+  grants2="$(callp ListScreencastGrants)"; echo "ListScreencastGrants (after revoke) -> $grants2"
+  case "$grants2" in *testapp*) echo "  FAIL: grant not revoked"; rc=1;; *) echo "  ok: grant revoked";; esac
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc

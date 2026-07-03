@@ -32,6 +32,9 @@ gnoblinctl — control gnoblin over org.gnoblin.Shell
   gnoblinctl scripts                  list loaded user scripts
   gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
 
+  gnoblinctl screen-grants            list apps with a persistent screencast grant
+  gnoblinctl revoke-grant <id>        revoke one app's screencast grant
+
 Examples:
   gnoblinctl disable osd              let an external OSD own volume/brightness popups
   gnoblinctl reload                   pick up extension/script/theme edits, keep windows
@@ -51,6 +54,8 @@ case "$cmd" in
   reload-ext)      call ReloadExtension "${1:?usage: gnoblinctl reload-ext <uuid>}" >/dev/null; echo "reloading $1" ;;
   scripts)         call ListScripts | unwrap ;;
   reload-scripts)  call ReloadScripts >/dev/null; echo "scripts reloaded" ;;
+  screen-grants)   call ListScreencastGrants | unwrap ;;
+  revoke-grant)    call RevokeScreencastGrant "${1:?usage: gnoblinctl revoke-grant <id>}" >/dev/null; echo "revoked $1" ;;
   ""|-h|--help|help) usage ;;
   *) echo "unknown command: $cmd" >&2; usage >&2; exit 1 ;;
 esac

@@ -327,6 +327,15 @@ const IFACE = `
     </method>
     <!-- Reload all user scripts in-place (re-imports fresh source). -->
     <method name="ReloadScripts"/>
+    <!-- Screencast/remote-desktop per-app grants (macOS-style "always allow this
+         app"). The portal backend writes one file per granted app/binary id under
+         ~/.config/gnoblin/portal-grants/; these list + revoke them. -->
+    <method name="ListScreencastGrants">
+      <arg type="as" direction="out" name="ids"/>
+    </method>
+    <method name="RevokeScreencastGrant">
+      <arg type="s" direction="in" name="id"/>
+    </method>
     <!-- Feature toggles: gate gnome-shell subsystems on/off live. -->
     <!-- [id, human summary, enabled] for every gnoblin-gateable subsystem. -->
     <method name="ListFeatures">
@@ -531,6 +540,41 @@ export class Component {
     ReloadScripts() {
         this._scripts?.reload();
         console.log('gnoblin-control: reloading user scripts');
+    }
+
+    _grantsDir() {
+        return GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin', 'portal-grants']);
+    }
+
+    ListScreencastGrants() {
+        const dir = Gio.File.new_for_path(this._grantsDir());
+        if (!dir.query_exists(null))
+            return [];
+        let e;
+        try {
+            e = dir.enumerate_children('standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE, null);
+        } catch {
+            return [];
+        }
+        const ids = [];
+        let info;
+        while ((info = e.next_file(null)) !== null) {
+            if (info.get_file_type() === Gio.FileType.REGULAR)
+                ids.push(info.get_name());
+        }
+        return ids.sort();
+    }
+
+    RevokeScreencastGrant(id) {
+        // Guard against path traversal: only a bare filename is a valid grant id.
+        if (!id || id.includes('/') || id === '.' || id === '..')
+            throw new Error(`invalid grant id: ${id}`);
+        const file = Gio.File.new_for_path(GLib.build_filenamev([this._grantsDir(), id]));
+        if (!file.query_exists(null))
+            throw new Error(`no such grant: ${id}`);
+        file.delete(null);
+        console.log(`gnoblin-control: revoked screencast grant '${id}'`);
     }
 
     get IsWayland() {
