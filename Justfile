@@ -140,6 +140,14 @@ settings_hidden_panels := "multitasking"
 # hide the panels that don't apply under gnoblin.
 dev-settings: (patch "gnome-control-center")
     meson setup --reconfigure build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}} || meson setup build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}}
+    # blueprint-compiler: g-c-c compiles .blp UI files. If the system package is
+    # present, meson uses it. Otherwise it falls back to the meson wrap, whose
+    # build-side launcher can't import its own package (sys.path[0] is the build dir,
+    # not the source) — so link the source package next to the launcher. No-op when
+    # the system blueprint-compiler is used (no wrap dir).
+    bpsrc="{{justfile_directory()}}/subprojects/gnome-control-center/subprojects/blueprint-compiler/blueprintcompiler"; \
+    bpdir="build/gnome-control-center/subprojects/blueprint-compiler"; \
+    if [ -d "$bpdir" ] && [ -d "$bpsrc" ]; then ln -sfn "$bpsrc" "$bpdir/blueprintcompiler"; fi
     meson install -C build/gnome-control-center
     # Hide non-applicable panels (reversible: just re-run dev-settings to restore).
     for p in {{settings_hidden_panels}}; do \

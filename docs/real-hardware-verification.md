@@ -145,6 +145,13 @@ just dev-settings                 # builds the fork + hides the multitasking pan
 ./install/bin/gnome-control-center gnoblin
 ```
 
+> g-c-c compiles `.blp` UI files with `blueprint-compiler` (≥ 0.17). `dev-settings`
+> handles it automatically — it uses the system package if present, else links the
+> meson-wrap's source package next to its launcher (the wrap's launcher otherwise can't
+> import itself). Installing `sudo dnf install blueprint-compiler` is the cleaner path
+> but not required. **Build-verified**: the `gnoblin` panel compiles + links + is listed
+> by `gnome-control-center --list`.
+
 Expect: GNOME Settings with a **gnoblin** panel — switch rows for every `gnoblinctl features`
 toggle (flip one, confirm the subsystem changes live), the screencast per-app grants with a
 Revoke button each, and a **Reload gnoblin** button. The **Multitasking** panel is gone. With
