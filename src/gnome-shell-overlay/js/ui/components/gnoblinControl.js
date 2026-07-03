@@ -26,6 +26,9 @@ const OBJECT_PATH = '/org/gnoblin/Shell';
 const SCHEMA_ID = 'org.gnoblin.shell';
 const DISABLED_KEY = 'disabled-features';
 
+// The live ScriptHost, so the module-level softReload() can re-run user scripts.
+let activeScriptHost = null;
+
 // Runtime feature toggles. Each feature gates a gnome-shell subsystem so an
 // external userspace (Quickshell, waybar, custom) can own it instead — live, with
 // no compositor restart. apply(false) turns the subsystem OFF; apply(true) restores
@@ -97,6 +100,151 @@ export function softReload(reason = 'manual') {
             }
         })().catch(e => logError(e, 'gnoblin: soft-reload extension pass failed'));
     }
+
+    // Re-run user scripts (hot-reloaded via cache-busted import).
+    activeScriptHost?.reload();
+}
+
+// A tiny event bus scripts subscribe to via api.on(). Kept minimal on purpose —
+// a few high-signal compositor events, wired to mutter/display signals.
+class EventBus {
+    constructor() {
+        this._subs = new Map();
+        this._handlers = [];
+    }
+
+    connectSources() {
+        const display = global.display;
+        this._handlers.push([display,
+            display.connect('window-created', (_d, win) => this.emit('window-opened', win))]);
+        const wm = global.workspace_manager;
+        this._handlers.push([wm,
+            wm.connect('active-workspace-changed',
+                () => this.emit('workspace-changed', wm.get_active_workspace_index()))]);
+    }
+
+    subscribe(event, cb) {
+        if (!this._subs.has(event))
+            this._subs.set(event, new Set());
+        this._subs.get(event).add(cb);
+        return () => this._subs.get(event)?.delete(cb);
+    }
+
+    emit(event, ...args) {
+        for (const cb of this._subs.get(event) ?? []) {
+            try {
+                cb(...args);
+            } catch (e) {
+                logError(e, `gnoblin-script: handler for '${event}' threw`);
+            }
+        }
+    }
+
+    destroy() {
+        for (const [obj, id] of this._handlers) {
+            try {
+                obj.disconnect(id);
+            } catch { /* already gone */ }
+        }
+        this._handlers = [];
+        this._subs.clear();
+    }
+}
+
+// Loads lightweight GJS user scripts from $XDG_CONFIG_HOME/gnoblin/scripts/*.js.
+// Each script default-exports (api) => {...}: reactive glue over org.gnoblin.*,
+// lighter than an extension, hot-reloadable (cache-busted import). This is the
+// gnoblin answer to "a scripting language like Hyprland's Lua" — native GJS.
+class ScriptHost {
+    constructor(control, bus) {
+        this._control = control;
+        this._bus = bus;
+        this._dir = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin', 'scripts']);
+        this._loaded = [];
+        this._seq = 0;
+    }
+
+    _api(name) {
+        const disposers = [];
+        return {
+            _disposers: disposers,
+            log: (...a) => console.log(`gnoblin-script[${name}]:`, ...a),
+            version: () => this._control.GetVersion(),
+            getFeature: id => this._control.GetFeature(id),
+            setFeature: (id, on) => this._control.SetFeature(id, on),
+            reloadShell: () => softReload('script'),
+            on: (event, cb) => {
+                const d = this._bus.subscribe(event, cb);
+                disposers.push(d);
+                return d;
+            },
+        };
+    }
+
+    _scriptNames() {
+        const dir = Gio.File.new_for_path(this._dir);
+        if (!dir.query_exists(null))
+            return [];
+        let e;
+        try {
+            e = dir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+        } catch {
+            return [];
+        }
+        const names = [];
+        let info;
+        while ((info = e.next_file(null)) !== null) {
+            const n = info.get_name();
+            if (n.endsWith('.js'))
+                names.push(n);
+        }
+        return names.sort();
+    }
+
+    load() {
+        this._seq++;
+        for (const name of this._scriptNames()) {
+            const path = GLib.build_filenamev([this._dir, name]);
+            // First load: plain URI. Reloads: cache-bust so code edits take effect.
+            const uri = this._seq > 1
+                ? `file://${path}?gnoblinScript=${this._seq}`
+                : `file://${path}`;
+            import(uri).then(mod => {
+                if (typeof mod.default !== 'function') {
+                    console.warn(`gnoblin-script: ${name} has no default-exported function`);
+                    return;
+                }
+                const api = this._api(name);
+                try {
+                    mod.default(api);
+                    this._loaded.push({name, api});
+                    console.log(`gnoblin-script: loaded ${name}`);
+                } catch (e) {
+                    logError(e, `gnoblin-script: ${name} threw on load`);
+                }
+            }).catch(e => logError(e, `gnoblin-script: importing ${name} failed`));
+        }
+    }
+
+    unload() {
+        for (const {api} of this._loaded) {
+            for (const d of api._disposers ?? []) {
+                try {
+                    d();
+                } catch { /* ignore */ }
+            }
+        }
+        this._loaded = [];
+    }
+
+    reload() {
+        this.unload();
+        this.load();
+    }
+
+    list() {
+        return this._loaded.map(s => s.name);
+    }
 }
 
 // Human-readable name for an ExtensionState value.
@@ -125,6 +273,12 @@ const IFACE = `
     <method name="ReloadExtension">
       <arg type="s" direction="in" name="uuid"/>
     </method>
+    <!-- User scripts: names of the loaded ~/.config/gnoblin/scripts/*.js. -->
+    <method name="ListScripts">
+      <arg type="as" direction="out" name="scripts"/>
+    </method>
+    <!-- Reload all user scripts in-place (re-imports fresh source). -->
+    <method name="ReloadScripts"/>
     <!-- Feature toggles: gate gnome-shell subsystems on/off live. -->
     <!-- [id, human summary, enabled] for every gnoblin-gateable subsystem. -->
     <method name="ListFeatures">
@@ -175,6 +329,13 @@ export class Component {
             () => console.log(`gnoblin-control: acquired ${BUS_NAME} at ${OBJECT_PATH}`),
             () => console.warn(`gnoblin-control: lost ${BUS_NAME} (another owner?)`));
 
+        // User scripting: event bus + script host, loaded from the config dir.
+        this._bus = new EventBus();
+        this._bus.connectSources();
+        this._scripts = new ScriptHost(this, this._bus);
+        activeScriptHost = this._scripts;
+        this._scripts.load();
+
         console.log(`gnoblin-control: enabled (mode=${this._mode()}, wayland=${Meta.is_wayland_compositor()})`);
     }
 
@@ -182,6 +343,16 @@ export class Component {
         // Restore every gated subsystem to stock before we go.
         for (const id of Object.keys(FEATURES))
             FEATURES[id].apply(true);
+
+        if (this._scripts) {
+            this._scripts.unload();
+            this._scripts = null;
+            activeScriptHost = null;
+        }
+        if (this._bus) {
+            this._bus.destroy();
+            this._bus = null;
+        }
 
         if (this._nameId) {
             Gio.bus_unown_name(this._nameId);
@@ -273,6 +444,15 @@ export class Component {
         em.reloadExtension(ext).catch(
             e => logError(e, `gnoblin: hot-reload of ${uuid} failed`));
         console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
+    }
+
+    ListScripts() {
+        return this._scripts?.list() ?? [];
+    }
+
+    ReloadScripts() {
+        this._scripts?.reload();
+        console.log('gnoblin-control: reloading user scripts');
     }
 
     get IsWayland() {

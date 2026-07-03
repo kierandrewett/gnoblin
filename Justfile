@@ -111,6 +111,11 @@ gnome-dbus-verify:
 gnome-hot-reload-verify:
     ./scripts/test-hot-reload.sh
 
+# Headless: prove the GJS user-scripting layer — drop a script, edit it, reload
+# via org.gnoblin.*, confirm the new code ran.
+gnome-scripting-verify:
+    ./scripts/test-scripting.sh
+
 # Review one or more screenshots with external visual/design feedback.
 design-review *SCREENSHOTS:
     ./scripts/design-review.sh {{SCREENSHOTS}}
