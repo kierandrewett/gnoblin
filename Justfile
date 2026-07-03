@@ -118,6 +118,11 @@ devkit *CLIENT:
 gnome-verify:
     ./scripts/run-gnome-shell.sh
 
+# Headless: exercise the org.gnoblin.* control protocol end-to-end over D-Bus
+# (Ping / GetVersion / Reload → soft in-process reload).
+gnome-dbus-verify:
+    ./scripts/test-gnome-dbus.sh
+
 # Legacy (retired C++ compositor): boot the gnoblin-shell stack, list protocols.
 devkit-verify:
     ./scripts/run-devkit.sh verify

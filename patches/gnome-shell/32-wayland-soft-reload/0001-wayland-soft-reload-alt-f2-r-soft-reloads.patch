@@ -1,0 +1,42 @@
+From dccb5322f21ebe220172948de505abe808395ee2 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 3 Jul 2026 01:43:41 +0100
+Subject: [PATCH] wayland-soft-reload: Alt+F2 r soft-reloads instead of bailing
+
+On Wayland gnome-shell refuses to restart (would kill every Wayland client) and
+Alt+F2 'r' just shows 'Restart is not available on Wayland'. Route it to gnoblin's
+soft in-process reload (org.gnoblin.Shell / gnoblinControl.softReload): reload the
+theme + enabled extensions without tearing mutter down, so windows and the external
+chrome survive. X11 keeps the real Meta.restart path.
+---
+ js/ui/runDialog.js | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/runDialog.js b/js/ui/runDialog.js
+index 9b9c4dd..0a9b58b 100644
+--- a/js/ui/runDialog.js
++++ b/js/ui/runDialog.js
+@@ -9,6 +9,7 @@ import St from 'gi://St';
+ import * as Dialog from './dialog.js';
+ import * as Main from './main.js';
+ import * as ModalDialog from './modalDialog.js';
++import * as GnoblinControl from './components/gnoblinControl.js';
+ import * as ShellEntry from './shellEntry.js';
+ import * as Util from '../misc/util.js';
+ import * as History from '../misc/history.js';
+@@ -253,7 +254,11 @@ class RunDialog extends ModalDialog.ModalDialog {
+ 
+     _restart() {
+         if (Meta.is_wayland_compositor()) {
+-            this._showError(_('Restart is not available on Wayland'));
++            // gnoblin: a process restart on Wayland would kill every client, so do
++            // a soft in-process reload instead (keeps windows + external chrome).
++            this._shouldFadeOut = false;
++            this.close();
++            GnoblinControl.softReload('alt-f2-r');
+             return;
+         }
+         this._shouldFadeOut = false;
+-- 
+2.53.0
+

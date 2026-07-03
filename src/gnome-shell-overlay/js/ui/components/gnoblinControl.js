@@ -19,9 +19,43 @@ import Meta from 'gi://Meta';
 
 import * as Main from '../main.js';
 import * as Config from '../../misc/config.js';
+import {ExtensionState} from '../../misc/extensionUtils.js';
 
 const BUS_NAME = 'org.gnoblin.Shell';
 const OBJECT_PATH = '/org/gnoblin/Shell';
+
+// Soft, in-process reload — the Wayland-safe answer to "reload the shell without
+// logging out". mutter/Wayland is NEVER torn down, so windows and the (external)
+// chrome survive. We reload only the mutable JS layer: the shell theme/CSS and any
+// enabled extensions (re-running their enable() so they pick up new settings/CSS).
+// gnoblin keeps almost nothing else in-process — the chrome lives in a separate
+// layer-shell client — so this covers the practical need. A true process re-exec
+// on Wayland cannot preserve clients (no handoff protocol), which is exactly why
+// this is a soft reload and not global.reexec_self().
+export function softReload(reason = 'manual') {
+    console.log(`gnoblin: soft-reload (${reason}) — reloading theme + extensions in-process`);
+
+    try {
+        Main.loadTheme();
+    } catch (e) {
+        logError(e, 'gnoblin: soft-reload loadTheme failed');
+    }
+
+    const em = Main.extensionManager;
+    if (em) {
+        for (const uuid of em.getUuids()) {
+            const ext = em.lookup(uuid);
+            if (!ext || ext.state !== ExtensionState.ACTIVE)
+                continue;
+            try {
+                em.disableExtension(uuid);
+                em.enableExtension(uuid);
+            } catch (e) {
+                logError(e, `gnoblin: soft-reload of ${uuid} failed`);
+            }
+        }
+    }
+}
 
 // The wire contract. Deliberately small for now; grows with Phases 2.5/3.
 const IFACE = `
@@ -35,6 +69,8 @@ const IFACE = `
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
     </method>
+    <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
+    <method name="Reload"/>
     <!-- Whether the compositor is a Wayland session (soft-reload applies). -->
     <property name="IsWayland" type="b" access="read"/>
     <!-- The active gnome-shell session mode (expected: "gnoblin"). -->
@@ -82,6 +118,10 @@ export class Component {
 
     GetVersion() {
         return Config.PACKAGE_VERSION ?? 'unknown';
+    }
+
+    Reload() {
+        softReload('org.gnoblin.Shell.Reload');
     }
 
     get IsWayland() {
