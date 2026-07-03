@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# gnoblin devkit — boot a VISIBLE nested gnoblin session (a window in your current
+# Wayland session) and open a terminal already wired to it, so you can launch your
+# OWN chrome (quickshell, waybar, …) against gnoblin.
+#
+# Nothing chrome-specific is vendored into this repo: the terminal just gets the
+# right WAYLAND_DISPLAY (the nested session), the right D-Bus (so gnoblinctl /
+# org.gnoblin.Shell work), and gnoblinctl on PATH. You then run e.g.
+#   qs -p ~/dev/kobel-shell
+# from that terminal and your bar appears inside the nested gnoblin.
+#
+# Usage: run-gnome-devkit.sh [TERMINAL]      (TERMINAL defaults to foot/kitty/alacritty)
+#   env: MONITOR=1600x900   nested resolution
+#        GNOME_DEVKIT_HEADLESS=1   boot headless (no window) — for plumbing tests
+#        GNOME_DEVKIT_EXEC="cmd"   run cmd in the devkit env instead of a terminal
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
+SHELL_BIN="$PREFIX/bin/gnome-shell"
+MONITOR="${MONITOR:-1600x900}"
+[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — run 'just dev' first" >&2; exit 1; }
+
+if [ "${GNOME_DEVKIT_HEADLESS:-0}" != 1 ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  echo "run-gnome-devkit: no host WAYLAND_DISPLAY — the nested session needs a Wayland session to render into." >&2
+  echo "  (log into Wayland, or use GNOME_DEVKIT_HEADLESS=1 for a non-visible boot)" >&2
+  exit 1
+fi
+
+# --- runtime lookup paths for gnome-shell itself (mirror run-gnome-shell.sh) ---
+export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export PATH="$PREFIX/bin:$PATH"                        # gnome-shell, gnoblinctl
+export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export GNOME_SHELL_SESSION_MODE=gnoblin
+export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+
+# Host WAYLAND_DISPLAY (where the nested window is drawn) — the shell keeps it; the
+# spawned terminal is overridden to the NESTED display below.
+HOST_WAYLAND="${WAYLAND_DISPLAY:-}"
+
+# --- terminal to spawn ---------------------------------------------------------
+TERM_BIN="${1:-}"
+if [ -z "$TERM_BIN" ]; then
+  for t in foot kitty alacritty wezterm gnome-terminal konsole xterm; do
+    command -v "$t" >/dev/null 2>&1 && { TERM_BIN="$t"; break; }
+  done
+fi
+
+DISP="gnoblin-devkit-$$"
+
+# --- isolated D-Bus, reachable by the shell AND the terminal AND your qs --------
+# (dbus-daemon --print-address so all three can share it; not dbus-run-session,
+#  which would wrap a single command.)
+DK="$(mktemp -d /tmp/gnoblin-devkit.XXXXXX)"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || { rm -rf "$DK"; exit 1; }
+DBUS_PID_FILE="$DK/dbus.pid"
+export DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --config-file="$DBUS_CONF" --print-address --fork --print-pid=3 3>"$DBUS_PID_FILE")"
+DBUS_PID="$(cat "$DBUS_PID_FILE" 2>/dev/null || true)"
+
+SHELL_PID=
+cleanup() {
+  [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
+  # sweep clients that joined the nested display
+  for proc in /proc/[0-9]*; do
+    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
+    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill "${proc##*/}" 2>/dev/null || true ;; esac
+  done
+  [ -n "$DBUS_PID" ] && kill "$DBUS_PID" 2>/dev/null
+  rm -rf "$DK"
+}
+trap cleanup EXIT INT TERM HUP
+
+# --- boot the nested gnoblin session ------------------------------------------
+BACKEND=()
+[ "${GNOME_DEVKIT_HEADLESS:-0}" = 1 ] && BACKEND=(--headless)
+echo ">> booting nested gnoblin (mode=gnoblin, ${GNOME_DEVKIT_HEADLESS:+headless }display=$DISP) ..."
+WAYLAND_DISPLAY="$HOST_WAYLAND" \
+  "$SHELL_BIN" --wayland "${BACKEND[@]}" --no-x11 --mode=gnoblin \
+  --virtual-monitor "$MONITOR" --wayland-display "$DISP" \
+  >"$DK/shell.log" 2>&1 &
+SHELL_PID=$!
+
+# wait for the control protocol (implies the shell is up + serving $DISP)
+if ! gdbus wait --session --timeout 30 org.gnoblin.Shell; then
+  echo "!! gnoblin did not come up:" >&2; tail -n 30 "$DK/shell.log" >&2
+  cp "$DK/shell.log" /tmp/gnoblin-devkit-last.log 2>/dev/null || true
+  exit 1
+fi
+echo ">> gnoblin up. org.gnoblin.Shell owned; nested wayland display = $DISP"
+
+# --- env for anything you launch INTO the nested session ----------------------
+# WAYLAND_DISPLAY -> the nested gnoblin (so qs/foot render inside it)
+# DBUS_SESSION_BUS_ADDRESS -> the isolated bus (so gnoblinctl reaches org.gnoblin.Shell)
+export WAYLAND_DISPLAY="$DISP" GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland
+
+MOTD='cat <<EOF
+── gnoblin devkit ──────────────────────────────────────────────
+This shell is a client of the nested gnoblin session ('"$DISP"').
+Launch your chrome here, e.g.:
+
+    qs -p ~/dev/kobel-shell        # Quickshell (kobel-shell)
+    # or: waybar / your own layer-shell client
+
+Drive gnoblin:  gnoblinctl ping | version | reload | features
+Close this terminal or the nested window to end the devkit.
+────────────────────────────────────────────────────────────────
+EOF'
+
+# Plumbing/test hook: run a command instead of an interactive terminal.
+if [ -n "${GNOME_DEVKIT_EXEC:-}" ]; then
+  echo ">> GNOME_DEVKIT_EXEC: $GNOME_DEVKIT_EXEC"
+  bash -c "$GNOME_DEVKIT_EXEC"
+  exit $?
+fi
+
+[ -n "$TERM_BIN" ] || { echo "no terminal found (install foot/kitty/alacritty, or pass one)"; exit 1; }
+echo ">> opening $TERM_BIN inside the nested session ..."
+
+INNER="$MOTD; exec bash -i"
+case "$TERM_BIN" in
+  alacritty|wezterm) "$TERM_BIN" -e bash -c "$INNER" ;;
+  gnome-terminal)    "$TERM_BIN" -- bash -c "$INNER" ;;
+  konsole)           "$TERM_BIN" -e bash -c "$INNER" ;;
+  *)                 "$TERM_BIN" bash -c "$INNER" ;;   # foot, kitty, xterm
+esac
+
+# Terminal closed — tear the session down.
+echo ">> terminal closed; shutting down the nested gnoblin."

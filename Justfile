@@ -156,6 +156,16 @@ dev: dev-gnome-shell dev-session
 dev-session:
     ./scripts/install-session.sh {{prefix}}
 
+# Devkit: open a VISIBLE nested gnoblin session (a window in your current Wayland
+# session) + a terminal already wired to it — so you can launch your own chrome
+# against gnoblin without vendoring anything here. In the terminal, run e.g.
+#   qs -p ~/dev/kobel-shell
+# and your bar appears inside the nested gnoblin. Optional arg picks the terminal.
+#   just gnome-devkit          # foot/kitty/alacritty auto-detected
+#   just gnome-devkit kitty
+gnome-devkit *TERMINAL:
+    ./scripts/run-gnome-devkit.sh {{TERMINAL}}
+
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
 # This is the stack's headless smoke test.
