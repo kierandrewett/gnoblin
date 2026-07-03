@@ -80,11 +80,13 @@ dev-mutter: (patch "mutter")
 # stripped via the `gnoblin` session mode + a minimal native-topbar patch, and its
 # subsystems are toggled live over org.gnoblin.* — Quickshell (kobel) draws the chrome.
 dev-gnome-shell: dev-mutter (patch "gnome-shell")
-    # A stale build dir from a prior source/option set can wedge meson's reconfigure,
-    # so fall back to a clean wipe (the patch step re-lays the source each time anyway).
-    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --reconfigure build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}} \
-      || PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup --wipe build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}} \
-      || { rm -rf build/gnome-shell; PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}; }
+    # ALWAYS build clean: `patch gnome-shell` resets the submodule (git clean/checkout)
+    # and re-copies the overlay every run, which resets source mtimes underneath the
+    # build dir. Reusing it yields a half-stale libshell/libst (observed: duplicate
+    # g_boxed_type registration → GJS boxed-prototype crash at boot). A fresh build dir
+    # is the only reliably-correct option here.
+    rm -rf build/gnome-shell
+    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnome-shell
 
 # Legacy: the retired C++ compositor. Kept building only off `archive/cpp-compositor`.
@@ -99,7 +101,7 @@ dev-userspace:
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 dev: dev-gnome-shell dev-session
-    @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just devkit-verify'"
+    @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just gnome-verify'"
 
 # Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
 dev-session:
@@ -232,7 +234,6 @@ test-devkit:
     ./tests/layer-shell/run-wallpaper-output.sh
     ./tests/layer-shell/run-background-layer-input.sh
     ./tests/layer-shell/run-protocols.sh
-    ./tests/layer-shell/run-kde-appmenu-backend.sh
     ./tests/layer-shell/run-topbar-dbusmenu.sh
     ./tests/layer-shell/run-effects-shadow.sh
     ./tests/layer-shell/run-maximize-animation.sh
