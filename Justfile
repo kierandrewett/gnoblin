@@ -130,9 +130,9 @@ arch PROJ:
 
 # --- tests (see scripts/ and the mutter in-tree suite) -----------------------
 
-# Tier 1: static / build checks (patches apply, protocol lints, schema default).
-test-build:
-    ./scripts/test-build.sh
+# Tier 1: logic test for the shared C config parser (src/config), no display.
+test-config:
+    ./scripts/test-config.sh
 
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
@@ -145,20 +145,15 @@ test-mutter: (patch "mutter")
     focus_count="$(meson test -C build/mutter-tests {{mutter_focus_tests}} --list | sed '/^$/d' | wc -l)"; if [ "$focus_count" -le 0 ]; then echo "FAIL: no Mutter focus tests selected"; exit 1; fi; echo ">> running $focus_count Mutter focus/stacking tests"
     meson test -C build/mutter-tests {{mutter_test_run_opts}} {{mutter_focus_tests}}
 
-# LEGACY tier 3: nested *gnome-shell* smoke (gnome-shell has been retired; this
-# remains only as reference). The real integration tests are `test-devkit` below.
-test-nested:
-    ./scripts/test-nested.sh
-
-# Run every tier the environment allows. The C++/Slint integration tiers
-# (test-clients / test-logic / test-devkit) were retired with that stack.
-test:
-    @echo ">> smoke: 'just gnome-verify' + 'just gnome-dbus-verify' (need ./install from 'just dev')."
-    @echo ">> tier 2 (mutter): 'just test-mutter'."
-
-# Install the launcher shim + Super+Space keybinding for the current user.
-setup-launcher:
-    ./dist/install-launcher.sh
+# Run the display-less tiers. The C++/Slint integration tiers were retired with
+# that stack; the live smoke tests now boot the real gnome-shell stack:
+#   just gnome-verify       gnome-shell boots in gnoblin mode + advertises layer-shell
+#   just gnome-dbus-verify  org.gnoblin.* control protocol round-trip (needs ./install)
+#   just test-mutter        mutter in-tree headless functional suite
+test: test-config
+    @echo ">> tier 1 (config parser) passed."
+    @echo ">> live smoke needs ./install ('just dev'): 'just gnome-verify' + 'just gnome-dbus-verify'."
+    @echo ">> mutter suite: 'just test-mutter'."
 
 clean:
     rm -rf build

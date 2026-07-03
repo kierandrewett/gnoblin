@@ -1,7 +1,0 @@
-#!/bin/sh
-# Launcher provider: web-search handoff. Query arrives in $1 / $GNOBLIN_QUERY.
-# Emits TSV: title <TAB> subtitle <TAB> icon <TAB> action.
-q="$GNOBLIN_QUERY"
-[ -z "$q" ] && exit 0
-enc=$(printf '%s' "$q" | sed 's/&/%26/g; s/ /+/g')
-printf 'Search the web for \xe2\x80\x9c%s\xe2\x80\x9d\tOpen in your browser\tweb-browser\txdg-open "https://duckduckgo.com/?q=%s"\n' "$q" "$enc"
