@@ -27,6 +27,12 @@ if [ "${GNOME_DEVKIT_HEADLESS:-0}" != 1 ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
   exit 1
 fi
 
+# Host WAYLAND_DISPLAY (where the --devkit viewer window is drawn) — captured BEFORE
+# we scrub the environment below. The shell keeps it; the terminal renders here too;
+# clients you launch are pointed at the NESTED display instead.
+HOST_WAYLAND="${WAYLAND_DISPLAY:-}"
+REAL_HOME="$HOME"
+
 # --- runtime lookup paths for gnome-shell itself (mirror run-gnome-shell.sh) ---
 export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
@@ -36,9 +42,18 @@ export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share
 export GNOME_SHELL_SESSION_MODE=gnoblin
 export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
 
-# Host WAYLAND_DISPLAY (where the nested window is drawn) — the shell keeps it; the
-# spawned terminal is overridden to the NESTED display below.
-HOST_WAYLAND="${WAYLAND_DISPLAY:-}"
+# --- ISOLATION from the host session (this is what makes the devkit a sandbox) ---
+# 1. DISPLAY=:0 leaks in from the real session; with it set, GTK/Qt apps prefer X11
+#    and connect to the HOST Xwayland — so they open on your real desktop, not the
+#    nested one (and gnome-control-center then crashes on the mismatch). Kill it and
+#    force the Wayland backends so every launched client uses the nested display.
+unset DISPLAY
+export GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland CLUTTER_BACKEND=wayland
+export MOZ_ENABLE_WAYLAND=1
+# 2. No host accessibility bus (would connect back to the real session + spam errors).
+export GTK_A11Y=none NO_AT_BRIDGE=1
+# 3. No gvfs mounts from the real session.
+export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1
 
 # --- terminal to spawn ---------------------------------------------------------
 TERM_BIN="${1:-}"
@@ -102,6 +117,14 @@ if ! gdbus wait --session --timeout 30 org.gnoblin.Shell; then
   exit 1
 fi
 echo ">> gnoblin up. org.gnoblin.Shell owned; nested wayland display = $DISP"
+
+# Push the nested display + Wayland backends into the isolated bus's activation
+# environment, so D-Bus-activated apps (gnome-control-center, nautilus, …) spawn
+# INSIDE the devkit rather than inheriting the host's WAYLAND_DISPLAY. No --systemd:
+# this is a standalone bus, and we must not touch the real user's systemd env.
+WAYLAND_DISPLAY="$DISP" dbus-update-activation-environment \
+  WAYLAND_DISPLAY GDK_BACKEND QT_QPA_PLATFORM CLUTTER_BACKEND \
+  XDG_CURRENT_DESKTOP GTK_A11Y NO_AT_BRIDGE GIO_USE_VFS 2>/dev/null || true
 
 # --- env for anything you launch from the devkit shell ------------------------
 # DBUS_SESSION_BUS_ADDRESS + PATH are already exported. WAYLAND_DISPLAY is handled
