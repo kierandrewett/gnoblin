@@ -1,0 +1,656 @@
+From 2e6889e496fdc82eae6181b95e1aa9c26fd48ecd Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 3 Jul 2026 09:28:51 +0100
+Subject: [PATCH] tooling: per-app persistent ScreenCast/RemoteDesktop grants
+
+Replace the blanket GNOBLIN_PORTAL_AUTOGRANT bypass with a macOS-style,
+per-app persistent grant store that gnoblin owns.
+
+Apps that round-trip a restore_token already skip the consent dialog.
+Apps that do not (e.g. rustdesk) hit the picker/consent dialog on every
+session. This adds a per-app grant so the user can approve once via an
+"Always allow this app" checkbox and connect unattended thereafter.
+
+Grant store (src/utils.c):
+  - gnoblin_portal_grant_id(): stable, filesystem-safe id. Uses app_id
+    when non-empty; otherwise derives from the D-Bus sender's executable
+    basename (GetConnectionUnixProcessID -> /proc/PID/exe) so unsandboxed
+    apps with an empty app_id still get a stable per-binary id.
+  - gnoblin_portal_app_granted(): TRUE if the marker file
+    $XDG_CONFIG_HOME/gnoblin/portal-grants/<grant_id> exists.
+  - gnoblin_portal_store_grant(): create that marker (mkdir -p).
+
+ScreenCast/RemoteDesktop handle_start() stash the grant id on the session
+and, only when a grant already exists, take the existing fast path
+(select every monitor + start_session) instead of showing the dialog.
+The dialogs gain an "Always allow this app" checkbox whose approval calls
+gnoblin_portal_store_grant().
+
+Default behaviour is unchanged: with no stored grant the dialog is shown.
+Nothing is ever granted unconditionally.
+---
+ src/remotedesktop.c        |  65 ++++++++++++++++++
+ src/remotedesktopdialog.c  |   8 +++
+ src/remotedesktopdialog.h  |   3 +
+ src/remotedesktopdialog.ui |  10 +++
+ src/screencast.c           |  86 +++++++++++++++++++++++
+ src/screencast.h           |   7 ++
+ src/screencastdialog.c     |  11 +++
+ src/screencastdialog.h     |   3 +
+ src/screencastwidget.c     |  21 ++++++
+ src/screencastwidget.h     |   7 ++
+ src/screencastwidget.ui    |  10 +++
+ src/utils.c                | 135 +++++++++++++++++++++++++++++++++++++
+ src/utils.h                |  27 ++++++++
+ 13 files changed, 393 insertions(+)
+
+diff --git a/src/remotedesktop.c b/src/remotedesktop.c
+index ad466a3..2a415c9 100644
+--- a/src/remotedesktop.c
++++ b/src/remotedesktop.c
+@@ -93,6 +93,10 @@ typedef struct _RemoteDesktopSession
+ 
+   GDBusMethodInvocation *start_invocation;
+   RemoteDesktopDialogHandle *dialog_handle;
++
++  /* gnoblin: stable per-app id for the persistent grant store, computed in
++   * handle_start() and consulted again when the dialog is approved. */
++  char *gnoblin_grant_id;
+ } RemoteDesktopSession;
+ 
+ typedef struct _RemoteDesktopSessionClass
+@@ -258,6 +262,11 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+     {
+       g_autoptr(GError) error = NULL;
+ 
++      /* gnoblin: the user approved; if they also ticked "Always allow this
++       * app", persist a per-app grant so future sessions skip this dialog. */
++      if (remote_desktop_dialog_get_always_allow (REMOTE_DESKTOP_DIALOG (widget)))
++        gnoblin_portal_store_grant (dialog_handle->session->gnoblin_grant_id);
++
+       if (!start_session (dialog_handle->session,
+                           device_types,
+                           streams,
+@@ -816,10 +825,65 @@ handle_start (XdpImplRemoteDesktop *object,
+ 
+   remote_desktop_session->start_invocation = invocation;
+ 
++  /* gnoblin: remember who is asking so an approved "Always allow this app"
++   * checkbox can persist a grant, and so a previously stored grant can skip
++   * the dialog below. */
++  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
++  remote_desktop_session->gnoblin_grant_id =
++    gnoblin_portal_grant_id (arg_app_id, invocation);
++
+   if (!restore_from_data (remote_desktop_session))
+     {
+       RemoteDesktopDialogHandle *dialog_handle;
+ 
++      /* gnoblin: macOS-style per-app grant. If the user has previously ticked
++       * "Always allow this app", skip the consent dialog and grant the
++       * requested devices (and, if screen cast was selected, every monitor),
++       * with persistence allowed. Default (no stored grant) shows the dialog. */
++      if (gnoblin_portal_app_granted (remote_desktop_session->gnoblin_grant_id))
++        {
++          g_autoptr(GPtrArray) streams = NULL;
++          g_autoptr(GError) error = NULL;
++          gboolean clipboard_enabled;
++
++          g_debug ("gnoblin: remote desktop auto-granted for '%s'",
++                   remote_desktop_session->gnoblin_grant_id);
++
++          if (remote_desktop_session->select.screen_cast_enable)
++            {
++              streams = screen_cast_select_all_monitors (
++                &remote_desktop_session->select.screen_cast);
++              if (!streams)
++                {
++                  g_warning ("gnoblin: remote desktop grant fast path failed: "
++                             "no shareable monitor");
++                  cancel_start_session (remote_desktop_session, 2);
++                  if (request->exported)
++                    request_unexport (request);
++                  return TRUE;
++                }
++            }
++
++          clipboard_enabled =
++            remote_desktop_session->clipboard.clipboard_requested;
++
++          if (!start_session (remote_desktop_session,
++                              remote_desktop_session->select.device_types,
++                              streams,
++                              clipboard_enabled,
++                              TRUE,
++                              &error))
++            {
++              g_warning ("gnoblin: remote desktop grant fast path failed: %s",
++                         error ? error->message : "unknown error");
++              cancel_start_session (remote_desktop_session, 2);
++            }
++
++          if (request->exported)
++            request_unexport (request);
++          return TRUE;
++        }
++
+       dialog_handle = create_remote_desktop_dialog (remote_desktop_session,
+                                                     invocation,
+                                                     request,
+@@ -1316,6 +1380,7 @@ remote_desktop_session_finalize (GObject *object)
+   g_clear_pointer (&remote_desktop_session->streams_to_restore,
+                    g_ptr_array_unref);
+   g_clear_pointer (&remote_desktop_session->restored.data, g_variant_unref);
++  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
+   g_free (remote_desktop_session->mutter_session_path);
+ 
+   G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
+diff --git a/src/remotedesktopdialog.c b/src/remotedesktopdialog.c
+index 0466ae2..e757b97 100644
+--- a/src/remotedesktopdialog.c
++++ b/src/remotedesktopdialog.c
+@@ -33,6 +33,7 @@ struct _RemoteDesktopDialog
+   AdwSwitchRow *allow_remote_interaction_switch;
+   AdwSwitchRow *allow_remote_clipboard_switch;
+   GtkCheckButton *persist_check;
++  GtkCheckButton *gnoblin_always_check;
+   GtkWidget *screen_cast_widget;
+   AdwHeaderBar *titlebar;
+ 
+@@ -75,6 +76,12 @@ get_persist (RemoteDesktopDialog *dialog)
+   return gtk_check_button_get_active (dialog->persist_check);
+ }
+ 
++gboolean
++remote_desktop_dialog_get_always_allow (RemoteDesktopDialog *dialog)
++{
++  return gtk_check_button_get_active (dialog->gnoblin_always_check);
++}
++
+ static void
+ button_clicked (GtkWidget *button,
+                 RemoteDesktopDialog *dialog)
+@@ -255,6 +262,7 @@ remote_desktop_dialog_class_init (RemoteDesktopDialogClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, allow_remote_interaction_switch);
+   gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, allow_remote_clipboard_switch);
+   gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, persist_check);
++  gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, gnoblin_always_check);
+   gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, screen_cast_widget);
+   gtk_widget_class_bind_template_child (widget_class, RemoteDesktopDialog, titlebar);
+   gtk_widget_class_bind_template_callback (widget_class, button_clicked);
+diff --git a/src/remotedesktopdialog.h b/src/remotedesktopdialog.h
+index 6ef88cf..eee6ca4 100644
+--- a/src/remotedesktopdialog.h
++++ b/src/remotedesktopdialog.h
+@@ -32,3 +32,6 @@ RemoteDesktopDialog * remote_desktop_dialog_new (const char *app_id,
+                                                  ScreenCastSelection *screen_cast_select,
+                                                  gboolean clipboard_requested,
+                                                  RemoteDesktopPersistMode persist_mode);
++
++/* gnoblin: TRUE if the user ticked "Always allow this app". */
++gboolean remote_desktop_dialog_get_always_allow (RemoteDesktopDialog *dialog);
+diff --git a/src/remotedesktopdialog.ui b/src/remotedesktopdialog.ui
+index d2051e1..6b2cb10 100644
+--- a/src/remotedesktopdialog.ui
++++ b/src/remotedesktopdialog.ui
+@@ -72,6 +72,16 @@
+                       </object>
+                     </child>
+ 
++                    <!-- gnoblin: macOS-style per-app persistent grant -->
++                    <child>
++                      <object class="GtkCheckButton" id="gnoblin_always_check">
++                        <property name="visible">True</property>
++                        <property name="active">False</property>
++                        <property name="halign">center</property>
++                        <property name="label" translatable="yes">Always allow this app</property>
++                      </object>
++                    </child>
++
+                     <child>
+                       <object class="GtkListBox">
+                         <property name="valign">start</property>
+diff --git a/src/screencast.c b/src/screencast.c
+index 832a455..305cb82 100644
+--- a/src/screencast.c
++++ b/src/screencast.c
+@@ -65,6 +65,10 @@ typedef struct _ScreenCastSession
+ 
+   GDBusMethodInvocation *start_invocation;
+   ScreenCastDialogHandle *dialog_handle;
++
++  /* gnoblin: stable per-app id for the persistent grant store, computed in
++   * handle_start() and consulted again when the dialog is approved. */
++  char *gnoblin_grant_id;
+ } ScreenCastSession;
+ 
+ typedef struct _ScreenCastSessionClass
+@@ -339,6 +343,11 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
+       ScreenCastSession *screen_cast_session = dialog_handle->session;
+       g_autoptr(GError) error = NULL;
+ 
++      /* gnoblin: the user approved; if they also ticked "Always allow this
++       * app", persist a per-app grant so future sessions skip this dialog. */
++      if (screen_cast_dialog_get_always_allow (SCREEN_CAST_DIALOG (widget)))
++        gnoblin_portal_store_grant (screen_cast_session->gnoblin_grant_id);
++
+       screen_cast_session->persist_mode = MIN (screen_cast_session->persist_mode,
+                                                persist_mode);
+ 
+@@ -593,6 +602,47 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
+   return streams->len > 0 ? g_steal_pointer (&streams) : NULL;
+ }
+ 
++GPtrArray *
++screen_cast_select_all_monitors (ScreenCastSelection *selection)
++{
++  DisplayStateTracker *display_state_tracker = display_state_tracker_get ();
++  g_autoptr(GPtrArray) streams = NULL;
++  uint32_t id = 0;
++  GList *l;
++
++  if (!selection->source_types.monitor)
++    return NULL;
++
++  streams =
++    g_ptr_array_new_with_free_func ((GDestroyNotify) screen_cast_stream_info_free);
++
++  for (l = display_state_tracker_get_logical_monitors (display_state_tracker);
++       l;
++       l = l->next)
++    {
++      LogicalMonitor *logical_monitor = l->data;
++      GList *monitors = logical_monitor_get_monitors (logical_monitor);
++      ScreenCastStreamInfo *info;
++
++      if (!monitors)
++        continue;
++
++      info = g_new0 (ScreenCastStreamInfo, 1);
++      info->type = SCREEN_CAST_SOURCE_TYPE_MONITOR;
++      info->data.monitor = monitor_dup ((Monitor *) monitors->data);
++      info->id = id++;
++      g_ptr_array_add (streams, info);
++
++      if (!selection->multiple)
++        break;
++    }
++
++  if (streams->len == 0)
++    return NULL;
++
++  return g_steal_pointer (&streams);
++}
++
+ static gboolean
+ restore_stream_from_data (ScreenCastSession *screen_cast_session)
+ {
+@@ -664,10 +714,45 @@ handle_start (XdpImplScreenCast     *object,
+ 
+   screen_cast_session->start_invocation = invocation;
+ 
++  /* gnoblin: remember who is asking so an approved "Always allow this app"
++   * checkbox can persist a grant, and so a previously stored grant can skip
++   * the dialog below. */
++  g_clear_pointer (&screen_cast_session->gnoblin_grant_id, g_free);
++  screen_cast_session->gnoblin_grant_id =
++    gnoblin_portal_grant_id (arg_app_id, invocation);
++
+   if (!restore_stream_from_data (screen_cast_session))
+     {
+       ScreenCastDialogHandle *dialog_handle;
+ 
++      /* gnoblin: macOS-style per-app grant. If the user has previously ticked
++       * "Always allow this app" for this app, skip the source picker and grant
++       * every monitor, exactly as the accepted dialog would. Default (no stored
++       * grant) still shows the dialog. */
++      if (gnoblin_portal_app_granted (screen_cast_session->gnoblin_grant_id))
++        {
++          g_autoptr(GPtrArray) streams = NULL;
++          g_autoptr(GError) error = NULL;
++
++          g_debug ("gnoblin: screen cast auto-granted for '%s'",
++                   screen_cast_session->gnoblin_grant_id);
++
++          streams = screen_cast_select_all_monitors (&screen_cast_session->select);
++          if (streams && start_session (screen_cast_session, streams, &error))
++            {
++              if (request->exported)
++                request_unexport (request);
++              return TRUE;
++            }
++
++          g_warning ("gnoblin: screen cast grant fast path failed: %s",
++                     error ? error->message : "no shareable monitor");
++          cancel_start_session (screen_cast_session, 2);
++          if (request->exported)
++            request_unexport (request);
++          return TRUE;
++        }
++
+       dialog_handle = create_screen_cast_dialog (screen_cast_session,
+                                                  invocation,
+                                                  request,
+@@ -927,6 +1012,7 @@ screen_cast_session_finalize (GObject *object)
+ 
+   g_clear_pointer (&screen_cast_session->streams_to_restore, g_ptr_array_unref);
+   g_clear_pointer (&screen_cast_session->restored.data, g_variant_unref);
++  g_clear_pointer (&screen_cast_session->gnoblin_grant_id, g_free);
+   g_clear_object (&screen_cast_session->gnome_screen_cast_session);
+ 
+   G_OBJECT_CLASS (screen_cast_session_parent_class)->finalize (object);
+diff --git a/src/screencast.h b/src/screencast.h
+index ae2beec..d0d8052 100644
+--- a/src/screencast.h
++++ b/src/screencast.h
+@@ -84,3 +84,10 @@ void serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
+ 
+ GPtrArray * restore_screen_cast_streams (GVariantIter *streams_iter,
+                                          ScreenCastSelection *screen_cast_selection);
++
++/* gnoblin: build the stream list the consent dialog would produce if the user
++ * accepted with every monitor ticked. Used by the per-app grant fast path.
++ * Returns NULL if monitors are not among the requested source types or no
++ * monitor is available. When selection->multiple is FALSE only the first
++ * logical monitor is returned (matching the dialog's single-selection rule). */
++GPtrArray * screen_cast_select_all_monitors (ScreenCastSelection *selection);
+diff --git a/src/screencastdialog.c b/src/screencastdialog.c
+index f523406..baddf38 100644
+--- a/src/screencastdialog.c
++++ b/src/screencastdialog.c
+@@ -158,6 +158,17 @@ screen_cast_dialog_new (const char            *app_id,
+   screen_cast_widget_set_source_types (screen_cast_widget,
+                                        select->source_types);
+   screen_cast_widget_set_persist_mode (screen_cast_widget, persist_mode);
++  /* gnoblin: the standalone screen-share dialog offers the per-app grant. */
++  screen_cast_widget_set_always_allow_visible (screen_cast_widget, TRUE);
+ 
+   return dialog;
+ }
++
++gboolean
++screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog)
++{
++  ScreenCastWidget *screen_cast_widget =
++    SCREEN_CAST_WIDGET (dialog->screen_cast_widget);
++
++  return screen_cast_widget_get_always_allow (screen_cast_widget);
++}
+diff --git a/src/screencastdialog.h b/src/screencastdialog.h
+index f349814..7ec4834 100644
+--- a/src/screencastdialog.h
++++ b/src/screencastdialog.h
+@@ -29,3 +29,6 @@ G_DECLARE_FINAL_TYPE (ScreenCastDialog, screen_cast_dialog,
+ ScreenCastDialog * screen_cast_dialog_new (const char            *app_id,
+                                            ScreenCastSelection   *select,
+                                            ScreenCastPersistMode  persist_mode);
++
++/* gnoblin: TRUE if the user ticked "Always allow this app". */
++gboolean screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog);
+diff --git a/src/screencastwidget.c b/src/screencastwidget.c
+index 46e20b7..e939bcf 100644
+--- a/src/screencastwidget.c
++++ b/src/screencastwidget.c
+@@ -56,6 +56,8 @@ struct _ScreenCastWidget
+   GtkCheckButton        *persist_check;
+   ScreenCastPersistMode  persist_mode;
+ 
++  GtkCheckButton        *gnoblin_always_check;
++
+   DisplayStateTracker   *display_state_tracker;
+   ulong                  monitors_changed_handler_id;
+ 
+@@ -524,6 +526,7 @@ screen_cast_widget_class_init (ScreenCastWidgetClass *klass)
+ 
+   gtk_widget_class_set_template_from_resource (widget_class, "/org/freedesktop/portal/desktop/gnome/screencastwidget.ui");
+   gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, persist_check);
++  gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, gnoblin_always_check);
+   gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type_switcher);
+   gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type);
+   gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, window_selection_page);
+@@ -761,3 +764,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
+ 
+   return screen_cast_widget->persist_mode;
+ }
++
++/* gnoblin: control visibility of the per-app "Always allow this app" checkbox.
++ * Hidden by default so it does not appear when this widget is embedded in the
++ * RemoteDesktop dialog (which carries its own checkbox); the standalone
++ * ScreenCast dialog shows it. */
++void
++screen_cast_widget_set_always_allow_visible (ScreenCastWidget *screen_cast_widget,
++                                             gboolean          visible)
++{
++  gtk_widget_set_visible (GTK_WIDGET (screen_cast_widget->gnoblin_always_check),
++                          visible);
++}
++
++gboolean
++screen_cast_widget_get_always_allow (ScreenCastWidget *screen_cast_widget)
++{
++  return gtk_check_button_get_active (screen_cast_widget->gnoblin_always_check);
++}
+diff --git a/src/screencastwidget.h b/src/screencastwidget.h
+index 16f5f6d..b6ae785 100644
+--- a/src/screencastwidget.h
++++ b/src/screencastwidget.h
+@@ -44,3 +44,10 @@ void screen_cast_widget_set_persist_mode (ScreenCastWidget *screen_cast_widget,
+ 
+ ScreenCastPersistMode
+ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget);
++
++/* gnoblin: per-app "Always allow this app" grant checkbox. */
++void screen_cast_widget_set_always_allow_visible (ScreenCastWidget *screen_cast_widget,
++                                                  gboolean          visible);
++
++gboolean
++screen_cast_widget_get_always_allow (ScreenCastWidget *screen_cast_widget);
+diff --git a/src/screencastwidget.ui b/src/screencastwidget.ui
+index 095485b..79975b6 100644
+--- a/src/screencastwidget.ui
++++ b/src/screencastwidget.ui
+@@ -18,6 +18,16 @@
+         <property name="use-underline">True</property>
+       </object>
+     </child>
++
++    <!-- gnoblin: macOS-style per-app persistent grant -->
++    <child>
++      <object class="GtkCheckButton" id="gnoblin_always_check">
++        <property name="visible">False</property>
++        <property name="active">False</property>
++        <property name="halign">center</property>
++        <property name="label" translatable="yes">Always allow this app</property>
++      </object>
++    </child>
+     <child>
+     </child>
+     <child>
+diff --git a/src/utils.c b/src/utils.c
+index 5e0485c..571b448 100644
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -122,3 +122,138 @@ str_distance (const char *a,
+ 
+   return v1[b_char_len];
+ }
++
++/* gnoblin: per-app persistent ScreenCast / RemoteDesktop grants. */
++
++static char *
++gnoblin_portal_grants_dir (void)
++{
++  return g_build_filename (g_get_user_config_dir (),
++                           "gnoblin", "portal-grants", NULL);
++}
++
++/* Map an arbitrary id (app_id or executable basename) onto a safe filename,
++ * so a grant can never escape the grants directory. Returns NULL if nothing
++ * usable remains. */
++static char *
++gnoblin_portal_sanitize_id (const char *raw)
++{
++  GString *sanitized;
++  const char *p;
++
++  if (raw == NULL || *raw == '\0')
++    return NULL;
++
++  sanitized = g_string_new (NULL);
++  for (p = raw; *p != '\0'; p++)
++    {
++      char c = *p;
++
++      if (g_ascii_isalnum (c) || c == '.' || c == '-' || c == '_')
++        g_string_append_c (sanitized, c);
++      else
++        g_string_append_c (sanitized, '_');
++    }
++
++  if (sanitized->len == 0 ||
++      g_strcmp0 (sanitized->str, ".") == 0 ||
++      g_strcmp0 (sanitized->str, "..") == 0)
++    {
++      g_string_free (sanitized, TRUE);
++      return NULL;
++    }
++
++  return g_string_free (sanitized, FALSE);
++}
++
++char *
++gnoblin_portal_grant_id (const char            *app_id,
++                         GDBusMethodInvocation *invocation)
++{
++  g_autofree char *raw = NULL;
++
++  if (app_id != NULL && *app_id != '\0')
++    {
++      raw = g_strdup (app_id);
++    }
++  else if (invocation != NULL)
++    {
++      GDBusConnection *connection;
++      const char *sender;
++      g_autoptr(GVariant) reply = NULL;
++      g_autoptr(GError) error = NULL;
++      guint32 pid = 0;
++
++      /* Unsandboxed apps hand us an empty app_id, so fall back to the sender's
++       * executable basename for a stable per-binary id. */
++      sender = g_dbus_method_invocation_get_sender (invocation);
++      connection = g_dbus_method_invocation_get_connection (invocation);
++      if (connection != NULL && sender != NULL)
++        {
++          reply =
++            g_dbus_connection_call_sync (connection,
++                                         "org.freedesktop.DBus",
++                                         "/org/freedesktop/DBus",
++                                         "org.freedesktop.DBus",
++                                         "GetConnectionUnixProcessID",
++                                         g_variant_new ("(s)", sender),
++                                         G_VARIANT_TYPE ("(u)"),
++                                         G_DBUS_CALL_FLAGS_NONE,
++                                         -1, NULL, &error);
++          if (reply != NULL)
++            g_variant_get (reply, "(u)", &pid);
++          else
++            g_debug ("gnoblin: could not resolve sender pid: %s",
++                     error ? error->message : "unknown error");
++        }
++
++      if (pid > 0)
++        {
++          g_autofree char *exe_link = NULL;
++          g_autofree char *exe_path = NULL;
++
++          exe_link = g_strdup_printf ("/proc/%u/exe", pid);
++          exe_path = g_file_read_link (exe_link, NULL);
++          if (exe_path != NULL)
++            raw = g_path_get_basename (exe_path);
++        }
++    }
++
++  return gnoblin_portal_sanitize_id (raw);
++}
++
++gboolean
++gnoblin_portal_app_granted (const char *grant_id)
++{
++  g_autofree char *dir = NULL;
++  g_autofree char *path = NULL;
++
++  if (grant_id == NULL || *grant_id == '\0')
++    return FALSE;
++
++  dir = gnoblin_portal_grants_dir ();
++  path = g_build_filename (dir, grant_id, NULL);
++
++  return g_file_test (path, G_FILE_TEST_EXISTS);
++}
++
++void
++gnoblin_portal_store_grant (const char *grant_id)
++{
++  g_autofree char *dir = NULL;
++  g_autofree char *path = NULL;
++
++  if (grant_id == NULL || *grant_id == '\0')
++    return;
++
++  dir = gnoblin_portal_grants_dir ();
++  if (g_mkdir_with_parents (dir, 0700) != 0)
++    {
++      g_warning ("gnoblin: failed to create portal grants dir %s", dir);
++      return;
++    }
++
++  path = g_build_filename (dir, grant_id, NULL);
++  if (!g_file_set_contents (path, "", 0, NULL))
++    g_warning ("gnoblin: failed to store portal grant %s", path);
++}
+diff --git a/src/utils.h b/src/utils.h
+index 3b73d68..64010e5 100644
+--- a/src/utils.h
++++ b/src/utils.h
+@@ -21,6 +21,7 @@
+ #pragma once
+ 
+ #include <gdk/gdk.h>
++#include <gio/gio.h>
+ 
+ #define DESKTOP_PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+ 
+@@ -46,3 +47,29 @@ GQuark  xdg_desktop_portal_error_quark (void);
+ 
+ glong str_distance (const char *a,
+                     const char *b);
++
++/* gnoblin: macOS-style per-app persistent ScreenCast / RemoteDesktop grants.
++ *
++ * Apps that round-trip a restore_token already skip the consent dialog. These
++ * helpers add a gnoblin-owned per-app grant store so that apps which do NOT
++ * restore (e.g. rustdesk) can be granted once ("Always allow this app") and
++ * then connect unattended on every subsequent session. Grants live as marker
++ * files under $XDG_CONFIG_HOME/gnoblin/portal-grants/<grant_id>.
++ *
++ * Default behaviour is unchanged: with no stored grant the dialog is shown.
++ * A grant is only ever created when the user explicitly ticks the checkbox and
++ * approves the dialog. Nothing is granted unconditionally. */
++
++/* Return a stable, filesystem-safe grant id for the requesting app, or NULL if
++ * one cannot be derived. Uses app_id when non-empty; otherwise derives it from
++ * the D-Bus sender's executable basename (GetConnectionUnixProcessID ->
++ * /proc/PID/exe) so unsandboxed apps with an empty app_id still get a stable
++ * per-binary id. Caller frees with g_free(). */
++char *gnoblin_portal_grant_id (const char            *app_id,
++                               GDBusMethodInvocation *invocation);
++
++/* TRUE if the given grant_id has a stored grant. NULL/empty grant_id -> FALSE. */
++gboolean gnoblin_portal_app_granted (const char *grant_id);
++
++/* Persist a grant for grant_id (creating the store dir). No-op on NULL/empty. */
++void gnoblin_portal_store_grant (const char *grant_id);
+-- 
+2.53.0
+
