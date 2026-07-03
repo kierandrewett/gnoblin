@@ -172,6 +172,12 @@ test-config:
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
 # scheduling can starve a test long enough to trip its 60s timeout.
+#
+# NEEDS A REAL ENVIRONMENT: the native/Wayland backend tests boot a compositor that
+# monitors an ICC profile dir; in sandboxes lacking a local file monitor (inotify)
+# they all bail with "Unable to find default local file monitor type" (exit 251) —
+# environmental, NOT a gnoblin regression (the unit tests, which need no backend,
+# pass; the ref-image tests even log "Image matched" before bailing). Run on real HW.
 test-mutter: (patch "mutter")
     meson setup --reconfigure build/mutter-tests subprojects/mutter {{mutter_test_opts}} || meson setup build/mutter-tests subprojects/mutter {{mutter_test_opts}}
     meson compile -C build/mutter-tests

@@ -85,7 +85,20 @@ gnoblinctl scripts
 gnoblinctl reload-scripts
 ```
 
-## 6. Unattended screensharing (rustdesk)
+## 6. Mutter's own test suite
+
+```sh
+just test-mutter
+```
+
+Validates that gnoblin's mutter patches (layer-shell, protocol overlays, WM/crash fixes)
+don't regress mutter. The native/Wayland backend tests boot a compositor that monitors an
+ICC profile directory, so they need a real environment with a working local file monitor
+(inotify) and a seat — in a restricted sandbox they all bail with *"Unable to find default
+local file monitor type"* (exit 251), which is environmental, not a regression. The unit
+tests (no backend) pass anywhere.
+
+## 7. Unattended screensharing (rustdesk)
 
 ```sh
 sudo dnf install xdg-desktop-portal-devel      # the one build dep for the portal
