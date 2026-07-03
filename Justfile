@@ -142,6 +142,11 @@ gnome-scripting-verify:
 gnome-notifications-verify:
     ./scripts/test-notifications-toggle.sh
 
+# Headless: prove gnoblin.conf [protocols] gating — disabling wlr-layer-shell in
+# the config stops zwlr_layer_shell_v1 being advertised.
+gnome-protocol-gating-verify:
+    ./scripts/test-protocol-gating.sh
+
 # Review one or more screenshots with external visual/design feedback.
 design-review *SCREENSHOTS:
     ./scripts/design-review.sh {{SCREENSHOTS}}
