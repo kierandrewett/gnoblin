@@ -1,0 +1,26 @@
+{
+  "//": "gnoblin session mode. The low-patch way to strip GNOME Shell's own UI.",
+  "//parentMode": "Inherit everything from the stock 'user' mode (WM, keybinds,",
+  "//parentMode2": "workspaces, windows, notifications, unlock dialog), then override.",
+  "parentMode": "user",
+
+  "//panel": "Empty the top bar. No activities button, no clock, no quick settings,",
+  "//panel2": "no system indicators. Quickshell (kobel) draws the real bar as a",
+  "//panel3": "layer-shell surface. The leftover empty panel actor is hidden by the",
+  "//panel4": "50-native-topbar patch (opacity 0, non-reactive, no struts).",
+  "panel": {
+    "left": [],
+    "center": [],
+    "right": []
+  },
+
+  "//hasOverview": "No Activities overview, dash, app-grid, hot corner, or overlay key.",
+  "//hasOverview2": "Inherited false from 'user', restated here so the strip is explicit",
+  "//hasOverview3": "and survives even if the parent mode changes upstream.",
+  "hasOverview": false,
+
+  "//components": "Keep only the essential background agents so polkit prompts,",
+  "//components2": "the keyring, auto-mount and NetworkManager still work. Everything",
+  "//components3": "visual (bar/dash/overview) is gone; these are headless services.",
+  "components": ["polkitAgent", "keyring", "autorunManager", "automountManager", "networkAgent"]
+}
