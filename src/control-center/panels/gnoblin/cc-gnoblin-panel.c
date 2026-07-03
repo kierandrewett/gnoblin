@@ -64,6 +64,39 @@ remove_rows (AdwPreferencesGroup *group,
   g_clear_pointer (rows, g_list_free);
 }
 
+/* Reflect whether org.gnoblin.Shell is currently owned: banner + reload button
+ * sensitivity + (re)populate or clear the rows. Called on proxy-ready and whenever
+ * the name owner changes (shell started/stopped while the panel is open). */
+static void
+update_availability (CcGnoblinPanel *self)
+{
+  g_autofree char *owner = self->proxy ? g_dbus_proxy_get_name_owner (self->proxy)
+                                       : NULL;
+  gboolean up = (owner != NULL);
+
+  adw_banner_set_revealed (ADW_BANNER (self->unavailable_banner), !up);
+  gtk_widget_set_sensitive (self->reload_button, up);
+
+  if (up)
+    {
+      reload_features (self);
+      reload_grants (self);
+    }
+  else
+    {
+      remove_rows (self->features_group, &self->feature_rows);
+      remove_rows (self->screencast_group, &self->grant_rows);
+    }
+}
+
+static void
+on_name_owner_changed (GObject    *proxy,
+                       GParamSpec *pspec,
+                       gpointer    user_data)
+{
+  update_availability (CC_GNOBLIN_PANEL (user_data));
+}
+
 /* Fire-and-forget a method with no meaningful return; log failures. */
 static void
 call_done_cb (GObject      *source,
@@ -101,7 +134,7 @@ on_feature_row_activated (AdwSwitchRow *row,
                      "SetFeature",
                      g_variant_new ("(sb)", id, enabled),
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, call_done_cb, self);
+                     self->cancellable, call_done_cb, NULL);
 }
 
 static void
@@ -109,7 +142,9 @@ list_features_cb (GObject      *source,
                   GAsyncResult *res,
                   gpointer      user_data)
 {
-  CcGnoblinPanel *self;
+  /* The caller passed g_object_ref (self); take ownership so a queued success
+   * callback can't dereference a freed panel if it was disposed meanwhile. */
+  g_autoptr(CcGnoblinPanel) self = user_data;
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
   g_autoptr(GVariantIter) iter = NULL;
@@ -119,8 +154,6 @@ list_features_cb (GObject      *source,
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
-
-  self = CC_GNOBLIN_PANEL (user_data);
 
   if (error != NULL)
     {
@@ -157,7 +190,7 @@ reload_features (CcGnoblinPanel *self)
 
   g_dbus_proxy_call (self->proxy, "ListFeatures", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, list_features_cb, self);
+                     self->cancellable, list_features_cb, g_object_ref (self));
 }
 
 /* --- screencast grants --------------------------------------------------- */
@@ -180,7 +213,7 @@ on_revoke_clicked (GtkButton *button,
                      "RevokeScreencastGrant",
                      g_variant_new ("(s)", id),
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, call_done_cb, self);
+                     self->cancellable, call_done_cb, NULL);
 
   /* Optimistically drop it from the list; a fresh ListScreencastGrants would
    * also work but this keeps the UI snappy. */
@@ -192,7 +225,7 @@ list_grants_cb (GObject      *source,
                 GAsyncResult *res,
                 gpointer      user_data)
 {
-  CcGnoblinPanel *self;
+  g_autoptr(CcGnoblinPanel) self = user_data;   /* ref taken by the caller */
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
   g_autoptr(GVariant) array = NULL;
@@ -202,8 +235,6 @@ list_grants_cb (GObject      *source,
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
-
-  self = CC_GNOBLIN_PANEL (user_data);
 
   if (error != NULL)
     {
@@ -256,7 +287,7 @@ reload_grants (CcGnoblinPanel *self)
 
   g_dbus_proxy_call (self->proxy, "ListScreencastGrants", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, list_grants_cb, self);
+                     self->cancellable, list_grants_cb, g_object_ref (self));
 }
 
 /* --- reload button ------------------------------------------------------- */
@@ -272,7 +303,7 @@ on_reload_clicked (GtkButton *button,
 
   g_dbus_proxy_call (self->proxy, "Reload", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, call_done_cb, self);
+                     self->cancellable, call_done_cb, NULL);
 }
 
 /* --- proxy lifecycle ----------------------------------------------------- */
@@ -282,39 +313,28 @@ proxy_ready_cb (GObject      *source,
                 GAsyncResult *res,
                 gpointer      user_data)
 {
-  CcGnoblinPanel *self;
+  g_autoptr(CcGnoblinPanel) self = user_data;   /* ref taken by the caller */
   g_autoptr(GError) error = NULL;
   GDBusProxy *proxy;
-  g_autofree char *owner = NULL;
 
   proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
 
-  self = CC_GNOBLIN_PANEL (user_data);
-
   if (proxy == NULL)
     {
       g_warning ("gnoblin: could not connect to %s: %s",
                  GNOBLIN_BUS_NAME, error ? error->message : "unknown");
-      gtk_widget_set_visible (self->unavailable_banner, TRUE);
+      adw_banner_set_revealed (ADW_BANNER (self->unavailable_banner), TRUE);
       return;
     }
 
   self->proxy = proxy;
 
-  owner = g_dbus_proxy_get_name_owner (proxy);
-  if (owner == NULL)
-    {
-      /* Interface not currently owned — gnoblin shell not running. */
-      gtk_widget_set_visible (self->unavailable_banner, TRUE);
-      gtk_widget_set_sensitive (self->reload_button, FALSE);
-      return;
-    }
-
-  gtk_widget_set_visible (self->unavailable_banner, FALSE);
-  reload_features (self);
-  reload_grants (self);
+  /* Re-evaluate availability whenever the shell starts/stops while we're open. */
+  g_signal_connect (proxy, "notify::g-name-owner",
+                    G_CALLBACK (on_name_owner_changed), self);
+  update_availability (self);
 }
 
 /* --- GObject boilerplate ------------------------------------------------- */
@@ -368,5 +388,5 @@ cc_gnoblin_panel_init (CcGnoblinPanel *self)
                             GNOBLIN_IFACE,
                             self->cancellable,
                             proxy_ready_cb,
-                            self);
+                            g_object_ref (self));
 }
