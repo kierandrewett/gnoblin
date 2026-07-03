@@ -39,7 +39,7 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"
@@ -86,6 +86,27 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
     rm -rf build/gnome-shell
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
     PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnome-shell
+
+# --- optional: unattended screen-share portal backend -----------------------
+#
+# xdg-desktop-portal-gnome is the org.freedesktop.impl.portal.desktop.gnome
+# backend that shows the ScreenCast source-picker + RemoteDesktop consent
+# dialogs (the ones rustdesk trips on Wayland). Our patch adds an OPT-IN
+# auto-grant gated on GNOBLIN_PORTAL_AUTOGRANT=1 or ~/.config/gnoblin/
+# portal-autogrant. It is NOT part of `just dev` — build it explicitly:
+#
+#   just dev-portal
+#
+# then enable it and (re)start the backend, e.g.:
+#
+#   GNOBLIN_PORTAL_AUTOGRANT=1 ./install/libexec/xdg-desktop-portal-gnome
+#
+portal_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
+
+# Build + install the patched xdg-desktop-portal-gnome backend into ./install.
+dev-portal: (patch "xdg-desktop-portal-gnome")
+    meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
+    meson install -C build/xdg-desktop-portal-gnome
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 dev: dev-gnome-shell dev-session

@@ -10,3 +10,7 @@
 	path = subprojects/gnome-control-center
 	url = https://gitlab.gnome.org/GNOME/gnome-control-center.git
 	shallow = true
+[submodule "subprojects/xdg-desktop-portal-gnome"]
+	path = subprojects/xdg-desktop-portal-gnome
+	url = https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git
+	shallow = true
