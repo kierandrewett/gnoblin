@@ -116,9 +116,15 @@ The stock GNOME UI strip is configured entirely by the session mode
 ```sh
 just test              # config-parser logic test, no display
 just test-mutter       # mutter in-tree headless functional suite (unit/Wayland/native + focus)
-just gnome-verify      # boots gnome-shell in gnoblin mode, checks zwlr_layer_shell_v1
-just gnome-dbus-verify # org.gnoblin.* control protocol round-trip (needs ./install)
+just gnome-verify           # boots gnome-shell in gnoblin mode, checks zwlr_layer_shell_v1
+just gnome-dbus-verify      # org.gnoblin.* control protocol round-trip (needs ./install)
+just gnome-hot-reload-verify  # live extension code hot-reload
+just gnome-scripting-verify   # GJS user-scripting layer
 ```
+
+The suite is headless. For the bits that need a real GPU / login session / root
+(logging in at GDM, bring-your-own chrome, unattended screensharing), see
+[docs/real-hardware-verification.md](docs/real-hardware-verification.md).
 
 ## Authoring a protocol overlay
 
