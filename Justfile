@@ -166,6 +166,11 @@ dev-session:
 gnome-devkit *TERMINAL:
     ./scripts/run-gnome-devkit.sh {{TERMINAL}}
 
+# Headless regression test for the devkit: boot a nested gnoblin and confirm the
+# spawned-terminal env (isolated bus + gnoblinctl) can drive org.gnoblin.Shell.
+gnome-devkit-verify:
+    ./scripts/test-gnome-devkit.sh
+
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
 # This is the stack's headless smoke test.
