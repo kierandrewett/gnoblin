@@ -64,12 +64,11 @@ SHELL_PID=
 _cleaned=
 cleanup() {
   [ -n "$_cleaned" ] && return; _cleaned=1
+  # Kill the shell's whole process group — takes the MDK viewer + anything it
+  # spawned with it. Clients you launched live in the terminal's own tree and
+  # die with the terminal.
+  [ -n "$SHELL_PID" ] && kill -- "-$SHELL_PID" 2>/dev/null
   [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
-  # sweep clients that joined the nested display (exact env-line match, not substring)
-  for proc in /proc/[0-9]*; do
-    { tr '\0' '\n' < "$proc/environ" 2>/dev/null | grep -qxF "WAYLAND_DISPLAY=$DISP"; } \
-      && kill "${proc##*/}" 2>/dev/null || true
-  done
   [ -n "$DBUS_PID" ] && kill "$DBUS_PID" 2>/dev/null
   rm -rf "$DK"
 }
@@ -78,12 +77,21 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
 
 # --- boot the nested gnoblin session ------------------------------------------
-BACKEND=()
-[ "${GNOME_DEVKIT_HEADLESS:-0}" = 1 ] && BACKEND=(--headless)
-echo ">> booting nested gnoblin (mode=gnoblin, ${GNOME_DEVKIT_HEADLESS:+headless }display=$DISP) ..."
-WAYLAND_DISPLAY="$HOST_WAYLAND" \
-  "$SHELL_BIN" --wayland "${BACKEND[@]}" --no-x11 --mode=gnoblin \
-  --virtual-monitor "$MONITOR" --wayland-display "$DISP" \
+# VISIBLE: --devkit opens mutter's development-kit viewer (a window in your current
+#   session) — it does NOT take over the seat, so it coexists with your real GNOME.
+#   (Plain --wayland would fall back to the native/KMS backend and fight for the
+#   seat: "Failed to take control of the session: EBUSY".)
+# HEADLESS (tests/CI): --headless + a virtual monitor, no window.
+if [ "${GNOME_DEVKIT_HEADLESS:-0}" = 1 ]; then
+  BACKEND=(--headless --virtual-monitor "$MONITOR")
+  echo ">> booting gnoblin (mode=gnoblin, headless, display=$DISP) ..."
+else
+  BACKEND=(--devkit)
+  echo ">> booting gnoblin (mode=gnoblin, devkit viewer window, display=$DISP) ..."
+fi
+WAYLAND_DISPLAY="$HOST_WAYLAND" setsid \
+  "$SHELL_BIN" --wayland --no-x11 --mode=gnoblin \
+  "${BACKEND[@]}" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
 
