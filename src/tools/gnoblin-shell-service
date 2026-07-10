@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# gnoblin-shell-service -- ExecStart target for the systemd --user unit
+# org.gnoblin.Shell@wayland.service (src/data/session/systemd-user/).
+#
+# Prepends this prefix's lookup paths (mirroring scripts/run-gnome-shell.sh
+# and scripts/run-gnome-devkit.sh) rather than the unit file setting them via
+# static Environment= lines, which would overwrite whatever the systemd
+# --user manager's environment already carries (environment.d, PAM, Flatpak
+# exports, a Nix profile, ...) instead of adding to it -- important for
+# XDG_DATA_DIRS in particular, since gnome-shell and its session components
+# still need to find non-gnoblin data (icons, Flatpak app entries, etc.)
+# inside the gnoblin session.
+#
+# Self-locates its prefix from its own installed path, so it keeps working
+# if that prefix is later moved/repackaged.
+set -euo pipefail
+
+PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$PREFIX/bin:$PATH"
+export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export GNOME_SHELL_SESSION_MODE=gnoblin
+export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+
+exec "$PREFIX/bin/gnome-shell"

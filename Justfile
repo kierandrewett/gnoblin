@@ -164,6 +164,15 @@ dev: dev-gnome-shell dev-session
 dev-session:
     ./scripts/install-session.sh {{prefix}}
 
+# Register the gnoblin session with your live systemd --user instance (links
+# org.gnoblin.Shell.target/@wayland.service -- gnoblin-specific unit names,
+# does NOT touch org.gnome.Shell*) and print the (root) command to make
+# "Gnoblin" appear at your login manager's session picker. NOT run by
+# `just dev`/`dev-session` -- it's the one step that touches state outside
+# ./install. See docs/installation.md.
+dev-session-register:
+    ./scripts/register-session.sh {{prefix}}
+
 # Devkit: open a VISIBLE nested gnoblin session (a window in your current Wayland
 # session) + a terminal already wired to it — so you can launch your own chrome
 # against gnoblin without vendoring anything here. In the terminal, run e.g.

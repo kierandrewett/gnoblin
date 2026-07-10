@@ -3,5 +3,5 @@ Name=Gnoblin
 Comment=Stripped GNOME Shell + Mutter; chrome is bring-your-own
 Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin
 Type=Application
-DesktopNames=Gnoblin:GNOME
+DesktopNames=Gnoblin;GNOME;
 X-GDM-SessionRegisters=true

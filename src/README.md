@@ -20,8 +20,21 @@ a feature lives.
   toggles). Copied into the GNOME Shell submodule via its `manifest` and
   registered by `patches/gnome-shell/30-gnoblin-control`.
 - `data/` — installed runtime data: the `gnoblin` session mode + gnome-session +
-  `.desktop`, the `org.gnoblin.shell` gschema, `gnoblin.conf.example`, and legacy
-  quick-settings plugin scripts (reference for a bring-your-own chrome).
+  `.desktop` + gnoblin-specific systemd --user units (`session/systemd-user/`,
+  `org.gnoblin.Shell.target`/`@wayland.service` — kept separate from the
+  shared `org.gnome.Shell` unit so registering them never shadows a system
+  GNOME Shell install), the `org.gnoblin.shell` gschema, `gnoblin.conf.example`,
+  and legacy quick-settings plugin scripts (reference for a bring-your-own
+  chrome).
+- `tools/` — CLIs installed into the prefix by `scripts/install-session.sh`:
+  `gnoblinctl` (the `org.gnoblin.Shell` control front-end), `gnoblin-session`
+  (the installed `.desktop`'s `Exec=` target), and `gnoblin-shell-service`
+  (the `ExecStart=` wrapper for `org.gnoblin.Shell@wayland.service`).
+- `control-center/` — the `gnoblin` panel for the forked `gnome-control-center`
+  (feature toggles, screencast grants, a reload button). Copied into the
+  submodule via its `manifest` and registered by
+  `patches/gnome-control-center/10-gnoblin-panel`. Built with `just dev-settings`
+  (not part of `just dev`).
 
 ## Common Tasks
 
@@ -38,3 +51,7 @@ a feature lives.
 - Changing the documented protocol gates: update `data/gnoblin.conf.example`.
 - Changing a quick-settings plugin: update the matching `data/plugins/gnoblin-qs-*`
   script.
+- Changing the login-manager/systemd wiring: `data/session/gnoblin.desktop`
+  (Exec= gets rewritten at install time), `data/session/systemd-user/`, and
+  `tools/gnoblin-session` / `tools/gnoblin-shell-service`. See
+  `scripts/install-session.sh` and `scripts/register-session.sh`.
