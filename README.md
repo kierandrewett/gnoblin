@@ -63,7 +63,7 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
 src/
   protocols/    Mutter Wayland protocol overlays + aggregator/
   config/       shared C ini parser (gnoblin.conf), compiled into the overlays
-  data/         session mode, gnome-session, gschema, conf, QS plugin scripts
+  data/         session mode, gnome-session, gschema, conf
   gnome-shell-overlay/  the org.gnoblin.Shell control component
 subprojects/    pinned upstream submodules, kept PRISTINE (mutter 49.5, gnome-shell 49.6)
 patches/        edits to upstream files, grouped by purpose (mutter/, gnome-shell/)
