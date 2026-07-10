@@ -73,6 +73,29 @@ to the top of **Next**.
   logging in is NOT yet verified — that needs the manual root step in
   docs/installation.md, then a real logout/login, which wasn't done as part
   of this pass.
+- **RPM packaging** — `packaging/rpm/gnome-shell.spec` now builds a
+  `gnoblin-session` subpackage (session mode, login entry, gnoblin-specific
+  systemd units, `gnoblinctl`/`gnoblin-session`/`gnoblin-shell-service`),
+  `Requires:`-pinned to the exact matching `gnome-shell` build.
+  `rpm_projects` in the Justfile now covers both `mutter` and `gnome-shell`.
+  `just rpm mutter` / `just rpm gnome-shell` both build clean; verified RPM
+  contents (`rpm -qlp`/`rpm -qRp`) and payload (Exec=/ExecStart= correctly
+  resolve to `/usr/bin/...`) but did NOT run the actual `dnf install` —
+  installing replaces the system's Mutter/GNOME Shell, a real change left
+  for Kieran to trigger deliberately (command in docs/installation.md).
+  deb/arch scaffolds updated to describe the same package split, still not
+  implemented.
+- **Second dead-code sweep** — ran 4 parallel audits (patches/, protocols +
+  control-center, packaging/, scripts + root config) after the first pass.
+  Fixed: `.cargo/config.toml` (retired Rust leftover), stale `.gitignore`
+  comments/entries, 3 patch commit-message path/reference fixes (diff hunks
+  untouched, `just patch mutter` re-verified), a stale "KDE appmenu" doc
+  claim, a stale "GTK4/Rust lock client" reference, stale "Phase-2/3"
+  comments in `gnoblinControl.js` (features have shipped for a while), a
+  stale cross-reference to the deleted Rust config parser. Extracted
+  `src/tools/gnoblin-env.sh` — a 4th copy of the same prefix env-setup block
+  had accumulated across `run-gnome-shell.sh`/`run-gnome-devkit.sh`/
+  `gnoblin-session`/`gnoblin-shell-service`; now one shared function.
 
 ## Next
 
@@ -81,3 +104,36 @@ to the top of **Next**.
   (`gnome-hot-reload-verify`); sideloading is still "drop it in
   `~/.local/share/gnome-shell/extensions/<uuid>/` by hand".
 - `kobel` — Kieran's personal Quickshell chrome config, in a separate repo.
+- Actually select "Gnoblin" at GDM on a real machine and log in — the
+  systemd/login-manager wiring is built and unit-tested, but nobody has
+  done the real logout/login yet.
+- Run the built RPMs' `dnf install` for real (system-package-replacing,
+  deliberately not run as part of this pass — command in
+  docs/installation.md).
+- **Architecture questions the sweep surfaced, not acted on (your call):**
+  - `layer-shell` and `screencopy` are wired directly via `patches/mutter/
+    30-layer-shell/` and `30-screencopy/`, not through the
+    `aggregator/meta-gnoblin-protocols.c` pattern the other 6 protocols use
+    (`40-gnoblin-protocols`). Works fine as-is (no double-registration); just
+    architecturally inconsistent. Migrating them means regenerating two
+    patches and retesting — real work, not a quick fix.
+  - `patches/mutter/10-tooling/0001` (broadcasts Wayland key events on
+    `dev.kieran.mutter.Keys.Event`) and `patches/gnome-shell/10-tooling/0001`
+    (unsafe-mode at startup) both cite a `screen-mirror` tool not documented
+    anywhere else in this repo. Personal tooling, or ready to retire?
+  - `patches/gnome-shell/20-no-overview` and `21-workspaces-indicator` predate
+    (or duplicate) `hasOverview:false` in the `gnoblin` session mode JSON —
+    possibly redundant now that the session mode handles it declaratively.
+  - `patches/mutter/20-no-overlay-key` changes the Mutter schema default
+    globally (affects any session using patched Mutter, not just gnoblin's).
+  - No root `LICENSE`/`COPYING` file despite GPL-2.0-or-later headers
+    throughout `src/` and both RPM specs declaring `License:
+    GPL-2.0-or-later`.
+  - `tests/config-test.c` doesn't exercise every rule in
+    `src/config/README.md`'s Grammar Contract (leading/trailing trim,
+    section-name trim, single-quoted values, a few others) — a coverage
+    gap, not evidence the parser's wrong.
+  - `foreign-toplevel-list`/`foreign-toplevel-management` share real
+    duplicated logic (`window_is_exposable`, `window_app_id` fallback,
+    bind/enumerate loops) — a safe extraction if you want to reduce drift
+    risk, not urgent.
