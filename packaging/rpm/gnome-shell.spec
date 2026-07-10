@@ -42,9 +42,11 @@ Source6:        gnoblin-env.sh
 Source7:        gnoblin-session
 Source8:        gnoblin-shell-service
 Source9:        gnoblinctl
+Source10:       00_org.gnoblin.mutter.gschema.override
 
-# gnoblin patches (tooling, no-overview, branding) are pre-applied in the
-# tarball produced by scripts/make-tarball.sh — no Patch: lines here.
+# gnoblin patches (tooling, control, settings, reload, branding) are
+# pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
+# lines here.
 
 %define eds_version 3.45.1
 %define gnome_desktop_version 44.0-7
@@ -247,6 +249,7 @@ install -Dm755 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
 install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
+install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
 install -Dm644 %{SOURCE3} %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop
 sed -i "s|^Exec=.*|Exec=%{_bindir}/gnoblin-session|" \
   %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop
@@ -328,6 +331,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
 %{_bindir}/gnoblin-session
 %{_bindir}/gnoblin-shell-service
 %{_bindir}/gnoblinctl
+%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
 %{_userunitdir}/org.gnoblin.Shell.target
 %{_userunitdir}/org.gnoblin.Shell@wayland.service
 

@@ -132,6 +132,13 @@ to the top of **Next**.
   stale `screen-mirror` references in the Mutter key-event and GNOME Shell
   unsafe-mode tooling patch descriptions with generic inspection/automation
   wording.
+- **Overlay key scoping** — retired `patches/mutter/20-no-overlay-key` instead
+  of changing Mutter's schema default for every session. Gnoblin now installs
+  `00_org.gnoblin.mutter.gschema.override` into the active schema directory and
+  recompiles schemas in `install-session.sh`; because all shell launch paths
+  set `XDG_CURRENT_DESKTOP=GNOME:Gnoblin`, `org.gnome.mutter overlay-key`
+  defaults to `''` only inside Gnoblin and stays `Super` for the stock GNOME
+  desktop default.
 
 ## Next
 
@@ -153,8 +160,6 @@ to the top of **Next**.
     (`40-gnoblin-protocols`). Works fine as-is (no double-registration); just
     architecturally inconsistent. Migrating them means regenerating two
     patches and retesting — real work, not a quick fix.
-  - `patches/mutter/20-no-overlay-key` changes the Mutter schema default
-    globally (affects any session using patched Mutter, not just gnoblin's).
   - `tests/config-test.c` doesn't exercise every rule in
     `src/config/README.md`'s Grammar Contract (leading/trailing trim,
     section-name trim, single-quoted values, a few others) — a coverage

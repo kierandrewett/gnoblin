@@ -42,8 +42,9 @@ Source0:       http://download.gnome.org/sources/%{name}/%{major_version}/%{name
 # https://pagure.io/fedora-workstation/issue/357
 Source1:       org.gnome.mutter.fedora.gschema.override
 
-# gnoblin patches (tooling, no-overlay-key, layer-shell) are pre-applied in
-# the tarball produced by scripts/make-tarball.sh — no Patch: lines here.
+# gnoblin patches (tooling, layer-shell, screencopy, window-management) are
+# pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
+# lines here.
 
 BuildRequires: cvt
 BuildRequires: desktop-file-utils

@@ -47,6 +47,13 @@ install -Dm644 "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp" 
   "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service"
 rm -f "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
 
+
+# Desktop-specific schema defaults. This runs after mutter/gnome-shell have
+# installed their schemas, so the override is compiled into the prefix used by
+# Gnoblin's wrappers (`XDG_CURRENT_DESKTOP=GNOME:Gnoblin`).
+install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
+  "$PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
+glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 
@@ -57,6 +64,7 @@ echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/g
 echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
+echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"
 echo "     bin/gnoblinctl                           (control CLI)"
 echo ">> not yet registered with your login manager / systemd --user instance."

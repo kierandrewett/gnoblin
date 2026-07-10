@@ -14,7 +14,7 @@ export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_P
 export PATH="$PREFIX/bin:$PATH"
 export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export GNOME_SHELL_SESSION_MODE=gnoblin GDK_BACKEND=wayland
+export GNOME_SHELL_SESSION_MODE=gnoblin XDG_CURRENT_DESKTOP=GNOME:Gnoblin GDK_BACKEND=wayland
 
 DK="$(mktemp -d /tmp/gnoblin-pg.XXXXXX)"
 mkdir -p "$DK"/{home,config,cache}

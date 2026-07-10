@@ -41,6 +41,8 @@ if [ "$PROJ" = "gnome-shell" ]; then
   cp "$ROOT/src/data/session/modes/gnoblin.json" "$OUTDIR/gnoblin.json"
   cp "$ROOT/src/data/session/gnome-session/gnoblin.session" "$OUTDIR/gnoblin.session"
   cp "$ROOT/src/data/session/gnoblin.desktop" "$OUTDIR/gnoblin.desktop"
+  cp "$ROOT/src/data/session/schemas/00_org.gnoblin.mutter.gschema.override" \
+     "$OUTDIR/00_org.gnoblin.mutter.gschema.override"
   cp "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell.target" "$OUTDIR/org.gnoblin.Shell.target"
   cp "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
      "$OUTDIR/org.gnoblin.Shell@wayland.service.in"
