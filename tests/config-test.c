@@ -34,6 +34,7 @@ main (void)
                      "exec = beta\n"
                      "[bind]\n"
                      "Super+Hash = spawn printf 'value # kept' > /tmp/marker # trailing\n"
+                     "[empty]\n"
                      "[protocols]\n"
                      "wlr-gamma-control = off\n"
                      "ext-data-control = on\n";
@@ -74,6 +75,16 @@ main (void)
     CHECK (execs && g_strcmp0 (execs[0], "alpha") == 0 && g_strcmp0 (execs[1], "beta") == 0,
            "repeated-key list values in order");
   }
+
+  {
+    g_auto (GStrv) keys = gnoblin_config_get_keys ("startup");
+    CHECK (keys && g_strv_length (keys) == 2, "get_keys includes repeated keys, not just unique ones");
+    CHECK (keys && g_strcmp0 (keys[0], "exec") == 0 && g_strcmp0 (keys[1], "exec") == 0,
+           "get_keys preserves file order");
+  }
+
+  CHECK (gnoblin_config_get_keys ("missing-section") == NULL, "get_keys on absent section is NULL");
+  CHECK (gnoblin_config_get_keys ("empty") == NULL, "get_keys on empty section is NULL");
 
   {
     g_autofree char *bind = gnoblin_config_get_string ("bind", "Super+Hash");
