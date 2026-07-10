@@ -100,7 +100,9 @@ else
   BACKEND=(--devkit)
   echo ">> booting gnoblin (mode=gnoblin, devkit viewer window, display=$DISP) ..."
 fi
-WAYLAND_DISPLAY="$HOST_WAYLAND" setsid \
+# Gnoblin has no stock chrome. Keep user extensions out of the nested shell so
+# dock/panel extensions from the normal GNOME session cannot leak into devkit.
+GNOME_SHELL_DISABLE_EXTENSIONS=1 WAYLAND_DISPLAY="$HOST_WAYLAND" setsid \
   "$SHELL_BIN" --wayland --no-x11 --mode=gnoblin \
   "${BACKEND[@]}" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
