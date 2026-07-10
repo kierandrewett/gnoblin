@@ -5,7 +5,7 @@ Subject: [PATCH] tooling: enable unsafe-mode at startup
 
 Set global.context.unsafe_mode = true in start() so Shell.Eval and other
 privileged shell operations work without a manual Looking Glass toggle.
-screen-mirror installs its shell-side polling via Shell.Eval at startup.
+External inspection/automation tools can then install shell-side helpers at startup.
 ---
  js/ui/main.js | 5 +++++
  1 file changed, 5 insertions(+)

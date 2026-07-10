@@ -4,8 +4,8 @@ Date: Tue, 16 Jun 2026 22:15:50 +0100
 Subject: [PATCH] tooling: broadcast Wayland key events on the session bus
 
 Emit a dev.kieran.mutter.Keys.Event D-Bus signal for every Wayland key
-press/release so user-space tools (e.g. screen-mirror's keyboard overlay)
-can observe global key input without /dev/input access.
+press/release so user-space inspection tools can observe global key input
+without /dev/input access.
 
 The session-bus lookup is deliberately asynchronous: this is on the compositor
 input path, so key delivery must never wait for D-Bus connection setup.
@@ -25,7 +25,7 @@ index 149eb0a..51d236b 100644
 +
 +/* gnoblin tooling: every Wayland key event emits a session-bus D-Bus
 + * signal so user-space tools can observe global key input without
-+ * needing /dev/input access. See screen-mirror's keyboard overlay. */
++ * needing /dev/input access. */
 +static GDBusConnection *_kdr_session_bus = NULL;
 +static gboolean _kdr_session_bus_requested = FALSE;
 +
