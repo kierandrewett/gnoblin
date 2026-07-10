@@ -14,6 +14,18 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
 > `archive/cpp-compositor`. Everything below describes the current
 > patched-GNOME direction.
 
+## Documentation
+
+- [Installation](docs/installation.md) — dependencies, building, installing
+  the session, picking Gnoblin at the login manager.
+- [Devkit](docs/devkit.md) — the fast loop for iterating on your own chrome
+  without logging out.
+- [Testing](docs/testing.md) — what each `just *-verify` recipe proves.
+- [Configuration](docs/configuration.md) — `gnoblin.conf`, the
+  `org.gnoblin.shell` GSettings schema, `gnoblinctl`.
+- [Real-hardware verification](docs/real-hardware-verification.md) — what
+  the headless suite can't cover (GDM login, unattended screensharing).
+
 ## What's in it
 
 - **Mutter overlays** (`src/protocols/`, C on top of the pinned Mutter tree):
@@ -84,18 +96,18 @@ install). Individual steps: `just dev-mutter`, `just dev-gnome-shell`,
 ## Run
 
 ```sh
-# Headless smoke: boot gnome-shell in the gnoblin session mode and confirm it
-# starts and advertises zwlr_layer_shell_v1 (so any layer-shell client can draw):
-just gnome-verify
-
-# Headless: exercise the org.gnoblin.* control protocol over D-Bus
-# (Ping / GetVersion / Reload round-trip):
-just gnome-dbus-verify
+just gnome-devkit
 ```
 
-For a real session, `just dev-session` installs a `gnoblin.desktop` /
-`gnoblin.session` entry into the prefix; select "gnoblin" at the login manager.
-Then run whatever chrome you like as layer-shell clients.
+Fastest way to try it: a visible nested gnoblin session (a window in your
+current Wayland session) plus a terminal wired to it, so you can run your
+own chrome against a real gnoblin compositor without touching your login
+session. See [docs/devkit.md](docs/devkit.md).
+
+For a real login session: `just dev-session` installs the session data into
+the prefix, `just dev-session-register` links it with your systemd --user
+instance and prints the (root) command to add "Gnoblin" to your login
+manager's picker. See [docs/installation.md](docs/installation.md).
 
 ## Configure
 
@@ -109,7 +121,8 @@ Two configuration surfaces:
   feature toggles above.
 
 The stock GNOME UI strip is configured entirely by the session mode
-(`src/data/session/modes/gnoblin.json`), not by editing shell JS.
+(`src/data/session/modes/gnoblin.json`), not by editing shell JS. Full
+reference (feature ids, `gnoblinctl`, grammar): [docs/configuration.md](docs/configuration.md).
 
 ## Tests
 
@@ -122,8 +135,10 @@ just gnome-hot-reload-verify  # live extension code hot-reload
 just gnome-scripting-verify   # GJS user-scripting layer
 ```
 
-The suite is headless. For the bits that need a real GPU / login session / root
-(logging in at GDM, bring-your-own chrome, unattended screensharing), see
+The suite is headless. Full recipe reference (what each one proves, what it
+needs): [docs/testing.md](docs/testing.md). For the bits that need a real
+GPU / login session / root (logging in at GDM, bring-your-own chrome,
+unattended screensharing), see
 [docs/real-hardware-verification.md](docs/real-hardware-verification.md).
 
 ## Authoring a protocol overlay

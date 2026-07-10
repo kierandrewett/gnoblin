@@ -20,10 +20,19 @@ just dev           # patched mutter + patched gnome-shell + session data -> ./in
 
 ## 1. Log in to a real gnoblin session
 
-`just dev-session` installs `gnoblin.desktop`, the `gnoblin` gnome-session, and the
-`gnoblin` GNOME Shell session mode into the prefix. To offer it at the login manager,
-the prefix's share dir must be on `XDG_DATA_DIRS` for GDM (or install to a system
-prefix). Then pick **Gnoblin** at GDM.
+```sh
+just dev-session              # installs gnoblin.desktop + gnome-session + session mode
+just dev-session-register     # links the systemd --user units, prints the (root) command
+```
+
+`dev-session-register` links the gnoblin-specific `org.gnoblin.Shell.target` /
+`@wayland.service` systemd --user units (does not touch the shared
+`org.gnome.Shell@wayland.service`, so this can't affect a system GNOME
+session) and prints the `sudo install` command that copies `gnoblin.desktop`
+into `/usr/share/wayland-sessions/` — the one step it can't do for you,
+since login managers only read session `.desktop` files from a fixed system
+directory. Run that, then pick **Gnoblin** at GDM. Full detail:
+[Installation § install the session for real](installation.md#install-the-session-for-real).
 
 Expect: a bare session — **no top bar, no dash, no overview** (stripped by the session
 mode), your windows managed by mutter, and **nothing drawing chrome until you run a
