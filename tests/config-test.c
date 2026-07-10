@@ -23,12 +23,22 @@ static int fails;
 int
 main (void)
 {
-  const char *conf = "[appearance]\n"
-                     "background = \"#1d1f21\"   # trailing comment\n"
+  const char *conf = "  # leading comment whitespace\n"
+                     "root-key = root-value\n"
+                     "[missing-close\n"
+                     "[ appearance ] trailing text ignored\n"
+                     "  background = \"#1d1f21\"   # trailing comment\n"
+                     "\taccent = 'purple # kept' # dropped\n"
                      "rounding = 14\n"
+                     "empty-key-ignored = before\n"
+                     " = ignored\n"
+                     "empty-key-ignored = after\n"
                      "too-large = 999999999999999999999999\n"
                      "too-small = -999999999999999999999999\n"
                      "with-suffix = 12px\n"
+                     "trimmed = value \t\r\n"
+                     "semicolon-inline = alpha ; beta\n"
+                     "; semicolon-comment = ignored\n"
                      "[startup]\n"
                      "exec = alpha\n"
                      "exec = beta\n"
@@ -55,6 +65,35 @@ main (void)
     g_autofree char *bg = gnoblin_config_get_string ("appearance", "background");
     CHECK (g_strcmp0 (bg, "#1d1f21") == 0, "quoted value + inline comment stripped");
   }
+
+  {
+    g_autofree char *accent = gnoblin_config_get_string ("appearance", "accent");
+    CHECK (g_strcmp0 (accent, "purple # kept") == 0,
+           "single-quoted value + trailing text stripped");
+  }
+
+  {
+    g_autofree char *root = gnoblin_config_get_string (NULL, "root-key");
+    CHECK (g_strcmp0 (root, "root-value") == 0, "top-level key before first section");
+  }
+
+  CHECK (gnoblin_config_get_string (NULL, "missing-close") == NULL,
+         "section line with missing close is dropped, not parsed as a key");
+  CHECK (g_strcmp0 (gnoblin_config_get_string ("appearance", "empty-key-ignored"), "after") == 0,
+         "line with empty key is ignored without dropping later keys");
+
+  {
+    g_autofree char *trimmed = gnoblin_config_get_string ("appearance", "trimmed");
+    CHECK (g_strcmp0 (trimmed, "value") == 0, "trailing space/tab/CR is stripped");
+  }
+
+  {
+    g_autofree char *semicolon = gnoblin_config_get_string ("appearance", "semicolon-inline");
+    CHECK (g_strcmp0 (semicolon, "alpha ; beta") == 0, "semicolon is data inline");
+  }
+
+  CHECK (gnoblin_config_get_string ("appearance", "semicolon-comment") == NULL,
+         "semicolon starts a whole-line comment after trim");
 
   CHECK (gnoblin_config_get_int ("appearance", "rounding", 0) == 14, "int parse");
   CHECK (gnoblin_config_get_int ("appearance", "missing", 7) == 7, "int fallback");
