@@ -153,6 +153,8 @@ to the top of **Next**.
     (`40-gnoblin-protocols`). Works fine as-is (no double-registration); just
     architecturally inconsistent. Migrating them means regenerating two
     patches and retesting — real work, not a quick fix.
+  - `patches/mutter/20-no-overlay-key` changes the Mutter schema default
+    globally (affects any session using patched Mutter, not just gnoblin's).
   - `tests/config-test.c` doesn't exercise every rule in
     `src/config/README.md`'s Grammar Contract (leading/trailing trim,
     section-name trim, single-quoted values, a few others) — a coverage
