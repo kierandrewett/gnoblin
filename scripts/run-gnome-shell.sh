@@ -3,8 +3,8 @@
 # mode against the installed patched mutter, and verify:
 #   (a) it reaches "GNOME Shell started",
 #   (b) the compositor advertises zwlr_layer_shell_v1 (chrome can draw),
-# then exit cleanly. This is the gnome-shell equivalent of run-devkit.sh's
-# `verify` path (which drove the retired C++ gnoblin-shell).
+# then exit cleanly. This is the headless smoke test for the current
+# patched-GNOME stack (see run-gnome-devkit.sh for the visible devkit).
 #
 # Env: GNOBLIN_PREFIX (default ./install), MONITOR (default 1280x800),
 #      SETTLE (seconds to wait for "started", default 25),
@@ -21,17 +21,14 @@ LAST_LOG=/tmp/gnoblin-gnome-shell-last.log
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
 [ -f "$PREFIX/lib64/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
 
-# --- runtime lookup paths (mirror run-devkit.sh) ---------------------------
-export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-export PATH="$PREFIX/bin:$PATH"
-export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
-export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+# --- runtime lookup paths (shared with run-gnome-devkit.sh, the installed
+# login wrappers) -------------------------------------------------------
+source "$ROOT/src/tools/gnoblin-env.sh"
+gnoblin_env_apply "$PREFIX"
 export GDK_BACKEND=wayland
-# gnome-shell reads the session mode from this env (main.c:632). We ALSO pass
-# --mode=gnoblin below (parsed after, wins) — belt and braces.
-export GNOME_SHELL_SESSION_MODE=gnoblin
-export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+# gnome-shell reads the session mode from GNOME_SHELL_SESSION_MODE (set by
+# gnoblin_env_apply; main.c:632). We ALSO pass --mode=gnoblin below (parsed
+# after, wins) — belt and braces.
 
 # --- isolated throwaway state ----------------------------------------------
 DK="$(mktemp -d /tmp/gnoblin-gs.XXXXXX)"

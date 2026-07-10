@@ -33,14 +33,10 @@ fi
 HOST_WAYLAND="${WAYLAND_DISPLAY:-}"
 REAL_HOME="$HOME"
 
-# --- runtime lookup paths for gnome-shell itself (mirror run-gnome-shell.sh) ---
-export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-export PATH="$PREFIX/bin:$PATH"                        # gnome-shell, gnoblinctl
-export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
-export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export GNOME_SHELL_SESSION_MODE=gnoblin
-export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+# --- runtime lookup paths for gnome-shell itself (shared with run-gnome-shell.sh,
+# the installed login wrappers) -------------------------------------------
+source "$ROOT/src/tools/gnoblin-env.sh"
+gnoblin_env_apply "$PREFIX"     # gnome-shell, gnoblinctl on PATH; session mode env
 
 # --- ISOLATION from the host session (this is what makes the devkit a sandbox) ---
 # 1. DISPLAY=:0 leaks in from the real session; with it set, GTK/Qt apps prefer X11

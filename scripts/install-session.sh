@@ -28,7 +28,9 @@ install -Dm644 "$SRC/modes/gnoblin.json" \
 install -Dm644 "$SRC/gnome-session/gnoblin.session" \
   "$PREFIX/share/gnome-session/sessions/gnoblin.session"
 
-# gnoblin-session first: gnoblin.desktop's Exec= needs its installed path.
+# Shared env helper first: gnoblin-session/gnoblin-shell-service both source
+# it from their installed location.
+install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$PREFIX/libexec/gnoblin-env.sh"
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
@@ -52,6 +54,7 @@ echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"
 echo "     share/gnome-session/sessions/gnoblin.session (required components)"
 echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/gnoblin-session)"
+echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"

@@ -5,17 +5,17 @@
 # The login manager invokes this directly, so it sets up the lookup paths
 # gnome-session and anything it launches DIRECTLY need to find the patched
 # build in $PREFIX (a dev prefix, not a system install) instead of whatever
-# is on the login manager's default PATH/library search path -- mirroring
-# scripts/run-gnome-shell.sh and scripts/run-gnome-devkit.sh.
+# is on the login manager's default PATH/library search path -- via
+# gnoblin-env.sh, shared with scripts/run-gnome-shell.sh,
+# scripts/run-gnome-devkit.sh, and gnoblin-shell-service.
 #
 # gnome-shell ITSELF is not launched by this wrapper's PATH/env at all: on a
 # systemd session gnome-session starts it via the systemd --user unit
 # org.gnoblin.Shell@wayland.service (gnoblin-specific, not the shared
 # org.gnome.Shell every other session mode uses -- see the comment in
-# gnoblin.session), which carries its own Environment= lines pointing at
-# this same prefix. That unit only exists once
-# `scripts/register-session.sh` has linked it into systemd --user; see
-# docs/installation.md.
+# gnoblin.session), which sources this same helper itself. That unit only
+# exists once `scripts/register-session.sh` has linked it into systemd
+# --user; see docs/installation.md.
 #
 # Installed to $PREFIX/bin/gnoblin-session by scripts/install-session.sh,
 # which also bakes this script's absolute path into the installed
@@ -25,12 +25,7 @@ set -euo pipefail
 
 PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-export PATH="$PREFIX/bin:$PATH"
-export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
-export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export GNOME_SHELL_SESSION_MODE=gnoblin
-export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+source "$PREFIX/libexec/gnoblin-env.sh"
+gnoblin_env_apply "$PREFIX"
 
 exec gnome-session --session=gnoblin "$@"
