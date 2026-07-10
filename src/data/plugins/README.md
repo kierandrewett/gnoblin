@@ -11,7 +11,7 @@ that wants ready-made backends for volume/wifi/bluetooth/etc. tiles.
 - In oneshot mode, handle the current interaction from `GNOBLIN_QS_EVENT`.
 - Keep side effects local to the backing system tool or runtime flag the plugin
   owns.
-- Do not add shared helper scripts here unless the installer is changed to ship
-  them too; `scripts/install-userspace.sh` installs only `gnoblin-qs-*`.
+- Do not add shared helper scripts here without also updating this README:
+  gnoblin does not ship an installer for these scripts, they are reference only.
 
 Run `bash -n src/data/plugins/gnoblin-qs-*` after shell edits.

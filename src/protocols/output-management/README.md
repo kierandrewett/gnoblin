@@ -54,12 +54,10 @@ This is what `wlr-randr`/`kanshi` need to *enumerate* outputs. Enumerate from
   headers) for apply/test.
 - `monitors-changed` signal for re-advertise + serial bump.
 
-## Wiring (once implemented)
-
 Overlay `.c/.h` + `manifest`; aggregator init call in
-`src/gnoblin-protocols/meta-gnoblin-protocols.c`; add to
-`scripts/gen-gnoblin-protocols-patch.sh`; `wlr-output-management-enabled` gschema
-key; tier-1 block in `scripts/test-build.sh`.
+`src/protocols/aggregator/meta-gnoblin-protocols.c`; add to
+`scripts/gen-gnoblin-protocols-patch.sh`; gate via a `[protocols]` key in
+`gnoblin.conf` (see "Authoring a protocol overlay" in the root README).
 
 ## Runtime validation checklist
 

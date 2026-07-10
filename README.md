@@ -102,11 +102,11 @@ Then run whatever chrome you like as layer-shell clients.
 Two configuration surfaces:
 
 - **`gnoblin.conf`** — a sectioned INI read by the Mutter overlays. Its
-  `[protocols]` section gates each Wayland protocol on/off (all on by default).
-  See `src/data/gnoblin.conf.example` for the keys; `src/data/gnoblin.defaults.conf`
-  is the shipped base layer parsed underneath the user's file.
-- **`org.gnoblin.shell` GSettings** — holds `disabled-features` (the runtime
-  feature toggles above) plus layer-shell chrome placement keys.
+  `[protocols]` section gates each Wayland protocol on/off (all on by default,
+  a missing file or key falls back to the caller's default). See
+  `src/data/gnoblin.conf.example` for the keys.
+- **`org.gnoblin.shell` GSettings** — holds `disabled-features`, the runtime
+  feature toggles above.
 
 The stock GNOME UI strip is configured entirely by the session mode
 (`src/data/session/modes/gnoblin.json`), not by editing shell JS.

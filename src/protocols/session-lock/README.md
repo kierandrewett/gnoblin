@@ -19,7 +19,7 @@ lock client (Phase 3). Protocol XML is the canonical wayland-protocols staging c
 ## Implementation approach
 
 Model the lock surface on the existing layer-shell shell-surface subclass —
-`src/layer-shell/meta-wayland-layer-shell.c` is the template (a
+`src/protocols/layer-shell/meta-wayland-layer-shell.c` is the template (a
 `MetaWaylandShellSurface` subclass that creates a `MetaWindow`, sizes/stacks it,
 and drives the configure/ack handshake).
 
@@ -63,13 +63,11 @@ and drives the configure/ack handshake).
 - Output geometry: `meta_wayland_output_get_monitor` → `MetaLogicalMonitor` layout
   (see `get_monitor_layout()` in the layer-shell overlay).
 
-## Wiring (once implemented)
-
 Same pattern as the other gnoblin protocols: overlay `.c/.h` + `manifest`, add the
-init call to `src/gnoblin-protocols/meta-gnoblin-protocols.c`, add sources +
-`ext-session-lock-v1` to `scripts/gen-gnoblin-protocols-patch.sh`, add an
-`ext-session-lock-enabled` key to `src/settings/org.gnoblin.shell.gschema.xml`, and
-a tier-1 block in `scripts/test-build.sh`.
+init call to `src/protocols/aggregator/meta-gnoblin-protocols.c`, add sources +
+`ext-session-lock-v1` to `scripts/gen-gnoblin-protocols-patch.sh`, and gate it via
+an `ext-session-lock` key in the `[protocols]` section of `gnoblin.conf` (see
+"Authoring a protocol overlay" in the root README).
 
 ## Runtime validation checklist (the actual "validated")
 

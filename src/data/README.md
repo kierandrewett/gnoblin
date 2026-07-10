@@ -12,9 +12,9 @@ treating them as passive examples.
 - `session/gnome-session/gnoblin.session` + `session/gnoblin.desktop` register
   the session at the login manager; installed by `scripts/install-session.sh`.
 - `org.gnoblin.shell.gschema.xml` is the GSettings schema for the
-  `org.gnoblin.Shell` control protocol: `disabled-features` (runtime feature
-  toggles) plus layer-shell chrome placement keys. Its `manifest` copies it into
-  the patched GNOME Shell tree.
+  `org.gnoblin.Shell` control protocol: `disabled-features`, the runtime
+  feature toggles above. Its `manifest` copies it into the patched GNOME
+  Shell tree.
 - `gnoblin.conf.example` is the user-facing reference config for the Mutter
   overlays (the `[protocols]` gates). The overlays read
   `$GNOBLIN_CONFIG` / `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`; unset keys fall
