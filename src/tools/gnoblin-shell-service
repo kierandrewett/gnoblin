@@ -24,5 +24,8 @@ export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export GNOME_SHELL_SESSION_MODE=gnoblin
 export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+# Gnoblin has no stock chrome. Keep user extensions out of this shell process so
+# dock/panel extensions from a normal GNOME session cannot leak into Gnoblin.
+export GNOME_SHELL_DISABLE_EXTENSIONS=1
 
 exec "$PREFIX/bin/gnome-shell"
