@@ -96,6 +96,27 @@ to the top of **Next**.
   `src/tools/gnoblin-env.sh` — a 4th copy of the same prefix env-setup block
   had accumulated across `run-gnome-shell.sh`/`run-gnome-devkit.sh`/
   `gnoblin-session`/`gnoblin-shell-service`; now one shared function.
+- **Third dead-code sweep (`src/`, `scripts/`, `docs/`)** — focused pass after
+  Kieran flagged `src/` specifically. Removed `src/data/plugins/` (9
+  `gnoblin-qs-*` scripts, 201 lines): a JSON tile/menu quick-settings
+  protocol for the retired Slint top bar, self-documented as unconsumed and
+  containing stale references to specific retired Rust source files by
+  name. Fixed the resulting dangling references in `src/README.md`,
+  `src/data/README.md`, and the root README's layout tree. Checked and
+  ruled out as NOT dead: `session-lock/`/`output-management/` (legitimate
+  deferred work, not leftover cruft), the protocol aggregator wiring, the
+  control-center/gnome-shell-overlay manifests, and every script in
+  `scripts/` (5 looked orphaned by a naive Justfile grep but are all called
+  indirectly — `copy-overlay.sh` by `apply-patches.sh`, `devkit_dbus.py` by
+  every test script, `devkit-document-portal-stub.py` by `devkit_dbus.py`,
+  `wl-globals.c` compiled on demand, `gen-gnoblin-protocols-patch.sh`
+  documented as the maintainer path for adding protocols). Full read-through
+  of all 6 files under `docs/` cross-checked against source (feature-id
+  table vs `gnoblinControl.js`, devkit env vars vs `run-gnome-devkit.sh`,
+  the testing table vs the Justfile) found no drift. `gnoblin_config_get_keys()`
+  had zero call sites anywhere (production or test) — kept it (the only
+  primitive that can enumerate unknown key names in a section, needed for
+  `[bind]`) and added the missing test coverage instead of deleting it.
 
 ## Next
 
