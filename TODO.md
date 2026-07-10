@@ -108,7 +108,9 @@ to the top of **Next**.
   control-center/gnome-shell-overlay manifests, and every script in
   `scripts/` (5 looked orphaned by a naive Justfile grep but are all called
   indirectly — `copy-overlay.sh` by `apply-patches.sh`, `devkit_dbus.py` by
-  every test script, `devkit-document-portal-stub.py` by `devkit_dbus.py`,
+  the 5 headless `gnome-*-verify` scripts plus `run-gnome-shell.sh`/
+  `run-gnome-devkit.sh` (not `test-config.sh`, which needs no display),
+  `devkit-document-portal-stub.py` by `devkit_dbus.py`,
   `wl-globals.c` compiled on demand, `gen-gnoblin-protocols-patch.sh`
   documented as the maintainer path for adding protocols). Full read-through
   of all 6 files under `docs/` cross-checked against source (feature-id
