@@ -1,6 +1,6 @@
-From 88a1c000fa701c97ed77f3698fa63949f9f4a699 Mon Sep 17 00:00:00 2001
+From 896df9945311827ef8ddb9cd80e8fe915777a5a5 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Fri, 3 Jul 2026 01:13:14 +0100
+Date: Fri, 10 Jul 2026 09:58:46 +0100
 Subject: [PATCH] gnoblin-protocols: wire gnoblin's extra Wayland protocols
  into the build
 
@@ -15,15 +15,15 @@ patch by hand. Insertions are anchored on pristine-stable context so the
 patch applies cleanly to the pinned tag independently of the layer-shell and
 screencopy wiring patches.
 ---
- src/meson.build                    | 25 +++++++++++++++++++++++++
+ src/meson.build                    | 27 +++++++++++++++++++++++++++
  src/wayland/meta-wayland-surface.c |  2 ++
- 2 files changed, 27 insertions(+)
+ 2 files changed, 29 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index 508c341..530f9f4 100644
+index 508c341..13f5835 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -687,2 +687,20 @@ if have_wayland
+@@ -687,2 +687,22 @@ if have_wayland
      'wayland/meta-wayland-shell-surface.h',
 +    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
 +    # at build time; registered via meta_gnoblin_init_protocols)
@@ -33,6 +33,8 @@ index 508c341..530f9f4 100644
 +    'wayland/meta-gnoblin-protocols.h',
 +    'wayland/meta-wayland-idle-notify.c',
 +    'wayland/meta-wayland-idle-notify.h',
++    'wayland/meta-wayland-foreign-toplevel-common.c',
++    'wayland/meta-wayland-foreign-toplevel-common.h',
 +    'wayland/meta-wayland-foreign-toplevel-list.c',
 +    'wayland/meta-wayland-foreign-toplevel-list.h',
 +    'wayland/meta-wayland-foreign-toplevel-management.c',
@@ -44,7 +46,7 @@ index 508c341..530f9f4 100644
 +    'wayland/meta-wayland-data-control.c',
 +    'wayland/meta-wayland-data-control.h',
      'wayland/meta-wayland-single-pixel-buffer.c',
-@@ -1192,2 +1210,9 @@ if have_wayland
+@@ -1192,2 +1212,9 @@ if have_wayland
      ['xdg-toplevel-tag', 'staging', 1, ],
 +    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)
 +    ['ext-idle-notify-v1', 'private', ],

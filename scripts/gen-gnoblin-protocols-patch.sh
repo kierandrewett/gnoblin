@@ -31,6 +31,8 @@ SOURCES=(
   meta-gnoblin-protocols.h
   meta-wayland-idle-notify.c
   meta-wayland-idle-notify.h
+  meta-wayland-foreign-toplevel-common.c
+  meta-wayland-foreign-toplevel-common.h
   meta-wayland-foreign-toplevel-list.c
   meta-wayland-foreign-toplevel-list.h
   meta-wayland-foreign-toplevel-management.c

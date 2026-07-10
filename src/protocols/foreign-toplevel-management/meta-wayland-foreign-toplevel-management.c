@@ -22,6 +22,7 @@
 #include "config.h"
 
 #include "wayland/meta-wayland-foreign-toplevel-management.h"
+#include "wayland/meta-wayland-foreign-toplevel-common.h"
 
 #include <gio/gio.h>
 #include <wayland-server.h>
@@ -61,29 +62,6 @@ typedef struct _MetaWaylandForeignToplevelHandle
   gulong notify_focus_id;
 } MetaWaylandForeignToplevelHandle;
 
-static gboolean
-window_is_exposable (MetaWindow *window)
-{
-  return meta_window_get_window_type (window) == META_WINDOW_NORMAL;
-}
-
-static const char *
-window_app_id (MetaWindow *window)
-{
-  const char *app_id;
-
-  app_id = meta_window_get_sandboxed_app_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_gtk_application_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_wm_class (window);
-  if (app_id)
-    return app_id;
-
-  return "";
-}
 
 static guint32
 current_time (MetaWaylandForeignToplevelHandle *handle)
@@ -105,8 +83,10 @@ handle_send_title (MetaWaylandForeignToplevelHandle *handle)
 static void
 handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
 {
-  zwlr_foreign_toplevel_handle_v1_send_app_id (handle->resource,
-                                               window_app_id (handle->window));
+  const char *app_id =
+    meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
+
+  zwlr_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
 }
 
 static void
@@ -390,7 +370,7 @@ on_window_created (MetaDisplay *display, MetaWindow *window, gpointer user_data)
 
   if (manager->stopped)
     return;
-  if (!window_is_exposable (window))
+  if (!meta_gnoblin_foreign_toplevel_window_is_exposable (window))
     return;
 
   toplevel_management_advertise (manager, window);
@@ -472,7 +452,7 @@ bind_foreign_toplevel_manager (struct wl_client *client,
     {
       MetaWindow *window = l->data;
 
-      if (window_is_exposable (window))
+      if (meta_gnoblin_foreign_toplevel_window_is_exposable (window))
         toplevel_management_advertise (manager, window);
     }
   g_list_free (windows);

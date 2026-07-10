@@ -17,6 +17,7 @@
 #include "config.h"
 
 #include "wayland/meta-wayland-foreign-toplevel-list.h"
+#include "wayland/meta-wayland-foreign-toplevel-common.h"
 
 #include <gio/gio.h>
 #include <wayland-server.h>
@@ -51,29 +52,6 @@ typedef struct _MetaWaylandForeignToplevelHandle
   gulong notify_gtk_app_id_id;
 } MetaWaylandForeignToplevelHandle;
 
-static gboolean
-window_is_exposable (MetaWindow *window)
-{
-  return meta_window_get_window_type (window) == META_WINDOW_NORMAL;
-}
-
-static const char *
-window_app_id (MetaWindow *window)
-{
-  const char *app_id;
-
-  app_id = meta_window_get_sandboxed_app_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_gtk_application_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_wm_class (window);
-  if (app_id)
-    return app_id;
-
-  return "";
-}
 
 static void
 handle_send_title (MetaWaylandForeignToplevelHandle *handle)
@@ -87,8 +65,10 @@ handle_send_title (MetaWaylandForeignToplevelHandle *handle)
 static void
 handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
 {
-  ext_foreign_toplevel_handle_v1_send_app_id (handle->resource,
-                                              window_app_id (handle->window));
+  const char *app_id =
+    meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
+
+  ext_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
 }
 
 static void
@@ -230,7 +210,7 @@ on_window_created (MetaDisplay *display,
 
   if (list->stopped)
     return;
-  if (!window_is_exposable (window))
+  if (!meta_gnoblin_foreign_toplevel_window_is_exposable (window))
     return;
 
   foreign_toplevel_list_advertise (list, window);
@@ -321,7 +301,7 @@ bind_foreign_toplevel_list (struct wl_client *client,
     {
       MetaWindow *window = l->data;
 
-      if (window_is_exposable (window))
+      if (meta_gnoblin_foreign_toplevel_window_is_exposable (window))
         foreign_toplevel_list_advertise (list, window);
     }
   g_list_free (windows);
