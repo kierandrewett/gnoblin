@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# gnoblin Background Apps plugin (oneshot). Counts running Flatpak instances
-# (the common "running in background" surface). No fallback: needs flatpak.
-set -euo pipefail
-n=$(flatpak ps --columns=application | sed '/^$/d' | wc -l)
-if [ "$n" -gt 0 ]; then sub="$n running"; else sub="None running"; fi
-printf '{"tile":{"icon":"applications-system-symbolic","title":"Background Apps","subtitle":"%s","chevron":true,"layout":"row","span":4}}\n' "$sub"

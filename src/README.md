@@ -23,9 +23,8 @@ a feature lives.
   `.desktop` + gnoblin-specific systemd --user units (`session/systemd-user/`,
   `org.gnoblin.Shell.target`/`@wayland.service` — kept separate from the
   shared `org.gnome.Shell` unit so registering them never shadows a system
-  GNOME Shell install), the `org.gnoblin.shell` gschema, `gnoblin.conf.example`,
-  and legacy quick-settings plugin scripts (reference for a bring-your-own
-  chrome).
+  GNOME Shell install), the `org.gnoblin.shell` gschema, and
+  `gnoblin.conf.example`.
 - `tools/` — CLIs installed into the prefix by `scripts/install-session.sh`:
   `gnoblinctl` (the `org.gnoblin.Shell` control front-end), `gnoblin-session`
   (the installed `.desktop`'s `Exec=` target), and `gnoblin-shell-service`
@@ -49,8 +48,6 @@ a feature lives.
 - Changing the config parser or grammar: start in `config/`; keep the C parser
   and the parser test in `tests/config-test.c` in lockstep.
 - Changing the documented protocol gates: update `data/gnoblin.conf.example`.
-- Changing a quick-settings plugin: update the matching `data/plugins/gnoblin-qs-*`
-  script.
 - Changing the login-manager/systemd wiring: `data/session/gnoblin.desktop`
   (Exec= gets rewritten at install time), `data/session/systemd-user/`, and
   `tools/gnoblin-session` / `tools/gnoblin-shell-service`. See

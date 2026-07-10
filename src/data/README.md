@@ -19,21 +19,10 @@ treating them as passive examples.
   overlays (the `[protocols]` gates). The overlays read
   `$GNOBLIN_CONFIG` / `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`; unset keys fall
   back to the caller's default (all protocols on).
-- `plugins/gnoblin-qs-*` are legacy quick-settings backend scripts (from the
-  retired Slint top bar's plugin protocol); kept as reference for a
-  bring-your-own chrome, not consumed by gnoblin itself.
-
-## Quick Settings Plugins
-
-The `plugins/gnoblin-qs-*` scripts each emit one JSON object on stdout
-describing a tile and optional menu. Oneshot scripts receive interaction
-payloads in `GNOBLIN_QS_EVENT`; persistent scripts receive ndjson events on
-stdin.
 
 ## Verification
 
 ```sh
-bash -n src/data/plugins/gnoblin-qs-*
 glib-compile-schemas --strict --dry-run src/data
 ```
 
