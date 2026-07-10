@@ -119,6 +119,13 @@ to the top of **Next**.
   had zero call sites anywhere (production or test) — kept it (the only
   primitive that can enumerate unknown key names in a section, needed for
   `[bind]`) and added the missing test coverage instead of deleting it.
+- **Fourth patch-surface sweep** — removed two now-redundant GNOME Shell
+  overview patches. `gnoblin` already declares `hasOverview:false` in
+  `src/data/session/modes/gnoblin.json`, and the session overlay removes the
+  stock panel, so `patches/gnome-shell/20-no-overview` and
+  `21-workspaces-indicator` no longer need to modify GNOME Shell's stock
+  `user` session or Activities button. Verified with `just patch gnome-shell`,
+  `just dev`, and `just gnome-verify`.
 
 ## Next
 
@@ -144,9 +151,6 @@ to the top of **Next**.
     `dev.kieran.mutter.Keys.Event`) and `patches/gnome-shell/10-tooling/0001`
     (unsafe-mode at startup) both cite a `screen-mirror` tool not documented
     anywhere else in this repo. Personal tooling, or ready to retire?
-  - `patches/gnome-shell/20-no-overview` and `21-workspaces-indicator` predate
-    (or duplicate) `hasOverview:false` in the `gnoblin` session mode JSON —
-    possibly redundant now that the session mode handles it declaratively.
   - `patches/mutter/20-no-overlay-key` changes the Mutter schema default
     globally (affects any session using patched Mutter, not just gnoblin's).
   - No root `LICENSE`/`COPYING` file despite GPL-2.0-or-later headers
