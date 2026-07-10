@@ -38,7 +38,7 @@ main (void)
                      "with-suffix = 12px\n"
                      "trimmed = value \t\r\n"
                      "semicolon-inline = alpha ; beta\n"
-                     "; semicolon-comment = ignored\n"
+                     "  ; semicolon-comment = ignored\n"
                      "[startup]\n"
                      "exec = alpha\n"
                      "exec = beta\n"
@@ -92,8 +92,8 @@ main (void)
     CHECK (g_strcmp0 (semicolon, "alpha ; beta") == 0, "semicolon is data inline");
   }
 
-  CHECK (gnoblin_config_get_string ("appearance", "semicolon-comment") == NULL,
-         "semicolon starts a whole-line comment after trim");
+  CHECK (gnoblin_config_get_string ("appearance", "; semicolon-comment") == NULL,
+         "semicolon starts a whole-line comment after leading trim");
 
   CHECK (gnoblin_config_get_int ("appearance", "rounding", 0) == 14, "int parse");
   CHECK (gnoblin_config_get_int ("appearance", "missing", 7) == 7, "int fallback");
