@@ -4,10 +4,11 @@ Date: Sun, 21 Jun 2026 04:05:00 +0100
 Subject: [PATCH] layer-shell: emit frame callbacks for layer surfaces
 
 Layer-shell surfaces can be visible and mapped in the nested devkit while not
-passing Mutter's normal Wayland "primary stage view" predicate. Slint waits for
-wl_surface.frame callbacks to pace animations and future redraws; when those
-callbacks never fire, layer-shell clients stall after the first frame and stop
-draining input once their renderer attempts another blocked swap.
+passing Mutter's normal Wayland "primary stage view" predicate. A layer-shell
+client (e.g. a Quickshell/waybar bar) waits for wl_surface.frame callbacks to
+pace animations and future redraws; when those callbacks never fire, clients
+stall after the first frame and stop draining input once their renderer
+attempts another blocked swap.
 
 Keep the existing primary-view path for normal windows, but allow layer-shell
 surfaces to receive frame callbacks when their actor is mapped, effectively on

@@ -14,8 +14,8 @@ Mutter submodule and the generated patch stack persists them under
   - `manifest`, used by the overlay copy/generation scripts.
 
 Current overlays include layer-shell, screencopy, session-lock, idle-notify,
-data-control, gamma-control, output power/management, foreign toplevel list and
-management, and KDE appmenu.
+data-control, gamma-control, output power/management, and foreign toplevel
+list and management.
 
 ## Change Flow
 

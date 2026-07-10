@@ -8,8 +8,8 @@ meta-wayland-layer-shell sources in src/meson.build, and call
 meta_wayland_init_layer_shell() from meta_wayland_shell_init().
 
 The implementation, header and protocol XML are gnoblin overlay files
-(src/layer-shell/, copied into src/wayland/ at build time), not part of
-this patch.
+(src/protocols/layer-shell/, copied into src/wayland/ at build time), not
+part of this patch.
 ---
  src/meson.build                    | 6 ++++++
  src/wayland/meta-wayland-surface.c | 2 ++

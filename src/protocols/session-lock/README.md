@@ -5,8 +5,9 @@ the build. Deferred because the security-critical behaviour cannot be verified b
 inspection and cannot be runtime-tested headless — a session lock that compiles but
 subtly leaks input or shows content underneath is *worse than none*.
 
-Enables `swaylock`, `hyprlock`, `gtklock`, `waylock`, and gnoblin's own GTK4/Rust
-lock client (Phase 3). Protocol XML is the canonical wayland-protocols staging copy.
+Enables `swaylock`, `hyprlock`, `gtklock`, `waylock`, and any other
+ext-session-lock-v1 client. Protocol XML is the canonical wayland-protocols
+staging copy.
 
 ## Protocol shape (v1)
 

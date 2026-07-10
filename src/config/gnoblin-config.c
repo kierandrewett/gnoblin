@@ -15,8 +15,8 @@
 #include <string.h>
 
 /*
- * gnoblin.conf grammar, kept byte-compatible with
- * src/clients/shell-ui/src/config.rs:
+ * gnoblin.conf grammar (see also src/config/README.md's Grammar Contract,
+ * which this must stay in lockstep with):
  *
  * - Each line is trimmed of leading space/tab and trailing space/tab/CR/LF.
  * - Empty lines and lines whose first trimmed byte is `#` or `;` are comments.

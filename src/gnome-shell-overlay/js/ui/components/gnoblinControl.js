@@ -9,9 +9,9 @@
 // "just GNOME + mutter"; this component is the one intentional addition, and it
 // gets enable()/disable() lifecycle for free (which the Wayland soft-reload uses).
 //
-// Phase-2 skeleton: stands up the org.gnoblin.Shell bus name + a few read/health
-// methods. Feature toggles (Phase 3) and the Wayland soft-reload (Phase 2.5) hang
-// off this same object.
+// The control component: the org.gnoblin.Shell bus name, health/version,
+// runtime feature toggles (osd + per-type, screenshot, notifications), and
+// the Wayland soft-reload all hang off this same object.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
