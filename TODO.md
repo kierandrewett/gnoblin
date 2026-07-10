@@ -126,6 +126,12 @@ to the top of **Next**.
   `21-workspaces-indicator` no longer need to modify GNOME Shell's stock
   `user` session or Activities button. Verified with `just patch gnome-shell`,
   `just dev`, and `just gnome-verify`.
+- **License and stale tooling wording** — added a root `COPYING` file that
+  scopes GPL-2.0-or-later to gnoblin's own source files and leaves pinned
+  GNOME submodules under their upstream `COPYING` files. Also replaced the
+  stale `screen-mirror` references in the Mutter key-event and GNOME Shell
+  unsafe-mode tooling patch descriptions with generic inspection/automation
+  wording.
 
 ## Next
 
@@ -147,15 +153,6 @@ to the top of **Next**.
     (`40-gnoblin-protocols`). Works fine as-is (no double-registration); just
     architecturally inconsistent. Migrating them means regenerating two
     patches and retesting — real work, not a quick fix.
-  - `patches/mutter/10-tooling/0001` (broadcasts Wayland key events on
-    `dev.kieran.mutter.Keys.Event`) and `patches/gnome-shell/10-tooling/0001`
-    (unsafe-mode at startup) both cite a `screen-mirror` tool not documented
-    anywhere else in this repo. Personal tooling, or ready to retire?
-  - `patches/mutter/20-no-overlay-key` changes the Mutter schema default
-    globally (affects any session using patched Mutter, not just gnoblin's).
-  - No root `LICENSE`/`COPYING` file despite GPL-2.0-or-later headers
-    throughout `src/` and both RPM specs declaring `License:
-    GPL-2.0-or-later`.
   - `tests/config-test.c` doesn't exercise every rule in
     `src/config/README.md`'s Grammar Contract (leading/trailing trim,
     section-name trim, single-quoted values, a few others) — a coverage
