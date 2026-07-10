@@ -13,7 +13,7 @@ set shell := ["bash", "-uc"]
 
 # Patched subprojects built by `just dev`. (slint + the C++ compositor are retired.)
 patch_projects := "mutter gnome-shell"
-rpm_projects := "mutter"
+rpm_projects := "mutter gnome-shell"
 
 # Local dev prefix: the whole gnoblin stack is built+installed here (no system install).
 prefix := justfile_directory() / "install"

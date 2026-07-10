@@ -169,12 +169,54 @@ build-side quirk automatically. Details in
 
 ## Packaging
 
+RPM (Fedora) is the maintained, build-verified path. `just rpm PROJ` produces
+a real installable RPM for `mutter` or `gnome-shell`:
+
 ```sh
-just tarball mutter          # release tarball with gnoblin's patches pre-applied
-just rpm mutter               # -> rpmbuild -bb packaging/rpm/mutter.spec
-just rpm-all                  # every project in Justfile's rpm_projects (currently: mutter)
+just rpm mutter
+just rpm gnome-shell
+# or: just rpm-all       # both, per Justfile's rpm_projects
 ```
+
+`gnome-shell.spec` also builds a `gnoblin-session` subpackage: the `gnoblin`
+session mode, its login-manager entry, gnoblin-specific systemd --user units
+(`org.gnoblin.Shell.target`/`@wayland.service` — distinct from the shared
+`org.gnome.Shell@wayland.service`, so installing it never shadows a system
+GNOME Shell install's own units), and the control/wrapper tools
+(`gnoblinctl`, `gnoblin-session`, `gnoblin-shell-service`). `Requires:` pins
+it to the exact matching `gnome-shell` build. RPMs land in
+`~/rpmbuild/RPMS/`.
+
+**Installing these RPMs replaces your system's Mutter and GNOME Shell
+packages** — that's the point (patches are session-mode-gated and meant to
+be transparent for non-gnoblin sessions, per the architecture in the root
+README), but it's a real system change, not something to run without
+meaning to:
+
+```sh
+sudo dnf install \
+  ~/rpmbuild/RPMS/x86_64/mutter-49.5-*.rpm \
+  ~/rpmbuild/RPMS/noarch/mutter-common-49.5-*.rpm \
+  ~/rpmbuild/RPMS/x86_64/gnome-shell-49.6-*.rpm \
+  ~/rpmbuild/RPMS/noarch/gnome-shell-common-49.6-*.rpm \
+  ~/rpmbuild/RPMS/x86_64/gnoblin-session-49.6-*.rpm
+```
+
+(`mutter`/`gnome-shell` each `Requires:` their own `-common` noarch
+subpackage at the exact same build — they won't resolve against whatever
+`mutter-common`/`gnome-shell-common` your system repos already have, since
+the version+release won't match a `.gnoblin` build. Skipping either
+`-common` RPM above fails dependency resolution.)
+
+`dnf` will show exactly what it's replacing before you confirm. After that,
+"Gnoblin" appears at your login manager's session picker with no further
+registration step (unlike the dev-prefix path in
+[§ Install the session for real](#install-the-session-for-real) — a system
+install needs none of the `dev-session-register` systemd-unit-collision
+workaround, since there's no dev prefix to disambiguate from). Roll back
+with `sudo dnf downgrade mutter gnome-shell` (or `dnf history undo`) and
+`sudo dnf remove gnoblin-session`.
 
 Debian/Ubuntu and Arch packaging are scaffolded but not implemented — see
 `packaging/deb/README.md` and `packaging/arch/README.md` for the intended
-approach.
+approach, which mirrors this RPM path including the `gnoblin-session` split.
