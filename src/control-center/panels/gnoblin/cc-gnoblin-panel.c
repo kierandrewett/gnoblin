@@ -23,6 +23,7 @@
 #include <gio/gio.h>
 
 #include "cc-gnoblin-panel.h"
+#include "cc-gnoblin-resources.h"
 
 #define GNOBLIN_BUS_NAME    "org.gnoblin.Shell"
 #define GNOBLIN_OBJECT_PATH "/org/gnoblin/Shell"
@@ -376,6 +377,13 @@ cc_gnoblin_panel_class_init (CcGnoblinPanelClass *klass)
 static void
 cc_gnoblin_panel_init (CcGnoblinPanel *self)
 {
+  /* The compiled .ui lives in this panel's own gresource. It is built into the
+   * panel static_library, so nothing in the shell references it and the linker
+   * would drop the auto-register constructor; register it explicitly here (as
+   * every other panel does, e.g. cc-mouse-panel.c) before init_template looks
+   * it up. */
+  g_resources_register (cc_gnoblin_get_resource ());
+
   gtk_widget_init_template (GTK_WIDGET (self));
 
   self->cancellable = g_cancellable_new ();

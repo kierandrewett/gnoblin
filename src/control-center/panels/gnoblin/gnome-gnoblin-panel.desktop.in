@@ -8,6 +8,6 @@ Terminal=false
 Type=Application
 NoDisplay=true
 StartupNotify=true
-Categories=GNOME;GTK;Settings;X-GNOME-Settings-Panel;X-GNOME-SystemSettings;
+Categories=GNOME;GTK;Settings;X-GNOME-Settings-Panel;X-GNOME-ConnectivitySettings;
 OnlyShowIn=GNOME;Unity;
 Keywords=gnoblin;shell;feature;toggle;screencast;screen recording;reload;
