@@ -247,7 +247,7 @@ rpm PROJ: (tarball PROJ)
     rpmbuild -bb packaging/rpm/{{PROJ}}.spec
 
 rpm-all:
-    for p in {{rpm_projects}}; do just rpm "$p"; done
+    for p in {{rpm_projects}}; do just rpm "$p" || exit; done
 
 # deb / arch packaging are scaffolded; see packaging/{deb,arch}/README.md.
 deb PROJ:

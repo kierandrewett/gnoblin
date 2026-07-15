@@ -28,4 +28,31 @@ assert_local_sources() {
 assert_local_sources mutter "$TMP/mutter"
 assert_local_sources gnome-shell "$TMP/gnome-shell"
 
-echo "PASS: RPM sidecar sources staged"
+"$ROOT/scripts/list-tarball-sources.sh" mutter > "$TMP/mutter.sources"
+"$ROOT/scripts/list-tarball-sources.sh" gnome-shell > "$TMP/gnome-shell.sources"
+
+assert_archive_source() {
+    local project="${1:?project required}"
+    local expected="${2:?expected source path required}"
+    local manifest="$TMP/$project.sources"
+    local source found=false
+
+    while IFS= read -r -d '' source; do
+        if [ "$source" = "$expected" ]; then
+            found=true
+            break
+        fi
+    done < "$manifest"
+
+    if [ "$found" != true ]; then
+        echo "FAIL: $project archive omits required source: $expected" >&2
+        exit 1
+    fi
+}
+
+assert_archive_source mutter subprojects/gvdb/meson.build
+assert_archive_source gnome-shell subprojects/gvc/meson.build
+assert_archive_source gnome-shell subprojects/libshew/meson.build
+assert_archive_source gnome-shell subprojects/jasmine-gjs/meson.build
+
+echo "PASS: RPM sidecars and mandatory archive sources staged"

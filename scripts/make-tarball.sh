@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Produce a release tarball of a subproject with gnoblin's changes applied.
 #
-# apply-patches.sh copies in the owned overlay files and applies the patch
-# series. The archive manifest combines Git-tracked paths with the destination
-# paths from those overlay manifests; unrelated and ignored checkout state is
-# excluded. Metadata and compression are normalised so identical source yields
-# identical bytes, and publication happens only after sidecar staging succeeds.
+# apply-patches.sh materialises the owned overlays and patch series. The archive
+# manifest combines Git-tracked paths, pinned mandatory Meson subprojects, and
+# Gnoblin's overlay destinations. Unrelated checkout state is excluded.
+# Metadata and compression are normalised so identical source yields identical
+# bytes, and publication happens only after sidecar staging succeeds.
 set -euo pipefail
 
 PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell> [outdir]}"
@@ -38,10 +38,8 @@ cleanup() {
 trap cleanup EXIT
 
 echo ">> archiving $PROJ working tree -> $OUT" >&2
-{
-    git -C "$SM" ls-files --cached -z
-    "$ROOT/scripts/copy-overlay.sh" "$PROJ" "$SM" --list-destinations
-} | LC_ALL=C sort -z -u |
+"$ROOT/scripts/list-tarball-sources.sh" "$PROJ" --prepare |
+    LC_ALL=C sort -z -u |
     tar -C "$SM" \
         --sort=name \
         --format=posix \
