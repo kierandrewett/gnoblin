@@ -41,6 +41,9 @@ typedef struct _MetaWaylandScreencopyFrame
   MetaWaylandCompositor *compositor;
   struct wl_resource *resource;
   MtkRectangle rect;
+  int buffer_width;
+  int buffer_height;
+  int buffer_stride;
   float scale;
   gboolean overlay_cursor;
   gboolean with_damage;
@@ -70,16 +73,47 @@ frame_destroy (struct wl_client   *client,
 }
 
 static gboolean
+calculate_buffer_geometry (const MtkRectangle *rect,
+                           float               scale,
+                           int                *width,
+                           int                *height,
+                           int                *stride)
+{
+  double scaled_width;
+  double scaled_height;
+  gsize buffer_size;
+
+  if (!isfinite (scale) || scale <= 0.0f)
+    return FALSE;
+
+  scaled_width = (double) rect->width * scale;
+  scaled_height = (double) rect->height * scale;
+  if (scaled_width <= 0.0 || scaled_width > G_MAXINT ||
+      scaled_height <= 0.0 || scaled_height > G_MAXINT)
+    return FALSE;
+
+  *width = (int) round (scaled_width);
+  *height = (int) round (scaled_height);
+  if (*width <= 0 || *height <= 0 || *width > G_MAXINT / 4)
+    return FALSE;
+
+  *stride = *width * 4;
+  if ((gsize) *stride > G_MAXSIZE / (gsize) *height)
+    return FALSE;
+
+  buffer_size = (gsize) *stride * (gsize) *height;
+  return buffer_size > 0;
+}
+
+static gboolean
 validate_shm_buffer (MetaWaylandScreencopyFrame *frame,
                      struct wl_shm_buffer       *shm_buffer)
 {
-  int width = (int) roundf (frame->rect.width * frame->scale);
-  int height = (int) roundf (frame->rect.height * frame->scale);
   int stride = wl_shm_buffer_get_stride (shm_buffer);
 
-  if (wl_shm_buffer_get_width (shm_buffer) != width ||
-      wl_shm_buffer_get_height (shm_buffer) != height ||
-      stride < width * 4)
+  if (wl_shm_buffer_get_width (shm_buffer) != frame->buffer_width ||
+      wl_shm_buffer_get_height (shm_buffer) != frame->buffer_height ||
+      stride != frame->buffer_stride)
     return FALSE;
 
   switch (wl_shm_buffer_get_format (shm_buffer))
@@ -162,8 +196,8 @@ copy_frame_to_buffer (struct wl_client   *client,
       zwlr_screencopy_frame_v1_send_damage (resource,
                                             0,
                                             0,
-                                            (uint32_t) roundf (frame->rect.width * frame->scale),
-                                            (uint32_t) roundf (frame->rect.height * frame->scale));
+                                            frame->buffer_width,
+                                            frame->buffer_height);
     }
 
   zwlr_screencopy_frame_v1_send_flags (resource, 0);
@@ -212,29 +246,53 @@ scale_for_monitor (MetaBackend        *backend,
   return 1.0;
 }
 
-static MtkRectangle
+static gboolean
 clip_region_to_monitor (const MtkRectangle *monitor_rect,
                         int32_t             x,
                         int32_t             y,
                         int32_t             width,
-                        int32_t             height)
+                        int32_t             height,
+                        MtkRectangle       *clipped)
 {
-  int x1 = CLAMP (monitor_rect->x + x, monitor_rect->x,
-                  monitor_rect->x + monitor_rect->width);
-  int y1 = CLAMP (monitor_rect->y + y, monitor_rect->y,
-                  monitor_rect->y + monitor_rect->height);
-  int x2 = CLAMP (monitor_rect->x + x + width, monitor_rect->x,
-                  monitor_rect->x + monitor_rect->width);
-  int y2 = CLAMP (monitor_rect->y + y + height, monitor_rect->y,
-                  monitor_rect->y + monitor_rect->height);
+  int64_t monitor_x1 = monitor_rect->x;
+  int64_t monitor_y1 = monitor_rect->y;
+  int64_t monitor_x2 = monitor_x1 + monitor_rect->width;
+  int64_t monitor_y2 = monitor_y1 + monitor_rect->height;
+  int64_t requested_x1;
+  int64_t requested_y1;
+  int64_t requested_x2;
+  int64_t requested_y2;
+  int64_t clipped_x1;
+  int64_t clipped_y1;
+  int64_t clipped_x2;
+  int64_t clipped_y2;
 
-  return (MtkRectangle) {
-    .x = x1,
-    .y = y1,
-    .width = MAX (0, x2 - x1),
-    .height = MAX (0, y2 - y1),
+  if (monitor_rect->width <= 0 || monitor_rect->height <= 0 ||
+      monitor_x2 > G_MAXINT || monitor_y2 > G_MAXINT ||
+      width <= 0 || height <= 0)
+    return FALSE;
+
+  requested_x1 = monitor_x1 + x;
+  requested_y1 = monitor_y1 + y;
+  requested_x2 = requested_x1 + width;
+  requested_y2 = requested_y1 + height;
+  clipped_x1 = CLAMP (requested_x1, monitor_x1, monitor_x2);
+  clipped_y1 = CLAMP (requested_y1, monitor_y1, monitor_y2);
+  clipped_x2 = CLAMP (requested_x2, monitor_x1, monitor_x2);
+  clipped_y2 = CLAMP (requested_y2, monitor_y1, monitor_y2);
+
+  if (clipped_x2 <= clipped_x1 || clipped_y2 <= clipped_y1)
+    return FALSE;
+
+  *clipped = (MtkRectangle) {
+    .x = (int) clipped_x1,
+    .y = (int) clipped_y1,
+    .width = (int) (clipped_x2 - clipped_x1),
+    .height = (int) (clipped_y2 - clipped_y1),
   };
+  return TRUE;
 }
+
 
 static void
 create_frame (struct wl_client   *client,
@@ -257,9 +315,6 @@ create_frame (struct wl_client   *client,
   MetaLogicalMonitor *logical_monitor;
   MtkRectangle monitor_rect;
   int version = wl_resource_get_version (manager_resource);
-  int buffer_width;
-  int buffer_height;
-  int stride;
 
   frame = g_new0 (MetaWaylandScreencopyFrame, 1);
   frame->compositor = compositor;
@@ -292,7 +347,19 @@ create_frame (struct wl_client   *client,
 
   monitor_rect = meta_logical_monitor_get_layout (logical_monitor);
   if (region)
-    frame->rect = clip_region_to_monitor (&monitor_rect, x, y, width, height);
+    {
+      if (!clip_region_to_monitor (&monitor_rect,
+                                   x,
+                                   y,
+                                   width,
+                                   height,
+                                   &frame->rect))
+        {
+          send_failed (frame);
+          g_steal_pointer (&frame);
+          return;
+        }
+    }
   else
     frame->rect = monitor_rect;
 
@@ -307,15 +374,22 @@ create_frame (struct wl_client   *client,
   backend = meta_context_get_backend (context);
   frame->scale = scale_for_monitor (backend, logical_monitor);
 
-  buffer_width = (int) roundf (frame->rect.width * frame->scale);
-  buffer_height = (int) roundf (frame->rect.height * frame->scale);
-  stride = buffer_width * 4;
+  if (!calculate_buffer_geometry (&frame->rect,
+                                  frame->scale,
+                                  &frame->buffer_width,
+                                  &frame->buffer_height,
+                                  &frame->buffer_stride))
+    {
+      send_failed (frame);
+      g_steal_pointer (&frame);
+      return;
+    }
 
   zwlr_screencopy_frame_v1_send_buffer (frame->resource,
                                         WL_SHM_FORMAT_ARGB8888,
-                                        buffer_width,
-                                        buffer_height,
-                                        stride);
+                                        frame->buffer_width,
+                                        frame->buffer_height,
+                                        frame->buffer_stride);
   if (version >= ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE_SINCE_VERSION)
     zwlr_screencopy_frame_v1_send_buffer_done (frame->resource);
 
