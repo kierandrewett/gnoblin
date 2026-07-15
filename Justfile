@@ -43,7 +43,7 @@ patch PROJ:
 
 # Apply patches to every subproject.
 patch-all:
-    for p in {{patch_projects}}; do ./scripts/apply-patches.sh "$p"; done
+    for p in {{patch_projects}}; do ./scripts/apply-patches.sh "$p" || exit; done
 
 # Reset a subproject back to its pristine pinned tag.
 reset PROJ:
@@ -60,7 +60,7 @@ reset PROJ:
     echo "{{PROJ}} reset to $t"
 
 reset-all:
-    for p in {{patch_projects}}; do just reset "$p"; done
+    for p in {{patch_projects}}; do just reset "$p" || exit; done
 
 # Configure + compile a subproject with meson into build/<proj> (dev build).
 build PROJ: (patch PROJ)
@@ -164,7 +164,7 @@ dev-settings: (patch "gnome-control-center")
     meson install -C build/gnome-control-center
     # Hide non-applicable panels (reversible: just re-run dev-settings to restore).
     for p in {{settings_hidden_panels}}; do \
-      rm -f "{{prefix}}/share/applications/gnome-$p-panel.desktop"; \
+      rm -f "{{prefix}}/share/applications/gnome-$p-panel.desktop" || exit; \
       echo ">> hid $p panel"; \
     done
     @echo ">> gnoblin settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"

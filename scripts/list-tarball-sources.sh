@@ -72,9 +72,6 @@ list_required_subproject() {
         exit 1
     fi
 
-    if [ "$PREPARE" = true ]; then
-        meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2
-    fi
 
     directory="$(read_wrap_git_value "$wrap" directory || true)"
     revision="$(read_wrap_git_value "$wrap" revision || true)"
@@ -85,6 +82,23 @@ list_required_subproject() {
         echo "required subproject is not a pinned Git wrap: $dependency" >&2
         exit 1
     fi
+    repository_root="$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ "$PREPARE" = true ] && [ "$repository_root" = "$dependency_root" ]; then
+        if ! git -C "$dependency_root" diff --quiet ||
+            ! git -C "$dependency_root" diff --cached --quiet; then
+            echo "required subproject contains tracked changes: $dependency" >&2
+            exit 1
+        fi
+
+        actual_revision="$(git -C "$dependency_root" rev-parse HEAD)"
+        if [ "$actual_revision" != "$revision" ]; then
+            meson subprojects update --reset \
+                --sourcedir "$SOURCE_ROOT" "$dependency" >&2
+        fi
+    elif [ "$PREPARE" = true ]; then
+        meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2
+    fi
+
 
     repository_root="$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)"
     if [ "$repository_root" != "$dependency_root" ]; then
