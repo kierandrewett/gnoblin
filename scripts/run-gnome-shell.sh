@@ -9,6 +9,9 @@
 #      GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS (default 1 in gnoblin, 0 otherwise),
 #      GNOBLIN_TEST_CLIENT (optional Wayland client invoked after startup),
 #      GNOBLIN_TEST_DBUS_CLIENT (optional D-Bus client invoked after startup),
+#      GNOBLIN_TEST_EXTENSION_ROOT (optional directory of system extension fixtures),
+#      GNOBLIN_TEST_GSETTINGS_BACKEND (default memory),
+#      GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 to seed that feature as disabled,
 #      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
 set -uo pipefail
@@ -56,8 +59,40 @@ mkdir -p "$DK"/{data,config,cache,home}
 export HOME="$DK/home"
 export XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1
-export GSETTINGS_BACKEND=memory
+export GSETTINGS_BACKEND="${GNOBLIN_TEST_GSETTINGS_BACKEND:-memory}"
 export GTK_A11Y=none NO_AT_BRIDGE=1
+
+case "${GNOBLIN_TEST_DISABLE_NOTIFICATIONS:-0}" in
+  0) ;;
+  1)
+    gsettings set org.gnoblin.shell disabled-features "['notifications']" || exit 1
+    ;;
+  *)
+    echo "!! GNOBLIN_TEST_DISABLE_NOTIFICATIONS must be 0 or 1" >&2
+    exit 1
+    ;;
+esac
+
+if [ -n "${GNOBLIN_TEST_EXTENSION_ROOT:-}" ]; then
+  if [ ! -d "$GNOBLIN_TEST_EXTENSION_ROOT" ]; then
+    echo "!! extension fixture root is not a directory: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
+    exit 1
+  fi
+
+  extension_data="$DK/test-system/gnome-shell/extensions"
+  mkdir -p "$extension_data"
+  extension_count=0
+  for extension in "$GNOBLIN_TEST_EXTENSION_ROOT"/*; do
+    [ -d "$extension" ] || continue
+    cp -a -- "$extension" "$extension_data/"
+    extension_count=$((extension_count + 1))
+  done
+  if [ "$extension_count" -eq 0 ]; then
+    echo "!! extension fixture root contains no extension directories: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
+    exit 1
+  fi
+  export XDG_DATA_DIRS="$DK/test-system:$XDG_DATA_DIRS"
+fi
 
 DISP="gnoblin-gs-$$"
 SHELL_PID=
@@ -176,7 +211,7 @@ if [ -n "${GNOBLIN_TEST_DBUS_CLIENT:-}" ]; then
   elif [ -z "${bus_address:-}" ]; then
     echo "!! isolated D-Bus address is unavailable" >&2
     dbus_client_ok=0
-  elif ! DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
+  elif ! GNOBLIN_ACTIVE_MODE="$MODE" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
     dbus_client_ok=0
   fi
 fi

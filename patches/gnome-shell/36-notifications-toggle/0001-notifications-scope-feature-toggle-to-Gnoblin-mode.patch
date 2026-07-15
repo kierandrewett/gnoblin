@@ -1,0 +1,104 @@
+From 89b03b3b3925364755812757529945cc1632c15e Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 13:40:01 +0100
+Subject: [PATCH] notifications: scope feature toggle to Gnoblin mode
+
+Read the shell's immutable Mode property before applying Gnoblin's notification
+ownership setting. Preserve the standard notification service in stock and
+other session modes, and default to owning the name if the mode lookup or
+schema is unavailable.
+---
+ .../notifications/notificationDaemon.js       | 65 ++++++++++++++++++-
+ 1 file changed, 63 insertions(+), 2 deletions(-)
+
+diff --git a/js/dbusServices/notifications/notificationDaemon.js b/js/dbusServices/notifications/notificationDaemon.js
+index dafc0c7..3a5435e 100644
+--- a/js/dbusServices/notifications/notificationDaemon.js
++++ b/js/dbusServices/notifications/notificationDaemon.js
+@@ -7,6 +7,9 @@ import {loadInterfaceXML} from './misc/dbusUtils.js';
+ 
+ const NotificationsIface = loadInterfaceXML('org.freedesktop.Notifications');
+ const NotificationsProxy = Gio.DBusProxy.makeProxyWrapper(NotificationsIface);
++const ShellName = 'org.gnome.Shell';
++const ShellPath = '/org/gnome/Shell';
++const ShellInterface = 'org.gnome.Shell';
+ 
+ Gio._promisify(Gio.DBusConnection.prototype, 'call');
+ 
+@@ -89,13 +92,71 @@ export const NotificationDaemon = class extends ServiceImplementation {
+         return false;
+     }
+ 
+-    register() {
+-        Gio.DBus.session.own_name(
++    _isGnoblinSession() {
++        try {
++            const result = Gio.DBus.session.call_sync(
++                ShellName,
++                ShellPath,
++                'org.freedesktop.DBus.Properties',
++                'Get',
++                new GLib.Variant('(ss)', [ShellInterface, 'Mode']),
++                new GLib.VariantType('(v)'),
++                Gio.DBusCallFlags.NONE,
++                1_000,
++                null);
++            const [mode] = result.deepUnpack();
++            return mode.deepUnpack() === 'gnoblin';
++        } catch (error) {
++            log(`Failed to determine Shell session mode: ${error.message}`);
++            return false;
++        }
++    }
++
++    _gnoblinOwnName() {
++        if (this._gnoblinNameId)
++            return;
++
++        this._gnoblinNameId = Gio.DBus.session.own_name(
+             'org.freedesktop.Notifications',
+             Gio.BusNameOwnerFlags.REPLACE,
+             null, null);
+     }
+ 
++    register() {
++        // Only Gnoblin may release the standard notification name. A missing
++        // Shell mode or settings schema falls back to stock always-own policy.
++        if (!this._isGnoblinSession()) {
++            this._gnoblinOwnName();
++            return;
++        }
++
++        try {
++            this._gnoblinSettings = new Gio.Settings({schema_id: 'org.gnoblin.shell'});
++        } catch {
++            this._gnoblinSettings = null;
++        }
++
++        if (!this._gnoblinSettings) {
++            this._gnoblinOwnName();
++            return;
++        }
++
++        this._gnoblinSettings.connect('changed::disabled-features',
++            () => this._gnoblinSyncOwnership());
++        this._gnoblinSyncOwnership();
++    }
++
++    _gnoblinSyncOwnership() {
++        const off = this._gnoblinSettings
++            .get_strv('disabled-features').includes('notifications');
++        if (off && this._gnoblinNameId) {
++            Gio.DBus.session.unown_name(this._gnoblinNameId);
++            this._gnoblinNameId = 0;
++        } else if (!off) {
++            this._gnoblinOwnName();
++        }
++    }
++
+     async NotifyAsync(params, invocation) {
+         const sender = invocation.get_sender();
+         const pid = await this._getSenderPid(sender);
+-- 
+2.53.0
+

@@ -1,9 +1,10 @@
 # gnoblin build orchestration — patched GNOME Shell on patched Mutter. gnoblin is
 # "just GNOME + Mutter": Mutter carries the wlr-layer-shell + protocol overlays
-# (patches/mutter/ + src/protocols/); GNOME Shell carries a thin patch set (relaxed
-# extension loading, portal request cancellation, hidden native top bar) and the
-# `gnoblin` session mode that strips its stock UI. Chrome is bring-your-own: any
-# layer-shell client (Quickshell, waybar, a custom one, or none) draws the UI.
+# (patches/mutter/ + src/protocols/); GNOME Shell carries a thin, Gnoblin-scoped
+# patch set (extension loading, notification ownership, native top-bar policy)
+# plus portal fixes, tooling, and the session mode that strips its stock UI.
+# Chrome is bring-your-own: any layer-shell client (Quickshell, waybar, a custom
+# one, or none) draws the UI.
 #
 # The from-scratch C++ compositor + Rust/Slint clients were RETIRED; recover them
 # from the `archive/cpp-compositor` tag. Submodules are pinned + pristine; gnoblin's
@@ -189,13 +190,14 @@ gnome-devkit-verify:
     ./scripts/test-gnome-devkit.sh
 
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
-# starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
-# This is the stack's headless smoke test.
+# starts, advertises wlr-layer-shell, applies Gnoblin-only panel and extension
+# policy, and keeps privileged Shell APIs restricted.
 gnome-verify:
-    GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_EXPECT_EXTENSION_SCOPE=1 GNOBLIN_TEST_EXTENSION_ROOT="{{justfile_directory()}}/tests/shell-extensions" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
 
 # Headless: boot stock GNOME mode from the patched packages and prove Gnoblin's
-# custom Wayland globals and org.gnoblin.Shell component remain unavailable.
+# protocols and control API remain unavailable while the native panel,
+# extension validation, and notification ownership keep upstream behaviour.
 gnome-stock-protocol-isolation-verify:
     ./scripts/test-stock-protocol-isolation.sh
 

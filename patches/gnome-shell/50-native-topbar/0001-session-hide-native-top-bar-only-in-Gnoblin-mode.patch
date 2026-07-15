@@ -1,0 +1,53 @@
+From 2b09e0a55b8c90ad35e53139d159f371ce4cb77e Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 13:28:18 +0100
+Subject: [PATCH] session: hide native top bar only in Gnoblin mode
+
+Use the immutable primary session mode when deciding whether the native panel
+is visible, reactive, part of the input region, and reserving a strut. Stock
+GNOME and non-Gnoblin modes retain their upstream top bar behaviour.
+---
+ js/ui/layout.js | 4 +++-
+ js/ui/panel.js  | 4 +++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index 820f49f..51706de 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -275,12 +275,14 @@ export const LayoutManager = GObject.registerClass({
+         });
+         this.addChrome(this.screenShieldGroup);
+ 
++        const isGnoblin = global.session_mode === 'gnoblin';
+         this.panelBox = new St.BoxLayout({
+             name: 'panelBox',
+             orientation: Clutter.Orientation.VERTICAL,
+         });
+         this.addChrome(this.panelBox, {
+-            affectsStruts: true,
++            affectsInputRegion: !isGnoblin,
++            affectsStruts: !isGnoblin,
+             trackFullscreen: true,
+         });
+         this.panelBox.connect('notify::allocation',
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 46b0567..c7d3fd1 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -430,9 +430,11 @@ const PANEL_ITEM_IMPLEMENTATIONS = {
+ export const Panel = GObject.registerClass(
+ class Panel extends St.Widget {
+     _init() {
++        const isGnoblin = global.session_mode === 'gnoblin';
+         super._init({
+             name: 'panel',
+-            reactive: true,
++            opacity: isGnoblin ? 0 : 255,
++            reactive: !isGnoblin,
+         });
+ 
+         this.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
+-- 
+2.53.0
+

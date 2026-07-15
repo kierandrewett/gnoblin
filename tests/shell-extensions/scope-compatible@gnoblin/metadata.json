@@ -1,0 +1,7 @@
+{
+  "uuid": "scope-compatible@gnoblin",
+  "name": "Gnoblin shell mode scope probe",
+  "description": "Checks stock and Gnoblin panel policy",
+  "shell-version": ["49"],
+  "session-modes": ["gnoblin", "user"]
+}

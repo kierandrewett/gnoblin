@@ -1,0 +1,31 @@
+From 331aab5f3839c7bcb5ff032a51af9dad0d6e5f9d Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 13:29:07 +0100
+Subject: [PATCH] tooling: relax extension validation in Gnoblin mode
+
+Accept extensions with incompatible shell-version metadata only when the
+immutable primary session mode is Gnoblin. Preserve GNOME Shell's upstream
+validation in stock, GDM, and all other session modes.
+---
+ js/ui/extensionSystem.js | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
+index 22121c4..90e9e54 100644
+--- a/js/ui/extensionSystem.js
++++ b/js/ui/extensionSystem.js
+@@ -407,6 +407,11 @@ export class ExtensionManager extends Signals.EventEmitter {
+     }
+ 
+     _isOutOfDate(extension) {
++        // Gnoblin deliberately accepts extensions built for other Shell
++        // versions; every other primary session mode retains upstream policy.
++        if (global.session_mode === 'gnoblin')
++            return false;
++
+         const [major] = Config.PACKAGE_VERSION.split('.');
+         return !extension.metadata['shell-version'].some(v => v.startsWith(major));
+     }
+-- 
+2.53.0
+

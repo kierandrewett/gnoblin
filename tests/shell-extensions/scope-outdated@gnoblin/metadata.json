@@ -1,0 +1,7 @@
+{
+  "uuid": "scope-outdated@gnoblin",
+  "name": "Gnoblin extension validation scope probe",
+  "description": "Checks extension version policy by session mode",
+  "shell-version": ["0"],
+  "session-modes": ["gnoblin", "user"]
+}

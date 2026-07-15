@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Prove GNOME Shell keeps privileged D-Bus operations behind user consent."""
+"""Prove GNOME Shell scopes privileged APIs and fork policy by session mode."""
 
 import concurrent.futures
 import os
 import sys
 import time
+from typing import cast
 
 import gi
 
@@ -14,6 +15,11 @@ from gi.repository import Gio, GLib
 ALLOWED_NAME = "org.gnome.RemoteDesktop.Handover"
 SHELL_NAME = "org.gnome.Shell"
 SHELL_PATH = "/org/gnome/Shell"
+EXTENSIONS_INTERFACE = "org.gnome.Shell.Extensions"
+COMPATIBLE_EXTENSION = "scope-compatible@gnoblin"
+OUTDATED_EXTENSION = "scope-outdated@gnoblin"
+NOTIFICATIONS_SERVICE = "org.gnome.Shell.Notifications"
+NOTIFICATIONS_NAME = "org.freedesktop.Notifications"
 ACCESS_PATH = "/org/freedesktop/portal/desktop"
 REQUEST_PATH = "/org/freedesktop/portal/desktop/request/gnoblin_policy"
 
@@ -45,6 +51,123 @@ def eval_policy_matches(connection: Gio.DBusConnection) -> bool:
 
     state = "executed" if success else "was denied"
     print(f"FAIL: org.gnome.Shell.Eval {state} against the explicit policy", file=sys.stderr)
+    return False
+
+
+def call_extension(
+    connection: Gio.DBusConnection,
+    method: str,
+    uuid: str,
+    result_signature: str,
+) -> object:
+    reply = connection.call_sync(
+        SHELL_NAME,
+        SHELL_PATH,
+        EXTENSIONS_INTERFACE,
+        method,
+        GLib.Variant("(s)", (uuid,)),
+        GLib.VariantType.new(result_signature),
+        Gio.DBusCallFlags.NONE,
+        5_000,
+        None,
+    )
+    return reply.unpack()[0]
+
+
+def extension_info(connection: Gio.DBusConnection, uuid: str) -> dict[str, object]:
+    return cast(
+        dict[str, object],
+        call_extension(connection, "GetExtensionInfo", uuid, "(a{sv})"),
+    )
+
+
+def enable_extension(connection: Gio.DBusConnection, uuid: str) -> bool:
+    return cast(bool, call_extension(connection, "EnableExtension", uuid, "(b)"))
+
+
+def wait_extension_state(
+    connection: Gio.DBusConnection,
+    uuid: str,
+    expected_state: int,
+) -> dict[str, object]:
+    deadline = time.monotonic() + 5
+    info: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        info = extension_info(connection, uuid)
+        if int(info.get("state", 0)) == expected_state:
+            return info
+        time.sleep(0.05)
+    return info
+
+
+def extension_scope_matches(connection: Gio.DBusConnection) -> bool:
+    mode = os.environ.get("GNOBLIN_ACTIVE_MODE")
+    if mode not in {"gnoblin", "user"}:
+        print(f"FAIL: invalid GNOBLIN_ACTIVE_MODE value: {mode}", file=sys.stderr)
+        return False
+
+    compatible_enabled = enable_extension(connection, COMPATIBLE_EXTENSION)
+    compatible = wait_extension_state(connection, COMPATIBLE_EXTENSION, 1)
+    if not compatible_enabled or int(compatible.get("state", 0)) != 1:
+        print(
+            f"FAIL: panel scope probe failed in {mode} mode: {compatible}",
+            file=sys.stderr,
+        )
+        return False
+
+    outdated_enabled = enable_extension(connection, OUTDATED_EXTENSION)
+    expected_state = 1 if mode == "gnoblin" else 4
+    outdated = wait_extension_state(connection, OUTDATED_EXTENSION, expected_state)
+    outdated_state = int(outdated.get("state", 0))
+    if mode == "gnoblin" and outdated_enabled and outdated_state == 1:
+        print("PASS: Gnoblin mode accepted an extension with incompatible metadata")
+        return True
+    if mode == "user" and outdated_state == 4:
+        print("PASS: stock mode retained extension version validation")
+        return True
+
+    print(
+        f"FAIL: extension validation leaked across {mode} mode: {outdated}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def notification_owner_matches(connection: Gio.DBusConnection) -> bool:
+    connection.call_sync(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "StartServiceByName",
+        GLib.Variant("(su)", (NOTIFICATIONS_SERVICE, 0)),
+        GLib.VariantType.new("(u)"),
+        Gio.DBusCallFlags.NONE,
+        5_000,
+        None,
+    )
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        reply = connection.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameHasOwner",
+            GLib.Variant("(s)", (NOTIFICATIONS_NAME,)),
+            GLib.VariantType.new("(b)"),
+            Gio.DBusCallFlags.NONE,
+            5_000,
+            None,
+        )
+        if reply.unpack()[0]:
+            print("PASS: stock mode kept org.freedesktop.Notifications owned")
+            return True
+        time.sleep(0.05)
+
+    print(
+        "FAIL: stock mode released org.freedesktop.Notifications for a Gnoblin-only setting",
+        file=sys.stderr,
+    )
     return False
 
 
@@ -88,6 +211,12 @@ def main() -> int:
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     if not eval_policy_matches(connection):
         return 1
+    if os.environ.get("GNOBLIN_EXPECT_EXTENSION_SCOPE") == "1":
+        if not extension_scope_matches(connection):
+            return 1
+    if os.environ.get("GNOBLIN_EXPECT_NOTIFICATION_OWNER") == "1":
+        if not notification_owner_matches(connection):
+            return 1
 
     request_name = connection.call_sync(
         "org.freedesktop.DBus",
