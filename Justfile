@@ -219,6 +219,11 @@ gnome-scripting-verify:
 gnome-notifications-verify:
     ./scripts/test-notifications-toggle.sh
 
+# Headless: compile black-box clients from the owned protocol XML and exercise
+# registry binding plus clean disconnect against the running compositor.
+gnome-protocol-boundaries-verify:
+    ./scripts/test-protocol-boundaries.sh
+
 # Headless: prove gnoblin.conf [protocols] gating — disabling wlr-layer-shell in
 # the config stops zwlr_layer_shell_v1 being advertised.
 gnome-protocol-gating-verify:

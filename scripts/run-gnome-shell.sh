@@ -7,6 +7,7 @@
 # Env: GNOBLIN_PREFIX (default ./install), GNOBLIN_TEST_MODE (default gnoblin),
 #      GNOBLIN_TEST_ENV_MODE (default selected mode; may test a stale value),
 #      GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS (default 1 in gnoblin, 0 otherwise),
+#      GNOBLIN_TEST_CLIENT (optional executable invoked after startup),
 #      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
 set -uo pipefail
@@ -164,6 +165,27 @@ else
   echo "!! gnoblin control scope mismatch: mode=$MODE present=$control_present" >&2
 fi
 
+client_ok=1
+if [ -n "${GNOBLIN_TEST_CLIENT:-}" ]; then
+  if [ ! -x "$GNOBLIN_TEST_CLIENT" ]; then
+    echo "!! protocol test client is not executable: $GNOBLIN_TEST_CLIENT" >&2
+    client_ok=0
+  elif ! WAYLAND_DISPLAY="$DISP" "$GNOBLIN_TEST_CLIENT"; then
+    client_ok=0
+  elif ! timeout 5s env WAYLAND_DISPLAY="$DISP" "$probe" >/dev/null; then
+    echo "!! compositor did not respond after protocol client disconnect" >&2
+    client_ok=0
+  elif ! kill -0 "$SHELL_PID" 2>/dev/null; then
+    echo "!! gnome-shell exited after protocol client disconnect" >&2
+    client_ok=0
+  fi
+fi
+
+# A client may expose diagnostics after the initial startup scan.
+if gnoblin_log_has_fatal "$DK/shell.log" >/dev/null; then
+  fatal=1
+fi
+
 gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
 
 if [ "${KEEP:-0}" = 1 ]; then
@@ -172,9 +194,9 @@ if [ "${KEEP:-0}" = 1 ]; then
 fi
 
 if [ "$started" = 1 ] && [ "$protocol_scope_ok" = 1 ] &&
-   [ "$control_scope_ok" = 1 ] && [ "$fatal" = 0 ]; then
-  echo ">> RESULT: PASS (mode=$MODE started, protocol/control scope correct, no fatal diagnostics). log -> $LAST_LOG"
+   [ "$control_scope_ok" = 1 ] && [ "$client_ok" = 1 ] && [ "$fatal" = 0 ]; then
+  echo ">> RESULT: PASS (mode=$MODE started, protocol/control scope correct, client=$client_ok, no fatal diagnostics). log -> $LAST_LOG"
   exit 0
 fi
-echo ">> RESULT: incomplete (mode=$MODE started=$started protocol_scope=$protocol_scope_ok control_scope=$control_scope_ok fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
+echo ">> RESULT: incomplete (mode=$MODE started=$started protocol_scope=$protocol_scope_ok control_scope=$control_scope_ok client=$client_ok fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
 exit 1
