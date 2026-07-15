@@ -16,8 +16,12 @@ set shell := ["bash", "-uc"]
 patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter gnome-shell"
 
-# Local dev prefix: the whole gnoblin stack is built+installed here (no system install).
-prefix := justfile_directory() / "install"
+# Local development layout. Override both together for distro-style prefixes,
+# for example: GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just dev.
+prefix := env_var_or_default("GNOBLIN_PREFIX", justfile_directory() / "install")
+libdir := env_var_or_default("GNOBLIN_LIBDIR", "lib64")
+export GNOBLIN_PREFIX := prefix
+export GNOBLIN_LIBDIR := libdir
 
 _default:
     @just --list
@@ -64,12 +68,12 @@ build PROJ: (patch PROJ)
 #   just gnome-verify   headless: boot gnome-shell in gnoblin mode, check layer-shell
 #   just gnome-dbus-verify  headless: org.gnoblin.* control protocol round-trip
 #
-mutter_dev_opts := "--prefix=" + prefix + " --libdir=lib64 -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
-mutter_test_opts := "--prefix=" + prefix + " --libdir=lib64 -Ddevkit=enabled -Dtests=enabled -Dmutter_tests=true -Dclutter_tests=false -Dcogl_tests=false -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
+mutter_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
+mutter_test_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Ddevkit=enabled -Dtests=enabled -Dmutter_tests=true -Dclutter_tests=false -Dcogl_tests=false -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
 mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland --suite mutter:mutter/backends/native"
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
 mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
-gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=lib64 -Dtests=false -Dman=false -Dgtk_doc=false"
+gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Dtests=false -Dman=false -Dgtk_doc=false"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
 dev-mutter: (patch "mutter")
@@ -87,8 +91,8 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
     # g_boxed_type registration → GJS boxed-prototype crash at boot). A fresh build dir
     # is the only reliably-correct option here.
     rm -rf build/gnome-shell
-    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
-    PKG_CONFIG_PATH={{prefix}}/lib64/pkgconfig meson install -C build/gnome-shell
+    PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
+    PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson install -C build/gnome-shell
 
 # --- optional: unattended screen-share portal backend -----------------------
 #
@@ -107,7 +111,7 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 #
 #   ./install/libexec/xdg-desktop-portal-gnome -r
 #
-portal_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
+portal_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
 
 # Build + install the patched xdg-desktop-portal-gnome backend into ./install.
 dev-portal: (patch "xdg-desktop-portal-gnome")
@@ -132,7 +136,7 @@ dev-portal: (patch "xdg-desktop-portal-gnome")
 #
 #   just dev-settings
 #
-settings_dev_opts := "--prefix=" + prefix + " --libdir=lib64"
+settings_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
 
 # Panels that make no sense under gnoblin (no GNOME top bar / overview / dash /
 # workspaces gestures). Hidden by removing their installed panel .desktop, which

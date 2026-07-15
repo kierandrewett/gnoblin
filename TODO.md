@@ -52,7 +52,7 @@ cleanup. Checked items are committed and independently verified.
 - [x] Refuse destructive patch/reset operations when submodules contain
   unexpected work.
 - [x] Centralise runtime test environment setup.
-- [ ] Support one configurable prefix and library-directory contract.
+- [x] Support one configurable prefix and library-directory contract.
 - [ ] Publish deterministic source archives atomically.
 
 ### Final cleanup

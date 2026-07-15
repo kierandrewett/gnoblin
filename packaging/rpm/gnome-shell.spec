@@ -246,6 +246,11 @@ mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
 install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm755 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
+gnoblin_libdir=%{_libdir}
+gnoblin_prefix=%{_prefix}
+install -Dm644 /dev/null %{buildroot}%{_libexecdir}/gnoblin-libdir
+printf '%s\n' "${gnoblin_libdir#"$gnoblin_prefix"/}" \
+  > %{buildroot}%{_libexecdir}/gnoblin-libdir
 install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
@@ -328,6 +333,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
 %{_datadir}/gnome-session/sessions/gnoblin.session
 %{_datadir}/wayland-sessions/gnoblin.desktop
 %{_libexecdir}/gnoblin-env.sh
+%{_libexecdir}/gnoblin-libdir
 %{_bindir}/gnoblin-session
 %{_bindir}/gnoblin-shell-service
 %{_bindir}/gnoblinctl

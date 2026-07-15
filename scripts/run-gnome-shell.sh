@@ -37,7 +37,7 @@ else
 fi
 
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
-[ -f "$PREFIX/lib64/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
+[ -f "$PREFIX/${GNOBLIN_LIBDIR:-lib64}/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
 
 # --- runtime lookup paths (shared with run-gnome-devkit.sh, the installed
 # login wrappers) -------------------------------------------------------

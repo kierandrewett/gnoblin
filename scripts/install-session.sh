@@ -22,6 +22,10 @@ PREFIX="${1:?usage: install-session.sh <prefix>}"
 PREFIX="$(mkdir -p "$PREFIX" && cd "$PREFIX" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/src/data/session"
+source "$ROOT/src/tools/gnoblin-env.sh"
+LIBDIR="${GNOBLIN_LIBDIR:-lib64}"
+gnoblin_env_validate_libdir "$LIBDIR" || exit
+
 
 install -Dm644 "$SRC/modes/gnoblin.json" \
   "$PREFIX/share/gnome-shell/modes/gnoblin.json"
@@ -31,6 +35,8 @@ install -Dm644 "$SRC/gnome-session/gnoblin.session" \
 # Shared env helper first: gnoblin-session/gnoblin-shell-service both source
 # it from their installed location.
 install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$PREFIX/libexec/gnoblin-env.sh"
+install -Dm644 /dev/null "$PREFIX/libexec/gnoblin-libdir"
+printf '%s\n' "$LIBDIR" > "$PREFIX/libexec/gnoblin-libdir"
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
@@ -62,6 +68,7 @@ echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"
 echo "     share/gnome-session/sessions/gnoblin.session (required components)"
 echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/gnoblin-session)"
 echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
+echo "     libexec/gnoblin-libdir                  (installed library-directory contract)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
 echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
