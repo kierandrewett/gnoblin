@@ -28,4 +28,16 @@ if ! gnoblin_log_has_fatal "$TMP/fatal.log"; then
     exit 1
 fi
 
+wait_log="$TMP/wait.log"
+: > "$wait_log"
+(sleep 0.1; echo "state: ready" >> "$wait_log") &
+if ! gnoblin_wait_for_log "$wait_log" '^state: ready$' 2; then
+    echo "FAIL: state-based log wait missed the transition" >&2
+    exit 1
+fi
+if gnoblin_wait_for_log "$wait_log" '^state: never$' 1; then
+    echo "FAIL: state-based log wait ignored its timeout" >&2
+    exit 1
+fi
+
 echo "PASS: fatal shell diagnostics detected"

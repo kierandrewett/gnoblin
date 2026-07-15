@@ -5,6 +5,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ROOT
 source "$ROOT/scripts/gnoblin-state.sh"
 LAST_LOG="$(gnoblin_state_dir)/scripting-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
@@ -43,11 +44,12 @@ trap cleanup EXIT INT TERM HUP
 CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 
 dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
+  source "$ROOT/scripts/gnoblin-test-lib.sh"
   "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
     --virtual-monitor 1280x800 --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
   SHELL_PID=$!
   gdbus wait --session --timeout 30 org.gnoblin.Shell || { echo "FAIL: shell never up"; tail -20 "$SHELL_LOG"; exit 1; }
-  sleep 1
+  gnoblin_wait_for_log "$SHELL_LOG" "SCRIPT version=A" 10 || true
 
   gnoblin() { gdbus call --session --dest org.gnoblin.Shell --object-path /org/gnoblin/Shell \
                --method "org.gnoblin.Shell.$@" 2>&1; }
@@ -59,8 +61,7 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
 
   printf "export default (api) => { api.log(\"SCRIPT version=B\"); };\n" > "$SCRIPTDIR/hello.js"
   echo "ReloadScripts -> $(gnoblin ReloadScripts)"
-  sleep 1
-  if grep -q "SCRIPT version=B" "$SHELL_LOG"; then echo "  ok: script HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: script not reloaded"; grep "SCRIPT version" "$SHELL_LOG"; rc=1; fi
+  if gnoblin_wait_for_log "$SHELL_LOG" "SCRIPT version=B" 10; then echo "  ok: script HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: script not reloaded"; grep "SCRIPT version" "$SHELL_LOG"; rc=1; fi
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc

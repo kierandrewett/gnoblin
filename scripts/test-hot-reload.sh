@@ -5,6 +5,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ROOT
 source "$ROOT/scripts/gnoblin-state.sh"
 LAST_LOG="$(gnoblin_state_dir)/hot-reload-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
@@ -58,6 +59,7 @@ trap cleanup EXIT INT TERM HUP
 CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 
 dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
+  source "$ROOT/scripts/gnoblin-test-lib.sh"
   "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
     --virtual-monitor 1280x800 --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
   SHELL_PID=$!
@@ -70,8 +72,7 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
 
   rc=0
   echo "enable -> $(gshell EnableExtension hrtest@gnoblin)"
-  sleep 1
-  if grep -q "HRTEST version=A" "$SHELL_LOG"; then echo "  ok: extension loaded (version=A)"; else echo "  FAIL: extension did not load"; tail -15 "$SHELL_LOG"; rc=1; fi
+  if gnoblin_wait_for_log "$SHELL_LOG" "HRTEST version=A" 10; then echo "  ok: extension loaded (version=A)"; else echo "  FAIL: extension did not load"; tail -15 "$SHELL_LOG"; rc=1; fi
 
   echo "ListExtensions -> $(gnoblin ListExtensions)"
   case "$(gnoblin ListExtensions)" in *hrtest@gnoblin*) echo "  ok: ListExtensions shows it";; *) echo "  FAIL: not listed"; rc=1;; esac
@@ -85,8 +86,7 @@ export default class extends Extension {
 }
 JS
   echo "ReloadExtension -> $(gnoblin ReloadExtension hrtest@gnoblin)"
-  sleep 1
-  if grep -q "HRTEST version=B" "$SHELL_LOG"; then echo "  ok: HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: code not reloaded"; grep HRTEST "$SHELL_LOG"; rc=1; fi
+  if gnoblin_wait_for_log "$SHELL_LOG" "HRTEST version=B" 10; then echo "  ok: HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: code not reloaded"; grep HRTEST "$SHELL_LOG"; rc=1; fi
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc

@@ -5,6 +5,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ROOT
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
@@ -44,11 +45,14 @@ DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 export DK probe
 
 dbus-run-session --config-file="$DBUS_CONF" -- bash -uo pipefail -c '
+  source "$ROOT/scripts/gnoblin-test-lib.sh"
   "$GS" --headless --wayland --no-x11 --mode=gnoblin --virtual-monitor 1280x800 \
     --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
-  for i in $(seq 1 60); do [ -S "$XDG_RUNTIME_DIR/$DISP" ] && break; sleep 0.5; done
-  [ -S "$XDG_RUNTIME_DIR/$DISP" ] || { echo "FAIL: shell socket never appeared"; tail -15 "$DK/shell.log"; exit 1; }
-  sleep 3
+  if ! gnoblin_wait_for_log "$DK/shell.log" "GNOME Shell started" 30; then
+    echo "FAIL: shell never reached ready state"
+    tail -15 "$DK/shell.log"
+    exit 1
+  fi
   if WAYLAND_DISPLAY="$DISP" "$probe" | grep -q zwlr_layer_shell_v1; then
     echo "  FAIL: zwlr_layer_shell_v1 STILL advertised with wlr-layer-shell=false"
     exit 1

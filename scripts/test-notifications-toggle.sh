@@ -8,6 +8,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ROOT
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
@@ -43,6 +44,7 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 export DK
 
 dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
+  source "$ROOT/scripts/gnoblin-test-lib.sh"
   "$GS" --headless --wayland --no-x11 --mode=gnoblin --virtual-monitor 1280x800 \
     --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
   gdbus wait --session --timeout 30 org.gnoblin.Shell || { echo "FAIL: shell never up"; exit 1; }
@@ -52,21 +54,25 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
               --method org.freedesktop.DBus.NameHasOwner "$fdo" | tr -d "\n"; }
   ctl() { gdbus call --session --dest org.gnoblin.Shell --object-path /org/gnoblin/Shell \
             --method "org.gnoblin.Shell.$@" >/dev/null; }
+  name_is_owned() { case "$(owned)" in *true*) return 0;; *) return 1;; esac; }
+  name_is_unowned() { ! name_is_owned; }
 
   # Start the fdo notification daemon (it owns org.freedesktop.Notifications).
   gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
     --method org.freedesktop.DBus.StartServiceByName org.gnome.Shell.Notifications 0 >/dev/null 2>&1
-  sleep 1.5
+  gnoblin_wait_until 10 name_is_owned || true
 
   rc=0
   d="$(owned)";  echo "default          -> $d"
   case "$d" in *true*)  echo "  ok: gnome owns org.freedesktop.Notifications by default";; *) echo "  FAIL: not owned by default"; rc=1;; esac
 
-  ctl SetFeature notifications false; sleep 2
+  ctl SetFeature notifications false
+  gnoblin_wait_until 10 name_is_unowned || true
   off="$(owned)"; echo "notifications off -> $off"
   case "$off" in *false*) echo "  ok: name RELEASED (an external daemon can own it now)";; *) echo "  FAIL: name not released"; rc=1;; esac
 
-  ctl SetFeature notifications true; sleep 2
+  ctl SetFeature notifications true
+  gnoblin_wait_until 10 name_is_owned || true
   on="$(owned)";  echo "notifications on  -> $on"
   case "$on" in *true*)  echo "  ok: name RECLAIMED";; *) echo "  FAIL: name not reclaimed"; rc=1;; esac
 

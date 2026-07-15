@@ -10,6 +10,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ROOT
 source "$ROOT/scripts/gnoblin-state.sh"
 LAST_LOG="$(gnoblin_state_dir)/dbus-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
@@ -48,6 +49,7 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 
 # Everything below shares the one dbus-run-session bus.
 dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
+  source "$ROOT/scripts/gnoblin-test-lib.sh"
   "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
     --virtual-monitor "'"$MONITOR"'" --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
   SHELL_PID=$!
@@ -71,8 +73,7 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   case "$ping"   in *pong*)     echo "  ok: Ping";;        *) echo "  FAIL: Ping"; rc=1;; esac
   case "$ver"    in *-gnoblin*) echo "  ok: GetVersion";;  *) echo "  FAIL: GetVersion"; rc=1;; esac
   # Reload is void; assert the soft-reload actually ran from the shell log.
-  sleep 1
-  if grep -q "gnoblin: soft-reload" "$SHELL_LOG"; then echo "  ok: Reload (soft-reload ran)"; else echo "  FAIL: Reload (no soft-reload log)"; rc=1; fi
+  if gnoblin_wait_for_log "$SHELL_LOG" "gnoblin: soft-reload" 10; then echo "  ok: Reload (soft-reload ran)"; else echo "  FAIL: Reload (no soft-reload log)"; rc=1; fi
 
   # --- feature toggles ---
   feats="$(call ListFeatures)"; echo "ListFeatures -> $feats"
