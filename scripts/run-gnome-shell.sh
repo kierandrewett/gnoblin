@@ -12,11 +12,12 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/gnoblin-state.sh"
+LAST_LOG="$(gnoblin_state_dir)/gnome-shell-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1280x800}"
 SETTLE="${SETTLE:-25}"
-LAST_LOG=/tmp/gnoblin-gnome-shell-last.log
 
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
 [ -f "$PREFIX/lib64/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
@@ -49,7 +50,7 @@ cleanup() {
     env="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
     case "$env" in *"WAYLAND_DISPLAY=$DISP"*) kill "-KILL" "${proc##*/}" 2>/dev/null || true ;; esac
   done
-  [ -f "$DK/shell.log" ] && cp "$DK/shell.log" "$LAST_LOG" 2>/dev/null || true
+  [ -f "$DK/shell.log" ] && gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
   rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
@@ -73,7 +74,7 @@ done
 if [ ! -S "$XDG_RUNTIME_DIR/$DISP" ]; then
   echo "!! gnome-shell did not create the wayland socket:" >&2
   tail -n 40 "$DK/shell.log" >&2
-  cp "$DK/shell.log" "$LAST_LOG" 2>/dev/null || true
+  gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
   exit 1
 fi
 
@@ -92,10 +93,8 @@ grep -iE "session.?mode|gnoblin|GNOME Shell started|JS ERROR|JS WARNING|Tracebac
   "$DK/shell.log" 2>/dev/null | head -40 | sed 's/^/   /'
 
 # --- probe advertised globals ----------------------------------------------
-probe=/tmp/gnoblin-wl-globals
-if [ ! -x "$probe" ] || [ "$ROOT/scripts/wl-globals.c" -nt "$probe" ]; then
-  cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
-fi
+probe="$DK/wl-globals"
+cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
 echo "== wlr_/ext_ protocols advertised by gnome-shell =="
 WAYLAND_DISPLAY="$DISP" "$probe" | grep -iE "wlr_|ext_" | sort | sed 's/^/   /'
 total="$(WAYLAND_DISPLAY="$DISP" "$probe" | wc -l)"
@@ -108,7 +107,7 @@ else
   layer_ok=0
 fi
 
-cp "$DK/shell.log" "$LAST_LOG" 2>/dev/null || true
+gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
 
 if [ "${KEEP:-0}" = 1 ]; then
   echo ">> KEEP=1: shell alive on WAYLAND_DISPLAY=$DISP (Ctrl-C to exit). log -> $LAST_LOG"

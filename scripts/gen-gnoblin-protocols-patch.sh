@@ -22,6 +22,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/mutter"
 TAG=49.5
 OUT="$ROOT/patches/mutter/40-gnoblin-protocols"
+TMP="$(mktemp -d /tmp/gnoblin-protocol-patch.XXXXXX)"
+trap 'rm -rf "$TMP"' EXIT
+SOURCES_FILE="$TMP/sources.txt"
+PROTOCOLS_FILE="$TMP/protocols.txt"
 
 # Overlay sources copied into src/wayland/ (aggregator first, then per protocol).
 SOURCES=(
@@ -68,9 +72,9 @@ surface="$SM/src/wayland/meta-wayland-surface.c"
   echo "    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays"
   echo "    # at build time; registered via meta_gnoblin_init_protocols)"
   for s in "${SOURCES[@]}"; do echo "    'wayland/$s',"; done
-} > /tmp/gnoblin-sources.txt
-perl -0pi -e '
-  local $/; open(my $f, "<", "/tmp/gnoblin-sources.txt"); my $blk = <$f>; close($f);
+} > "$SOURCES_FILE"
+GNOBLIN_SOURCES_FILE="$SOURCES_FILE" perl -0pi -e '
+  local $/; open(my $f, "<", $ENV{"GNOBLIN_SOURCES_FILE"}); my $blk = <$f>; close($f);
   s@(    '"'"'wayland/meta-wayland-shell-surface.h'"'"',\n)@$1$blk@;
 ' "$meson"
 
@@ -78,9 +82,9 @@ perl -0pi -e '
 {
   echo "    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)"
   for p in "${PROTOCOLS[@]}"; do echo "    ['$p', 'private', ],"; done
-} > /tmp/gnoblin-protos.txt
-perl -0pi -e '
-  local $/; open(my $f, "<", "/tmp/gnoblin-protos.txt"); my $blk = <$f>; close($f);
+} > "$PROTOCOLS_FILE"
+GNOBLIN_PROTOCOLS_FILE="$PROTOCOLS_FILE" perl -0pi -e '
+  local $/; open(my $f, "<", $ENV{"GNOBLIN_PROTOCOLS_FILE"}); my $blk = <$f>; close($f);
   s@(    \['"'"'xdg-toplevel-tag'"'"', '"'"'staging'"'"', 1, \],\n)@$1$blk@;
 ' "$meson"
 
@@ -110,5 +114,4 @@ git -C "$SM" checkout -qf "$TAG"
 git -C "$SM" reset -q --hard "$TAG"
 git -C "$SM" clean -qfdx
 
-rm -f /tmp/gnoblin-sources.txt /tmp/gnoblin-protos.txt
 echo ">> regenerated $(ls "$OUT"/*.patch)"

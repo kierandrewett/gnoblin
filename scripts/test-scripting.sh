@@ -5,6 +5,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/gnoblin-state.sh"
+LAST_LOG="$(gnoblin_state_dir)/scripting-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
@@ -33,7 +35,7 @@ cleanup() {
     e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
     case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
   done
-  cp "$SHELL_LOG" /tmp/gnoblin-scripting-last.log 2>/dev/null || true
+  [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" scripting-last.log 2>/dev/null || true
   rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
@@ -64,5 +66,5 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
   exit $rc
 '
 rc=$?
-[ "$rc" = 0 ] && echo ">> RESULT: PASS (user scripting + hot-reload)" || echo ">> RESULT: FAIL (rc=$rc). log -> /tmp/gnoblin-scripting-last.log"
+[ "$rc" = 0 ] && echo ">> RESULT: PASS (user scripting + hot-reload)" || echo ">> RESULT: FAIL (rc=$rc). log -> $LAST_LOG"
 exit "$rc"

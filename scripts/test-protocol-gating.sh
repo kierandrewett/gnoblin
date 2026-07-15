@@ -28,10 +28,8 @@ mkdir -p "$(dirname "$CONF_FILE")"
 printf '[protocols]\nwlr-layer-shell = false\n' > "$CONF_FILE"
 export GNOBLIN_CONFIG="$CONF_FILE"
 
-probe=/tmp/gnoblin-wl-globals
-if [ ! -x "$probe" ] || [ "$ROOT/scripts/wl-globals.c" -nt "$probe" ]; then
-  cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
-fi
+probe="$DK/wl-globals"
+cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
 
 cleanup() {
   for proc in /proc/[0-9]*; do

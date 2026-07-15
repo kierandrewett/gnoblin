@@ -16,6 +16,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/gnoblin-state.sh"
+LAST_LOG="$(gnoblin_state_dir)/devkit-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1600x900}"
@@ -81,6 +83,7 @@ cleanup() {
   [ -n "$SHELL_PID" ] && kill -- "-$SHELL_PID" 2>/dev/null
   [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
   [ -n "$DBUS_PID" ] && kill "$DBUS_PID" 2>/dev/null
+  [ -f "$DK/shell.log" ] && gnoblin_publish_log "$DK/shell.log" devkit-last.log 2>/dev/null || true
   rm -rf "$DK"
 }
 # EXIT is the single cleanup site; signals just exit into it (no double-run).
@@ -111,7 +114,6 @@ SHELL_PID=$!
 # wait for the control protocol (implies the shell is up + serving $DISP)
 if ! gdbus wait --session --timeout 30 org.gnoblin.Shell; then
   echo "!! gnoblin did not come up:" >&2; tail -n 30 "$DK/shell.log" >&2
-  cp "$DK/shell.log" /tmp/gnoblin-devkit-last.log 2>/dev/null || true
   exit 1
 fi
 echo ">> gnoblin up. org.gnoblin.Shell owned; nested wayland display = $DISP"
