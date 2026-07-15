@@ -1,0 +1,136 @@
+From a15b7fb1c4bf6462bda5eeafee88a6860a0c20a8 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 15:11:56 +0100
+Subject: [PATCH 4/4] fix(grants): write permission records atomically
+
+Create grant data through a same-directory 0600 temporary file, write and fsync it, then rename it over the final digest path. This removes the 0644 exposure window caused by g_file_set_contents under a normal umask while retaining compatibility with the portal fork's GLib 2.62 floor. The focused grant test passes and still asserts final 0700 directory and 0600 file modes.
+---
+ src/gnoblin-portal-grants.c | 96 ++++++++++++++++++++++++++++++++-----
+ 1 file changed, 83 insertions(+), 13 deletions(-)
+
+diff --git a/src/gnoblin-portal-grants.c b/src/gnoblin-portal-grants.c
+index b12cbd7..1b17815 100644
+--- a/src/gnoblin-portal-grants.c
++++ b/src/gnoblin-portal-grants.c
+@@ -5,6 +5,7 @@
+ #include "config.h"
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <glib/gstdio.h>
+ #include <unistd.h>
+ 
+@@ -389,6 +390,86 @@ grant_is_valid (GnoblinPortalGrantKind  kind,
+   return TRUE;
+ }
+ 
++static gboolean
++write_private_file (const char  *path,
++                    const char  *contents,
++                    gsize        contents_length,
++                    GError     **error)
++{
++  g_autofree char *temporary_path = g_strconcat (path, ".XXXXXX", NULL);
++  const char *operation = "create";
++  gsize offset = 0;
++  int fd;
++  int saved_errno;
++
++  fd = g_mkstemp_full (temporary_path, O_RDWR | O_CLOEXEC, 0600);
++  if (fd < 0)
++    goto fail;
++
++  operation = "write";
++  while (offset < contents_length)
++    {
++      ssize_t written = write (fd,
++                               contents + offset,
++                               contents_length - offset);
++
++      if (written < 0)
++        {
++          if (errno == EINTR)
++            continue;
++          goto fail_open;
++        }
++      if (written == 0)
++        {
++          errno = EIO;
++          goto fail_open;
++        }
++      offset += written;
++    }
++
++  operation = "sync";
++  while (fsync (fd) != 0)
++    {
++      if (errno == EINTR)
++        continue;
++      goto fail_open;
++    }
++
++  operation = "close";
++  if (close (fd) != 0)
++    {
++      saved_errno = errno;
++      fd = -1;
++      goto fail_saved;
++    }
++  fd = -1;
++
++  operation = "replace";
++  if (g_rename (temporary_path, path) != 0)
++    goto fail;
++
++  return TRUE;
++
++fail_open:
++  saved_errno = errno;
++  close (fd);
++  goto fail_saved;
++
++fail:
++  saved_errno = errno;
++
++fail_saved:
++  g_unlink (temporary_path);
++  g_set_error (error,
++               G_IO_ERROR,
++               g_io_error_from_errno (saved_errno),
++               "Failed to %s private portal grant %s: %s",
++               operation,
++               path,
++               g_strerror (saved_errno));
++  return FALSE;
++}
++
+ gboolean
+ gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+                             const char              *identity,
+@@ -431,21 +512,10 @@ gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+     }
+ 
+   contents = g_key_file_to_data (key_file, &contents_length, error);
+-  if (!contents || !g_file_set_contents (path, contents, contents_length, error))
++  if (!contents ||
++      !write_private_file (path, contents, contents_length, error))
+     return FALSE;
+ 
+-  if (g_chmod (path, 0600) != 0)
+-    {
+-      g_set_error (error,
+-                   G_IO_ERROR,
+-                   g_io_error_from_errno (errno),
+-                   "Failed to protect portal grant %s: %s",
+-                   path,
+-                   g_strerror (errno));
+-      g_unlink (path);
+-      return FALSE;
+-    }
+-
+   return TRUE;
+ }
+ 
+-- 
+2.53.0
+
