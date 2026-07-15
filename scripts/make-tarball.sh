@@ -50,6 +50,7 @@ echo ">> archiving $PROJ working tree -> $OUT" >&2
         --group=0 \
         --numeric-owner \
         --pax-option=delete=atime,delete=ctime \
+        --mode='a=rX,u+w' \
         --null \
         --verbatim-files-from \
         --no-recursion \
