@@ -37,15 +37,15 @@ cleanup. Checked items are committed and independently verified.
 
 ### Protocol correctness
 
-- [ ] Use checked arithmetic for screencopy geometry and byte sizes.
-- [ ] Honour the foreign-toplevel manager destructor contract safely.
-- [ ] Use checked arithmetic for layer-shell geometry and exclusive-zone struts.
+- [x] Use checked arithmetic for screencopy geometry and byte sizes.
+- [x] Honour the foreign-toplevel manager destructor contract safely.
+- [x] Use checked arithmetic for layer-shell geometry and exclusive-zone struts.
 
 ### Runtime consistency
 
 - [x] Reconcile direct GSettings changes into live feature state.
 - [ ] Synchronise Settings switches and grants with D-Bus completion/signals.
-- [ ] Report reload success only after asynchronous reload work completes.
+- [x] Report reload success only after asynchronous reload work completes.
 
 ### Tooling and packaging
 
