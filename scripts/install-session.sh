@@ -11,11 +11,11 @@
 #     actually start the patched gnome-shell -- gnoblin-specific unit names
 #     so they never shadow a system GNOME Shell install's own units
 #
-# This step is additive and atomic: everything lands under <prefix> and can
-# be removed by deleting it. No system files are touched, and nothing here
-# registers with your live login manager or systemd --user instance -- that
-# is `scripts/register-session.sh` (see docs/installation.md), a separate,
-# explicit step because it touches state outside <prefix>.
+# This step is additive: everything lands under <prefix> and can be removed by
+# deleting it. No system files are touched, and nothing here registers with
+# your live login manager or systemd --user instance. That is handled by
+# `scripts/register-session.sh` (see docs/installation.md), a separate explicit
+# step because it changes state outside <prefix>.
 set -euo pipefail
 
 PREFIX="${1:?usage: install-session.sh <prefix>}"

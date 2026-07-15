@@ -4,14 +4,13 @@ Not implemented yet. The intended approach mirrors the RPM path (see
 `packaging/rpm/gnome-shell.spec`'s `gnoblin-session` subpackage for the
 working reference):
 
-1. `just tarball mutter` / `just tarball gnome-shell` produce release tarballs with
-   gnoblin's patches already applied (so `debian/patches/` is **not** used).
-   `scripts/make-tarball.sh` also stages the gnoblin-session payload — session
-   mode (`src/data/session/modes/gnoblin.json`), gnome-session file, login
-   `.desktop`, the `org.gnoblin.Shell` systemd --user units
-   (`src/data/session/systemd-user/`), and the control/wrapper tools
-   (`src/tools/gnoblin-env.sh`, `gnoblin-session`, `gnoblin-shell-service`,
-   `gnoblinctl`) — into the sources dir alongside the gnome-shell tarball.
+1. `just tarball mutter` / `just tarball gnome-shell` produce reproducible
+   release tarballs with Gnoblin's patches already applied, so
+   `debian/patches/` is not used. Publication happens only after sidecar
+   staging succeeds. The GNOME Shell run also stages the session mode,
+   gnome-session file, login `.desktop`, Gnoblin systemd user units, schema
+   override, `gnoblin-env.sh`, `gnoblin-session`, `gnoblin-shell-service`, and
+   `gnoblinctl` beside the tarball.
 2. Add a `debian/` dir per package (control, rules, changelog) for **patched
    mutter** and **patched gnome-shell**. Split a `gnoblin-session` binary
    package out of the gnome-shell source package for the payload above (a
@@ -20,6 +19,9 @@ working reference):
    gnome-shell package, since the login-manager `.desktop` and systemd units
    are gnoblin-specific and shouldn't force a rebuild of gnome-shell itself
    to update.
+   Generate a mode-0644 `gnoblin-libdir` beside `gnoblin-env.sh` containing
+   the multiarch library path relative to `/usr` (for example,
+   `lib/x86_64-linux-gnu`). Installed wrappers use this value at login time.
 3. Wire `just deb PROJ` to run `debuild` / `dpkg-buildpackage`.
 
 Because patches are pre-applied in the tarball, deb packaging stays a thin wrapper

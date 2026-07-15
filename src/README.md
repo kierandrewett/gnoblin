@@ -7,12 +7,12 @@ a feature lives.
 
 ## Top-Level Areas
 
-- `protocols/` — Mutter overlay sources for the Wayland protocols gnoblin adds
-  to libmutter (layer-shell, screencopy, idle-notify, data/gamma/output-power
-  control, foreign-toplevel list + management, KDE appmenu, session-lock and
-  output-management scaffolding). These files are copied into the Mutter
-  submodule by `scripts/copy-overlay.sh` and the wiring is persisted as patch
-  files under `patches/mutter/`.
+- `protocols/` — Mutter overlay sources for the implemented Wayland protocols:
+  layer-shell, screencopy, idle-notify, data/gamma/output-power control, and
+  foreign-toplevel list plus management. `session-lock/` and
+  `output-management/` are deferred plans and vendored XML, not runtime
+  implementations. `scripts/copy-overlay.sh` copies owned files into Mutter;
+  the build and registration wiring lives under `patches/mutter/`.
 - `config/` — the shared C `gnoblin.conf` parser. It is compiled into the Mutter
   protocol overlays (e.g. to gate protocols), so keep it C-compatible.
 - `gnome-shell-overlay/` — the `gnoblinControl.js` session component that hosts
@@ -25,10 +25,11 @@ a feature lives.
   shared `org.gnome.Shell` unit so registering them never shadows a system
   GNOME Shell install), the `org.gnoblin.shell` gschema, and
   `gnoblin.conf.example`.
-- `tools/` — CLIs installed into the prefix by `scripts/install-session.sh`:
-  `gnoblinctl` (the `org.gnoblin.Shell` control front-end), `gnoblin-session`
-  (the installed `.desktop`'s `Exec=` target), and `gnoblin-shell-service`
-  (the `ExecStart=` wrapper for `org.gnoblin.Shell@wayland.service`).
+- `tools/` — runtime helpers installed by `scripts/install-session.sh`:
+  `gnoblinctl` (the `org.gnoblin.Shell` control front-end), `gnoblin-env.sh`
+  (the shared prefix and library lookup contract), `gnoblin-session` (the login
+  entry's `Exec=` target), and `gnoblin-shell-service` (the systemd user-unit
+  wrapper).
 - `control-center/` — the `gnoblin` panel for the forked `gnome-control-center`
   (feature toggles, typed portal grants, and a reload button). Copied into the
   submodule via its `manifest` and registered by
