@@ -25,6 +25,7 @@ git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 \
   || { echo "submodule $PROJ not initialised; run 'just init'" >&2; exit 1; }
 
 "$ROOT/scripts/subproject-state.sh" check "$PROJ" "$TAG"
+"$ROOT/scripts/copy-overlay.sh" "$PROJ" "$SM" --remove-destinations
 
 echo ">> resetting $PROJ to pristine tag $TAG"
 git -C "$SM" am --abort >/dev/null 2>&1 || true

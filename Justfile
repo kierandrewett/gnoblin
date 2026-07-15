@@ -46,6 +46,7 @@ reset PROJ:
     set -euo pipefail
     case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; gnome-control-center) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
     ./scripts/subproject-state.sh check "{{PROJ}}" "$t"
+    ./scripts/copy-overlay.sh "{{PROJ}}" "subprojects/{{PROJ}}" --remove-destinations
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"

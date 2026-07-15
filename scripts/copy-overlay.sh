@@ -8,14 +8,14 @@
 # files are untracked in the submodule (added to .git/info/exclude and removed by
 # `git clean` on reset), so the submodule stays pristine.
 #
-# Usage: copy-overlay.sh <project> <submodule-dir> [--list-destinations]
+# Usage: copy-overlay.sh <project> <submodule-dir> [--list-destinations|--remove-destinations]
 set -euo pipefail
 
 PROJ="${1:?usage: copy-overlay.sh <project> <submodule-dir>}"
 SM="${2:?usage: copy-overlay.sh <project> <submodule-dir>}"
 MODE="${3:-copy}"
 case "$MODE" in
-    copy|--list-destinations) ;;
+    copy|--list-destinations|--remove-destinations) ;;
     *) echo "unknown overlay action: $MODE" >&2; exit 1 ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,6 +39,12 @@ while IFS= read -r manifest; do
             printf '%s\0' "$dest"
             continue
         fi
+        if [[ "$MODE" == --remove-destinations ]]; then
+            rm -f -- "$SM/$dest"
+            rmdir --ignore-fail-on-non-empty "$SM/$(dirname "$dest")" 2>/dev/null || true
+            n=$((n + 1))
+            continue
+        fi
         mkdir -p "$SM/$(dirname "$dest")"
         cp "$feature_dir/$src" "$SM/$dest"
         # keep the submodule's git status clean
@@ -49,4 +55,6 @@ while IFS= read -r manifest; do
 done < <(find "$ROOT/src" -name manifest -type f | sort)
 if [[ "$MODE" == copy ]]; then
     echo ">> copied $n overlay file(s) into $PROJ"
+elif [[ "$MODE" == --remove-destinations ]]; then
+    echo ">> removed $n overlay file(s) from $PROJ"
 fi
