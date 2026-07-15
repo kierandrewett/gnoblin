@@ -13,6 +13,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/gnoblin-state.sh"
+source "$ROOT/scripts/gnoblin-test-lib.sh"
 LAST_LOG="$(gnoblin_state_dir)/gnome-shell-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
@@ -89,8 +90,12 @@ for _ in $(seq 1 $((SETTLE * 2))); do
 done
 
 echo "== session mode / startup log lines =="
-grep -iE "session.?mode|gnoblin|GNOME Shell started|JS ERROR|JS WARNING|Traceback|error|assert|abort" \
+grep -iE "session.?mode|gnoblin|GNOME Shell started|CRITICAL|JS ERROR|JS WARNING|Traceback|error|assert|abort" \
   "$DK/shell.log" 2>/dev/null | head -40 | sed 's/^/   /'
+fatal=0
+if gnoblin_log_has_fatal "$DK/shell.log" >/dev/null; then
+  fatal=1
+fi
 
 # --- probe advertised globals ----------------------------------------------
 probe="$DK/wl-globals"
@@ -114,9 +119,9 @@ if [ "${KEEP:-0}" = 1 ]; then
   wait "$SHELL_PID"
 fi
 
-if [ "$started" = 1 ] && [ "${layer_ok:-0}" = 1 ]; then
-  echo ">> RESULT: PASS (started + layer-shell advertised). log -> $LAST_LOG"
+if [ "$started" = 1 ] && [ "${layer_ok:-0}" = 1 ] && [ "$fatal" = 0 ]; then
+  echo ">> RESULT: PASS (started + layer-shell advertised + no fatal diagnostics). log -> $LAST_LOG"
   exit 0
 fi
-echo ">> RESULT: incomplete (started=$started layer_shell=${layer_ok:-0}). log -> $LAST_LOG" >&2
+echo ">> RESULT: incomplete (started=$started layer_shell=${layer_ok:-0} fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
 exit 1

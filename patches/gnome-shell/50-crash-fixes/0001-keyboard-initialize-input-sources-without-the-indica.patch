@@ -1,0 +1,35 @@
+From dd103340590a4c6e8492fd32032a64b413aaf559 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 11:59:27 +0100
+Subject: [PATCH] keyboard: initialize input sources without the indicator
+
+Move the initial settings reload into InputSourceManager construction. Chrome-free session modes do not create the panel indicator, but still need configured keyboard options, model, and sources before IBus readiness can apply a keymap.
+---
+ js/ui/status/keyboard.js | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index 3ddc675..8c8bef0 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -386,6 +386,9 @@ export class InputSourceManager extends Signals.EventEmitter {
+         this._sourcesPerWindowChanged();
+         this._disableIBus = false;
+         this._reloading = false;
++        // Keymap configuration must not depend on a visual status indicator;
++        // chrome-free session modes do not construct one.
++        this.reload();
+     }
+ 
+     reload() {
+@@ -912,7 +915,6 @@ class InputSourceIndicator extends PanelMenu.Button {
+         this._inputSourceManager.connectObject(
+             'sources-changed', this._sourcesChanged.bind(this),
+             'current-source-changed', this._currentSourceChanged.bind(this), this);
+-        this._inputSourceManager.reload();
+     }
+ 
+     _onDestroy() {
+-- 
+2.53.0
+
