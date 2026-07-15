@@ -30,24 +30,6 @@ tar -C "$(dirname "$SM")" \
     --transform="s,^\./$PROJ,${PROJ}-${VER}," \
     --use-compress-program='xz -T0' \
     -cf "$OUT" "./$PROJ"
+echo ">> staging $PROJ RPM sidecar sources -> $OUTDIR" >&2
+"$ROOT/scripts/stage-rpm-sources.sh" "$PROJ" "$OUTDIR"
 echo "$OUT"
-
-# The gnoblin-session subpackage (packaging/rpm/gnome-shell.spec) needs these
-# as individual Source1..N files alongside the tarball -- they live at the
-# gnoblin repo root (src/data/session/, src/tools/), not inside the
-# gnome-shell submodule, so they can't ride along in the archive above.
-if [ "$PROJ" = "gnome-shell" ]; then
-  echo ">> staging gnoblin-session sources -> $OUTDIR" >&2
-  cp "$ROOT/src/data/session/modes/gnoblin.json" "$OUTDIR/gnoblin.json"
-  cp "$ROOT/src/data/session/gnome-session/gnoblin.session" "$OUTDIR/gnoblin.session"
-  cp "$ROOT/src/data/session/gnoblin.desktop" "$OUTDIR/gnoblin.desktop"
-  cp "$ROOT/src/data/session/schemas/00_org.gnoblin.mutter.gschema.override" \
-     "$OUTDIR/00_org.gnoblin.mutter.gschema.override"
-  cp "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell.target" "$OUTDIR/org.gnoblin.Shell.target"
-  cp "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
-     "$OUTDIR/org.gnoblin.Shell@wayland.service.in"
-  cp "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
-  cp "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
-  cp "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
-  cp "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
-fi
