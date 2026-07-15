@@ -1,0 +1,27 @@
+From 598f934e926ffc4a8f5d8f9160a3bbc664a2fe4d Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 12:11:31 +0100
+Subject: [PATCH] main: publish the effective session mode
+
+Synchronise GNOME_SHELL_SESSION_MODE after option parsing and fallback selection. Mutter protocol registration runs during context setup and must see the command-line-selected mode rather than stale launcher state.
+---
+ src/main.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/main.c b/src/main.c
+index 9abd09d..9b25698 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -647,6 +647,9 @@ main (int argc, char **argv)
+   if (session_mode == NULL)
+     session_mode = is_gdm_mode ? (char *)"gdm" : (char *)"user";
+ 
++  /* Mutter reads the effective mode while registering Gnoblin protocols. */
++  g_setenv ("GNOME_SHELL_SESSION_MODE", session_mode, TRUE);
++
+   if (disable_extensions)
+     g_setenv ("GNOME_SHELL_DISABLE_EXTENSIONS", "1", TRUE);
+ 
+-- 
+2.53.0
+

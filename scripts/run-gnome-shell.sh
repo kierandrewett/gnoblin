@@ -5,6 +5,7 @@
 # stack (see run-gnome-devkit.sh for the visible Gnoblin devkit).
 #
 # Env: GNOBLIN_PREFIX (default ./install), GNOBLIN_TEST_MODE (default gnoblin),
+#      GNOBLIN_TEST_ENV_MODE (default selected mode; may test a stale value),
 #      GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS (default 1 in gnoblin, 0 otherwise),
 #      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
@@ -19,6 +20,7 @@ SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1280x800}"
 SETTLE="${SETTLE:-25}"
 MODE="${GNOBLIN_TEST_MODE:-gnoblin}"
+ENV_MODE="${GNOBLIN_TEST_ENV_MODE:-$MODE}"
 if [ -n "${GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS:-}" ]; then
   EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
 elif [ "$MODE" = gnoblin ]; then
@@ -35,9 +37,9 @@ fi
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 export GDK_BACKEND=wayland
-# The command-line mode wins over the environment, but both are kept aligned
-# because Mutter protocol registration happens before GNOME Shell mode loading.
-export GNOME_SHELL_SESSION_MODE="$MODE"
+# Keep the launcher-provided environment explicit. GNOME Shell must replace a
+# stale value with the effective command-line mode before Mutter initialises.
+export GNOME_SHELL_SESSION_MODE="$ENV_MODE"
 if [ "$MODE" = gnoblin ]; then
   export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
 else
