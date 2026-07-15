@@ -10,12 +10,9 @@ PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
 
-export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib64/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export GI_TYPELIB_PATH="$PREFIX/lib64/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-export PATH="$PREFIX/bin:$PATH"
-export GSETTINGS_SCHEMA_DIR="$PREFIX/share/glib-2.0/schemas"
-export XDG_DATA_DIRS="$PREFIX/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export GNOME_SHELL_SESSION_MODE=gnoblin XDG_CURRENT_DESKTOP=GNOME:Gnoblin GDK_BACKEND=wayland
+source "$ROOT/src/tools/gnoblin-env.sh"
+gnoblin_env_apply "$PREFIX"
+export GDK_BACKEND=wayland
 
 DK="$(mktemp -d /tmp/gnoblin-pg.XXXXXX)"
 mkdir -p "$DK"/{home,config,cache}
