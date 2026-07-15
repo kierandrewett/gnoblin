@@ -373,16 +373,20 @@ export class Component {
         this._impl = null;
         this._nameId = 0;
         this._settings = null;
+        this._settingsChangedId = 0;
+        this._featureState = new Map();
     }
 
     enable() {
         this._settings = new Gio.Settings({schema_id: SCHEMA_ID});
+        this._settingsChangedId = this._settings.connect(
+            `changed::${DISABLED_KEY}`, () => this._syncFeatureState());
 
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
 
         // Apply the persisted feature state to the freshly-built subsystems.
-        this._applyAllFeatures();
+        this._syncFeatureState();
         this._installOsdGate();
 
         this._nameId = Gio.bus_own_name(
@@ -404,6 +408,10 @@ export class Component {
     }
 
     disable() {
+        if (this._settings && this._settingsChangedId) {
+            this._settings.disconnect(this._settingsChangedId);
+            this._settingsChangedId = 0;
+        }
         // Restore every gated subsystem to stock before we go.
         this._removeOsdGate();
         for (const id of Object.keys(FEATURES))
@@ -428,6 +436,7 @@ export class Component {
             this._impl = null;
         }
         this._settings = null;
+        this._featureState.clear();
         console.log('gnoblin-control: disabled');
     }
 
@@ -440,13 +449,28 @@ export class Component {
         return !this._disabledList().includes(id);
     }
 
-    _applyAllFeatures() {
+    _syncFeatureState() {
+        const disabled = new Set(this._disabledList());
+
         for (const id of Object.keys(FEATURES)) {
+            const enabled = !disabled.has(id);
+            const previous = this._featureState.get(id);
+            if (previous === enabled)
+                continue;
+
             try {
-                FEATURES[id].apply(this._isEnabled(id));
+                FEATURES[id].apply(enabled);
             } catch (e) {
                 logError(e, `gnoblin: applying feature ${id} failed`);
             }
+
+            this._featureState.set(id, enabled);
+            if (previous === undefined)
+                continue;
+
+            this._impl?.emit_signal(
+                'FeatureChanged', new GLib.Variant('(sb)', [id, enabled]));
+            console.log(`gnoblin-control: feature '${id}' ${enabled ? 'ENABLED' : 'DISABLED'}`);
         }
     }
 
@@ -498,11 +522,9 @@ export class Component {
             disabled.delete(id);
         else
             disabled.add(id);
-        this._settings.set_strv(DISABLED_KEY, [...disabled]);
 
-        FEATURES[id].apply(enabled);
-        this._impl?.emit_signal('FeatureChanged', new GLib.Variant('(sb)', [id, enabled]));
-        console.log(`gnoblin-control: feature '${id}' ${enabled ? 'ENABLED' : 'DISABLED'}`);
+        if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
+            throw new Error(`failed to persist feature: ${id}`);
     }
 
     // --- org.gnoblin.Shell ---

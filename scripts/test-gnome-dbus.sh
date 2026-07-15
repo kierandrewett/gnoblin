@@ -55,7 +55,7 @@ device-types=3
 clipboard-enabled=true
 streams=[(uint32 0, uint32 1, <'monitor-B'>)]
 EOF
-export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
+export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=dconf GTK_A11Y=none NO_AT_BRIDGE=1
 export DISP="gnoblin-dbus-$$" SHELL_LOG="$DK/shell.log"
 
 cleanup() {
@@ -89,6 +89,17 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   callp() { gdbus call --session --dest org.gnoblin.Shell \
               --object-path /org/gnoblin/Shell --method "org.gnoblin.Shell.$@" 2>&1; }
 
+  feature_is() {
+    case "$(callp GetFeature "$1")" in
+      *"$2"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
+  feature_signal_count_is() {
+    [ "$(grep -c FeatureChanged "$SIGNAL_LOG" || true)" -eq "$1" ]
+  }
+
   ping="$(call Ping)";        echo "Ping       -> $ping"
   ver="$(call GetVersion)";   echo "GetVersion -> $ver"
   reload="$(call Reload)";    echo "Reload     -> $reload"
@@ -112,6 +123,28 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   callp SetFeature osd true >/dev/null
   g2="$(callp GetFeature osd)";                 echo "GetFeature osd (after on) -> $g2"
   case "$g2" in *true*)  echo "  ok: SetFeature osd on";; *) echo "  FAIL: SetFeature on"; rc=1;; esac
+
+  # Changes made outside org.gnoblin.Shell must follow the same live apply and
+  # FeatureChanged path, without duplicating the signal on each transition.
+  SIGNAL_LOG="$XDG_CACHE_HOME/feature-signals.log"
+  gdbus monitor --session --dest org.gnoblin.Shell \
+    --object-path /org/gnoblin/Shell >"$SIGNAL_LOG" 2>&1 &
+  SIGNAL_PID=$!
+  gnoblin_wait_for_log "$SIGNAL_LOG" "Monitoring signals" 5
+  gsettings set org.gnoblin.shell disabled-features "['\''screenshot'\'']"
+  if gnoblin_wait_until 10 feature_is screenshot false; then
+    echo "  ok: direct GSettings disable applied live"
+  else
+    echo "  FAIL: direct GSettings disable not applied"; rc=1
+  fi
+  gsettings set org.gnoblin.shell disabled-features "[]"
+  if gnoblin_wait_until 10 feature_is screenshot true &&
+     gnoblin_wait_until 10 feature_signal_count_is 2; then
+    echo "  ok: direct GSettings transitions emitted exactly once"
+  else
+    echo "  FAIL: direct GSettings transition signals"; cat "$SIGNAL_LOG"; rc=1
+  fi
+  kill "$SIGNAL_PID" 2>/dev/null || true
 
   gu="$(callp GetFeature bogus)";               echo "GetFeature bogus -> $gu"
   case "$gu" in *false*) echo "  ok: unknown feature -> false";; *) echo "  FAIL: unknown feature"; rc=1;; esac
