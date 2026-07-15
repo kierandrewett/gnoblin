@@ -109,22 +109,28 @@ gnoblinctl reload-ext <uuid>        hot-reload one extension's code
 gnoblinctl scripts                  list loaded user scripts
 gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
 
-gnoblinctl screen-grants            list apps with a persistent screencast grant
-gnoblinctl revoke-grant <id>        revoke one app's screencast grant
+gnoblinctl portal-grants            list persistent Screen Cast and Remote Desktop grants
+gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
 ```
 
 `reload` is also bound to `Alt+F2` `r`: a Wayland-safe soft reload that
 re-applies the shell theme/CSS and re-enables extensions in-process, without
 tearing down Mutter — your windows and your chrome survive.
 
-## Screencast grants
+## Portal grants
 
-Not GSettings-backed — each grant is a file under
-`~/.config/gnoblin/portal-grants/`, keyed on the app's app-id (or executable
-name for unsandboxed apps). Managed via `gnoblinctl screen-grants` /
-`gnoblinctl revoke-grant <id>`, or by deleting the file directly. See
-[Installation § unattended screensharing](installation.md#unattended-screensharing-xdg-desktop-portal-gnome)
-for how the grant is created in the first place.
+Screen Cast and Remote Desktop grants are files under
+`$XDG_DATA_HOME/gnoblin/portal-grants/<kind>/`, which defaults to
+`~/.local/share/gnoblin/portal-grants/<kind>/`. Each filename is an opaque
+SHA-256 digest; the record contains the verified namespaced requester identity
+(`app-id:<id>` for a portal app or `host-exe:<canonical-path>` for an
+unsandboxed process) and the exact approved capabilities.
+
+Use `gnoblinctl portal-grants` to obtain each record's `<kind>` and `<id>`, then
+`gnoblinctl revoke-grant <kind> <id>` to remove it. The gnoblin Settings panel
+uses the same typed D-Bus methods. See
+[Installation: unattended screensharing](installation.md#unattended-screensharing-xdg-desktop-portal-gnome)
+for how a grant is created.
 
 ## Session mode (not user-configurable)
 

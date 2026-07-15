@@ -91,13 +91,13 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 # --- optional: unattended screen-share portal backend -----------------------
 #
 # xdg-desktop-portal-gnome is the org.freedesktop.impl.portal.desktop.gnome
-# backend that shows the ScreenCast source-picker + RemoteDesktop consent
-# dialogs (the ones rustdesk trips on Wayland). Our patch adds macOS-style
-# PER-APP persistent grants: tick "Always allow this app" once and that app
-# never re-prompts (grant stored in ~/.config/gnoblin/portal-grants/, keyed on
-# app-id or the app's executable); other apps still prompt each time. List/revoke
-# with `gnoblinctl screen-grants` / `gnoblinctl revoke-grant <id>`. It is NOT part
-# of `just dev` — build it explicitly:
+# backend that shows the ScreenCast source-picker and RemoteDesktop consent
+# dialogs. Gnoblin can remember the exact approved monitor, input-device, and
+# clipboard capabilities for a verified requester. Grants are scoped by portal
+# kind under $XDG_DATA_HOME/gnoblin/portal-grants/ and are written only after
+# the session starts successfully. List/revoke them with `gnoblinctl
+# portal-grants` and `gnoblinctl revoke-grant <kind> <id>`. It is not part of
+# `just dev`; build it explicitly:
 #
 #   just dev-portal
 #
@@ -117,7 +117,7 @@ dev-portal: (patch "xdg-desktop-portal-gnome")
 # A light fork of gnome-control-center: it keeps the `gnome-control-center`
 # binary name (so "open Settings" / Exec=gnome-control-center gets this build
 # when ./install is ahead on PATH), adds a `gnoblin` panel that drives the
-# org.gnoblin.Shell control protocol (feature toggles + screencast grants +
+# org.gnoblin.Shell control protocol (feature toggles + typed portal grants +
 # soft reload), and hides panels that make no sense under gnoblin.
 #
 # Two gnoblin changes on top of the pinned 49.6 tag:

@@ -34,8 +34,6 @@ cleanup. Checked items are committed and independently verified.
 - [ ] Register privileged Mutter protocols only for Gnoblin.
 - [x] Scope native-topbar, extension-validation, and notification changes to
   Gnoblin.
-- [ ] Replace marker-file portal grants with trustworthy requester identity and
-  authorisation.
 
 ### Protocol correctness
 
@@ -95,13 +93,14 @@ cleanup. Checked items are committed and independently verified.
   `GNOME_DEVKIT_UNSAFE_MODE=1`.
 - **Mutter protocol overlays** — layer-shell v5 + the rest, each gated via
   `gnoblin.conf` `[protocols]`.
-- **Unattended screensharing** — `xdg-desktop-portal-gnome` patch adds
-  macOS-style per-app persistent screencast/RemoteDesktop grants (tick "always
-  allow" once, never re-prompted), stored under
-  `~/.config/gnoblin/portal-grants/`, managed via `gnoblinctl screen-grants` /
-  `revoke-grant`.
+- **Persistent portal grants** — the patched `xdg-desktop-portal-gnome`
+  derives a requester identity from the trusted portal request, stores exact
+  Screen Cast and Remote Desktop capabilities under
+  `$XDG_DATA_HOME/gnoblin/portal-grants/<kind>/`, and writes only after the
+  session reaches its ready state. `gnoblinctl portal-grants` lists both kinds;
+  `revoke-grant <kind> <id>` removes one.
 - **`gnome-control-center` fork for gnoblin settings** — a `gnoblin` panel
-  driving feature toggles, screencast grants, and a reload button; hides the
+  driving feature toggles, typed portal grants, and a reload button; hides the
   Multitasking panel. `just dev-settings` (not part of `just dev`).
 - **Devkit** — `just gnome-devkit` boots a visible nested gnoblin session +
   wired terminal for iterating on your own chrome without logging out;

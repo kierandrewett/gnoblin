@@ -133,9 +133,9 @@ them.
 
 ### Unattended screensharing (`xdg-desktop-portal-gnome`)
 
-Per-app persistent screencast/RemoteDesktop grants (tick "always allow"
-once, never re-prompted — the macOS "Screen Recording" model). Needs one
-extra build dependency:
+The optional portal backend can remember exact, portal-scoped Screen Cast and
+Remote Desktop permissions for a verified requester. It needs one extra build
+dependency:
 
 ```sh
 sudo dnf install xdg-desktop-portal-devel
@@ -148,13 +148,13 @@ Then run the patched backend so it owns the impl portal:
 ./install/libexec/xdg-desktop-portal-gnome -r
 ```
 
-Full walkthrough (including how grants are stored and revoked) in
-[Real-hardware verification §7](real-hardware-verification.md#7-per-app-persistent-screencast-grants-macos-style-rustdesk).
+The [real-hardware verification guide](real-hardware-verification.md#7-persistent-screen-cast-and-remote-desktop-grants)
+shows the first approval, exact-capability restore, storage, and revocation flow.
 
 ### gnoblin Settings (forked `gnome-control-center`)
 
 A `gnoblin` panel in GNOME Settings driving `org.gnoblin.Shell` (feature
-toggles, screencast grants, a reload button):
+toggles, Screen Cast and Remote Desktop grants, and a reload button):
 
 ```sh
 sudo dnf install accountsservice-devel colord-gtk4-devel cups-devel gsound-devel \

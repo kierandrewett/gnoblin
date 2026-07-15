@@ -15,7 +15,7 @@ instead.
 | `just test-mutter` | gnoblin's Mutter patches (layer-shell, protocol overlays, WM/crash fixes) don't regress Mutter's own unit/Wayland/native/focus suites | A real environment with a working local file monitor (inotify) and a seat — see the note below |
 | `just gnome-verify` | Patched gnome-shell boots in `gnoblin` mode, advertises `zwlr_layer_shell_v1`, suppresses the native panel, accepts incompatible extension metadata, and keeps `org.gnome.Shell.Eval` restricted | `./install` (`just dev`) |
 | `just gnome-stock-protocol-isolation-verify` | The same packages boot in stock `user` mode without Gnoblin protocols or control APIs, with the native panel, upstream extension validation, and notification ownership intact even when the Gnoblin feature setting is disabled | `./install` |
-| `just gnome-dbus-verify` | The `org.gnoblin.Shell` control protocol round-trips over D-Bus (Ping/GetVersion/Reload) | `./install` |
+| `just gnome-dbus-verify` | The `org.gnoblin.Shell` control protocol round-trips over D-Bus, including typed listing and scoped revocation for Screen Cast and Remote Desktop grants | `./install` |
 | `just gnome-devkit-verify` | The devkit's spawned-terminal environment (isolated bus + `gnoblinctl` on `PATH`) actually reaches `org.gnoblin.Shell` | `./install` |
 | `just gnome-hot-reload-verify` | Editing an extension's code and calling `Reload` picks up the new code without a relogin | `./install` |
 | `just gnome-scripting-verify` | The GJS user-scripting layer (`~/.config/gnoblin/scripts/*.js`) loads and hot-reloads | `./install` |

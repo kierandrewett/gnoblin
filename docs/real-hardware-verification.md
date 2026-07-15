@@ -113,36 +113,43 @@ ICC profile directory, so they need a real environment with a working local file
 local file monitor type"* (exit 251), which is environmental, not a regression. The unit
 tests (no backend) pass anywhere.
 
-## 7. Per-app persistent screencast grants (macOS-style, rustdesk)
+## 7. Persistent Screen Cast and Remote Desktop grants
 
 ```sh
-sudo dnf install xdg-desktop-portal-devel      # the one build dep for the portal
-just dev-portal                                # build the patched backend into ./install
+sudo dnf install xdg-desktop-portal-devel
+just dev-portal
 ```
 
-Run the patched backend so it owns `org.freedesktop.impl.portal.desktop.gnome`
-(replacing the system one for the test), then connect rustdesk:
+Run the patched backend so it owns
+`org.freedesktop.impl.portal.desktop.gnome`, then connect the application:
 
 ```sh
 ./install/libexec/xdg-desktop-portal-gnome -r
 ```
 
-Expect, **first** connection: the normal ScreenCast source-picker / RemoteDesktop consent
-dialog, now with an **"Always allow this app"** checkbox. Tick it and approve.
+On the first connection, expect the normal Screen Cast source picker or Remote
+Desktop consent dialog. The remember checkbox is shown only when Gnoblin can
+derive a trustworthy requester identity and can restore the selected source
+exactly. Select it and approve the request.
 
-Expect, **every subsequent** connection from that app: **no dialog** — screen + input are
-granted straight away (all monitors). Apps you never ticked still prompt each time. This is
-the macOS "Screen Recording" model: grant once per app, never re-asked.
+On a later matching request, expect no dialog: the backend restores only the
+approved monitor selection, input-device mask, and clipboard state. It prompts
+again if the requester asks for broader capabilities or an approved monitor is
+no longer available. Window selections and other source shapes that cannot be
+matched safely remain one-shot approvals.
 
-The grant is a file per app under `~/.config/gnoblin/portal-grants/` (keyed on the app-id,
-or the app's executable name for unsandboxed apps like rustdesk). Manage it:
+Grants live under `$XDG_DATA_HOME/gnoblin/portal-grants/<kind>/`, which defaults
+to `~/.local/share/gnoblin/portal-grants/<kind>/`. Sandboxed apps use a verified
+`app-id:<id>` identity. Unsandboxed callers use
+`host-exe:<canonical-executable-path>`. Filenames are opaque SHA-256 digests.
 
 ```sh
-gnoblinctl screen-grants          # list apps with a persistent grant
-gnoblinctl revoke-grant <id>      # revoke one (or rm ~/.config/gnoblin/portal-grants/<id>)
+gnoblinctl portal-grants
+gnoblinctl revoke-grant <kind> <id>
 ```
 
-(The gnoblin Settings panel — §8 — shows the same list with a Revoke button per app.)
+The gnoblin Settings panel in the next section shows the same typed list and
+provides a Revoke button for each record.
 
 ## 8. gnoblin Settings (forked gnome-control-center)
 
@@ -161,7 +168,8 @@ just dev-settings                 # builds the fork + hides the multitasking pan
 > but not required. **Build-verified**: the `gnoblin` panel compiles + links + is listed
 > by `gnome-control-center --list`.
 
-Expect: GNOME Settings with a **gnoblin** panel — switch rows for every `gnoblinctl features`
-toggle (flip one, confirm the subsystem changes live), the screencast per-app grants with a
-Revoke button each, and a **Reload gnoblin** button. The **Multitasking** panel is gone. With
-`./install/bin` ahead on `PATH`, "open Settings" / `gnome-control-center` launches this fork.
+Expect: GNOME Settings with a **gnoblin** panel, switch rows for every
+`gnoblinctl features` toggle, typed Screen Cast and Remote Desktop grant rows
+with capability summaries and Revoke buttons, and a **Reload gnoblin** button.
+The **Multitasking** panel is gone. With `./install/bin` ahead on `PATH`, "open
+Settings" or `gnome-control-center` launches this fork.

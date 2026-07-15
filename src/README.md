@@ -30,7 +30,7 @@ a feature lives.
   (the installed `.desktop`'s `Exec=` target), and `gnoblin-shell-service`
   (the `ExecStart=` wrapper for `org.gnoblin.Shell@wayland.service`).
 - `control-center/` — the `gnoblin` panel for the forked `gnome-control-center`
-  (feature toggles, screencast grants, a reload button). Copied into the
+  (feature toggles, typed portal grants, and a reload button). Copied into the
   submodule via its `manifest` and registered by
   `patches/gnome-control-center/10-gnoblin-panel`. Built with `just dev-settings`
   (not part of `just dev`).
