@@ -1,0 +1,2222 @@
+From 61fffdaac20f98499f8cc2540b063ef5baf41860 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 14:34:13 +0100
+Subject: [PATCH 2/2] feat(grants): persist exact portal permissions
+
+Replace basename marker grants with portal-scoped, namespaced identities derived from the trusted frontend request. Store typed ScreenCast and RemoteDesktop capabilities under XDG_DATA_HOME and replay only the exact approved monitor, device, and clipboard set.
+
+Hide remember controls when the requester cannot be verified or the selected source shape cannot be restored safely. Delay writes until Mutter reports the session ready, clear pending grants on cancellation and close, and report clipboard enable failures instead of persisting them.
+
+Validated with the xdg-desktop-portal-gnome Meson build and the gnoblin-portal-grants test covering direct-backend spoof rejection, host identity resolution, portal scoping, strict grant validation, round trips, and digest collision resistance.
+---
+ src/gnoblin-portal-grants.c      | 547 +++++++++++++++++++++++++++++++
+ src/gnoblin-portal-grants.h      |  59 ++++
+ src/meson.build                  |  15 +
+ src/remotedesktop.c              | 329 +++++++++++++------
+ src/remotedesktopdialog.c        |  12 +-
+ src/remotedesktopdialog.h        |   5 +-
+ src/remotedesktopdialog.ui       |   3 +-
+ src/screencast.c                 | 239 +++++++++-----
+ src/screencast.h                 |  12 +-
+ src/screencastdialog.c           |   7 +-
+ src/screencastdialog.h           |   3 +-
+ src/screencastwidget.c           |  19 +-
+ src/screencastwidget.h           |   5 +-
+ src/test-gnoblin-portal-grants.c | 335 +++++++++++++++++++
+ src/utils.c                      | 135 --------
+ src/utils.h                      |  27 --
+ 16 files changed, 1385 insertions(+), 367 deletions(-)
+ create mode 100644 src/gnoblin-portal-grants.c
+ create mode 100644 src/gnoblin-portal-grants.h
+ create mode 100644 src/test-gnoblin-portal-grants.c
+
+diff --git a/src/gnoblin-portal-grants.c b/src/gnoblin-portal-grants.c
+new file mode 100644
+index 0000000..b12cbd7
+--- /dev/null
++++ b/src/gnoblin-portal-grants.c
+@@ -0,0 +1,547 @@
++/*
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ */
++
++#include "config.h"
++
++#include <errno.h>
++#include <glib/gstdio.h>
++#include <unistd.h>
++
++#include "gnoblin-portal-grants.h"
++
++#define PORTAL_DESKTOP_NAME "org.freedesktop.portal.Desktop"
++#define REQUEST_PATH_PREFIX "/org/freedesktop/portal/desktop/request/"
++#define GRANT_GROUP "Grant"
++#define GRANT_VERSION 1
++
++static const char *
++grant_kind_name (GnoblinPortalGrantKind kind)
++{
++  switch (kind)
++    {
++    case GNOBLIN_PORTAL_GRANT_SCREEN_CAST:
++      return "screen-cast";
++    case GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP:
++      return "remote-desktop";
++    }
++
++  g_assert_not_reached ();
++}
++
++static GVariant *
++call_bus_method (GDBusConnection    *connection,
++                 const char         *method,
++                 GVariant           *parameters,
++                 const GVariantType *reply_type,
++                 GError            **error)
++{
++  return g_dbus_connection_call_sync (connection,
++                                      "org.freedesktop.DBus",
++                                      "/org/freedesktop/DBus",
++                                      "org.freedesktop.DBus",
++                                      method,
++                                      parameters,
++                                      reply_type,
++                                      G_DBUS_CALL_FLAGS_NONE,
++                                      2000,
++                                      NULL,
++                                      error);
++}
++
++static char *
++portal_frontend_owner (GDBusConnection *connection)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = NULL;
++  const char *owner;
++
++  reply = call_bus_method (connection,
++                           "GetNameOwner",
++                           g_variant_new ("(s)", PORTAL_DESKTOP_NAME),
++                           G_VARIANT_TYPE ("(s)"),
++                           &error);
++  if (!reply)
++    {
++      g_debug ("gnoblin: cannot resolve the desktop portal owner: %s",
++               error->message);
++      return NULL;
++    }
++
++  g_variant_get (reply, "(&s)", &owner);
++  return g_strdup (owner);
++}
++
++static char *
++request_sender_from_handle (const char *request_handle)
++{
++  const char *component;
++  const char *component_end;
++  g_autofree char *decoded = NULL;
++  char *separator;
++
++  if (!request_handle || !g_str_has_prefix (request_handle, REQUEST_PATH_PREFIX))
++    return NULL;
++
++  component = request_handle + strlen (REQUEST_PATH_PREFIX);
++  component_end = strchr (component, '/');
++  if (!component_end || component_end == component || component_end[1] == '\0')
++    return NULL;
++
++  decoded = g_strndup (component, component_end - component);
++  separator = strchr (decoded, '_');
++  if (!separator || strchr (separator + 1, '_'))
++    return NULL;
++
++  for (const char *p = decoded; *p; p++)
++    {
++      if (p == separator)
++        continue;
++      if (!g_ascii_isdigit (*p))
++        return NULL;
++    }
++
++  if (separator == decoded || separator[1] == '\0')
++    return NULL;
++
++  *separator = '.';
++  return g_strconcat (":", decoded, NULL);
++}
++
++static gboolean
++connection_matches_user (GDBusConnection *connection,
++                         const char      *sender)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = NULL;
++  guint32 uid;
++
++  reply = call_bus_method (connection,
++                           "GetConnectionUnixUser",
++                           g_variant_new ("(s)", sender),
++                           G_VARIANT_TYPE ("(u)"),
++                           &error);
++  if (!reply)
++    {
++      g_debug ("gnoblin: cannot resolve portal requester %s: %s",
++               sender,
++               error->message);
++      return FALSE;
++    }
++
++  g_variant_get (reply, "(u)", &uid);
++  return uid == getuid ();
++}
++
++static char *
++host_executable_identity (GDBusConnection *connection,
++                          const char      *sender)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = NULL;
++  g_autofree char *proc_link = NULL;
++  g_autofree char *exe_path = NULL;
++  g_autofree char *canonical_path = NULL;
++  guint32 pid;
++
++  reply = call_bus_method (connection,
++                           "GetConnectionUnixProcessID",
++                           g_variant_new ("(s)", sender),
++                           G_VARIANT_TYPE ("(u)"),
++                           &error);
++  if (!reply)
++    {
++      g_debug ("gnoblin: cannot resolve host portal requester %s: %s",
++               sender,
++               error->message);
++      return NULL;
++    }
++
++  g_variant_get (reply, "(u)", &pid);
++  if (pid == 0)
++    return NULL;
++
++  proc_link = g_strdup_printf ("/proc/%u/exe", pid);
++  exe_path = g_file_read_link (proc_link, &error);
++  if (!exe_path)
++    {
++      g_debug ("gnoblin: cannot read host portal requester executable: %s",
++               error->message);
++      return NULL;
++    }
++
++  if (!g_path_is_absolute (exe_path))
++    return NULL;
++
++  canonical_path = g_canonicalize_filename (exe_path, NULL);
++  if (!g_file_test (canonical_path, G_FILE_TEST_IS_REGULAR))
++    return NULL;
++
++  return g_strconcat ("host-exe:", canonical_path, NULL);
++}
++
++char *
++gnoblin_portal_requester_identity (GDBusConnection *connection,
++                                    const char      *backend_sender,
++                                    const char      *app_id,
++                                    const char      *request_handle)
++{
++  g_autofree char *frontend_owner = NULL;
++  g_autofree char *request_sender = NULL;
++
++  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), NULL);
++
++  frontend_owner = portal_frontend_owner (connection);
++  if (!frontend_owner || g_strcmp0 (frontend_owner, backend_sender) != 0)
++    {
++      g_debug ("gnoblin: refusing persistent grant from a direct backend caller");
++      return NULL;
++    }
++
++  request_sender = request_sender_from_handle (request_handle);
++  if (!request_sender || !connection_matches_user (connection, request_sender))
++    {
++      g_debug ("gnoblin: refusing persistent grant with an invalid or stale request handle");
++      return NULL;
++    }
++
++  if (app_id && *app_id)
++    {
++      if (!g_utf8_validate (app_id, -1, NULL))
++        return NULL;
++      return g_strconcat ("app-id:", app_id, NULL);
++    }
++
++  return host_executable_identity (connection, request_sender);
++}
++
++const char *
++gnoblin_portal_identity_name (const char *identity)
++{
++  const char *separator;
++
++  if (!identity)
++    return NULL;
++
++  separator = strchr (identity, ':');
++  return separator ? separator + 1 : NULL;
++}
++
++static char *
++grant_digest (const char *identity)
++{
++  g_autoptr(GChecksum) checksum = NULL;
++  const char *separator;
++
++  separator = strchr (identity, ':');
++  if (!separator || separator == identity || separator[1] == '\0')
++    return NULL;
++
++  checksum = g_checksum_new (G_CHECKSUM_SHA256);
++  g_checksum_update (checksum, (const guchar *) identity, separator - identity);
++  g_checksum_update (checksum, (const guchar *) "\0", 1);
++  g_checksum_update (checksum,
++                     (const guchar *) separator + 1,
++                     strlen (separator + 1));
++  return g_strdup (g_checksum_get_string (checksum));
++}
++
++static char *
++grant_path (GnoblinPortalGrantKind kind,
++            const char             *identity,
++            gboolean                create_directory,
++            GError                **error)
++{
++  g_autofree char *digest = NULL;
++  g_autofree char *directory = NULL;
++  g_autofree char *filename = NULL;
++
++  digest = grant_digest (identity);
++  if (!digest)
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_ARGUMENT,
++                           "Invalid portal grant identity");
++      return NULL;
++    }
++
++  directory = g_build_filename (g_get_user_data_dir (),
++                                "gnoblin",
++                                "portal-grants",
++                                grant_kind_name (kind),
++                                NULL);
++  if (create_directory)
++    {
++      if (g_mkdir_with_parents (directory, 0700) != 0)
++        {
++          g_set_error (error,
++                       G_IO_ERROR,
++                       g_io_error_from_errno (errno),
++                       "Failed to create portal grant directory %s: %s",
++                       directory,
++                       g_strerror (errno));
++          return NULL;
++        }
++      if (g_chmod (directory, 0700) != 0)
++        g_debug ("gnoblin: cannot tighten permissions on %s: %s",
++                 directory,
++                 g_strerror (errno));
++    }
++
++  filename = g_strconcat (digest, ".grant", NULL);
++  return g_build_filename (directory, filename, NULL);
++}
++
++void
++gnoblin_portal_grant_clear (GnoblinPortalGrant *grant)
++{
++  if (!grant)
++    return;
++
++  g_clear_pointer (&grant->identity, g_free);
++  g_clear_pointer (&grant->streams, g_variant_unref);
++  grant->device_types = 0;
++  grant->clipboard_enabled = FALSE;
++}
++
++static gboolean
++streams_are_exact_monitor_selection (GVariant *streams)
++{
++  g_autoptr(GVariantIter) iter = NULL;
++  g_autoptr(GVariant) data = NULL;
++  guint32 id;
++  guint32 source_type;
++
++  if (!streams)
++    return TRUE;
++
++  iter = g_variant_iter_new (streams);
++  while (g_variant_iter_next (iter, "(uuv)", &id, &source_type, &data))
++    {
++      if (source_type != 1 ||
++          !g_variant_check_format_string (data, "s", FALSE))
++        return FALSE;
++      g_clear_pointer (&data, g_variant_unref);
++    }
++
++  return TRUE;
++}
++
++static gboolean
++grant_is_valid (GnoblinPortalGrantKind  kind,
++                const char             *identity,
++                uint32_t                device_types,
++                gboolean                clipboard_enabled,
++                GVariant               *streams,
++                GError                **error)
++{
++  if (!gnoblin_portal_identity_name (identity))
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_ARGUMENT,
++                           "Invalid portal grant identity");
++      return FALSE;
++    }
++
++  if (streams &&
++      (!g_variant_is_of_type (streams,
++                             G_VARIANT_TYPE (GNOBLIN_PORTAL_GRANT_STREAMS_TYPE)) ||
++       g_variant_n_children (streams) == 0))
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Invalid portal grant stream selection");
++      return FALSE;
++    }
++
++  if (!streams_are_exact_monitor_selection (streams))
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Persistent grants only support exact monitor selections");
++      return FALSE;
++    }
++
++  if (kind == GNOBLIN_PORTAL_GRANT_SCREEN_CAST &&
++      (device_types != 0 || clipboard_enabled || !streams))
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Screen cast grant does not contain an exact stream selection");
++      return FALSE;
++    }
++
++  if (kind == GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP &&
++      device_types == 0 && !clipboard_enabled && !streams)
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Remote desktop grant contains no capabilities");
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++gboolean
++gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
++                            const char              *identity,
++                            uint32_t                 device_types,
++                            gboolean                 clipboard_enabled,
++                            GVariant                *streams,
++                            GError                 **error)
++{
++  g_autoptr(GKeyFile) key_file = NULL;
++  g_autofree char *path = NULL;
++  g_autofree char *stream_text = NULL;
++  g_autofree char *contents = NULL;
++  gsize contents_length;
++
++  if (!grant_is_valid (kind,
++                       identity,
++                       device_types,
++                       clipboard_enabled,
++                       streams,
++                       error))
++    return FALSE;
++
++  path = grant_path (kind, identity, TRUE, error);
++  if (!path)
++    return FALSE;
++
++  key_file = g_key_file_new ();
++  g_key_file_set_integer (key_file, GRANT_GROUP, "version", GRANT_VERSION);
++  g_key_file_set_string (key_file, GRANT_GROUP, "portal", grant_kind_name (kind));
++  g_key_file_set_string (key_file, GRANT_GROUP, "identity", identity);
++  g_key_file_set_uint64 (key_file, GRANT_GROUP, "device-types", device_types);
++  g_key_file_set_boolean (key_file,
++                          GRANT_GROUP,
++                          "clipboard-enabled",
++                          clipboard_enabled);
++  if (streams)
++    {
++      stream_text = g_variant_print (streams, TRUE);
++      g_key_file_set_string (key_file, GRANT_GROUP, "streams", stream_text);
++    }
++
++  contents = g_key_file_to_data (key_file, &contents_length, error);
++  if (!contents || !g_file_set_contents (path, contents, contents_length, error))
++    return FALSE;
++
++  if (g_chmod (path, 0600) != 0)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   g_io_error_from_errno (errno),
++                   "Failed to protect portal grant %s: %s",
++                   path,
++                   g_strerror (errno));
++      g_unlink (path);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++gboolean
++gnoblin_portal_grant_load (GnoblinPortalGrantKind  kind,
++                           const char              *identity,
++                           GnoblinPortalGrant      *grant,
++                           GError                 **error)
++{
++  g_autoptr(GKeyFile) key_file = NULL;
++  g_autofree char *path = NULL;
++  g_autofree char *contents = NULL;
++  g_autofree char *stored_portal = NULL;
++  g_autofree char *stored_identity = NULL;
++  g_autofree char *stream_text = NULL;
++  g_autoptr(GVariant) streams = NULL;
++  g_autoptr(GError) local_error = NULL;
++  guint64 device_types;
++  gboolean clipboard_enabled;
++  int version;
++
++  g_return_val_if_fail (grant != NULL, FALSE);
++  gnoblin_portal_grant_clear (grant);
++
++  path = grant_path (kind, identity, FALSE, error);
++  if (!path)
++    return FALSE;
++  if (!g_file_test (path, G_FILE_TEST_EXISTS))
++    return FALSE;
++
++  if (!g_file_get_contents (path, &contents, NULL, error))
++    return FALSE;
++
++  key_file = g_key_file_new ();
++  if (!g_key_file_load_from_data (key_file, contents, -1, G_KEY_FILE_NONE, error))
++    return FALSE;
++
++  version = g_key_file_get_integer (key_file, GRANT_GROUP, "version", &local_error);
++  if (local_error || version != GRANT_VERSION)
++    goto invalid_record;
++
++  stored_portal = g_key_file_get_string (key_file, GRANT_GROUP, "portal", &local_error);
++  if (local_error || g_strcmp0 (stored_portal, grant_kind_name (kind)) != 0)
++    goto invalid_record;
++
++  stored_identity = g_key_file_get_string (key_file, GRANT_GROUP, "identity", &local_error);
++  if (local_error || g_strcmp0 (stored_identity, identity) != 0)
++    goto invalid_record;
++
++  device_types = g_key_file_get_uint64 (key_file,
++                                        GRANT_GROUP,
++                                        "device-types",
++                                        &local_error);
++  if (local_error || device_types > G_MAXUINT32)
++    goto invalid_record;
++
++  clipboard_enabled = g_key_file_get_boolean (key_file,
++                                              GRANT_GROUP,
++                                              "clipboard-enabled",
++                                              &local_error);
++  if (local_error)
++    goto invalid_record;
++
++  stream_text = g_key_file_get_string (key_file, GRANT_GROUP, "streams", NULL);
++  if (stream_text)
++    {
++      streams = g_variant_parse (G_VARIANT_TYPE (GNOBLIN_PORTAL_GRANT_STREAMS_TYPE),
++                                 stream_text,
++                                 NULL,
++                                 NULL,
++                                 &local_error);
++      if (!streams)
++        goto invalid_record;
++    }
++
++  if (!grant_is_valid (kind,
++                       stored_identity,
++                       device_types,
++                       clipboard_enabled,
++                       streams,
++                       &local_error))
++    goto invalid_record;
++
++  grant->identity = g_steal_pointer (&stored_identity);
++  grant->device_types = device_types;
++  grant->clipboard_enabled = clipboard_enabled;
++  grant->streams = g_steal_pointer (&streams);
++  return TRUE;
++
++invalid_record:
++  g_set_error (error,
++               G_IO_ERROR,
++               G_IO_ERROR_INVALID_DATA,
++               "Invalid %s portal grant for %s: %s",
++               grant_kind_name (kind),
++               identity,
++               local_error ? local_error->message : "record does not match its lookup key");
++  return FALSE;
++}
+diff --git a/src/gnoblin-portal-grants.h b/src/gnoblin-portal-grants.h
+new file mode 100644
+index 0000000..e625047
+--- /dev/null
++++ b/src/gnoblin-portal-grants.h
+@@ -0,0 +1,59 @@
++/*
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ */
++
++#pragma once
++
++#include <gio/gio.h>
++#include <stdint.h>
++
++#define GNOBLIN_PORTAL_GRANT_STREAMS_TYPE "a(uuv)"
++
++typedef enum
++{
++  GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++  GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++} GnoblinPortalGrantKind;
++
++typedef struct
++{
++  char *identity;
++  uint32_t device_types;
++  gboolean clipboard_enabled;
++  GVariant *streams;
++} GnoblinPortalGrant;
++
++void gnoblin_portal_grant_clear (GnoblinPortalGrant *grant);
++G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (GnoblinPortalGrant, gnoblin_portal_grant_clear)
++
++/*
++ * Verify that backend_sender owns org.freedesktop.portal.Desktop, recover the
++ * original caller from request_handle, and return a namespaced identity. The
++ * result is "app-id:<id>" when the trusted portal supplied an app id, or
++ * "host-exe:<canonical-path>" for a live unsandboxed caller. Any failed check
++ * returns NULL so callers retain one-shot consent and never persist a grant.
++ */
++char *gnoblin_portal_requester_identity (GDBusConnection *connection,
++                                         const char      *backend_sender,
++                                         const char      *app_id,
++                                         const char      *request_handle);
++
++/* Return the readable part of a verified namespaced identity. */
++const char *gnoblin_portal_identity_name (const char *identity);
++
++/*
++ * Load or store one portal-scoped grant. A record is keyed by a digest of its
++ * namespaced identity, and the stored identity and portal kind are validated
++ * again on load. A missing record returns FALSE without setting error.
++ */
++gboolean gnoblin_portal_grant_load (GnoblinPortalGrantKind  kind,
++                                    const char              *identity,
++                                    GnoblinPortalGrant      *grant,
++                                    GError                 **error);
++
++gboolean gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
++                                     const char              *identity,
++                                     uint32_t                 device_types,
++                                     gboolean                 clipboard_enabled,
++                                     GVariant                *streams,
++                                     GError                 **error);
+diff --git a/src/meson.build b/src/meson.build
+index cbc60f6..b1a32fd 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -107,6 +107,7 @@ sources = built_sources + files(
+   'inputcapture.c',
+   'inputcapturedialog.c',
+   'globalshortcuts.c',
++  'gnoblin-portal-grants.c',
+   'gnomeinputcapture.c',
+   'gnomescreencast.c',
+   'lockdown.c',
+@@ -145,6 +146,20 @@ executable(
+   install_dir: libexecdir,
+ )
+ 
++gnoblin_portal_grants_test = executable(
++  'test-gnoblin-portal-grants',
++  files(
++    'gnoblin-portal-grants.c',
++    'test-gnoblin-portal-grants.c',
++  ),
++  dependencies: [
++    dependency('gio-2.0'),
++    dependency('glib-2.0'),
++  ],
++)
++
++test('gnoblin-portal-grants', gnoblin_portal_grants_test)
++
+ install_data (
+   'xdg-desktop-portal-gnome.gschema.xml',
+   install_dir : datadir / 'glib-2.0' / 'schemas',
+diff --git a/src/remotedesktop.c b/src/remotedesktop.c
+index 2a415c9..22ae17b 100644
+--- a/src/remotedesktop.c
++++ b/src/remotedesktop.c
+@@ -31,6 +31,7 @@
+ #include "remotedesktopdialog.h"
+ #include "screencastdialog.h"
+ #include "gnomescreencast.h"
++#include "gnoblin-portal-grants.h"
+ #include "request.h"
+ #include "session.h"
+ #include "utils.h"
+@@ -94,9 +95,14 @@ typedef struct _RemoteDesktopSession
+   GDBusMethodInvocation *start_invocation;
+   RemoteDesktopDialogHandle *dialog_handle;
+ 
+-  /* gnoblin: stable per-app id for the persistent grant store, computed in
+-   * handle_start() and consulted again when the dialog is approved. */
+-  char *gnoblin_grant_id;
++  /* Verified identity and the exact capabilities pending successful start. */
++  char *gnoblin_grant_identity;
++  struct {
++    gboolean active;
++    RemoteDesktopDeviceType device_types;
++    gboolean clipboard_enabled;
++    GVariant *streams;
++  } gnoblin_pending_grant;
+ } RemoteDesktopSession;
+ 
+ typedef struct _RemoteDesktopSessionClass
+@@ -228,6 +234,38 @@ handle_close (XdpImplRequest *object,
+   return FALSE;
+ }
+ 
++static void
++clear_pending_grant (RemoteDesktopSession *remote_desktop_session)
++{
++  remote_desktop_session->gnoblin_pending_grant.active = FALSE;
++  remote_desktop_session->gnoblin_pending_grant.device_types = 0;
++  remote_desktop_session->gnoblin_pending_grant.clipboard_enabled = FALSE;
++  g_clear_pointer (&remote_desktop_session->gnoblin_pending_grant.streams,
++                   g_variant_unref);
++}
++
++static void
++store_pending_grant (RemoteDesktopSession *remote_desktop_session)
++{
++  g_autoptr(GError) error = NULL;
++
++  if (!remote_desktop_session->gnoblin_grant_identity ||
++      !remote_desktop_session->gnoblin_pending_grant.active)
++    return;
++
++  if (!gnoblin_portal_grant_store (
++        GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++        remote_desktop_session->gnoblin_grant_identity,
++        remote_desktop_session->gnoblin_pending_grant.device_types,
++        remote_desktop_session->gnoblin_pending_grant.clipboard_enabled,
++        remote_desktop_session->gnoblin_pending_grant.streams,
++        &error))
++    g_warning ("gnoblin: failed to store remote desktop grant: %s",
++               error->message);
++
++  clear_pending_grant (remote_desktop_session);
++}
++
+ static void
+ remote_desktop_dialog_done (GtkWidget                 *widget,
+                             int                        dialog_response,
+@@ -260,20 +298,36 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+ 
+   if (response == 0)
+     {
++      RemoteDesktopSession *session = dialog_handle->session;
+       g_autoptr(GError) error = NULL;
++      gboolean remember_permissions;
++
++      remember_permissions =
++        remote_desktop_dialog_get_always_allow (
++          REMOTE_DESKTOP_DIALOG (widget));
+ 
+-      /* gnoblin: the user approved; if they also ticked "Always allow this
+-       * app", persist a per-app grant so future sessions skip this dialog. */
+-      if (remote_desktop_dialog_get_always_allow (REMOTE_DESKTOP_DIALOG (widget)))
+-        gnoblin_portal_store_grant (dialog_handle->session->gnoblin_grant_id);
++      clear_pending_grant (session);
++      if (remember_permissions &&
++          session->gnoblin_grant_identity &&
++          (!session->select.screen_cast_enable ||
++           screen_cast_selection_can_persist (&session->select.screen_cast)))
++        {
++          session->gnoblin_pending_grant.active = TRUE;
++          session->gnoblin_pending_grant.device_types = device_types;
++          session->gnoblin_pending_grant.clipboard_enabled = clipboard_enabled;
++          if (streams)
++            session->gnoblin_pending_grant.streams =
++              serialize_screen_cast_streams (streams);
++        }
+ 
+-      if (!start_session (dialog_handle->session,
++      if (!start_session (session,
+                           device_types,
+                           streams,
+                           clipboard_enabled,
+                           persist_allowed,
+                           &error))
+         {
++          clear_pending_grant (session);
+           g_warning ("Failed to start session: %s", error->message);
+           response = 2;
+         }
+@@ -295,6 +349,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+   GdkSurface *surface;
+   GtkWidget *fake_parent;
+   GtkWindow *dialog;
++  const char *grant_identity_name = NULL;
++
+ 
+   if (parent_window)
+     {
+@@ -308,6 +364,12 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+       external_parent = NULL;
+     }
+ 
++  if (session->gnoblin_grant_identity &&
++      (!session->select.screen_cast_enable ||
++       screen_cast_selection_can_persist (&session->select.screen_cast)))
++    grant_identity_name =
++      gnoblin_portal_identity_name (session->gnoblin_grant_identity);
++
+   fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
+   g_object_ref_sink (fake_parent);
+ 
+@@ -317,7 +379,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+                                            session->select.screen_cast_enable ?
+                                              &session->select.screen_cast : NULL,
+                                            session->clipboard.clipboard_requested,
+-                                           session->persist_mode));
++                                           session->persist_mode,
++                                           grant_identity_name));
+   gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
+   gtk_window_set_modal (dialog, TRUE);
+ 
+@@ -561,6 +624,29 @@ serialize_session_as_restore_data (RemoteDesktopSession *remote_desktop_session,
+   return g_variant_builder_end (&restore_data_builder);
+ }
+ 
++static void
++disconnect_clipboard_handlers (RemoteDesktopSession *remote_desktop_session)
++{
++  OrgGnomeMutterRemoteDesktopSession *session_proxy =
++    remote_desktop_session->mutter_session_proxy;
++
++  if (remote_desktop_session->clipboard.selection_owner_changed_handler_id)
++    {
++      g_signal_handler_disconnect (
++        session_proxy,
++        remote_desktop_session->clipboard.selection_owner_changed_handler_id);
++      remote_desktop_session->clipboard.selection_owner_changed_handler_id = 0;
++    }
++
++  if (remote_desktop_session->clipboard.selection_transfer_handler_id)
++    {
++      g_signal_handler_disconnect (
++        session_proxy,
++        remote_desktop_session->clipboard.selection_transfer_handler_id);
++      remote_desktop_session->clipboard.selection_transfer_handler_id = 0;
++    }
++}
++
+ static void
+ start_done (RemoteDesktopSession *remote_desktop_session)
+ {
+@@ -577,35 +663,46 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+                          "devices", g_variant_new_uint32 (shared_device_types));
+ 
+   if (remote_desktop_session->clipboard.clipboard_requested)
+-  {
+-    g_autoptr (GError) error = NULL;
+-    GVariantBuilder options_builder;
+-    GVariant *options;
+-
+-    remote_desktop_session->clipboard.selection_owner_changed_handler_id =
+-      g_signal_connect (remote_desktop_session->mutter_session_proxy,
+-                        "selection-owner-changed",
+-                        G_CALLBACK (on_selection_owner_changed),
+-                        remote_desktop_session);
+-    remote_desktop_session->clipboard.selection_transfer_handler_id =
+-      g_signal_connect (remote_desktop_session->mutter_session_proxy,
+-                        "selection-transfer",
+-                        G_CALLBACK (on_selection_transfer),
+-                        remote_desktop_session);
+-
+-    g_variant_builder_init (&options_builder, G_VARIANT_TYPE_VARDICT);
+-    options = g_variant_builder_end (&options_builder);
+-
+-    if (!org_gnome_mutter_remote_desktop_session_call_enable_clipboard_sync (
+-      remote_desktop_session->mutter_session_proxy, options, NULL, &error))
+-      {
+-        g_warning ("Failed to enable clipboard: %s", error->message);
+-      }
+-
+-    clipboard_enabled = remote_desktop_session->clipboard.clipboard_enabled;
+-    g_variant_builder_add (&results_builder, "{sv}", "clipboard_enabled",
+-                           g_variant_new_boolean (clipboard_enabled));
+-  }
++    {
++      if (remote_desktop_session->clipboard.clipboard_enabled)
++        {
++          g_autoptr(GError) error = NULL;
++          GVariantBuilder options_builder;
++          GVariant *options;
++
++          remote_desktop_session->clipboard.selection_owner_changed_handler_id =
++            g_signal_connect (remote_desktop_session->mutter_session_proxy,
++                              "selection-owner-changed",
++                              G_CALLBACK (on_selection_owner_changed),
++                              remote_desktop_session);
++          remote_desktop_session->clipboard.selection_transfer_handler_id =
++            g_signal_connect (remote_desktop_session->mutter_session_proxy,
++                              "selection-transfer",
++                              G_CALLBACK (on_selection_transfer),
++                              remote_desktop_session);
++
++          g_variant_builder_init (&options_builder, G_VARIANT_TYPE_VARDICT);
++          options = g_variant_builder_end (&options_builder);
++
++          if (!org_gnome_mutter_remote_desktop_session_call_enable_clipboard_sync (
++                remote_desktop_session->mutter_session_proxy,
++                options,
++                NULL,
++                &error))
++            {
++              g_warning ("Failed to enable clipboard: %s", error->message);
++              remote_desktop_session->clipboard.clipboard_enabled = FALSE;
++              remote_desktop_session->gnoblin_pending_grant.clipboard_enabled =
++                FALSE;
++              disconnect_clipboard_handlers (remote_desktop_session);
++            }
++        }
++
++      clipboard_enabled =
++        remote_desktop_session->clipboard.clipboard_enabled;
++      g_variant_builder_add (&results_builder, "{sv}", "clipboard_enabled",
++                             g_variant_new_boolean (clipboard_enabled));
++    }
+ 
+   gnome_screen_cast_session = remote_desktop_session->gnome_screen_cast_session;
+   if (gnome_screen_cast_session)
+@@ -640,6 +737,8 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+         }
+     }
+ 
++  store_pending_grant (remote_desktop_session);
++
+   xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
+                                           remote_desktop_session->start_invocation,
+                                           0,
+@@ -736,6 +835,7 @@ cancel_start_session (RemoteDesktopSession *remote_desktop_session,
+ {
+   GVariantBuilder results_builder;
+ 
++  clear_pending_grant (remote_desktop_session);
+   g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
+   xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
+                                           remote_desktop_session->start_invocation,
+@@ -790,6 +890,84 @@ restore_from_data (RemoteDesktopSession *remote_desktop_session)
+   return TRUE;
+ }
+ 
++typedef enum
++{
++  GRANT_START_NOT_APPLIED,
++  GRANT_START_SUCCEEDED,
++  GRANT_START_FAILED,
++} GrantStartResult;
++
++static GrantStartResult
++start_from_persistent_grant (RemoteDesktopSession *remote_desktop_session)
++{
++  g_auto(GnoblinPortalGrant) grant = { 0 };
++  g_autoptr(GVariantIter) streams_iter = NULL;
++  g_autoptr(GPtrArray) streams = NULL;
++  g_autoptr(GError) error = NULL;
++  RemoteDesktopDeviceType requested_devices;
++  gboolean requested_clipboard;
++
++  if (!remote_desktop_session->gnoblin_grant_identity)
++    return GRANT_START_NOT_APPLIED;
++
++  if (!gnoblin_portal_grant_load (
++        GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++        remote_desktop_session->gnoblin_grant_identity,
++        &grant,
++        &error))
++    {
++      if (error &&
++          !g_error_matches (error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
++        g_warning ("gnoblin: ignoring invalid remote desktop grant: %s",
++                   error->message);
++      return GRANT_START_NOT_APPLIED;
++    }
++
++  requested_devices = remote_desktop_session->select.device_types;
++  requested_clipboard =
++    remote_desktop_session->clipboard.clipboard_requested;
++
++  if ((grant.device_types & ~REMOTE_DESKTOP_DEVICE_TYPE_ALL) != 0 ||
++      (requested_devices & ~grant.device_types) != 0 ||
++      (requested_clipboard && !grant.clipboard_enabled))
++    {
++      g_debug ("gnoblin: remote desktop request exceeds stored capabilities");
++      return GRANT_START_NOT_APPLIED;
++    }
++
++  if (remote_desktop_session->select.screen_cast_enable)
++    {
++      if (!grant.streams)
++        return GRANT_START_NOT_APPLIED;
++
++      streams_iter = g_variant_iter_new (grant.streams);
++      streams = restore_screen_cast_streams (
++        streams_iter,
++        &remote_desktop_session->select.screen_cast);
++      if (!streams)
++        {
++          g_debug ("gnoblin: stored remote desktop monitor selection is unavailable");
++          return GRANT_START_NOT_APPLIED;
++        }
++    }
++
++  if (!start_session (remote_desktop_session,
++                      requested_devices,
++                      streams,
++                      requested_clipboard,
++                      TRUE,
++                      &error))
++    {
++      g_warning ("gnoblin: remote desktop grant start failed: %s",
++                 error->message);
++      return GRANT_START_FAILED;
++    }
++
++  g_debug ("gnoblin: restored approved remote desktop capabilities for '%s'",
++           remote_desktop_session->gnoblin_grant_identity);
++  return GRANT_START_SUCCEEDED;
++}
++
+ static gboolean
+ handle_start (XdpImplRemoteDesktop *object,
+               GDBusMethodInvocation *invocation,
+@@ -825,60 +1003,24 @@ handle_start (XdpImplRemoteDesktop *object,
+ 
+   remote_desktop_session->start_invocation = invocation;
+ 
+-  /* gnoblin: remember who is asking so an approved "Always allow this app"
+-   * checkbox can persist a grant, and so a previously stored grant can skip
+-   * the dialog below. */
+-  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
+-  remote_desktop_session->gnoblin_grant_id =
+-    gnoblin_portal_grant_id (arg_app_id, invocation);
++  g_clear_pointer (&remote_desktop_session->gnoblin_grant_identity, g_free);
++  remote_desktop_session->gnoblin_grant_identity =
++    gnoblin_portal_requester_identity (
++      g_dbus_method_invocation_get_connection (invocation),
++      sender,
++      arg_app_id,
++      arg_handle);
+ 
+   if (!restore_from_data (remote_desktop_session))
+     {
+       RemoteDesktopDialogHandle *dialog_handle;
++      GrantStartResult grant_result;
+ 
+-      /* gnoblin: macOS-style per-app grant. If the user has previously ticked
+-       * "Always allow this app", skip the consent dialog and grant the
+-       * requested devices (and, if screen cast was selected, every monitor),
+-       * with persistence allowed. Default (no stored grant) shows the dialog. */
+-      if (gnoblin_portal_app_granted (remote_desktop_session->gnoblin_grant_id))
++      grant_result = start_from_persistent_grant (remote_desktop_session);
++      if (grant_result != GRANT_START_NOT_APPLIED)
+         {
+-          g_autoptr(GPtrArray) streams = NULL;
+-          g_autoptr(GError) error = NULL;
+-          gboolean clipboard_enabled;
+-
+-          g_debug ("gnoblin: remote desktop auto-granted for '%s'",
+-                   remote_desktop_session->gnoblin_grant_id);
+-
+-          if (remote_desktop_session->select.screen_cast_enable)
+-            {
+-              streams = screen_cast_select_all_monitors (
+-                &remote_desktop_session->select.screen_cast);
+-              if (!streams)
+-                {
+-                  g_warning ("gnoblin: remote desktop grant fast path failed: "
+-                             "no shareable monitor");
+-                  cancel_start_session (remote_desktop_session, 2);
+-                  if (request->exported)
+-                    request_unexport (request);
+-                  return TRUE;
+-                }
+-            }
+-
+-          clipboard_enabled =
+-            remote_desktop_session->clipboard.clipboard_requested;
+-
+-          if (!start_session (remote_desktop_session,
+-                              remote_desktop_session->select.device_types,
+-                              streams,
+-                              clipboard_enabled,
+-                              TRUE,
+-                              &error))
+-            {
+-              g_warning ("gnoblin: remote desktop grant fast path failed: %s",
+-                         error ? error->message : "unknown error");
+-              cancel_start_session (remote_desktop_session, 2);
+-            }
+-
++          if (grant_result == GRANT_START_FAILED)
++            cancel_start_session (remote_desktop_session, 2);
+           if (request->exported)
+             request_unexport (request);
+           return TRUE;
+@@ -1340,6 +1482,8 @@ remote_desktop_session_close (Session *session)
+   OrgGnomeMutterRemoteDesktopSession *session_proxy;
+   GnomeScreenCastSession *gnome_screen_cast_session;
+   g_autoptr(GError) error = NULL;
++  clear_pending_grant (remote_desktop_session);
++
+ 
+   gnome_screen_cast_session = remote_desktop_session->gnome_screen_cast_session;
+   if (gnome_screen_cast_session)
+@@ -1353,15 +1497,7 @@ remote_desktop_session_close (Session *session)
+   g_signal_handler_disconnect (session_proxy,
+                                remote_desktop_session->closed_handler_id);
+ 
+-  if (remote_desktop_session->clipboard.clipboard_enabled)
+-    {
+-      g_signal_handler_disconnect (
+-          session_proxy, remote_desktop_session->clipboard
+-                             .selection_owner_changed_handler_id);
+-      g_signal_handler_disconnect (
+-          session_proxy, remote_desktop_session->clipboard
+-                             .selection_transfer_handler_id);
+-    }
++  disconnect_clipboard_handlers (remote_desktop_session);
+ 
+   if (!org_gnome_mutter_remote_desktop_session_call_stop_sync (session_proxy,
+                                                                NULL,
+@@ -1380,7 +1516,8 @@ remote_desktop_session_finalize (GObject *object)
+   g_clear_pointer (&remote_desktop_session->streams_to_restore,
+                    g_ptr_array_unref);
+   g_clear_pointer (&remote_desktop_session->restored.data, g_variant_unref);
+-  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
++  g_clear_pointer (&remote_desktop_session->gnoblin_grant_identity, g_free);
++  clear_pending_grant (remote_desktop_session);
+   g_free (remote_desktop_session->mutter_session_path);
+ 
+   G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
+diff --git a/src/remotedesktopdialog.c b/src/remotedesktopdialog.c
+index e757b97..344620c 100644
+--- a/src/remotedesktopdialog.c
++++ b/src/remotedesktopdialog.c
+@@ -159,9 +159,12 @@ remote_desktop_dialog_new (const char *app_id,
+                            RemoteDesktopDeviceType device_types,
+                            ScreenCastSelection *screen_cast_select,
+                            gboolean clipboard_requested,
+-                           RemoteDesktopPersistMode persist_mode)
++                           RemoteDesktopPersistMode persist_mode,
++                           const char *grant_identity_name)
+ {
+   RemoteDesktopDialog *dialog;
++  g_autofree char *grant_label = NULL;
++
+ 
+   dialog = g_object_new (REMOTE_DESKTOP_TYPE_DIALOG, NULL);
+   dialog->device_types = device_types;
+@@ -215,6 +218,13 @@ remote_desktop_dialog_new (const char *app_id,
+       break;
+     }
+ 
++  if (grant_identity_name)
++    grant_label = g_strdup_printf (_("Remember these permissions for %s"),
++                                   grant_identity_name);
++  gtk_check_button_set_label (dialog->gnoblin_always_check, grant_label);
++  gtk_widget_set_visible (GTK_WIDGET (dialog->gnoblin_always_check),
++                          grant_identity_name != NULL);
++
+   return dialog;
+ }
+ 
+diff --git a/src/remotedesktopdialog.h b/src/remotedesktopdialog.h
+index eee6ca4..492f8f4 100644
+--- a/src/remotedesktopdialog.h
++++ b/src/remotedesktopdialog.h
+@@ -31,7 +31,8 @@ RemoteDesktopDialog * remote_desktop_dialog_new (const char *app_id,
+                                                  RemoteDesktopDeviceType device_types,
+                                                  ScreenCastSelection *screen_cast_select,
+                                                  gboolean clipboard_requested,
+-                                                 RemoteDesktopPersistMode persist_mode);
++                                                 RemoteDesktopPersistMode persist_mode,
++                                                 const char *grant_identity_name);
+ 
+-/* gnoblin: TRUE if the user ticked "Always allow this app". */
++/* gnoblin: TRUE if the visible per-app permission checkbox was selected. */
+ gboolean remote_desktop_dialog_get_always_allow (RemoteDesktopDialog *dialog);
+diff --git a/src/remotedesktopdialog.ui b/src/remotedesktopdialog.ui
+index 6b2cb10..0ea33e0 100644
+--- a/src/remotedesktopdialog.ui
++++ b/src/remotedesktopdialog.ui
+@@ -75,10 +75,9 @@
+                     <!-- gnoblin: macOS-style per-app persistent grant -->
+                     <child>
+                       <object class="GtkCheckButton" id="gnoblin_always_check">
+-                        <property name="visible">True</property>
++                        <property name="visible">False</property>
+                         <property name="active">False</property>
+                         <property name="halign">center</property>
+-                        <property name="label" translatable="yes">Always allow this app</property>
+                       </object>
+                     </child>
+ 
+diff --git a/src/screencast.c b/src/screencast.c
+index 305cb82..12602cb 100644
+--- a/src/screencast.c
++++ b/src/screencast.c
+@@ -29,6 +29,7 @@
+ #include "screencastwidget.h"
+ #include "screencastdialog.h"
+ #include "gnomescreencast.h"
++#include "gnoblin-portal-grants.h"
+ #include "remotedesktop.h"
+ #include "displaystatetracker.h"
+ #include "request.h"
+@@ -66,9 +67,9 @@ typedef struct _ScreenCastSession
+   GDBusMethodInvocation *start_invocation;
+   ScreenCastDialogHandle *dialog_handle;
+ 
+-  /* gnoblin: stable per-app id for the persistent grant store, computed in
+-   * handle_start() and consulted again when the dialog is approved. */
+-  char *gnoblin_grant_id;
++  /* Verified, namespaced identity for portal-scoped persistent grants. */
++  char *gnoblin_grant_identity;
++  GVariant *gnoblin_pending_grant_streams;
+ } ScreenCastSession;
+ 
+ typedef struct _ScreenCastSessionClass
+@@ -117,15 +118,11 @@ screen_cast_dialog_handle_close (ScreenCastDialogHandle *dialog_handle)
+   screen_cast_dialog_handle_free (dialog_handle);
+ }
+ 
+-void
+-serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
+-                                               GVariantBuilder *impl_builder)
++static void
++serialize_screen_cast_streams_to_builder (GPtrArray       *streams,
++                                          GVariantBuilder *builder)
+ {
+-  guint i;
+-
+-  g_variant_builder_open (impl_builder, G_VARIANT_TYPE ("a(uuv)"));
+-
+-  for (i = 0; streams && i < streams->len; i++)
++  for (guint i = 0; streams && i < streams->len; i++)
+     {
+       ScreenCastStreamInfo *info = g_ptr_array_index (streams, i);
+       GVariant *stream_variant;
+@@ -156,12 +153,31 @@ serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
+           break;
+         }
+ 
+-      g_variant_builder_add (impl_builder,
++      g_variant_builder_add (builder,
+                              "(uuv)",
+                              info->id,
+                              info->type,
+                              stream_variant);
+     }
++}
++
++GVariant *
++serialize_screen_cast_streams (GPtrArray *streams)
++{
++  GVariantBuilder builder;
++
++  g_variant_builder_init (&builder, G_VARIANT_TYPE (SCREEN_CAST_STREAMS_VARIANT_TYPE));
++  serialize_screen_cast_streams_to_builder (streams, &builder);
++  return g_variant_ref_sink (g_variant_builder_end (&builder));
++}
++
++void
++serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
++                                               GVariantBuilder *impl_builder)
++{
++  g_variant_builder_open (impl_builder,
++                          G_VARIANT_TYPE (SCREEN_CAST_STREAMS_VARIANT_TYPE));
++  serialize_screen_cast_streams_to_builder (streams, impl_builder);
+   g_variant_builder_close (impl_builder);
+ }
+ 
+@@ -197,12 +213,42 @@ serialize_session_as_restore_data (ScreenCastSession *screen_cast_session,
+   return g_variant_builder_end (&restore_data_builder);
+ }
+ 
++static void
++clear_pending_grant (ScreenCastSession *screen_cast_session)
++{
++  g_clear_pointer (&screen_cast_session->gnoblin_pending_grant_streams,
++                   g_variant_unref);
++}
++
++static void
++store_pending_grant (ScreenCastSession *screen_cast_session)
++{
++  g_autoptr(GError) error = NULL;
++
++  if (!screen_cast_session->gnoblin_grant_identity ||
++      !screen_cast_session->gnoblin_pending_grant_streams)
++    return;
++
++  if (!gnoblin_portal_grant_store (
++        GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++        screen_cast_session->gnoblin_grant_identity,
++        0,
++        FALSE,
++        screen_cast_session->gnoblin_pending_grant_streams,
++        &error))
++    g_warning ("gnoblin: failed to store screen cast grant: %s",
++               error->message);
++
++  clear_pending_grant (screen_cast_session);
++}
++
+ static void
+ cancel_start_session (ScreenCastSession *screen_cast_session,
+                       int response)
+ {
+   GVariantBuilder results_builder;
+ 
++  clear_pending_grant (screen_cast_session);
+   g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
+   xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
+                                        screen_cast_session->start_invocation,
+@@ -259,6 +305,8 @@ on_gnome_screen_cast_session_ready (GnomeScreenCastSession *gnome_screen_cast_se
+         }
+     }
+ 
++  store_pending_grant (screen_cast_session);
++
+   xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
+                                        screen_cast_session->start_invocation, 0,
+                                        g_variant_builder_end (&results_builder));
+@@ -269,6 +317,7 @@ static void
+ on_gnome_screen_cast_session_closed (GnomeScreenCastSession *gnome_screen_cast_session,
+                                      ScreenCastSession      *screen_cast_session)
+ {
++  clear_pending_grant (screen_cast_session);
+   session_close ((Session *)screen_cast_session, TRUE);
+ }
+ 
+@@ -343,16 +392,24 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
+       ScreenCastSession *screen_cast_session = dialog_handle->session;
+       g_autoptr(GError) error = NULL;
+ 
+-      /* gnoblin: the user approved; if they also ticked "Always allow this
+-       * app", persist a per-app grant so future sessions skip this dialog. */
+-      if (screen_cast_dialog_get_always_allow (SCREEN_CAST_DIALOG (widget)))
+-        gnoblin_portal_store_grant (screen_cast_session->gnoblin_grant_id);
++      gboolean remember_selection;
++
++      remember_selection =
++        screen_cast_dialog_get_always_allow (SCREEN_CAST_DIALOG (widget));
+ 
+       screen_cast_session->persist_mode = MIN (screen_cast_session->persist_mode,
+                                                persist_mode);
+ 
++      clear_pending_grant (screen_cast_session);
++      if (remember_selection &&
++          screen_cast_session->gnoblin_grant_identity &&
++          screen_cast_selection_can_persist (&screen_cast_session->select))
++        screen_cast_session->gnoblin_pending_grant_streams =
++          serialize_screen_cast_streams (streams);
++
+       if (!start_session (dialog_handle->session, streams, &error))
+         {
++          clear_pending_grant (screen_cast_session);
+           g_warning ("Failed to start session: %s", error->message);
+           response = 2;
+         }
+@@ -377,6 +434,7 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+   GdkSurface *surface;
+   GtkWidget *fake_parent;
+   GtkWindow *dialog;
++  const char *grant_identity_name = NULL;
+ 
+   if (parent_window)
+     {
+@@ -393,9 +451,15 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+   fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
+   g_object_ref_sink (fake_parent);
+ 
++  if (session->gnoblin_grant_identity &&
++      screen_cast_selection_can_persist (&session->select))
++    grant_identity_name =
++      gnoblin_portal_identity_name (session->gnoblin_grant_identity);
++
+   dialog = GTK_WINDOW (screen_cast_dialog_new (request->app_id,
+                                                &session->select,
+-                                               session->persist_mode));
++                                               session->persist_mode,
++                                               grant_identity_name));
+   gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
+   gtk_window_set_modal (dialog, TRUE);
+ 
+@@ -599,48 +663,18 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
+         }
+     }
+ 
++  if (!screen_cast_selection->multiple && streams->len > 1)
++    return NULL;
++
+   return streams->len > 0 ? g_steal_pointer (&streams) : NULL;
+ }
+ 
+-GPtrArray *
+-screen_cast_select_all_monitors (ScreenCastSelection *selection)
++gboolean
++screen_cast_selection_can_persist (ScreenCastSelection *selection)
+ {
+-  DisplayStateTracker *display_state_tracker = display_state_tracker_get ();
+-  g_autoptr(GPtrArray) streams = NULL;
+-  uint32_t id = 0;
+-  GList *l;
+-
+-  if (!selection->source_types.monitor)
+-    return NULL;
+-
+-  streams =
+-    g_ptr_array_new_with_free_func ((GDestroyNotify) screen_cast_stream_info_free);
+-
+-  for (l = display_state_tracker_get_logical_monitors (display_state_tracker);
+-       l;
+-       l = l->next)
+-    {
+-      LogicalMonitor *logical_monitor = l->data;
+-      GList *monitors = logical_monitor_get_monitors (logical_monitor);
+-      ScreenCastStreamInfo *info;
+-
+-      if (!monitors)
+-        continue;
+-
+-      info = g_new0 (ScreenCastStreamInfo, 1);
+-      info->type = SCREEN_CAST_SOURCE_TYPE_MONITOR;
+-      info->data.monitor = monitor_dup ((Monitor *) monitors->data);
+-      info->id = id++;
+-      g_ptr_array_add (streams, info);
+-
+-      if (!selection->multiple)
+-        break;
+-    }
+-
+-  if (streams->len == 0)
+-    return NULL;
+-
+-  return g_steal_pointer (&streams);
++  return selection->source_types.monitor &&
++         !selection->source_types.window &&
++         !selection->source_types.virtual_monitor;
+ }
+ 
+ static gboolean
+@@ -679,6 +713,57 @@ restore_stream_from_data (ScreenCastSession *screen_cast_session)
+   return TRUE;
+ }
+ 
++typedef enum
++{
++  GRANT_START_NOT_APPLIED,
++  GRANT_START_SUCCEEDED,
++  GRANT_START_FAILED,
++} GrantStartResult;
++
++static GrantStartResult
++start_from_persistent_grant (ScreenCastSession *screen_cast_session)
++{
++  g_auto(GnoblinPortalGrant) grant = { 0 };
++  g_autoptr(GVariantIter) streams_iter = NULL;
++  g_autoptr(GPtrArray) streams = NULL;
++  g_autoptr(GError) error = NULL;
++
++  if (!screen_cast_session->gnoblin_grant_identity)
++    return GRANT_START_NOT_APPLIED;
++
++  if (!gnoblin_portal_grant_load (
++        GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++        screen_cast_session->gnoblin_grant_identity,
++        &grant,
++        &error))
++    {
++      if (error)
++        g_warning ("gnoblin: ignoring invalid screen cast grant: %s",
++                   error->message);
++      return GRANT_START_NOT_APPLIED;
++    }
++
++  streams_iter = g_variant_iter_new (grant.streams);
++  streams = restore_screen_cast_streams (streams_iter,
++                                         &screen_cast_session->select);
++  if (!streams)
++    {
++      g_debug ("gnoblin: stored screen cast selection is unavailable");
++      return GRANT_START_NOT_APPLIED;
++    }
++
++  if (!start_session (screen_cast_session, streams, &error))
++    {
++      g_warning ("gnoblin: screen cast grant start failed: %s",
++                 error->message);
++      return GRANT_START_FAILED;
++    }
++
++  g_debug ("gnoblin: restored approved screen cast selection for '%s'",
++           screen_cast_session->gnoblin_grant_identity);
++  return GRANT_START_SUCCEEDED;
++}
++
+ static gboolean
+ handle_start (XdpImplScreenCast     *object,
+               GDBusMethodInvocation *invocation,
+@@ -714,45 +799,30 @@ handle_start (XdpImplScreenCast     *object,
+ 
+   screen_cast_session->start_invocation = invocation;
+ 
+-  /* gnoblin: remember who is asking so an approved "Always allow this app"
+-   * checkbox can persist a grant, and so a previously stored grant can skip
+-   * the dialog below. */
+-  g_clear_pointer (&screen_cast_session->gnoblin_grant_id, g_free);
+-  screen_cast_session->gnoblin_grant_id =
+-    gnoblin_portal_grant_id (arg_app_id, invocation);
++  g_clear_pointer (&screen_cast_session->gnoblin_grant_identity, g_free);
++  screen_cast_session->gnoblin_grant_identity =
++    gnoblin_portal_requester_identity (
++      g_dbus_method_invocation_get_connection (invocation),
++      sender,
++      arg_app_id,
++      arg_handle);
+ 
+   if (!restore_stream_from_data (screen_cast_session))
+     {
+       ScreenCastDialogHandle *dialog_handle;
++      GrantStartResult grant_result;
+ 
+-      /* gnoblin: macOS-style per-app grant. If the user has previously ticked
+-       * "Always allow this app" for this app, skip the source picker and grant
+-       * every monitor, exactly as the accepted dialog would. Default (no stored
+-       * grant) still shows the dialog. */
+-      if (gnoblin_portal_app_granted (screen_cast_session->gnoblin_grant_id))
++      grant_result = start_from_persistent_grant (screen_cast_session);
++      if (grant_result != GRANT_START_NOT_APPLIED)
+         {
+-          g_autoptr(GPtrArray) streams = NULL;
+-          g_autoptr(GError) error = NULL;
+-
+-          g_debug ("gnoblin: screen cast auto-granted for '%s'",
+-                   screen_cast_session->gnoblin_grant_id);
+-
+-          streams = screen_cast_select_all_monitors (&screen_cast_session->select);
+-          if (streams && start_session (screen_cast_session, streams, &error))
+-            {
+-              if (request->exported)
+-                request_unexport (request);
+-              return TRUE;
+-            }
+-
+-          g_warning ("gnoblin: screen cast grant fast path failed: %s",
+-                     error ? error->message : "no shareable monitor");
+-          cancel_start_session (screen_cast_session, 2);
++          if (grant_result == GRANT_START_FAILED)
++            cancel_start_session (screen_cast_session, 2);
+           if (request->exported)
+             request_unexport (request);
+           return TRUE;
+         }
+ 
++
+       dialog_handle = create_screen_cast_dialog (screen_cast_session,
+                                                  invocation,
+                                                  request,
+@@ -1012,7 +1082,8 @@ screen_cast_session_finalize (GObject *object)
+ 
+   g_clear_pointer (&screen_cast_session->streams_to_restore, g_ptr_array_unref);
+   g_clear_pointer (&screen_cast_session->restored.data, g_variant_unref);
+-  g_clear_pointer (&screen_cast_session->gnoblin_grant_id, g_free);
++  g_clear_pointer (&screen_cast_session->gnoblin_grant_identity, g_free);
++  clear_pending_grant (screen_cast_session);
+   g_clear_object (&screen_cast_session->gnome_screen_cast_session);
+ 
+   G_OBJECT_CLASS (screen_cast_session_parent_class)->finalize (object);
+diff --git a/src/screencast.h b/src/screencast.h
+index d0d8052..b6ff60e 100644
+--- a/src/screencast.h
++++ b/src/screencast.h
+@@ -82,12 +82,12 @@ void screen_cast_stream_info_free (ScreenCastStreamInfo *info);
+ void serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
+                                                     GVariantBuilder *impl_builder);
+ 
++GVariant * serialize_screen_cast_streams (GPtrArray *streams);
++
+ GPtrArray * restore_screen_cast_streams (GVariantIter *streams_iter,
+                                          ScreenCastSelection *screen_cast_selection);
+ 
+-/* gnoblin: build the stream list the consent dialog would produce if the user
+- * accepted with every monitor ticked. Used by the per-app grant fast path.
+- * Returns NULL if monitors are not among the requested source types or no
+- * monitor is available. When selection->multiple is FALSE only the first
+- * logical monitor is returned (matching the dialog's single-selection rule). */
+-GPtrArray * screen_cast_select_all_monitors (ScreenCastSelection *selection);
++/* Persistent grants restore the exact approved monitor set. Window matching
++ * is deliberately excluded because title-based restoration can select a
++ * different current window. */
++gboolean screen_cast_selection_can_persist (ScreenCastSelection *selection);
+diff --git a/src/screencastdialog.c b/src/screencastdialog.c
+index baddf38..a9b2574 100644
+--- a/src/screencastdialog.c
++++ b/src/screencastdialog.c
+@@ -146,7 +146,8 @@ screen_cast_dialog_init (ScreenCastDialog *dialog)
+ ScreenCastDialog *
+ screen_cast_dialog_new (const char            *app_id,
+                         ScreenCastSelection   *select,
+-                        ScreenCastPersistMode  persist_mode)
++                        ScreenCastPersistMode  persist_mode,
++                        const char            *grant_identity_name)
+ {
+   ScreenCastDialog *dialog;
+   ScreenCastWidget *screen_cast_widget;
+@@ -158,8 +159,8 @@ screen_cast_dialog_new (const char            *app_id,
+   screen_cast_widget_set_source_types (screen_cast_widget,
+                                        select->source_types);
+   screen_cast_widget_set_persist_mode (screen_cast_widget, persist_mode);
+-  /* gnoblin: the standalone screen-share dialog offers the per-app grant. */
+-  screen_cast_widget_set_always_allow_visible (screen_cast_widget, TRUE);
++  screen_cast_widget_set_persistent_identity (screen_cast_widget,
++                                              grant_identity_name);
+ 
+   return dialog;
+ }
+diff --git a/src/screencastdialog.h b/src/screencastdialog.h
+index 7ec4834..6953c4e 100644
+--- a/src/screencastdialog.h
++++ b/src/screencastdialog.h
+@@ -28,7 +28,8 @@ G_DECLARE_FINAL_TYPE (ScreenCastDialog, screen_cast_dialog,
+ 
+ ScreenCastDialog * screen_cast_dialog_new (const char            *app_id,
+                                            ScreenCastSelection   *select,
+-                                           ScreenCastPersistMode  persist_mode);
++                                           ScreenCastPersistMode  persist_mode,
++                                           const char            *grant_identity_name);
+ 
+ /* gnoblin: TRUE if the user ticked "Always allow this app". */
+ gboolean screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog);
+diff --git a/src/screencastwidget.c b/src/screencastwidget.c
+index e939bcf..242b155 100644
+--- a/src/screencastwidget.c
++++ b/src/screencastwidget.c
+@@ -765,16 +765,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
+   return screen_cast_widget->persist_mode;
+ }
+ 
+-/* gnoblin: control visibility of the per-app "Always allow this app" checkbox.
+- * Hidden by default so it does not appear when this widget is embedded in the
+- * RemoteDesktop dialog (which carries its own checkbox); the standalone
+- * ScreenCast dialog shows it. */
++/* Hidden unless the requester has a verified identity and only exact monitor
++ * selections can be persisted. */
+ void
+-screen_cast_widget_set_always_allow_visible (ScreenCastWidget *screen_cast_widget,
+-                                             gboolean          visible)
++screen_cast_widget_set_persistent_identity (ScreenCastWidget *screen_cast_widget,
++                                            const char       *identity_name)
+ {
++  g_autofree char *label = NULL;
++
++  if (identity_name)
++    label = g_strdup_printf (_("Remember this monitor selection for %s"),
++                             identity_name);
++
++  gtk_check_button_set_label (screen_cast_widget->gnoblin_always_check, label);
+   gtk_widget_set_visible (GTK_WIDGET (screen_cast_widget->gnoblin_always_check),
+-                          visible);
++                          identity_name != NULL);
+ }
+ 
+ gboolean
+diff --git a/src/screencastwidget.h b/src/screencastwidget.h
+index b6ae785..50232c7 100644
+--- a/src/screencastwidget.h
++++ b/src/screencastwidget.h
+@@ -45,9 +45,8 @@ void screen_cast_widget_set_persist_mode (ScreenCastWidget *screen_cast_widget,
+ ScreenCastPersistMode
+ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget);
+ 
+-/* gnoblin: per-app "Always allow this app" grant checkbox. */
+-void screen_cast_widget_set_always_allow_visible (ScreenCastWidget *screen_cast_widget,
+-                                                  gboolean          visible);
++void screen_cast_widget_set_persistent_identity (ScreenCastWidget *screen_cast_widget,
++                                                  const char       *identity_name);
+ 
+ gboolean
+ screen_cast_widget_get_always_allow (ScreenCastWidget *screen_cast_widget);
+diff --git a/src/test-gnoblin-portal-grants.c b/src/test-gnoblin-portal-grants.c
+new file mode 100644
+index 0000000..1b38fd7
+--- /dev/null
++++ b/src/test-gnoblin-portal-grants.c
+@@ -0,0 +1,335 @@
++/*
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ */
++
++#include "config.h"
++
++#include <gio/gio.h>
++#include <glib/gstdio.h>
++
++#include "gnoblin-portal-grants.h"
++
++static GVariant *
++test_streams (const char *monitor)
++{
++  GVariantBuilder builder;
++
++  g_variant_builder_init (&builder,
++                          G_VARIANT_TYPE (GNOBLIN_PORTAL_GRANT_STREAMS_TYPE));
++  g_variant_builder_add (&builder,
++                         "(uuv)",
++                         0,
++                         1,
++                         g_variant_new_string (monitor));
++  return g_variant_ref_sink (g_variant_builder_end (&builder));
++}
++
++static GDBusConnection *
++connect_test_bus (GTestDBus *bus)
++{
++  g_autoptr(GError) error = NULL;
++  GDBusConnection *connection;
++
++  connection = g_dbus_connection_new_for_address_sync (
++    g_test_dbus_get_bus_address (bus),
++    G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
++      G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
++    NULL,
++    NULL,
++    &error);
++  g_assert_no_error (error);
++  return connection;
++}
++
++static void
++own_portal_name (GDBusConnection *connection)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = NULL;
++  guint32 result;
++
++  reply = g_dbus_connection_call_sync (connection,
++                                       "org.freedesktop.DBus",
++                                       "/org/freedesktop/DBus",
++                                       "org.freedesktop.DBus",
++                                       "RequestName",
++                                       g_variant_new ("(su)",
++                                                      "org.freedesktop.portal.Desktop",
++                                                      0),
++                                       G_VARIANT_TYPE ("(u)"),
++                                       G_DBUS_CALL_FLAGS_NONE,
++                                       2000,
++                                       NULL,
++                                       &error);
++  g_assert_no_error (error);
++  g_variant_get (reply, "(u)", &result);
++  g_assert_cmpuint (result, ==, 1);
++}
++
++static char *
++request_handle_for_sender (const char *sender)
++{
++  g_autofree char *component = g_strdup (sender + 1);
++
++  for (char *p = component; *p; p++)
++    {
++      if (*p == '.')
++        *p = '_';
++    }
++
++  return g_strdup_printf ("/org/freedesktop/portal/desktop/request/%s/test",
++                          component);
++}
++
++static void
++test_requester_identity_rejects_direct_backend_spoof (void)
++{
++  g_autoptr(GTestDBus) bus = g_test_dbus_new (G_TEST_DBUS_NONE);
++  g_autoptr(GDBusConnection) portal = NULL;
++  g_autoptr(GDBusConnection) attacker = NULL;
++  g_autofree char *request_handle = NULL;
++  g_autofree char *identity = NULL;
++  const char *portal_sender;
++  const char *attacker_sender;
++
++  g_test_dbus_up (bus);
++  portal = connect_test_bus (bus);
++  attacker = connect_test_bus (bus);
++  own_portal_name (portal);
++
++  portal_sender = g_dbus_connection_get_unique_name (portal);
++  attacker_sender = g_dbus_connection_get_unique_name (attacker);
++  request_handle = request_handle_for_sender (attacker_sender);
++
++  identity = gnoblin_portal_requester_identity (portal,
++                                                 portal_sender,
++                                                 "org.example.Trusted",
++                                                 request_handle);
++  g_assert_cmpstr (identity, ==, "app-id:org.example.Trusted");
++
++  g_clear_pointer (&identity, g_free);
++  identity = gnoblin_portal_requester_identity (portal,
++                                                 attacker_sender,
++                                                 "org.example.Spoofed",
++                                                 request_handle);
++  g_assert_null (identity);
++
++  identity = gnoblin_portal_requester_identity (portal,
++                                                 portal_sender,
++                                                 "org.example.Trusted",
++                                                 "/org/freedesktop/portal/desktop/request/spoof/test");
++  g_assert_null (identity);
++
++  g_dbus_connection_close_sync (attacker, NULL, NULL);
++  g_dbus_connection_close_sync (portal, NULL, NULL);
++  g_test_dbus_down (bus);
++}
++
++static void
++test_requester_identity_resolves_host_executable (void)
++{
++  g_autoptr(GTestDBus) bus = g_test_dbus_new (G_TEST_DBUS_NONE);
++  g_autoptr(GDBusConnection) portal = NULL;
++  g_autoptr(GDBusConnection) caller = NULL;
++  g_autofree char *request_handle = NULL;
++  g_autofree char *identity = NULL;
++
++  g_test_dbus_up (bus);
++  portal = connect_test_bus (bus);
++  caller = connect_test_bus (bus);
++  own_portal_name (portal);
++  request_handle = request_handle_for_sender (
++    g_dbus_connection_get_unique_name (caller));
++
++  identity = gnoblin_portal_requester_identity (
++    portal,
++    g_dbus_connection_get_unique_name (portal),
++    "",
++    request_handle);
++  g_assert_nonnull (identity);
++  g_assert_true (g_str_has_prefix (identity, "host-exe:/"));
++
++  g_dbus_connection_close_sync (caller, NULL, NULL);
++  g_dbus_connection_close_sync (portal, NULL, NULL);
++  g_test_dbus_down (bus);
++}
++
++static void
++test_grants_are_scoped_and_round_trip_exact_values (void)
++{
++  g_autoptr(GVariant) streams = test_streams ("monitor-A");
++  g_auto(GnoblinPortalGrant) grant = { 0 };
++  g_autoptr(GError) error = NULL;
++  const char *identity = "app-id:org.example.App";
++
++  g_assert_true (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++    identity,
++    3,
++    TRUE,
++    streams,
++    &error));
++  g_assert_no_error (error);
++
++  g_assert_true (gnoblin_portal_grant_load (
++    GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++    identity,
++    &grant,
++    &error));
++  g_assert_no_error (error);
++  g_assert_cmpstr (grant.identity, ==, identity);
++  g_assert_cmpuint (grant.device_types, ==, 3);
++  g_assert_true (grant.clipboard_enabled);
++  g_assert_true (g_variant_equal (grant.streams, streams));
++
++  gnoblin_portal_grant_clear (&grant);
++  g_assert_false (gnoblin_portal_grant_load (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    identity,
++    &grant,
++    &error));
++  g_assert_no_error (error);
++}
++
++static void
++test_grant_validation_rejects_invalid_or_empty_grants (void)
++{
++  g_autoptr(GVariant) monitor_streams = test_streams ("monitor-A");
++  g_autoptr(GVariant) window_streams = NULL;
++  g_autoptr(GError) error = NULL;
++  GVariantBuilder builder;
++
++  g_assert_false (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    "app-id:org.example.App",
++    0,
++    FALSE,
++    NULL,
++    &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
++  g_clear_error (&error);
++
++  g_assert_false (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP,
++    "app-id:org.example.App",
++    0,
++    FALSE,
++    NULL,
++    &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
++  g_clear_error (&error);
++
++  g_assert_false (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    "unscoped-identity",
++    0,
++    FALSE,
++    monitor_streams,
++    &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++  g_clear_error (&error);
++
++  g_variant_builder_init (&builder,
++                          G_VARIANT_TYPE (GNOBLIN_PORTAL_GRANT_STREAMS_TYPE));
++  g_variant_builder_add (&builder,
++                         "(uuv)",
++                         0,
++                         2,
++                         g_variant_new_string ("window-title"));
++  window_streams = g_variant_ref_sink (g_variant_builder_end (&builder));
++  g_assert_false (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    "app-id:org.example.App",
++    0,
++    FALSE,
++    window_streams,
++    &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
++}
++
++static void
++test_grant_digest_does_not_collapse_identity_characters (void)
++{
++  g_autoptr(GVariant) streams = test_streams ("monitor-A");
++  g_autoptr(GError) error = NULL;
++  g_autofree char *directory = NULL;
++  g_autoptr(GDir) dir = NULL;
++  guint count = 0;
++
++  g_assert_true (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    "host-exe:/a/b",
++    0,
++    FALSE,
++    streams,
++    &error));
++  g_assert_no_error (error);
++  g_assert_true (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    "host-exe:/a?b",
++    0,
++    FALSE,
++    streams,
++    &error));
++  g_assert_no_error (error);
++
++  directory = g_build_filename (g_get_user_data_dir (),
++                                "gnoblin",
++                                "portal-grants",
++                                "screen-cast",
++                                NULL);
++  dir = g_dir_open (directory, 0, &error);
++  g_assert_no_error (error);
++  while (g_dir_read_name (dir))
++    count++;
++  g_assert_cmpuint (count, ==, 2);
++}
++
++static void
++remove_tree (const char *path)
++{
++  g_autoptr(GDir) dir = NULL;
++  const char *name;
++
++  dir = g_dir_open (path, 0, NULL);
++  if (!dir)
++    {
++      g_remove (path);
++      return;
++    }
++
++  while ((name = g_dir_read_name (dir)))
++    {
++      g_autofree char *child = g_build_filename (path, name, NULL);
++
++      remove_tree (child);
++    }
++
++  g_rmdir (path);
++}
++
++int
++main (int argc, char **argv)
++{
++  g_autofree char *data_home = g_dir_make_tmp ("gnoblin-grants-XXXXXX", NULL);
++  int result;
++
++  g_assert_nonnull (data_home);
++  g_setenv ("XDG_DATA_HOME", data_home, TRUE);
++  g_test_init (&argc, &argv, NULL);
++
++  g_test_add_func ("/gnoblin/grants/direct-backend-spoof",
++                   test_requester_identity_rejects_direct_backend_spoof);
++  g_test_add_func ("/gnoblin/grants/host-executable",
++                   test_requester_identity_resolves_host_executable);
++  g_test_add_func ("/gnoblin/grants/scoped-round-trip",
++                   test_grants_are_scoped_and_round_trip_exact_values);
++  g_test_add_func ("/gnoblin/grants/invalid-or-empty",
++                   test_grant_validation_rejects_invalid_or_empty_grants);
++  g_test_add_func ("/gnoblin/grants/digest-collision",
++                   test_grant_digest_does_not_collapse_identity_characters);
++
++  result = g_test_run ();
++  remove_tree (data_home);
++  return result;
++}
+diff --git a/src/utils.c b/src/utils.c
+index 571b448..5e0485c 100644
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -122,138 +122,3 @@ str_distance (const char *a,
+ 
+   return v1[b_char_len];
+ }
+-
+-/* gnoblin: per-app persistent ScreenCast / RemoteDesktop grants. */
+-
+-static char *
+-gnoblin_portal_grants_dir (void)
+-{
+-  return g_build_filename (g_get_user_config_dir (),
+-                           "gnoblin", "portal-grants", NULL);
+-}
+-
+-/* Map an arbitrary id (app_id or executable basename) onto a safe filename,
+- * so a grant can never escape the grants directory. Returns NULL if nothing
+- * usable remains. */
+-static char *
+-gnoblin_portal_sanitize_id (const char *raw)
+-{
+-  GString *sanitized;
+-  const char *p;
+-
+-  if (raw == NULL || *raw == '\0')
+-    return NULL;
+-
+-  sanitized = g_string_new (NULL);
+-  for (p = raw; *p != '\0'; p++)
+-    {
+-      char c = *p;
+-
+-      if (g_ascii_isalnum (c) || c == '.' || c == '-' || c == '_')
+-        g_string_append_c (sanitized, c);
+-      else
+-        g_string_append_c (sanitized, '_');
+-    }
+-
+-  if (sanitized->len == 0 ||
+-      g_strcmp0 (sanitized->str, ".") == 0 ||
+-      g_strcmp0 (sanitized->str, "..") == 0)
+-    {
+-      g_string_free (sanitized, TRUE);
+-      return NULL;
+-    }
+-
+-  return g_string_free (sanitized, FALSE);
+-}
+-
+-char *
+-gnoblin_portal_grant_id (const char            *app_id,
+-                         GDBusMethodInvocation *invocation)
+-{
+-  g_autofree char *raw = NULL;
+-
+-  if (app_id != NULL && *app_id != '\0')
+-    {
+-      raw = g_strdup (app_id);
+-    }
+-  else if (invocation != NULL)
+-    {
+-      GDBusConnection *connection;
+-      const char *sender;
+-      g_autoptr(GVariant) reply = NULL;
+-      g_autoptr(GError) error = NULL;
+-      guint32 pid = 0;
+-
+-      /* Unsandboxed apps hand us an empty app_id, so fall back to the sender's
+-       * executable basename for a stable per-binary id. */
+-      sender = g_dbus_method_invocation_get_sender (invocation);
+-      connection = g_dbus_method_invocation_get_connection (invocation);
+-      if (connection != NULL && sender != NULL)
+-        {
+-          reply =
+-            g_dbus_connection_call_sync (connection,
+-                                         "org.freedesktop.DBus",
+-                                         "/org/freedesktop/DBus",
+-                                         "org.freedesktop.DBus",
+-                                         "GetConnectionUnixProcessID",
+-                                         g_variant_new ("(s)", sender),
+-                                         G_VARIANT_TYPE ("(u)"),
+-                                         G_DBUS_CALL_FLAGS_NONE,
+-                                         -1, NULL, &error);
+-          if (reply != NULL)
+-            g_variant_get (reply, "(u)", &pid);
+-          else
+-            g_debug ("gnoblin: could not resolve sender pid: %s",
+-                     error ? error->message : "unknown error");
+-        }
+-
+-      if (pid > 0)
+-        {
+-          g_autofree char *exe_link = NULL;
+-          g_autofree char *exe_path = NULL;
+-
+-          exe_link = g_strdup_printf ("/proc/%u/exe", pid);
+-          exe_path = g_file_read_link (exe_link, NULL);
+-          if (exe_path != NULL)
+-            raw = g_path_get_basename (exe_path);
+-        }
+-    }
+-
+-  return gnoblin_portal_sanitize_id (raw);
+-}
+-
+-gboolean
+-gnoblin_portal_app_granted (const char *grant_id)
+-{
+-  g_autofree char *dir = NULL;
+-  g_autofree char *path = NULL;
+-
+-  if (grant_id == NULL || *grant_id == '\0')
+-    return FALSE;
+-
+-  dir = gnoblin_portal_grants_dir ();
+-  path = g_build_filename (dir, grant_id, NULL);
+-
+-  return g_file_test (path, G_FILE_TEST_EXISTS);
+-}
+-
+-void
+-gnoblin_portal_store_grant (const char *grant_id)
+-{
+-  g_autofree char *dir = NULL;
+-  g_autofree char *path = NULL;
+-
+-  if (grant_id == NULL || *grant_id == '\0')
+-    return;
+-
+-  dir = gnoblin_portal_grants_dir ();
+-  if (g_mkdir_with_parents (dir, 0700) != 0)
+-    {
+-      g_warning ("gnoblin: failed to create portal grants dir %s", dir);
+-      return;
+-    }
+-
+-  path = g_build_filename (dir, grant_id, NULL);
+-  if (!g_file_set_contents (path, "", 0, NULL))
+-    g_warning ("gnoblin: failed to store portal grant %s", path);
+-}
+diff --git a/src/utils.h b/src/utils.h
+index 64010e5..3b73d68 100644
+--- a/src/utils.h
++++ b/src/utils.h
+@@ -21,7 +21,6 @@
+ #pragma once
+ 
+ #include <gdk/gdk.h>
+-#include <gio/gio.h>
+ 
+ #define DESKTOP_PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+ 
+@@ -47,29 +46,3 @@ GQuark  xdg_desktop_portal_error_quark (void);
+ 
+ glong str_distance (const char *a,
+                     const char *b);
+-
+-/* gnoblin: macOS-style per-app persistent ScreenCast / RemoteDesktop grants.
+- *
+- * Apps that round-trip a restore_token already skip the consent dialog. These
+- * helpers add a gnoblin-owned per-app grant store so that apps which do NOT
+- * restore (e.g. rustdesk) can be granted once ("Always allow this app") and
+- * then connect unattended on every subsequent session. Grants live as marker
+- * files under $XDG_CONFIG_HOME/gnoblin/portal-grants/<grant_id>.
+- *
+- * Default behaviour is unchanged: with no stored grant the dialog is shown.
+- * A grant is only ever created when the user explicitly ticks the checkbox and
+- * approves the dialog. Nothing is granted unconditionally. */
+-
+-/* Return a stable, filesystem-safe grant id for the requesting app, or NULL if
+- * one cannot be derived. Uses app_id when non-empty; otherwise derives it from
+- * the D-Bus sender's executable basename (GetConnectionUnixProcessID ->
+- * /proc/PID/exe) so unsandboxed apps with an empty app_id still get a stable
+- * per-binary id. Caller frees with g_free(). */
+-char *gnoblin_portal_grant_id (const char            *app_id,
+-                               GDBusMethodInvocation *invocation);
+-
+-/* TRUE if the given grant_id has a stored grant. NULL/empty grant_id -> FALSE. */
+-gboolean gnoblin_portal_app_granted (const char *grant_id);
+-
+-/* Persist a grant for grant_id (creating the store dir). No-op on NULL/empty. */
+-void gnoblin_portal_store_grant (const char *grant_id);
+-- 
+2.53.0
+

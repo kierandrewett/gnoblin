@@ -1,7 +1,8 @@
-From 2e6889e496fdc82eae6181b95e1aa9c26fd48ecd Mon Sep 17 00:00:00 2001
+From b5186cad9f79425cda2f7c4d5ce7869548bd9c4a Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 3 Jul 2026 09:28:51 +0100
-Subject: [PATCH] tooling: per-app persistent ScreenCast/RemoteDesktop grants
+Subject: [PATCH 1/2] tooling: per-app persistent ScreenCast/RemoteDesktop
+ grants
 
 Replace the blanket GNOBLIN_PORTAL_AUTOGRANT bypass with a macOS-style,
 per-app persistent grant store that gnoblin owns.
