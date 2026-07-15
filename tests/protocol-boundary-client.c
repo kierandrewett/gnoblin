@@ -30,6 +30,36 @@ supported_version (uint32_t advertised, uint32_t supported)
 {
   return advertised < supported ? advertised : supported;
 }
+struct foreign_toplevel_state
+{
+  bool finished;
+};
+
+static void
+foreign_toplevel (void *data,
+                  struct zwlr_foreign_toplevel_manager_v1 *manager,
+                  struct zwlr_foreign_toplevel_handle_v1 *toplevel)
+{
+  (void) data;
+  (void) manager;
+  (void) toplevel;
+}
+
+static void
+foreign_finished (void *data,
+                  struct zwlr_foreign_toplevel_manager_v1 *manager)
+{
+  struct foreign_toplevel_state *state = data;
+
+  (void) manager;
+  state->finished = true;
+}
+
+static const struct zwlr_foreign_toplevel_manager_v1_listener foreign_listener = {
+  .toplevel = foreign_toplevel,
+  .finished = foreign_finished,
+};
+
 
 struct screencopy_frame
 {
@@ -191,6 +221,27 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static bool
+test_foreign_toplevel_stop (struct wl_display *display,
+                            struct protocols  *protocols)
+{
+  struct foreign_toplevel_state state = { 0 };
+
+  zwlr_foreign_toplevel_manager_v1_add_listener (protocols->foreign_toplevel,
+                                                  &foreign_listener,
+                                                  &state);
+  zwlr_foreign_toplevel_manager_v1_stop (protocols->foreign_toplevel);
+  if (wl_display_roundtrip (display) < 0 || !state.finished)
+    {
+      fprintf (stderr,
+               "FAIL: foreign-toplevel manager did not finish after stop\n");
+      return false;
+    }
+
+  protocols->foreign_toplevel = NULL;
+  return true;
+}
+
+static bool
 test_screencopy_boundaries (struct wl_display *display,
                             struct protocols  *protocols)
 {
@@ -345,6 +396,9 @@ main (void)
       fprintf (stderr, "FAIL: protocol bind round-trip failed\n");
       return 1;
     }
+
+  if (!test_foreign_toplevel_stop (display, &protocols))
+    return 1;
 
   if (!test_screencopy_boundaries (display, &protocols))
     return 1;

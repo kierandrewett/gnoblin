@@ -387,6 +387,7 @@ manager_handle_stop (struct wl_client *c, struct wl_resource *resource)
   manager->stopped = TRUE;
   g_clear_signal_handler (&manager->window_created_id, manager->display);
   zwlr_foreign_toplevel_manager_v1_send_finished (resource);
+  wl_resource_destroy (resource);
 }
 
 static const struct zwlr_foreign_toplevel_manager_v1_interface manager_interface = {
