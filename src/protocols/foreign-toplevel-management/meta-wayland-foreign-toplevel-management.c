@@ -461,7 +461,7 @@ bind_foreign_toplevel_manager (struct wl_client *client,
 void
 meta_wayland_init_foreign_toplevel_management (MetaWaylandCompositor *compositor)
 {
-  if (!gnoblin_config_get_bool ("protocols", "wlr-foreign-toplevel-management", TRUE))
+  if (!gnoblin_config_protocol_enabled ("wlr-foreign-toplevel-management"))
     {
       g_message ("Gnoblin wlr-foreign-toplevel-management protocol disabled by settings");
       return;

@@ -108,6 +108,20 @@ main (void)
   CHECK (gnoblin_config_get_bool ("protocols", "wlr-gamma-control", TRUE) == FALSE, "bool off");
   CHECK (gnoblin_config_get_bool ("protocols", "missing", TRUE) == TRUE, "bool fallback");
 
+  g_unsetenv ("GNOME_SHELL_SESSION_MODE");
+  CHECK (!gnoblin_config_protocol_enabled ("ext-data-control"),
+         "protocol disabled when session mode is absent");
+  g_setenv ("GNOME_SHELL_SESSION_MODE", "user", TRUE);
+  CHECK (!gnoblin_config_protocol_enabled ("ext-data-control"),
+         "protocol disabled outside Gnoblin mode");
+  g_setenv ("GNOME_SHELL_SESSION_MODE", "gnoblin", TRUE);
+  CHECK (gnoblin_config_protocol_enabled ("ext-data-control"),
+         "protocol enabled by config in Gnoblin mode");
+  CHECK (!gnoblin_config_protocol_enabled ("wlr-gamma-control"),
+         "protocol disabled by config in Gnoblin mode");
+  CHECK (gnoblin_config_protocol_enabled ("missing"),
+         "missing protocol key defaults on in Gnoblin mode");
+
   {
     g_auto (GStrv) execs = gnoblin_config_get_list ("startup", "exec");
     CHECK (execs && g_strv_length (execs) == 2, "repeated-key list length");

@@ -363,7 +363,7 @@ meta_wayland_init_gamma_control (MetaWaylandCompositor *compositor)
   MetaBackend *backend = meta_context_get_backend (context);
   MetaWaylandGammaContext *ctx;
 
-  if (!gnoblin_config_get_bool ("protocols", "wlr-gamma-control", TRUE))
+  if (!gnoblin_config_protocol_enabled ("wlr-gamma-control"))
     {
       g_message ("Gnoblin wlr-gamma-control protocol disabled by settings");
       return;

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Boot the *patched gnome-shell* (Gnoblin) headless in the `gnoblin` session
-# mode against the installed patched mutter, and verify:
-#   (a) it reaches "GNOME Shell started",
-#   (b) the compositor advertises zwlr_layer_shell_v1 (chrome can draw),
-# then exit cleanly. This is the headless smoke test for the current
-# patched-GNOME stack (see run-gnome-devkit.sh for the visible devkit).
+# Boot the patched gnome-shell headless in a selected session mode and verify
+# startup, fatal diagnostics, control-component isolation, and privileged
+# protocol exposure. This is the headless smoke test for the patched-GNOME
+# stack (see run-gnome-devkit.sh for the visible Gnoblin devkit).
 #
-# Env: GNOBLIN_PREFIX (default ./install), MONITOR (default 1280x800),
-#      SETTLE (seconds to wait for "started", default 25),
+# Env: GNOBLIN_PREFIX (default ./install), GNOBLIN_TEST_MODE (default gnoblin),
+#      GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS (default 1 in gnoblin, 0 otherwise),
+#      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
 set -uo pipefail
 
@@ -19,6 +18,14 @@ PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1280x800}"
 SETTLE="${SETTLE:-25}"
+MODE="${GNOBLIN_TEST_MODE:-gnoblin}"
+if [ -n "${GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS:-}" ]; then
+  EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
+elif [ "$MODE" = gnoblin ]; then
+  EXPECT_PRIVILEGED_PROTOCOLS=1
+else
+  EXPECT_PRIVILEGED_PROTOCOLS=0
+fi
 
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
 [ -f "$PREFIX/lib64/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
@@ -28,9 +35,14 @@ SETTLE="${SETTLE:-25}"
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 export GDK_BACKEND=wayland
-# gnome-shell reads the session mode from GNOME_SHELL_SESSION_MODE (set by
-# gnoblin_env_apply; main.c:632). We ALSO pass --mode=gnoblin below (parsed
-# after, wins) — belt and braces.
+# The command-line mode wins over the environment, but both are kept aligned
+# because Mutter protocol registration happens before GNOME Shell mode loading.
+export GNOME_SHELL_SESSION_MODE="$MODE"
+if [ "$MODE" = gnoblin ]; then
+  export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+else
+  export XDG_CURRENT_DESKTOP=GNOME
+fi
 
 # --- isolated throwaway state ----------------------------------------------
 DK="$(mktemp -d /tmp/gnoblin-gs.XXXXXX)"
@@ -58,10 +70,13 @@ trap cleanup EXIT INT TERM HUP
 
 # Reuse the devkit's isolated dbus config generator (no host portal leakage).
 DBUS_SESSION_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
+BUS_ADDRESS_FILE="$DK/bus-address"
 
-echo ">> booting patched gnome-shell (mode=gnoblin) headless from $PREFIX ..."
+echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
-  "$SHELL_BIN" --headless --wayland --no-x11 --mode=gnoblin \
+  bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; shift; exec "$@"' \
+  gnoblin-shell "$BUS_ADDRESS_FILE" \
+  "$SHELL_BIN" --headless --wayland --no-x11 --mode="$MODE" \
   --virtual-monitor "$MONITOR" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
@@ -100,16 +115,51 @@ fi
 # --- probe advertised globals ----------------------------------------------
 probe="$DK/wl-globals"
 cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
+globals="$(WAYLAND_DISPLAY="$DISP" "$probe")"
 echo "== wlr_/ext_ protocols advertised by gnome-shell =="
-WAYLAND_DISPLAY="$DISP" "$probe" | grep -iE "wlr_|ext_" | sort | sed 's/^/   /'
-total="$(WAYLAND_DISPLAY="$DISP" "$probe" | wc -l)"
+printf '%s\n' "$globals" | grep -iE "wlr_|ext_" | sort | sed 's/^/   /'
+total="$(printf '%s\n' "$globals" | wc -l)"
 echo "   (+ $total globals total)"
-if WAYLAND_DISPLAY="$DISP" "$probe" | grep -q "zwlr_layer_shell_v1"; then
-  echo "== LAYER-SHELL: zwlr_layer_shell_v1 IS advertised =="
-  layer_ok=1
+
+privileged_protocols=(
+  ext_data_control_manager_v1
+  ext_foreign_toplevel_list_v1
+  ext_idle_notifier_v1
+  zwlr_foreign_toplevel_manager_v1
+  zwlr_gamma_control_manager_v1
+  zwlr_layer_shell_v1
+  zwlr_output_power_manager_v1
+  zwlr_screencopy_manager_v1
+)
+protocol_scope_ok=1
+for protocol in "${privileged_protocols[@]}"; do
+  if printf '%s\n' "$globals" | grep -q "^$protocol "; then
+    present=1
+  else
+    present=0
+  fi
+  if [ "$present" != "$EXPECT_PRIVILEGED_PROTOCOLS" ]; then
+    protocol_scope_ok=0
+    echo "!! $protocol exposure mismatch: expected=$EXPECT_PRIVILEGED_PROTOCOLS actual=$present" >&2
+  fi
+done
+
+control_present=0
+if [ -s "$BUS_ADDRESS_FILE" ]; then
+  bus_address="$(cat "$BUS_ADDRESS_FILE")"
+  if DBUS_SESSION_BUS_ADDRESS="$bus_address" gdbus call --session \
+      --dest org.gnoblin.Shell \
+      --object-path /org/gnoblin/Shell \
+      --method org.gnoblin.Shell.Ping >/dev/null 2>&1; then
+    control_present=1
+  fi
+fi
+if { [ "$MODE" = gnoblin ] && [ "$control_present" = 1 ]; } ||
+   { [ "$MODE" != gnoblin ] && [ "$control_present" = 0 ]; }; then
+  control_scope_ok=1
 else
-  echo "== LAYER-SHELL: zwlr_layer_shell_v1 NOT found =="
-  layer_ok=0
+  control_scope_ok=0
+  echo "!! gnoblin control scope mismatch: mode=$MODE present=$control_present" >&2
 fi
 
 gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
@@ -119,9 +169,10 @@ if [ "${KEEP:-0}" = 1 ]; then
   wait "$SHELL_PID"
 fi
 
-if [ "$started" = 1 ] && [ "${layer_ok:-0}" = 1 ] && [ "$fatal" = 0 ]; then
-  echo ">> RESULT: PASS (started + layer-shell advertised + no fatal diagnostics). log -> $LAST_LOG"
+if [ "$started" = 1 ] && [ "$protocol_scope_ok" = 1 ] &&
+   [ "$control_scope_ok" = 1 ] && [ "$fatal" = 0 ]; then
+  echo ">> RESULT: PASS (mode=$MODE started, protocol/control scope correct, no fatal diagnostics). log -> $LAST_LOG"
   exit 0
 fi
-echo ">> RESULT: incomplete (started=$started layer_shell=${layer_ok:-0} fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
+echo ">> RESULT: incomplete (mode=$MODE started=$started protocol_scope=$protocol_scope_ok control_scope=$control_scope_ok fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
 exit 1

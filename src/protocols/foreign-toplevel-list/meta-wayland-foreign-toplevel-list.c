@@ -310,7 +310,7 @@ bind_foreign_toplevel_list (struct wl_client *client,
 void
 meta_wayland_init_foreign_toplevel_list (MetaWaylandCompositor *compositor)
 {
-  if (!gnoblin_config_get_bool ("protocols", "ext-foreign-toplevel-list", TRUE))
+  if (!gnoblin_config_protocol_enabled ("ext-foreign-toplevel-list"))
     {
       g_message ("Gnoblin ext-foreign-toplevel-list protocol disabled by settings");
       return;

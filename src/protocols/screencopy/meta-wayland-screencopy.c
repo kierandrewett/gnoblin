@@ -389,7 +389,7 @@ bind_screencopy (struct wl_client *client,
 void
 meta_wayland_init_screencopy (MetaWaylandCompositor *compositor)
 {
-  if (!gnoblin_config_get_bool ("protocols", "wlr-screencopy", TRUE))
+  if (!gnoblin_config_protocol_enabled ("wlr-screencopy"))
     {
       g_message ("Gnoblin wlr-screencopy protocol disabled by settings");
       return;

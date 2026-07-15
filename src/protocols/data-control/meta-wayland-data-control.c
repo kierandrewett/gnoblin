@@ -579,7 +579,7 @@ meta_wayland_init_data_control (MetaWaylandCompositor *compositor)
 {
   MetaWaylandDataControl *data_control;
 
-  if (!gnoblin_config_get_bool ("protocols", "ext-data-control", TRUE))
+  if (!gnoblin_config_protocol_enabled ("ext-data-control"))
     {
       g_message ("Gnoblin ext-data-control protocol disabled by settings");
       return;

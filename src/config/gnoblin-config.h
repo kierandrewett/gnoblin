@@ -42,6 +42,10 @@ gboolean gnoblin_config_get_bool(const char* section, const char* key, gboolean 
 int gnoblin_config_get_int(const char* section, const char* key, int fallback);
 char* gnoblin_config_get_string(const char* section, const char* key); /* g_free, or NULL */
 
+/* Protocols are available only in the Gnoblin session. Within that boundary,
+ * the named [protocols] key defaults on and may explicitly disable a global. */
+gboolean gnoblin_config_protocol_enabled(const char* key);
+
 /* All values of a repeated `key` in `[section]`, in file order (e.g. every
  * `exec` in [startup]). g_strfreev, or NULL if none. */
 char** gnoblin_config_get_list(const char* section, const char* key);

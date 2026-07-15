@@ -270,6 +270,14 @@ char* gnoblin_config_get_string(const char* section_name, const char* key) {
     return g_strdup(v);
 }
 
+gboolean gnoblin_config_protocol_enabled(const char* key) {
+    const char* mode = g_getenv("GNOME_SHELL_SESSION_MODE");
+
+    if (g_strcmp0(mode, "gnoblin") != 0)
+        return FALSE;
+    return gnoblin_config_get_bool("protocols", key, TRUE);
+}
+
 char** gnoblin_config_get_list(const char* section_name, const char* key) {
     GPtrArray* entries = loaded_section(section_name);
     GPtrArray* out;

@@ -238,7 +238,7 @@ bind_idle_notifier (struct wl_client *client,
 void
 meta_wayland_init_idle_notify (MetaWaylandCompositor *compositor)
 {
-  if (!gnoblin_config_get_bool ("protocols", "ext-idle-notify", TRUE))
+  if (!gnoblin_config_protocol_enabled ("ext-idle-notify"))
     {
       g_message ("Gnoblin ext-idle-notify protocol disabled by settings");
       return;

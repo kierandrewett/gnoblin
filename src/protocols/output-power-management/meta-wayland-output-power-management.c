@@ -248,7 +248,7 @@ meta_wayland_init_output_power_management (MetaWaylandCompositor *compositor)
   MetaBackend *backend = meta_context_get_backend (context);
   MetaWaylandOutputPowerContext *ctx;
 
-  if (!gnoblin_config_get_bool ("protocols", "wlr-output-power-management", TRUE))
+  if (!gnoblin_config_protocol_enabled ("wlr-output-power-management"))
     {
       g_message ("Gnoblin wlr-output-power-management protocol disabled by settings");
       return;

@@ -1324,7 +1324,7 @@ bind_layer_shell (struct wl_client *client,
 void
 meta_wayland_init_layer_shell (MetaWaylandCompositor *compositor)
 {
-  if (!gnoblin_config_get_bool ("protocols", "wlr-layer-shell", TRUE))
+  if (!gnoblin_config_protocol_enabled ("wlr-layer-shell"))
     {
       g_message ("Gnoblin wlr-layer-shell protocol disabled by settings");
       return;

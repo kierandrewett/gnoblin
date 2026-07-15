@@ -194,6 +194,11 @@ gnome-devkit-verify:
 gnome-verify:
     ./scripts/run-gnome-shell.sh
 
+# Headless: boot stock GNOME mode from the patched packages and prove Gnoblin's
+# custom Wayland globals and org.gnoblin.Shell component remain unavailable.
+gnome-stock-protocol-isolation-verify:
+    ./scripts/test-stock-protocol-isolation.sh
+
 # Headless: exercise the org.gnoblin.* control protocol end-to-end over D-Bus
 # (Ping / GetVersion / Reload → soft in-process reload).
 gnome-dbus-verify:
