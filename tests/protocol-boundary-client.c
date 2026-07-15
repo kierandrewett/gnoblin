@@ -23,6 +23,7 @@ struct protocols
   struct zwlr_screencopy_manager_v1 *screencopy;
   struct wl_output *output;
   struct wl_shm *shm;
+  struct wl_compositor *compositor;
 };
 
 static uint32_t
@@ -58,6 +59,43 @@ foreign_finished (void *data,
 static const struct zwlr_foreign_toplevel_manager_v1_listener foreign_listener = {
   .toplevel = foreign_toplevel,
   .finished = foreign_finished,
+};
+
+struct layer_surface_state
+{
+  bool configured;
+  uint32_t serial;
+  uint32_t width;
+  uint32_t height;
+};
+
+static void
+layer_configure (void *data,
+                 struct zwlr_layer_surface_v1 *layer_surface,
+                 uint32_t serial,
+                 uint32_t width,
+                 uint32_t height)
+{
+  struct layer_surface_state *state = data;
+
+  (void) layer_surface;
+  state->configured = true;
+  state->serial = serial;
+  state->width = width;
+  state->height = height;
+}
+
+static void
+layer_closed (void *data,
+              struct zwlr_layer_surface_v1 *layer_surface)
+{
+  (void) data;
+  (void) layer_surface;
+}
+
+static const struct zwlr_layer_surface_v1_listener layer_listener = {
+  .configure = layer_configure,
+  .closed = layer_closed,
 };
 
 
@@ -205,6 +243,10 @@ registry_global (void *data,
   else if (strcmp (interface, wl_shm_interface.name) == 0)
     protocols->shm =
       wl_registry_bind (registry, name, &wl_shm_interface, 1);
+  else if (strcmp (interface, wl_compositor_interface.name) == 0)
+    protocols->compositor =
+      wl_registry_bind (registry, name, &wl_compositor_interface,
+                        supported_version (version, 6));
 }
 
 static void
@@ -237,7 +279,162 @@ test_foreign_toplevel_stop (struct wl_display *display,
       return false;
     }
 
+  /* The destructor event releases the client-side id. A fresh sync normally
+   * reuses it, which the server can only accept if it destroyed its matching
+   * manager resource after sending finished. */
+  if (wl_display_roundtrip (display) < 0)
+    {
+      fprintf (stderr,
+               "FAIL: foreign-toplevel manager resource survived finished\n");
+      return false;
+    }
+
   protocols->foreign_toplevel = NULL;
+  return true;
+}
+
+static bool
+test_layer_surface_boundaries (void)
+{
+  struct protocols protocols = { 0 };
+  struct layer_surface_state state = { 0 };
+  struct wl_display *display = wl_display_connect (NULL);
+  struct wl_registry *registry;
+  struct wl_surface *surface;
+  struct zwlr_layer_surface_v1 *layer_surface;
+  struct wl_shm_pool *pool;
+  struct wl_buffer *buffer;
+  const struct wl_interface *error_interface = NULL;
+  uint32_t error_object_id = 0;
+  uint32_t layer_object_id;
+  uint32_t protocol_error;
+  int roundtrip_result;
+  char path[] = "/tmp/gnoblin-layer-XXXXXX";
+  int fd = -1;
+
+  if (!display)
+    {
+      fprintf (stderr, "FAIL: layer boundary client could not connect\n");
+      return false;
+    }
+
+  registry = wl_display_get_registry (display);
+  wl_registry_add_listener (registry, &registry_listener, &protocols);
+  if (wl_display_roundtrip (display) < 0 ||
+      !protocols.compositor ||
+      !protocols.layer_shell ||
+      !protocols.output ||
+      !protocols.shm)
+    {
+      fprintf (stderr, "FAIL: layer boundary client missed required globals\n");
+      wl_display_disconnect (display);
+      return false;
+    }
+
+  surface = wl_compositor_create_surface (protocols.compositor);
+  layer_surface = zwlr_layer_shell_v1_get_layer_surface (
+    protocols.layer_shell,
+    surface,
+    protocols.output,
+    ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+    "gnoblin-boundary-test");
+  zwlr_layer_surface_v1_add_listener (layer_surface, &layer_listener, &state);
+  zwlr_layer_surface_v1_set_anchor (
+    layer_surface,
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+  zwlr_layer_surface_v1_set_size (layer_surface, 0, 1);
+  zwlr_layer_surface_v1_set_margin (layer_surface,
+                                    INT32_MAX,
+                                    INT32_MAX,
+                                    INT32_MAX,
+                                    INT32_MAX);
+  zwlr_layer_surface_v1_set_exclusive_zone (layer_surface, INT32_MAX);
+  wl_surface_commit (surface);
+  if (wl_display_roundtrip (display) < 0 ||
+      !state.configured ||
+      state.width != 1 ||
+      state.height != 1)
+    {
+      fprintf (stderr,
+               "FAIL: extreme layer margins produced unsafe geometry\n");
+      wl_display_disconnect (display);
+      return false;
+    }
+
+  fd = mkstemp (path);
+  if (fd < 0 || unlink (path) != 0 || ftruncate (fd, 4) != 0)
+    {
+      fprintf (stderr, "FAIL: could not create layer SHM buffer\n");
+      if (fd >= 0)
+        close (fd);
+      wl_display_disconnect (display);
+      return false;
+    }
+  pool = wl_shm_create_pool (protocols.shm, fd, 4);
+  buffer = wl_shm_pool_create_buffer (pool,
+                                      0,
+                                      1,
+                                      1,
+                                      4,
+                                      WL_SHM_FORMAT_ARGB8888);
+  wl_shm_pool_destroy (pool);
+  zwlr_layer_surface_v1_ack_configure (layer_surface, state.serial);
+  wl_surface_attach (surface, buffer, 0, 0);
+  wl_surface_damage_buffer (surface, 0, 0, 1, 1);
+  wl_surface_commit (surface);
+  if (wl_display_roundtrip (display) < 0)
+    {
+      fprintf (stderr, "FAIL: extreme exclusive zone killed the compositor\n");
+      close (fd);
+      wl_display_disconnect (display);
+      return false;
+    }
+  wl_buffer_destroy (buffer);
+  zwlr_layer_surface_v1_destroy (layer_surface);
+  wl_surface_destroy (surface);
+  close (fd);
+  if (wl_display_roundtrip (display) < 0)
+    {
+      fprintf (stderr, "FAIL: valid layer surface did not tear down cleanly\n");
+      wl_display_disconnect (display);
+      return false;
+    }
+
+  surface = wl_compositor_create_surface (protocols.compositor);
+  layer_surface = zwlr_layer_shell_v1_get_layer_surface (
+    protocols.layer_shell,
+    surface,
+    protocols.output,
+    ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+    "gnoblin-boundary-test");
+  layer_object_id = wl_proxy_get_id ((struct wl_proxy *) layer_surface);
+  zwlr_layer_surface_v1_set_anchor (
+    layer_surface,
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+  zwlr_layer_surface_v1_set_size (layer_surface, UINT32_MAX, 1);
+  wl_surface_commit (surface);
+
+  roundtrip_result = wl_display_roundtrip (display);
+  protocol_error = wl_display_get_protocol_error (display,
+                                                  &error_interface,
+                                                  &error_object_id);
+  if (roundtrip_result >= 0 ||
+      wl_display_get_error (display) != EPROTO ||
+      protocol_error != ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE ||
+      error_interface != &zwlr_layer_surface_v1_interface ||
+      error_object_id != layer_object_id)
+    {
+      fprintf (stderr,
+               "FAIL: oversized layer surface produced the wrong protocol error\n");
+      wl_display_disconnect (display);
+      return false;
+    }
+
+  wl_display_disconnect (display);
   return true;
 }
 
@@ -397,6 +594,9 @@ main (void)
       return 1;
     }
 
+  if (!test_layer_surface_boundaries ())
+    return 1;
+
   if (!test_foreign_toplevel_stop (display, &protocols))
     return 1;
 
@@ -404,6 +604,6 @@ main (void)
     return 1;
 
   wl_display_disconnect (display);
-  printf ("PASS: screencopy rejects overflow geometry and incorrect stride\n");
+  printf ("PASS: protocol manager lifecycle and geometry boundaries hold\n");
   return 0;
 }

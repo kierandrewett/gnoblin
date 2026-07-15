@@ -220,6 +220,17 @@ validate_layer_surface_state (MetaWaylandLayerSurface      *layer_surface,
       return FALSE;
     }
 
+  if (state->desired_width > G_MAXINT ||
+      state->desired_height > G_MAXINT)
+    {
+      wl_resource_post_error (layer_surface->resource,
+                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
+                              "layer surface size %ux%u exceeds compositor limits",
+                              state->desired_width,
+                              state->desired_height);
+      return FALSE;
+    }
+
   if (state->desired_width == 0 && !has_horizontal_span (state->anchor))
     {
       wl_resource_post_error (layer_surface->resource,
@@ -329,56 +340,73 @@ get_effective_exclusive_edge (MetaWaylandLayerSurfaceState *state,
   return FALSE;
 }
 
+static int
+clamp_geometry_coordinate (gint64 value)
+{
+  return (int) CLAMP (value, G_MININT, G_MAXINT);
+}
+
 static MtkRectangle
 calculate_geometry (MetaWaylandLayerSurface *layer_surface,
                     MtkRectangle             mon)
 {
   MetaWaylandLayerSurfaceState *state = &layer_surface->current;
-  gboolean anchor_left   = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-  gboolean anchor_right  = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-  gboolean anchor_top    = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+  gboolean anchor_left = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+  gboolean anchor_right = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+  gboolean anchor_top = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
   gboolean anchor_bottom = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
-  int ml = state->margin_left, mr = state->margin_right;
-  int mt = state->margin_top, mb = state->margin_bottom;
-  int w = (int) state->desired_width;
-  int h = (int) state->desired_height;
-  MtkRectangle r;
+  gint64 ml = state->margin_left;
+  gint64 mr = state->margin_right;
+  gint64 mt = state->margin_top;
+  gint64 mb = state->margin_bottom;
+  gint64 width = state->desired_width;
+  gint64 height = state->desired_height;
+  gint64 x;
+  gint64 y;
 
   /* A zero dimension means "stretch between opposite anchors". */
-  if (w <= 0)
-    w = MAX (1, mon.width - ml - mr);
-  if (h <= 0)
-    h = MAX (1, mon.height - mt - mb);
+  if (width == 0)
+    width = MAX ((gint64) 1, (gint64) mon.width - ml - mr);
+  if (height == 0)
+    height = MAX ((gint64) 1, (gint64) mon.height - mt - mb);
 
-  /* Clamp an over-large size to the monitor when anchored to a single edge of
-   * that axis. This lets a surface that wants to span the whole output but
-   * reserve only one edge (a bar with a drop-down area: anchor TOP|LEFT|RIGHT +
-   * a huge height) be sized to the output without the client having to know the
-   * resolution — and, crucially, keep a single-edge anchor so the exclusive
-   * zone resolves to that edge (all-four anchors make the edge ambiguous, and
-   * sctk has no v5 set_exclusive_edge). */
+  /* A surface anchored to one edge cannot extend past the opposite output
+   * edge. Keep at least one pixel even when an extreme margin consumes the
+   * available span. */
   if (anchor_top != anchor_bottom)
-    h = MIN (h, mon.height - (anchor_top ? mt : mb));
+    height = MIN (height,
+                  MAX ((gint64) 1,
+                       (gint64) mon.height - (anchor_top ? mt : mb)));
   if (anchor_left != anchor_right)
-    w = MIN (w, mon.width - (anchor_left ? ml : mr));
+    width = MIN (width,
+                 MAX ((gint64) 1,
+                      (gint64) mon.width - (anchor_left ? ml : mr)));
+
+  width = CLAMP (width, (gint64) 1, (gint64) G_MAXINT);
+  height = CLAMP (height, (gint64) 1, (gint64) G_MAXINT);
 
   if (anchor_left && !anchor_right)
-    r.x = mon.x + ml;
+    x = (gint64) mon.x + ml;
   else if (anchor_right && !anchor_left)
-    r.x = mon.x + mon.width - w - mr;
+    x = (gint64) mon.x + mon.width - width - mr;
   else
-    r.x = mon.x + (mon.width - w) / 2 + (ml - mr) / 2;
+    x = (gint64) mon.x + ((gint64) mon.width - width) / 2 +
+        (ml - mr) / 2;
 
   if (anchor_top && !anchor_bottom)
-    r.y = mon.y + mt;
+    y = (gint64) mon.y + mt;
   else if (anchor_bottom && !anchor_top)
-    r.y = mon.y + mon.height - h - mb;
+    y = (gint64) mon.y + mon.height - height - mb;
   else
-    r.y = mon.y + (mon.height - h) / 2 + (mt - mb) / 2;
+    y = (gint64) mon.y + ((gint64) mon.height - height) / 2 +
+        (mt - mb) / 2;
 
-  r.width = w;
-  r.height = h;
-  return r;
+  return (MtkRectangle) {
+    .x = clamp_geometry_coordinate (x),
+    .y = clamp_geometry_coordinate (y),
+    .width = (int) width,
+    .height = (int) height,
+  };
 }
 
 static void
@@ -505,53 +533,76 @@ update_exclusive_zone_struts (MetaWaylandLayerSurface *layer_surface,
                               MtkRectangle             mon)
 {
   MetaWaylandLayerSurfaceState *state = &layer_surface->current;
-  int zone = state->exclusive_zone;
+  gint64 extent = 0;
   uint32_t edge;
+  MetaSide side = META_SIDE_TOP;
 
   /* Drop any strut we previously reserved before recomputing. */
   g_clear_slist (&window->struts, g_free);
 
-  if (zone > 0 && get_effective_exclusive_edge (state, &edge))
+  if (state->exclusive_zone > 0 &&
+      mon.width > 0 &&
+      mon.height > 0 &&
+      get_effective_exclusive_edge (state, &edge))
     {
-      MetaStrut *strut = g_new0 (MetaStrut, 1);
-
-      if (edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP)
+      switch (edge)
         {
-          strut->side = META_SIDE_TOP;
-          strut->rect = (MtkRectangle) {
-            mon.x, mon.y, mon.width, zone + state->margin_top
-          };
-        }
-      else if (edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM)
-        {
-          strut->side = META_SIDE_BOTTOM;
-          strut->rect = (MtkRectangle) {
-            mon.x, mon.y + mon.height - (zone + state->margin_bottom),
-            mon.width, zone + state->margin_bottom
-          };
-        }
-      else if (edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT)
-        {
-          strut->side = META_SIDE_LEFT;
-          strut->rect = (MtkRectangle) {
-            mon.x, mon.y, zone + state->margin_left, mon.height
-          };
-        }
-      else
-        {
-          strut->side = META_SIDE_RIGHT;
-          strut->rect = (MtkRectangle) {
-            mon.x + mon.width - (zone + state->margin_right), mon.y,
-            zone + state->margin_right, mon.height
-          };
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
+          side = META_SIDE_TOP;
+          extent = (gint64) state->exclusive_zone + state->margin_top;
+          extent = CLAMP (extent, (gint64) 0, (gint64) mon.height);
+          break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
+          side = META_SIDE_BOTTOM;
+          extent = (gint64) state->exclusive_zone + state->margin_bottom;
+          extent = CLAMP (extent, (gint64) 0, (gint64) mon.height);
+          break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
+          side = META_SIDE_LEFT;
+          extent = (gint64) state->exclusive_zone + state->margin_left;
+          extent = CLAMP (extent, (gint64) 0, (gint64) mon.width);
+          break;
+        case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
+          side = META_SIDE_RIGHT;
+          extent = (gint64) state->exclusive_zone + state->margin_right;
+          extent = CLAMP (extent, (gint64) 0, (gint64) mon.width);
+          break;
+        default:
+          g_assert_not_reached ();
         }
 
-      window->struts = g_slist_prepend (NULL, strut);
+      if (extent > 0)
+        {
+          MetaStrut *strut = g_new0 (MetaStrut, 1);
+
+          strut->side = side;
+          if (side == META_SIDE_TOP)
+            strut->rect = (MtkRectangle) {
+              mon.x, mon.y, mon.width, (int) extent
+            };
+          else if (side == META_SIDE_BOTTOM)
+            strut->rect = (MtkRectangle) {
+              mon.x,
+              clamp_geometry_coordinate ((gint64) mon.y + mon.height - extent),
+              mon.width,
+              (int) extent
+            };
+          else if (side == META_SIDE_LEFT)
+            strut->rect = (MtkRectangle) {
+              mon.x, mon.y, (int) extent, mon.height
+            };
+          else
+            strut->rect = (MtkRectangle) {
+              clamp_geometry_coordinate ((gint64) mon.x + mon.width - extent),
+              mon.y,
+              (int) extent,
+              mon.height
+            };
+
+          window->struts = g_slist_prepend (NULL, strut);
+        }
     }
 
-  /* Recompute work areas so normal windows reflow around (or reclaim) the
-   * reserved space. Layer docks are usually on all workspaces, so if the
-   * window has no single workspace, invalidate them all. */
   invalidate_work_areas_for_window (window);
 }
 
