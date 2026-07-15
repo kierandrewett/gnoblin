@@ -31,9 +31,30 @@ export GDK_BACKEND=wayland GNOME_SHELL_SESSION_MODE=gnoblin XDG_CURRENT_DESKTOP=
 DK="$(mktemp -d /tmp/gnoblin-dbus.XXXXXX)"
 mkdir -p "$DK"/{data,config,cache,home}
 export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
-# Seed a fake per-app screencast grant so ListScreencastGrants/RevokeScreencastGrant
-# can be exercised (the portal backend would normally write this on "always allow").
-mkdir -p "$DK/config/gnoblin/portal-grants"; : > "$DK/config/gnoblin/portal-grants/testapp"
+# Seed one valid record for each portal scope. The backend normally writes these
+# after an approved session reaches its ready state.
+SCREEN_GRANT_ID="$(printf '%064x' 1).grant"
+REMOTE_GRANT_ID="$(printf '%064x' 2).grant"
+export SCREEN_GRANT_ID REMOTE_GRANT_ID
+mkdir -p "$DK/data/gnoblin/portal-grants"/{screen-cast,remote-desktop}
+cat > "$DK/data/gnoblin/portal-grants/screen-cast/$SCREEN_GRANT_ID" <<'EOF'
+[Grant]
+version=1
+portal=screen-cast
+identity=app-id:org.example.Cast
+device-types=0
+clipboard-enabled=false
+streams=[(uint32 0, uint32 1, <'monitor-A'>)]
+EOF
+cat > "$DK/data/gnoblin/portal-grants/remote-desktop/$REMOTE_GRANT_ID" <<'EOF'
+[Grant]
+version=1
+portal=remote-desktop
+identity=host-exe:/usr/bin/example-remote
+device-types=3
+clipboard-enabled=true
+streams=[(uint32 0, uint32 1, <'monitor-B'>)]
+EOF
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
 export DISP="gnoblin-dbus-$$" SHELL_LOG="$DK/shell.log"
 
@@ -102,12 +123,28 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   case "$gv" in *false*) echo "  ok: SetFeature osd-volume off";; *) echo "  FAIL: per-OSD set"; rc=1;; esac
   callp SetFeature osd-volume true >/dev/null
 
-  # screencast per-app grants: list + revoke
-  grants="$(callp ListScreencastGrants)"; echo "ListScreencastGrants -> $grants"
-  case "$grants" in *testapp*) echo "  ok: screencast grant listed";; *) echo "  FAIL: grant not listed"; rc=1;; esac
-  callp RevokeScreencastGrant testapp >/dev/null
-  grants2="$(callp ListScreencastGrants)"; echo "ListScreencastGrants (after revoke) -> $grants2"
-  case "$grants2" in *testapp*) echo "  FAIL: grant not revoked"; rc=1;; *) echo "  ok: grant revoked";; esac
+  # typed, portal-scoped grants: list both kinds, reject traversal, revoke one
+  grants="$(callp ListPortalGrants)"; echo "ListPortalGrants -> $grants"
+  case "$grants" in
+    *screen-cast*app-id:org.example.Cast*) echo "  ok: screen-cast grant listed";;
+    *) echo "  FAIL: screen-cast grant missing"; rc=1;;
+  esac
+  case "$grants" in
+    *remote-desktop*host-exe:/usr/bin/example-remote*uint32\ 3*true*true*) echo "  ok: remote-desktop capabilities listed";;
+    *) echo "  FAIL: remote-desktop grant missing"; rc=1;;
+  esac
+  if callp RevokePortalGrant screen-cast ../outside.grant >/dev/null; then
+    echo "  FAIL: invalid grant id accepted"; rc=1
+  else
+    echo "  ok: invalid grant id rejected"
+  fi
+  callp RevokePortalGrant screen-cast "$SCREEN_GRANT_ID" >/dev/null
+  grants2="$(callp ListPortalGrants)"; echo "ListPortalGrants (after revoke) -> $grants2"
+  case "$grants2" in
+    *org.example.Cast*) echo "  FAIL: screen-cast grant not revoked"; rc=1;;
+    *example-remote*) echo "  ok: scoped revoke retained remote-desktop grant";;
+    *) echo "  FAIL: scoped revoke removed the wrong grant"; rc=1;;
+  esac
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc

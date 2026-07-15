@@ -5,9 +5,9 @@
  *
  *   - Feature toggles: ListFeatures() -> a(ssb), one AdwSwitchRow per feature;
  *     flipping a row calls SetFeature(id, bool).
- *   - Screencast grants: ListScreencastGrants() -> as, one AdwActionRow per
- *     granted app with a Revoke button -> RevokeScreencastGrant(id). This is the
- *     equivalent of macOS "Screen Recording" privacy pane.
+ *   - Portal grants: ListPortalGrants() -> a(sssubb), one AdwActionRow per
+ *     persistent Screen Cast or Remote Desktop grant with a Revoke button ->
+ *     RevokePortalGrant(portal, id).
  *   - "Reload gnoblin": Reload() -> soft in-process shell reload.
  *
  * The rows are built at runtime from the live bus, so the .ui only carries the
@@ -29,6 +29,10 @@
 #define GNOBLIN_OBJECT_PATH "/org/gnoblin/Shell"
 #define GNOBLIN_IFACE       "org.gnoblin.Shell"
 
+#define GNOBLIN_REMOTE_DEVICE_KEYBOARD    (1u << 0)
+#define GNOBLIN_REMOTE_DEVICE_POINTER     (1u << 1)
+#define GNOBLIN_REMOTE_DEVICE_TOUCHSCREEN (1u << 2)
+
 struct _CcGnoblinPanel
 {
   CcPanel parent_instance;
@@ -43,7 +47,7 @@ struct _CcGnoblinPanel
   GCancellable *cancellable;
 
   GList *feature_rows;        /* GtkWidget* rows currently in features_group */
-  GList *grant_rows;          /* GtkWidget* rows currently in screencast_group */
+  GList *grant_rows;          /* GtkWidget* portal rows in screencast_group */
 
   gboolean applying;          /* re-entrancy guard while we push a SetFeature */
 };
@@ -194,31 +198,53 @@ reload_features (CcGnoblinPanel *self)
                      self->cancellable, list_features_cb, g_object_ref (self));
 }
 
-/* --- screencast grants --------------------------------------------------- */
+/* --- portal grants ------------------------------------------------------- */
+
+static void
+revoke_grant_done_cb (GObject      *source,
+                      GAsyncResult *res,
+                      gpointer      user_data)
+{
+  g_autoptr(CcGnoblinPanel) self = user_data;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GVariant) ret = NULL;
+
+  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    return;
+
+  if (error != NULL)
+    {
+      g_warning ("gnoblin: RevokePortalGrant failed: %s", error->message);
+      return;
+    }
+
+  reload_grants (self);
+}
 
 static void
 on_revoke_clicked (GtkButton *button,
                    gpointer   user_data)
 {
   CcGnoblinPanel *self = CC_GNOBLIN_PANEL (user_data);
+  GVariant *grant;
+  const char *portal;
   const char *id;
 
   if (self->proxy == NULL)
     return;
 
-  id = g_object_get_data (G_OBJECT (button), "gnoblin-grant-id");
-  if (id == NULL)
+  grant = g_object_get_data (G_OBJECT (button), "gnoblin-portal-grant");
+  if (grant == NULL)
     return;
 
+  g_variant_get (grant, "(&s&s)", &portal, &id);
   g_dbus_proxy_call (self->proxy,
-                     "RevokeScreencastGrant",
-                     g_variant_new ("(s)", id),
+                     "RevokePortalGrant",
+                     g_variant_new ("(ss)", portal, id),
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, call_done_cb, NULL);
-
-  /* Optimistically drop it from the list; a fresh ListScreencastGrants would
-   * also work but this keeps the UI snappy. */
-  reload_grants (self);
+                     self->cancellable, revoke_grant_done_cb,
+                     g_object_ref (self));
 }
 
 static void
@@ -229,9 +255,13 @@ list_grants_cb (GObject      *source,
   g_autoptr(CcGnoblinPanel) self = user_data;   /* ref taken by the caller */
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
-  g_autoptr(GVariant) array = NULL;
-  g_autofree const char **ids = NULL;
-  gsize n = 0;
+  g_autoptr(GVariantIter) iter = NULL;
+  const char *id;
+  const char *portal;
+  const char *requester;
+  guint32 remote_devices;
+  gboolean clipboard_enabled;
+  gboolean has_screen_streams;
 
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
@@ -239,38 +269,82 @@ list_grants_cb (GObject      *source,
 
   if (error != NULL)
     {
-      g_warning ("gnoblin: ListScreencastGrants failed: %s", error->message);
+      g_warning ("gnoblin: ListPortalGrants failed: %s", error->message);
       return;
     }
 
-  /* ids' strings are owned by `array`; keep it alive (g_autoptr) until scope end,
-   * which is after the loop below consumes them. */
-  array = g_variant_get_child_value (ret, 0);
-  ids = g_variant_get_strv (array, &n);
+  if (!g_variant_is_of_type (ret, G_VARIANT_TYPE ("(a(sssubb))")))
+    {
+      g_warning ("gnoblin: ListPortalGrants returned unexpected type %s",
+                 g_variant_get_type_string (ret));
+      return;
+    }
 
-  if (n == 0)
+  g_variant_get (ret, "(a(sssubb))", &iter);
+  if (g_variant_iter_n_children (iter) == 0)
     {
       GtkWidget *row = adw_action_row_new ();
       adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row),
-                                     _("No apps have screen-recording access"));
+                                     _("No apps have Screen Cast or Remote Desktop access"));
       gtk_widget_set_sensitive (row, FALSE);
       adw_preferences_group_add (self->screencast_group, row);
       self->grant_rows = g_list_prepend (self->grant_rows, row);
       return;
     }
 
-  for (gsize i = 0; i < n; i++)
+  while (g_variant_iter_loop (iter, "(&s&s&subb)",
+                              &id, &portal, &requester,
+                              &remote_devices, &clipboard_enabled,
+                              &has_screen_streams))
     {
+      g_autofree char *subtitle = NULL;
+      const char *title = requester;
       GtkWidget *row = adw_action_row_new ();
       GtkWidget *button;
 
-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), ids[i]);
+      if (g_str_has_prefix (requester, "app-id:"))
+        title += sizeof ("app-id:") - 1;
+      else if (g_str_has_prefix (requester, "host-exe:"))
+        title += sizeof ("host-exe:") - 1;
+
+      if (g_str_equal (portal, "screen-cast"))
+        subtitle = g_strdup (_("Screen Cast"));
+      else if (g_str_equal (portal, "remote-desktop"))
+        {
+          char *capabilities[6] = { NULL, };
+          guint n_capabilities = 0;
+
+          if (has_screen_streams)
+            capabilities[n_capabilities++] = _("Screen");
+          if (remote_devices & GNOBLIN_REMOTE_DEVICE_KEYBOARD)
+            capabilities[n_capabilities++] = _("Keyboard");
+          if (remote_devices & GNOBLIN_REMOTE_DEVICE_POINTER)
+            capabilities[n_capabilities++] = _("Pointer");
+          if (remote_devices & GNOBLIN_REMOTE_DEVICE_TOUCHSCREEN)
+            capabilities[n_capabilities++] = _("Touchscreen");
+          if (clipboard_enabled)
+            capabilities[n_capabilities++] = _("Clipboard");
+
+          if (n_capabilities > 0)
+            {
+              g_autofree char *capability_list = g_strjoinv (", ", capabilities);
+              subtitle = g_strdup_printf (_("Remote Desktop: %s"), capability_list);
+            }
+          else
+            subtitle = g_strdup (_("Remote Desktop"));
+        }
+      else
+        subtitle = g_strdup (portal);
+
+      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
+      adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
 
       button = gtk_button_new_with_label (_("Revoke"));
       gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
       gtk_widget_add_css_class (button, "destructive-action");
-      g_object_set_data_full (G_OBJECT (button), "gnoblin-grant-id",
-                              g_strdup (ids[i]), g_free);
+      g_object_set_data_full (G_OBJECT (button), "gnoblin-portal-grant",
+                              g_variant_ref_sink (g_variant_new ("(ss)", portal, id)),
+                              (GDestroyNotify) g_variant_unref);
       g_signal_connect (button, "clicked", G_CALLBACK (on_revoke_clicked), self);
 
       adw_action_row_add_suffix (ADW_ACTION_ROW (row), button);
@@ -286,7 +360,7 @@ reload_grants (CcGnoblinPanel *self)
   if (self->proxy == NULL)
     return;
 
-  g_dbus_proxy_call (self->proxy, "ListScreencastGrants", NULL,
+  g_dbus_proxy_call (self->proxy, "ListPortalGrants", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
                      self->cancellable, list_grants_cb, g_object_ref (self));
 }

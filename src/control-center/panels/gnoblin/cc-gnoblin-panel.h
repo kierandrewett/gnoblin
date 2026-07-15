@@ -1,7 +1,7 @@
 /* cc-gnoblin-panel.h
  *
  * gnoblin overlay panel for gnome-control-center. Drives the org.gnoblin.Shell
- * control protocol (feature toggles + screencast grants + soft reload). This
+ * control protocol (feature toggles + typed portal grants + soft reload). This
  * file is gnoblin overlay source (src/control-center/), copied verbatim into the
  * gnome-control-center submodule by scripts/copy-overlay.sh; the only upstream
  * edits are a one-line panel-list entry in shell/cc-panel-loader.c and a one-line

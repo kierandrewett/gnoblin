@@ -25,6 +25,11 @@ const BUS_NAME = 'org.gnoblin.Shell';
 const OBJECT_PATH = '/org/gnoblin/Shell';
 const SCHEMA_ID = 'org.gnoblin.shell';
 const DISABLED_KEY = 'disabled-features';
+const PORTAL_GRANT_KINDS = ['screen-cast', 'remote-desktop'];
+const PORTAL_GRANT_FILE_PATTERN = /^[0-9a-f]{64}\.grant$/;
+const PORTAL_GRANT_GROUP = 'Grant';
+const PORTAL_GRANT_VERSION = 1;
+
 
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
@@ -327,13 +332,14 @@ const IFACE = `
     </method>
     <!-- Reload all user scripts in-place (re-imports fresh source). -->
     <method name="ReloadScripts"/>
-    <!-- Screencast/remote-desktop per-app grants (macOS-style "always allow this
-         app"). The portal backend writes one file per granted app/binary id under
-         ~/.config/gnoblin/portal-grants/; these list + revoke them. -->
-    <method name="ListScreencastGrants">
-      <arg type="as" direction="out" name="ids"/>
+    <!-- Typed ScreenCast/RemoteDesktop grants. Each tuple is:
+         [opaque id, portal kind, namespaced requester identity,
+          remote device mask, clipboard enabled, screen streams enabled]. -->
+    <method name="ListPortalGrants">
+      <arg type="a(sssubb)" direction="out" name="grants"/>
     </method>
-    <method name="RevokeScreencastGrant">
+    <method name="RevokePortalGrant">
+      <arg type="s" direction="in" name="portal"/>
       <arg type="s" direction="in" name="id"/>
     </method>
     <!-- Feature toggles: gate gnome-shell subsystems on/off live. -->
@@ -542,39 +548,101 @@ export class Component {
         console.log('gnoblin-control: reloading user scripts');
     }
 
-    _grantsDir() {
-        return GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin', 'portal-grants']);
+    _grantsDir(portal) {
+        return GLib.build_filenamev([
+            GLib.get_user_data_dir(), 'gnoblin', 'portal-grants', portal,
+        ]);
     }
 
-    ListScreencastGrants() {
-        const dir = Gio.File.new_for_path(this._grantsDir());
-        if (!dir.query_exists(null))
-            return [];
-        let e;
+    _readPortalGrant(portal, id) {
+        const path = GLib.build_filenamev([this._grantsDir(portal), id]);
+        const keyFile = new GLib.KeyFile();
+
         try {
-            e = dir.enumerate_children('standard::name,standard::type',
-                Gio.FileQueryInfoFlags.NONE, null);
-        } catch {
-            return [];
+            keyFile.load_from_file(path, 0);
+            const version = keyFile.get_integer(PORTAL_GRANT_GROUP, 'version');
+            const storedPortal = keyFile.get_string(PORTAL_GRANT_GROUP, 'portal');
+            const identity = keyFile.get_string(PORTAL_GRANT_GROUP, 'identity');
+            const deviceTypes =
+                keyFile.get_integer(PORTAL_GRANT_GROUP, 'device-types');
+            const clipboardEnabled =
+                keyFile.get_boolean(PORTAL_GRANT_GROUP, 'clipboard-enabled');
+            let hasStreams = true;
+            try {
+                keyFile.get_string(PORTAL_GRANT_GROUP, 'streams');
+            } catch {
+                hasStreams = false;
+            }
+            const validIdentity =
+                (identity.startsWith('app-id:') && identity.length > 7) ||
+                (identity.startsWith('host-exe:/') && identity.length > 10);
+            const validCapabilities = portal === 'screen-cast'
+                ? deviceTypes === 0 && !clipboardEnabled && hasStreams
+                : deviceTypes >= 0 &&
+                    (deviceTypes & ~7) === 0 &&
+                    (deviceTypes !== 0 || clipboardEnabled || hasStreams);
+
+            if (version !== PORTAL_GRANT_VERSION ||
+                storedPortal !== portal ||
+                !validIdentity ||
+                !validCapabilities)
+                throw new Error('grant metadata does not match its scope');
+
+            return [
+                id, portal, identity, deviceTypes, clipboardEnabled, hasStreams,
+            ];
+        } catch (e) {
+            logError(e, `gnoblin: ignoring invalid portal grant ${portal}/${id}`);
+            return null;
         }
-        const ids = [];
-        let info;
-        while ((info = e.next_file(null)) !== null) {
-            if (info.get_file_type() === Gio.FileType.REGULAR)
-                ids.push(info.get_name());
-        }
-        return ids.sort();
     }
 
-    RevokeScreencastGrant(id) {
-        // Guard against path traversal: only a bare filename is a valid grant id.
-        if (!id || id.includes('/') || id === '.' || id === '..')
-            throw new Error(`invalid grant id: ${id}`);
-        const file = Gio.File.new_for_path(GLib.build_filenamev([this._grantsDir(), id]));
+    ListPortalGrants() {
+        const grants = [];
+
+        for (const portal of PORTAL_GRANT_KINDS) {
+            const dir = Gio.File.new_for_path(this._grantsDir(portal));
+            let enumerator;
+
+            try {
+                enumerator = dir.enumerate_children(
+                    'standard::name,standard::type',
+                    Gio.FileQueryInfoFlags.NONE,
+                    null);
+                let info;
+                while ((info = enumerator.next_file(null)) !== null) {
+                    const id = info.get_name();
+                    if (info.get_file_type() !== Gio.FileType.REGULAR ||
+                        !PORTAL_GRANT_FILE_PATTERN.test(id))
+                        continue;
+                    const grant = this._readPortalGrant(portal, id);
+                    if (grant)
+                        grants.push(grant);
+                }
+            } catch (e) {
+                if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                    logError(e, `gnoblin: failed to list ${portal} grants`);
+            } finally {
+                enumerator?.close(null);
+            }
+        }
+
+        return grants.sort((a, b) =>
+            `${a[1]}:${a[2]}:${a[0]}`.localeCompare(`${b[1]}:${b[2]}:${b[0]}`));
+    }
+
+    RevokePortalGrant(portal, id) {
+        if (!PORTAL_GRANT_KINDS.includes(portal))
+            throw new Error(`invalid portal grant kind: ${portal}`);
+        if (!PORTAL_GRANT_FILE_PATTERN.test(id))
+            throw new Error(`invalid portal grant id: ${id}`);
+
+        const file = Gio.File.new_for_path(
+            GLib.build_filenamev([this._grantsDir(portal), id]));
         if (!file.query_exists(null))
-            throw new Error(`no such grant: ${id}`);
+            throw new Error(`no such portal grant: ${portal}/${id}`);
         file.delete(null);
-        console.log(`gnoblin-control: revoked screencast grant '${id}'`);
+        console.log(`gnoblin-control: revoked portal grant '${portal}/${id}'`);
     }
 
     get IsWayland() {
