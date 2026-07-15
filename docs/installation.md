@@ -37,11 +37,12 @@ isn't a maintained dependency list for those distros yet.
 ```sh
 git clone <this-repo> gnoblin
 cd gnoblin
-just init      # fetches the pinned mutter (49.5) + gnome-shell (49.6) submodules
+just init      # fetches pinned GNOME checkouts and mandatory Meson subprojects
 ```
 
-`just init` also prints what each submodule resolved to, so you can confirm
-you're on the pinned tags.
+`just init` also materialises the pinned `gvdb`, `gvc`, `libshew`, and
+`jasmine-gjs` source trees used by no-download package builds, then prints the
+resolved Mutter and GNOME Shell tags.
 
 ## Build
 

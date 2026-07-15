@@ -26,11 +26,16 @@ export GNOBLIN_LIBDIR := libdir
 _default:
     @just --list
 
-# Initialise / update the pinned submodules.
+# Initialise / update the pinned source checkouts and mandatory Meson wraps.
 init:
     git submodule update --init --recursive
+    just prepare-tarball-sources
     @echo "mutter               -> $(git -C subprojects/mutter               describe --tags)"
     @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags)"
+
+# Materialise the pinned Meson subprojects required by no-download RPM builds.
+prepare-tarball-sources:
+    for p in {{rpm_projects}}; do ./scripts/list-tarball-sources.sh "$p" --prepare >/dev/null || exit; done
 
 # Apply the patch series to a subproject (resets it to the pinned tag first).
 patch PROJ:

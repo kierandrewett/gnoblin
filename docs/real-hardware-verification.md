@@ -15,7 +15,7 @@ from there too. The full login-session checks (§1) still matter for GDM/session
 ## 0. Build & install
 
 ```sh
-just init          # fetch pinned submodules
+just init          # fetch pinned source checkouts and Meson subprojects
 just dev           # patched mutter + patched gnome-shell + session data -> ./install
 ```
 

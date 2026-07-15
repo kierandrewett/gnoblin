@@ -91,7 +91,7 @@ two places, applied onto the pinned tags at build time:
 ## Build
 
 ```sh
-just init        # fetch the pinned mutter + gnome-shell submodules
+just init        # fetch pinned GNOME checkouts and mandatory Meson subprojects
 just dev         # build patched mutter + gnome-shell + session data into ./install
 ```
 
