@@ -36,13 +36,13 @@ else
   EXPECT_PRIVILEGED_PROTOCOLS=0
 fi
 
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
-[ -f "$PREFIX/${GNOBLIN_LIBDIR:-lib64}/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX" >&2; exit 1; }
-
 # --- runtime lookup paths (shared with run-gnome-devkit.sh, the installed
 # login wrappers) -------------------------------------------------------
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
+
+[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
+[ -f "$PREFIX/$GNOBLIN_LIBDIR/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX/$GNOBLIN_LIBDIR" >&2; exit 1; }
 export GDK_BACKEND=wayland
 # Keep the launcher-provided environment explicit. GNOME Shell must replace a
 # stale value with the effective command-line mode before Mutter initialises.
