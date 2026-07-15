@@ -95,6 +95,16 @@ JS
     echo "  FAIL: ReloadExtension replied before code reload completed"; grep HRTEST "$SHELL_LOG"; rc=1
   fi
 
+  printf "this is not valid JavaScript\n" > "$EXTDIR/extension.js"
+  if reload_error="$(gnoblin ReloadExtension hrtest@gnoblin)"; then
+    echo "  FAIL: broken extension reload reported success"; rc=1
+  else
+    case "$reload_error" in
+      *ReloadFailed*) echo "  ok: broken extension reload returned a D-Bus error" ;;
+      *) echo "  FAIL: broken extension reload returned wrong error: $reload_error"; rc=1 ;;
+    esac
+  fi
+
   kill $SHELL_PID 2>/dev/null || true
   exit $rc
 '

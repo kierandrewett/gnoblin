@@ -125,6 +125,7 @@ export async function softReload(reason = 'manual') {
         for (const uuid of active) {
             try {
                 await em.reloadExtension(em.lookup(uuid));
+                assertExtensionReloaded(em, uuid, ExtensionState.ACTIVE);
             } catch (e) {
                 failures.push(`extension ${uuid}`);
                 logError(e, `gnoblin: soft-reload of ${uuid} failed`);
@@ -329,6 +330,26 @@ class ScriptHost {
 // Human-readable name for an ExtensionState value.
 const STATE_NAMES = Object.fromEntries(
     Object.entries(ExtensionState).map(([k, v]) => [v, k.toLowerCase()]));
+
+function assertExtensionReloaded(extensionManager, uuid, expectedState = null) {
+    const extension = extensionManager.lookup(uuid);
+    if (!extension)
+        throw new Error(`extension disappeared while reloading: ${uuid}`);
+
+    const state = extension.state;
+    const settled = [
+        ExtensionState.ACTIVE,
+        ExtensionState.INACTIVE,
+        ExtensionState.INITIALIZED,
+    ];
+    if (expectedState !== null && state !== expectedState) {
+        throw new Error(
+            `extension ${uuid} reloaded as ${STATE_NAMES[state] ?? 'unknown'}, ` +
+            `expected ${STATE_NAMES[expectedState]}`);
+    }
+    if (!settled.includes(state))
+        throw new Error(`extension ${uuid} reloaded as ${STATE_NAMES[state] ?? 'unknown'}`);
+}
 
 // The wire contract. Deliberately small for now; grows with Phases 2.5/3.
 const IFACE = `
@@ -589,6 +610,7 @@ export class Component {
 
             console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
             await em.reloadExtension(ext);
+            assertExtensionReloaded(em, uuid);
         }, `extension reload (${uuid})`);
     }
 
