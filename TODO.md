@@ -44,7 +44,7 @@ cleanup. Checked items are committed and independently verified.
 ### Runtime consistency
 
 - [x] Reconcile direct GSettings changes into live feature state.
-- [ ] Synchronise Settings switches and grants with D-Bus completion/signals.
+- [x] Synchronise Settings switches and grants with D-Bus completion/signals.
 - [x] Report reload success only after asynchronous reload work completes.
 
 ### Tooling and packaging

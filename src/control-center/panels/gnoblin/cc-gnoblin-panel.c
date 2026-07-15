@@ -49,14 +49,52 @@ struct _CcGnoblinPanel
   GList *feature_rows;        /* GtkWidget* rows currently in features_group */
   GList *grant_rows;          /* GtkWidget* portal rows in screencast_group */
 
-  gboolean applying;          /* re-entrancy guard while we push a SetFeature */
+  guint feature_list_serial;
+  guint grant_list_serial;
+  gboolean disposed;
 };
 
 G_DEFINE_TYPE (CcGnoblinPanel, cc_gnoblin_panel, CC_TYPE_PANEL)
 
+typedef struct
+{
+  CcGnoblinPanel *self;
+  GtkWidget *widget;
+} PendingCall;
+
+typedef struct
+{
+  CcGnoblinPanel *self;
+  guint serial;
+} ListCall;
+
 /* forward decls */
 static void reload_features (CcGnoblinPanel *self);
 static void reload_grants   (CcGnoblinPanel *self);
+
+static PendingCall *
+pending_call_new (CcGnoblinPanel *self,
+                  GtkWidget      *widget)
+{
+  PendingCall *call = g_new0 (PendingCall, 1);
+
+  call->self = g_object_ref (self);
+  call->widget = g_object_ref (widget);
+
+  return call;
+}
+
+static ListCall *
+list_call_new (CcGnoblinPanel *self,
+               guint           serial)
+{
+  ListCall *call = g_new0 (ListCall, 1);
+
+  call->self = g_object_ref (self);
+  call->serial = serial;
+
+  return call;
+}
 
 /* --- small helpers ------------------------------------------------------- */
 
@@ -89,6 +127,8 @@ update_availability (CcGnoblinPanel *self)
     }
   else
     {
+      self->feature_list_serial++;
+      self->grant_list_serial++;
       remove_rows (self->features_group, &self->feature_rows);
       remove_rows (self->screencast_group, &self->grant_rows);
     }
@@ -99,7 +139,12 @@ on_name_owner_changed (GObject    *proxy,
                        GParamSpec *pspec,
                        gpointer    user_data)
 {
-  update_availability (CC_GNOBLIN_PANEL (user_data));
+  CcGnoblinPanel *self = CC_GNOBLIN_PANEL (user_data);
+
+  if (self->disposed)
+    return;
+
+  update_availability (self);
 }
 
 /* Fire-and-forget a method with no meaningful return; log failures. */
@@ -118,6 +163,85 @@ call_done_cb (GObject      *source,
 
 /* --- feature toggles ----------------------------------------------------- */
 
+static AdwSwitchRow *
+find_feature_row (CcGnoblinPanel *self,
+                  const char     *id)
+{
+  for (GList *l = self->feature_rows; l; l = l->next)
+    {
+      const char *row_id;
+
+      row_id = g_object_get_data (G_OBJECT (l->data), "gnoblin-feature-id");
+      if (g_strcmp0 (row_id, id) == 0)
+        return ADW_SWITCH_ROW (l->data);
+    }
+
+  return NULL;
+}
+
+static void
+set_feature_row_active (AdwSwitchRow *row,
+                        gboolean      enabled)
+{
+  g_object_set_data (G_OBJECT (row), "gnoblin-feature-syncing",
+                     GINT_TO_POINTER (TRUE));
+  adw_switch_row_set_active (row, enabled);
+  g_object_set_data (G_OBJECT (row), "gnoblin-feature-syncing", NULL);
+}
+
+static void
+on_proxy_signal (GDBusProxy *proxy,
+                 const char *sender_name,
+                 const char *signal_name,
+                 GVariant   *parameters,
+                 gpointer    user_data)
+{
+  CcGnoblinPanel *self = CC_GNOBLIN_PANEL (user_data);
+  AdwSwitchRow *row;
+  const char *id;
+  gboolean enabled;
+
+  if (self->disposed || !g_str_equal (signal_name, "FeatureChanged"))
+    return;
+
+  if (!g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(sb)")))
+    {
+      g_warning ("gnoblin: FeatureChanged returned unexpected type %s",
+                 g_variant_get_type_string (parameters));
+      return;
+    }
+
+  g_variant_get (parameters, "(&sb)", &id, &enabled);
+  row = find_feature_row (self, id);
+  if (row != NULL)
+    set_feature_row_active (row, enabled);
+}
+
+static void
+set_feature_done_cb (GObject      *source,
+                     GAsyncResult *res,
+                     gpointer      user_data)
+{
+  g_autofree PendingCall *call = user_data;
+  g_autoptr(CcGnoblinPanel) self = g_steal_pointer (&call->self);
+  g_autoptr(GtkWidget) row = g_steal_pointer (&call->widget);
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GVariant) ret = NULL;
+
+  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) ||
+      self->disposed)
+    return;
+
+  gtk_widget_set_sensitive (row, TRUE);
+
+  if (error != NULL)
+    {
+      g_warning ("gnoblin: SetFeature failed: %s", error->message);
+      reload_features (self);
+    }
+}
+
 static void
 on_feature_row_activated (AdwSwitchRow *row,
                           GParamSpec   *pspec,
@@ -127,7 +251,8 @@ on_feature_row_activated (AdwSwitchRow *row,
   const char *id;
   gboolean enabled;
 
-  if (self->applying || self->proxy == NULL)
+  if (self->proxy == NULL ||
+      g_object_get_data (G_OBJECT (row), "gnoblin-feature-syncing") != NULL)
     return;
 
   id = g_object_get_data (G_OBJECT (row), "gnoblin-feature-id");
@@ -135,11 +260,13 @@ on_feature_row_activated (AdwSwitchRow *row,
   if (id == NULL)
     return;
 
+  gtk_widget_set_sensitive (GTK_WIDGET (row), FALSE);
   g_dbus_proxy_call (self->proxy,
                      "SetFeature",
                      g_variant_new ("(sb)", id, enabled),
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, call_done_cb, NULL);
+                     self->cancellable, set_feature_done_cb,
+                     pending_call_new (self, GTK_WIDGET (row)));
 }
 
 static void
@@ -147,9 +274,8 @@ list_features_cb (GObject      *source,
                   GAsyncResult *res,
                   gpointer      user_data)
 {
-  /* The caller passed g_object_ref (self); take ownership so a queued success
-   * callback can't dereference a freed panel if it was disposed meanwhile. */
-  g_autoptr(CcGnoblinPanel) self = user_data;
+  g_autofree ListCall *call = user_data;
+  g_autoptr(CcGnoblinPanel) self = g_steal_pointer (&call->self);
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
   g_autoptr(GVariantIter) iter = NULL;
@@ -159,6 +285,8 @@ list_features_cb (GObject      *source,
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
+  if (self->disposed || call->serial != self->feature_list_serial)
+    return;
 
   if (error != NULL)
     {
@@ -166,7 +294,6 @@ list_features_cb (GObject      *source,
       return;
     }
 
-  self->applying = TRUE;
   g_variant_get (ret, "(a(ssb))", &iter);
   while (g_variant_iter_loop (iter, "(ssb)", &id, &summary, &enabled))
     {
@@ -183,19 +310,22 @@ list_features_cb (GObject      *source,
       adw_preferences_group_add (self->features_group, row);
       self->feature_rows = g_list_prepend (self->feature_rows, row);
     }
-  self->applying = FALSE;
 }
 
 static void
 reload_features (CcGnoblinPanel *self)
 {
+  ListCall *call;
+
+  self->feature_list_serial++;
   remove_rows (self->features_group, &self->feature_rows);
-  if (self->proxy == NULL)
+  if (self->proxy == NULL || self->disposed)
     return;
 
+  call = list_call_new (self, self->feature_list_serial);
   g_dbus_proxy_call (self->proxy, "ListFeatures", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, list_features_cb, g_object_ref (self));
+                     self->cancellable, list_features_cb, call);
 }
 
 /* --- portal grants ------------------------------------------------------- */
@@ -205,16 +335,20 @@ revoke_grant_done_cb (GObject      *source,
                       GAsyncResult *res,
                       gpointer      user_data)
 {
-  g_autoptr(CcGnoblinPanel) self = user_data;
+  g_autofree PendingCall *call = user_data;
+  g_autoptr(CcGnoblinPanel) self = g_steal_pointer (&call->self);
+  g_autoptr(GtkWidget) button = g_steal_pointer (&call->widget);
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
 
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) ||
+      self->disposed)
     return;
 
   if (error != NULL)
     {
+      gtk_widget_set_sensitive (button, TRUE);
       g_warning ("gnoblin: RevokePortalGrant failed: %s", error->message);
       return;
     }
@@ -238,13 +372,14 @@ on_revoke_clicked (GtkButton *button,
   if (grant == NULL)
     return;
 
+  gtk_widget_set_sensitive (GTK_WIDGET (button), FALSE);
   g_variant_get (grant, "(&s&s)", &portal, &id);
   g_dbus_proxy_call (self->proxy,
                      "RevokePortalGrant",
                      g_variant_new ("(ss)", portal, id),
                      G_DBUS_CALL_FLAGS_NONE, -1,
                      self->cancellable, revoke_grant_done_cb,
-                     g_object_ref (self));
+                     pending_call_new (self, GTK_WIDGET (button)));
 }
 
 static void
@@ -252,7 +387,8 @@ list_grants_cb (GObject      *source,
                 GAsyncResult *res,
                 gpointer      user_data)
 {
-  g_autoptr(CcGnoblinPanel) self = user_data;   /* ref taken by the caller */
+  g_autofree ListCall *call = user_data;
+  g_autoptr(CcGnoblinPanel) self = g_steal_pointer (&call->self);
   g_autoptr(GError) error = NULL;
   g_autoptr(GVariant) ret = NULL;
   g_autoptr(GVariantIter) iter = NULL;
@@ -265,6 +401,8 @@ list_grants_cb (GObject      *source,
 
   ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &error);
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    return;
+  if (self->disposed || call->serial != self->grant_list_serial)
     return;
 
   if (error != NULL)
@@ -356,13 +494,17 @@ list_grants_cb (GObject      *source,
 static void
 reload_grants (CcGnoblinPanel *self)
 {
+  ListCall *call;
+
+  self->grant_list_serial++;
   remove_rows (self->screencast_group, &self->grant_rows);
-  if (self->proxy == NULL)
+  if (self->proxy == NULL || self->disposed)
     return;
 
+  call = list_call_new (self, self->grant_list_serial);
   g_dbus_proxy_call (self->proxy, "ListPortalGrants", NULL,
                      G_DBUS_CALL_FLAGS_NONE, -1,
-                     self->cancellable, list_grants_cb, g_object_ref (self));
+                     self->cancellable, list_grants_cb, call);
 }
 
 /* --- reload button ------------------------------------------------------- */
@@ -396,6 +538,12 @@ proxy_ready_cb (GObject      *source,
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
 
+  if (self->disposed)
+    {
+      g_clear_object (&proxy);
+      return;
+    }
+
   if (proxy == NULL)
     {
       g_warning ("gnoblin: could not connect to %s: %s",
@@ -407,8 +555,10 @@ proxy_ready_cb (GObject      *source,
   self->proxy = proxy;
 
   /* Re-evaluate availability whenever the shell starts/stops while we're open. */
-  g_signal_connect (proxy, "notify::g-name-owner",
-                    G_CALLBACK (on_name_owner_changed), self);
+  g_signal_connect_object (proxy, "notify::g-name-owner",
+                           G_CALLBACK (on_name_owner_changed), self, 0);
+  g_signal_connect_object (proxy, "g-signal",
+                           G_CALLBACK (on_proxy_signal), self, 0);
   update_availability (self);
 }
 
@@ -418,6 +568,10 @@ static void
 cc_gnoblin_panel_dispose (GObject *object)
 {
   CcGnoblinPanel *self = CC_GNOBLIN_PANEL (object);
+
+  self->disposed = TRUE;
+  self->feature_list_serial++;
+  self->grant_list_serial++;
 
   if (self->cancellable)
     g_cancellable_cancel (self->cancellable);
