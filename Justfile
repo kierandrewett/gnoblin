@@ -280,8 +280,9 @@ verify-fast:
     just test-config
 
 # Every isolated headless integration check against an existing ./install.
+# This intentionally reuses installed binaries; use `verify-headless` to build.
 # Run serially because each test starts GNOME Shell and shared host services.
-verify-headless:
+verify-installed-headless:
     just gnome-verify
     just gnome-stock-protocol-isolation-verify
     just gnome-protocol-boundaries-verify
@@ -291,6 +292,10 @@ verify-headless:
     just gnome-notifications-verify
     just gnome-protocol-gating-verify
     just gnome-devkit-verify
+
+# Build the current source and patch set before running headless integration.
+verify-headless: dev
+    just verify-installed-headless
 
 # Default local gate: deterministic checks plus the complete headless suite.
 verify:
