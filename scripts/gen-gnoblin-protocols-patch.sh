@@ -59,10 +59,12 @@ PROTOCOLS=(
   ext-data-control-v1
 )
 
+"$ROOT/scripts/subproject-state.sh" check mutter "$TAG"
+
 git -C "$SM" am --abort >/dev/null 2>&1 || true
 git -C "$SM" checkout -qf "$TAG"
 git -C "$SM" reset -q --hard "$TAG"
-git -C "$SM" clean -qfdx
+git -C "$SM" clean -qfd
 
 meson="$SM/src/meson.build"
 surface="$SM/src/wayland/meta-wayland-surface.c"
@@ -112,6 +114,8 @@ git -C "$SM" format-patch -1 HEAD --unified=1 -o "$OUT" >/dev/null
 
 git -C "$SM" checkout -qf "$TAG"
 git -C "$SM" reset -q --hard "$TAG"
-git -C "$SM" clean -qfdx
+git -C "$SM" clean -qfd
+
+"$ROOT/scripts/subproject-state.sh" record mutter "$TAG"
 
 echo ">> regenerated $(ls "$OUT"/*.patch)"

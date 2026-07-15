@@ -24,11 +24,13 @@ esac
 git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 \
   || { echo "submodule $PROJ not initialised; run 'just init'" >&2; exit 1; }
 
+"$ROOT/scripts/subproject-state.sh" check "$PROJ" "$TAG"
+
 echo ">> resetting $PROJ to pristine tag $TAG"
 git -C "$SM" am --abort >/dev/null 2>&1 || true
 git -C "$SM" checkout -qf "$TAG"
 git -C "$SM" reset -q --hard "$TAG"
-git -C "$SM" clean -qfdx
+git -C "$SM" clean -qfd
 
 # 1. Copy overlay source files (new files we author) into the submodule.
 "$ROOT/scripts/copy-overlay.sh" "$PROJ" "$SM"
@@ -44,5 +46,7 @@ if [ "${#PATCHES[@]}" -gt 0 ]; then
   # only a staging step before `git archive`/tarball and are never pushed.
   git -C "$SM" am "${PATCHES[@]}"
 fi
+
+"$ROOT/scripts/subproject-state.sh" record "$PROJ" "$TAG"
 
 echo ">> $PROJ now at $(git -C "$SM" rev-parse --short HEAD) ($(git -C "$SM" log --oneline "$TAG..HEAD" | wc -l) patches on top of $TAG)"

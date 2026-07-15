@@ -41,10 +41,12 @@ reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
     case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; gnome-control-center) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    ./scripts/subproject-state.sh check "{{PROJ}}" "$t"
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
     git -C subprojects/{{PROJ}} checkout -qf "$t"
     git -C subprojects/{{PROJ}} reset -q --hard "$t"
-    git -C subprojects/{{PROJ}} clean -qfdx
+    git -C subprojects/{{PROJ}} clean -qfd
+    ./scripts/subproject-state.sh record "{{PROJ}}" "$t"
     echo "{{PROJ}} reset to $t"
 
 reset-all:
