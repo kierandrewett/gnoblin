@@ -1,0 +1,157 @@
+From 51b27f4665a5f66c41a96559c27e93190fbd7c4f Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 15 Jul 2026 15:09:42 +0100
+Subject: [PATCH 3/4] test(grants): verify storage integrity boundaries
+
+Assert that namespaced identities produce distinct digest paths, grant directories and files use private modes, and a record substituted under another identity's digest is rejected during load. The focused gnoblin-portal-grants Meson test passes.
+---
+ src/test-gnoblin-portal-grants.c | 104 +++++++++++++++++++++++++++----
+ 1 file changed, 92 insertions(+), 12 deletions(-)
+
+diff --git a/src/test-gnoblin-portal-grants.c b/src/test-gnoblin-portal-grants.c
+index 1b38fd7..f2f83ff 100644
+--- a/src/test-gnoblin-portal-grants.c
++++ b/src/test-gnoblin-portal-grants.c
+@@ -6,6 +6,7 @@
+ 
+ #include <gio/gio.h>
+ #include <glib/gstdio.h>
++#include <sys/stat.h>
+ 
+ #include "gnoblin-portal-grants.h"
+ 
+@@ -24,6 +25,34 @@ test_streams (const char *monitor)
+   return g_variant_ref_sink (g_variant_builder_end (&builder));
+ }
+ 
++static char *
++grant_path_for_identity (const char *portal,
++                         const char *identity)
++{
++  const char *separator = strchr (identity, ':');
++  g_autoptr(GChecksum) checksum = g_checksum_new (G_CHECKSUM_SHA256);
++  g_autofree char *digest = NULL;
++  g_autofree char *filename = NULL;
++
++  g_assert_nonnull (separator);
++  g_checksum_update (checksum,
++                     (const guchar *) identity,
++                     separator - identity);
++  g_checksum_update (checksum, (const guchar *) "\0", 1);
++  g_checksum_update (checksum,
++                     (const guchar *) separator + 1,
++                     strlen (separator + 1));
++  digest = g_strdup (g_checksum_get_string (checksum));
++  filename = g_strconcat (digest, ".grant", NULL);
++
++  return g_build_filename (g_get_user_data_dir (),
++                           "gnoblin",
++                           "portal-grants",
++                           portal,
++                           filename,
++                           NULL);
++}
++
+ static GDBusConnection *
+ connect_test_bus (GTestDBus *bus)
+ {
+@@ -252,9 +281,8 @@ test_grant_digest_does_not_collapse_identity_characters (void)
+ {
+   g_autoptr(GVariant) streams = test_streams ("monitor-A");
+   g_autoptr(GError) error = NULL;
+-  g_autofree char *directory = NULL;
+-  g_autoptr(GDir) dir = NULL;
+-  guint count = 0;
++  g_autofree char *slash_path = NULL;
++  g_autofree char *question_path = NULL;
+ 
+   g_assert_true (gnoblin_portal_grant_store (
+     GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
+@@ -273,16 +301,66 @@ test_grant_digest_does_not_collapse_identity_characters (void)
+     &error));
+   g_assert_no_error (error);
+ 
+-  directory = g_build_filename (g_get_user_data_dir (),
+-                                "gnoblin",
+-                                "portal-grants",
+-                                "screen-cast",
+-                                NULL);
+-  dir = g_dir_open (directory, 0, &error);
++  slash_path =
++    grant_path_for_identity ("screen-cast", "host-exe:/a/b");
++  question_path =
++    grant_path_for_identity ("screen-cast", "host-exe:/a?b");
++  g_assert_cmpstr (slash_path, !=, question_path);
++  g_assert_true (g_file_test (slash_path, G_FILE_TEST_IS_REGULAR));
++  g_assert_true (g_file_test (question_path, G_FILE_TEST_IS_REGULAR));
++}
++
++static void
++test_grant_file_permissions_and_identity_integrity (void)
++{
++  const char *identity = "app-id:org.example.Integrity";
++  g_autoptr(GVariant) streams = test_streams ("monitor-C");
++  g_auto(GnoblinPortalGrant) grant = { 0 };
++  g_autoptr(GKeyFile) key_file = g_key_file_new ();
++  g_autoptr(GError) error = NULL;
++  g_autofree char *path = NULL;
++  g_autofree char *directory = NULL;
++  g_autofree char *contents = NULL;
++  gsize contents_length;
++  struct stat directory_stat;
++  struct stat file_stat;
++
++  g_assert_true (gnoblin_portal_grant_store (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    identity,
++    0,
++    FALSE,
++    streams,
++    &error));
++  g_assert_no_error (error);
++
++  path = grant_path_for_identity ("screen-cast", identity);
++  directory = g_path_get_dirname (path);
++  g_assert_cmpint (g_stat (directory, &directory_stat), ==, 0);
++  g_assert_cmpint (directory_stat.st_mode & 0777, ==, 0700);
++  g_assert_cmpint (g_stat (path, &file_stat), ==, 0);
++  g_assert_cmpint (file_stat.st_mode & 0777, ==, 0600);
++
++  g_assert_true (g_key_file_load_from_file (key_file,
++                                            path,
++                                            G_KEY_FILE_NONE,
++                                            &error));
++  g_assert_no_error (error);
++  g_key_file_set_string (key_file,
++                         "Grant",
++                         "identity",
++                         "app-id:org.example.Substituted");
++  contents = g_key_file_to_data (key_file, &contents_length, &error);
+   g_assert_no_error (error);
+-  while (g_dir_read_name (dir))
+-    count++;
+-  g_assert_cmpuint (count, ==, 2);
++  g_assert_true (g_file_set_contents (path, contents, contents_length, &error));
++  g_assert_no_error (error);
++
++  g_assert_false (gnoblin_portal_grant_load (
++    GNOBLIN_PORTAL_GRANT_SCREEN_CAST,
++    identity,
++    &grant,
++    &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
+ }
+ 
+ static void
+@@ -328,6 +406,8 @@ main (int argc, char **argv)
+                    test_grant_validation_rejects_invalid_or_empty_grants);
+   g_test_add_func ("/gnoblin/grants/digest-collision",
+                    test_grant_digest_does_not_collapse_identity_characters);
++  g_test_add_func ("/gnoblin/grants/integrity-and-permissions",
++                   test_grant_file_permissions_and_identity_integrity);
+ 
+   result = g_test_run ();
+   remove_tree (data_home);
+-- 
+2.53.0
+
