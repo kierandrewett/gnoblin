@@ -85,9 +85,9 @@ cleanup. Checked items are committed and independently verified.
   `~/.config/gnoblin/scripts/*.js` against a small event bus. Both driven over
   `org.gnoblin.Shell` / `gnoblinctl`, both covered by `gnome-hot-reload-verify`
   and `gnome-scripting-verify`.
-- **GNOME Shell patch set** — relaxed extension loading, unsafe-mode, portal
-  auto-grant, `--disable-extensions` flag, hidden native top bar, branding,
-  feature schema.
+- **GNOME Shell patch set** — relaxed extension loading, unsafe-mode, correct
+  portal Access request cancellation, `--disable-extensions` flag, hidden native
+  top bar, branding, feature schema.
 - **Mutter protocol overlays** — layer-shell v5 + the rest, each gated via
   `gnoblin.conf` `[protocols]`.
 - **Unattended screensharing** — `xdg-desktop-portal-gnome` patch adds

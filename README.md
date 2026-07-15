@@ -36,9 +36,9 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
   plus session-lock and output-management scaffolding. Each is gated by a
   `gnoblin.conf` `[protocols]` key so you can turn any of them off.
 - **GNOME Shell patches** (`patches/gnome-shell/`): relaxed extension loading
-  (skip shell-version validation), unsafe-mode at startup, portal Access dialog
-  auto-grant (unattended screensharing), a `--disable-extensions` runtime flag,
-  hidden native top-bar chrome, Gnoblin branding, a Wayland soft-reload
+  (skip shell-version validation), unsafe-mode at startup, correct portal Access
+  request cancellation, a `--disable-extensions` runtime flag, hidden native
+  top-bar chrome, Gnoblin branding, a Wayland soft-reload
   (`Alt+F2` `r` reloads in-process so windows survive), and the
   `org.gnoblin.shell` feature schema.
 - **Session mode** (`src/data/session/modes/gnoblin.json`): inherits the stock

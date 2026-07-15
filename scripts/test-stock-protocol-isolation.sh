@@ -4,6 +4,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+GNOBLIN_TEST_DBUS_CLIENT="$ROOT/scripts/test-portal-access-policy.py" \
 GNOBLIN_TEST_ENV_MODE=gnoblin \
 GNOBLIN_TEST_MODE=user \
 GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS=0 \
