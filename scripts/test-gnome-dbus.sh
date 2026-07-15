@@ -12,7 +12,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT
 source "$ROOT/scripts/gnoblin-state.sh"
-LAST_LOG="$(gnoblin_state_dir)/dbus-last.log"
+GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
+export GNOBLIN_STATE_DIR
+LAST_LOG="$GNOBLIN_STATE_DIR/dbus-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1280x800}"

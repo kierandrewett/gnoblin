@@ -7,7 +7,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT
 source "$ROOT/scripts/gnoblin-state.sh"
-LAST_LOG="$(gnoblin_state_dir)/hot-reload-last.log"
+GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
+export GNOBLIN_STATE_DIR
+LAST_LOG="$GNOBLIN_STATE_DIR/hot-reload-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
