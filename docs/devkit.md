@@ -39,6 +39,12 @@ Environment variables:
 | `MONITOR` | `1600x900` | Nested virtual monitor resolution |
 | `GNOME_DEVKIT_HEADLESS` | unset | `1` boots with no visible window (see below) |
 | `GNOME_DEVKIT_EXEC` | unset | Run this command instead of opening a terminal, with children pointed at the nested display |
+| `GNOME_DEVKIT_UNSAFE_MODE` | unset | `1` enables privileged shell D-Bus APIs in this nested process only |
+
+Normal, headless, and login sessions leave `org.gnome.Shell.Eval` restricted.
+Set `GNOME_DEVKIT_UNSAFE_MODE=1` only when a development tool specifically
+requires Mutter's native `--unsafe-mode` option; the setting dies with that
+nested devkit process.
 
 ## Run your own chrome
 

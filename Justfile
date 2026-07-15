@@ -1,7 +1,7 @@
 # gnoblin build orchestration — patched GNOME Shell on patched Mutter. gnoblin is
 # "just GNOME + Mutter": Mutter carries the wlr-layer-shell + protocol overlays
 # (patches/mutter/ + src/protocols/); GNOME Shell carries a thin patch set (relaxed
-# extension loading, unsafe-mode, portal request cancellation, hidden native top bar) and the
+# extension loading, portal request cancellation, hidden native top bar) and the
 # `gnoblin` session mode that strips its stock UI. Chrome is bring-your-own: any
 # layer-shell client (Quickshell, waybar, a custom one, or none) draws the UI.
 #
@@ -192,7 +192,7 @@ gnome-devkit-verify:
 # starts + advertises wlr-layer-shell (so any layer-shell client can draw chrome).
 # This is the stack's headless smoke test.
 gnome-verify:
-    GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-portal-access-policy.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
 
 # Headless: boot stock GNOME mode from the patched packages and prove Gnoblin's
 # custom Wayland globals and org.gnoblin.Shell component remain unavailable.

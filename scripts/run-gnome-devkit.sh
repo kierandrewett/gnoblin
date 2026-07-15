@@ -13,6 +13,7 @@
 #   env: MONITOR=1600x900   nested resolution
 #        GNOME_DEVKIT_HEADLESS=1   boot headless (no window) — for plumbing tests
 #        GNOME_DEVKIT_EXEC="cmd"   run cmd in the devkit env instead of a terminal
+#        GNOME_DEVKIT_UNSAFE_MODE=1   explicitly enable privileged shell D-Bus APIs
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -96,6 +97,19 @@ trap 'exit 130' INT TERM HUP
 #   (Plain --wayland would fall back to the native/KMS backend and fight for the
 #   seat: "Failed to take control of the session: EBUSY".)
 # HEADLESS (tests/CI): --headless + a virtual monitor, no window.
+SECURITY_ARGS=()
+case "${GNOME_DEVKIT_UNSAFE_MODE:-0}" in
+  0) ;;
+  1)
+    SECURITY_ARGS=(--unsafe-mode)
+    echo ">> WARNING: enabling unsafe mode for this isolated devkit shell"
+    ;;
+  *)
+    echo "run-gnome-devkit: GNOME_DEVKIT_UNSAFE_MODE must be 0 or 1" >&2
+    exit 1
+    ;;
+esac
+
 if [ "${GNOME_DEVKIT_HEADLESS:-0}" = 1 ]; then
   BACKEND=(--headless --virtual-monitor "$MONITOR")
   echo ">> booting gnoblin (mode=gnoblin, headless, display=$DISP) ..."
@@ -107,6 +121,7 @@ fi
 # dock/panel extensions from the normal GNOME session cannot leak into devkit.
 GNOME_SHELL_DISABLE_EXTENSIONS=1 WAYLAND_DISPLAY="$HOST_WAYLAND" setsid \
   "$SHELL_BIN" --wayland --no-x11 --mode=gnoblin \
+  "${SECURITY_ARGS[@]}" \
   "${BACKEND[@]}" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!

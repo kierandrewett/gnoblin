@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Prove GNOME Shell Access requests require an explicit dialog response."""
+"""Prove GNOME Shell keeps privileged D-Bus operations behind user consent."""
 
 import concurrent.futures
+import os
 import sys
 import time
 
@@ -12,8 +13,39 @@ from gi.repository import Gio, GLib
 
 ALLOWED_NAME = "org.gnome.RemoteDesktop.Handover"
 SHELL_NAME = "org.gnome.Shell"
+SHELL_PATH = "/org/gnome/Shell"
 ACCESS_PATH = "/org/freedesktop/portal/desktop"
 REQUEST_PATH = "/org/freedesktop/portal/desktop/request/gnoblin_policy"
+
+
+def eval_policy_matches(connection: Gio.DBusConnection) -> bool:
+    expectation = os.environ.get("GNOBLIN_EXPECT_UNSAFE_MODE", "0")
+    if expectation not in {"0", "1"}:
+        print(f"FAIL: invalid GNOBLIN_EXPECT_UNSAFE_MODE value: {expectation}", file=sys.stderr)
+        return False
+
+    reply = connection.call_sync(
+        SHELL_NAME,
+        SHELL_PATH,
+        "org.gnome.Shell",
+        "Eval",
+        GLib.Variant("(s)", ("40 + 2",)),
+        GLib.VariantType.new("(bs)"),
+        Gio.DBusCallFlags.NONE,
+        5_000,
+        None,
+    )
+    success, _result = reply.unpack()
+    if expectation == "1" and success:
+        print("PASS: org.gnome.Shell.Eval was explicitly enabled")
+        return True
+    if expectation == "0" and not success:
+        print("PASS: org.gnome.Shell.Eval remained restricted")
+        return True
+
+    state = "executed" if success else "was denied"
+    print(f"FAIL: org.gnome.Shell.Eval {state} against the explicit policy", file=sys.stderr)
+    return False
 
 
 def call_access(connection: Gio.DBusConnection) -> GLib.Variant:
@@ -53,8 +85,10 @@ def close_request(connection: Gio.DBusConnection) -> tuple[bool, str | None]:
 
 
 def main() -> int:
-
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    if not eval_policy_matches(connection):
+        return 1
+
     request_name = connection.call_sync(
         "org.freedesktop.DBus",
         "/org/freedesktop/DBus",
