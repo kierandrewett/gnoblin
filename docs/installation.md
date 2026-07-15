@@ -67,9 +67,11 @@ picks up half-stale generated sources).
 just gnome-verify
 ```
 
-Headless: boots the patched shell in the `gnoblin` session mode and checks
-it advertises `zwlr_layer_shell_v1` (so a layer-shell client can draw chrome
-against it). See [Testing](testing.md) for the rest of the verify suite.
+Headless: boots the patched shell in the `gnoblin` session mode, checks that it
+advertises `zwlr_layer_shell_v1`, and verifies Gnoblin-only Shell policy. Run
+`just gnome-stock-protocol-isolation-verify` to prove the same packages retain
+the native panel, extension validation and protocol isolation in stock mode.
+See [Testing](testing.md) for the rest of the verify suite.
 
 ## Try it without logging out
 

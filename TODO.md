@@ -22,7 +22,7 @@ cleanup. Checked items are committed and independently verified.
 ### Verification baseline
 
 - [ ] Fail shell smoke tests on fatal runtime diagnostics.
-- [ ] Exercise stock GNOME and Gnoblin session isolation separately.
+- [x] Exercise stock GNOME and Gnoblin session isolation separately.
 - [ ] Add request, invalid-input, lifecycle, and disconnect protocol clients.
 - [ ] Replace fixed asynchronous sleeps with bounded state waits.
 - [ ] Add honest unit, built-headless, and real-host verification aggregates.
@@ -32,7 +32,7 @@ cleanup. Checked items are committed and independently verified.
 - [ ] Remove unconditional portal Access approval.
 - [ ] Make shell unsafe mode an explicit, isolated development opt-in.
 - [ ] Register privileged Mutter protocols only for Gnoblin.
-- [ ] Scope native-topbar, extension-validation, and notification changes to
+- [x] Scope native-topbar, extension-validation, and notification changes to
   Gnoblin.
 - [ ] Replace marker-file portal grants with trustworthy requester identity and
   authorisation.
@@ -85,9 +85,11 @@ cleanup. Checked items are committed and independently verified.
   `~/.config/gnoblin/scripts/*.js` against a small event bus. Both driven over
   `org.gnoblin.Shell` / `gnoblinctl`, both covered by `gnome-hot-reload-verify`
   and `gnome-scripting-verify`.
-- **GNOME Shell patch set** — relaxed extension loading, correct portal Access
-  request cancellation, `--disable-extensions` flag, hidden native top bar,
-  branding, feature schema.
+- **GNOME Shell patch set** — Gnoblin-only relaxed extension loading, native
+  top-bar suppression, and notification ownership toggles; correct portal
+  Access request cancellation; `--disable-extensions` flag; branding; feature
+  schema. The stock `user` mode retains upstream panel, extension-validation,
+  and notification ownership behaviour.
 - **Shell privilege policy** — `org.gnome.Shell.Eval` keeps its upstream guard
   everywhere except an isolated devkit explicitly started with
   `GNOME_DEVKIT_UNSAFE_MODE=1`.

@@ -36,11 +36,11 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
   plus session-lock and output-management scaffolding. Each is gated by a
   `gnoblin.conf` `[protocols]` key so you can turn any of them off.
 - **GNOME Shell patches** (`patches/gnome-shell/`): relaxed extension loading
-  (skip shell-version validation), correct portal Access request cancellation,
-  a `--disable-extensions` runtime flag, hidden native
-  top-bar chrome, Gnoblin branding, a Wayland soft-reload
-  (`Alt+F2` `r` reloads in-process so windows survive), and the
-  `org.gnoblin.shell` feature schema.
+  in Gnoblin mode (skip shell-version validation), correct portal Access
+  request cancellation, mode-scoped notification-daemon ownership, a
+  `--disable-extensions` runtime flag, Gnoblin-only native top-bar suppression,
+  Gnoblin branding, a Wayland soft-reload (`Alt+F2` `r` reloads in-process so
+  windows survive), and the `org.gnoblin.shell` feature schema.
 - **Shell privilege policy**: `org.gnome.Shell.Eval` keeps its upstream guard
   in normal, headless and login sessions. Developers can deliberately enable
   Mutter's native `--unsafe-mode` for one isolated devkit process with
@@ -124,16 +124,18 @@ Two configuration surfaces:
 - **`org.gnoblin.shell` GSettings** — holds `disabled-features`, the runtime
   feature toggles above.
 
-The stock GNOME UI strip is configured entirely by the session mode
-(`src/data/session/modes/gnoblin.json`), not by editing shell JS. Full
-reference (feature ids, `gnoblinctl`, grammar): [docs/configuration.md](docs/configuration.md).
+The session mode (`src/data/session/modes/gnoblin.json`) removes the overview,
+dash, app grid and panel contents. A small mode-scoped Shell patch also makes
+the native panel non-interactive and non-strutting in Gnoblin only; stock GNOME
+keeps its upstream chrome. Full reference (feature ids, `gnoblinctl`, grammar):
+[docs/configuration.md](docs/configuration.md).
 
 ## Tests
 
 ```sh
 just test              # config-parser logic test, no display
 just test-mutter       # mutter in-tree headless functional suite (unit/Wayland/native + focus)
-just gnome-verify           # boots gnome-shell in gnoblin mode, checks zwlr_layer_shell_v1
+just gnome-verify           # Gnoblin mode, protocols and fork-only Shell policy
 just gnome-dbus-verify      # org.gnoblin.* control protocol round-trip (needs ./install)
 just gnome-hot-reload-verify  # live extension code hot-reload
 just gnome-scripting-verify   # GJS user-scripting layer

@@ -82,7 +82,7 @@ unless its id is in this list. Read/write it directly with `gsettings`, or
 | `osd-brightness` | Screen-brightness OSD popup |
 | `osd-keyboard-brightness` | Keyboard-brightness OSD popup |
 | `screenshot` | The built-in screenshot/screencast UI |
-| `notifications` | Owning `org.freedesktop.Notifications` (disable to let an external daemon own it) |
+| `notifications` | Owning `org.freedesktop.Notifications` (in Gnoblin mode, disable to let an external daemon own it; stock modes always retain the GNOME service) |
 
 Source of truth: the `FEATURES`/`OSD_TYPES` constants in
 `src/gnome-shell-overlay/js/ui/components/gnoblinControl.js`.
@@ -128,7 +128,9 @@ for how the grant is created in the first place.
 
 ## Session mode (not user-configurable)
 
-The stock GNOME chrome strip (top bar, overview, dash, app grid) is
-configured entirely by `src/data/session/modes/gnoblin.json` — a GNOME Shell
-session mode, not a runtime setting. Changing it means editing that file and
-rebuilding (`just dev-session`), not a config key.
+The Gnoblin session mode at `src/data/session/modes/gnoblin.json` removes the
+overview, dash, app grid and panel contents. A small GNOME Shell patch makes the
+native panel non-interactive and non-strutting only when the immutable primary
+session mode is `gnoblin`; stock GNOME keeps its upstream panel. This is not a
+runtime setting. Changing the chrome policy means editing the session data or
+patch and rebuilding, not adding a `gnoblin.conf` key.

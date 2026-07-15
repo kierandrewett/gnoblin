@@ -13,12 +13,13 @@ instead.
 |---|---|---|
 | `just test-config` | The C `gnoblin.conf` parser (`src/config/`) matches its documented grammar | Nothing built |
 | `just test-mutter` | gnoblin's Mutter patches (layer-shell, protocol overlays, WM/crash fixes) don't regress Mutter's own unit/Wayland/native/focus suites | A real environment with a working local file monitor (inotify) and a seat — see the note below |
-| `just gnome-verify` | Patched gnome-shell boots in the `gnoblin` session mode and advertises `zwlr_layer_shell_v1` | `./install` (`just dev`) |
+| `just gnome-verify` | Patched gnome-shell boots in `gnoblin` mode, advertises `zwlr_layer_shell_v1`, suppresses the native panel, accepts incompatible extension metadata, and keeps `org.gnome.Shell.Eval` restricted | `./install` (`just dev`) |
+| `just gnome-stock-protocol-isolation-verify` | The same packages boot in stock `user` mode without Gnoblin protocols or control APIs, with the native panel, upstream extension validation, and notification ownership intact even when the Gnoblin feature setting is disabled | `./install` |
 | `just gnome-dbus-verify` | The `org.gnoblin.Shell` control protocol round-trips over D-Bus (Ping/GetVersion/Reload) | `./install` |
 | `just gnome-devkit-verify` | The devkit's spawned-terminal environment (isolated bus + `gnoblinctl` on `PATH`) actually reaches `org.gnoblin.Shell` | `./install` |
 | `just gnome-hot-reload-verify` | Editing an extension's code and calling `Reload` picks up the new code without a relogin | `./install` |
 | `just gnome-scripting-verify` | The GJS user-scripting layer (`~/.config/gnoblin/scripts/*.js`) loads and hot-reloads | `./install` |
-| `just gnome-notifications-verify` | Disabling the `notifications` feature releases `org.freedesktop.Notifications` (and reclaims it when re-enabled) | `./install` |
+| `just gnome-notifications-verify` | In Gnoblin mode, disabling the `notifications` feature releases `org.freedesktop.Notifications` and re-enabling it reclaims the name | `./install` |
 | `just gnome-protocol-gating-verify` | Turning a protocol off in `gnoblin.conf`'s `[protocols]` section stops it being advertised | `./install` |
 
 `just test` runs the tier-1 (`test-config`) suite and prints what else needs
