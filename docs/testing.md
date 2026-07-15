@@ -1,32 +1,36 @@
 # Testing
 
-gnoblin's automated suite is layered: a fast logic tier with no display,
-Mutter's own in-tree suite, and a set of headless `gnome-shell` boots that
-each prove one thing end to end. All of it runs headless. What can't be
-automated (a real GDM login, a real GPU, unattended screensharing) is
-covered by [Real-hardware verification](real-hardware-verification.md)
-instead.
+gnoblin's automated checks are layered: deterministic logic and script tests,
+isolated headless GNOME Shell boots, Mutter's in-tree compositor suite, and
+RPM builds. The Shell integration tier runs headless. Mutter's native and
+Wayland tests still need a real seat and working local file monitoring.
+GDM login, visible chrome, and portal consent remain manual checks covered by
+[Real-hardware verification](real-hardware-verification.md).
 
 ## Reference
 
 | Recipe | Proves | Needs |
 |---|---|---|
-| `just test-config` | The C `gnoblin.conf` parser (`src/config/`) matches its documented grammar | Nothing built |
-| `just test-mutter` | gnoblin's Mutter patches (layer-shell, protocol overlays, WM/crash fixes) don't regress Mutter's own unit/Wayland/native/focus suites | A real environment with a working local file monitor (inotify) and a seat — see the note below |
-| `just gnome-verify` | Patched gnome-shell boots in `gnoblin` mode, advertises `zwlr_layer_shell_v1`, suppresses the native panel, accepts incompatible extension metadata, and keeps `org.gnome.Shell.Eval` restricted | `./install` (`just dev`) |
-| `just gnome-stock-protocol-isolation-verify` | The same packages boot in stock `user` mode without Gnoblin protocols or control APIs, with the native panel, upstream extension validation, and notification ownership intact even when the Gnoblin feature setting is disabled | `./install` |
-| `just gnome-dbus-verify` | The `org.gnoblin.Shell` control protocol round-trips over D-Bus, including typed listing and scoped revocation for Screen Cast and Remote Desktop grants | `./install` |
-| `just gnome-devkit-verify` | The devkit's spawned-terminal environment (isolated bus + `gnoblinctl` on `PATH`) actually reaches `org.gnoblin.Shell` | `./install` |
-| `just gnome-hot-reload-verify` | Editing an extension's code and calling `Reload` picks up the new code without a relogin | `./install` |
-| `just gnome-scripting-verify` | The GJS user-scripting layer (`~/.config/gnoblin/scripts/*.js`) loads and hot-reloads | `./install` |
-| `just gnome-notifications-verify` | In Gnoblin mode, disabling the `notifications` feature releases `org.freedesktop.Notifications` and re-enabling it reclaims the name | `./install` |
-| `just gnome-protocol-gating-verify` | Turning a protocol off in `gnoblin.conf`'s `[protocols]` section stops it being advertised | `./install` |
+| `just test` / `just verify-fast` | Shell/Python syntax, fatal-log detection, private-state handling, RPM source staging, and the C config-parser regression suite | No build |
+| `just test-config` | Config parser behaviour across documented quoting, comment, repeated-key, fallback, and enumeration cases | No build |
+| `just test-mutter` | Gnoblin's Mutter patches (layer-shell, protocol overlays, WM/crash fixes) do not regress Mutter's unit/Wayland/native/focus suites | A real environment with a working local file monitor (inotify) and a seat; see below |
+| `just gnome-verify` | Patched GNOME Shell boots in `gnoblin` mode, advertises `zwlr_layer_shell_v1`, suppresses the native panel, accepts incompatible extension metadata, and keeps `org.gnome.Shell.Eval` restricted | Current install prefix (`just dev`) |
+| `just gnome-stock-protocol-isolation-verify` | The same packages boot in stock `user` mode without Gnoblin protocols or control APIs, with the native panel, upstream extension validation, and notification ownership intact | Current install prefix |
+| `just gnome-protocol-boundaries-verify` | Owned Wayland globals bind and disconnect cleanly; foreign-toplevel stop/destruction and screencopy/layer-shell invalid geometry follow their protocol contracts | Current install prefix |
+| `just gnome-dbus-verify` | The `org.gnoblin.Shell` control protocol round-trips over D-Bus, including typed listing and scoped revocation for Screen Cast and Remote Desktop grants | Current install prefix |
+| `just gnome-devkit-verify` | The devkit's spawned-terminal environment (isolated bus plus `gnoblinctl` on `PATH`) reaches `org.gnoblin.Shell` | Current install prefix |
+| `just gnome-hot-reload-verify` | Editing an extension and calling `ReloadExtension` loads the new code, reports completion only after the import finishes, and rejects broken replacement code | Current install prefix |
+| `just gnome-scripting-verify` | The GJS user-scripting layer (`~/.config/gnoblin/scripts/*.js`) loads and waits for asynchronous reload completion | Current install prefix |
+| `just gnome-notifications-verify` | In Gnoblin mode, disabling `notifications` releases `org.freedesktop.Notifications` and re-enabling it reclaims the name | Current install prefix |
+| `just gnome-protocol-gating-verify` | Turning a protocol off in `gnoblin.conf` stops it being advertised | Current install prefix |
+| `just verify-installed-headless` | Every isolated GNOME Shell integration recipe above, run serially against the current install | Current install prefix |
+| `just verify` | `verify-fast`, a fresh `just dev`, and the complete installed headless suite | Build dependencies |
+| `just verify-release` | `verify`, Mutter's real-host suite, and both RPM builds | Real host plus RPM build dependencies |
 
-`just test` runs the tier-1 (`test-config`) suite and prints what else needs
-a build. There's no single "run everything" recipe beyond that — `test-mutter`
-needs a real environment (see below) and the `gnome-*-verify` recipes need
-`./install`, so running them all in one shot as part of a routine `just test`
-would silently fail in most sandboxes rather than telling you why.
+Use the narrow recipe while iterating. Use `just verify` for the complete local
+gate: it rebuilds the current source before running every isolated Shell
+integration test. `just verify-release` adds the real-host Mutter suite and
+both package builds; it is intentionally unsuitable for restricted sandboxes.
 
 ## Day-to-day
 
@@ -41,9 +45,9 @@ would silently fail in most sandboxes rather than telling you why.
 - Editing anything devkit-related (`scripts/run-gnome-devkit.sh`,
   `scripts/devkit_dbus.py`, `scripts/devkit-document-portal-stub.py`): `just
   gnome-devkit-verify`.
-- Before anything you'd call "done": run the specific verify(s) for what you
-  touched, not the whole suite — see the table above for what each one
-  actually needs.
+- Before calling a normal code change done: run its focused recipe, then
+  `just verify` when the build dependencies are available. Use
+  `just verify-release` for package or release work on a real host.
 
 ## `test-mutter` and sandboxes
 
@@ -62,5 +66,6 @@ Follow the existing `scripts/test-*.sh` pattern: boot what you need with
 isolation) or `scripts/run-gnome-devkit.sh`'s (real `HOME`/`XDG_RUNTIME_DIR`,
 isolated D-Bus session bus only — see [Devkit § Isolation](devkit.md#isolation)
 for the distinction), using `scripts/devkit_dbus.py` for the isolated D-Bus
-config either way. Assert on the shell log / D-Bus responses, and add a
-`just gnome-*-verify` recipe pointing at it.
+config either way. Assert on shell logs, protocol errors, or D-Bus responses,
+then add a `gnome-*-verify` recipe and include it in
+`verify-installed-headless`.

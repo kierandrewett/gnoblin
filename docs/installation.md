@@ -55,6 +55,18 @@ touched). It's the same as running `just dev-mutter`, `just dev-gnome-shell`,
 and `just dev-session` in sequence; see the root README's "Build" section if
 you want to run a single stage (e.g. while iterating on one component).
 
+The default layout is `GNOBLIN_PREFIX=$PWD/install` with
+`GNOBLIN_LIBDIR=lib64`. Override both through the environment when the target
+uses another prefix layout:
+
+```sh
+GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just dev
+```
+
+`GNOBLIN_LIBDIR` must be relative to the prefix. Session installation records
+it in `<prefix>/libexec/gnoblin-libdir`, so later GDM and systemd launches use
+the same library directory without inheriting the build environment.
+
 A clean build takes a while (you're compiling Mutter and GNOME Shell).
 Re-running `just dev` after an edit only rebuilds what changed, except
 `dev-gnome-shell`, which always does a clean rebuild of `build/gnome-shell` —
@@ -64,14 +76,14 @@ picks up half-stale generated sources).
 ## Confirm it built
 
 ```sh
-just gnome-verify
+just verify-installed-headless
 ```
 
-Headless: boots the patched shell in the `gnoblin` session mode, checks that it
-advertises `zwlr_layer_shell_v1`, and verifies Gnoblin-only Shell policy. Run
-`just gnome-stock-protocol-isolation-verify` to prove the same packages retain
-the native panel, extension validation and protocol isolation in stock mode.
-See [Testing](testing.md) for the rest of the verify suite.
+This runs every isolated GNOME Shell integration recipe against the prefix
+that `just dev` built, including Gnoblin and stock session policy, protocol
+boundaries and gating, D-Bus state, reloads, scripting, notifications, and the
+devkit environment. Use `just gnome-verify` when you only need the basic boot
+smoke. See [Testing](testing.md) for the full local and release gates.
 
 ## Try it without logging out
 
@@ -190,10 +202,10 @@ it to the exact matching `gnome-shell` build. RPMs land in
 `~/rpmbuild/RPMS/`.
 
 **Installing these RPMs replaces your system's Mutter and GNOME Shell
-packages** — that's the point (patches are session-mode-gated and meant to
-be transparent for non-gnoblin sessions, per the architecture in the root
-README), but it's a real system change, not something to run without
-meaning to:
+packages.** Gnoblin-only Shell behaviour and privileged Wayland globals are
+session-mode-gated. Lower-level correctness and crash fixes apply to the
+shared packages, so this is still a real system change. Review `dnf`'s
+transaction before confirming:
 
 ```sh
 sudo dnf install \

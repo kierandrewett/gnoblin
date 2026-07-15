@@ -4,26 +4,28 @@ gnoblin has two configuration surfaces, and they're deliberately not the
 same mechanism:
 
 - **`gnoblin.conf`** — a plain INI file read by the Mutter overlays at
-  compositor startup. Gates which Wayland protocols gnoblin adds to Mutter.
+  compositor startup. Within a Gnoblin session, it can disable implemented
+  Gnoblin Wayland protocol globals before registration.
 - **`org.gnoblin.shell` GSettings** — one key, `disabled-features`, driven
-  live over the `org.gnoblin.Shell` D-Bus protocol (or `gnoblinctl`). Gates
-  gnome-shell subsystems at runtime, no restart needed.
+  live over the `org.gnoblin.Shell` D-Bus protocol (or `gnoblinctl`). It gates
+  GNOME Shell subsystems at runtime without a restart.
 
-Protocol gating and feature toggles are separate because they operate at
-different layers: protocols are wired into Mutter's Wayland startup and
-can't change without restarting the compositor; features gate JS-level
-gnome-shell behaviour and can flip live.
+Protocol gating and feature toggles operate at different layers. Protocols
+are registered during Mutter's Wayland startup and cannot change without
+restarting the compositor. Features gate JS-level GNOME Shell behaviour and
+can change live.
 
 ## `gnoblin.conf`
 
 Location: `$GNOBLIN_CONFIG`, else `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`
-(`~/.config/gnoblin/gnoblin.conf`). Everything defaults **on** — you only
-need an entry to turn a protocol off.
+(`~/.config/gnoblin/gnoblin.conf`). Gnoblin registers each implemented
+protocol by default; add an entry only when you need to turn one off. Stock
+session modes do not register these globals, regardless of this file.
 
 ```ini
 [protocols]
-# Each key gates one Wayland protocol overlay. true (default) = advertised;
-# false = not registered, so clients can't bind it.
+# Each key gates one implemented protocol overlay in the Gnoblin session.
+# true (default) = advertised; false = not registered, so clients cannot bind it.
 wlr-layer-shell                 = true   # layer-shell chrome (bars/docks/etc.); the
                                          #   whole point — leave on unless debugging
 wlr-screencopy                  = true   # grim-style screen capture
@@ -60,7 +62,9 @@ Verify a change with `just test-config`, or by hand:
 
 ```sh
 gcc -fsyntax-only src/config/gnoblin-config.c -I src/config $(pkg-config --cflags glib-2.0)
-cc tests/config-test.c src/config/gnoblin-config.c -I src/config $(pkg-config --cflags --libs glib-2.0) -o /tmp/gnoblin-config-test
+cc tests/config-test.c src/config/gnoblin-config.c -I src/config \
+    $(pkg-config --cflags --libs glib-2.0) \
+    -o /tmp/gnoblin-config-test
 /tmp/gnoblin-config-test
 ```
 

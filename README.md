@@ -32,9 +32,11 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
   `wlr-layer-shell` (v5), `wlr-screencopy`, `ext-idle-notify`,
   `ext-foreign-toplevel-list`, `wlr-foreign-toplevel-management`,
   `wlr-gamma-control` (so `wlsunset` night-light works),
-  `wlr-output-power-management`, `ext-data-control` (so `cliphist` works),
-  plus session-lock and output-management scaffolding. Each is gated by a
-  `gnoblin.conf` `[protocols]` key so you can turn any of them off.
+  `wlr-output-power-management`, and `ext-data-control` (so `cliphist` works).
+  These globals are registered only in the Gnoblin session; within that boundary,
+  each defaults on and has a `gnoblin.conf` `[protocols]` off switch.
+  `session-lock/` and `output-management/` contain deferred design and protocol
+  scaffolding only; they are not built or advertised.
 - **GNOME Shell patches** (`patches/gnome-shell/`): relaxed extension loading
   in Gnoblin mode (skip shell-version validation), correct portal Access
   request cancellation, mode-scoped notification-daemon ownership, a
@@ -117,10 +119,10 @@ manager's picker. See [docs/installation.md](docs/installation.md).
 
 Two configuration surfaces:
 
-- **`gnoblin.conf`** — a sectioned INI read by the Mutter overlays. Its
-  `[protocols]` section gates each Wayland protocol on/off (all on by default,
-  a missing file or key falls back to the caller's default). See
-  `src/data/gnoblin.conf.example` for the keys.
+- **`gnoblin.conf`** — a sectioned INI read by the Mutter overlays. In the
+  Gnoblin session, its `[protocols]` section can disable any implemented
+  Gnoblin protocol (all implemented entries default on). Stock session modes
+  never register these globals. See `src/data/gnoblin.conf.example` for the keys.
 - **`org.gnoblin.shell` GSettings** — holds `disabled-features`, the runtime
   feature toggles above.
 
@@ -133,18 +135,17 @@ keeps its upstream chrome. Full reference (feature ids, `gnoblinctl`, grammar):
 ## Tests
 
 ```sh
-just test              # config-parser logic test, no display
-just test-mutter       # mutter in-tree headless functional suite (unit/Wayland/native + focus)
-just gnome-verify           # Gnoblin mode, protocols and fork-only Shell policy
-just gnome-dbus-verify      # org.gnoblin.* control protocol round-trip (needs ./install)
-just gnome-hot-reload-verify  # live extension code hot-reload
-just gnome-scripting-verify   # GJS user-scripting layer
+just test            # deterministic fast checks; no compositor integration
+just verify          # rebuild + complete isolated headless integration suite
+just verify-release  # verify + Mutter real-host suite + both RPM builds
 ```
 
-The suite is headless. Full recipe reference (what each one proves, what it
-needs): [docs/testing.md](docs/testing.md). For the bits that need a real
-GPU / login session / root (logging in at GDM, bring-your-own chrome,
-unattended screensharing), see
+`just verify-installed-headless` reruns the integration suite against the
+current prefix without rebuilding. The GNOME Shell integration recipes are
+headless; `test-mutter` in the release gate still needs a real seat and working
+local file monitoring. Full recipe reference (what each command proves and
+what it needs): [docs/testing.md](docs/testing.md). For GDM login, a visible
+bring-your-own chrome check, and unattended screensharing, see
 [docs/real-hardware-verification.md](docs/real-hardware-verification.md).
 
 ## Authoring a protocol overlay

@@ -1,10 +1,11 @@
 # Verifying gnoblin on real hardware
 
-Everything in gnoblin's automated suite runs headless (`just gnome-verify`,
-`gnome-dbus-verify`, `gnome-hot-reload-verify`, `gnome-scripting-verify`,
-`gnome-notifications-verify`, `gnome-protocol-gating-verify`, `gnome-devkit-verify`,
-`test-mutter`, `test`). A few things can only be confirmed on a real GPU / a real
-login session / with root. This is that checklist.
+`just verify` builds the current source and runs deterministic checks plus every
+isolated GNOME Shell integration recipe headlessly. `just verify-release` also
+runs Mutter's native/Wayland/focus suites on the host and builds both RPMs.
+Neither gate can prove a GDM login, visible bring-your-own chrome, interactive
+portal consent, or an installed system-package transaction. This checklist
+covers those boundaries.
 
 **Fastest path to eyeball it without logging out:** `just gnome-devkit` opens a *nested*
 gnoblin session (a window in your current Wayland session) + a terminal wired to it; run
