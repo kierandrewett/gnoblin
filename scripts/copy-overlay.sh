@@ -8,28 +8,45 @@
 # files are untracked in the submodule (added to .git/info/exclude and removed by
 # `git clean` on reset), so the submodule stays pristine.
 #
-# Usage: copy-overlay.sh <project> <submodule-dir>
+# Usage: copy-overlay.sh <project> <submodule-dir> [--list-destinations]
 set -euo pipefail
 
 PROJ="${1:?usage: copy-overlay.sh <project> <submodule-dir>}"
 SM="${2:?usage: copy-overlay.sh <project> <submodule-dir>}"
+MODE="${3:-copy}"
+case "$MODE" in
+    copy|--list-destinations) ;;
+    *) echo "unknown overlay action: $MODE" >&2; exit 1 ;;
+esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 n=0
 # Manifests live under src/ at any depth (src/protocols/<feature>/manifest,
 # src/config/manifest, …) so the source tree can be reorganised by role freely.
 while IFS= read -r manifest; do
-  feature_dir="$(dirname "$manifest")"
-  while read -r proj src dest _rest; do
-    [[ -z "${proj:-}" || "$proj" == \#* ]] && continue
-    [[ "$proj" != "$PROJ" ]] && continue
-    [[ -f "$feature_dir/$src" ]] || { echo "overlay: missing $feature_dir/$src" >&2; exit 1; }
-    mkdir -p "$SM/$(dirname "$dest")"
-    cp "$feature_dir/$src" "$SM/$dest"
-    # keep the submodule's git status clean
-    excl="$SM/.git/info/exclude"
-    [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >> "$excl"
-    n=$((n + 1))
-  done < "$manifest"
+    feature_dir="$(dirname "$manifest")"
+    while read -r proj src dest _rest; do
+        [[ -z "${proj:-}" || "$proj" == \#* ]] && continue
+        [[ "$proj" != "$PROJ" ]] && continue
+        [[ -f "$feature_dir/$src" ]] || { echo "overlay: missing $feature_dir/$src" >&2; exit 1; }
+        case "$dest" in
+            ""|..|/*|../*|*/../*|*/..)
+                echo "overlay: invalid destination outside subproject: $dest" >&2
+                exit 1
+                ;;
+        esac
+        if [[ "$MODE" == --list-destinations ]]; then
+            printf '%s\0' "$dest"
+            continue
+        fi
+        mkdir -p "$SM/$(dirname "$dest")"
+        cp "$feature_dir/$src" "$SM/$dest"
+        # keep the submodule's git status clean
+        excl="$SM/.git/info/exclude"
+        [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >> "$excl"
+        n=$((n + 1))
+    done < "$manifest"
 done < <(find "$ROOT/src" -name manifest -type f | sort)
-echo ">> copied $n overlay file(s) into $PROJ"
+if [[ "$MODE" == copy ]]; then
+    echo ">> copied $n overlay file(s) into $PROJ"
+fi

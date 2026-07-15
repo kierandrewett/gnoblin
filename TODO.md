@@ -53,7 +53,7 @@ cleanup. Checked items are committed and independently verified.
   unexpected work.
 - [x] Centralise runtime test environment setup.
 - [x] Support one configurable prefix and library-directory contract.
-- [ ] Publish deterministic source archives atomically.
+- [x] Publish deterministic source archives atomically.
 
 ### Final cleanup
 
