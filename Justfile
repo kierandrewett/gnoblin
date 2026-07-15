@@ -269,15 +269,45 @@ test-mutter: (patch "mutter")
     focus_count="$(meson test -C build/mutter-tests {{mutter_focus_tests}} --list | sed '/^$/d' | wc -l)"; if [ "$focus_count" -le 0 ]; then echo "FAIL: no Mutter focus tests selected"; exit 1; fi; echo ">> running $focus_count Mutter focus/stacking tests"
     meson test -C build/mutter-tests {{mutter_test_run_opts}} {{mutter_focus_tests}}
 
-# Run the display-less tiers. The C++/Slint integration tiers were retired with
-# that stack; the live smoke tests now boot the real gnome-shell stack:
-#   just gnome-verify       gnome-shell boots in gnoblin mode + advertises layer-shell
-#   just gnome-dbus-verify  org.gnoblin.* control protocol round-trip (needs ./install)
-#   just test-mutter        mutter in-tree headless functional suite
-test: test-config
-    @echo ">> tier 1 (config parser) passed."
-    @echo ">> live smoke needs ./install ('just dev'): 'just gnome-verify' + 'just gnome-dbus-verify'."
-    @echo ">> mutter suite: 'just test-mutter'."
+# Fast deterministic checks: syntax, parser behaviour, secure state publication,
+# and RPM sidecar-source completeness. Does not boot a compositor.
+verify-fast:
+    bash -n scripts/*.sh src/tools/*
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py
+    ./scripts/test-log-diagnostics.sh
+    ./scripts/test-secure-state.sh
+    ./scripts/test-rpm-sources.sh
+    just test-config
+
+# Every isolated headless integration check against an existing ./install.
+# Run serially because each test starts GNOME Shell and shared host services.
+verify-headless:
+    just gnome-verify
+    just gnome-stock-protocol-isolation-verify
+    just gnome-protocol-boundaries-verify
+    just gnome-dbus-verify
+    just gnome-hot-reload-verify
+    just gnome-scripting-verify
+    just gnome-notifications-verify
+    just gnome-protocol-gating-verify
+    just gnome-devkit-verify
+
+# Default local gate: deterministic checks plus the complete headless suite.
+verify:
+    just verify-fast
+    just verify-headless
+
+# Release gate: local verification, Mutter's real-host suite, then both RPMs.
+verify-release:
+    just verify
+    just test-mutter
+    just rpm-all
+
+# Compatibility alias. `test` is deliberately fast; use `verify` for headless
+# integration and `verify-release` for the real-host and packaging gates.
+test: verify-fast
+    @echo ">> fast checks passed; compositor integration was not run."
+    @echo ">> run 'just verify' or 'just verify-release' for broader gates."
 
 clean:
     rm -rf build
