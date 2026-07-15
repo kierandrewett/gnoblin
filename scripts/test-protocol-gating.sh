@@ -48,13 +48,24 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -uo pipefail -c '
   source "$ROOT/scripts/gnoblin-test-lib.sh"
   "$GS" --headless --wayland --no-x11 --mode=gnoblin --virtual-monitor 1280x800 \
     --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
+  SHELL_PID=$!
   if ! gnoblin_wait_for_log "$DK/shell.log" "GNOME Shell started" 30; then
     echo "FAIL: shell never reached ready state"
     tail -15 "$DK/shell.log"
     exit 1
   fi
-  if WAYLAND_DISPLAY="$DISP" "$probe" | grep -q zwlr_layer_shell_v1; then
-    echo "  FAIL: zwlr_layer_shell_v1 STILL advertised with wlr-layer-shell=false"
+  if ! globals="$(WAYLAND_DISPLAY="$DISP" "$probe")"; then
+    echo "FAIL: protocol probe could not complete"
+    tail -15 "$DK/shell.log"
+    exit 1
+  fi
+  if ! kill -0 "$SHELL_PID" 2>/dev/null; then
+    echo "FAIL: shell exited before protocol assertion"
+    tail -15 "$DK/shell.log"
+    exit 1
+  fi
+  if printf "%s\n" "$globals" | grep -q zwlr_layer_shell_v1; then
+    echo "FAIL: zwlr_layer_shell_v1 still advertised with wlr-layer-shell=false"
     exit 1
   fi
   echo "  ok: zwlr_layer_shell_v1 NOT advertised (config gating works)"
