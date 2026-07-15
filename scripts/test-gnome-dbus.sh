@@ -106,8 +106,17 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
 
   case "$ping"   in *pong*)     echo "  ok: Ping";;        *) echo "  FAIL: Ping"; rc=1;; esac
   case "$ver"    in *-gnoblin*) echo "  ok: GetVersion";;  *) echo "  FAIL: GetVersion"; rc=1;; esac
-  # Reload is void; assert the soft-reload actually ran from the shell log.
-  if gnoblin_wait_for_log "$SHELL_LOG" "gnoblin: soft-reload" 10; then echo "  ok: Reload (soft-reload ran)"; else echo "  FAIL: Reload (no soft-reload log)"; rc=1; fi
+  # Reload is void; its reply must arrive after asynchronous work completes.
+  if grep -qE "gnoblin: soft-reload .* complete" "$SHELL_LOG"; then
+    echo "  ok: Reload waited for soft-reload completion"
+  else
+    echo "  FAIL: Reload replied before completion"; rc=1
+  fi
+  if callp ReloadExtension missing@gnoblin >/dev/null; then
+    echo "  FAIL: unknown extension reload reported success"; rc=1
+  else
+    echo "  ok: failed extension reload returned a D-Bus error"
+  fi
 
   # --- feature toggles ---
   feats="$(call ListFeatures)"; echo "ListFeatures -> $feats"

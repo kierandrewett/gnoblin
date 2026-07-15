@@ -103,12 +103,14 @@ const FEATURES = {
 // layer-shell client — so this covers the practical need. A true process re-exec
 // on Wayland cannot preserve clients (no handoff protocol), which is exactly why
 // this is a soft reload and not global.reexec_self().
-export function softReload(reason = 'manual') {
+export async function softReload(reason = 'manual') {
     console.log(`gnoblin: soft-reload (${reason}) — reloading theme + extensions in-process`);
+    const failures = [];
 
     try {
         Main.loadTheme();
     } catch (e) {
+        failures.push('theme');
         logError(e, 'gnoblin: soft-reload loadTheme failed');
     }
 
@@ -120,19 +122,27 @@ export function softReload(reason = 'manual') {
         // dependent extensions, so running them in parallel would race.
         const active = em.getUuids().filter(
             uuid => em.lookup(uuid)?.state === ExtensionState.ACTIVE);
-        (async () => {
-            for (const uuid of active) {
-                try {
-                    await em.reloadExtension(em.lookup(uuid));
-                } catch (e) {
-                    logError(e, `gnoblin: soft-reload of ${uuid} failed`);
-                }
+        for (const uuid of active) {
+            try {
+                await em.reloadExtension(em.lookup(uuid));
+            } catch (e) {
+                failures.push(`extension ${uuid}`);
+                logError(e, `gnoblin: soft-reload of ${uuid} failed`);
             }
-        })().catch(e => logError(e, 'gnoblin: soft-reload extension pass failed'));
+        }
     }
 
-    // Re-run user scripts (hot-reloaded via cache-busted import).
-    activeScriptHost?.reload();
+    try {
+        await activeScriptHost?.reload();
+    } catch (e) {
+        failures.push('user scripts');
+        logError(e, 'gnoblin: soft-reload user scripts failed');
+    }
+
+    if (failures.length > 0)
+        throw new Error(`soft reload failed: ${failures.join(', ')}`);
+
+    console.log(`gnoblin: soft-reload (${reason}) complete`);
 }
 
 // A tiny event bus scripts subscribe to via api.on(). Kept minimal on purpose —
@@ -240,10 +250,12 @@ class ScriptHost {
         }
     }
 
-    load() {
+    async load() {
         if (this._destroyed)
             return;
+
         const gen = ++this._generation;
+        const failures = [];
         for (const name of this._scriptNames()) {
             const path = GLib.build_filenamev([this._dir, name]);
             // First import in the process uses the plain URI; every later (re)load
@@ -253,28 +265,42 @@ class ScriptHost {
             const uri = scriptImportSeq > 1
                 ? `file://${path}?gnoblinScript=${scriptImportSeq}`
                 : `file://${path}`;
-            import(uri).then(mod => {
-                // Drop stale in-flight imports: a newer load/unload happened, or the
-                // host was destroyed, while this import was pending.
-                if (this._destroyed || gen !== this._generation)
-                    return;
-                if (typeof mod.default !== 'function') {
-                    console.warn(`gnoblin-script: ${name} has no default-exported function`);
-                    return;
-                }
-                const api = this._api(name);
-                try {
-                    mod.default(api);
-                    this._loaded.push({name, api});
-                    console.log(`gnoblin-script: loaded ${name}`);
-                } catch (e) {
-                    // The script may have subscribed via api.on() before throwing —
-                    // dispose those so a failed load doesn't leak handlers.
-                    this._disposeApi(api);
-                    logError(e, `gnoblin-script: ${name} threw on load`);
-                }
-            }).catch(e => logError(e, `gnoblin-script: importing ${name} failed`));
+
+            let mod;
+            try {
+                mod = await import(uri);
+            } catch (e) {
+                failures.push(name);
+                logError(e, `gnoblin-script: importing ${name} failed`);
+                continue;
+            }
+
+            // Drop stale in-flight imports: a newer load/unload happened, or the
+            // host was destroyed, while this import was pending.
+            if (this._destroyed || gen !== this._generation)
+                return;
+            if (typeof mod.default !== 'function') {
+                failures.push(name);
+                console.warn(`gnoblin-script: ${name} has no default-exported function`);
+                continue;
+            }
+
+            const api = this._api(name);
+            try {
+                mod.default(api);
+                this._loaded.push({name, api});
+                console.log(`gnoblin-script: loaded ${name}`);
+            } catch (e) {
+                // The script may have subscribed via api.on() before throwing —
+                // dispose those so a failed load doesn't leak handlers.
+                this._disposeApi(api);
+                failures.push(name);
+                logError(e, `gnoblin-script: ${name} threw on load`);
+            }
         }
+
+        if (failures.length > 0)
+            throw new Error(`failed to load user scripts: ${failures.join(', ')}`);
     }
 
     unload() {
@@ -285,9 +311,9 @@ class ScriptHost {
         this._loaded = [];
     }
 
-    reload() {
+    async reload() {
         this.unload();
-        this.load();
+        await this.load();
     }
 
     destroy() {
@@ -402,7 +428,8 @@ export class Component {
         this._bus.connectSources();
         this._scripts = new ScriptHost(this, this._bus);
         activeScriptHost = this._scripts;
-        this._scripts.load();
+        this._scripts.load().catch(
+            e => logError(e, 'gnoblin-script: initial load failed'));
 
         console.log(`gnoblin-control: enabled (mode=${this._mode()}, wayland=${Meta.is_wayland_compositor()})`);
     }
@@ -536,8 +563,11 @@ export class Component {
         return Config.PACKAGE_VERSION ?? 'unknown';
     }
 
-    Reload() {
-        softReload('org.gnoblin.Shell.Reload');
+    ReloadAsync(_params, invocation) {
+        return this._runReload(
+            invocation,
+            () => softReload('org.gnoblin.Shell.Reload'),
+            'soft reload');
     }
 
     ListExtensions() {
@@ -550,24 +580,39 @@ export class Component {
         });
     }
 
-    ReloadExtension(uuid) {
-        const em = Main.extensionManager;
-        const ext = em?.lookup(uuid);
-        if (!ext)
-            throw new Error(`unknown extension: ${uuid}`);
-        // Fire-and-forget; reloadExtension re-imports fresh code (cache-busted).
-        em.reloadExtension(ext).catch(
-            e => logError(e, `gnoblin: hot-reload of ${uuid} failed`));
-        console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
+    ReloadExtensionAsync([uuid], invocation) {
+        return this._runReload(invocation, async () => {
+            const em = Main.extensionManager;
+            const ext = em?.lookup(uuid);
+            if (!ext)
+                throw new Error(`unknown extension: ${uuid}`);
+
+            console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
+            await em.reloadExtension(ext);
+        }, `extension reload (${uuid})`);
     }
 
     ListScripts() {
         return this._scripts?.list() ?? [];
     }
 
-    ReloadScripts() {
-        this._scripts?.reload();
-        console.log('gnoblin-control: reloading user scripts');
+    ReloadScriptsAsync(_params, invocation) {
+        return this._runReload(invocation, async () => {
+            console.log('gnoblin-control: reloading user scripts');
+            await this._scripts?.reload();
+        }, 'user script reload');
+    }
+
+    async _runReload(invocation, operation, description) {
+        try {
+            await operation();
+            invocation.return_value(null);
+        } catch (e) {
+            logError(e, `gnoblin-control: ${description} failed`);
+            invocation.return_dbus_error(
+                `${BUS_NAME}.Error.ReloadFailed`,
+                `${description} failed: ${e.message}`);
+        }
     }
 
     _grantsDir(portal) {

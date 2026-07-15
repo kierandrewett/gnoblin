@@ -62,8 +62,23 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
   case "$(gnoblin ListScripts)" in *hello.js*) echo "  ok: ListScripts shows hello.js";; *) echo "  FAIL: not listed"; rc=1;; esac
 
   printf "export default (api) => { api.log(\"SCRIPT version=B\"); };\n" > "$SCRIPTDIR/hello.js"
-  echo "ReloadScripts -> $(gnoblin ReloadScripts)"
-  if gnoblin_wait_for_log "$SHELL_LOG" "SCRIPT version=B" 10; then echo "  ok: script HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: script not reloaded"; grep "SCRIPT version" "$SHELL_LOG"; rc=1; fi
+  reload="$(gnoblin ReloadScripts)"
+  echo "ReloadScripts -> $reload"
+  if grep -q "SCRIPT version=B" "$SHELL_LOG"; then
+    echo "  ok: ReloadScripts waited for version=B to load"
+  else
+    echo "  FAIL: ReloadScripts replied before script load completed"; grep "SCRIPT version" "$SHELL_LOG"; rc=1
+  fi
+
+  printf "this is not valid JavaScript\n" > "$SCRIPTDIR/hello.js"
+  if reload_error="$(gnoblin ReloadScripts)"; then
+    echo "  FAIL: invalid script reload reported success"; rc=1
+  else
+    case "$reload_error" in
+      *ReloadFailed*) echo "  ok: invalid script reload returned a D-Bus error" ;;
+      *) echo "  FAIL: invalid script reload returned wrong error: $reload_error"; rc=1 ;;
+    esac
+  fi
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc

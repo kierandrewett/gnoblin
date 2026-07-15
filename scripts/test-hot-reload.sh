@@ -87,8 +87,13 @@ export default class extends Extension {
     disable() {}
 }
 JS
-  echo "ReloadExtension -> $(gnoblin ReloadExtension hrtest@gnoblin)"
-  if gnoblin_wait_for_log "$SHELL_LOG" "HRTEST version=B" 10; then echo "  ok: HOT-RELOAD picked up new code (version=B)"; else echo "  FAIL: code not reloaded"; grep HRTEST "$SHELL_LOG"; rc=1; fi
+  reload="$(gnoblin ReloadExtension hrtest@gnoblin)"
+  echo "ReloadExtension -> $reload"
+  if grep -q "HRTEST version=B" "$SHELL_LOG"; then
+    echo "  ok: ReloadExtension waited for version=B to load"
+  else
+    echo "  FAIL: ReloadExtension replied before code reload completed"; grep HRTEST "$SHELL_LOG"; rc=1
+  fi
 
   kill $SHELL_PID 2>/dev/null || true
   exit $rc
