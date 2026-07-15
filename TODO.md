@@ -7,6 +7,63 @@ to the top of **Next**.
 > The from-scratch C++ compositor + Rust/Slint clients were retired. Recover
 > them from the `archive/cpp-compositor` tag.
 
+## Current remediation
+
+The July 2026 repository audit is being fixed in ordered, working increments.
+Security and verification gates land before runtime, packaging, and documentation
+cleanup. Checked items are committed and independently verified.
+
+### Immediate safety
+
+- [x] Move shared `/tmp` executables, generator files, and persistent logs into
+  private state.
+- [ ] Stage Mutter RPM `Source1` from a clean RPM build directory.
+
+### Verification baseline
+
+- [ ] Fail shell smoke tests on fatal runtime diagnostics.
+- [ ] Exercise stock GNOME and Gnoblin session isolation separately.
+- [ ] Add request, invalid-input, lifecycle, and disconnect protocol clients.
+- [ ] Replace fixed asynchronous sleeps with bounded state waits.
+- [ ] Add honest unit, built-headless, and real-host verification aggregates.
+
+### Session security
+
+- [ ] Remove unconditional portal Access approval.
+- [ ] Make shell unsafe mode an explicit, isolated development opt-in.
+- [ ] Register privileged Mutter protocols only for Gnoblin.
+- [ ] Scope native-topbar, extension-validation, and notification changes to
+  Gnoblin.
+- [ ] Replace marker-file portal grants with trustworthy requester identity and
+  authorisation.
+
+### Protocol correctness
+
+- [ ] Use checked arithmetic for screencopy geometry and byte sizes.
+- [ ] Honour the foreign-toplevel manager destructor contract safely.
+- [ ] Use checked arithmetic for layer-shell geometry and exclusive-zone struts.
+
+### Runtime consistency
+
+- [ ] Reconcile direct GSettings changes into live feature state.
+- [ ] Synchronise Settings switches and grants with D-Bus completion/signals.
+- [ ] Report reload success only after asynchronous reload work completes.
+
+### Tooling and packaging
+
+- [ ] Refuse destructive patch/reset operations when submodules contain
+  unexpected work.
+- [ ] Centralise runtime test environment setup.
+- [ ] Support one configurable prefix and library-directory contract.
+- [ ] Publish deterministic source archives atomically.
+
+### Final cleanup
+
+- [ ] Correct capability, source-map, configuration, and support documentation.
+- [ ] Reduce this file's stale historical `Done` detail after the fixes land.
+- [ ] Run focused, full headless, and applicable real-host verification.
+- [ ] Run structural, security, simplification, and similarity review.
+
 ## Done
 
 - **Build revival** — `just dev` builds patched mutter + gnome-shell + session
