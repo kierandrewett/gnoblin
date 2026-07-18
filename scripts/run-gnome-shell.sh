@@ -96,9 +96,24 @@ fi
 
 DISP="gnoblin-gs-$$"
 SHELL_PID=
+SHELL_REAL_PID_FILE=
 cleanup() {
+  # Kill the shell by its real PID. $SHELL_PID is dbus-run-session, and
+  # killing only that orphans gnome-shell (its environ carries the host
+  # WAYLAND_DISPLAY, so the env sweep below never matches it either).
+  shell_real_pid="$(cat "$SHELL_REAL_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$shell_real_pid" ]; then
+    kill "$shell_real_pid" 2>/dev/null
+    for _ in $(seq 1 10); do
+      kill -0 "$shell_real_pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -KILL "$shell_real_pid" 2>/dev/null
+  fi
   [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
   [ -n "$SHELL_PID" ] && wait "$SHELL_PID" 2>/dev/null || true
+  # the isolated dbus-daemon references $DK in its command line
+  pkill -f "$DK/" 2>/dev/null
   # sweep any children that joined the nested display
   for proc in /proc/[0-9]*; do
     env="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
@@ -112,11 +127,13 @@ trap cleanup EXIT INT TERM HUP
 # Reuse the devkit's isolated dbus config generator (no host portal leakage).
 DBUS_SESSION_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 BUS_ADDRESS_FILE="$DK/bus-address"
+SHELL_REAL_PID_FILE="$DK/shell-pid"
 
 echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
+# The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
-  bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; shift; exec "$@"' \
-  gnoblin-shell "$BUS_ADDRESS_FILE" \
+  bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
+  gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
   "$SHELL_BIN" --headless --wayland --no-x11 --mode="$MODE" \
   --virtual-monitor "$MONITOR" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
