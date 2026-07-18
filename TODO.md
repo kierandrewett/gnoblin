@@ -41,6 +41,12 @@ mode 158 MB boot, 152 MB idle. Gnoblin mode is ~36% lighter and leak-free
 at idle. The live-session lag on the benchmark machine traces to 17 enabled
 third-party extensions in stock GNOME, a class gnoblin removes by design.
 
+Idle CPU (headless, 60 s window, 2026-07-19): gnoblin mode 0.08% with ~0
+wakeups/s; stock user mode 0.18% with ~4 wakeups/s (clock/indicator
+timers). Boot to "GNOME Shell started" ~2.2 s on llvmpipe. No idle-CPU
+defect in the core; remaining CPU investigation needs a real logged-in
+session.
+
 - [x] Measure and bound memory growth across repeated `org.gnoblin.Shell`
   soft reloads; fix any per-reload leak. Found ~3.8 MB leaked per
   `Main.loadTheme()` swap (upstream St/GJS: replaced StTheme wrapper
