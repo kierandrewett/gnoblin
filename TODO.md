@@ -41,8 +41,15 @@ mode 158 MB boot, 152 MB idle. Gnoblin mode is ~36% lighter and leak-free
 at idle. The live-session lag on the benchmark machine traces to 17 enabled
 third-party extensions in stock GNOME, a class gnoblin removes by design.
 
-- [ ] Measure and bound memory growth across repeated `org.gnoblin.Shell`
-  soft reloads; fix any per-reload leak.
+- [x] Measure and bound memory growth across repeated `org.gnoblin.Shell`
+  soft reloads; fix any per-reload leak. Found ~3.8 MB leaked per
+  `Main.loadTheme()` swap (upstream St/GJS: replaced StTheme wrapper
+  survives GC at refcount 1). Mitigated in `softReload()` via a
+  stylesheet-set digest; 15 reloads now hold private dirty flat.
+- [ ] Root-cause the upstream `loadTheme()` theme leak so stylesheet
+  changes stop paying it; upstream a fix. Probes live in the session
+  scratchpad (theme-leak-probe.js: RSS sampling; WeakRef is unusable in
+  GJS — kept-objects list never clears).
 - [ ] Evaluate lazy-loading the overview module graph in Gnoblin mode
   (Overview is a dummy but its ES module imports still load).
 - [ ] Re-measure the baseline on real hardware in a logged-in Gnoblin
