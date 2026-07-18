@@ -16,6 +16,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from '../main.js';
@@ -147,6 +148,9 @@ export async function softReload(reason = 'manual') {
         try {
             Main.loadTheme();
             lastStylesheetDigest = stylesheetDigest();
+            // The dropped parsed CSS is freed but stays resident in glibc's
+            // arenas (~4 MB per swap, measured); hand it back to the kernel.
+            Shell.util_trim_memory();
         } catch (e) {
             failures.push('theme');
             logError(e, 'gnoblin: soft-reload loadTheme failed');

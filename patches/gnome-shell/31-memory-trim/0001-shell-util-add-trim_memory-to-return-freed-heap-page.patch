@@ -1,0 +1,71 @@
+From 8f29a9d3cc64ffd47572185cf97a6337825644d5 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 18 Jul 2026 23:58:01 +0100
+Subject: [PATCH] shell-util: add trim_memory to return freed heap pages
+
+Style reloads free the old theme's parsed CSS (verified: every replaced
+StTheme finalizes), but the multi-megabyte frees stay resident in
+glibc's malloc arenas, reading as ever-growing shell memory. On the
+reference machine 15 theme swaps grew RSS by 58 MB with zero object
+leaks; malloc_trim(0) returned all of it (295 MB -> 225 MB).
+
+Expose the trim as Shell.util_trim_memory() so JS callers doing bulk
+frees (the Gnoblin soft reload after a real theme swap) can hand the
+pages back to the kernel.
+---
+ src/shell-util.c | 18 ++++++++++++++++++
+ src/shell-util.h |  2 ++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/src/shell-util.c b/src/shell-util.c
+index 21fe7a7..0fd543f 100644
+--- a/src/shell-util.c
++++ b/src/shell-util.c
+@@ -3,6 +3,9 @@
+ #include "config.h"
+ 
+ #include <errno.h>
++#ifdef __GLIBC__
++#include <malloc.h>
++#endif
+ #include <math.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+@@ -325,6 +328,21 @@ shell_util_wifexited (int  status,
+   return ret;
+ }
+ 
++/**
++ * shell_util_trim_memory:
++ *
++ * Returns unused heap pages to the kernel. Large frees (for example the
++ * parsed CSS dropped by a style reload) otherwise stay resident in the
++ * allocator's arenas, which reads as ever-growing shell memory.
++ */
++void
++shell_util_trim_memory (void)
++{
++#ifdef __GLIBC__
++  malloc_trim (0);
++#endif
++}
++
+ /**
+  * shell_util_create_pixbuf_from_data:
+  * @data: (array length=len) (element-type guint8) (transfer full):
+diff --git a/src/shell-util.h b/src/shell-util.h
+index 81dd6da..ba34165 100644
+--- a/src/shell-util.h
++++ b/src/shell-util.h
+@@ -36,6 +36,8 @@ gboolean shell_util_touch_file_finish          (GFile               *file,
+ gboolean shell_util_wifexited                  (int               status,
+                                                 int              *exit);
+ 
++void shell_util_trim_memory                    (void);
++
+ GdkPixbuf *shell_util_create_pixbuf_from_data (const guchar      *data,
+                                                gsize              len,
+                                                GdkColorspace      colorspace,
+-- 
+2.53.0
+
