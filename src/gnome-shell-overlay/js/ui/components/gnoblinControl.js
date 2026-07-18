@@ -16,6 +16,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import St from 'gi://St';
 
 import * as Main from '../main.js';
 import * as Config from '../../misc/config.js';
@@ -33,6 +34,38 @@ const PORTAL_GRANT_VERSION = 1;
 
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
+
+// Identity of the stylesheet set the current St theme was built from. Used to
+// skip Main.loadTheme() on soft reload when no stylesheet changed: every theme
+// swap permanently leaks the old parsed theme (~4 MB, upstream St/GJS bug —
+// the replaced StTheme wrapper survives GC with refcount 1), so reloads that
+// only touch code must not pay that cost. null means "unknown, reload".
+let lastStylesheetDigest = null;
+
+function stylesheetDigest() {
+    const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
+    if (!theme)
+        return null;
+    const files = [
+        theme.default_stylesheet,
+        theme.application_stylesheet,
+        ...theme.get_custom_stylesheets(),
+    ].filter((f) => f !== null);
+    const parts = [];
+    for (const f of files) {
+        let part = f.get_uri();
+        try {
+            const info = f.query_info(
+                'standard::size,time::modified,time::modified-usec',
+                Gio.FileQueryInfoFlags.NONE, null);
+            part += `:${info.get_size()}:${info.get_attribute_uint64('time::modified')}:${info.get_attribute_uint32('time::modified-usec')}`;
+        } catch {
+            part += ':unreadable';
+        }
+        parts.push(part);
+    }
+    return parts.sort().join('|');
+}
 
 // Process-wide monotonic counter for the script import cache-bust. Module-level
 // (not per-host) so a disable→re-enable in the same process still re-imports fresh
@@ -107,11 +140,17 @@ export async function softReload(reason = 'manual') {
     console.log(`gnoblin: soft-reload (${reason}) — reloading theme + extensions in-process`);
     const failures = [];
 
-    try {
-        Main.loadTheme();
-    } catch (e) {
-        failures.push('theme');
-        logError(e, 'gnoblin: soft-reload loadTheme failed');
+    const digest = stylesheetDigest();
+    if (digest !== null && digest === lastStylesheetDigest) {
+        console.log('gnoblin: soft-reload: stylesheets unchanged, keeping current theme');
+    } else {
+        try {
+            Main.loadTheme();
+            lastStylesheetDigest = stylesheetDigest();
+        } catch (e) {
+            failures.push('theme');
+            logError(e, 'gnoblin: soft-reload loadTheme failed');
+        }
     }
 
     const em = Main.extensionManager;
@@ -451,6 +490,10 @@ export class Component {
         activeScriptHost = this._scripts;
         this._scripts.load().catch(
             e => logError(e, 'gnoblin-script: initial load failed'));
+
+        // Seed the stylesheet identity so a first no-change Reload can skip the
+        // theme swap (see stylesheetDigest above).
+        lastStylesheetDigest = stylesheetDigest();
 
         console.log(`gnoblin-control: enabled (mode=${this._mode()}, wayland=${Meta.is_wayland_compositor()})`);
     }
