@@ -46,10 +46,18 @@ third-party extensions in stock GNOME, a class gnoblin removes by design.
   `Main.loadTheme()` swap (upstream St/GJS: replaced StTheme wrapper
   survives GC at refcount 1). Mitigated in `softReload()` via a
   stylesheet-set digest; 15 reloads now hold private dirty flat.
-- [ ] Root-cause the upstream `loadTheme()` theme leak so stylesheet
-  changes stop paying it; upstream a fix. Probes live in the session
-  scratchpad (theme-leak-probe.js: RSS sampling; WeakRef is unusable in
-  GJS — kept-objects list never clears).
+- [x] Root-cause the upstream `loadTheme()` theme leak. NOT a leak:
+  every StTheme finalizes (gdb-verified); the freed parsed CSS stays
+  resident in glibc arenas. Fixed via `Shell.util_trim_memory()`
+  (patch 31-memory-trim) called from `softReload()` after real theme
+  swaps: 15 swaps now end 12 MB below baseline. Diagnosis notes:
+  WeakRef liveness probing is unusable in GJS (kept-objects list never
+  clears); GOBJECT_DEBUG instance counts need a debug GLib.
+- [ ] Offer the trim helper + loadTheme call upstream to GNOME Shell
+  (same mechanism fixes stock GNOME's "shell memory only ever grows"
+  for theme/stylesheet churn).
+- [ ] Consider a periodic idle trim (and MALLOC_ARENA_MAX tuning in
+  gnoblin-session) once real-hardware numbers exist.
 - [ ] Evaluate lazy-loading the overview module graph in Gnoblin mode
   (Overview is a dummy but its ES module imports still load).
 - [ ] Re-measure the baseline on real hardware in a logged-in Gnoblin
