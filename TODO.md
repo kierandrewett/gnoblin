@@ -56,10 +56,14 @@ third-party extensions in stock GNOME, a class gnoblin removes by design.
 - [ ] Offer the trim helper + loadTheme call upstream to GNOME Shell
   (same mechanism fixes stock GNOME's "shell memory only ever grows"
   for theme/stylesheet churn).
-- [ ] Consider a periodic idle trim (and MALLOC_ARENA_MAX tuning in
-  gnoblin-session) once real-hardware numbers exist.
-- [ ] Evaluate lazy-loading the overview module graph in Gnoblin mode
-  (Overview is a dummy but its ES module imports still load).
+- [x] Periodic idle trim: the control component now runs
+  `Shell.util_trim_memory()` every 300 s (PRIORITY_LOW, <10 ms/pass).
+- [ ] Consider MALLOC_ARENA_MAX tuning in gnoblin-session once
+  real-hardware numbers exist.
+- [x] Evaluate lazy-loading the overview module graph in Gnoblin mode.
+  Not viable: shellDBus.js and screenShield.js (always loaded) import
+  the overview graph statically, so the modules load regardless; the
+  rewrite cost outweighs the few MB of module heap.
 - [ ] Re-measure the baseline on real hardware in a logged-in Gnoblin
   session (llvmpipe keeps GPU buffers in RAM and skews headless numbers).
 
