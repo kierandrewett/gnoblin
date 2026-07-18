@@ -1,0 +1,70 @@
+From 559b8781cba838b8cb01bb5b3cfb7e1088b2839c Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 18 Jul 2026 23:12:22 +0100
+Subject: [PATCH] backgroundMenu: add Open Terminal entry in Gnoblin mode
+
+Add an Open Terminal action at the top of the desktop background menu,
+shown only in the Gnoblin session mode so stock GNOME keeps its upstream
+menu. The terminal is resolved from a fixed candidate list of desktop IDs
+(Ptyxis, Console, GNOME Terminal, foot, kitty, Alacritty) and launched via
+the shell's app launch context.
+---
+ js/ui/backgroundMenu.js | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/js/ui/backgroundMenu.js b/js/ui/backgroundMenu.js
+index 26fd41e..a52b8ce 100644
+--- a/js/ui/backgroundMenu.js
++++ b/js/ui/backgroundMenu.js
+@@ -1,4 +1,5 @@
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import St from 'gi://St';
+ 
+ import * as BoxPointer from './boxpointer.js';
+@@ -6,10 +7,42 @@ import * as PopupMenu from './popupMenu.js';
+ 
+ import * as Main from './main.js';
+ 
++const TERMINAL_APP_IDS = [
++    'org.gnome.Ptyxis.desktop',
++    'org.gnome.Console.desktop',
++    'org.gnome.Terminal.desktop',
++    'foot.desktop',
++    'kitty.desktop',
++    'Alacritty.desktop',
++];
++
++function findTerminalApp() {
++    for (const id of TERMINAL_APP_IDS) {
++        const app = Gio.DesktopAppInfo.new(id);
++        if (app)
++            return app;
++    }
++    return null;
++}
++
+ export class BackgroundMenu extends PopupMenu.PopupMenu {
+     constructor(layoutManager) {
+         super(layoutManager.dummyCursor, 0, St.Side.TOP);
+ 
++        if (global.session_mode === 'gnoblin') {
++            const terminal = findTerminalApp();
++            if (terminal) {
++                this.addAction(_('Open Terminal'), () => {
++                    try {
++                        terminal.launch([], global.create_app_launch_context(0, -1));
++                    } catch (e) {
++                        logError(e, 'Failed to launch terminal');
++                    }
++                });
++                this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++            }
++        }
++
+         this.addSettingsAction(_('Change Background…'), 'gnome-background-panel.desktop');
+         this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+         this.addSettingsAction(_('Display Settings'), 'gnome-display-panel.desktop');
+-- 
+2.53.0
+
