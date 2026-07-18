@@ -60,6 +60,10 @@ third-party extensions in stock GNOME, a class gnoblin removes by design.
   `Shell.util_trim_memory()` every 300 s (PRIORITY_LOW, <10 ms/pass).
 - [ ] Consider MALLOC_ARENA_MAX tuning in gnoblin-session once
   real-hardware numbers exist.
+- [ ] Bound extension hot-reload memory: the cache-busting import URLs
+  (34-extension-hot-reload) pin every previous module version in the ES
+  module registry for the session; measure growth under heavy reload
+  cycles and cap if it matters in practice.
 - [x] Evaluate lazy-loading the overview module graph in Gnoblin mode.
   Not viable: shellDBus.js and screenShield.js (always loaded) import
   the overview graph statically, so the modules load regardless; the
