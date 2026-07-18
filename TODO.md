@@ -33,6 +33,21 @@ items stay here only when they still form part of an active delivery sequence.
   apply, rollback, and real-display validation from
   `src/protocols/output-management/README.md`.
 
+## Performance
+
+Benchmark machine baseline (headless, llvmpipe, 2026-07-18): gnoblin mode
+101 MB private dirty at boot, 95 MB after 90 s idle (no growth); stock user
+mode 158 MB boot, 152 MB idle. Gnoblin mode is ~36% lighter and leak-free
+at idle. The live-session lag on the benchmark machine traces to 17 enabled
+third-party extensions in stock GNOME, a class gnoblin removes by design.
+
+- [ ] Measure and bound memory growth across repeated `org.gnoblin.Shell`
+  soft reloads; fix any per-reload leak.
+- [ ] Evaluate lazy-loading the overview module graph in Gnoblin mode
+  (Overview is a dummy but its ES module imports still load).
+- [ ] Re-measure the baseline on real hardware in a logged-in Gnoblin
+  session (llvmpipe keeps GPU buffers in RAM and skews headless numbers).
+
 ## Packaging
 
 - [ ] Implement and test the Debian/Ubuntu package split described in
