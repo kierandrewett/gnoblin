@@ -75,8 +75,14 @@ session.
   Not viable: shellDBus.js and screenShield.js (always loaded) import
   the overview graph statically, so the modules load regardless; the
   rewrite cost outweighs the few MB of module heap.
+- [x] Window-churn leak check: 30 real client open/close cycles hold
+  shell RSS flat (ends below start, ~0.2 s total CPU) — window
+  lifecycle, foreign-toplevel and layer-shell paths are clean.
+- [x] Codify the probes: `just perf-smoke` enforces the budgets (idle
+  private dirty + growth, soft-reload bound, window-churn bound).
 - [ ] Re-measure the baseline on real hardware in a logged-in Gnoblin
   session (llvmpipe keeps GPU buffers in RAM and skews headless numbers).
+  Run `just perf-smoke` there too and tighten its thresholds.
 
 ## Packaging
 
