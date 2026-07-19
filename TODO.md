@@ -45,7 +45,9 @@ Idle CPU (headless, 60 s window, 2026-07-19): gnoblin mode 0.08% with ~0
 wakeups/s; stock user mode 0.18% with ~4 wakeups/s (clock/indicator
 timers). Boot to "GNOME Shell started" ~2.2 s on llvmpipe. No idle-CPU
 defect in the core; remaining CPU investigation needs a real logged-in
-session.
+session. Boot profile (strace): ~60 ms total real I/O, time split 0.2 s
+mutter/device setup + 0.7 s JS load + 1.0 s UI construction on llvmpipe
+— compute-bound, no sync-I/O stall to fix.
 
 - [x] Measure and bound memory growth across repeated `org.gnoblin.Shell`
   soft reloads; fix any per-reload leak. Found ~3.8 MB leaked per
