@@ -218,6 +218,11 @@ gnome-stock-protocol-isolation-verify:
 gnome-dbus-verify:
     ./scripts/test-gnome-dbus.sh
 
+# Headless: performance smoke test — idle memory budget + growth, soft-reload
+# leak bound, window-churn leak bound. Baselines live in TODO.md "Performance".
+perf-smoke:
+    ./scripts/perf-smoke.sh
+
 # Headless: prove live extension hot-reload — install a probe extension, edit its
 # code, ReloadExtension over org.gnoblin.*, confirm the new code ran (no relogin).
 gnome-hot-reload-verify:
