@@ -1,44 +1,71 @@
-From cba9046787ce0097d1a0ef1cf6ae2893dfa7e16c Mon Sep 17 00:00:00 2001
+From b91b27d174255b6a2db1212bc12ad64bb19d2bcf Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Fri, 3 Jul 2026 02:25:57 +0100
+Date: Sun, 19 Jul 2026 01:41:15 +0100
 Subject: [PATCH] extension-hot-reload: cache-bust the extension import
  (reload-only)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-ESM caches modules by URI, so reloadExtension() re-ran the OLD code. Bump a per-uuid
-counter and append it to the import URI on RELOAD so fresh source is imported —
-true live code hot-reload with no relogin. First load uses the plain URI (matches
-upstream, no baseline module-cache growth). Only the entry module is refreshed;
-relative imports keep their URIs, so sub-module edits still need a full reload.
+ESM caches modules by URI, so reloadExtension() re-ran the OLD code. Import
+each (re)load under a URI keyed by a SHA1 digest of extension.js: fresh
+source gets a fresh URI (true live hot-reload, no relogin), while an
+unchanged extension reuses its cached module URI. The registry has no
+eviction, so distinct URIs pin their module for the session (~1 MB per
+reload of a 124 kB extension measured) — digest keying makes no-op reloads
+free, which matters because the Gnoblin soft reload re-imports every active
+extension. Returning to an earlier version reuses that version's URI. First
+load uses the plain URI (matches upstream, no baseline module-cache
+growth). Only the entry module is refreshed; relative imports keep their
+URIs, so sub-module edits still need a full reload.
 ---
- js/ui/extensionSystem.js | 15 ++++++++++++++-
- 1 file changed, 14 insertions(+), 1 deletion(-)
+ js/ui/extensionSystem.js | 36 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 35 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
-index 22121c4..79fa42d 100644
+index e87ab26..585174d 100644
 --- a/js/ui/extensionSystem.js
 +++ b/js/ui/extensionSystem.js
-@@ -500,7 +500,20 @@ export class ExtensionManager extends Signals.EventEmitter {
+@@ -506,7 +506,41 @@ export class ExtensionManager extends Signals.EventEmitter {
          let extensionState = null;
  
          try {
 -            extensionModule = await import(extensionJs.get_uri());
-+            // gnoblin: cache-bust the import on RELOAD so edits to extension.js are
-+            // picked up live (ESM caches modules by URI). The FIRST load of each
-+            // uuid uses the plain URI — matches upstream, and keeps normal sessions
-+            // from accumulating module records. Each subsequent (re)load bumps a
-+            // per-uuid counter, yielding a fresh module URI. Note: only the entry
-+            // module is refreshed; a relative import (./foo.js) keeps its own URI
-+            // and stays cached, so edits to sub-modules still need a full reload.
-+            this._gnoblinReloadCounts ??= new Map();
-+            const gnoblinN = this._gnoblinReloadCounts.get(uuid) ?? 0;
-+            this._gnoblinReloadCounts.set(uuid, gnoblinN + 1);
-+            const gnoblinUri = gnoblinN === 0
-+                ? extensionJs.get_uri()
-+                : `${extensionJs.get_uri()}?gnoblinReload=${gnoblinN}`;
++            // gnoblin: cache-bust the import on RELOAD so edits to extension.js
++            // are picked up live (ESM caches modules by URI, and the registry has
++            // no eviction — every distinct URI pins its module for the session,
++            // measured at ~1 MB per reload of a 124 kB extension). Key the bust
++            // by a digest of the entry module so an unchanged extension reuses
++            // its cached module (no growth; softReload re-imports every active
++            // extension, so no-op reloads must be free) and returning to a
++            // previously loaded version reuses that version's URI. The FIRST
++            // load uses the plain URI — matches upstream. Only the entry module
++            // is refreshed; a relative import (./foo.js) keeps its own URI and
++            // stays cached, so edits to sub-modules still need a full reload.
++            this._gnoblinModuleUris ??= new Map();
++            let moduleUris = this._gnoblinModuleUris.get(uuid);
++            if (!moduleUris) {
++                moduleUris = new Map();
++                this._gnoblinModuleUris.set(uuid, moduleUris);
++            }
++            let digest = null;
++            try {
++                const [, contents] = extensionJs.load_contents(null);
++                digest = GLib.compute_checksum_for_data(
++                    GLib.ChecksumType.SHA1, contents);
++            } catch {
++                // unreadable now; import below will surface the real error
++            }
++            let gnoblinUri;
++            if (digest !== null && moduleUris.has(digest))
++                gnoblinUri = moduleUris.get(digest);
++            else if (moduleUris.size === 0)
++                gnoblinUri = extensionJs.get_uri();
++            else
++                gnoblinUri = `${extensionJs.get_uri()}?gnoblinReload=${digest ?? moduleUris.size}`;
 +            extensionModule = await import(gnoblinUri);
++            if (digest !== null)
++                moduleUris.set(digest, gnoblinUri);
  
              // Extensions can only be imported once, so add a property to avoid
              // attempting to re-import an extension.
