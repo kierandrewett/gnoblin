@@ -64,6 +64,8 @@ session.
   for theme/stylesheet churn).
 - [x] Periodic idle trim: the control component now runs
   `Shell.util_trim_memory()` every 300 s (PRIORITY_LOW, <10 ms/pass).
+  Validated end-to-end: heap inflated to 288 MB held until the timer
+  fired at ~t+5 min, then dropped to 220 MB and stayed.
 - [ ] Consider MALLOC_ARENA_MAX tuning in gnoblin-session once
   real-hardware numbers exist.
 - [x] Bound extension hot-reload memory: reload cache-bust is now keyed
