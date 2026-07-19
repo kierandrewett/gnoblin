@@ -86,6 +86,13 @@ session.
   session (llvmpipe keeps GPU buffers in RAM and skews headless numbers).
   Run `just perf-smoke` there too and tighten its thresholds.
 
+- [ ] Note: the isolated devkit bus (scripts/devkit_dbus.py) copies the
+  SYSTEM D-Bus service files, so headless runs activate the stock
+  /usr/libexec portal backend — the patched
+  install/libexec/xdg-desktop-portal-gnome is only exercised via the
+  manual `-r` replace flow. Decide whether the harness should rewrite
+  the service Exec lines to point at the built backend.
+
 ## Packaging
 
 - [ ] Implement and test the Debian/Ubuntu package split described in
