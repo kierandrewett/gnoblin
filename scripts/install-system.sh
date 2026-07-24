@@ -51,11 +51,49 @@ MUTTER_V="$(spec_version mutter)"
 SHELL_V="$(spec_version gnome-shell)"
 [ -n "$MUTTER_V" ] && [ -n "$SHELL_V" ] || { echo "could not read Version: from packaging/rpm/gnoblin-*.spec" >&2; exit 1; }
 
+# A post-split gnoblin package installs ONLY into the prefix, plus the two
+# paths that genuinely cannot live there -- the login entry, because login
+# managers scan a fixed directory, and the systemd user units -- and rpm's own
+# per-build-id debuginfo symlinks.
+#
+# Pre-split builds are still sitting in the same RPM directory under the SAME
+# NAMES: gnoblin-session-49.6-1.gnoblin.fc43 installs /usr/bin/gnoblin-session,
+# /usr/share/gnome-shell/modes/gnoblin.json and friends, and Requires
+# `gnome-shell = 49.6-1.gnoblin.fc43` -- the replace-style package. Resolving
+# one would drag the old gnome-shell in and overwrite the distro's. The name
+# cannot tell them apart. The layout can.
+# Deliberately pure bash, no grep. This check is what stands between a stale
+# RPM and an overwritten distro package, and `grep` is not reliably GNU grep --
+# on this machine an interactive shell function routes it to ugrep, whose
+# exit status for -q combined with -v differs. A case statement has no such
+# ambiguity.
+STALE_SEEN=0
+rpm_layout_ok() {
+  local path
+  while IFS= read -r path; do
+    case "$path" in
+      "$PREFIX"|"$PREFIX"/*) ;;
+      /usr/share/wayland-sessions|/usr/share/wayland-sessions/*) ;;
+      /usr/lib/systemd/user|/usr/lib/systemd/user/*) ;;
+      /usr/lib/.build-id|/usr/lib/.build-id/*) ;;
+      *) return 1 ;;
+    esac
+  done < <(rpm -qlp "$1" 2>/dev/null)
+  return 0
+}
+
 find_rpm() {
-  local name="$1" version="$2" found
-  found="$(find "$RPM_DIR" -name "$name-$version-*.gnoblin*.rpm" -print 2>/dev/null | sort | tail -1)"
-  [ -n "$found" ] || return 1
-  printf '%s\n' "$found"
+  local name="$1" version="$2" cand
+  while IFS= read -r cand; do
+    [ -n "$cand" ] || continue
+    if rpm_layout_ok "$cand"; then
+      printf '%s\n' "$cand"
+      return 0
+    fi
+    echo ">> ignoring pre-split RPM (installs outside $PREFIX): ${cand##*/}" >&2
+    STALE_SEEN=1
+  done < <(find "$RPM_DIR" -name "$name-$version-*.gnoblin*.rpm" -print 2>/dev/null | sort -r)
+  return 1
 }
 
 SUDO=()
@@ -86,15 +124,38 @@ resolve_stage() {
     # system package, which is the exact thing this packaging exists to avoid.
     case "$name" in gnoblin-*) ;; *) continue ;; esac
     case "$name" in *-debuginfo|*-debugsource) continue ;; esac
+    rpm_layout_ok "$built" || continue
     [ "$(rpm -qp --qf '%{VERSION}' "$built" 2>/dev/null)" = "$version" ] || continue
-    printf '%s\n' "${RPMS[@]:-}" | grep -qF "/$name-$version-" && continue
+    already=0
+    for have in "${RPMS[@]:-}"; do
+      case "${have##*/}" in "$name-$version-"*) already=1 ;; esac
+    done
+    [ "$already" -eq 1 ] && continue
     rpm -q "$name" >/dev/null 2>&1 || continue
     RPMS+=("$built")
     echo ">> also updating installed subpackage: $name"
   done
 }
 
+# True when every RPM in the set is already installed at exactly this NEVRA.
+# Lets a re-run skip straight to the stage that still needs doing instead of
+# prompting for a password to reinstall what is already there.
+stage_satisfied() {
+  local f file_nevra installed
+  for f in "$@"; do
+    file_nevra="$(rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}' "$f" 2>/dev/null)" || return 1
+    installed="$(rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}' "${file_nevra%-*-*}" 2>/dev/null)" || return 1
+    [ "$installed" = "$file_nevra" ] || return 1
+  done
+  return 0
+}
+
 run_dnf() {
+  if [ "$REINSTALL" -eq 0 ] && stage_satisfied "$@"; then
+    echo "     already installed at this version -- nothing to do"
+    echo "     (use 'just install-session reinstall' to re-apply a rebuild)"
+    return 0
+  fi
   local verb=install
   [ "$REINSTALL" -eq 1 ] && verb=reinstall
   local args=("$verb")
