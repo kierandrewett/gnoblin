@@ -22,7 +22,7 @@ assert_local_sources() {
             echo "FAIL: $project spec source was not staged: $source" >&2
             exit 1
         }
-    done < <(grep -E '^Source[1-9][0-9]*:' "$ROOT/packaging/rpm/gnoblin-$project.spec")
+    done < <(grep -E '^Source[1-9][0-9]*:' "$ROOT/packaging/rpm/$project.spec")
 }
 
 assert_local_sources mutter "$TMP/mutter"

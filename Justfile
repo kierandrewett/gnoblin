@@ -186,12 +186,12 @@ dev-session:
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
-# Installs gnoblin-mutter / gnoblin-gnome-shell under /opt/gnoblin, ALONGSIDE
-# the distro's own mutter and gnome-shell -- nothing is replaced. Two stages,
-# because the shell BuildRequires gnoblin-mutter-devel; this installs stage 1,
-# tells you to build stage 2, and picks up where it left off when re-run. Also
-# removes dev-prefix units from ~/.config/systemd/user, which would otherwise
-# shadow the packaged ones.
+# Needs `just rpm-all` first. Prompts for sudo and shows dnf's transaction
+# before changing anything. REPLACES the distro mutter/gnome-shell (standard
+# paths, so the files are the same ones). Removes any leftover /opt-era
+# gnoblin-* packages, pulls in installed subpackages like mutter-devel that
+# pin the base package to an exact release, and clears dev-prefix units from
+# ~/.config/systemd/user that would shadow the packaged ones.
 #   just install-session            # prompts, shows the transaction
 #   just install-session dry        # resolve + print only, changes nothing
 #   just install-session yes        # no prompt
@@ -266,15 +266,11 @@ gnome-protocol-gating-verify:
 tarball PROJ:
     ./scripts/make-tarball.sh {{PROJ}}
 
-# PROJ stays the upstream/subproject name (mutter, gnome-shell) -- that's what
-# the tarball is named after -- while the spec it feeds is gnoblin-<PROJ>.spec,
-# which packages it as gnoblin-<PROJ> under /opt/gnoblin, side by side with the
-# distro's own package rather than replacing it.
 # Build a binary RPM (Fedora). Patches are pre-applied in the tarball.
 rpm PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    spec="packaging/rpm/gnoblin-{{PROJ}}.spec"
+    spec="packaging/rpm/{{PROJ}}.spec"
     # Check gnoblin-* build deps BEFORE the tarball step, which resets the
     # submodule and re-applies the whole patch series. rpmbuild only checks
     # BuildRequires after all that work is already done, so a missing
@@ -295,22 +291,11 @@ rpm PROJ:
     just tarball {{PROJ}}
     rpmbuild -bb "$spec"
 
-# gnoblin-gnome-shell BuildRequires gnoblin-mutter-devel, so gnoblin-mutter has
-# to be built AND INSTALLED before the shell can be built. This stops cleanly
-# at that boundary rather than failing on a missing BuildRequires.
-# Build both RPM stages, stopping if stage 1 still needs installing.
+# Build every RPM in rpm_projects. gnome-shell.spec BuildRequires plain
+# mutter-devel, which the distro package already satisfies, so there is no
+# install step in the middle.
 rpm-all:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just rpm mutter
-    if ! rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
-        echo
-        echo ">> gnoblin-mutter built. gnoblin-gnome-shell needs it INSTALLED to build against:"
-        echo "     just install-session     # installs stage 1"
-        echo "     just rpm gnome-shell     # then build stage 2"
-        exit 0
-    fi
-    just rpm gnome-shell
+    for p in {{rpm_projects}}; do just rpm "$p" || exit; done
 
 # deb / arch packaging are scaffolded; see packaging/{deb,arch}/README.md.
 deb PROJ:
