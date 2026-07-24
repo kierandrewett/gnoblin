@@ -27,41 +27,17 @@
 %global major_version %%(echo %{version} | cut -d '.' -f1 | cut -d '~' -f 1)
 %global tarball_version %%(echo %{version} | tr '~' '.')
 
-# gnoblin: this is a SIDE-BY-SIDE package, not a replacement for the distro's
-# mutter. Everything installs under /opt/gnoblin, and only the gnoblin session
-# ever looks there (gnoblin-env.sh prepends this prefix to PATH,
-# LD_LIBRARY_PATH, GI_TYPELIB_PATH and XDG_DATA_DIRS for that session alone).
-# Installing this must never make the system's own mutter removable.
-%global upstream_name mutter
-%global _prefix /opt/gnoblin
-
-# Nothing outside gnoblin may resolve against these libraries. Without the
-# provides filter, rpm auto-provides the libmutter soname from /opt and dnf
-# would let gnoblin-mutter satisfy the distro gnome-shell's dependency on it,
-# which makes the real mutter look removable. Requires are filtered along with
-# it: our binaries link our own private libs, and the system libraries we
-# actually need are listed by hand below.
-%global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude_from ^%{_prefix}/.*$
-
-# check-rpaths fails any RPATH outside the standard library directories. For a
-# prefixed install that RPATH is the whole point: these binaries have to find
-# libmutter in the versioned mutter directory under this prefix, which is
-# deliberately NOT on the system loader path, so gnoblin's Mutter can never be
-# picked up by anything but the gnoblin session.
-%global __brp_check_rpaths %{nil}
-
-Name:          gnoblin-mutter
+Name:          mutter
 Version:       49.5
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
 Release:       1.gnoblin%{?dist}
-Summary:       Patched Mutter for the gnoblin session, installed under %{_prefix}
+Summary:       Window and compositing manager based on Clutter
 
 # Automatically converted from old format: GPLv2+ - review is highly recommended.
 License:       GPL-2.0-or-later
 URL:           http://www.gnome.org
-Source0:       http://download.gnome.org/sources/%{upstream_name}/%{major_version}/%{upstream_name}-%{tarball_version}.tar.xz
+Source0:       http://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 
 # https://pagure.io/fedora-workstation/issue/357
 Source1:       org.gnome.mutter.fedora.gschema.override
@@ -137,15 +113,18 @@ Requires: %{name}-common = %{version}-%{release}
 
 Recommends: mesa-dri-drivers%{?_isa}
 
+Provides: firstboot(windowmanager) = mutter
+
 # Cogl and Clutter were forked at these versions, but have diverged
 # significantly since then.
 Provides: bundled(cogl) = 1.22.0
 Provides: bundled(clutter) = 1.26.0
 
-# Upstream's spec carries `Provides: firstboot(windowmanager) = mutter` and
-# `Conflicts: mutter/gnome-shell < ...`. Both are dropped deliberately: this
-# package neither replaces the distro window manager nor has any business
-# conflicting with it. It coexists.
+Conflicts: mutter < 45~beta.1-2
+
+# Make sure dnf updates gnome-shell together with this package; otherwise we
+# might end up with broken gnome-shell installations due to mutter ABI changes.
+Conflicts: gnome-shell < 45~rc
 
 %description
 Mutter is a window and compositing manager that displays and manages
@@ -160,12 +139,12 @@ to add fancy visual effects and to rework the window management
 behaviors to meet the needs of the environment.
 
 %package common
-Summary: Common files used by %{name}
+Summary: Common files used by %{name} and forks of %{name}
 BuildArch: noarch
+Conflicts: mutter < 45~beta.1-2
 
 %description common
-Common files used by gnoblin's Mutter build. Installed under %{_prefix}, so
-they never collide with the distro mutter-common package.
+Common files used by Mutter and soft forks of Mutter
 
 %package devel
 Summary: Development package for %{name}
@@ -190,7 +169,7 @@ The %{name}-tests package contains tests that can be used to verify
 the functionality of the installed %{name} package.
 
 %prep
-%autosetup -S git -n %{upstream_name}-%{tarball_version}
+%autosetup -S git -n %{name}-%{tarball_version}
 
 %build
 %meson -Degl_device=true
@@ -200,19 +179,9 @@ the functionality of the installed %{name} package.
 %meson_install
 install -p %{SOURCE1} %{buildroot}%{_datadir}/glib-2.0/schemas
 
-# udev rules are keyed on hardware, not on a prefix, so they can only live in
-# the system directory -- where the distro mutter already ships an identical
-# copy of this exact file. Shipping ours would be a straight file conflict
-# with the package we are trying not to disturb, so drop it. The rules are
-# i915 KMS-modifier quirks plus vkms ignores; they apply process-wide via udev
-# tags, so gnoblin's Mutter picks them up from the system copy regardless.
-rm -f %{buildroot}%{_udevrulesdir}/61-mutter.rules
-rm -rf %{buildroot}%{_prefix}/lib/udev
+%find_lang %{name}
 
-# The gettext domain and tarball directory are upstream's, not ours.
-%find_lang %{upstream_name}
-
-%files -f %{upstream_name}.lang
+%files -f %{name}.lang
 %license COPYING
 %doc NEWS
 %{_bindir}/gdctl
@@ -235,6 +204,7 @@ rm -rf %{buildroot}%{_prefix}/lib/udev
 %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
 %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml
 %{_datadir}/gnome-control-center/keybindings/50-mutter-*.xml
+%{_udevrulesdir}/61-mutter.rules
 
 %files devel
 %{_datadir}/applications/org.gnome.Mutter.Mdk.desktop

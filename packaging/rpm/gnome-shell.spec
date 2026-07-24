@@ -17,46 +17,16 @@
 %global portal_helper 1
 %endif
 
-# gnoblin: SIDE-BY-SIDE package, not a replacement for the distro's
-# gnome-shell. See the matching note at the top of gnoblin-mutter.spec -- the
-# same reasoning and the same two filters apply here.
-%global upstream_name gnome-shell
-%global _prefix /opt/gnoblin
-# The one path that cannot move into the prefix: login managers scan a fixed
-# system directory for session entries. %%{_userunitdir} is already outside the
-# prefix by definition, which is what the org.gnoblin.Shell* units want too.
-%global system_wayland_sessions /usr/share/wayland-sessions
-# gnome-session-binary reads the .session file, and it runs as
-# gnome-session-manager@gnoblin.service under the SYSTEMD USER MANAGER, whose
-# environment the gnoblin-session wrapper never touches -- the wrapper only
-# sets its own process env before exec'ing gnome-session. So the manager sees
-# the stock XDG_DATA_DIRS, %%{_prefix}/share is not on it, the session file is
-# invisible, RequiredComponents comes back empty and org.gnoblin.Shell.target
-# is never started. The session then "starts" with no compositor at all:
-# targets reach, autostart apps run, and every one of them dies on
-# "Failed to connect to Wayland display".
-#
-# This file therefore has to live in the system data dir. gnoblin.json does
-# NOT: the shell reads that, and the shell is started by gnoblin-shell-service,
-# which does apply gnoblin-env.sh. Keeping the mode in the prefix also stops
-# the distro gnome-shell from advertising a `gnoblin` mode it cannot run.
-%global system_gnome_sessions /usr/share/gnome-session/sessions
-%global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude_from ^%{_prefix}/.*$
-# Same reason as gnoblin-mutter: the RPATH into this prefix is deliberate, and
-# check-rpaths rejects anything outside the standard library directories.
-%global __brp_check_rpaths %{nil}
-
-Name:           gnoblin-gnome-shell
+Name:           gnome-shell
 Version:        49.6
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
 Release:        1.gnoblin%{?dist}
-Summary:        Patched GNOME Shell for the gnoblin session, installed under %{_prefix}
+Summary:        Window management and application launching for GNOME
 
 License:        GPL-2.0-or-later
 URL:            https://wiki.gnome.org/Projects/GnomeShell
-Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{upstream_name}-%{tarball_version}.tar.xz
+Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
 
 # gnoblin-session subpackage sources (session mode, login entry, systemd
 # --user units, control tools) — staged into the RPM sources directory by
@@ -123,17 +93,15 @@ BuildRequires:  python3-docutils
 BuildRequires:  libXfixes-devel >= 5.0
 # used in unused BigThemeImage
 BuildRequires:  librsvg2-devel
-# gnoblin's own Mutter, not the distro's: the patched libmutter carries the
-# extra protocol symbols this shell links against. This means gnoblin-mutter
-# must be BUILT AND INSTALLED before this spec can build -- see
-# docs/installation.md. rpmbuild resolves it from the installed RPM.
-BuildRequires:  gnoblin-mutter-devel >= %{mutter_version}
+BuildRequires:  mutter-devel >= %{mutter_version}
 BuildRequires:  pkgconfig(libpulse)
 %ifnarch s390 s390x ppc ppc64 ppc64p7
 BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
 %endif
 # Bootstrap requirements
 BuildRequires: gtk-doc
+# Handle upgrade path
+Conflicts: %{name} < 48~rc-5
 %ifnarch s390 s390x
 Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
 %endif
@@ -145,7 +113,7 @@ Requires:       libadwaita%{_isa} >= %{adwaita_version}
 Requires:       libnma-gtk4%{?_isa}
 # needed for loading SVG's via gdk-pixbuf
 Requires:       librsvg2%{?_isa}
-Requires:       gnoblin-mutter%{?_isa} >= %{mutter_version}
+Requires:       mutter%{?_isa} >= %{mutter_version}
 Requires:       upower%{?_isa}
 Requires:       polkit%{?_isa} >= %{polkit_version}
 Requires:       gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
@@ -198,21 +166,26 @@ Requires:     webkitgtk6.0%{?_isa}
 ExcludeArch:    %{ix86}
 %endif
 
+Provides:       gnome-shell(api) = %{major_version}
+Provides:       desktop-notification-daemon = %{version}-%{release}
+Provides:       PolicyKit-authentication-agent = %{version}-%{release}
 Provides:       bundled(gvc)
 Provides:       bundled(libcroco) = 0.6.13
 
-# Upstream also declares `gnome-shell(api)`, `desktop-notification-daemon` and
-# `PolicyKit-authentication-agent`. All three are dropped: they are system-wide
-# roles, and claiming them would let dnf treat this package as a stand-in for
-# the real gnome-shell -- exactly the substitution this split exists to
-# prevent. Under gnoblin those roles are filled inside the session, by the
-# shell this package installs to %%{_prefix}, and the org.gnome.* D-Bus service
-# files that arrange it live under %%{_prefix}/share too.
-#
-# Upstream's `Obsoletes: caribou*` and the background-logo `Conflicts:` are
-# dropped for the same reason: they are distro upgrade-path bookkeeping for the
-# system package, and acting on them from /opt would remove or block packages
-# that have nothing to do with gnoblin.
+%if 0%{?rhel}
+# In Fedora, fedora-obsolete-packages obsoletes caribou
+Obsoletes:      caribou < 0.4.21-10
+Obsoletes:      caribou-antler < 0.4.21-10
+Obsoletes:      caribou-devel < 0.4.21-10
+Obsoletes:      caribou-gtk2-module < 0.4.21-10
+Obsoletes:      caribou-gtk3-module < 0.4.21-10
+Obsoletes:      python-caribou < 0.4.21-10
+Obsoletes:      python2-caribou < 0.4.21-10
+Obsoletes:      python3-caribou < 0.4.21-10
+%endif
+
+# https://bugzilla.redhat.com/show_bug.cgi?id=1740897
+Conflicts:      gnome-shell-extension-background-logo < 3.34.0
 
 %description
 GNOME Shell provides core user interface functions for the GNOME 3 desktop,
@@ -223,6 +196,7 @@ easy to use experience.
 
 %package common
 Summary: Common files used by %{name}
+Conflicts: %{name} < 48~rc-5
 BuildArch: noarch
 
 %description common
@@ -243,11 +217,9 @@ and gnoblinctl, the control CLI for the org.gnoblin.Shell D-Bus protocol
 (feature toggles, Wayland soft-reload, extension/script hot-reload).
 
 %prep
-%autosetup -S git -n %{upstream_name}-%{tarball_version}
+%autosetup -S git -n %{name}-%{tarball_version}
 
 %build
-# libmutter lives in this prefix, not on the default pkg-config path.
-export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 %meson \
   -Dextensions_app=false \
 %if %{portal_helper}
@@ -261,31 +233,18 @@ export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 %install
 %meson_install
 
-# gnome-shell's meson installs its systemd user units PREFIX-RELATIVE, into
-# %%{_prefix}/lib/systemd/user -- not %%{_userunitdir}. So they never collided
-# with the distro's copies, but systemd --user does not scan /opt either, which
-# makes them dead weight: gnoblin drives the session through
-# org.gnoblin.Shell@wayland.service, installed to the real %%{_userunitdir}
-# further down. Drop them rather than ship files nothing can load.
-#
-# (OnFailure= in the gnoblin unit still names
-# org.gnome.Shell-disable-extensions.service; that resolves against the system
-# copy from the distro gnome-shell. Without one installed systemd just logs
-# that the OnFailure target is missing, which is not fatal.)
-rm -rf %{buildroot}%{_prefix}/lib/systemd
-
 # Create empty directories where other packages can drop extensions
 mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
 mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
 
 # gnoblin-session subpackage: session mode, login entry, systemd --user
 # units, control tools. Mirrors scripts/install-session.sh's layout, with
-# %%{_prefix} standing in for the dev prefix that script targets — at a real
+# %{_prefix} standing in for the dev prefix that script targets — at a real
 # system install, gnoblin-session/gnoblin-shell-service's lookup-path
 # prepending is a no-op (everything's already on the default search paths
-# under %%{_prefix}), so they still work correctly, just redundantly.
+# under %{_prefix}), so they still work correctly, just redundantly.
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
-install -Dm644 %{SOURCE2} %{buildroot}%{system_gnome_sessions}/gnoblin.session
+install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm755 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
 gnoblin_libdir=%{_libdir}
 gnoblin_prefix=%{_prefix}
@@ -296,18 +255,16 @@ install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
-# The login manager reads wayland-sessions from a fixed SYSTEM directory, so
-# this one file has to leave the prefix. Exec= still points into %%{_prefix}.
-install -Dm644 %{SOURCE3} %{buildroot}%{system_wayland_sessions}/gnoblin.desktop
+install -Dm644 %{SOURCE3} %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop
 sed -i "s|^Exec=.*|Exec=%{_bindir}/gnoblin-session|" \
-  %{buildroot}%{system_wayland_sessions}/gnoblin.desktop
+  %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop
 install -Dm644 %{SOURCE4} %{buildroot}%{_userunitdir}/org.gnoblin.Shell.target
 mkdir -p %{buildroot}%{_userunitdir}
 sed "s|@PREFIX@|%{_prefix}|g" %{SOURCE5} \
   > %{buildroot}%{_userunitdir}/org.gnoblin.Shell@wayland.service
 chmod 644 %{buildroot}%{_userunitdir}/org.gnoblin.Shell@wayland.service
 
-%find_lang %{upstream_name}
+%find_lang %{name}
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
@@ -316,7 +273,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Exten
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.PortalHelper.desktop
 %endif
 
-%files -f %{upstream_name}.lang
+%files -f %{name}.lang
 %license COPYING
 %doc NEWS README.md
 %{_bindir}/gnome-shell
@@ -350,6 +307,9 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
 %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
 %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
 %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
+%{_userunitdir}/org.gnome.Shell-disable-extensions.service
+%{_userunitdir}/org.gnome.Shell.target
+%{_userunitdir}/org.gnome.Shell@wayland.service
 %{_libdir}/gnome-shell/
 %{_libexecdir}/gnome-shell-calendar-server
 %{_libexecdir}/gnome-shell-perf-helper
@@ -370,8 +330,8 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
 
 %files -n gnoblin-session
 %{_datadir}/gnome-shell/modes/gnoblin.json
-%{system_gnome_sessions}/gnoblin.session
-%{system_wayland_sessions}/gnoblin.desktop
+%{_datadir}/gnome-session/sessions/gnoblin.session
+%{_datadir}/wayland-sessions/gnoblin.desktop
 %{_libexecdir}/gnoblin-env.sh
 %{_libexecdir}/gnoblin-libdir
 %{_bindir}/gnoblin-session
