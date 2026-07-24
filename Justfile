@@ -271,8 +271,29 @@ tarball PROJ:
 # which packages it as gnoblin-<PROJ> under /opt/gnoblin, side by side with the
 # distro's own package rather than replacing it.
 # Build a binary RPM (Fedora). Patches are pre-applied in the tarball.
-rpm PROJ: (tarball PROJ)
-    rpmbuild -bb packaging/rpm/gnoblin-{{PROJ}}.spec
+rpm PROJ:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    spec="packaging/rpm/gnoblin-{{PROJ}}.spec"
+    # Check gnoblin-* build deps BEFORE the tarball step, which resets the
+    # submodule and re-applies the whole patch series. rpmbuild only checks
+    # BuildRequires after all that work is already done, so a missing
+    # gnoblin-mutter-devel otherwise costs a full patch+archive cycle first.
+    missing=()
+    while read -r dep; do
+        rpm -q "$dep" >/dev/null 2>&1 || missing+=("$dep")
+    done < <(sed -n 's/^BuildRequires:[[:space:]]*\(gnoblin-[A-Za-z0-9._+-]*\).*/\1/p' "$spec")
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "gnoblin-{{PROJ}} needs these installed to build against:" >&2
+        printf '     %s\n' "${missing[@]}" >&2
+        echo >&2
+        echo "They are gnoblin's own packages, so build and install them first:" >&2
+        echo "     just rpm mutter" >&2
+        echo "     just install-session" >&2
+        exit 1
+    fi
+    just tarball {{PROJ}}
+    rpmbuild -bb "$spec"
 
 # gnoblin-gnome-shell BuildRequires gnoblin-mutter-devel, so gnoblin-mutter has
 # to be built AND INSTALLED before the shell can be built. This stops cleanly

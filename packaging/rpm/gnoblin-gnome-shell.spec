@@ -23,7 +23,7 @@
 %global upstream_name gnome-shell
 %global _prefix /opt/gnoblin
 # The one path that cannot move into the prefix: login managers scan a fixed
-# system directory for session entries. %{_userunitdir} is already outside the
+# system directory for session entries. %%{_userunitdir} is already outside the
 # prefix by definition, which is what the org.gnoblin.Shell* units want too.
 %global system_wayland_sessions /usr/share/wayland-sessions
 %global __provides_exclude_from ^%{_prefix}/.*$
@@ -191,8 +191,8 @@ Provides:       bundled(libcroco) = 0.6.13
 # roles, and claiming them would let dnf treat this package as a stand-in for
 # the real gnome-shell -- exactly the substitution this split exists to
 # prevent. Under gnoblin those roles are filled inside the session, by the
-# shell this package installs to %{_prefix}, and the org.gnome.* D-Bus service
-# files that arrange it live under %{_prefix}/share too.
+# shell this package installs to %%{_prefix}, and the org.gnome.* D-Bus service
+# files that arrange it live under %%{_prefix}/share too.
 #
 # Upstream's `Obsoletes: caribou*` and the background-logo `Conflicts:` are
 # dropped for the same reason: they are distro upgrade-path bookkeeping for the
@@ -248,7 +248,7 @@ export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 
 # gnoblin drives the session through org.gnoblin.Shell@wayland.service, so the
 # org.gnome.Shell* user units this build produces are both unused and a direct
-# file conflict with the distro gnome-shell in %{_userunitdir} (which is a
+# file conflict with the distro gnome-shell in %%{_userunitdir} (which is a
 # system path, not a prefixed one). Drop them.
 rm -f %{buildroot}%{_userunitdir}/org.gnome.Shell-disable-extensions.service
 rm -f %{buildroot}%{_userunitdir}/org.gnome.Shell.target
@@ -260,10 +260,10 @@ mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
 
 # gnoblin-session subpackage: session mode, login entry, systemd --user
 # units, control tools. Mirrors scripts/install-session.sh's layout, with
-# %{_prefix} standing in for the dev prefix that script targets — at a real
+# %%{_prefix} standing in for the dev prefix that script targets — at a real
 # system install, gnoblin-session/gnoblin-shell-service's lookup-path
 # prepending is a no-op (everything's already on the default search paths
-# under %{_prefix}), so they still work correctly, just redundantly.
+# under %%{_prefix}), so they still work correctly, just redundantly.
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
 install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm755 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
@@ -277,7 +277,7 @@ install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
 # The login manager reads wayland-sessions from a fixed SYSTEM directory, so
-# this one file has to leave the prefix. Exec= still points into %{_prefix}.
+# this one file has to leave the prefix. Exec= still points into %%{_prefix}.
 install -Dm644 %{SOURCE3} %{buildroot}%{system_wayland_sessions}/gnoblin.desktop
 sed -i "s|^Exec=.*|Exec=%{_bindir}/gnoblin-session|" \
   %{buildroot}%{system_wayland_sessions}/gnoblin.desktop
