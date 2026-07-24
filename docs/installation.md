@@ -25,7 +25,7 @@ from the spec files instead of hand-copying a package list that will drift:
 
 ```sh
 sudo dnf install just meson ninja-build rpmdevtools
-sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
+sudo dnf builddep packaging/rpm/gnoblin-mutter.spec packaging/rpm/gnoblin-gnome-shell.spec
 ```
 
 On Arch or Debian/Ubuntu, translate the `BuildRequires:`/`pkgconfig(...)`
