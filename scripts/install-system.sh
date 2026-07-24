@@ -79,6 +79,12 @@ resolve_stage() {
   for built in "$RPM_DIR"/*/*.gnoblin*.rpm; do
     [ -e "$built" ] || continue
     name="$(rpm -qp --qf '%{NAME}' "$built" 2>/dev/null)" || continue
+    # ONLY gnoblin-* packages. Older `.gnoblin`-release builds of the plain
+    # `mutter`/`gnome-shell` names -- from before the split, when these specs
+    # replaced the distro packages -- may still be sitting in the same
+    # directory, and they match the same glob. Installing one would replace the
+    # system package, which is the exact thing this packaging exists to avoid.
+    case "$name" in gnoblin-*) ;; *) continue ;; esac
     case "$name" in *-debuginfo|*-debugsource) continue ;; esac
     [ "$(rpm -qp --qf '%{VERSION}' "$built" 2>/dev/null)" = "$version" ] || continue
     printf '%s\n' "${RPMS[@]:-}" | grep -qF "/$name-$version-" && continue
