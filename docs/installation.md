@@ -234,6 +234,15 @@ sequence, and hitting them one at a time from a login screen is miserable:
   `mutter-common`/`gnome-shell-common` your system repos already have, since
   the version+release won't match a `.gnoblin` build. All five RPMs have to
   go in one transaction.
+- Any *other* installed subpackage pins the base package the same way.
+  `mutter-devel` carries `Requires: mutter = %{version}-%{release}`, so if you
+  have it installed, swapping `mutter` out from under it fails the whole
+  transaction with *"none of the providers can be installed"*. The recipe
+  pulls in the matching `.gnoblin` build of anything already installed
+  (`mutter-devel`, `mutter-tests`) so they move together.
+- An earlier iteration of this packaging installed under `/opt/gnoblin` as
+  `gnoblin-mutter`/`gnoblin-gnome-shell`. If you have those, the recipe
+  removes them first so the two layouts never coexist.
 
 The equivalent by hand, if you'd rather drive it yourself:
 
