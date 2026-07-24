@@ -5,100 +5,139 @@
 # This is the production path, and it is NOT the same thing as
 # scripts/install-session.sh (which lays session data into a build prefix, and
 # is what `just dev-session` and the RPM %install both call). Here nothing
-# points at a dev prefix: the gnoblin-session package ships
-# Exec=/usr/bin/gnoblin-session, its units to /usr/lib/systemd/user, and its
-# .desktop to /usr/share/wayland-sessions.
+# points at a dev prefix: gnoblin-session ships Exec=/opt/gnoblin/bin/gnoblin-session,
+# its units to /usr/lib/systemd/user, and its .desktop to
+# /usr/share/wayland-sessions.
 #
-# It exists because three things bite in sequence, and hitting them one at a
-# time from a login screen is miserable:
+# The packages are gnoblin-mutter / gnoblin-gnome-shell, installed under
+# /opt/gnoblin. They sit ALONGSIDE the distro's own mutter and gnome-shell --
+# nothing is replaced, downgraded, or conflicted with, and a normal GNOME
+# session is unaffected. Only the gnoblin session looks in the prefix, via
+# gnoblin-env.sh.
 #
-#   1. Dev-prefix unit symlinks in ~/.config/systemd/user SHADOW the packaged
-#      units -- that search path outranks /usr/lib/systemd/user, so after a
-#      clean package install gnome-session would still resolve
-#      org.gnoblin.Shell to whatever ./install had, or fail outright once that
-#      prefix is stale or gone. `just dev-session-register` is what puts them
-#      there, so anyone who tried the dev path first is carrying them.
-#   2. The RPM release is `1.gnoblin`, which rpm sorts OLDER than a
-#      `1.<anything-after-g>` build of the same version (e.g. 1.kdr). dnf
-#      calls that a downgrade and declines without --allow-downgrade.
-#   3. mutter/gnome-shell each Requires: their own -common at the exact same
-#      version-release, so the arch and noarch RPMs have to go in one
-#      transaction or dependency resolution fails.
+# Two stages, because gnoblin-gnome-shell links the patched libmutter and so
+# BuildRequires gnoblin-mutter-devel: mutter has to be built AND installed
+# before the shell can even be built. The script installs what it can, then
+# tells you the exact next command. Re-running it continues where it stopped.
 #
-# Usage: install-system.sh [--yes] [--dry-run]
-#   --yes      pass -y to dnf (no transaction prompt)
-#   --dry-run  resolve and print the transaction, change nothing
+# Usage: install-system.sh [--yes] [--dry-run] [--reinstall]
+#   --yes        pass -y to dnf (no transaction prompt)
+#   --dry-run    resolve and print the transaction, change nothing
+#   --reinstall  dnf reinstall instead of install, for iterating on a rebuild
+#                that kept the same version-release
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RPM_DIR="${GNOBLIN_RPM_DIR:-$HOME/rpmbuild/RPMS}"
 UNIT_DIR="$HOME/.config/systemd/user"
+PREFIX=/opt/gnoblin
 ASSUME_YES=0
 DRY_RUN=0
+REINSTALL=0
 
 for arg in "$@"; do
   case "$arg" in
     --yes|-y) ASSUME_YES=1 ;;
     --dry-run|-n) DRY_RUN=1 ;;
-    *) echo "unknown option: $arg -- usage: install-system.sh [--yes] [--dry-run]" >&2; exit 2 ;;
+    --reinstall) REINSTALL=1 ;;
+    *) echo "unknown option: $arg -- usage: install-system.sh [--yes] [--dry-run] [--reinstall]" >&2; exit 2 ;;
   esac
 done
 
 command -v dnf >/dev/null 2>&1 || { echo "dnf not found -- this path is Fedora-only (see packaging/{deb,arch}/README.md)" >&2; exit 1; }
 
-spec_version() { sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/$1.spec" | head -1; }
+spec_version() { sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-$1.spec" | head -1; }
 MUTTER_V="$(spec_version mutter)"
 SHELL_V="$(spec_version gnome-shell)"
-[ -n "$MUTTER_V" ] && [ -n "$SHELL_V" ] || { echo "could not read Version: from packaging/rpm/*.spec" >&2; exit 1; }
+[ -n "$MUTTER_V" ] && [ -n "$SHELL_V" ] || { echo "could not read Version: from packaging/rpm/gnoblin-*.spec" >&2; exit 1; }
 
-# Match on the .gnoblin release specifically. A host that has built its own
-# mutter/gnome-shell under another release tag will have those RPMs sitting in
-# the same directory, and picking one of those up would be a silent disaster.
 find_rpm() {
-  local name="$1" version="$2"
-  local found
+  local name="$1" version="$2" found
   found="$(find "$RPM_DIR" -name "$name-$version-*.gnoblin*.rpm" -print 2>/dev/null | sort | tail -1)"
   [ -n "$found" ] || return 1
   printf '%s\n' "$found"
 }
 
-RPMS=()
-MISSING=()
-for pkg in "mutter:$MUTTER_V" "mutter-common:$MUTTER_V" "gnome-shell:$SHELL_V" "gnome-shell-common:$SHELL_V" "gnoblin-session:$SHELL_V"; do
-  name="${pkg%%:*}"
-  version="${pkg##*:}"
-  if rpm_path="$(find_rpm "$name" "$version")"; then
-    RPMS+=("$rpm_path")
-  else
-    MISSING+=("$name-$version-*.gnoblin*.rpm")
-  fi
-done
+SUDO=()
+[ "$(id -u)" -eq 0 ] || SUDO=(sudo)
 
+# Resolve a stage's RPMs into RPMS/MISSING. Subpackages beyond the required set
+# are pulled in only when already installed, so an existing gnoblin-mutter-tests
+# is kept in step rather than being left pinned to a stale build.
+resolve_stage() {
+  local version="$1"; shift
+  local name rpm_path built
+  RPMS=()
+  MISSING=()
+  for name in "$@"; do
+    if rpm_path="$(find_rpm "$name" "$version")"; then
+      RPMS+=("$rpm_path")
+    else
+      MISSING+=("$name-$version-*.gnoblin*.rpm")
+    fi
+  done
+  for built in "$RPM_DIR"/*/*.gnoblin*.rpm; do
+    [ -e "$built" ] || continue
+    name="$(rpm -qp --qf '%{NAME}' "$built" 2>/dev/null)" || continue
+    case "$name" in *-debuginfo|*-debugsource) continue ;; esac
+    [ "$(rpm -qp --qf '%{VERSION}' "$built" 2>/dev/null)" = "$version" ] || continue
+    printf '%s\n' "${RPMS[@]:-}" | grep -qF "/$name-$version-" && continue
+    rpm -q "$name" >/dev/null 2>&1 || continue
+    RPMS+=("$built")
+    echo ">> also updating installed subpackage: $name"
+  done
+}
+
+run_dnf() {
+  local verb=install
+  [ "$REINSTALL" -eq 1 ] && verb=reinstall
+  local args=("$verb")
+  [ "$verb" = install ] && args+=(--allow-downgrade)
+  [ "$ASSUME_YES" -eq 1 ] && args+=(-y)
+  [ "$DRY_RUN" -eq 1 ] && args+=(--assumeno)
+  echo
+  "${SUDO[@]}" dnf "${args[@]}" "$@"
+}
+
+# Stage 1: the compositor. gnoblin-mutter-devel is not a runtime dependency,
+# but gnoblin-gnome-shell cannot be BUILT without it, and building the shell is
+# the very next thing anyone running this script needs to do.
+echo ">> stage 1/2: gnoblin-mutter $MUTTER_V"
+resolve_stage "$MUTTER_V" gnoblin-mutter gnoblin-mutter-common gnoblin-mutter-devel
 if [ "${#MISSING[@]}" -gt 0 ]; then
   echo "missing RPMs under $RPM_DIR:" >&2
   printf '     %s\n' "${MISSING[@]}" >&2
   echo >&2
-  echo "build them first:  just rpm-all" >&2
+  echo "build them first:  just rpm mutter" >&2
   exit 1
 fi
+printf '     %s\n' "${RPMS[@]##*/}"
+run_dnf "${RPMS[@]}"
 
-echo ">> installing gnoblin $SHELL_V (mutter $MUTTER_V) onto this host:"
+# Stage 2: the shell and the session. Only buildable once stage 1 is installed.
+echo
+echo ">> stage 2/2: gnoblin-gnome-shell $SHELL_V"
+resolve_stage "$SHELL_V" gnoblin-gnome-shell gnoblin-gnome-shell-common gnoblin-session
+if [ "${#MISSING[@]}" -gt 0 ]; then
+  echo "missing RPMs under $RPM_DIR:" >&2
+  printf '     %s\n' "${MISSING[@]}" >&2
+  cat >&2 <<EOF
+
+gnoblin-mutter is installed now, which is what gnoblin-gnome-shell needs to
+build against. Build the shell and re-run this:
+
+     just rpm gnome-shell
+     just install-session
+EOF
+  exit 1
+fi
 printf '     %s\n' "${RPMS[@]##*/}"
 
-# Warn if the tree has moved on since the packages were built. Cheap check, and
-# it catches the common "I fixed that, why is it still broken" case.
-NEWEST_RPM="$(printf '%s\n' "${RPMS[@]}" | xargs ls -t 2>/dev/null | head -1)"
-if [ -n "$NEWEST_RPM" ]; then
-  STALE="$(find "$ROOT/patches" "$ROOT/src" -type f -newer "$NEWEST_RPM" -print -quit 2>/dev/null || true)"
-  if [ -n "$STALE" ]; then
-    echo
-    echo ">> WARNING: patches/ or src/ has changed since these RPMs were built"
-    echo "   (e.g. ${STALE#"$ROOT"/}). Re-run 'just rpm-all' if you want those changes."
-  fi
-fi
-
-# Shadowing dev units, see note 1 in the header. Only ever remove symlinks --
-# a real file there is something the user wrote, and is theirs to deal with.
+# Dev-prefix unit symlinks SHADOW the packaged units: ~/.config/systemd/user
+# outranks /usr/lib/systemd/user, so leaving them means gnome-session resolves
+# org.gnoblin.Shell to whatever ./install had. `just dev-session-register` is
+# what puts them there. Only ever remove symlinks -- a real file is something
+# the user wrote, and is theirs.
 for unit in org.gnoblin.Shell.target "org.gnoblin.Shell@wayland.service"; do
   path="$UNIT_DIR/$unit"
   if [ -L "$path" ]; then
@@ -110,15 +149,7 @@ for unit in org.gnoblin.Shell.target "org.gnoblin.Shell@wayland.service"; do
   fi
 done
 
-DNF_ARGS=(install --allow-downgrade)
-[ "$ASSUME_YES" -eq 1 ] && DNF_ARGS+=(-y)
-[ "$DRY_RUN" -eq 1 ] && DNF_ARGS+=(--assumeno)
-
-SUDO=()
-[ "$(id -u)" -eq 0 ] || SUDO=(sudo)
-
-echo
-"${SUDO[@]}" dnf "${DNF_ARGS[@]}" "${RPMS[@]}"
+run_dnf "${RPMS[@]}"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
@@ -126,17 +157,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-# Pick up the packaged units now that the shadowing ones are gone.
 systemctl --user daemon-reload || true
 
 echo
 echo ">> verifying:"
 FAIL=0
-for pkg in mutter mutter-common gnome-shell gnome-shell-common gnoblin-session; do
-  if installed="$(rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}' "$pkg" 2>/dev/null)" && [[ "$installed" == *gnoblin* ]]; then
+for pkg in gnoblin-mutter gnoblin-mutter-common gnoblin-gnome-shell gnoblin-gnome-shell-common gnoblin-session; do
+  if installed="$(rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}' "$pkg" 2>/dev/null)"; then
     echo "     $installed"
   else
-    echo "     MISSING or not a gnoblin build: $pkg (${installed:-not installed})" >&2
+    echo "     MISSING: $pkg" >&2
     FAIL=1
   fi
 done
@@ -148,6 +178,15 @@ else
   echo "     MISSING: $DESKTOP" >&2
   FAIL=1
 fi
+
+# The whole point of the split: the distro's packages must still be there.
+for pkg in mutter gnome-shell; do
+  if installed="$(rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}' "$pkg" 2>/dev/null)"; then
+    echo "     system $installed (untouched)"
+  else
+    echo "     note: no system $pkg installed -- gnoblin did not remove it, it was already absent"
+  fi
+done
 
 if [ "$FAIL" -ne 0 ]; then
   echo >&2
@@ -164,6 +203,5 @@ cat <<EOF
    docs/real-hardware-verification.md.
 
 >> Undo:
-     sudo dnf remove gnoblin-session
-     sudo dnf downgrade mutter gnome-shell    # or: sudo dnf history undo last
+     sudo dnf remove gnoblin-session gnoblin-gnome-shell gnoblin-mutter
 EOF

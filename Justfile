@@ -186,17 +186,19 @@ dev-session:
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
-# Needs `just rpm-all` first. Prompts for sudo and shows dnf's transaction
-# before changing anything. Handles the three things that bite: dev-prefix
-# units in ~/.config/systemd/user shadowing the packaged ones, the `1.gnoblin`
-# release sorting as a downgrade, and the arch+noarch RPMs having to land in
-# one transaction.
-#   just install-session          # prompts, shows the transaction
-#   just install-session dry      # resolve + print only, changes nothing
-#   just install-session yes      # no prompt
+# Installs gnoblin-mutter / gnoblin-gnome-shell under /opt/gnoblin, ALONGSIDE
+# the distro's own mutter and gnome-shell -- nothing is replaced. Two stages,
+# because the shell BuildRequires gnoblin-mutter-devel; this installs stage 1,
+# tells you to build stage 2, and picks up where it left off when re-run. Also
+# removes dev-prefix units from ~/.config/systemd/user, which would otherwise
+# shadow the packaged ones.
+#   just install-session            # prompts, shows the transaction
+#   just install-session dry        # resolve + print only, changes nothing
+#   just install-session yes        # no prompt
+#   just install-session reinstall  # re-apply a rebuild at the same version
 # PRODUCTION: install the built gnoblin RPMs onto THIS host (nothing points at ./install).
 install-session MODE="":
-    ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else { "" } }}
+    ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else if MODE == "reinstall" { "--reinstall" } else { "" } }}
 
 # Devkit: open a VISIBLE nested gnoblin session (a window in your current Wayland
 # session) + a terminal already wired to it — so you can launch your own chrome
@@ -264,12 +266,30 @@ gnome-protocol-gating-verify:
 tarball PROJ:
     ./scripts/make-tarball.sh {{PROJ}}
 
+# PROJ stays the upstream/subproject name (mutter, gnome-shell) -- that's what
+# the tarball is named after -- while the spec it feeds is gnoblin-<PROJ>.spec,
+# which packages it as gnoblin-<PROJ> under /opt/gnoblin, side by side with the
+# distro's own package rather than replacing it.
 # Build a binary RPM (Fedora). Patches are pre-applied in the tarball.
 rpm PROJ: (tarball PROJ)
-    rpmbuild -bb packaging/rpm/{{PROJ}}.spec
+    rpmbuild -bb packaging/rpm/gnoblin-{{PROJ}}.spec
 
+# gnoblin-gnome-shell BuildRequires gnoblin-mutter-devel, so gnoblin-mutter has
+# to be built AND INSTALLED before the shell can be built. This stops cleanly
+# at that boundary rather than failing on a missing BuildRequires.
+# Build both RPM stages, stopping if stage 1 still needs installing.
 rpm-all:
-    for p in {{rpm_projects}}; do just rpm "$p" || exit; done
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just rpm mutter
+    if ! rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
+        echo
+        echo ">> gnoblin-mutter built. gnoblin-gnome-shell needs it INSTALLED to build against:"
+        echo "     just install-session     # installs stage 1"
+        echo "     just rpm gnome-shell     # then build stage 2"
+        exit 0
+    fi
+    just rpm gnome-shell
 
 # deb / arch packaging are scaffolded; see packaging/{deb,arch}/README.md.
 deb PROJ:
