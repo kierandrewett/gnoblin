@@ -246,13 +246,18 @@ export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 %install
 %meson_install
 
-# gnoblin drives the session through org.gnoblin.Shell@wayland.service, so the
-# org.gnome.Shell* user units this build produces are both unused and a direct
-# file conflict with the distro gnome-shell in %%{_userunitdir} (which is a
-# system path, not a prefixed one). Drop them.
-rm -f %{buildroot}%{_userunitdir}/org.gnome.Shell-disable-extensions.service
-rm -f %{buildroot}%{_userunitdir}/org.gnome.Shell.target
-rm -f %{buildroot}%{_userunitdir}/org.gnome.Shell@wayland.service
+# gnome-shell's meson installs its systemd user units PREFIX-RELATIVE, into
+# %%{_prefix}/lib/systemd/user -- not %%{_userunitdir}. So they never collided
+# with the distro's copies, but systemd --user does not scan /opt either, which
+# makes them dead weight: gnoblin drives the session through
+# org.gnoblin.Shell@wayland.service, installed to the real %%{_userunitdir}
+# further down. Drop them rather than ship files nothing can load.
+#
+# (OnFailure= in the gnoblin unit still names
+# org.gnome.Shell-disable-extensions.service; that resolves against the system
+# copy from the distro gnome-shell. Without one installed systemd just logs
+# that the OnFailure target is missing, which is not fatal.)
+rm -rf %{buildroot}%{_prefix}/lib/systemd
 
 # Create empty directories where other packages can drop extensions
 mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
