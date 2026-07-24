@@ -207,7 +207,15 @@ Three things enforce that separation, and all three are load-bearing:
   substitute this package for the real shell.
 - Files that cannot move into a prefix are handled explicitly. The login
   entry goes to `/usr/share/wayland-sessions/` because login managers scan a
-  fixed directory. The `org.gnome.Shell*` systemd user units this build
+  fixed directory. `gnoblin.session` goes to
+  `/usr/share/gnome-session/sessions/` because `gnome-session-binary` reads
+  it while running as `gnome-session-manager@gnoblin.service` under the
+  systemd **user manager**, which never sees the environment the
+  `gnoblin-session` wrapper sets — put it in the prefix and the session comes
+  up with its targets reached, its autostart apps running, and no compositor
+  at all. `gnoblin.json` stays in the prefix, since the shell reads that and
+  the shell is launched by `gnoblin-shell-service`, which does apply
+  `gnoblin-env.sh`. The `org.gnome.Shell*` systemd user units this build
   produces are deleted rather than packaged, since they would be a straight
   file conflict with the distro `gnome-shell`; gnoblin drives the session
   through `org.gnoblin.Shell@wayland.service` instead. `61-mutter.rules` is
