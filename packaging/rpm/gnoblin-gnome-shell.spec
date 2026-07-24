@@ -26,6 +26,21 @@
 # system directory for session entries. %%{_userunitdir} is already outside the
 # prefix by definition, which is what the org.gnoblin.Shell* units want too.
 %global system_wayland_sessions /usr/share/wayland-sessions
+# gnome-session-binary reads the .session file, and it runs as
+# gnome-session-manager@gnoblin.service under the SYSTEMD USER MANAGER, whose
+# environment the gnoblin-session wrapper never touches -- the wrapper only
+# sets its own process env before exec'ing gnome-session. So the manager sees
+# the stock XDG_DATA_DIRS, %%{_prefix}/share is not on it, the session file is
+# invisible, RequiredComponents comes back empty and org.gnoblin.Shell.target
+# is never started. The session then "starts" with no compositor at all:
+# targets reach, autostart apps run, and every one of them dies on
+# "Failed to connect to Wayland display".
+#
+# This file therefore has to live in the system data dir. gnoblin.json does
+# NOT: the shell reads that, and the shell is started by gnoblin-shell-service,
+# which does apply gnoblin-env.sh. Keeping the mode in the prefix also stops
+# the distro gnome-shell from advertising a `gnoblin` mode it cannot run.
+%global system_gnome_sessions /usr/share/gnome-session/sessions
 %global __provides_exclude_from ^%{_prefix}/.*$
 %global __requires_exclude_from ^%{_prefix}/.*$
 # Same reason as gnoblin-mutter: the RPATH into this prefix is deliberate, and
@@ -270,7 +285,7 @@ mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
 # prepending is a no-op (everything's already on the default search paths
 # under %%{_prefix}), so they still work correctly, just redundantly.
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
-install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
+install -Dm644 %{SOURCE2} %{buildroot}%{system_gnome_sessions}/gnoblin.session
 install -Dm755 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
 gnoblin_libdir=%{_libdir}
 gnoblin_prefix=%{_prefix}
@@ -355,7 +370,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
 
 %files -n gnoblin-session
 %{_datadir}/gnome-shell/modes/gnoblin.json
-%{_datadir}/gnome-session/sessions/gnoblin.session
+%{system_gnome_sessions}/gnoblin.session
 %{system_wayland_sessions}/gnoblin.desktop
 %{_libexecdir}/gnoblin-env.sh
 %{_libexecdir}/gnoblin-libdir
