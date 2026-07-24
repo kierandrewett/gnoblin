@@ -209,19 +209,42 @@ shared packages, so this is still a real system change. Review `dnf`'s
 transaction before confirming:
 
 ```sh
-sudo dnf install \
-  ~/rpmbuild/RPMS/x86_64/mutter-49.5-*.rpm \
-  ~/rpmbuild/RPMS/noarch/mutter-common-49.5-*.rpm \
-  ~/rpmbuild/RPMS/x86_64/gnome-shell-49.6-*.rpm \
-  ~/rpmbuild/RPMS/noarch/gnome-shell-common-49.6-*.rpm \
-  ~/rpmbuild/RPMS/x86_64/gnoblin-session-49.6-*.rpm
+just install-session          # prompts, shows the transaction
+just install-session dry      # resolve + print only, changes nothing
+just install-session yes      # no prompt
 ```
 
-(`mutter`/`gnome-shell` each `Requires:` their own `-common` noarch
-subpackage at the exact same build — they won't resolve against whatever
-`mutter-common`/`gnome-shell-common` your system repos already have, since
-the version+release won't match a `.gnoblin` build. Skipping either
-`-common` RPM above fails dependency resolution.)
+That resolves the RPM set from the spec versions, installs it in one
+transaction, and verifies afterwards. It exists because three things bite in
+sequence, and hitting them one at a time from a login screen is miserable:
+
+- Dev-prefix unit symlinks in `~/.config/systemd/user` **shadow** the
+  packaged units — that search path outranks `/usr/lib/systemd/user`, so
+  after a clean package install `gnome-session` would still resolve
+  `org.gnoblin.Shell` to whatever `./install` had, or fail outright once
+  that prefix is stale or gone. `just dev-session-register` is what puts
+  them there, so anyone who tried the dev path first is carrying them. The
+  recipe removes them (symlinks only; a real file is left alone and warned
+  about).
+- The RPM release is `1.gnoblin`, which rpm sorts *older* than a
+  `1.<anything-after-g>` build of the same version (`1.kdr`, say). `dnf`
+  calls that a downgrade and declines without `--allow-downgrade`.
+- `mutter`/`gnome-shell` each `Requires:` their own `-common` noarch
+  subpackage at the exact same build — they won't resolve against whatever
+  `mutter-common`/`gnome-shell-common` your system repos already have, since
+  the version+release won't match a `.gnoblin` build. All five RPMs have to
+  go in one transaction.
+
+The equivalent by hand, if you'd rather drive it yourself:
+
+```sh
+sudo dnf install --allow-downgrade \
+  ~/rpmbuild/RPMS/x86_64/mutter-49.5-*.gnoblin*.rpm \
+  ~/rpmbuild/RPMS/noarch/mutter-common-49.5-*.gnoblin*.rpm \
+  ~/rpmbuild/RPMS/x86_64/gnome-shell-49.6-*.gnoblin*.rpm \
+  ~/rpmbuild/RPMS/noarch/gnome-shell-common-49.6-*.gnoblin*.rpm \
+  ~/rpmbuild/RPMS/x86_64/gnoblin-session-49.6-*.gnoblin*.rpm
+```
 
 `dnf` will show exactly what it's replacing before you confirm. After that,
 "Gnoblin" appears at your login manager's session picker with no further
