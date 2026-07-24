@@ -186,6 +186,18 @@ dev-session:
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
+# Needs `just rpm-all` first. Prompts for sudo and shows dnf's transaction
+# before changing anything. Handles the three things that bite: dev-prefix
+# units in ~/.config/systemd/user shadowing the packaged ones, the `1.gnoblin`
+# release sorting as a downgrade, and the arch+noarch RPMs having to land in
+# one transaction.
+#   just install-session          # prompts, shows the transaction
+#   just install-session dry      # resolve + print only, changes nothing
+#   just install-session yes      # no prompt
+# PRODUCTION: install the built gnoblin RPMs onto THIS host (nothing points at ./install).
+install-session MODE="":
+    ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else { "" } }}
+
 # Devkit: open a VISIBLE nested gnoblin session (a window in your current Wayland
 # session) + a terminal already wired to it — so you can launch your own chrome
 # against gnoblin without vendoring anything here. In the terminal, run e.g.
