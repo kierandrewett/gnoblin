@@ -24,4 +24,38 @@ gnoblin_env_apply "$PREFIX"
 # dock/panel extensions from a normal GNOME session cannot leak into Gnoblin.
 export GNOME_SHELL_DISABLE_EXTENSIONS=1
 
+# One-shot boot profiling. GDM starts this unit, so there is no shell in which
+# to export GJS_ENABLE_PROFILER before logging in, and a systemd drop-in would
+# leave the profiler armed on every subsequent boot. A marker file consumed on
+# read gives "arm it, log in once, get exactly one capture" instead:
+#
+#     touch ~/.config/gnoblin/profile-boot     # then log in to Gnoblin
+#     # -> $XDG_DATA_HOME/gnoblin/boot-profile-<stamp>.syscap
+#
+# Read it with sysprof (dnf install sysprof). This is how boot time gets a real
+# number: everything measurable without a login is already accounted for in
+# TODO.md and comes to ~115 ms of the ~700 ms "JS load" budget, so the rest has
+# to be found on real hardware.
+PROFILE_MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin/profile-boot"
+if [ -e "$PROFILE_MARKER" ]; then
+    # Consume the marker FIRST: if the shell then fails to start, the next boot
+    # must not be stuck re-arming a profiler on a session that cannot come up.
+    rm -f "$PROFILE_MARKER"
+    PROFILE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gnoblin"
+    capture="$PROFILE_DIR/boot-profile-$(date +%Y%m%d-%H%M%S).syscap"
+    # shell_profiler_init() (gnome-shell src/main.c) starts the GJS profiler
+    # only when BOTH GJS_ENABLE_PROFILER is set and GJS_TRACE_FD parses to an
+    # fd greater than 2 -- it proxies that descriptor straight to
+    # gjs_profiler_set_fd(). So this has to be a real open fd, not a path, and
+    # the redirection must survive the exec below (bash does not set CLOEXEC on
+    # explicit redirections, so fd 9 is inherited).
+    if mkdir -p "$PROFILE_DIR" 2>/dev/null && exec 9>"$capture"; then
+        export GJS_ENABLE_PROFILER=1
+        export GJS_TRACE_FD=9
+        echo "gnoblin: boot profiler armed -> $capture" >&2
+    else
+        echo "gnoblin: could not open $capture; starting without the profiler" >&2
+    fi
+fi
+
 exec "$PREFIX/bin/gnome-shell"

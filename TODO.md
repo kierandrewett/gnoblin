@@ -110,23 +110,58 @@ Three measurements, two of them negative results worth not repeating.
   clean if wanted for other reasons (grep finds *zero* references to these
   globals outside main.js: construction plus one `shutdown()` at :273), but
   it is not where boot time is.
-- [ ] **The real structural cause: GJS ships no bytecode cache.** gjs 1.86
-  has no XDR/encode/transcode/startup-cache support at all — verified by
-  `strings`/`nm -D` on `libgjs.so.0.0.0`: zero hits for `bytecode`,
-  `startup_cache`, `JS::EncodeScript`, `DecodeScript`, `XDR`, and no
-  `~/.cache/gjs`. So every single boot re-parses and re-compiles all
-  ~81k lines of shell JS from the gresource. That is the 0.7 s, and it is
-  why shaving 3% of the modules buys ~20 ms and nothing more. Options, in
-  rough order of effort: measure how much is actually parse vs execute
-  (needs a real logged-in boot with `GJS_DEBUG_TOPICS` or a SpiderMonkey
-  profile); look at whether SpiderMonkey's `JS::EncodeScript` can be wired
-  into a gnoblin-side cache keyed by gresource digest; or take it upstream
-  to GJS, where it fixes stock GNOME's boot too.
+- [x] ~~**The real structural cause: GJS ships no bytecode cache.**~~
+  **WRONG — retracted, see below.** gjs 1.86 genuinely has no bytecode
+  cache (verified by `strings`/`nm -D` on `libgjs.so.0.0.0`: zero hits for
+  `bytecode`, `startup_cache`, `JS::EncodeScript`, `DecodeScript`, `XDR`,
+  and no `~/.cache/gjs`). The error was assuming that absence explained the
+  0.7 s. It does not: parsing is cheap.
 
-Corollary for `time to first boot`: with JS parse structurally fixed at
-~0.7 s and UI construction at ~1.0 s badly skewed by llvmpipe, no further
-headless boot-time work is worth doing. The next real number has to come
-from a logged-in session on this machine.
+### Correction: parse is ~60 ms, not 700 ms (2026-07-27)
+
+Measured directly, rather than inferred. Shell JS lives inside
+`libshell-17.so` (153 files, 2.43 MiB, 78.8k lines) — extract it with
+`gresource extract`. Compiling **all** of it with SpiderMonkey via
+`new Function(src)`, imports stripped: **60.3 ms** (40 MiB/s). And
+`GObject.registerClass` — 359 call sites across 99 files — benchmarks at
+0.146 ms for a class with two properties and one signal, so **~52 ms**
+for the lot.
+
+| Component                          | Measured   |
+|------------------------------------|------------|
+| Typelib imports (6 extra)          | 1.6 ms     |
+| JS syntax-check/compile (2.43 MiB) | 60 ms      |
+| `GObject.registerClass` x359       | ~52 ms     |
+| Wellbeing history read + parse     | ~1 ms      |
+| **Accounted for**                  | **~115 ms** |
+| **"JS load" budget in TODO**       | **~700 ms** |
+| **Unexplained**                    | **~585 ms** |
+
+So a bytecode cache would save at most ~60 ms of a ~700 ms window. **Not
+worth pursuing**, and not worth taking upstream on gnoblin's account. The
+0.7 s figure came from a coarse strace time-split, and roughly 85% of what
+it attributed to "JS load" is still unidentified — it is neither parse nor
+class registration. Most likely candidates are top-level module *evaluation*
+(GSettings construction, D-Bus proxy setup, actor building), but that is a
+hypothesis, not a measurement.
+
+- [ ] **Get a real GJS profile.** `shell_profiler_init()` (gnome-shell
+  `src/main.c:243`) starts the GJS profiler only when *both*
+  `GJS_ENABLE_PROFILER` is set and `GJS_TRACE_FD` parses to an fd `> 2`,
+  which it hands to `gjs_profiler_set_fd()`. So it needs a real open
+  descriptor, not a path. `gnoblin-shell-service` now arms this from a
+  one-shot marker file, because GDM starts the unit and there is no shell in
+  which to export anything first:
+
+  ```sh
+  dnf install sysprof                       # to read the capture
+  touch ~/.config/gnoblin/profile-boot      # then log in to Gnoblin
+  # -> ~/.local/share/gnoblin/boot-profile-<stamp>.syscap
+  ```
+
+  The marker is consumed on read, so exactly one capture is taken and a
+  failed boot never leaves the profiler armed. This is the next real step
+  for boot time; everything measurable without logging in is now done.
 
 - [ ] Note: the isolated devkit bus (scripts/devkit_dbus.py) copies the
   SYSTEM D-Bus service files, so headless runs activate the stock
