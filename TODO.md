@@ -180,11 +180,56 @@ hypothesis, not a measurement.
   GNOBLIN_PROFILE=/tmp/boot.syscap ./scripts/run-gnome-shell.sh
   ```
 
-  Neither has been *run* yet, so the captures are unproven end to end; the
-  fd plumbing is verified (opened > 2, survives exec) but the resulting
-  sysprof file has not been opened. Everything measurable without booting a
-  shell is now done — this is the only way the remaining ~580 ms gets
-  identified.
+### ANSWERED: the boot spends ~750 ms idle in the startup animation (2026-07-27)
+
+Ran the headless capture (`GNOBLIN_PROFILE=... ./scripts/run-gnome-shell.sh`)
+and decoded it. sysprof itself is not installed; the capture format is
+straightforward enough to parse directly (note the frame-type enum is
+**1-based**: 2=SAMPLE, 7=JITMAP, 10=MARK — assuming 0-based silently yields
+garbage). 1975 samples at 944 Hz, 515 JITMAP symbols.
+
+Busy vs idle, 250 ms buckets, "busy" = leaf is not
+`Meta.Context.run_main_loop`:
+
+| Window        | Busy   |
+|---------------|--------|
+| 0.00–0.25 s   | 90.4%  |
+| 0.25–0.50 s   | 100.0% |
+| 0.50–0.75 s   | 79.0%  |
+| **0.75–1.50 s** | **~1%** |
+| 1.50–1.75 s   | 7.9%   |
+
+The shell does all its real work in the first ~0.75 s, then **idles ~750 ms**
+before `startup-complete` fires and "GNOME Shell started" is logged. It is not
+compute-bound at all in that window — it is waiting on
+`STARTUP_ANIMATION_TIME` (500 ms, `layout.js:19`) plus background loading.
+The shell log agrees: gnoblin-control acquires its bus name at +0.57 s and
+nothing else is logged until +1.61 s.
+
+This also **corrects the old "compute-bound, no I/O stalls" note** at the top
+of this section. That was true of the first 0.75 s and wrong about the boot as
+a whole.
+
+- [x] Skip the startup animation in Gnoblin mode
+  (`patches/gnome-shell/51-startup-animation`). `_startupAnimationSession()`
+  eases uiGroup from scale 0.75/opacity 0 to 1/255 over 500 ms — for gnoblin
+  that group holds no panel content, dash or overview, so it animates nothing
+  and delays login by half a second. `_prepareStartupAnimation()` is gated on
+  the same condition so uiGroup is never put into the state the animation
+  exists to undo. Expected saving ~500 ms of a ~1.6 s boot.
+- [ ] Verify the above on a real boot and re-measure; then look at the
+  remaining ~250 ms of idle, which is `_updateBackgrounds()` (2.4% inclusive)
+  and `BACKGROUND_FADE_ANIMATION_TIME` (1000 ms, `layout.js:20`).
+- [ ] Smaller leads from the same profile, in order: `Shell.get_default`
+  7.2% self, input-source setup ~4% combined (`InputSourceManager` 1.6%
+  inclusive, `IBus.Bus.list_engines_async_finish` 1.3% self,
+  `GnomeDesktop.XkbInfo.get_layout_info` 1.2% self), `_createBackgroundManager`
+  2.2% inclusive.
+
+Note: `just dev` respects an exported `GNOBLIN_PREFIX`. It is `/usr` in at
+least some shells here, which would install a dev build straight over the
+RPM-owned files — always pass `GNOBLIN_PREFIX="$PWD/install"` explicitly when
+building.
 
 - [ ] Note: the isolated devkit bus (scripts/devkit_dbus.py) copies the
   SYSTEM D-Bus service files, so headless runs activate the stock

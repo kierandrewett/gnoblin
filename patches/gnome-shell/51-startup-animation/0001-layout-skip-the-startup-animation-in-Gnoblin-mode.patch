@@ -1,0 +1,57 @@
+From e93d6d492806648e9e6c92355bc7c95875d6590c Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 27 Jul 2026 13:42:42 +0100
+Subject: [PATCH] layout: skip the startup animation in Gnoblin mode
+
+Gnoblin draws no chrome of its own, so the stock 500 ms uiGroup scale/fade
+animates an essentially empty group and delays 'startup-complete' -- and
+with it the "GNOME Shell started" mark -- by that much on every login.
+
+A GJS profile of a headless gnoblin boot (1975 samples at 944 Hz) shows the
+shell 90-100% busy for the first ~0.75 s and then ~1% busy for ~0.75 s,
+idling in Meta.Context.run_main_loop while this tween runs.
+
+_prepareStartupAnimation is gated on the same condition so uiGroup is never
+put into the scaled-and-transparent state this animation exists to undo.
+---
+ js/ui/layout.js | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index 51706de..7a9e14b 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -741,7 +741,12 @@ export const LayoutManager = GObject.registerClass({
+ 
+             let monitor = this.primaryMonitor;
+ 
+-            if (!Main.sessionMode.hasOverview) {
++            // Gnoblin skips the startup scale/fade entirely (see
++            // _startupAnimationSession), so it must not put uiGroup into the
++            // scaled-and-transparent state the animation exists to undo --
++            // nothing would ever restore it. Both checks are deliberately the
++            // same condition so they cannot drift apart.
++            if (!Main.sessionMode.hasOverview && global.session_mode !== 'gnoblin') {
+                 const x = monitor.x + monitor.width / 2.0;
+                 const y = monitor.y + monitor.height / 2.0;
+ 
+@@ -792,6 +797,19 @@ export const LayoutManager = GObject.registerClass({
+     }
+ 
+     async _startupAnimationSession() {
++        // Gnoblin draws no chrome of its own: there is no panel content, dash
++        // or overview in uiGroup at this point, so the stock 500 ms scale/fade
++        // animates an essentially empty group and delays 'startup-complete' --
++        // and with it "GNOME Shell started" -- by that much on every login.
++        //
++        // Measured with the GJS profiler on a headless gnoblin boot: the shell
++        // is 90-100% busy for the first ~0.75 s, then ~1% busy for ~0.75 s
++        // waiting on exactly this. Skipping it is the single largest win
++        // available on time-to-first-boot. _prepareStartupAnimation leaves
++        // uiGroup untouched in this mode, so there is no transform to undo.
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         if (Main.sessionMode.hasOverview) {
+             await Main.overview.runStartupAnimation();
+         } else {
