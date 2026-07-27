@@ -27,6 +27,9 @@ case "$PROJECT" in
         install -m 0644 -- \
             "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
             "$OUTDIR/org.gnoblin.Shell@wayland.service.in"
+        install -m 0644 -- \
+            "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" \
+            "$OUTDIR/gnome-session@gnoblin.target.d.conf"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"

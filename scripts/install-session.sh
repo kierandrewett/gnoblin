@@ -47,6 +47,12 @@ sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
 install -Dm755 "$ROOT/src/tools/gnoblin-shell-service" "$PREFIX/bin/gnoblin-shell-service"
 install -Dm644 "$SRC/systemd-user/org.gnoblin.Shell.target" \
   "$PREFIX/lib/systemd/user/org.gnoblin.Shell.target"
+# The drop-in that actually pulls the shell target into the session. Modern
+# systemd-managed gnome-session ignores the .session RequiredComponents= line;
+# gnome-session@gnoblin.target takes its deps from this .d/ drop-in instead.
+# Without it the session logs in to a frozen screen with no compositor.
+install -Dm644 "$SRC/systemd-user/gnome-session@gnoblin.target.d.conf" \
+  "$PREFIX/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
 sed "s|@PREFIX@|$PREFIX|g" "$SRC/systemd-user/org.gnoblin.Shell@wayland.service.in" \
   > "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
 install -Dm644 "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp" \
