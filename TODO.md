@@ -132,10 +132,21 @@ for the lot.
 | Typelib imports (6 extra)          | 1.6 ms     |
 | JS syntax-check/compile (2.43 MiB) | 60 ms      |
 | `GObject.registerClass` x359       | ~52 ms     |
+| `Gio.Settings` x117 @ 0.026 ms     | ~3 ms      |
+| `makeProxyWrapper` x31 @ 0.024 ms  | ~0.8 ms    |
 | Wellbeing history read + parse     | ~1 ms      |
-| **Accounted for**                  | **~115 ms** |
+| **Accounted for**                  | **~118 ms** |
 | **"JS load" budget in TODO**       | **~700 ms** |
-| **Unexplained**                    | **~585 ms** |
+| **Unexplained**                    | **~580 ms** |
+
+Every JS-side primitive benchmarks cheap, from five independent angles now.
+None of the 117 `Gio.Settings` sites are at module scope (they run on object
+construction, not import) and the 31 `makeProxyWrapper` calls that *are* at
+module scope only parse introspection XML — no bus round trip. Remaining
+non-JS suspects, unmeasured: St parses **181 KB** of CSS at startup
+(`gnome-shell-dark.css`, via bundled libcroco) and then resolves a theme node
+per actor, which is O(actors x rules) and lands in the "UI construction"
+bucket rather than this one.
 
 So a bytecode cache would save at most ~60 ms of a ~700 ms window. **Not
 worth pursuing**, and not worth taking upstream on gnoblin's account. The
@@ -160,8 +171,20 @@ hypothesis, not a measurement.
   ```
 
   The marker is consumed on read, so exactly one capture is taken and a
-  failed boot never leaves the profiler armed. This is the next real step
-  for boot time; everything measurable without logging in is now done.
+  failed boot never leaves the profiler armed.
+
+  There is now a headless counterpart that needs no login — same mechanism,
+  via `run-gnome-shell.sh`:
+
+  ```sh
+  GNOBLIN_PROFILE=/tmp/boot.syscap ./scripts/run-gnome-shell.sh
+  ```
+
+  Neither has been *run* yet, so the captures are unproven end to end; the
+  fd plumbing is verified (opened > 2, survives exec) but the resulting
+  sysprof file has not been opened. Everything measurable without booting a
+  shell is now done — this is the only way the remaining ~580 ms gets
+  identified.
 
 - [ ] Note: the isolated devkit bus (scripts/devkit_dbus.py) copies the
   SYSTEM D-Bus service files, so headless runs activate the stock

@@ -129,6 +129,28 @@ DBUS_SESSION_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || e
 BUS_ADDRESS_FILE="$DK/bus-address"
 SHELL_REAL_PID_FILE="$DK/shell-pid"
 
+# Optional GJS boot profile: GNOBLIN_PROFILE=<path> writes a sysprof capture.
+# shell_profiler_init() (gnome-shell src/main.c) starts the profiler only when
+# GJS_ENABLE_PROFILER is set AND GJS_TRACE_FD parses to an fd > 2, which it
+# hands to gjs_profiler_set_fd() -- so this must be a real open descriptor, not
+# a path. Opened here in the parent so it is inherited through dbus-run-session
+# and the exec below. Read the capture with sysprof.
+#
+# This is the headless counterpart to the marker file in gnoblin-shell-service:
+# same mechanism, no login required. See TODO.md "Performance" for why a boot
+# profile is the open question -- every JS-side primitive measured so far
+# accounts for only ~118 ms of the ~700 ms the old strace split attributed to
+# "JS load".
+if [ -n "${GNOBLIN_PROFILE:-}" ]; then
+  if exec 9>"$GNOBLIN_PROFILE"; then
+    export GJS_ENABLE_PROFILER=1
+    export GJS_TRACE_FD=9
+    echo ">> GJS boot profiler armed -> $GNOBLIN_PROFILE"
+  else
+    echo "!! could not open $GNOBLIN_PROFILE; booting without the profiler" >&2
+  fi
+fi
+
 echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
