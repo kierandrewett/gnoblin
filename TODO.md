@@ -88,6 +88,46 @@ mutter/device setup + 0.7 s JS load + 1.0 s UI construction on llvmpipe
   session (llvmpipe keeps GPU buffers in RAM and skews headless numbers).
   Run `just perf-smoke` there too and tighten its thresholds.
 
+### Boot time: where the 0.7 s JS load actually goes (2026-07-27)
+
+Three measurements, two of them negative results worth not repeating.
+
+- [x] **Trimming unused imports is worthless — GI is lazy.** `panel.js`
+  statically imports ~20 `status/*.js` modules that gnoblin never
+  instantiates (empty `panel` arrays mean `_ensureIndicator()` is never
+  called), pulling in GWeather, GnomeDesktop, Gvc, UPowerGlib, IBus and
+  Polkit. Measured cost of importing all six extra typelibs under `gjs`:
+  **1.6 ms total** (GWeather 0.4, GnomeDesktop 0.4, Gvc 0.2, UPowerGlib
+  0.3, IBus 0.3, Polkit 0.1). `imports.gi.X` only builds the namespace
+  object; symbols resolve on use, so imported-but-unused is nearly free.
+  Do not spend time pruning imports for boot time.
+- [x] **The wellbeing machinery is not a boot cost either.** `breakManager`,
+  `timeLimitsManager` and `screenTimeDBus` (main.js:259-263) are built
+  unconditionally, ~2650 lines, and gnoblin has no chrome to show any of
+  it. `TimeLimitsManager` does read and JSON-parse
+  `session-active-history.json` at startup with `history-enabled` true by
+  default, but that file is 16 KB here — about 1 ms. Gating it would be
+  clean if wanted for other reasons (grep finds *zero* references to these
+  globals outside main.js: construction plus one `shutdown()` at :273), but
+  it is not where boot time is.
+- [ ] **The real structural cause: GJS ships no bytecode cache.** gjs 1.86
+  has no XDR/encode/transcode/startup-cache support at all — verified by
+  `strings`/`nm -D` on `libgjs.so.0.0.0`: zero hits for `bytecode`,
+  `startup_cache`, `JS::EncodeScript`, `DecodeScript`, `XDR`, and no
+  `~/.cache/gjs`. So every single boot re-parses and re-compiles all
+  ~81k lines of shell JS from the gresource. That is the 0.7 s, and it is
+  why shaving 3% of the modules buys ~20 ms and nothing more. Options, in
+  rough order of effort: measure how much is actually parse vs execute
+  (needs a real logged-in boot with `GJS_DEBUG_TOPICS` or a SpiderMonkey
+  profile); look at whether SpiderMonkey's `JS::EncodeScript` can be wired
+  into a gnoblin-side cache keyed by gresource digest; or take it upstream
+  to GJS, where it fixes stock GNOME's boot too.
+
+Corollary for `time to first boot`: with JS parse structurally fixed at
+~0.7 s and UI construction at ~1.0 s badly skewed by llvmpipe, no further
+headless boot-time work is worth doing. The next real number has to come
+from a logged-in session on this machine.
+
 - [ ] Note: the isolated devkit bus (scripts/devkit_dbus.py) copies the
   SYSTEM D-Bus service files, so headless runs activate the stock
   /usr/libexec portal backend — the patched
