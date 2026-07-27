@@ -309,6 +309,13 @@ arch PROJ:
 test-config:
     ./scripts/test-config.sh
 
+# Best of 3, fails past BOOT_BUDGET_MS (default 1350). Guards the ~400 ms that
+# patches/gnome-shell/51-startup-animation buys, which a rebase could silently
+# drop. Calibrated llvmpipe numbers -- see the header in the script.
+# Boot-time budget: headless boot, compositor start -> "GNOME Shell started".
+test-boot-time:
+    ./scripts/test-boot-time.sh
+
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
 # scheduling can starve a test long enough to trip its 60s timeout.

@@ -226,6 +226,15 @@ a whole.
   to 23%, and everything after 1.0 s is ordinary post-startup idle). Saving
   is larger than the 500 ms animation alone because the background fade
   overlapped it.
+- [x] Codified as a gate: `just test-boot-time` boots headless, measures
+  compositor process start to "GNOME Shell started", takes the **best of 3**
+  and fails past `BOOT_BUDGET_MS` (default 1350 ms). Calibrated against both
+  builds on this machine: patched `./install` 913–1161 ms, unpatched `/usr`
+  1541–1608 ms, so the gate genuinely separates them rather than just passing.
+  Best-of-N because the run-to-run spread is ~25% and noise only ever makes a
+  boot slower. (Two bugs the first run caught: a "median" that for an even
+  count reported the *slower* half and failed a healthy build at 1655 ms, and
+  a start marker 102 ms adrift from the one used in the numbers above.)
 - [ ] Re-measure on **real hardware** in a logged-in session. Everything
   above is llvmpipe headless; the animation saving is wall-clock and should
   carry over intact, but confirm.
