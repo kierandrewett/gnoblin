@@ -235,6 +235,32 @@ a whole.
   boot slower. (Two bugs the first run caught: a "median" that for an even
   count reported the *slower* half and failed a healthy build at 1655 ms, and
   a start marker 102 ms adrift from the one used in the numbers above.)
+### Load perf: layer-shell chrome latency (2026-07-27)
+
+First measurement of the number gnoblin's responsiveness actually rides on.
+Boot happens once; a layer-shell surface appearing is paid every time a bar,
+dock or popup shows. `just test-layer-latency` builds a minimal shm client
+(`tests/layer-shell-latency-client.c`, no toolkit) and times it inside a
+headless session:
+
+| Mark      | run 1   | run 2   |
+|-----------|---------|---------|
+| connect   | 0.06 ms | —       |
+| globals   | 0.28 ms | —       |
+| configure | 1.76 ms | 2.33 ms |
+| **frame** | 29.6 ms | 38.9 ms |
+
+**The compositor-side layer-shell path costs ~2 ms.** Everything from there to
+first pixel is frame scheduling — ~2 vblanks at 60 Hz — which is physics, not
+overhead, and explains the run-to-run spread.
+
+This confirms the old note that slow chrome was never layer-shell itself but
+per-process client cold-start (EGL context ~33 ms, first render ~30 ms, icon
+loading). So for chrome that feels instant, the lever is on the *client* side —
+keep it resident rather than spawning per invocation — not in the compositor.
+Deliberately reports rather than gates by default; set `LAYER_BUDGET_MS` to
+turn it into a budget once there is a real-hardware baseline.
+
 - [ ] Re-measure on **real hardware** in a logged-in session. Everything
   above is llvmpipe headless; the animation saving is wall-clock and should
   carry over intact, but confirm.

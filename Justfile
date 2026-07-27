@@ -316,6 +316,14 @@ test-config:
 test-boot-time:
     ./scripts/test-boot-time.sh
 
+# Builds a minimal shm layer-shell client and times process start -> first
+# frame inside a headless session. gnoblin's chrome is all layer-shell, so this
+# is the latency the desktop's responsiveness actually rides on. Reports only
+# by default; set LAYER_BUDGET_MS to make it a gate.
+# Layer-shell chrome latency: how fast a bar gets its first pixel up.
+test-layer-latency:
+    ./scripts/test-layer-latency.sh
+
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
 # scheduling can starve a test long enough to trip its 60s timeout.
