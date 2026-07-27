@@ -217,9 +217,20 @@ a whole.
   and delays login by half a second. `_prepareStartupAnimation()` is gated on
   the same condition so uiGroup is never put into the state the animation
   exists to undo. Expected saving ~500 ms of a ~1.6 s boot.
-- [ ] Verify the above on a real boot and re-measure; then look at the
-  remaining ~250 ms of idle, which is `_updateBackgrounds()` (2.4% inclusive)
-  and `BACKGROUND_FADE_ANIMATION_TIME` (1000 ms, `layout.js:20`).
+- [x] **Verified headlessly: 1.612 s -> 0.951 s, a 661 ms (41%) saving.**
+  Built into `./install` and re-profiled. Mutter display name to
+  "GNOME Shell started" was 1.612 s unpatched (`/usr`) and 0.951 s patched;
+  `run-gnome-shell.sh` still reports `RESULT: PASS` with no fatal
+  diagnostics. The profile confirms the mechanism rather than just the wall
+  clock — the 0.75–1.50 s dead zone is gone (0.75–1.00 s went from ~1% busy
+  to 23%, and everything after 1.0 s is ordinary post-startup idle). Saving
+  is larger than the 500 ms animation alone because the background fade
+  overlapped it.
+- [ ] Re-measure on **real hardware** in a logged-in session. Everything
+  above is llvmpipe headless; the animation saving is wall-clock and should
+  carry over intact, but confirm.
+- [ ] Then look at the remaining idle: `_updateBackgrounds()` (2.4%
+  inclusive) and `BACKGROUND_FADE_ANIMATION_TIME` (1000 ms, `layout.js:20`).
 - [ ] Smaller leads from the same profile, in order: `Shell.get_default`
   7.2% self, input-source setup ~4% combined (`InputSourceManager` 1.6%
   inclusive, `IBus.Bus.list_engines_async_finish` 1.3% self,
