@@ -84,6 +84,12 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   fi
 
   rc=0
+  overlay_key="$(gsettings get org.gnome.mutter overlay-key)"
+  case "$overlay_key" in
+    *Super*) echo "  ok: Mutter overlay key enables Super release";;
+    *) echo "  FAIL: Mutter overlay key is not Super ($overlay_key)"; rc=1;;
+  esac
+
   call() { gdbus call --session --dest org.gnoblin.Shell \
              --object-path /org/gnoblin/Shell --method "org.gnoblin.Shell.$1" 2>&1; }
 
@@ -195,8 +201,9 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   esac
 
   # --- Super-release signal ---
-  # GNOME Shell Eval lets this isolated test emit the exact
-  # MetaDisplay::overlay-key signal without changing the production key path.
+  # The schema assertion above keeps the real Super-release binding live.
+  # GNOME Shell Eval only verifies that Gnoblin forwards the compositor edge
+  # through the public D-Bus contract; headless Mutter has no synthetic key path.
   SUPER_SIGNAL_LOG="$XDG_CACHE_HOME/super-release-signals.log"
   gdbus monitor --session --dest org.gnoblin.Shell \
     --object-path /org/gnoblin/Shell >"$SUPER_SIGNAL_LOG" 2>&1 &

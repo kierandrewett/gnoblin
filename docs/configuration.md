@@ -144,3 +144,8 @@ native panel non-interactive and non-strutting only when the immutable primary
 session mode is `gnoblin`; stock GNOME keeps its upstream panel. This is not a
 runtime setting. Changing the chrome policy means editing the session data or
 patch and rebuilding, not adding a `gnoblin.conf` key.
+
+The session configures Mutter's `overlay-key` as `Super`. Mutter emits its
+release event only when no other input is used. `gnoblinControl` forwards that
+event to external chrome, while `hasOverview: false` keeps the native overview
+disabled.

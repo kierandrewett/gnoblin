@@ -14,7 +14,7 @@
     "right": []
   },
 
-  "//hasOverview": "No Activities overview, dash, app-grid, hot corner, or overlay key.",
+  "//hasOverview": "No Activities overview, dash, app-grid or hot corner. Super release stays available for external chrome.",
   "//hasOverview2": "Inherited false from 'user', restated here so the strip is explicit",
   "//hasOverview3": "and survives even if the parent mode changes upstream.",
   "hasOverview": false,

@@ -1,2 +1,3 @@
 [org.gnome.mutter:Gnoblin]
-overlay-key=''
+# Keep Mutter's release-only Super event available for external chrome.
+overlay-key='Super'
