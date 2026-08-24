@@ -105,6 +105,40 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
     grep -qE "SuperReleased.*uint32 1.*uint64 [1-9][0-9]*" "$SUPER_SIGNAL_LOG"
   }
 
+  osd_signal_count() {
+    grep -c OsdRequested "$OSD_SIGNAL_LOG" || true
+  }
+
+  osd_signal_records_are_valid_after() {
+    local previous_count="$1"
+    local count=0
+    local found=0
+    local line
+    local normalised
+    while IFS= read -r line; do
+      case "$line" in
+        *OsdRequested*)
+          count=$((count + 1))
+          if [ "$count" -le "$previous_count" ]; then
+            continue
+          fi
+          found=1
+          normalised="${line/, int32 0,/, 0,}"
+          case "$normalised" in
+            *"OsdRequested (uint32 2, 0, '\''audio-volume-high-symbolic'\'', '\''Volume'\'', 0.5, 1.0, ${OSD_OUTPUT_NAMES})"*) ;;
+            *) return 1 ;;
+          esac
+          ;;
+      esac
+    done < "$OSD_SIGNAL_LOG"
+    [ "$found" -eq 1 ]
+  }
+
+  show_test_osd() {
+    gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+      --method org.gnome.Shell.Eval "Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: '\''audio-volume-high-symbolic'\''}), '\''Volume'\'', 0.5, 1);" >/dev/null
+  }
+
   ping="$(call Ping)";        echo "Ping       -> $ping"
   ver="$(call GetVersion)";   echo "GetVersion -> $ver"
   reload="$(call Reload)";    echo "Reload     -> $reload"
@@ -191,6 +225,73 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   callp SetFeature osd true >/dev/null
   g2="$(callp GetFeature osd)";                 echo "GetFeature osd (after on) -> $g2"
   case "$g2" in *true*)  echo "  ok: SetFeature osd on";; *) echo "  FAIL: SetFeature on"; rc=1;; esac
+
+  # Eval is private to this unsafe test shell. It drives the exact
+  # OsdWindowManager chokepoint without adding a production test command.
+  OSD_SIGNAL_LOG="$XDG_CACHE_HOME/osd-signals.log"
+  gdbus monitor --session --dest org.gnoblin.Shell \
+    --object-path /org/gnoblin/Shell >"$OSD_SIGNAL_LOG" 2>&1 &
+  OSD_SIGNAL_PID=$!
+  gnoblin_wait_for_log "$OSD_SIGNAL_LOG" "Monitoring signals" 5
+
+  # Match the shell monitor-index-to-connector lookup instead of assuming
+  # the backend virtual connector name.
+  monitor_eval="$(gdbus call --session --dest org.gnome.Shell \
+    --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
+    "global.backend.get_monitor_manager().get_logical_monitors().find(m => m.get_number() === 0).get_monitors().filter(m => m.is_active()).map(m => m.get_connector())")"
+  OSD_OUTPUT_NAMES_JSON="$(printf "%s\n" "$monitor_eval" |
+    sed -n "s/^(true, '\''\(.*\)'\'')$/\1/p")"
+  OSD_OUTPUT_NAMES=
+  if [ -n "$OSD_OUTPUT_NAMES_JSON" ] && [ "$OSD_OUTPUT_NAMES_JSON" != "[]" ]; then
+    OSD_OUTPUT_NAMES="$(printf "%s\n" "$OSD_OUTPUT_NAMES_JSON" |
+      python3 -c "import json,sys; names=json.load(sys.stdin); print(chr(91) + (chr(44) + chr(32)).join(chr(39) + name + chr(39) for name in names) + chr(93), end=\"\")")"
+  else
+    echo "  FAIL: no active output names for logical monitor 0"
+    rc=1
+  fi
+  if [ -n "$OSD_OUTPUT_NAMES" ]; then
+    echo "  active OSD outputs -> $OSD_OUTPUT_NAMES"
+  fi
+
+  show_test_osd
+  sleep 1
+  if grep -q OsdRequested "$OSD_SIGNAL_LOG"; then
+    echo "  FAIL: native OSD was forwarded"; cat "$OSD_SIGNAL_LOG"; rc=1
+  else
+    echo "  ok: native OSD was not forwarded"
+  fi
+
+  callp SetFeature osd false >/dev/null
+  previous_count="$(osd_signal_count)"
+  show_test_osd
+  if gnoblin_wait_until 5 osd_signal_records_are_valid_after "$previous_count"; then
+    echo "  ok: suppressed OSD emitted one complete protocol v2 record"
+  else
+    echo "  FAIL: suppressed OSD handoff"; cat "$OSD_SIGNAL_LOG"; rc=1
+  fi
+
+  # The master gate stays enabled while the per-type gate suppresses volume.
+  callp SetFeature osd true >/dev/null
+  master_osd="$(callp GetFeature osd)"
+  case "$master_osd" in
+    *true*) echo "  ok: master osd enabled for osd-volume gate";;
+    *) echo "  FAIL: master osd not enabled for osd-volume gate"; rc=1;;
+  esac
+  callp SetFeature osd-volume false >/dev/null
+  volume_gate="$(callp GetFeature osd-volume)"
+  case "$volume_gate" in
+    *false*) echo "  ok: osd-volume disabled for forwarding check";;
+    *) echo "  FAIL: osd-volume gate did not disable"; rc=1;;
+  esac
+  previous_count="$(osd_signal_count)"
+  show_test_osd
+  if gnoblin_wait_until 5 osd_signal_records_are_valid_after "$previous_count"; then
+    echo "  ok: disabled osd-volume forwarded a new complete OSD record"
+  else
+    echo "  FAIL: osd-volume OSD handoff"; cat "$OSD_SIGNAL_LOG"; rc=1
+  fi
+  callp SetFeature osd-volume true >/dev/null
+  kill "$OSD_SIGNAL_PID" 2>/dev/null || true
 
   # Changes made outside org.gnoblin.Shell must follow the same live apply and
   # FeatureChanged path, without duplicating the signal on each transition.

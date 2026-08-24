@@ -34,6 +34,7 @@ const PORTAL_GRANT_FILE_PATTERN = /^[0-9a-f]{64}\.grant$/;
 const PORTAL_GRANT_GROUP = 'Grant';
 const PORTAL_GRANT_VERSION = 1;
 const SUPER_RELEASE_PROTOCOL_VERSION = 1;
+const OSD_REQUEST_PROTOCOL_VERSION = 2;
 const TRIM_INTERVAL_SECONDS = 300;
 
 
@@ -86,16 +87,116 @@ const OSD_TYPES = {
     'osd-keyboard-brightness': ['keyboard-brightness'],
 };
 
+// Return a GIcon's theme names without trusting the object supplied by the caller.
+function osdIconNames(icon) {
+    try {
+        const names = icon?.get_names?.();
+        if (Array.isArray(names))
+            return names.filter(name => typeof name === 'string');
+        const name = icon?.to_string?.();
+        return typeof name === 'string' ? [name] : [];
+    } catch {
+        return [];
+    }
+}
+
+// Convert arbitrary values to valid D-Bus strings. GJS strings can contain a
+// NUL or an unpaired UTF-16 surrogate, neither of which is valid on the wire.
+function serialiseOsdString(value) {
+    let string;
+    try {
+        string = typeof value === 'string' ? value : String(value ?? '');
+    } catch {
+        return '';
+    }
+
+    let result = '';
+    for (let i = 0; i < string.length; i++) {
+        const code = string.charCodeAt(i);
+        if (code === 0) {
+            result += '\ufffd';
+        } else if (code >= 0xd800 && code <= 0xdbff) {
+            const next = string.charCodeAt(i + 1);
+            if (next >= 0xdc00 && next <= 0xdfff)
+                result += string[i] + string[++i];
+            else
+                result += '\ufffd';
+        } else if (code >= 0xdc00 && code <= 0xdfff) {
+            result += '\ufffd';
+        } else {
+            result += string[i];
+        }
+    }
+    return result;
+}
+
+function serialiseOsdIcon(icon) {
+    if (typeof icon === 'string')
+        return serialiseOsdString(icon);
+
+    return serialiseOsdString(osdIconNames(icon)[0] ?? '');
+}
+
+function serialiseOsdMonitorIndex(value) {
+    let index;
+    try {
+        index = Number(value);
+    } catch {
+        return 0;
+    }
+
+    if (!Number.isFinite(index))
+        return 0;
+    return Math.max(-0x80000000, Math.min(0x7fffffff, Math.trunc(index)));
+}
+
+function serialiseOsdLevel(value) {
+    let level;
+    try {
+        level = Number(value);
+    } catch {
+        return 0;
+    }
+    return Number.isFinite(level) ? level : 0;
+}
+
+// Resolve the physical output names for the logical monitor that GNOME Shell
+// uses as an OSD index. Mutter exposes the same connector names through
+// Wayland, so an external layer-shell client can select the correct screen
+// without relying on either side's monitor enumeration order.
+function osdOutputNamesForMonitorIndex(monitorIndex) {
+    const index = serialiseOsdMonitorIndex(monitorIndex);
+    if (index < 0)
+        return [];
+
+    try {
+        const logicalMonitors = global.backend
+            .get_monitor_manager()
+            .get_logical_monitors();
+        const logicalMonitor = logicalMonitors.find(monitor => monitor.get_number() === index);
+        if (!logicalMonitor)
+            return [];
+
+        const outputNames = [];
+        for (const monitor of logicalMonitor.get_monitors()) {
+            if (!monitor.is_active())
+                continue;
+
+            const connector = serialiseOsdString(monitor.get_connector());
+            if (connector.length > 0 && !outputNames.includes(connector))
+                outputNames.push(connector);
+        }
+
+        return outputNames;
+    } catch {
+        return [];
+    }
+}
+
 // Classify an OSD by its icon → the per-type feature id, or null (unknown type,
 // gated only by the master switch). Volume/brightness/etc. pass a Gio.ThemedIcon.
 function classifyOsd(icon) {
-    let names = [];
-    try {
-        names = icon?.get_names?.() ?? (icon?.to_string ? [icon.to_string()] : []);
-    } catch {
-        names = [];
-    }
-    const hay = names.join(' ');
+    const hay = osdIconNames(icon).join(' ');
     for (const [feature, prefixes] of Object.entries(OSD_TYPES)) {
         if (prefixes.some(p => hay.includes(p)))
             return feature;
@@ -415,6 +516,20 @@ const IFACE = `
     <signal name="SuperReleased">
       <arg type="u" name="protocolVersion"/>
       <arg type="t" name="monotonicUsec"/>
+    </signal>
+    <!-- Emitted instead of drawing a standard OSD when the osd master switch or
+         its matching per-type feature is disabled. Payload: [protocol version,
+         monitor index, icon name, label, level, maximum level, physical output
+         connector names]. The connector names identify every physical output in
+         the logical monitor that owns monitorIndex. -->
+    <signal name="OsdRequested">
+      <arg type="u" name="protocolVersion"/>
+      <arg type="i" name="monitorIndex"/>
+      <arg type="s" name="icon"/>
+      <arg type="s" name="label"/>
+      <arg type="d" name="level"/>
+      <arg type="d" name="maxLevel"/>
+      <arg type="as" name="outputNames"/>
     </signal>
     <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
@@ -776,6 +891,33 @@ export class Component {
         }
     }
 
+    _emitOsdRequested(monitorIndex, icon, label, level, maxLevel) {
+        const outputNames = osdOutputNamesForMonitorIndex(monitorIndex);
+        if (outputNames.length === 0) {
+            console.warn(`gnoblin-control: no active output for OSD monitor ${serialiseOsdMonitorIndex(monitorIndex)}`);
+            return false;
+        }
+
+        const fields = [
+            OSD_REQUEST_PROTOCOL_VERSION,
+            serialiseOsdMonitorIndex(monitorIndex),
+            serialiseOsdIcon(icon),
+            serialiseOsdString(label),
+            serialiseOsdLevel(level),
+            serialiseOsdLevel(maxLevel),
+            outputNames,
+        ];
+
+        try {
+            this._impl?.emit_signal(
+                'OsdRequested', new GLib.Variant('(uissddas)', fields));
+            return true;
+        } catch (e) {
+            logError(e, 'gnoblin-control: failed to emit OsdRequested');
+            return false;
+        }
+    }
+
     // Install a single state-driven wrapper on OsdWindowManager._showOsdWindow —
     // the chokepoint both show() and showAll() funnel through. It reads the feature
     // state live per call, so the master 'osd' switch and the per-type switches
@@ -787,11 +929,14 @@ export class Component {
         const control = this;
         const orig = mgr._showOsdWindow;   // the prototype method
         mgr._showOsdWindow = function (monitorIndex, icon, label, level, maxLevel) {
-            if (!control._isEnabled('osd'))
-                return;                                 // master off → all OSDs suppressed
             const feature = classifyOsd(icon);
-            if (feature && !control._isEnabled(feature))
-                return;                                 // this OSD type is turned off
+            const osdSuppressed = !control._isEnabled('osd')
+                || (feature && !control._isEnabled(feature));
+            if (osdSuppressed) {
+                control._emitOsdRequested(monitorIndex, icon, label, level, maxLevel);
+                return;
+            }
+
             return orig.call(this, monitorIndex, icon, label, level, maxLevel);
         };
         this._osdGateInstalled = true;

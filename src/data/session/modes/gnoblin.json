@@ -1,7 +1,7 @@
 {
   "//": "gnoblin session mode. The low-patch way to strip GNOME Shell's own UI.",
   "//parentMode": "Inherit everything from the stock 'user' mode (WM, keybinds,",
-  "//parentMode2": "workspaces, windows, notifications, unlock dialog), then override.",
+  "//parentMode2": "workspaces, windows, notification backend, unlock dialog), then override.",
   "parentMode": "user",
 
   "//panel": "Empty the top bar. No activities button, no clock, no quick settings,",
@@ -18,6 +18,10 @@
   "//hasOverview2": "Inherited false from 'user', restated here so the strip is explicit",
   "//hasOverview3": "and survives even if the parent mode changes upstream.",
   "hasOverview": false,
+
+  "//hasNotifications": "Do not construct MessageTray banners. Notification backend and portal",
+  "//hasNotifications2": "security plumbing remain active; an external notification daemon owns UI.",
+  "hasNotifications": false,
 
   "//showWelcomeDialog": "Suppress GNOME's 'Welcome to <distro>' first-run modal (main.js",
   "//showWelcomeDialog2": "gates it on sessionMode.showWelcomeDialog, true in the 'user' parent).",

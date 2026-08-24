@@ -48,9 +48,11 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
   Mutter's native `--unsafe-mode` for one isolated devkit process with
   `GNOME_DEVKIT_UNSAFE_MODE=1`.
 - **Session mode** (`src/data/session/modes/gnoblin.json`): inherits the stock
-  `user` mode, empties the panel, sets `hasOverview: false`, and keeps only
-  the essential background components (polkit, keyring, automount, network
-  agent) plus `gnoblinControl` — the control protocol below.
+  `user` mode, empties the panel, sets `hasOverview: false` and
+  `hasNotifications: false`, and keeps only the essential background components
+  (polkit, keyring, automount, network agent) plus `gnoblinControl` — the control
+  protocol below. This suppresses MessageTray banners only; notification backend
+  and portal security plumbing remain active for an external notification daemon.
 - **`org.gnoblin.Shell` control protocol** — a first-class GNOME Shell session
   component (`src/gnome-shell-overlay/js/ui/components/gnoblinControl.js`,
   registered via `patches/gnome-shell/30-gnoblin-control`). It exposes over
@@ -61,6 +63,16 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
     monotonicUsec]`. Version `1` is stable for external chrome. Clients must
     ignore an unsupported protocol version and treat the signal as an edge,
     not key state.
+  - `OsdRequested` — emitted only when Gnoblin suppresses a standard
+    `OsdWindowManager` request because `osd` or the matching `osd-*` feature is
+    disabled. Its `(uissddas)` payload is `[protocolVersion, monitorIndex, icon,
+    label, level, maxLevel, outputNames]`; version `2` is stable and clients must
+    ignore other versions. `outputNames` contains the physical Mutter connector
+    names for the logical monitor. `icon` is the first themed icon name when
+    available, and all fields are safe serialisable values. When Gnoblin disables
+    an OSD, it does not use the native renderer after a failed handoff. It logs
+    and drops an OSD with no active output or with a D-Bus emission failure. This
+    prevents competing native and external chrome.
   - `Reload` — Wayland soft-reload (reloads theme + extensions in-process;
     windows survive). Also bound to `Alt+F2` `r`.
   - `ListInputSources` / `GetCurrentInputSource` / `SetInputSource` /
