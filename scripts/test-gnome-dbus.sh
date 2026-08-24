@@ -70,7 +70,10 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 # Everything below shares the one dbus-run-session bus.
 dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   source "$ROOT/scripts/gnoblin-test-lib.sh"
-  "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
+  # The private test session enables Eval only to emit MetaDisplay::overlay-key.
+  # Headless Mutter has no synthetic Super input path. The production shell
+  # remains in safe mode.
+  "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin --unsafe-mode \
     --virtual-monitor "'"$MONITOR"'" --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
   SHELL_PID=$!
 
@@ -97,6 +100,10 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
     [ "$(grep -c FeatureChanged "$SIGNAL_LOG" || true)" -eq "$1" ]
   }
 
+  super_release_signal_is_valid() {
+    grep -qE "SuperReleased.*uint32 1.*uint64 [1-9][0-9]*" "$SUPER_SIGNAL_LOG"
+  }
+
   ping="$(call Ping)";        echo "Ping       -> $ping"
   ver="$(call GetVersion)";   echo "GetVersion -> $ver"
   reload="$(call Reload)";    echo "Reload     -> $reload"
@@ -114,6 +121,23 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   else
     echo "  ok: failed extension reload returned a D-Bus error"
   fi
+
+  # --- Super-release signal ---
+  # GNOME Shell Eval lets this isolated test emit the exact
+  # MetaDisplay::overlay-key signal without changing the production key path.
+  SUPER_SIGNAL_LOG="$XDG_CACHE_HOME/super-release-signals.log"
+  gdbus monitor --session --dest org.gnoblin.Shell \
+    --object-path /org/gnoblin/Shell >"$SUPER_SIGNAL_LOG" 2>&1 &
+  SUPER_SIGNAL_PID=$!
+  gnoblin_wait_for_log "$SUPER_SIGNAL_LOG" "Monitoring signals" 5
+  gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+    --method org.gnome.Shell.Eval "global.display.emit('\''overlay-key'\'');" >/dev/null
+  if gnoblin_wait_until 5 super_release_signal_is_valid; then
+    echo "  ok: SuperReleased emitted version 1 with a monotonic timestamp"
+  else
+    echo "  FAIL: SuperReleased signal"; cat "$SUPER_SIGNAL_LOG"; rc=1
+  fi
+  kill "$SUPER_SIGNAL_PID" 2>/dev/null || true
 
   # --- feature toggles ---
   feats="$(call ListFeatures)"; echo "ListFeatures -> $feats"

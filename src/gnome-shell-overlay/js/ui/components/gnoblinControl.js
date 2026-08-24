@@ -31,6 +31,7 @@ const PORTAL_GRANT_KINDS = ['screen-cast', 'remote-desktop'];
 const PORTAL_GRANT_FILE_PATTERN = /^[0-9a-f]{64}\.grant$/;
 const PORTAL_GRANT_GROUP = 'Grant';
 const PORTAL_GRANT_VERSION = 1;
+const SUPER_RELEASE_PROTOCOL_VERSION = 1;
 const TRIM_INTERVAL_SECONDS = 300;
 
 
@@ -407,6 +408,12 @@ const IFACE = `
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
     </method>
+    <!-- Emitted after Super is released with no other input. The payload is
+         [protocol version, monotonic timestamp in microseconds]. -->
+    <signal name="SuperReleased">
+      <arg type="u" name="protocolVersion"/>
+      <arg type="t" name="monotonicUsec"/>
+    </signal>
     <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
     <!-- Extensions: [uuid, state] for every known extension. -->
@@ -463,6 +470,7 @@ export class Component {
     constructor() {
         this._impl = null;
         this._nameId = 0;
+        this._overlayKeyId = 0;
         this._settings = null;
         this._settingsChangedId = 0;
         this._featureState = new Map();
@@ -487,6 +495,18 @@ export class Component {
             null,
             () => console.log(`gnoblin-control: acquired ${BUS_NAME} at ${OBJECT_PATH}`),
             () => console.warn(`gnoblin-control: lost ${BUS_NAME} (another owner?)`));
+
+        // Mutter emits 'overlay-key' only when the configured Super key is
+        // released without other input. This preserves Super-drag while
+        // giving external chrome one precise edge to react to.
+        this._overlayKeyId = global.display.connect('overlay-key', () => {
+            this._impl?.emit_signal(
+                'SuperReleased',
+                new GLib.Variant('(ut)', [
+                    SUPER_RELEASE_PROTOCOL_VERSION,
+                    GLib.get_monotonic_time(),
+                ]));
+        });
 
         // User scripting: event bus + script host, loaded from the config dir.
         this._bus = new EventBus();
@@ -513,6 +533,10 @@ export class Component {
     }
 
     disable() {
+        if (this._overlayKeyId) {
+            global.display.disconnect(this._overlayKeyId);
+            this._overlayKeyId = 0;
+        }
         if (this._trimTimeoutId) {
             GLib.source_remove(this._trimTimeoutId);
             this._trimTimeoutId = 0;

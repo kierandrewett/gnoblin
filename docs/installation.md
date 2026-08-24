@@ -1,8 +1,8 @@
 # Installation
 
-gnoblin isn't a package you install from a repo (yet — see [Packaging](#packaging)
-below); it's a source tree you build into a local prefix. There's nothing to
-uninstall if you change your mind: delete `./install` and `./build`.
+Gnoblin has a reproducible Nix flake for NixOS and a source-prefix development
+path for other systems. The source-prefix path does not install a system package:
+delete `./install` and `./build` to remove it.
 
 ## What you end up with
 
@@ -18,10 +18,11 @@ gnoblin patches Mutter and GNOME Shell in place, so it needs their normal
 build dependencies plus `meson`, `ninja`, `git`, and [`just`](https://github.com/casey/just)
 (the task runner every recipe in this repo goes through).
 
-Packaging is Fedora-first right now (`packaging/rpm/*.spec` is maintained
-and build-verified; `packaging/deb/` and `packaging/arch/` are scaffolds —
-see their READMEs). On Fedora, resolve the base build dependencies straight
-from the spec files instead of hand-copying a package list that will drift:
+For non-NixOS systems, packaging is Fedora-first right now
+(`packaging/rpm/*.spec` is maintained and build-verified; `packaging/deb/`
+and `packaging/arch/` are scaffolds - see their READMEs). On Fedora, resolve
+the base build dependencies from the spec files instead of hand-copying a
+package list that will drift:
 
 ```sh
 sudo dnf install just meson ninja-build rpmdevtools
@@ -31,6 +32,58 @@ sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
 On Arch or Debian/Ubuntu, translate the `BuildRequires:`/`pkgconfig(...)`
 lines in those same spec files into your distro's package names — there
 isn't a maintained dependency list for those distros yet.
+
+## NixOS
+
+The flake exports `packages.x86_64-linux.gnoblin` and
+`nixosModules.default`. The package builds the pinned Mutter 49.5 and GNOME
+Shell 49.6 sources, their required Meson subprojects, the Gnoblin session
+files, and its distinct systemd user units in one Nix store path.
+
+Use a Nixpkgs release with the GNOME 49 stack. The flake uses
+`nixos-25.11`. Do not make its `nixpkgs` input follow a parent input with a
+different GNOME major version. A mixed GDM, gnome-session, Mutter, and
+GNOME Shell stack is not supported.
+
+```nix
+# flake.nix
+inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+
+    gnoblin = {
+        url = "github:kierandrewett/gnoblin";
+        inputs.nixpkgs.follows = "nixpkgs";
+    };
+};
+```
+
+Import the module in a NixOS host or profile, then enable a display manager
+separately. The module does not select a display manager or install desktop
+chrome.
+
+```nix
+{
+    imports = [ inputs.gnoblin.nixosModules.default ];
+
+    programs.gnoblin.enable = true;
+    services.displayManager.gdm.enable = true;
+    services.displayManager.defaultSession = "gnoblin";
+}
+```
+
+Build the package alone while you develop packaging changes:
+
+```sh
+nix flake check
+nix build .#gnoblin
+```
+
+The package declares its `gnoblin` Wayland session to
+`services.displayManager.sessionPackages` and installs the required
+`org.gnoblin.Shell` user units. It does not replace a stock GNOME Shell
+package globally. Gnoblin still starts without a top bar, dock, overview,
+notifications, or on-screen display. A selected desktop shell must provide
+those surfaces.
 
 ## Get the source
 

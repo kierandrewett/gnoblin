@@ -24,6 +24,8 @@ items stay here only when they still form part of an active delivery sequence.
   copies into `~/.local/share/gnome-shell/extensions/`.
 - [ ] Validate Kobel Shell as the reference external chrome in a real Gnoblin
   login session; keep its implementation in the separate `kobel-shell` repo.
+- [x] Add a reproducible Nix flake with an opt-in NixOS session module.
+- [x] Add a versioned `org.gnoblin.Shell` Super-release signal for external chrome.
 
 ## Deferred protocols
 

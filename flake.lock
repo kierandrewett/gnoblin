@@ -1,0 +1,135 @@
+{
+  "nodes": {
+    "gnome-shell-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1776178845,
+        "narHash": "sha256-mvsR1HZZvGucT9B6xu6zE4FwwYRZEKhzZnyTlYzTGH0=",
+        "ref": "refs/heads/main",
+        "rev": "21aa7264064b34f14bd6369215790d41853b2e12",
+        "revCount": 20118,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
+      },
+      "original": {
+        "rev": "21aa7264064b34f14bd6369215790d41853b2e12",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
+      }
+    },
+    "gvc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1770829861,
+        "narHash": "sha256-10n441b7m/mvQRdrmEsxGxqjKUWzjGvnzJy256NZN5s=",
+        "ref": "refs/heads/master",
+        "rev": "d2442f455844e5292cb4a74ffc66ecc8d7595a9f",
+        "revCount": 120,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libgnome-volume-control.git"
+      },
+      "original": {
+        "rev": "d2442f455844e5292cb4a74ffc66ecc8d7595a9f",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libgnome-volume-control.git"
+      }
+    },
+    "gvdb": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1725181085,
+        "narHash": "sha256-c56yOepnKPEYFcU1B1TrDl8ydU0JU+z6R8siAQP4d2A=",
+        "ref": "refs/heads/main",
+        "rev": "b54bc5da25127ef416858a3ad92e57159ff565b3",
+        "revCount": 95,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gvdb.git"
+      },
+      "original": {
+        "rev": "b54bc5da25127ef416858a3ad92e57159ff565b3",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gvdb.git"
+      }
+    },
+    "jasmineGjs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1736969202,
+        "narHash": "sha256-oXX6gURacmkMZ7h/NkNXhH1UTo7Jq8OyMP7ETtZx/NY=",
+        "owner": "ptomato",
+        "repo": "jasmine-gjs",
+        "rev": "856465dddbd92e82e574891e1ebc79e17d7b708a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ptomato",
+        "repo": "jasmine-gjs",
+        "rev": "856465dddbd92e82e574891e1ebc79e17d7b708a",
+        "type": "github"
+      }
+    },
+    "libshew": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1749568263,
+        "narHash": "sha256-auv5JsQUkytLLAAJzZlCDw4+v9/JfsCV1hKTa3Ku/Jg=",
+        "ref": "refs/heads/main",
+        "rev": "ed782477cb5164320ae4f731d49bc5d475ab2a52",
+        "revCount": 89,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libshew.git"
+      },
+      "original": {
+        "rev": "ed782477cb5164320ae4f731d49bc5d475ab2a52",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libshew.git"
+      }
+    },
+    "mutter-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773606664,
+        "narHash": "sha256-mg0ZJwggrzHgH62uSofj59FXPCh3duD4XsKGdXokGXQ=",
+        "ref": "refs/heads/main",
+        "rev": "759d53b098df10a1c0b443c093f586e5b1b7de49",
+        "revCount": 34751,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/mutter.git"
+      },
+      "original": {
+        "rev": "759d53b098df10a1c0b443c093f586e5b1b7de49",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/mutter.git"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1782847189,
+        "narHash": "sha256-twXPFqFsrrY5r28Zh7Homgcp2gUMBgQ6WDS98Q/3xFI=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b6018f87da91d19d0ab4cf979885689b469cdd41",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-25.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "gnome-shell-src": "gnome-shell-src",
+        "gvc": "gvc",
+        "gvdb": "gvdb",
+        "jasmineGjs": "jasmineGjs",
+        "libshew": "libshew",
+        "mutter-src": "mutter-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

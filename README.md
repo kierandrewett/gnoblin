@@ -56,6 +56,11 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
   registered via `patches/gnome-shell/30-gnoblin-control`). It exposes over
   D-Bus:
   - `Ping` / `GetVersion` — health + version.
+  - `SuperReleased` - emitted after the configured Super key is released
+    without other input. Its `(ut)` payload is `[protocolVersion,
+    monotonicUsec]`. Version `1` is stable for external chrome. Clients must
+    ignore an unsupported protocol version and treat the signal as an edge,
+    not key state.
   - `Reload` — Wayland soft-reload (reloads theme + extensions in-process;
     windows survive). Also bound to `Alt+F2` `r`.
   - `ListFeatures` / `GetFeature` / `SetFeature` / `FeatureChanged` — toggle
