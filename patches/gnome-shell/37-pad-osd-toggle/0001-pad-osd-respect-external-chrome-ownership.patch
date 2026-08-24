@@ -20,9 +20,9 @@ index 57a712c..b57bd27 100644
 --- a/js/ui/padOsd.js
 +++ b/js/ui/padOsd.js
 @@ -19,6 +19,36 @@ import {loadInterfaceXML} from '../misc/fileUtils.js';
- 
+
  const ACTIVE_COLOR = 'st-lighten(-st-accent-color, 15%)';
- 
+
 +const GNOBLIN_SETTINGS_SCHEMA = 'org.gnoblin.shell';
 +const GNOBLIN_DISABLED_FEATURES_KEY = 'disabled-features';
 +
@@ -55,18 +55,17 @@ index 57a712c..b57bd27 100644
 +
  const LTR = 0;
  const RTL = 1;
- 
+
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
 index f3e6c4d..ecadb3e 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
 @@ -978,6 +978,9 @@ export class WindowManager {
      }
- 
+
      _showPadOsd(display, device, settings, imagePath, editionMode, monitorIndex) {
 +        if (!PadOsd.isPadOsdEnabled())
 +            return null;
 +
          this._currentPadOsd = new PadOsd.PadOsd(device, settings, imagePath, editionMode, monitorIndex);
          this._currentPadOsd.connect('closed', () => (this._currentPadOsd = null));
- 
