@@ -325,6 +325,36 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   case "$gv" in *false*) echo "  ok: SetFeature osd-volume off";; *) echo "  FAIL: per-OSD set"; rc=1;; esac
   callp SetFeature osd-volume true >/dev/null
 
+  # Tablet-pad OSD bypasses OsdWindowManager. Verify the dedicated path obeys
+  # both the master and tablet-pad feature gates before it constructs native UI.
+  shell_eval_is_true() {
+    gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+      --method org.gnome.Shell.Eval "$1" | grep -Eq ", [[:punct:]]true[[:punct:]]"
+  }
+  pad_osd_is_suppressed_by_window_manager() {
+    shell_eval_is_true "Main.wm._showPadOsd(null, null, null, null, false, 0) === null"
+  }
+
+  pad_gate="$(callp GetFeature osd-pad)"
+  case "$pad_gate" in
+    *true*) echo "  ok: tablet-pad OSD default enabled";;
+    *) echo "  FAIL: tablet-pad OSD default"; rc=1;;
+  esac
+  callp SetFeature osd-pad false >/dev/null
+  if pad_osd_is_suppressed_by_window_manager; then
+    echo "  ok: osd-pad gate suppresses the native tablet-pad path"
+  else
+    echo "  FAIL: osd-pad gate"; rc=1
+  fi
+  callp SetFeature osd-pad true >/dev/null
+  callp SetFeature osd false >/dev/null
+  if pad_osd_is_suppressed_by_window_manager; then
+    echo "  ok: master osd gate suppresses the native tablet-pad path"
+  else
+    echo "  FAIL: master tablet-pad OSD gate"; rc=1
+  fi
+  callp SetFeature osd true >/dev/null
+
   # typed, portal-scoped grants: list both kinds, reject traversal, revoke one
   grants="$(callp ListPortalGrants)"; echo "ListPortalGrants -> $grants"
   case "$grants" in
