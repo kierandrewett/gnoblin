@@ -126,6 +126,13 @@ symlinkJoin {
         install -Dm644 "${gnoblinSrc}/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
             "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
 
+        # The host's GNOME packages can also provide these stock units. Gnoblin
+        # starts only org.gnoblin.Shell@wayland.service through its own target.
+        rm -f \
+            "$out/lib/systemd/user/org.gnome.Shell-disable-extensions.service" \
+            "$out/lib/systemd/user/org.gnome.Shell.target" \
+            "$out/lib/systemd/user/org.gnome.Shell@wayland.service"
+
 
         substituteInPlace "$out/bin/gnoblin-session" \
             --replace-fail "exec gnome-session" \
