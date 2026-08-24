@@ -1,0 +1,72 @@
+From 1b3080ef3a1c66840d75d7b3f1f69e31338afd3a Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 24 Aug 2026 12:30:00 +0100
+Subject: [PATCH] pad-osd: respect external chrome ownership
+
+The tablet-pad OSD bypasses OsdWindowManager, so the existing external OSD
+feature gate cannot suppress it. Add it to the same disabled-features contract
+and gate the WindowManager signal handler, which is the shared path for D-Bus
+and compositor requests.
+
+Only the Gnoblin session reads the Gnoblin schema. If the schema cannot load,
+keep the upstream OSD available rather than disabling a control path by error.
+---
+ js/ui/padOsd.js       | 30 ++++++++++++++++++++++++++++++
+ js/ui/windowManager.js |  3 +++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
+index 57a712c..b57bd27 100644
+--- a/js/ui/padOsd.js
++++ b/js/ui/padOsd.js
+@@ -19,6 +19,36 @@ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 
+ const ACTIVE_COLOR = 'st-lighten(-st-accent-color, 15%)';
+ 
++const GNOBLIN_SETTINGS_SCHEMA = 'org.gnoblin.shell';
++const GNOBLIN_DISABLED_FEATURES_KEY = 'disabled-features';
++
++let gnoblinSettings = null;
++let gnoblinSettingsResolved = false;
++
++// Tablet-pad requests do not use OsdWindowManager. This shared predicate lets
++// the Gnoblin feature contract cover the dedicated PadOsd path as well.
++export function isPadOsdEnabled() {
++    if (Main.sessionMode?.currentMode !== 'gnoblin')
++        return true;
++
++    if (!gnoblinSettingsResolved) {
++        try {
++            gnoblinSettings = new Gio.Settings({
++                schema_id: GNOBLIN_SETTINGS_SCHEMA,
++            });
++        } catch (error) {
++            log(`pad-osd: unable to load Gnoblin settings: ${error.message}`);
++        }
++        gnoblinSettingsResolved = true;
++    }
++
++    if (!gnoblinSettings)
++        return true;
++
++    const disabled = gnoblinSettings.get_strv(GNOBLIN_DISABLED_FEATURES_KEY);
++    return !disabled.includes('osd') && !disabled.includes('osd-pad');
++}
++
+ const LTR = 0;
+ const RTL = 1;
+ 
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index f3e6c4d..ecadb3e 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -978,6 +978,9 @@ export class WindowManager {
+     }
+ 
+     _showPadOsd(display, device, settings, imagePath, editionMode, monitorIndex) {
++        if (!PadOsd.isPadOsdEnabled())
++            return null;
++
+         this._currentPadOsd = new PadOsd.PadOsd(device, settings, imagePath, editionMode, monitorIndex);
+         this._currentPadOsd.connect('closed', () => (this._currentPadOsd = null));
+ 

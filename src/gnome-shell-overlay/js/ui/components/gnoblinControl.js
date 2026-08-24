@@ -216,6 +216,7 @@ const FEATURES = {
     'osd-microphone': {summary: 'Microphone OSD popup', apply() {}},
     'osd-brightness': {summary: 'Screen-brightness OSD popup', apply() {}},
     'osd-keyboard-brightness': {summary: 'Keyboard-brightness OSD popup', apply() {}},
+    'osd-pad': {summary: 'Tablet-pad OSD popup', apply() {}},
     screenshot: {
         summary: 'Built-in screenshot / screencast UI',
         apply(enabled) {
