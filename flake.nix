@@ -102,8 +102,11 @@
                         test -f "$schema_directory/org.gnome.shell.gschema.xml"
                         test -f "$schema_directory/org.gnoblin.shell.gschema.xml"
                         test -f "$schema_directory/gschemas.compiled"
-                        GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                            get org.gnome.mutter overlay-key >/dev/null
+                        test "$(
+                            GSETTINGS_BACKEND=memory \
+                                GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
+                                get org.gnome.mutter overlay-key
+                        )" = "'Super'"
                         GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
                             get org.gnome.shell enabled-extensions >/dev/null
                         GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
