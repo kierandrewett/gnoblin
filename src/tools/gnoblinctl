@@ -32,6 +32,12 @@ gnoblinctl — control gnoblin over org.gnoblin.Shell
   gnoblinctl scripts                  list loaded user scripts
   gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
 
+  gnoblinctl input-sources            list GNOME Shell input sources
+  gnoblinctl input-source             show the active input source
+  gnoblinctl set-input-source <type> <id>
+
+  gnoblinctl privacy                  show screen-share, microphone, and location state
+
   gnoblinctl portal-grants            list persistent Screen Cast and Remote Desktop grants
   gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
 
@@ -56,6 +62,15 @@ case "$cmd" in
   scripts)         call ListScripts | unwrap ;;
   reload-scripts)  call ReloadScripts >/dev/null; echo "scripts reloaded" ;;
   portal-grants)   call ListPortalGrants | unwrap ;;
+  input-sources)   call ListInputSources | unwrap ;;
+  input-source)    call GetCurrentInputSource | unwrap ;;
+  set-input-source)
+    type="${1:?usage: gnoblinctl set-input-source <type> <id>}"
+    id="${2:?usage: gnoblinctl set-input-source <type> <id>}"
+    call SetInputSource "$type" "$id" >/dev/null
+    echo "active input source: $type/$id"
+    ;;
+  privacy)         call GetPrivacyState | unwrap ;;
   revoke-grant)
     kind="${1:?usage: gnoblinctl revoke-grant <kind> <id>}"
     id="${2:?usage: gnoblinctl revoke-grant <kind> <id>}"

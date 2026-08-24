@@ -63,6 +63,13 @@ by heavy JS surgery. What draws the bar, dock and launcher is **bring-your-own**
     not key state.
   - `Reload` — Wayland soft-reload (reloads theme + extensions in-process;
     windows survive). Also bound to `Alt+F2` `r`.
+  - `ListInputSources` / `GetCurrentInputSource` / `SetInputSource` /
+    `InputSourceChanged` / `InputSourcesChanged` — read and change the active
+    GNOME Shell input source. This uses the Shell `InputSourceManager`, so it
+    keeps Mutter, IBus, per-window state, and the MRU list in sync.
+  - `GetPrivacyState` / `PrivacyStateChanged` — report active Wayland screen
+    sharing, application microphone recording, and GeoClue location use. The
+    protocol exports state only. An external layer-shell client owns the UI.
   - `ListFeatures` / `GetFeature` / `SetFeature` / `FeatureChanged` — toggle
     gnome-shell subsystems (e.g. `osd`, `screenshot`) on/off at runtime so an
     external userspace can own them. Persisted in the `org.gnoblin.shell`

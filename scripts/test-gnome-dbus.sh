@@ -70,6 +70,7 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 # Everything below shares the one dbus-run-session bus.
 dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   source "$ROOT/scripts/gnoblin-test-lib.sh"
+  gsettings set org.gnome.desktop.input-sources sources "[('\''xkb'\'', '\''us'\''), ('\''xkb'\'', '\''gb'\'')]"
   # The private test session enables Eval only to emit MetaDisplay::overlay-key.
   # Headless Mutter has no synthetic Super input path. The production shell
   # remains in safe mode.
@@ -121,6 +122,43 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   else
     echo "  ok: failed extension reload returned a D-Bus error"
   fi
+
+  # --- input source + privacy state ---
+  sources="$(call ListInputSources)"; echo "ListInputSources -> $sources"
+  case "$sources" in
+    *xkb*us*gb*) echo "  ok: input sources listed";;
+    *) echo "  FAIL: configured input sources missing"; rc=1;;
+  esac
+  input_source_is() {
+    case "$(call GetCurrentInputSource)" in
+      *"$1"*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  if callp SetInputSource xkb missing >/dev/null; then
+    echo "  FAIL: unknown input source accepted"; rc=1
+  else
+    echo "  ok: unknown input source rejected"
+  fi
+  INPUT_SOURCE_SIGNAL_LOG="$XDG_CACHE_HOME/input-source-signals.log"
+  gdbus monitor --session --dest org.gnoblin.Shell \
+    --object-path /org/gnoblin/Shell >"$INPUT_SOURCE_SIGNAL_LOG" 2>&1 &
+  INPUT_SOURCE_SIGNAL_PID=$!
+  gnoblin_wait_for_log "$INPUT_SOURCE_SIGNAL_LOG" "Monitoring signals" 5
+  callp SetInputSource xkb gb >/dev/null
+  if gnoblin_wait_until 10 input_source_is gb &&
+     gnoblin_wait_until 10 grep -q "InputSourceChanged.*xkb.*gb" "$INPUT_SOURCE_SIGNAL_LOG"; then
+    echo "  ok: input source switched and signalled"
+  else
+    echo "  FAIL: input source switch"; cat "$INPUT_SOURCE_SIGNAL_LOG"; rc=1
+  fi
+  kill "$INPUT_SOURCE_SIGNAL_PID" 2>/dev/null || true
+
+  privacy="$(call GetPrivacyState)"; echo "GetPrivacyState -> $privacy"
+  case "$privacy" in
+    *true*|*false*) echo "  ok: privacy state returned";;
+    *) echo "  FAIL: privacy state"; rc=1;;
+  esac
 
   # --- Super-release signal ---
   # GNOME Shell Eval lets this isolated test emit the exact

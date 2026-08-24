@@ -18,10 +18,12 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
-
+import * as Keyboard from '../status/keyboard.js';
+import * as Location from '../status/location.js';
 import * as Main from '../main.js';
-import * as Config from '../../misc/config.js';
 import {ExtensionState} from '../../misc/extensionUtils.js';
+import * as Volume from '../status/volume.js';
+import * as Config from '../../misc/config.js';
 
 const BUS_NAME = 'org.gnoblin.Shell';
 const OBJECT_PATH = '/org/gnoblin/Shell';
@@ -424,6 +426,42 @@ const IFACE = `
     <method name="ReloadExtension">
       <arg type="s" direction="in" name="uuid"/>
     </method>
+    <!-- Keyboard source state comes from GNOME Shell's InputSourceManager. -->
+    <!-- Sources are [type, id, short label, full display name]. -->
+    <method name="ListInputSources">
+      <arg type="a(ssss)" direction="out" name="sources"/>
+    </method>
+    <method name="GetCurrentInputSource">
+      <arg type="s" direction="out" name="type"/>
+      <arg type="s" direction="out" name="id"/>
+      <arg type="s" direction="out" name="shortName"/>
+      <arg type="s" direction="out" name="displayName"/>
+    </method>
+    <method name="SetInputSource">
+      <arg type="s" direction="in" name="type"/>
+      <arg type="s" direction="in" name="id"/>
+    </method>
+    <signal name="InputSourceChanged">
+      <arg type="s" name="type"/>
+      <arg type="s" name="id"/>
+      <arg type="s" name="shortName"/>
+      <arg type="s" name="displayName"/>
+    </signal>
+    <!-- True tells clients to refresh ListInputSources. -->
+    <signal name="InputSourcesChanged">
+      <arg type="b" name="changed"/>
+    </signal>
+    <!-- Current screen sharing, microphone recording, and location use state. -->
+    <method name="GetPrivacyState">
+      <arg type="b" direction="out" name="screenSharing"/>
+      <arg type="b" direction="out" name="microphoneInUse"/>
+      <arg type="b" direction="out" name="locationInUse"/>
+    </method>
+    <signal name="PrivacyStateChanged">
+      <arg type="b" name="screenSharing"/>
+      <arg type="b" name="microphoneInUse"/>
+      <arg type="b" name="locationInUse"/>
+    </signal>
     <!-- User scripts: names of the loaded ~/.config/gnoblin/scripts/*.js. -->
     <method name="ListScripts">
       <arg type="as" direction="out" name="scripts"/>
@@ -474,6 +512,12 @@ export class Component {
         this._settings = null;
         this._settingsChangedId = 0;
         this._featureState = new Map();
+        this._inputSourceManager = null;
+        this._mixerControl = null;
+        this._screenShareController = null;
+        this._screenShareHandles = new Set();
+        this._locationAgent = null;
+        this._privacyState = null;
     }
 
     enable() {
@@ -487,6 +531,8 @@ export class Component {
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
         this._installOsdGate();
+
+        this._setupDesktopState();
 
         this._nameId = Gio.bus_own_name(
             Gio.BusType.SESSION,
@@ -545,6 +591,8 @@ export class Component {
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = 0;
         }
+
+        this._teardownDesktopState();
         // Restore every gated subsystem to stock before we go.
         this._removeOsdGate();
         for (const id of Object.keys(FEATURES))
@@ -571,6 +619,127 @@ export class Component {
         this._settings = null;
         this._featureState.clear();
         console.log('gnoblin-control: disabled');
+    }
+
+    // --- desktop state ---
+    _setupDesktopState() {
+        this._inputSourceManager = Keyboard.getInputSourceManager();
+        this._inputSourceManager.connectObject(
+            'current-source-changed', () => this._emitInputSourceChanged(),
+            'sources-changed', () => this._emitInputSourcesChanged(),
+            this);
+
+        try {
+            this._mixerControl = Volume.getMixerControl();
+            this._mixerControl.connectObject(
+                'stream-added', () => this._emitPrivacyState(),
+                'stream-removed', () => this._emitPrivacyState(),
+                this);
+        } catch (e) {
+            logError(e, 'gnoblin-control: microphone state monitoring failed');
+        }
+
+        this._screenShareController = global.backend.get_remote_access_controller();
+        this._screenShareController?.connectObject(
+            'new-handle', (_controller, handle) => this._onRemoteAccessHandle(handle),
+            this);
+
+        try {
+            this._locationAgent = Location.getGeoclueAgent();
+            this._locationAgent.connectObject(
+                'notify::in-use', () => this._emitPrivacyState(),
+                this);
+        } catch (e) {
+            logError(e, 'gnoblin-control: location state monitoring failed');
+        }
+
+        this._privacyState = this._currentPrivacyState();
+    }
+
+    _teardownDesktopState() {
+        this._inputSourceManager?.disconnectObject(this);
+        this._mixerControl?.disconnectObject(this);
+        this._screenShareController?.disconnectObject(this);
+        this._locationAgent?.disconnectObject(this);
+        for (const handle of this._screenShareHandles)
+            handle.disconnectObject(this);
+
+        this._inputSourceManager = null;
+        this._mixerControl = null;
+        this._screenShareController = null;
+        this._screenShareHandles.clear();
+        this._locationAgent = null;
+        this._privacyState = null;
+    }
+
+    _inputSourceRecord(source) {
+        if (!source)
+            return ['', '', '', ''];
+
+        return [
+            source.type ?? '',
+            source.id ?? '',
+            source.shortName ?? '',
+            source.displayName ?? '',
+        ];
+    }
+
+    _emitInputSourceChanged() {
+        const source = this._inputSourceManager?.currentSource;
+        this._impl?.emit_signal(
+            'InputSourceChanged',
+            new GLib.Variant('(ssss)', this._inputSourceRecord(source)));
+    }
+
+    _emitInputSourcesChanged() {
+        this._impl?.emit_signal(
+            'InputSourcesChanged',
+            new GLib.Variant('(b)', [true]));
+        this._emitInputSourceChanged();
+    }
+
+    _onRemoteAccessHandle(handle) {
+        if (handle.isRecording ?? handle.is_recording ?? false)
+            return;
+
+        this._screenShareHandles.add(handle);
+        handle.connectObject('stopped', () => {
+            this._screenShareHandles.delete(handle);
+            this._emitPrivacyState();
+        }, this);
+        this._emitPrivacyState();
+    }
+
+    _currentPrivacyState() {
+        let microphoneInUse = false;
+        try {
+            const ignoredApplications = new Set([
+                'org.gnome.VolumeControl',
+                'org.PulseAudio.pavucontrol',
+            ]);
+            const sourceOutputs = this._mixerControl?.get_source_outputs() ?? [];
+            microphoneInUse = sourceOutputs.some(
+                output => !ignoredApplications.has(output.get_application_id()));
+        } catch {
+            microphoneInUse = false;
+        }
+
+        return [
+            this._screenShareHandles.size > 0,
+            microphoneInUse,
+            this._locationAgent?.inUse ?? false,
+        ];
+    }
+
+    _emitPrivacyState() {
+        const state = this._currentPrivacyState();
+        if (this._privacyState?.every((value, index) => value === state[index]))
+            return;
+
+        this._privacyState = state;
+        this._impl?.emit_signal(
+            'PrivacyStateChanged',
+            new GLib.Variant('(bbb)', state));
     }
 
     // --- feature toggles ---
@@ -667,6 +836,31 @@ export class Component {
 
     GetVersion() {
         return Config.PACKAGE_VERSION ?? 'unknown';
+    }
+
+    ListInputSources() {
+        const manager = this._inputSourceManager ?? Keyboard.getInputSourceManager();
+        return Object.values(manager.inputSources).map(
+            source => this._inputSourceRecord(source));
+    }
+
+    GetCurrentInputSource() {
+        const manager = this._inputSourceManager ?? Keyboard.getInputSourceManager();
+        return this._inputSourceRecord(manager.currentSource);
+    }
+
+    SetInputSource(type, id) {
+        const manager = this._inputSourceManager ?? Keyboard.getInputSourceManager();
+        const source = Object.values(manager.inputSources).find(
+            candidate => candidate.type === type && candidate.id === id);
+        if (!source)
+            throw new Error(`unknown input source: ${type}/${id}`);
+
+        manager.activateInputSource(source, true);
+    }
+
+    GetPrivacyState() {
+        return this._currentPrivacyState();
     }
 
     ReloadAsync(_params, invocation) {
