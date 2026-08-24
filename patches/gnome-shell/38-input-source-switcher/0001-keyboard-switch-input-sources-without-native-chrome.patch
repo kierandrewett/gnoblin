@@ -1,0 +1,12 @@
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index 8c8bef0..234df1a 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -436,0 +437,7 @@ export class InputSourceManager extends Signals.EventEmitter {
++        // Gnoblin owns no visible Shell chrome. External chrome receives the
++        // input-source state, so change immediately instead of opening a popup.
++        if (Main.sessionMode.currentMode === 'gnoblin') {
++            this._modifiersSwitcher();
++            return;
++        }
++
