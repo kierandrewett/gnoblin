@@ -28,4 +28,7 @@ PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PREFIX/libexec/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 
-exec gnome-session --session=gnoblin "$@"
+# gnome-session normally re-executes through the user's login shell. NixOS
+# login profiles rebuild XDG_DATA_DIRS and remove this package's session file,
+# so keep the runtime environment established above for the session manager.
+exec gnome-session --no-reexec --session=gnoblin "$@"
