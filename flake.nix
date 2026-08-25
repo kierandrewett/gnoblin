@@ -99,6 +99,10 @@
                         test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell.target"
                         test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell@wayland.service"
                         bash -n "${gnoblin}/bin/gnoblin-session" "${gnoblin}/bin/gnoblin-shell-service"
+                        case "$(<"${gnoblin}/bin/gnoblin-session")" in
+                            *"--no-reexec"*) ;;
+                            *) exit 1 ;;
+                        esac
                         schema_directory="${gnoblin}/share/glib-2.0/schemas"
                         test -f "$schema_directory/org.gnome.mutter.gschema.xml"
                         test -f "$schema_directory/org.gnome.shell.gschema.xml"
