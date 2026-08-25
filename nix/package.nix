@@ -102,6 +102,13 @@ let
                 "$out/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
             install -Dm644 src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in \
                 "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
+            # The pinned GNOME 49 session binary starts these Wayland targets.
+            # NixOS also installs the host GNOME session units, which may be
+            # newer and no longer provide these names.
+            install -Dm644 "${gnomeSession}/share/systemd/user/gnome-session-wayland.target" \
+                "$out/lib/systemd/user/gnome-session-wayland.target"
+            install -Dm644 "${gnomeSession}/share/systemd/user/gnome-session-wayland@.target" \
+                "$out/lib/systemd/user/gnome-session-wayland@.target"
         '';
     };
 in
