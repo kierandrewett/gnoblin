@@ -1,9 +1,6 @@
 From: kierandrewett <kieran@drewett.dev>
 Subject: [PATCH] shell: use live Gnoblin window behaviour settings
 
-Keep stock sessions unchanged. Fade minimise and restore in place by default
-and disable native window switching unless the user enables it.
-
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
@@ -33,12 +30,13 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
              shellwm.completed_minimize(actor);
              return;
          }
-@@ -1148,10 +1153,10 @@
+@@ -1148,16 +1153,20 @@
  
          this._minimizing.add(actor);
  
 -        if (actor.meta_window.is_monitor_sized()) {
-+        if (animation === 'fade' || actor.meta_window.is_monitor_sized()) {
++        if (animation === 'fade' ||
++            (animation === 'gnome' && actor.meta_window.is_monitor_sized())) {
              actor.ease({
                  opacity: 0,
 -                duration: MINIMIZE_WINDOW_ANIMATION_TIME,
@@ -46,7 +44,17 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._minimizeWindowDone(shellwm, actor),
              });
-@@ -1183,7 +1188,7 @@
+         } else {
+             let xDest, yDest, xScale, yScale;
+-            let [success, geom] = actor.meta_window.get_icon_geometry();
++            let [success, geom] = animation === 'zoom'
++                ? GnoblinConfig.minimizeTarget(actor.meta_window,
++                    Main.layoutManager.monitors[actor.meta_window.get_monitor()])
++                : actor.meta_window.get_icon_geometry();
+             if (success) {
+                 xDest = geom.x;
+                 yDest = geom.y;
+@@ -1183,7 +1192,7 @@
                  scale_y: yScale,
                  x: xDest,
                  y: yDest,
@@ -55,7 +63,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._minimizeWindowDone(shellwm, actor),
              });
-@@ -1202,24 +1207,29 @@
+@@ -1202,29 +1211,38 @@
      }
  
      _unminimizeWindow(shellwm, actor) {
@@ -77,7 +85,8 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
          this._unminimizing.add(actor);
  
 -        if (actor.meta_window.is_monitor_sized()) {
-+        if (animation === 'fade' || actor.meta_window.is_monitor_sized()) {
++        if (animation === 'fade' ||
++            (animation === 'gnome' && actor.meta_window.is_monitor_sized())) {
 +            actor.show();
              actor.opacity = 0;
              actor.set_scale(1.0, 1.0);
@@ -88,7 +97,16 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._unminimizeWindowDone(shellwm, actor),
              });
-@@ -1252,7 +1262,7 @@
+         } else {
+-            let [success, geom] = actor.meta_window.get_icon_geometry();
++            let [success, geom] = animation === 'zoom'
++                ? GnoblinConfig.minimizeTarget(actor.meta_window,
++                    Main.layoutManager.monitors[actor.meta_window.get_monitor()])
++                : actor.meta_window.get_icon_geometry();
+             if (success) {
+                 actor.set_position(geom.x, geom.y);
+                 actor.set_scale(
+@@ -1252,7 +1270,7 @@
                  scale_y: 1,
                  x: xDest,
                  y: yDest,
@@ -97,7 +115,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._unminimizeWindowDone(shellwm, actor),
              });
-@@ -1648,6 +1658,11 @@
+@@ -1648,6 +1666,11 @@
      }
  
      _startSwitcher(display, window, event, binding) {

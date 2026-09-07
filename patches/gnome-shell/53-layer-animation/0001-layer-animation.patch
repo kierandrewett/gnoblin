@@ -1,0 +1,50 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] shell: animate layer surfaces from their anchored edges
+
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1483,6 +1483,43 @@
+         if (actor.meta_window.is_attached_dialog())
+             this._checkDimming(actor.get_meta_window().get_transient_for());
+ 
++        const anchor = global.session_mode === 'gnoblin'
++            ? Meta.gnoblin_layer_anchor(actor.meta_window) : -1;
++        if (anchor >= 0) {
++            const animation = GnoblinConfig.windowEffects(
++                GnoblinConfig.windowProperties(actor.meta_window)).animation;
++            const duration = GnoblinConfig.settings['layer-duration'];
++            if (animation === 'none' || duration === 0 ||
++                !this._shouldAnimateActor(actor, [Meta.WindowType.DOCK, Meta.WindowType.DESKTOP])) {
++                shellwm.completed_map(actor);
++                return;
++            }
++            const monitor = Main.layoutManager.monitors[actor.meta_window.get_monitor()];
++            const offset = animation === 'slide'
++                ? GnoblinConfig.layerOffset(anchor, actor.meta_window.get_frame_rect(), monitor)
++                : [0, 0];
++            const modes = {
++                'ease-out-cubic': Clutter.AnimationMode.EASE_OUT_CUBIC,
++                'ease-out-quad': Clutter.AnimationMode.EASE_OUT_QUAD,
++                'ease-in-out-cubic': Clutter.AnimationMode.EASE_IN_OUT_CUBIC,
++                linear: Clutter.AnimationMode.LINEAR,
++            };
++            actor.translation_x = offset[0];
++            actor.translation_y = offset[1];
++            actor.opacity = 0;
++            actor.show();
++            this._mapping.add(actor);
++            actor.ease({
++                translation_x: 0,
++                translation_y: 0,
++                opacity: 255,
++                duration,
++                mode: modes[GnoblinConfig.settings['layer-easing']],
++                onStopped: () => this._mapWindowDone(shellwm, actor),
++            });
++            return;
++        }
++
+         const types = [
+             Meta.WindowType.NORMAL,
+             Meta.WindowType.DIALOG,
