@@ -13,7 +13,8 @@
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import {ConfigFile, FEATURE_KEYS} from './gnoblinConfig.js';
+import {Autostart, ConfigFile, FEATURE_KEYS} from './gnoblinConfig.js';
+import {WindowRules} from './gnoblinRules.js';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -42,6 +43,7 @@ const TRIM_INTERVAL_SECONDS = 300;
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
 let activeConfig = null;
+const autostart = new Autostart();
 
 // Identity of the stylesheet set the current St theme was built from. Used to
 // skip Main.loadTheme() on soft reload when no stylesheet changed: every theme
@@ -653,6 +655,7 @@ export class Component {
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
 
+        this._windowRules = new WindowRules();
         this._config = new ConfigFile(undefined, next => this._applyConfig(next));
         activeConfig = this._config;
         this._config.start();
@@ -708,6 +711,8 @@ export class Component {
     }
 
     disable() {
+        this._windowRules?.destroy();
+        this._windowRules = null;
         this._config?.destroy();
         this._config = null;
         activeConfig = null;
@@ -883,10 +888,12 @@ export class Component {
                 disabled.add(id);
         }
         const previous = this._disabledList();
-        if (disabled.size === previous.length && previous.every(id => disabled.has(id)))
-            return;
-        if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
-            throw new Error('could not save configured feature settings');
+        if (disabled.size !== previous.length || !previous.every(id => disabled.has(id))) {
+            if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
+                throw new Error('could not save configured feature settings');
+        }
+        this._windowRules.refresh(next);
+        autostart.apply(next.autostart);
     }
 
     // --- feature toggles ---

@@ -8,3 +8,4 @@
 # enabling is done purely via the `gnoblin` session mode's components list.
 gnome-shell  js/ui/components/gnoblinControl.js  js/ui/components/gnoblinControl.js
 gnome-shell  js/ui/components/gnoblinConfig.js  js/ui/components/gnoblinConfig.js
+gnome-shell  js/ui/components/gnoblinRules.js  js/ui/components/gnoblinRules.js

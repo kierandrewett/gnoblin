@@ -1,7 +1,7 @@
 // Run with: gjs -m tests/shell-config-test.js
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {ConfigFile, DEFAULTS, parse} from '../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js';
+import {ConfigFile, DEFAULTS, parse, parseLegacy, minimizeTarget, Autostart, layerOffset, windowEffects} from '../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js';
 
 function assert(condition, message) {
     if (!condition)
@@ -9,7 +9,7 @@ function assert(condition, message) {
 }
 
 assert(JSON.stringify(parse('')) === JSON.stringify(DEFAULTS), 'missing keys use defaults');
-const parsed = parse(`[protocols]
+const parsed = parseLegacy(`[protocols]
 wlr-layer-shell = on
 [shell]
 window-switcher = yes # comment
@@ -35,8 +35,24 @@ for (const invalid of ['window-switcher = maybe', 'minimize-animation = shrink',
     assert(rejected, `reject ${invalid}`);
 }
 
+const typed = parse(`[shell]
+minimize-animation = "zoom"
+minimize-target = [500, 900]
+[[autostart]]
+name = "dock"
+command = ["qs", "-p", "/a path/with spaces"]
+`);
+assert(typed['minimize-target'][1] === 900 && typed.autostart[0].command[2] === '/a path/with spaces',
+    'native TOML arrays and autostart tables');
+for (const text of ['[shell]\nosd = "false"', '[shell]\nminimize-duration = 2\nminimize-duration = 3',
+    '[shell]\nminimize-target = [1]', '[[autostart]]\nname = "dock"\ncommand = "qs"']) {
+    let rejected = false;
+    try { parse(text); } catch { rejected = true; }
+    assert(rejected, `reject typed TOML error: ${text}`);
+}
+
 const dir = GLib.dir_make_tmp('gnoblin-config-test-XXXXXX');
-const path = `${dir}/new/config/gnoblin.conf`;
+const path = `${dir}/new/config/gnoblin.toml`;
 let current;
 let updates = 0;
 const config = new ConfigFile(path, next => {
@@ -57,7 +73,7 @@ try {
     GLib.file_set_contents(path, '[shell]\nwindow-switcher = true');
     settle();
     assert(current['window-switcher'] === true, 'first creation is watched');
-    GLib.file_set_contents(`${path}.tmp`, '[shell]\nminimize-animation = none');
+    GLib.file_set_contents(`${path}.tmp`, '[shell]\nminimize-animation = "none"');
     Gio.File.new_for_path(`${path}.tmp`).move(Gio.File.new_for_path(path),
         Gio.FileCopyFlags.OVERWRITE, null, null);
     settle();
@@ -68,7 +84,7 @@ try {
     assert(current['minimize-animation'] === 'none', 'invalid edit retains last valid state');
     Gio.File.new_for_path(path).delete(null);
     settle();
-    assert(current['minimize-animation'] === 'fade', 'deletion restores defaults');
+    assert(current['minimize-animation'] === 'zoom', 'deletion restores defaults');
     config.destroy();
     const before = updates;
     GLib.file_set_contents(path, '[shell]\nwindow-switcher = true');
@@ -77,6 +93,12 @@ try {
     config.start();
     assert(current['window-switcher'], 'restart reads latest file');
     config.destroy();
+    const target = minimizeTarget({get_icon_geometry: () => [false, null]},
+        {x: 100, y: 200, width: 800, height: 600})[1];
+    assert(target.x === 500 && target.y === 800, 'bottom-centre fallback');
+    const icon = {x: 32, y: 64, width: 48, height: 48};
+    assert(minimizeTarget({get_icon_geometry: () => [true, icon]}, null)[1] === icon,
+        'dock rectangle wins');
     print('PASS: shell config parsing, watching, atomic saves, recovery, deletion, lifecycle');
 } finally {
     config.destroy();
@@ -85,3 +107,36 @@ try {
     GLib.rmdir(`${dir}/new`);
     GLib.rmdir(dir);
 }
+
+const panel = {x: -800, y: 30, width: 200, height: 40};
+const monitor = {x: -800, y: 0, width: 800, height: 600};
+assert(JSON.stringify(layerOffset(1 | 4 | 8, panel, monitor)) === '[0,-70]', 'top edge slides vertically');
+assert(JSON.stringify(layerOffset(1 | 4, panel, monitor)) === '[-200,-70]', 'corner slides diagonally');
+assert(JSON.stringify(layerOffset(2 | 8, panel, monitor)) === '[800,570]', 'bottom right respects monitor origin');
+assert(JSON.stringify(layerOffset(15, panel, monitor)) === '[0,0]', 'all anchors fade without translation');
+assert(parse('[shell]\nlayer-animation = "slide"\nlayer-duration = 90\nlayer-easing = "linear"')['layer-duration'] === 90, 'layer settings parse');
+for (const invalid of ['layer-duration = -1', 'layer-easing = "bounce"', 'layer-animation = "zoom"']) {
+    let rejected = false;
+    try { parse('[shell]\n' + invalid); } catch { rejected = true; }
+    assert(rejected, 'reject invalid layer option: ' + invalid);
+}
+print('PASS: layer animation geometry and configuration');
+
+const rules = parse(`[[window-rules]]
+match.type = "layer"
+blur = 24
+opacity = 0.9
+[[window-rules]]
+match.layer = "^dock$"
+blur = 12
+animation = "none"
+`);
+const matched = windowEffects({type: 'layer', layer: 'dock', focused: false}, rules);
+assert(matched.blur === 12 && matched.opacity === 0.9 && matched.animation === 'none', 'later matching effects override individually');
+assert(windowEffects({type: 'window', layer: null}, rules).blur === 0, 'layer rules do not match applications');
+for (const field of ['blur = 101', 'opacity = 2', 'match.title = "["', 'match.unknown = "x"']) {
+    let rejected = false;
+    try { parse('[[window-rules]]\nmatch.type = "layer"\n' + field); } catch { rejected = true; }
+    assert(rejected, 'reject invalid rule: ' + field);
+}
+print('PASS: window rule validation and precedence');
