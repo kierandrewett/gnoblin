@@ -62,3 +62,17 @@ on the GPU before reading thumbnail pixels back. PNG encoding uses the shell's
 asynchronous worker and an in-memory stream; no temporary image files are
 written. Minimized windows use their retained backing buffer. Output is limited
 to 4 MiB per connection, including preview data.
+
+## Recording and camera activity
+
+`{"op":"privacy"}` subscribes to activity snapshots. Responses contain
+`event: "privacy"`, `screenSharing`, `recording`, `recordingCount`,
+`recordingElapsed` (whole seconds), and `cameraInUse`. The bridge uses Mutter's
+remote-access handles and GNOME's `Shell.CameraMonitor`. Clients can advance
+elapsed time locally between activity changes. Start times and active handles
+survive script reloads, so reconnecting does not restart the timer.
+
+`{"op":"stop-sharing"}` stops non-recording remote-access sessions.
+`{"op":"stop-recording"}` stops recording sessions. A client that owns an encoder
+should stop it through its own normal finalisation path to save its output.
+These methods do not start capture or grant camera access.

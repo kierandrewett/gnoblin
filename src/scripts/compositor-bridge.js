@@ -20,6 +20,7 @@ class CompositorBridge {
         this.timeout = 0;
         this.modifierCheck = 0;
         this.windows = new Map();
+        this.setupPrivacy();
         const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'gnoblin']);
         GLib.mkdir_with_parents(directory, 0o700);
         this.path = Gio.File.new_for_path(GLib.getenv('GNOBLIN_COMPOSITOR_SOCKET') || `${directory}/compositor-v1.sock`);
@@ -103,6 +104,13 @@ class CompositorBridge {
         if (record.op === 'status') {
             this.send(client, {event: 'status', bindings: [...this.actions.values()].map(binding => binding.id),
                 active: this.active?.id ?? null});
+            return;
+        }
+        if (record.op === 'privacy') { client.trackPrivacy = true; this.publishPrivacy(client); return; }
+        if (record.op === 'stop-sharing' || record.op === 'stop-recording') {
+            const recording = record.op === 'stop-recording';
+            for (const [handle, state] of this.remoteHandles)
+                if (state.recording === recording) handle.stop();
             return;
         }
         if (record.op === 'windows') { client.trackWindows = true; this.publishWindows(client); return; }
@@ -236,6 +244,45 @@ class CompositorBridge {
         return window && !window.skip_taskbar && !window.is_override_redirect();
     }
 
+    setupPrivacy() {
+        // The active handles and their start times survive script reloads. Only
+        // each handle's stopped callback persists, until that session ends.
+        this.remoteHandles = global.__gnoblinRemoteAccessHandles ??= new Map();
+        global.__gnoblinPublishPrivacy = () => this.publishPrivacy();
+        this.remoteController = global.backend.get_remote_access_controller();
+        this.remoteSignal = this.remoteController?.connect('new-handle', (_controller, handle) => this.trackRemote(handle));
+        const panel = Main.panel?.statusArea;
+        for (const handles of [panel?.screenSharing?._handles, panel?.quickSettings?._remoteAccess?._handles])
+            for (const handle of handles ?? []) this.trackRemote(handle);
+        this.ownsCameraMonitor = !panel?.quickSettings?._camera?._cameraMonitor;
+        this.cameraMonitor = panel?.quickSettings?._camera?._cameraMonitor ?? new Shell.CameraMonitor();
+        this.cameraSignal = this.cameraMonitor.connect('notify::cameras-in-use', () => this.publishPrivacy());
+    }
+
+    trackRemote(handle) {
+        if (this.remoteHandles.has(handle)) return;
+        const state = {recording: Boolean(handle.is_recording ?? handle.isRecording), started: GLib.get_monotonic_time()};
+        this.remoteHandles.set(handle, state);
+        state.signal = handle.connect('stopped', () => {
+            global.__gnoblinRemoteAccessHandles.delete(handle);
+            handle.disconnect(state.signal);
+            global.__gnoblinPublishPrivacy?.();
+        });
+        this.publishPrivacy();
+    }
+
+    publishPrivacy(client = null) {
+        const states = [...this.remoteHandles.values()];
+        const recordings = states.filter(state => state.recording);
+        const started = recordings.length ? Math.min(...recordings.map(state => state.started)) : 0;
+        const record = {event: 'privacy', screenSharing: states.some(state => !state.recording),
+            recording: recordings.length > 0, recordingCount: recordings.length,
+            recordingElapsed: started ? Math.floor((GLib.get_monotonic_time() - started) / 1000000) : 0,
+            cameraInUse: Boolean(this.cameraMonitor?.cameras_in_use)};
+        const clients = client ? [client] : [...this.clients].filter(peer => peer.trackPrivacy);
+        for (const peer of clients) this.send(peer, record);
+    }
+
     async preview(client, request) {
         client.previewBusy = true;
         const stream = Gio.MemoryOutputStream.new_resizable();
@@ -337,6 +384,10 @@ class CompositorBridge {
 
     destroy() {
         this.end('cancelled');
+        global.__gnoblinPublishPrivacy = null;
+        if (this.remoteSignal) this.remoteController.disconnect(this.remoteSignal);
+        this.cameraMonitor.disconnect(this.cameraSignal);
+        if (this.ownsCameraMonitor) this.cameraMonitor.run_dispose();
         for (const client of this.clients) this.close(client);
         global.display.disconnect(this.accelerator);
         global.stage.disconnect(this.capture);
