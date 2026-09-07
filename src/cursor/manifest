@@ -1,0 +1,2 @@
+mutter gnoblin-hyprcursor.cpp src/backends/gnoblin-hyprcursor.cpp
+mutter gnoblin-hyprcursor.h src/backends/gnoblin-hyprcursor.h

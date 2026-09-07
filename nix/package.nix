@@ -4,6 +4,7 @@
     symlinkJoin,
     glib,
     unzip,
+    hyprcursor,
 
     mutter,
     gnomeShell,
@@ -41,6 +42,8 @@ let
         patches = (old.patches or [ ]) ++ patchesFor "mutter";
         prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
         postPatch = old.postPatch or "";
+        buildInputs = (old.buildInputs or [ ]) ++ [ hyprcursor ];
+        mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dhyprcursor=enabled" ];
     });
 
     gnoblinShell = (gnomeShell.override { mutter = gnoblinMutter; }).overrideAttrs (old: {

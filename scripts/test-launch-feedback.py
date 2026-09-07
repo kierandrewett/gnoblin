@@ -52,8 +52,11 @@ def wait_for(predicate, timeout=2):
 
 reload()
 wait_for(lambda value: value["pointerVisible"])
+if os.environ.get("GNOBLIN_EXPECT_NATIVE_CURSOR") == "1":
+    assert state()["nativeCursor"], "Native cursor API not loaded"
+print("Cursor backend:", "native" if state()["nativeCursor"] else "GNOME artwork fallback")
 call("Begin", "one", "__missing_app__", 600)
-wait_for(lambda value: value["busy"] and value["spinnerVisible"] and not value["pointerVisible"])
+wait_for(lambda value: value["busy"] and value["spinnerVisible"] and value["pointerVisible"] == value["nativeCursor"])
 call("Begin", "two", "__missing_app__", 2000)
 call("End", "one")
 assert state()["pending"] == 1 and state()["busy"]

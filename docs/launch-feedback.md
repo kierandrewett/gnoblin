@@ -1,14 +1,16 @@
 # Global launch feedback
 
-The `launch-feedback.js` user script owns a timed, input-transparent cursor overlay.
-It uses the installed GNOME cursor theme's `wait` artwork, hotspot and animation
-frames, with Adwaita as a fallback. Mutter's cursor visibility inhibitor hides
-client cursors while the overlay is active. Window focus and input remain with
-the application under the pointer.
+The `launch-feedback.js` user script owns timed global busy-cursor requests.
+It uses Mutter's native themed wait-cursor override when available, including
+Hyprcursor themes. On an older compositor, it displays the installed GNOME
+cursor theme's `wait` artwork, hotspot and animation frames in an input-transparent
+overlay, with Adwaita as a fallback. Window focus and input remain with the
+application under the pointer.
 
 Install or link `src/scripts/launch-feedback.js` into
 `~/.config/gnoblin/scripts/`, then run `gnoblinctl reload-scripts`. The script is
-also loaded at login. Reloading it releases all visibility inhibitors.
+also loaded at login. Reloading it releases the native override or fallback
+visibility inhibitor.
 
 The session-bus name and interface are `org.gnoblin.LaunchFeedback`, at
 `/org/gnoblin/LaunchFeedback`:

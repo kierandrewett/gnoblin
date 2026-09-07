@@ -56,6 +56,7 @@ BuildRequires: pam-devel
 BuildRequires: pkgconfig(bash-completion)
 BuildRequires: pkgconfig(colord) >= %{colord_version}
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
+BuildRequires: pkgconfig(hyprcursor) >= 0.1.13
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}

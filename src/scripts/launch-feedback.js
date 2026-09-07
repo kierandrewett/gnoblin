@@ -65,6 +65,7 @@ class LaunchFeedback {
     constructor() {
         this.launches = new Map();
         this.tracker = global.backend.get_cursor_tracker();
+        this.nativeCursor = typeof this.tracker.set_gnoblin_launch_cursor === "function";
         this.spinner = null;
         this.tick = 0;
         this.lastWindowCheck = 0;
@@ -127,6 +128,8 @@ class LaunchFeedback {
             this.hide();
             return GLib.SOURCE_REMOVE;
         }
+        if (this.nativeCursor)
+            return GLib.SOURCE_CONTINUE;
         const [x, y] = global.get_pointer();
         if (now >= this.nextFrame) {
             this.currentFrame = this.frames[this.frameIndex];
@@ -141,17 +144,22 @@ class LaunchFeedback {
     }
 
     show() {
-        if (this.spinner)
+        if (this.cursorInhibited)
             return;
-        const settings = new Gio.Settings({schema_id: "org.gnome.desktop.interface"});
-        const cursor = loadStandardCursor(settings.get_string("cursor-theme"), settings.get_int("cursor-size"));
-        this.frames = cursor.frames;
-        this.cursorSource = cursor.source;
-        this.frameIndex = 0;
-        this.nextFrame = 0;
-        this.spinner = new Clutter.Actor({reactive: false});
-        global.stage.add_child(this.spinner);
-        this.tracker.inhibit_cursor_visibility();
+        if (this.nativeCursor) {
+            this.tracker.set_gnoblin_launch_cursor(true);
+            this.cursorSource = "native-theme/wait";
+        } else {
+            const settings = new Gio.Settings({schema_id: "org.gnome.desktop.interface"});
+            const cursor = loadStandardCursor(settings.get_string("cursor-theme"), settings.get_int("cursor-size"));
+            this.frames = cursor.frames;
+            this.cursorSource = cursor.source;
+            this.frameIndex = 0;
+            this.nextFrame = 0;
+            this.spinner = new Clutter.Actor({reactive: false});
+            global.stage.add_child(this.spinner);
+            this.tracker.inhibit_cursor_visibility();
+        }
         this.cursorInhibited = true;
         this.update();
         this.tick = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
@@ -173,7 +181,10 @@ class LaunchFeedback {
         this.spinner?.destroy();
         this.spinner = null;
         if (this.cursorInhibited) {
-            this.tracker.uninhibit_cursor_visibility();
+            if (this.nativeCursor)
+                this.tracker.set_gnoblin_launch_cursor(false);
+            else
+                this.tracker.uninhibit_cursor_visibility();
             this.cursorInhibited = false;
         }
     }
@@ -184,9 +195,9 @@ class LaunchFeedback {
     }
 
     GetState() {
-        return JSON.stringify({busy: this.cursorInhibited, pending: this.launches.size,
+        return JSON.stringify({busy: this.cursorInhibited, pending: this.launches.size, nativeCursor: this.nativeCursor,
             pointerVisible: this.tracker.get_pointer_visible(),
-            spinnerVisible: !!this.spinner?.is_mapped(),
+            spinnerVisible: this.nativeCursor ? this.tracker.get_gnoblin_launch_cursor() : !!this.spinner?.is_mapped(),
             cursorSource: this.cursorSource ?? null,
             position: this.spinner ? [this.spinner.x, this.spinner.y] : null});
     }
