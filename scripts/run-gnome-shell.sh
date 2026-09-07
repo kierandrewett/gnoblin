@@ -250,7 +250,7 @@ if [ -n "${GNOBLIN_TEST_DBUS_CLIENT:-}" ]; then
   elif [ -z "${bus_address:-}" ]; then
     echo "!! isolated D-Bus address is unavailable" >&2
     dbus_client_ok=0
-  elif ! GNOBLIN_ACTIVE_MODE="$MODE" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
+  elif ! GNOBLIN_ACTIVE_MODE="$MODE" WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
     dbus_client_ok=0
   fi
 fi

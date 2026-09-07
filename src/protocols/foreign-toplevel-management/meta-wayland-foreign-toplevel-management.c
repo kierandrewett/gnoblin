@@ -25,6 +25,9 @@
 #include "wayland/meta-wayland-foreign-toplevel-common.h"
 
 #include <gio/gio.h>
+#include <math.h>
+#include "meta/meta-window-actor.h"
+#include "wayland/meta-wayland-surface-private.h"
 #include <wayland-server.h>
 
 #include "meta/display.h"
@@ -60,6 +63,15 @@ typedef struct _MetaWaylandForeignToplevelHandle
   gulong notify_maximized_v_id;
   gulong notify_fullscreen_id;
   gulong notify_focus_id;
+  MetaWaylandSurface *target_surface;
+  MetaWindow *target_window;
+  MtkRectangle target_rect;
+  gulong target_destroy_id;
+  gulong target_position_id;
+  gulong target_size_id;
+  gulong target_window_id;
+  ClutterActor *target_actor;
+  gulong target_allocation_id;
 } MetaWaylandForeignToplevelHandle;
 
 
@@ -158,9 +170,116 @@ on_notify_state (GObject *o, GParamSpec *p, gpointer user_data)
   zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
+#define TARGET_OWNER "gnoblin-minimize-target-owner"
+
+static void
+update_target (MetaWaylandForeignToplevelHandle *handle)
+{
+  MetaWindow *dock;
+  float x1, y1, x2, y2;
+  MtkRectangle rect;
+  if (!handle->window || !handle->target_surface ||
+      g_object_get_data (G_OBJECT (handle->window), TARGET_OWNER) != handle)
+    return;
+  dock = meta_wayland_surface_get_window (handle->target_surface);
+  if (!dock || !meta_window_get_compositor_private (dock) ||
+      !meta_wayland_surface_get_actor (handle->target_surface))
+    {
+      meta_window_set_icon_geometry (handle->window, NULL);
+      return;
+    }
+  meta_wayland_surface_get_absolute_coordinates (handle->target_surface,
+      handle->target_rect.x, handle->target_rect.y, &x1, &y1);
+  meta_wayland_surface_get_absolute_coordinates (handle->target_surface,
+      (float) handle->target_rect.x + handle->target_rect.width,
+      (float) handle->target_rect.y + handle->target_rect.height, &x2, &y2);
+  if (!isfinite (x1) || !isfinite (y1) || !isfinite (x2) || !isfinite (y2) ||
+      fabs (x1) > G_MAXINT / 2 || fabs (y1) > G_MAXINT / 2 ||
+      fabs (x2) > G_MAXINT / 2 || fabs (y2) > G_MAXINT / 2)
+    return;
+  rect = (MtkRectangle) { (int) floorf (x1), (int) floorf (y1),
+                         (int) MAX (0, ceilf (x2) - floorf (x1)),
+                         (int) MAX (0, ceilf (y2) - floorf (y1)) };
+  meta_window_set_icon_geometry (handle->window, &rect);
+}
+
+static void
+clear_target (MetaWaylandForeignToplevelHandle *handle)
+{
+  if (handle->window &&
+      g_object_get_data (G_OBJECT (handle->window), TARGET_OWNER) == handle)
+    {
+      meta_window_set_icon_geometry (handle->window, NULL);
+      g_object_set_data (G_OBJECT (handle->window), TARGET_OWNER, NULL);
+    }
+  if (handle->target_surface)
+    {
+      g_clear_signal_handler (&handle->target_destroy_id, handle->target_surface);
+      g_clear_signal_handler (&handle->target_window_id, handle->target_surface);
+    }
+  if (handle->target_window)
+    {
+      g_clear_signal_handler (&handle->target_position_id, handle->target_window);
+      g_clear_signal_handler (&handle->target_size_id, handle->target_window);
+    }
+  if (handle->target_actor)
+    g_clear_signal_handler (&handle->target_allocation_id, handle->target_actor);
+  g_clear_object (&handle->target_actor);
+  handle->target_surface = NULL;
+  g_clear_object (&handle->target_window);
+}
+
+static void
+on_target_destroy (MetaWaylandSurface *surface, gpointer data)
+{
+  clear_target (data);
+}
+
+static void
+on_target_geometry (MetaWindow *window, gpointer data)
+{
+  update_target (data);
+}
+
+static void
+on_target_allocation (GObject *actor, GParamSpec *pspec, gpointer data)
+{
+  update_target (data);
+}
+
+static void
+on_target_window (GObject *surface, GParamSpec *pspec, gpointer data)
+{
+  MetaWaylandForeignToplevelHandle *handle = data;
+  if (handle->target_window)
+    {
+      g_clear_signal_handler (&handle->target_position_id, handle->target_window);
+      g_clear_signal_handler (&handle->target_size_id, handle->target_window);
+    }
+  if (handle->target_actor)
+    g_clear_signal_handler (&handle->target_allocation_id, handle->target_actor);
+  g_clear_object (&handle->target_actor);
+  g_set_object (&handle->target_window,
+                meta_wayland_surface_get_window (handle->target_surface));
+  if (handle->target_window)
+    {
+      g_set_object (&handle->target_actor,
+                    CLUTTER_ACTOR (meta_window_get_compositor_private (handle->target_window)));
+      if (handle->target_actor)
+        handle->target_allocation_id = g_signal_connect (handle->target_actor,
+            "notify::allocation", G_CALLBACK (on_target_allocation), handle);
+      handle->target_position_id = g_signal_connect (handle->target_window,
+          "position-changed", G_CALLBACK (on_target_geometry), handle);
+      handle->target_size_id = g_signal_connect (handle->target_window,
+          "size-changed", G_CALLBACK (on_target_geometry), handle);
+    }
+  update_target (handle);
+}
+
 static void
 handle_disconnect_window (MetaWaylandForeignToplevelHandle *handle)
 {
+  clear_target (handle);
   if (!handle->window)
     return;
 
@@ -246,7 +365,25 @@ handle_set_rectangle (struct wl_client   *c,
                       struct wl_resource *surface,
                       int32_t x, int32_t y, int32_t width, int32_t height)
 {
-  /* Hint for minimize/restore animations; mutter does not consume it. */
+  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
+  if (width < 0 || height < 0)
+    {
+      wl_resource_post_error (resource,
+          ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_ERROR_INVALID_RECTANGLE,
+          "rectangle dimensions must not be negative");
+      return;
+    }
+  clear_target (handle);
+  if (!handle->window || (width == 0 && height == 0))
+    return;
+  handle->target_surface = wl_resource_get_user_data (surface);
+  handle->target_rect = (MtkRectangle) { x, y, width, height };
+  g_object_set_data (G_OBJECT (handle->window), TARGET_OWNER, handle);
+  handle->target_destroy_id = g_signal_connect (handle->target_surface,
+      "destroy", G_CALLBACK (on_target_destroy), handle);
+  handle->target_window_id = g_signal_connect (handle->target_surface,
+      "notify::window", G_CALLBACK (on_target_window), handle);
+  on_target_window (G_OBJECT (handle->target_surface), NULL, handle);
 }
 
 static void
