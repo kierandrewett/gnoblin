@@ -1,14 +1,20 @@
-# gnoblin.conf: live shell settings and startup Wayland protocol settings.
-# Location: $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.conf.
+# gnoblin.toml: live shell settings and startup Wayland protocol settings.
+# Location: $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.toml.
 # The shell watches saves automatically. Manual reload: gnoblinctl reload-config.
 # Invalid shell settings retain the last valid configuration.
 
 [shell]
 # Native GNOME Alt+Tab and related window switchers are opt-in.
 window-switcher = false
-# fade stays in place; none disables minimise/restore motion; gnome uses its target.
-minimize-animation = fade
+# zoom uses the dock icon, then minimize-target, then monitor bottom-centre.
+# Alternatives: "fade", "none", or "gnome" (native GNOME fallback).
+minimize-animation = "zoom"
 minimize-duration = 200
+layer-animation = "slide"
+layer-duration = 220
+layer-easing = "ease-out-cubic"
+# Optional fallback in logical desktop coordinates:
+# minimize-target = [960, 1040]
 # Optional persistent feature settings. Omitted entries keep their current state.
 # osd = false
 # osd-volume = true
@@ -32,3 +38,15 @@ wlr-foreign-toplevel-management = true   # window control for taskbars
 wlr-gamma-control               = true   # night-light via wlsunset
 wlr-output-power-management     = true   # DPMS via wlr clients
 ext-data-control                = true   # clipboard managers (cliphist)
+
+# Named autostart entries run once per name per login, including new entries
+# added on reload. Use either this or an existing systemd service, not both.
+# [[autostart]]
+# name = "bingux"
+# command = ["qs", "-c", "bingux"]
+
+# Compositor effects reload live after the rebuilt stack's first login.
+[[window-rules]]
+match.type = "layer"
+blur = 24
+opacity = 0.96

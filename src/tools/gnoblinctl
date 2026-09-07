@@ -21,7 +21,7 @@ gnoblinctl — control gnoblin over org.gnoblin.Shell
   gnoblinctl version                  shell + protocol version
   gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
 
-  gnoblinctl reload-config            reload gnoblin.conf now (also watched automatically)
+  gnoblinctl reload-config            reload gnoblin.toml now (also watched automatically)
 
   gnoblinctl features                 list feature toggles + state
   gnoblinctl feature <id>             show one feature's state

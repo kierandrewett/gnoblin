@@ -1,24 +1,17 @@
 /*
  * gnoblin: a tiny, dependency-free config file (instead of GSettings/dconf).
  *
- * Read from $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.conf. The
- * format is INI-like: `[section]` headers and `key = value` lines, one
- * directive per line, `#` comments. Keys may repeat (e.g. several `exec`
- * lines, or one line per keybinding). Example:
- *
- *     [startup]
- *     exec = gnoblin-topbar
- *
- *     [bind]
- *     Super+Q = close
+ * Read from $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.toml. The
+ * format is TOML. Existing gnoblin.conf files retain legacy INI parsing.
+ * Example:
  *
  *     [protocols]
- *     ext-data-control = on
+ *     ext-data-control = true
  *
- * Values are bools (on/off/true/false/yes/no/1/0), ints, or strings. Missing
- * file/keys fall back to the caller's default. Compiled into gnoblin's Mutter
- * protocol overlays, which read it to gate each Wayland protocol
- * ([protocols] keys; see src/data/gnoblin.conf.example).
+ * Missing files and keys use the caller's default. Invalid reloads retain
+ * the last valid configuration. Mutter uses these accessors to gate Wayland
+ * protocols; the shell shares the typed TOML parser for live settings.
+ * See src/data/gnoblin.toml.example for shell and autostart settings.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
