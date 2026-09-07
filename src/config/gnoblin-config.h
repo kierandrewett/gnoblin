@@ -33,6 +33,7 @@
 G_BEGIN_DECLS
 
 const char* gnoblin_config_path(void);
+GVariant *gnoblin_config_parse_toml(const char *contents, GError **error);
 
 /* (Re)load from disk. Safe to call repeatedly. */
 void gnoblin_config_reload(void);

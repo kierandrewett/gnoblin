@@ -1,3 +1,6 @@
 # project source destination
 mutter gnoblin-config.c src/wayland/gnoblin-config.c
 mutter gnoblin-config.h src/wayland/gnoblin-config.h
+mutter gnoblin-toml.c src/wayland/gnoblin-toml.c
+mutter tomlc99/toml.c src/wayland/tomlc99/toml.c
+mutter tomlc99/toml.h src/wayland/tomlc99/toml.h

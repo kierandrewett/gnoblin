@@ -47,8 +47,18 @@ const char* gnoblin_config_path(void) {
 
         if (override && override[0])
             path = g_strdup(override);
-        else
-            path = g_build_filename(g_get_user_config_dir(), "gnoblin", "gnoblin.conf", NULL);
+        else {
+            path = g_build_filename(g_get_user_config_dir(), "gnoblin", "gnoblin.toml", NULL);
+            if (!g_file_test(path, G_FILE_TEST_EXISTS)) {
+                char *legacy = g_build_filename(g_get_user_config_dir(), "gnoblin", "gnoblin.conf", NULL);
+                if (g_file_test(legacy, G_FILE_TEST_EXISTS)) {
+                    g_free(path);
+                    path = legacy;
+                } else {
+                    g_free(legacy);
+                }
+            }
+        }
     }
 
     return path;
@@ -203,8 +213,42 @@ void gnoblin_config_reload(void) {
 
     table = section_table_new();
 
-    if (g_file_get_contents(gnoblin_config_path(), &contents, NULL, NULL))
-        parse_into(table, contents);
+    if (g_file_get_contents(gnoblin_config_path(), &contents, NULL, NULL)) {
+        if (g_str_has_suffix(gnoblin_config_path(), ".toml")) {
+            g_autoptr(GError) error = NULL;
+            g_autoptr(GVariant) document = gnoblin_config_parse_toml(contents, &error);
+            if (!document) {
+                g_warning("gnoblin-config: %s", error->message);
+                g_hash_table_unref(table);
+                return;
+            }
+            GVariantIter sections;
+            const char *section;
+            GVariant *values;
+            g_variant_iter_init(&sections, document);
+            while (g_variant_iter_next(&sections, "{&sv}", &section, &values)) {
+                if (g_variant_is_of_type(values, G_VARIANT_TYPE_VARDICT)) {
+                    GVariantIter entries;
+                    const char *key;
+                    GVariant *value;
+                    g_variant_iter_init(&entries, values);
+                    while (g_variant_iter_next(&entries, "{&sv}", &key, &value)) {
+                        ConfigEntry *entry = g_new0(ConfigEntry, 1);
+                        entry->key = g_strdup(key);
+                        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+                            entry->value = g_variant_dup_string(value, NULL);
+                        else
+                            entry->value = g_variant_print(value, FALSE);
+                        g_ptr_array_add(ensure_section(table, section), entry);
+                        g_variant_unref(value);
+                    }
+                }
+                g_variant_unref(values);
+            }
+        } else {
+            parse_into(table, contents);
+        }
+    }
 
     if (loaded_sections)
         g_hash_table_unref(loaded_sections);
@@ -214,7 +258,7 @@ void gnoblin_config_reload(void) {
 static GPtrArray* loaded_section(const char* name) {
     if (!loaded_sections)
         gnoblin_config_reload();
-    return g_hash_table_lookup(loaded_sections, name ? name : ROOT_SECTION);
+    return loaded_sections ? g_hash_table_lookup(loaded_sections, name ? name : ROOT_SECTION) : NULL;
 }
 
 /* Last value wins, so a later line overrides an earlier one. */

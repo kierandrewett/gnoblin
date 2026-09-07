@@ -9,8 +9,14 @@ BIN="$(mktemp -d /tmp/gnoblin-cfg.XXXXXX)"
 trap 'rm -rf "$BIN"' EXIT
 
 cc "$ROOT/tests/config-test.c" "$ROOT/src/config/gnoblin-config.c" \
+   "$ROOT/src/config/gnoblin-toml.c" "$ROOT/src/config/tomlc99/toml.c" \
    -I "$ROOT/src/config" $CFLAGS -o "$BIN/config-test"
 
 echo "== gnoblin.conf parser =="
 "$BIN/config-test"
 echo ">> config parser test PASS"
+
+cc "$ROOT/tests/toml-config-test.c" "$ROOT/src/config/gnoblin-config.c" \
+   "$ROOT/src/config/gnoblin-toml.c" "$ROOT/src/config/tomlc99/toml.c" \
+   -I "$ROOT/src/config" $CFLAGS -o "$BIN/toml-config-test"
+"$BIN/toml-config-test"
