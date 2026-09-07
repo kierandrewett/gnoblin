@@ -40,6 +40,11 @@ gnoblinctl — control gnoblin over org.gnoblin.Shell
 
   gnoblinctl privacy                  show screen-share, microphone, and location state
 
+  gnoblinctl launch-begin <token> <application> [timeout-ms]
+                                     show the global busy cursor (default: 3000 ms)
+  gnoblinctl launch-end <token>       finish one launch request
+  gnoblinctl launch-state             inspect global launch feedback
+
   gnoblinctl portal-grants            list persistent Screen Cast and Remote Desktop grants
   gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
 
@@ -74,6 +79,18 @@ case "$cmd" in
     echo "active input source: $type/$id"
     ;;
   privacy)         call GetPrivacyState | unwrap ;;
+  launch-begin)
+    gdbus call --session --dest org.gnoblin.LaunchFeedback --object-path /org/gnoblin/LaunchFeedback \
+      --method org.gnoblin.LaunchFeedback.Begin "${1:?token required}" "${2:?application required}" "${3:-3000}" >/dev/null
+    ;;
+  launch-end)
+    gdbus call --session --dest org.gnoblin.LaunchFeedback --object-path /org/gnoblin/LaunchFeedback \
+      --method org.gnoblin.LaunchFeedback.End "${1:?token required}" >/dev/null
+    ;;
+  launch-state)
+    gdbus call --session --dest org.gnoblin.LaunchFeedback --object-path /org/gnoblin/LaunchFeedback \
+      --method org.gnoblin.LaunchFeedback.GetState | unwrap
+    ;;
   revoke-grant)
     kind="${1:?usage: gnoblinctl revoke-grant <kind> <id>}"
     id="${2:?usage: gnoblinctl revoke-grant <kind> <id>}"
