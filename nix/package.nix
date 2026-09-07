@@ -5,6 +5,7 @@
     glib,
     unzip,
     hyprcursor,
+    libepoxy,
 
     mutter,
     gnomeShell,
@@ -50,6 +51,7 @@ let
         pname = "gnoblin-shell";
         version = "49.6";
         src = gnomeShellSrc;
+        buildInputs = (old.buildInputs or [ ]) ++ [ libepoxy ];
         patches =
             lib.filter (patch: !(lib.hasSuffix "-fix-paths.patch" (toString patch))) (old.patches or [ ])
             ++ patchesFor "gnome-shell";

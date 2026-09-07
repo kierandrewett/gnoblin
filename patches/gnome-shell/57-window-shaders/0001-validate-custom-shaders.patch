@@ -1,0 +1,27 @@
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -115,6 +115,7 @@
+   'shell-camera-monitor.h',
+   'shell-edge-drag-gesture.h',
+   'shell-glsl-effect.h',
++  'shell-gnoblin-shader.h',
+   'shell-global.h',
+   'shell-invert-lightness-effect.h',
+   'shell-action-modes.h',
+@@ -167,6 +168,7 @@
+   'shell-edge-drag-gesture.c',
+   'shell-global.c',
+   'shell-glsl-effect.c',
++  'shell-gnoblin-shader.c',
+   'shell-invert-lightness-effect.c',
+   'shell-keyring-prompt.c',
+   'shell-keyring-prompt.h',
+@@ -238,7 +240,7 @@
+ 
+ libshell = library('shell-' + mutter_api_version,
+   sources: libshell_gir_sources + libshell_no_gir_sources,
+-  dependencies: gnome_shell_deps + [libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep],
++  dependencies: gnome_shell_deps + [dependency('epoxy'), libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep],
+   include_directories: [conf_inc, include_directories('tray')],
+   c_args: gnome_shell_cflags,
+   link_with: libshell_link_with,

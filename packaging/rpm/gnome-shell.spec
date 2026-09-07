@@ -65,6 +65,7 @@ Source11:       gnome-session@gnoblin.target.d.conf
 %define gnome_settings_daemon_version 3.37.1
 
 BuildRequires:  pkgconfig(bash-completion)
+BuildRequires:  pkgconfig(epoxy)
 BuildRequires:  gcc
 BuildRequires:  meson
 BuildRequires:  git
