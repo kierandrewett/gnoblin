@@ -1,0 +1,50 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] layer-shell: expose metadata for shell rules and animation
+
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -118,3 +118,11 @@
+ 
+ META_EXPORT
+ GVariant *meta_gnoblin_parse_toml (const char *contents, GError **error);
++
++#include "meta/types.h"
++
++META_EXPORT
++int meta_gnoblin_layer_anchor (MetaWindow *window);
++
++META_EXPORT
++const char *meta_gnoblin_layer_namespace (MetaWindow *window);
+diff --git a/src/core/util.c b/src/core/util.c
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -647,3 +647,28 @@
+   return NULL;
+ #endif
+ }
++
++/**
++ * meta_gnoblin_layer_anchor:
++ * @window: window to inspect
++ *
++ * Returns: layer-shell anchor flags, or -1 for other windows
++ */
++int
++meta_gnoblin_layer_anchor (MetaWindow *window)
++{
++  return GPOINTER_TO_INT (g_object_get_data (G_OBJECT (window),
++                                           "gnoblin-layer-anchor")) - 1;
++}
++
++/**
++ * meta_gnoblin_layer_namespace:
++ * @window: window to inspect
++ *
++ * Returns: (transfer none) (nullable): the layer namespace, or NULL
++ */
++const char *
++meta_gnoblin_layer_namespace (MetaWindow *window)
++{
++  return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
++}

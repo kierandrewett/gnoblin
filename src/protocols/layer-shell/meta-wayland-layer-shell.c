@@ -1081,6 +1081,9 @@ meta_wayland_layer_surface_apply_state (MetaWaylandSurfaceRole  *surface_role,
       layer_surface->has_pending_state = FALSE;
     }
 
+  g_object_set_data (G_OBJECT (window), "gnoblin-layer-anchor",
+                     GUINT_TO_POINTER (layer_surface->current.anchor + 1));
+
   surface_role_class =
     META_WAYLAND_SURFACE_ROLE_CLASS (meta_wayland_layer_surface_parent_class);
   surface_role_class->apply_state (surface_role, pending);
