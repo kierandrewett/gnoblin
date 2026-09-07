@@ -1,0 +1,134 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] shell: mask background blur to client alpha coverage
+
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -28,6 +28,7 @@
+  * ShellBlurMode:
+  * @SHELL_BLUR_MODE_ACTOR: blur the actor contents, and its children
+  * @SHELL_BLUR_MODE_BACKGROUND: blur what's beneath the actor
++ * @SHELL_BLUR_MODE_BACKGROUND_MASKED: blur beneath nontransparent actor pixels
+  *
+  * The mode of blurring of the effect.
+  */
+@@ -35,6 +36,7 @@
+ {
+   SHELL_BLUR_MODE_ACTOR,
+   SHELL_BLUR_MODE_BACKGROUND,
++  SHELL_BLUR_MODE_BACKGROUND_MASKED,
+ } ShellBlurMode;
+ 
+ #define SHELL_TYPE_BLUR_EFFECT (shell_blur_effect_get_type())
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -349,6 +349,7 @@
+       clutter_actor_get_allocation_box (self->actor, source_actor_box);
+       break;
+ 
++    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+       stage_view = clutter_paint_context_get_stage_view (paint_context);
+ 
+@@ -513,7 +514,8 @@
+   updated = update_actor_fbo (self, width, height, downscale_factor) &&
+             update_brightness_fbo (self, width, height, downscale_factor);
+ 
+-  if (self->mode == SHELL_BLUR_MODE_BACKGROUND)
++  if (self->mode == SHELL_BLUR_MODE_BACKGROUND ||
++      self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
+     updated = updated && update_background_fbo (self, width, height);
+ 
+   self->tex_width = width;
+@@ -593,6 +595,32 @@
+     }
+ }
+ 
++/* Capture only alpha coverage. With no output rectangle this layer updates
++ * its framebuffer without drawing the client into the stage before the blur. */
++static void
++paint_actor_mask (ShellBlurEffect *self,
++                  ClutterPaintNode *node)
++{
++  g_autoptr (ClutterPaintNode) layer_node = NULL;
++  g_autoptr (ClutterPaintNode) transform_node = NULL;
++  graphene_matrix_t transform;
++
++  layer_node = clutter_layer_node_new_to_framebuffer (self->actor_fb.framebuffer,
++                                                      self->actor_fb.pipeline);
++  clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (alpha mask)");
++  clutter_paint_node_add_child (node, layer_node);
++  graphene_matrix_init_scale (&transform,
++                              1.f / self->downscale_factor,
++                              1.f / self->downscale_factor, 1.f);
++  transform_node = clutter_transform_node_new (&transform);
++  clutter_paint_node_add_child (layer_node, transform_node);
++  add_actor_node (self, transform_node, 255);
++  cogl_pipeline_set_layer_texture (self->brightness_fb.pipeline, 1,
++                                   self->actor_fb.texture);
++  cogl_pipeline_set_layer_combine (self->brightness_fb.pipeline, 1,
++                                   "RGBA = MODULATE (PREVIOUS, TEXTURE[A])", NULL);
++}
++
+ static gboolean
+ needs_repaint (ShellBlurEffect         *self,
+                ClutterEffectPaintFlags  flags)
+@@ -610,6 +638,7 @@
+     case SHELL_BLUR_MODE_ACTOR:
+       return actor_dirty || !blur_cached || !actor_cached;
+ 
++    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+       return TRUE;
+     }
+@@ -638,7 +667,8 @@
+           paint_opacity = clutter_actor_get_paint_opacity (self->actor);
+           break;
+ 
+-        case SHELL_BLUR_MODE_BACKGROUND:
++        case SHELL_BLUR_MODE_BACKGROUND_MASKED:
++    case SHELL_BLUR_MODE_BACKGROUND:
+           paint_opacity = 255;
+           break;
+ 
+@@ -659,6 +689,11 @@
+           if (!update_framebuffers (self, paint_context, &source_actor_box))
+             goto fail;
+ 
++          if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
++            paint_actor_mask (self, node);
++          else
++            cogl_pipeline_remove_layer (self->brightness_fb.pipeline, 1);
++
+           blur_node = create_blur_nodes (self, node, paint_opacity);
+ 
+           switch (self->mode)
+@@ -667,7 +702,8 @@
+               paint_actor_offscreen (self, blur_node, flags);
+               break;
+ 
+-            case SHELL_BLUR_MODE_BACKGROUND:
++            case SHELL_BLUR_MODE_BACKGROUND_MASKED:
++    case SHELL_BLUR_MODE_BACKGROUND:
+               paint_background (self, blur_node, paint_context, &source_actor_box);
+               break;
+             }
+@@ -686,7 +722,8 @@
+         case SHELL_BLUR_MODE_ACTOR:
+           break;
+ 
+-        case SHELL_BLUR_MODE_BACKGROUND:
++        case SHELL_BLUR_MODE_BACKGROUND_MASKED:
++    case SHELL_BLUR_MODE_BACKGROUND:
+           add_actor_node (self, node, -1);
+           break;
+         }
+@@ -903,6 +940,7 @@
+       clear_framebuffer_data (&self->background_fb);
+       break;
+ 
++    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+     default:
+       /* Do nothing */
