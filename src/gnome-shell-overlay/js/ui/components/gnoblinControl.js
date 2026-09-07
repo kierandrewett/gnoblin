@@ -13,7 +13,7 @@
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import {ConfigFile} from './gnoblinConfig.js';
+import {ConfigFile, FEATURE_KEYS} from './gnoblinConfig.js';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -646,15 +646,16 @@ export class Component {
     }
 
     enable() {
-        this._config = new ConfigFile();
-        activeConfig = this._config;
-        this._config.start();
         this._settings = new Gio.Settings({schema_id: SCHEMA_ID});
         this._settingsChangedId = this._settings.connect(
             `changed::${DISABLED_KEY}`, () => this._syncFeatureState());
 
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
+
+        this._config = new ConfigFile(undefined, next => this._applyConfig(next));
+        activeConfig = this._config;
+        this._config.start();
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -871,6 +872,21 @@ export class Component {
         this._impl?.emit_signal(
             'PrivacyStateChanged',
             new GLib.Variant('(bbb)', state));
+    }
+
+    _applyConfig(next) {
+        const disabled = new Set(this._disabledList());
+        for (const id of FEATURE_KEYS) {
+            if (next[id] === true)
+                disabled.delete(id);
+            else if (next[id] === false)
+                disabled.add(id);
+        }
+        const previous = this._disabledList();
+        if (disabled.size === previous.length && previous.every(id => disabled.has(id)))
+            return;
+        if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
+            throw new Error('could not save configured feature settings');
     }
 
     // --- feature toggles ---

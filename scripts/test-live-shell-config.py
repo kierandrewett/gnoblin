@@ -83,4 +83,15 @@ check({'window-switcher': False, 'minimize-animation': 'fade', 'minimize-duratio
 config.unlink()
 time.sleep(0.5)
 check({'window-switcher': False, 'minimize-animation': 'fade', 'minimize-duration': 200})
+config.write_text('[shell]\nosd = false\nscreenshot = false\n')
+call('ReloadConfig')
+for feature in ['osd', 'screenshot']:
+    result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell', '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', feature], text=True)
+    assert result.strip() == '(false,)', result
+config.write_text('[shell]\nosd = true\nscreenshot = true\n')
+time.sleep(0.5)
+for feature in ['osd', 'screenshot']:
+    result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell', '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', feature], text=True)
+    assert result.strip() == '(true,)', result
+print('PASS: live feature configuration')
 print('PASS: live shell watcher, manual reload, invalid-file recovery, minimise/restore, switcher gate')

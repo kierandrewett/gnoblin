@@ -2,7 +2,13 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+export const FEATURE_KEYS = Object.freeze([
+    'osd', 'osd-volume', 'osd-microphone', 'osd-brightness',
+    'osd-keyboard-brightness', 'osd-pad', 'screenshot', 'notifications',
+]);
+
 export const DEFAULTS = Object.freeze({
+    ...Object.fromEntries(FEATURE_KEYS.map(key => [key, null])),
     'window-switcher': false,
     'minimize-animation': 'fade',
     'minimize-duration': 200,
@@ -41,12 +47,13 @@ export function parse(text) {
         const value = cleanValue(line.slice(separator + 1));
         if (separator < 0 || !Object.hasOwn(DEFAULTS, key))
             throw new Error(`unknown shell setting: ${line}`);
-        switch (key) {
-        case 'window-switcher':
+        if (key === 'window-switcher' || FEATURE_KEYS.includes(key)) {
             if (!/^(true|false|on|off|yes|no|1|0)$/i.test(value))
                 throw new Error(`${key}: expected a boolean`);
             next[key] = /^(true|on|yes|1)$/i.test(value);
-            break;
+            continue;
+        }
+        switch (key) {
         case 'minimize-animation':
             if (!['fade', 'none', 'gnome'].includes(value))
                 throw new Error(`${key}: expected fade, none, or gnome`);
@@ -65,7 +72,7 @@ export function parse(text) {
 export class ConfigFile {
     constructor(path = GLib.getenv('GNOBLIN_CONFIG') || GLib.build_filenamev([
         GLib.get_user_config_dir(), 'gnoblin', 'gnoblin.conf',
-    ]), apply = next => { settings = next; }) {
+    ]), apply = () => {}) {
         this.path = path;
         this._file = Gio.File.new_for_path(path);
         this._apply = apply;
@@ -83,7 +90,9 @@ export class ConfigFile {
                 throw e;
         }
         // Parse the complete file before replacing the last valid settings.
-        this._apply(parse(text));
+        const next = parse(text);
+        this._apply(next);
+        settings = next;
     }
 
     start() {

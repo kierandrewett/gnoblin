@@ -16,12 +16,16 @@ window-switcher = yes # comment
 minimize-animation = 'none' # comment
 minimize-duration = 25
 minimize-duration = 70
+osd = off
+screenshot = yes
 `);
+assert(parsed.osd === false && parsed.screenshot === true && parsed.notifications === null,
+    'explicit feature values and unspecified persistent features');
 assert(parsed['window-switcher'] && parsed['minimize-animation'] === 'none' &&
     parsed['minimize-duration'] === 70, 'comments, quotes, booleans, and last value');
 for (const invalid of ['window-switcher = maybe', 'minimize-animation = shrink',
     'minimize-duration = -1', 'minimize-duration = 5001', 'minimize-duration = 2ms',
-    'typo = true', '[shell']) {
+    'typo = true', 'notifications = maybe', '[shell']) {
     let rejected = false;
     try {
         parse(`[shell]\n${invalid}`);
