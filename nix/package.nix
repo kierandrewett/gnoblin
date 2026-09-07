@@ -97,6 +97,7 @@ let
             install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
             install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
             install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
+            install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
 
             install -Dm644 src/data/session/gnoblin.desktop \
                 "$out/share/wayland-sessions/gnoblin.desktop"
