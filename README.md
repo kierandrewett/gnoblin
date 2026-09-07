@@ -34,7 +34,7 @@ The session configures Mutter's overlay key as `Super`. When Super is released w
 
 Gnoblin keeps owned source separate from the pinned upstream checkouts:
 
-- `src/protocols/` contains Mutter protocol overlays, including `wlr-layer-shell`. `gnoblin.conf` controls whether each implemented protocol is advertised when Mutter starts.
+- `src/protocols/` contains Mutter protocol overlays, including `wlr-layer-shell`. `gnoblin.toml` controls whether each implemented protocol is advertised when Mutter starts.
 - `src/gnome-shell-overlay/` provides the `org.gnoblin.Shell` component. Its D-Bus API supplies health checks, reloads, and runtime feature controls for an external shell.
 - `src/data/` contains the session mode, GSettings schema, and configuration example.
 - `patches/` changes existing upstream files. `src/` overlays are copied into the submodules during the build. Keep `subprojects/` pristine.
@@ -45,7 +45,7 @@ See the [source map](src/README.md) for ownership boundaries and implementation 
 
 Gnoblin has two configuration surfaces:
 
-- `gnoblin.conf` watches `[shell]` settings live, including native window switching and minimise animations. It is read from `$GNOBLIN_CONFIG`, or `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf` by default. `[protocols]` changes require a new compositor session.
+- `gnoblin.toml` watches `[shell]` settings live, including native window switching and minimise animations. It is read from `$GNOBLIN_CONFIG`, or `$XDG_CONFIG_HOME/gnoblin/gnoblin.toml` by default. `[protocols]` changes require a new compositor session.
 - The `org.gnoblin.shell` GSettings `disabled-features` key controls GNOME Shell subsystems at runtime. Use `gnoblinctl` inside a Gnoblin session to inspect or change it:
 
   ```sh

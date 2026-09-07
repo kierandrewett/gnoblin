@@ -18,6 +18,9 @@ items stay here only when they still form part of an active delivery sequence.
 
 ## Product work
 
+- [x] Add TOML configuration with legacy migration, named autostart and
+  per-window layer-shell dock icon targets. Verify with a real Quickshell dock.
+
 - [x] Add watched shell configuration, minimise animation policy, and a native
   window switcher that defaults off. Verify reload and invalid-file recovery.
 - [x] Keep the GNOME Shell/Mutter architecture and extend watched configuration

@@ -1,127 +1,162 @@
 # Configuration
 
-Gnoblin reads `gnoblin.conf` at startup and watches it for live shell changes.
-The `[shell]` section controls native window behaviour. The `[protocols]`
-section controls Wayland protocol registration and still requires a new session.
-Existing subsystem toggles use `org.gnoblin.shell` GSettings through `gnoblinctl`.
+Gnoblin reads `~/.config/gnoblin/gnoblin.toml` and watches it for live changes.
+`$XDG_CONFIG_HOME` changes the base directory. `$GNOBLIN_CONFIG` selects an
+explicit file. A `.conf` override uses the legacy INI reader; other filenames
+use TOML. Without an override, TOML takes priority over `gnoblin.conf`.
+The watcher detects creation and atomic replacement of either default file.
 
-## `gnoblin.conf`
+Mutter and GNOME Shell share the native TOML parser. Duplicate keys, invalid
+values and invalid protocol types are rejected. A bad live edit retains the
+last valid configuration. The updated build needs installation and one new
+login; later supported edits apply without logout.
 
-Location: `$GNOBLIN_CONFIG`, else `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`
-(`~/.config/gnoblin/gnoblin.conf`). Gnoblin registers each implemented
-protocol by default; add an entry only when you need to turn one off. Stock
-session modes do not register these globals, regardless of this file.
+## Window behaviour
 
-```ini
-[protocols]
-# Each key gates one implemented protocol overlay in the Gnoblin session.
-# true (default) = advertised; false = not registered, so clients cannot bind it.
-wlr-layer-shell                 = true   # layer-shell chrome (bars/docks/etc.); the
-                                         #   whole point — leave on unless debugging
-wlr-screencopy                  = true   # grim-style screen capture
-ext-idle-notify                 = true   # idle notifications (swayidle etc.)
-ext-foreign-toplevel-list       = true   # window list for taskbars
-wlr-foreign-toplevel-management = true   # window control for taskbars
-wlr-gamma-control               = true   # night-light via wlsunset
-wlr-output-power-management     = true   # DPMS via wlr clients
-ext-data-control                = true   # clipboard managers (cliphist)
-```
-
-(Full reference copy: `src/data/gnoblin.conf.example`.)
-
-### Live shell settings
-
-Add this section to the same file:
-
-```ini
+```toml
 [shell]
 window-switcher = false
-minimize-animation = fade
+minimize-animation = "zoom"
 minimize-duration = 200
+# Optional fallback, in logical desktop coordinates:
+# minimize-target = [960, 1040]
 ```
 
-These are the defaults, including when the file does not exist.
+`zoom` is the default. Minimise and restore use, in order:
 
-- `window-switcher`: enable the native GNOME application, window, and group
-  switchers and cyclers. Defaults to `false`. This suppresses their UI and
-  switching action; it does not install an external switcher or free their
-  existing keybindings. The display-mode switcher and accessibility switcher
-  are separate and stay available.
-- `minimize-animation`: `fade`, `none`, or `gnome`. `fade` keeps the window in
-  place during minimise and restore. `gnome` retains the native icon-target
-  animation, including its top-corner fallback when no icon position exists.
-- `minimize-duration`: 0 to 5000 milliseconds, default 200. Reduced-motion
-  settings still take precedence.
+1. The window's dock icon rectangle, supplied by the dock.
+2. `minimize-target = [x, y]`, if configured.
+3. Bottom-centre of the window's monitor.
 
-Saving applies changes after a 150 ms debounce, including editor saves that
-replace the file with a rename. Invalid shell values retain the complete last
-valid configuration and log a warning. Removing a window-behaviour key or deleting the file
-restores the window-behaviour defaults. Unknown keys in `[shell]` are errors. Other sections are
-reserved for their existing readers and are not applied by the shell watcher.
+Coordinates use the logical desktop space, including monitor offsets. They
+are not physical pixels. Each window can have a different dock icon target.
+The dock hint moves with its surface, and is cleared when the surface or its
+handle disappears. A zero-size rectangle clears the hint.
 
-The same `[shell]` section accepts these existing runtime feature controls:
-`osd`, `osd-volume`, `osd-microphone`, `osd-brightness`,
-`osd-keyboard-brightness`, `osd-pad`, `screenshot`, and `notifications`.
-Each takes a boolean:
+Other animation values are `"fade"` (stay in place), `"none"`, and `"gnome"`
+(native icon-target animation with GNOME's top-corner fallback).
+`minimize-duration` accepts 0 to 5000 milliseconds. Reduced-motion settings
+still take precedence. Removing window-behaviour keys restores defaults.
 
-```ini
+`window-switcher` enables GNOME's application/window/group switchers and
+cyclers. It defaults off. Disabling it suppresses those actions but does not
+release their existing shortcut bindings. Display-mode and accessibility
+switchers are separate. Stock GNOME sessions retain their native behaviour.
+
+### Quickshell dock integration
+
+Quickshell's [Toplevel.setRectangle](https://quickshell.org/docs/types/Quickshell.Wayland/Toplevel/)
+sends the `wlr-foreign-toplevel-management` rectangle hint. Inside a dock icon
+delegate, use the icon's rectangle relative to its PanelWindow content:
+
+```qml
+function updateTarget(toplevel) {
+    const point = icon.mapToItem(dock.contentItem, 0, 0);
+    toplevel.setRectangle(dock,
+        Qt.rect(point.x, point.y, icon.width, icon.height));
+}
+```
+
+Update the hint when the icon layout changes and when a window joins the app
+group. Send `toplevel.setRectangle(dock, Qt.rect(0, 0, 0, 0))` when its
+representation is removed.
+For grouped icons, set the same rectangle on each represented window. Send
+the hint before setting `toplevel.minimized = true`.
+
+The Bingux reference is `shell/bingux/Dock.qml` in the Bingux checkout. Its
+`dockButton.modelData.windows` array provides those grouped windows. The
+Bingux Nix module already manages Quickshell through systemd; do not also
+start that same instance through autostart.
+
+## Autostart
+
+```toml
+[[autostart]]
+name = "bingux"
+command = ["qs", "-c", "bingux"]
+
+[[autostart]]
+name = "clipboard"
+command = ["wl-paste", "--watch", "cliphist", "store"]
+```
+
+Each unique name starts once per login. Adding a new name on reload starts it.
+Saving again, reloading scripts, or unlocking does not launch another copy.
+A process that exits is not automatically restarted. Changing the command for
+an already-started name takes effect on the next login. Removing an entry
+prevents future starts; it does not kill a running process. Use systemd for
+process supervision and restart policies.
+
+Commands are argument arrays, not shell expressions. `$HOME`, `~`, pipes and
+redirection are not expanded. Use absolute paths, a command available through
+PATH, or explicitly invoke a shell if shell syntax is required. Failed
+launches are logged and can be retried on a later reload.
+
+## Runtime feature controls
+
+The `[shell]` table also accepts booleans for `osd`, `osd-volume`,
+`osd-microphone`, `osd-brightness`, `osd-keyboard-brightness`, `osd-pad`,
+`screenshot`, and `notifications`:
+
+```toml
 [shell]
 osd = false
 screenshot = true
 notifications = false
 ```
 
-Explicit feature entries update the existing persistent GSettings state, so
-out-of-process services receive the same changes as `gnoblinctl`. An omitted
-feature retains its current GSettings value. Removing a feature entry stops
-managing it from the file; it does not reset the persistent value. CLI changes
-remain possible, but the next config reload reapplies explicit file entries.
-All values are validated before any feature changes are written.
+Explicit entries update the existing persistent GSettings state. Omitted
+entries retain their current state. Removing an entry stops managing it from
+the file; it does not reset its persistent value. CLI changes remain possible,
+but the next reload reapplies explicit file entries. Validation completes
+before feature settings or autostart commands are applied.
 
-Run `gnoblinctl reload-config` to read the file immediately. It returns a
-failure if the file is invalid. `gnoblinctl reload` and `Alt+F2`, `r` also read
-it. Neither operation re-registers Wayland protocols.
+## Protocol settings
 
-The updated shell must be installed and loaded by a new login once. Subsequent
-configuration edits do not require logout. Stock GNOME sessions keep their
-native switcher and animations.
+```toml
+[protocols]
+wlr-layer-shell = true
+wlr-screencopy = true
+ext-idle-notify = true
+ext-foreign-toplevel-list = true
+wlr-foreign-toplevel-management = true
+wlr-gamma-control = true
+wlr-output-power-management = true
+ext-data-control = true
+```
 
-Verify with `gjs -m tests/shell-config-test.js`. To test the built shell in an
-isolated session:
+These settings require a new compositor session. Reload does not change
+registered Wayland globals. All implemented protocols default on in Gnoblin;
+stock sessions do not expose these Gnoblin globals. See
+`src/data/gnoblin.toml.example` for the reference file.
+
+## Migration and verification
+
+From the checkout, migrate supported legacy settings with:
 
 ```sh
+python3 scripts/migrate-config.py
+```
+
+The command preserves the original `.conf` and refuses to overwrite an
+existing `.toml`. It copies supported `[shell]` settings and protocol booleans,
+and reports ignored legacy sections. Old `[startup]` commands were not used
+by the current GNOME-based shell and are deliberately not activated during
+migration. Add the desired commands as named `[[autostart]]` entries.
+
+Saves apply after a 150 ms debounce. `gnoblinctl reload-config` reads the file
+immediately and reports validation errors. `gnoblinctl reload` and `Alt+F2`,
+`r` also reread it, alongside the existing theme/extensions/scripts reload.
+
+```sh
+./scripts/test-config.sh
 GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
   GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-live-shell-config.py" \
   ./scripts/run-gnome-shell.sh
-```
-
-### Grammar
-
-The parser (`src/config/gnoblin-config.c`) is intentionally small:
-
-- Lines are trimmed of leading/trailing space, tab, CR, LF.
-- Empty lines and lines starting with `#` or `;` (after trimming) are
-  comments.
-- `[section]` lines start a new section; a missing closing `]` drops the
-  line.
-- `key = value` lines use the first `=`; empty keys are ignored. Repeated
-  keys are kept in file order — scalar lookups return the last value.
-- A value starting with a quote (`'` or `"`) runs to the matching quote;
-  everything after is dropped, no escape processing.
-- An unquoted value strips a `#` inline comment, but only when the `#` is
-  introduced by whitespace and outside a quoted span (`;` is always data,
-  since `spawn`/`bind`-style values can legitimately contain it).
-- A missing file, or a key that isn't set, falls back to the caller's
-  default — there's no separate "defaults" file layered underneath.
-
-Verify a change with `just test-config`, or by hand:
-
-```sh
-gcc -fsyntax-only src/config/gnoblin-config.c -I src/config $(pkg-config --cflags glib-2.0)
-cc tests/config-test.c src/config/gnoblin-config.c -I src/config \
-    $(pkg-config --cflags --libs glib-2.0) \
-    -o /tmp/gnoblin-config-test
-/tmp/gnoblin-config-test
+# Requires Quickshell and GTK 4:
+GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
+  GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-minimize-target.py" \
+  ./scripts/run-gnome-shell.sh
 ```
 
 ## `org.gnoblin.shell` GSettings
@@ -158,7 +193,7 @@ gnoblinctl ping                     health check (-> pong)
 gnoblinctl version                  shell + protocol version
 gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
 
-gnoblinctl reload-config            read gnoblin.conf immediately
+gnoblinctl reload-config            read gnoblin.toml immediately
 
 gnoblinctl features                 list feature toggles + state
 gnoblinctl feature <id>             show one feature's state
@@ -201,9 +236,59 @@ overview, dash, app grid and panel contents. A small GNOME Shell patch makes the
 native panel non-interactive and non-strutting only when the immutable primary
 session mode is `gnoblin`; stock GNOME keeps its upstream panel. This is not a
 runtime setting. Changing the chrome policy means editing the session data or
-patch and rebuilding, not adding a `gnoblin.conf` key.
+patch and rebuilding, not adding a `gnoblin.toml` key.
 
 The session configures Mutter's `overlay-key` as `Super`. Mutter emits its
 release event only when no other input is used. `gnoblinControl` forwards that
 event to external chrome, while `hasOverview: false` keeps the native overview
 disabled.
+
+
+## Layer animations and window effects
+
+These options require the rebuilt Mutter and GNOME Shell once. After the next
+login, edits reload automatically. Normal application animations are unchanged.
+
+```toml
+[shell]
+layer-animation = "slide" # slide, fade, none
+layer-duration = 220      # milliseconds, 0 disables animation
+layer-easing = "ease-out-cubic" # also ease-out-quad, ease-in-out-cubic, linear
+
+[[window-rules]]
+match.type = "layer"
+blur = 24                # radius, 0 disables blur; maximum 100
+opacity = 0.96           # 0 to 1, multiplied with client opacity
+
+[[window-rules]]
+match.layer = "^gnoblin-dock-tooltip$"
+animation = "fade"
+
+[[window-rules]]
+match.app-id = "^org\\.gnome\\.Ptyxis$"
+match.focused = false
+opacity = 0.92
+```
+
+A rule can match `app-id`, `title`, `layer`, `type`, and `focused`. String
+matchers are regular expressions. `type` accepts `layer` or `window`.
+All matchers in a rule must match. Later rules override each named effect;
+unmentioned effects retain the earlier matching value. Removing a rule restores
+the previous client opacity and removes its blur effect. Invalid rules retain
+the entire last valid configuration.
+
+Layer surfaces slide from their committed anchor edges. A corner uses both axes.
+Opposing edges cancel translation on that axis. Full-screen input overlays fade
+rather than moving their input surface. GNOME's animation-disable setting also
+applies. Per-rule `animation` applies to layer surfaces only.
+
+Background blur is rendered in the compositor and masked by client alpha. Fully
+transparent parts of a layer surface remain unchanged, including the area around
+floating docks and search panels. Applications must draw a translucent background
+to reveal the blur. Large blur regions cost more GPU time; use namespace rules to
+reduce the radius or disable it where unnecessary.
+
+Run `just --set prefix "$PWD/install" gnome-layer-animation-verify` for the real layer client animation test.
+Run `just --set prefix "$PWD/install" gnome-window-effects-verify` for pixel checks of masked blur and live
+rule removal. Both use a private headless session and require Quickshell; the
+pixel test also requires `grim` and Python Pillow.

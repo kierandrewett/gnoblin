@@ -15,9 +15,9 @@ treating them as passive examples.
   `org.gnoblin.Shell` control protocol: `disabled-features`, the runtime
   feature toggles above. Its `manifest` copies it into the patched GNOME
   Shell tree.
-- `gnoblin.conf.example` is the user-facing reference for implemented Mutter
+- `gnoblin.toml.example` is the user-facing reference for implemented Mutter
   protocol gates. The overlays read `$GNOBLIN_CONFIG` or
-  `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf`. Within a Gnoblin session, an unset
+  `$XDG_CONFIG_HOME/gnoblin/gnoblin.toml`. Within a Gnoblin session, an unset
   key uses the caller's enabled default; stock session modes register none of
   these globals.
 

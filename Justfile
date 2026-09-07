@@ -242,6 +242,14 @@ perf-smoke:
 gnome-hot-reload-verify:
     ./scripts/test-hot-reload.sh
 
+# Headless: prove TOML/config watching, named autostart and live window behaviour.
+gnome-config-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
+
+# Optional real Quickshell dock test; requires qs and Python GTK 4 bindings.
+gnome-minimize-target-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-minimize-target.py" ./scripts/run-gnome-shell.sh
+
 # Headless: prove the GJS user-scripting layer — drop a script, edit it, reload
 # via org.gnoblin.*, confirm the new code ran.
 gnome-scripting-verify:
@@ -360,6 +368,7 @@ verify-installed-headless:
     just gnome-protocol-boundaries-verify
     just gnome-dbus-verify
     just gnome-hot-reload-verify
+    just gnome-config-verify
     just gnome-scripting-verify
     just gnome-notifications-verify
     just gnome-protocol-gating-verify
@@ -388,3 +397,10 @@ test: verify-fast
 
 clean:
     rm -rf build
+
+# Isolated layer-shell animation and alpha-masked blur regression tests.
+gnome-layer-animation-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-animation.py" ./scripts/run-gnome-shell.sh
+
+gnome-window-effects-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-window-effects.py" ./scripts/run-gnome-shell.sh
