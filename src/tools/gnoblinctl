@@ -19,7 +19,9 @@ gnoblinctl — control gnoblin over org.gnoblin.Shell
 
   gnoblinctl ping                     health check (-> pong)
   gnoblinctl version                  shell + protocol version
-  gnoblinctl reload                   Wayland soft-reload (theme + extensions + scripts)
+  gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
+
+  gnoblinctl reload-config            reload gnoblin.conf now (also watched automatically)
 
   gnoblinctl features                 list feature toggles + state
   gnoblinctl feature <id>             show one feature's state
@@ -53,6 +55,7 @@ case "$cmd" in
   ping)            call Ping | unwrap ;;
   version)         call GetVersion | unwrap ;;
   reload)          call Reload >/dev/null; echo "soft-reloaded" ;;
+  reload-config)   call ReloadConfig >/dev/null; echo "config reloaded" ;;
   features)        call ListFeatures | unwrap ;;
   feature)         call GetFeature "${1:?usage: gnoblinctl feature <id>}" | unwrap ;;
   enable)          call SetFeature "${1:?usage: gnoblinctl enable <id>}" true  >/dev/null; echo "$1 enabled" ;;

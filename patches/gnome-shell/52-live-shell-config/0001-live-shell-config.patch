@@ -1,0 +1,122 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] shell: use live Gnoblin window behaviour settings
+
+Keep stock sessions unchanged. Fade minimise and restore in place by default
+and disable native window switching unless the user enables it.
+
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -9,6 +9,7 @@
+ import St from 'gi://St';
+ 
+ import * as AltTab from './altTab.js';
++import * as GnoblinConfig from './components/gnoblinConfig.js';
+ import * as AppFavorites from './appFavorites.js';
+ import * as Dialog from './dialog.js';
+ import * as WorkspaceSwitcherPopup from './workspaceSwitcherPopup.js';
+@@ -1134,12 +1135,16 @@
+     }
+ 
+     _minimizeWindow(shellwm, actor) {
++        const animation = global.session_mode === 'gnoblin'
++            ? GnoblinConfig.settings['minimize-animation'] : 'gnome';
++        const duration = global.session_mode === 'gnoblin'
++            ? GnoblinConfig.settings['minimize-duration'] : MINIMIZE_WINDOW_ANIMATION_TIME;
+         const types = [
+             Meta.WindowType.NORMAL,
+             Meta.WindowType.MODAL_DIALOG,
+             Meta.WindowType.DIALOG,
+         ];
+-        if (!this._shouldAnimateActor(actor, types)) {
++        if (!this._shouldAnimateActor(actor, types) || animation === 'none') {
+             shellwm.completed_minimize(actor);
+             return;
+         }
+@@ -1148,10 +1153,10 @@
+ 
+         this._minimizing.add(actor);
+ 
+-        if (actor.meta_window.is_monitor_sized()) {
++        if (animation === 'fade' || actor.meta_window.is_monitor_sized()) {
+             actor.ease({
+                 opacity: 0,
+-                duration: MINIMIZE_WINDOW_ANIMATION_TIME,
++                duration,
+                 mode: MINIMIZE_WINDOW_ANIMATION_MODE,
+                 onStopped: () => this._minimizeWindowDone(shellwm, actor),
+             });
+@@ -1183,7 +1188,7 @@
+                 scale_y: yScale,
+                 x: xDest,
+                 y: yDest,
+-                duration: MINIMIZE_WINDOW_ANIMATION_TIME,
++                duration,
+                 mode: MINIMIZE_WINDOW_ANIMATION_MODE,
+                 onStopped: () => this._minimizeWindowDone(shellwm, actor),
+             });
+@@ -1202,24 +1207,29 @@
+     }
+ 
+     _unminimizeWindow(shellwm, actor) {
++        const animation = global.session_mode === 'gnoblin'
++            ? GnoblinConfig.settings['minimize-animation'] : 'gnome';
++        const duration = global.session_mode === 'gnoblin'
++            ? GnoblinConfig.settings['minimize-duration'] : MINIMIZE_WINDOW_ANIMATION_TIME;
+         const types = [
+             Meta.WindowType.NORMAL,
+             Meta.WindowType.MODAL_DIALOG,
+             Meta.WindowType.DIALOG,
+         ];
+-        if (!this._shouldAnimateActor(actor, types)) {
++        if (!this._shouldAnimateActor(actor, types) || animation === 'none') {
+             shellwm.completed_unminimize(actor);
+             return;
+         }
+ 
+         this._unminimizing.add(actor);
+ 
+-        if (actor.meta_window.is_monitor_sized()) {
++        if (animation === 'fade' || actor.meta_window.is_monitor_sized()) {
++            actor.show();
+             actor.opacity = 0;
+             actor.set_scale(1.0, 1.0);
+             actor.ease({
+                 opacity: 255,
+-                duration: MINIMIZE_WINDOW_ANIMATION_TIME,
++                duration,
+                 mode: MINIMIZE_WINDOW_ANIMATION_MODE,
+                 onStopped: () => this._unminimizeWindowDone(shellwm, actor),
+             });
+@@ -1252,7 +1262,7 @@
+                 scale_y: 1,
+                 x: xDest,
+                 y: yDest,
+-                duration: MINIMIZE_WINDOW_ANIMATION_TIME,
++                duration,
+                 mode: MINIMIZE_WINDOW_ANIMATION_MODE,
+                 onStopped: () => this._unminimizeWindowDone(shellwm, actor),
+             });
+@@ -1648,6 +1658,11 @@
+     }
+ 
+     _startSwitcher(display, window, event, binding) {
++        if (global.session_mode === 'gnoblin' &&
++            !GnoblinConfig.settings['window-switcher'] &&
++            binding.get_name() !== 'switch-monitor')
++            return;
++
+         let constructor = null;
+         switch (binding.get_name()) {
+         case 'switch-applications':
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -134,6 +134,7 @@
+     <file>ui/components.js</file>
+     <file>ui/components/automountManager.js</file>
+     <file>ui/components/autorunManager.js</file>
++    <file>ui/components/gnoblinConfig.js</file>
+     <file>ui/components/gnoblinControl.js</file>
+     <file>ui/components/keyring.js</file>
+     <file>ui/components/networkAgent.js</file>

@@ -13,6 +13,7 @@
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
+import {ConfigFile} from './gnoblinConfig.js';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -40,6 +41,7 @@ const TRIM_INTERVAL_SECONDS = 300;
 
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
+let activeConfig = null;
 
 // Identity of the stylesheet set the current St theme was built from. Used to
 // skip Main.loadTheme() on soft reload when no stylesheet changed: every theme
@@ -246,6 +248,12 @@ const FEATURES = {
 export async function softReload(reason = 'manual') {
     console.log(`gnoblin: soft-reload (${reason}) — reloading theme + extensions in-process`);
     const failures = [];
+    try {
+        activeConfig?.reload();
+    } catch (e) {
+        failures.push('config');
+        console.warn(`gnoblin: config reload failed: ${e.message}`);
+    }
 
     const digest = stylesheetDigest();
     if (digest !== null && digest === lastStylesheetDigest) {
@@ -534,6 +542,7 @@ const IFACE = `
     </signal>
     <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
+    <method name="ReloadConfig"/>
     <!-- Extensions: [uuid, state] for every known extension. -->
     <method name="ListExtensions">
       <arg type="a(ss)" direction="out" name="extensions"/>
@@ -637,6 +646,9 @@ export class Component {
     }
 
     enable() {
+        this._config = new ConfigFile();
+        activeConfig = this._config;
+        this._config.start();
         this._settings = new Gio.Settings({schema_id: SCHEMA_ID});
         this._settingsChangedId = this._settings.connect(
             `changed::${DISABLED_KEY}`, () => this._syncFeatureState());
@@ -695,6 +707,9 @@ export class Component {
     }
 
     disable() {
+        this._config?.destroy();
+        this._config = null;
+        activeConfig = null;
         if (this._overlayKeyId) {
             global.display.disconnect(this._overlayKeyId);
             this._overlayKeyId = 0;
@@ -1007,6 +1022,16 @@ export class Component {
 
     GetPrivacyState() {
         return this._currentPrivacyState();
+    }
+
+    ReloadConfigAsync(_params, invocation) {
+        try {
+            this._config.reload();
+            invocation.return_value(null);
+        } catch (e) {
+            console.warn(`gnoblin-config: keeping last valid settings: ${e.message}`);
+            invocation.return_dbus_error(`${BUS_NAME}.Error.ReloadFailed`, e.message);
+        }
     }
 
     ReloadAsync(_params, invocation) {
