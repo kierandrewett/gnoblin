@@ -48,8 +48,8 @@ main (void)
                      "[protocols]\n"
                      "wlr-gamma-control = off\n"
                      "ext-data-control = on\n";
-  char path[] = "/tmp/gnoblin-conf-test.XXXXXX";
-  int fd = mkstemp (path);
+  char path[] = "/tmp/gnoblin-conf-test.XXXXXX.conf";
+  int fd = mkstemps (path, 5);
 
   if (fd < 0 || write (fd, conf, strlen (conf)) < 0)
     {

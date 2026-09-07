@@ -214,7 +214,7 @@ void gnoblin_config_reload(void) {
     table = section_table_new();
 
     if (g_file_get_contents(gnoblin_config_path(), &contents, NULL, NULL)) {
-        if (g_str_has_suffix(gnoblin_config_path(), ".toml")) {
+        if (!g_str_has_suffix(gnoblin_config_path(), ".conf")) {
             g_autoptr(GError) error = NULL;
             g_autoptr(GVariant) document = gnoblin_config_parse_toml(contents, &error);
             if (!document) {
