@@ -18,6 +18,11 @@ items stay here only when they still form part of an active delivery sequence.
 
 ## Product work
 
+- [x] Add watched shell configuration, minimise animation policy, and a native
+  window switcher that defaults off. Verify reload and invalid-file recovery.
+- [ ] Priority: separate compositor and shell process lifetimes. Prove that
+  shell restart preserves connected Wayland applications before changing login.
+
 - [ ] Add the remaining `polkit` feature toggle without weakening the stock
   session's authentication-agent ownership.
 - [ ] Add an explicit extension sideload workflow instead of requiring manual

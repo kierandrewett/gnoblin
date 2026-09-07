@@ -1,13 +1,16 @@
-# gnoblin.conf — read by gnoblin's Mutter protocol overlays.
-#
-# Location: $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.conf
-#           (~/.config/gnoblin/gnoblin.conf).
-#
-# This file controls the extra Wayland protocols gnoblin adds to Mutter. It is
-# separate from the org.gnoblin.shell GSettings (runtime feature toggles, driven
-# by gnoblinctl / org.gnoblin.Shell). Everything here defaults ON — you only need
-# an entry to turn a protocol OFF.
+# gnoblin.conf: live shell settings and startup Wayland protocol settings.
+# Location: $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.conf.
+# The shell watches saves automatically. Manual reload: gnoblinctl reload-config.
+# Invalid shell settings retain the last valid configuration.
 
+[shell]
+# Native GNOME Alt+Tab and related window switchers are opt-in.
+window-switcher = false
+# fade stays in place; none disables minimise/restore motion; gnome uses its target.
+minimize-animation = fade
+minimize-duration = 200
+
+# Protocol changes require a new compositor session.
 [protocols]
 # Each key gates one Wayland protocol overlay. true (default) = advertised;
 # false = not registered, so clients can't bind it.

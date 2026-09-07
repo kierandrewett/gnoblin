@@ -45,7 +45,7 @@ See the [source map](src/README.md) for ownership boundaries and implementation 
 
 Gnoblin has two configuration surfaces:
 
-- `gnoblin.conf` gates implemented Wayland protocols at compositor startup. It is read from `$GNOBLIN_CONFIG`, or `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf` by default. Changes require restarting the compositor.
+- `gnoblin.conf` watches `[shell]` settings live, including native window switching and minimise animations. It is read from `$GNOBLIN_CONFIG`, or `$XDG_CONFIG_HOME/gnoblin/gnoblin.conf` by default. `[protocols]` changes require a new compositor session.
 - The `org.gnoblin.shell` GSettings `disabled-features` key controls GNOME Shell subsystems at runtime. Use `gnoblinctl` inside a Gnoblin session to inspect or change it:
 
   ```sh

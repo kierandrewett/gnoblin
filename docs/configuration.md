@@ -1,19 +1,9 @@
 # Configuration
 
-gnoblin has two configuration surfaces, and they're deliberately not the
-same mechanism:
-
-- **`gnoblin.conf`** — a plain INI file read by the Mutter overlays at
-  compositor startup. Within a Gnoblin session, it can disable implemented
-  Gnoblin Wayland protocol globals before registration.
-- **`org.gnoblin.shell` GSettings** — one key, `disabled-features`, driven
-  live over the `org.gnoblin.Shell` D-Bus protocol (or `gnoblinctl`). It gates
-  GNOME Shell subsystems at runtime without a restart.
-
-Protocol gating and feature toggles operate at different layers. Protocols
-are registered during Mutter's Wayland startup and cannot change without
-restarting the compositor. Features gate JS-level GNOME Shell behaviour and
-can change live.
+Gnoblin reads `gnoblin.conf` at startup and watches it for live shell changes.
+The `[shell]` section controls native window behaviour. The `[protocols]`
+section controls Wayland protocol registration and still requires a new session.
+Existing subsystem toggles use `org.gnoblin.shell` GSettings through `gnoblinctl`.
 
 ## `gnoblin.conf`
 
@@ -38,6 +28,53 @@ ext-data-control                = true   # clipboard managers (cliphist)
 ```
 
 (Full reference copy: `src/data/gnoblin.conf.example`.)
+
+### Live shell settings
+
+Add this section to the same file:
+
+```ini
+[shell]
+window-switcher = false
+minimize-animation = fade
+minimize-duration = 200
+```
+
+These are the defaults, including when the file does not exist.
+
+- `window-switcher`: enable the native GNOME application, window, and group
+  switchers and cyclers. Defaults to `false`. This suppresses their UI and
+  switching action; it does not install an external switcher or free their
+  existing keybindings. The display-mode switcher and accessibility switcher
+  are separate and stay available.
+- `minimize-animation`: `fade`, `none`, or `gnome`. `fade` keeps the window in
+  place during minimise and restore. `gnome` retains the native icon-target
+  animation, including its top-corner fallback when no icon position exists.
+- `minimize-duration`: 0 to 5000 milliseconds, default 200. Reduced-motion
+  settings still take precedence.
+
+Saving applies changes after a 150 ms debounce, including editor saves that
+replace the file with a rename. Invalid shell values retain the complete last
+valid configuration and log a warning. Removing a key or deleting the file
+restores defaults. Unknown keys in `[shell]` are errors. Other sections are
+reserved for their existing readers and are not applied by the shell watcher.
+
+Run `gnoblinctl reload-config` to read the file immediately. It returns a
+failure if the file is invalid. `gnoblinctl reload` and `Alt+F2`, `r` also read
+it. Neither operation re-registers Wayland protocols.
+
+The updated shell must be installed and loaded by a new login once. Subsequent
+configuration edits do not require logout. Stock GNOME sessions keep their
+native switcher and animations.
+
+Verify with `gjs -m tests/shell-config-test.js`. To test the built shell in an
+isolated session:
+
+```sh
+GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
+  GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-live-shell-config.py" \
+  ./scripts/run-gnome-shell.sh
+```
 
 ### Grammar
 
@@ -100,7 +137,9 @@ A thin `gdbus` wrapper over `org.gnoblin.Shell`, installed to
 ```
 gnoblinctl ping                     health check (-> pong)
 gnoblinctl version                  shell + protocol version
-gnoblinctl reload                   Wayland soft-reload (theme + extensions + scripts)
+gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
+
+gnoblinctl reload-config            read gnoblin.conf immediately
 
 gnoblinctl features                 list feature toggles + state
 gnoblinctl feature <id>             show one feature's state

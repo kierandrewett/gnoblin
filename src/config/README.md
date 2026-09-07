@@ -5,6 +5,10 @@ compiled into the Mutter protocol overlays (its `manifest` copies it to
 `src/wayland/` in the Mutter tree), where it gates protocols and other
 overlay behaviour.
 
+The live `[shell]` reader and directory watcher live in
+`src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js`. See
+`docs/configuration.md` for its supported keys and validation rules.
+
 ## Files
 
 - `gnoblin-config.c` is the parser and in-memory section table.
