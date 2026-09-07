@@ -277,10 +277,19 @@ unmentioned effects retain the earlier matching value. Removing a rule restores
 the previous client opacity and removes its blur effect. Invalid rules retain
 the entire last valid configuration.
 
-Layer surfaces slide from their committed anchor edges. A corner uses both axes.
-Opposing edges cancel translation on that axis. Full-screen input overlays fade
-rather than moving their input surface. GNOME's animation-disable setting also
+Layer surfaces slide from their committed anchor edges at full opacity, like a
+notification. A top-anchored surface slides down; bottom, left and right edges
+use the corresponding inward direction. A corner uses both axes. Opposing edges
+cancel translation on that axis. Full-screen input overlays fade. Surface
+destruction uses the reverse movement. GNOME's animation-disable setting also
 applies. Per-rule `animation` applies to layer surfaces only.
+
+Gnoblin applies these transforms to the compositor actor; Quickshell and other
+layer-shell clients need no animation code. Animations do not resize the client
+or interpolate its exclusive zone. A surface must map to trigger entry;
+changing content inside an already visible surface does not remap it. Clients
+that animate individual cards in a persistent surface can opt out by namespace
+with `animation = "none"`.
 
 Background blur is rendered in the compositor and masked by client alpha. Fully
 transparent parts of a layer surface remain unchanged, including the area around
@@ -288,7 +297,9 @@ floating docks and search panels. Applications must draw a translucent backgroun
 to reveal the blur. Large blur regions cost more GPU time; use namespace rules to
 reduce the radius or disable it where unnecessary.
 
-Run `just --set prefix "$PWD/install" gnome-layer-animation-verify` for the real layer client animation test.
+Run `just --set prefix "$PWD/install" gnome-layer-animation-verify` to check
+configuration reload, all four edges, corners, fade, disabled motion, repeated
+mapping, intermediate compositor frames and animation cleanup.
 Run `just --set prefix "$PWD/install" gnome-window-effects-verify` for pixel checks of masked blur and live
 rule removal. Both use a private headless session and require Quickshell; the
 pixel test also requires `grim` and Python Pillow.
