@@ -20,8 +20,8 @@ items stay here only when they still form part of an active delivery sequence.
 
 - [x] Add watched shell configuration, minimise animation policy, and a native
   window switcher that defaults off. Verify reload and invalid-file recovery.
-- [ ] Priority: separate compositor and shell process lifetimes. Prove that
-  shell restart preserves connected Wayland applications before changing login.
+- [x] Keep the GNOME Shell/Mutter architecture and extend watched configuration
+  to existing runtime feature controls. Core compositor changes require a new login.
 
 - [ ] Add the remaining `polkit` feature toggle without weakening the stock
   session's authentication-agent ownership.

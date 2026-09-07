@@ -9,6 +9,15 @@ window-switcher = false
 # fade stays in place; none disables minimise/restore motion; gnome uses its target.
 minimize-animation = fade
 minimize-duration = 200
+# Optional persistent feature settings. Omitted entries keep their current state.
+# osd = false
+# osd-volume = true
+# osd-microphone = true
+# osd-brightness = true
+# osd-keyboard-brightness = true
+# osd-pad = true
+# screenshot = true
+# notifications = false
 
 # Protocol changes require a new compositor session.
 [protocols]

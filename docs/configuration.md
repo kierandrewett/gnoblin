@@ -55,9 +55,28 @@ These are the defaults, including when the file does not exist.
 
 Saving applies changes after a 150 ms debounce, including editor saves that
 replace the file with a rename. Invalid shell values retain the complete last
-valid configuration and log a warning. Removing a key or deleting the file
-restores defaults. Unknown keys in `[shell]` are errors. Other sections are
+valid configuration and log a warning. Removing a window-behaviour key or deleting the file
+restores the window-behaviour defaults. Unknown keys in `[shell]` are errors. Other sections are
 reserved for their existing readers and are not applied by the shell watcher.
+
+The same `[shell]` section accepts these existing runtime feature controls:
+`osd`, `osd-volume`, `osd-microphone`, `osd-brightness`,
+`osd-keyboard-brightness`, `osd-pad`, `screenshot`, and `notifications`.
+Each takes a boolean:
+
+```ini
+[shell]
+osd = false
+screenshot = true
+notifications = false
+```
+
+Explicit feature entries update the existing persistent GSettings state, so
+out-of-process services receive the same changes as `gnoblinctl`. An omitted
+feature retains its current GSettings value. Removing a feature entry stops
+managing it from the file; it does not reset the persistent value. CLI changes
+remain possible, but the next config reload reapplies explicit file entries.
+All values are validated before any feature changes are written.
 
 Run `gnoblinctl reload-config` to read the file immediately. It returns a
 failure if the file is invalid. `gnoblinctl reload` and `Alt+F2`, `r` also read
