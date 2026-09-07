@@ -144,7 +144,7 @@ export function parse(text) {
     for (const rule of rules) {
         if (!rule || !rule.match || Array.isArray(rule.match) || typeof rule.match !== 'object' ||
             Object.keys(rule.match).length === 0 ||
-            Object.keys(rule).some(key => !['match', 'blur', 'opacity', 'animation'].includes(key)))
+            Object.keys(rule).some(key => !['match', 'blur', 'opacity', 'animation', 'shader', 'shader-uniforms'].includes(key)))
             throw new Error('window rule requires match and supported effects');
         for (const [key, value] of Object.entries(rule.match)) {
             if (key === 'focused') {
@@ -162,6 +162,15 @@ export function parse(text) {
             throw new Error('opacity must be between 0 and 1');
         if (rule.animation !== undefined && !['slide', 'fade', 'none'].includes(rule.animation))
             throw new Error('rule animation must be slide, fade, or none');
+        if (rule.shader !== undefined && (typeof rule.shader !== 'string' || rule.shader.length > 4096 || rule.shader.includes('\0')))
+            throw new Error('shader must be a file path, or an empty string to remove it');
+        if (rule['shader-uniforms'] !== undefined) {
+            const uniforms = rule['shader-uniforms'];
+            if (!uniforms || typeof uniforms !== 'object' || Array.isArray(uniforms) || Object.keys(uniforms).length > 64 ||
+                Object.entries(uniforms).some(([name, value]) => !/^[a-zA-Z_]\w*$/.test(name) || name.startsWith('gnoblin_') ||
+                    typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > 3.4e38))
+                throw new Error('shader-uniforms must contain up to 64 named finite floats; gnoblin_ names are reserved');
+        }
     }
     next['window-rules'] = rules;
     return next;
@@ -303,12 +312,12 @@ export function layerOffset(anchor, rect, monitor) {
 
 // Later matching rules override individual effects, leaving others intact.
 export function windowEffects(properties, config = settings) {
-    const effects = {blur: 0, opacity: 1, animation: config['layer-animation']};
+    const effects = {blur: 0, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
     for (const rule of config['window-rules']) {
         if (Object.entries(rule.match).every(([key, value]) =>
             key === 'type' || key === 'focused' ? properties[key] === value :
                 properties[key] !== null && new RegExp(value).test(properties[key] ?? ''))) {
-            for (const key of ['blur', 'opacity', 'animation'])
+            for (const key of ['blur', 'opacity', 'animation', 'shader', 'shader-uniforms'])
                 if (rule[key] !== undefined) effects[key] = rule[key];
         }
     }
