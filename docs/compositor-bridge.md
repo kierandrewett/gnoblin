@@ -23,6 +23,7 @@ record followed by a newline. Keep the connection open. Test sessions can set
 | `{"op":"end"}` | Cancel this client's input session. |
 | `{"op":"windows"}` | Subscribe to complete `windows` snapshots. |
 | `{"op":"activate","window":"123"}` | Release this client's input session and activate that window. |
+| `{"op":"preview","window":"123","width":224,"height":126}` | Request a window thumbnail without raising or focusing it. |
 | `{"op":"status"}` | Return registered IDs and the active input session's ID. |
 
 `hold` is zero for a single activation, 8 for Alt, 4 for Control, or 67108864
@@ -48,3 +49,15 @@ The socket directory is private to the user. The bridge accepts eight clients,
 32 bindings per client, and bounded input and output buffers. Invalid requests
 return `error`; malformed JSON or excessive buffered input disconnects the
 client. Disconnection releases all resources owned by that client.
+
+Preview responses contain `event: "preview"`, the window ID, dimensions, and a
+PNG data URI in `source`. A failed capture returns an empty source and a message.
+Requests accept dimensions up to 480 by 320 pixels and preserve aspect ratio.
+Only one capture may be pending per client. Readback runs at low priority after
+a short delay so queued keyboard input runs first. The client controls update
+frequency; the bridge does not start a continuous capture stream. Capture is
+unavailable while the session is locked. The bridge scales the window texture
+on the GPU before reading thumbnail pixels back. PNG encoding uses the shell's
+asynchronous worker and an in-memory stream; no temporary image files are
+written. Minimized windows use their retained backing buffer. Output is limited
+to 4 MiB per connection, including preview data.

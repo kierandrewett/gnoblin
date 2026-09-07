@@ -3,7 +3,10 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
+import Cogl from 'gi://Cogl';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 
 // Generic shortcut sessions and window management. Clients own presentation,
 // ordering and action semantics.
@@ -38,7 +41,7 @@ class CompositorBridge {
 
     accept(connection) {
         if (this.clients.size >= 8) { connection.close(null); return; }
-        const client = {connection, cancel: new Gio.Cancellable(), buffer: new Uint8Array(), queue: [], writing: false,
+        const client = {connection, cancel: new Gio.Cancellable(), buffer: new Uint8Array(), queue: [], queuedBytes: 0, writing: false,
             bindings: new Map(), decoder: new TextDecoder('utf-8', {fatal: true}), closed: false};
         this.clients.add(client);
         this.send(client, {event: 'hello', version: 1});
@@ -48,7 +51,10 @@ class CompositorBridge {
     send(client, record) {
         if (client.closed) return;
         if (client.queue.length > 64) { this.close(client); return; }
-        client.queue.push(new TextEncoder().encode(JSON.stringify(record) + '\n'));
+        const bytes = new TextEncoder().encode(JSON.stringify(record) + '\n');
+        if (client.queuedBytes + bytes.length > 4 * 1024 * 1024) { this.close(client); return; }
+        client.queuedBytes += bytes.length;
+        client.queue.push(bytes);
         this.write(client);
     }
 
@@ -62,7 +68,7 @@ class CompositorBridge {
                     if (!client.closed) console.warn(`gnoblin-compositor write: ${error.message}`);
                     this.close(client); return;
                 }
-                client.queue.shift();
+                client.queuedBytes -= client.queue.shift().length;
                 client.writing = false;
                 this.write(client);
             });
@@ -100,6 +106,19 @@ class CompositorBridge {
             return;
         }
         if (record.op === 'windows') { client.trackWindows = true; this.publishWindows(client); return; }
+        if (record.op === 'preview') {
+            if (typeof record.window !== 'string' || !Number.isInteger(record.width) || !Number.isInteger(record.height)
+                || record.width < 1 || record.width > 480 || record.height < 1 || record.height > 320)
+                throw new Error('invalid preview request');
+            if (client.preview || client.previewBusy) throw new Error('preview already pending');
+            // Give keyboard input precedence over thumbnail readback.
+            client.preview = GLib.timeout_add(GLib.PRIORITY_LOW, 32, () => {
+                client.preview = 0;
+                this.preview(client, record);
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
         if (record.op === 'activate') {
             const entry = this.windows.get(record.window);
             if (!entry || !this.eligible(entry.window)) throw new Error('window no longer available');
@@ -217,6 +236,54 @@ class CompositorBridge {
         return window && !window.skip_taskbar && !window.is_override_redirect();
     }
 
+    async preview(client, request) {
+        client.previewBusy = true;
+        const stream = Gio.MemoryOutputStream.new_resizable();
+        try {
+            if (Main.sessionMode.isLocked) throw new Error('session locked');
+            const window = this.windows.get(request.window)?.window;
+            if (!this.eligible(window)) throw new Error('window no longer available');
+            // Keep full-size pixels on the GPU. Only the small render target is
+            // read back; Shell's PNG encoder runs asynchronously on a worker.
+            const actor = window.get_compositor_private();
+            // Hidden actors can paint transparent content. Their retained
+            // backing texture is still available without mapping the window.
+            const backing = window.minimized || !actor?.is_mapped()
+                ? actor?.get_texture()?.get_texture() : null;
+            const source = backing && (!backing.is_simple || backing.is_simple())
+                ? (backing.get_plane ? backing.get_plane(0) : backing)
+                : actor?.paint_to_content(null)?.get_texture();
+            if (!source) throw new Error('window has no image');
+            const scale = Math.min(1, request.width / source.get_width(), request.height / source.get_height());
+            const width = Math.max(1, Math.round(source.get_width() * scale));
+            const height = Math.max(1, Math.round(source.get_height() * scale));
+            const context = source.get_context();
+            const texture = Cogl.Texture2D.new_with_size(context, width, height);
+            const framebuffer = Cogl.Offscreen.new_with_texture(texture);
+            framebuffer.allocate();
+            framebuffer.orthographic(0, 0, width, height, -1, 1);
+            const pipeline = Cogl.Pipeline.new(context);
+            pipeline.set_layer_texture(0, source);
+            pipeline.set_layer_filters(0, Cogl.PipelineFilter.LINEAR, Cogl.PipelineFilter.LINEAR);
+            pipeline.set_blend('RGBA = ADD (SRC_COLOR, 0)');
+            framebuffer.draw_rectangle(pipeline, 0, 0, width, height);
+            // composite_to_stream reads a subtexture. Flush this render target
+            // explicitly; the subtexture does not own its pending draw journal.
+            framebuffer.flush();
+            await Shell.Screenshot.composite_to_stream(texture, 0, 0, width, height, 1, null, 0, 0, 1, stream);
+            stream.close(null);
+            if (client.closed || Main.sessionMode.isLocked || !this.windows.has(request.window)) return;
+            const bytes = stream.steal_as_bytes().toArray();
+            this.send(client, {event: 'preview', window: request.window, width, height,
+                source: `data:image/png;base64,${GLib.base64_encode(bytes)}`});
+        } catch (error) {
+            this.send(client, {event: 'preview', window: request.window, source: '', message: error.message});
+        } finally {
+            stream.close(null);
+            client.previewBusy = false;
+        }
+    }
+
     track(window) {
         if (!window) return;
         const id = String(window.get_stable_sequence());
@@ -250,6 +317,8 @@ class CompositorBridge {
     close(client) {
         if (client.closed) return;
         client.closed = true;
+        if (client.preview) GLib.source_remove(client.preview);
+        client.preview = 0;
         this.clear(client);
         client.cancel.cancel();
         try { client.connection.close(null); } catch { /* Connection already closed. */ }
