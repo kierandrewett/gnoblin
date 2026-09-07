@@ -33,10 +33,27 @@ class CompositorBridge {
         this.accelerator = global.display.connect('accelerator-activated', (_display, action) => this.activate(action));
         this.capture = global.stage.connect('event', (_stage, event) => this.event(event));
         this.session = Main.sessionMode.connect('updated', () => {
-            if (Main.sessionMode.isLocked) this.end('cancelled');
+            if (Main.sessionMode.isLocked) {
+                this.caret = null;
+                this.end('cancelled');
+            }
         });
         this.map = global.window_manager.connect('map', (_manager, actor) => this.track(actor.meta_window));
-        this.focus = global.display.connect('notify::focus-window', () => this.publishWindows());
+        this.caret = null;
+        this.focus = global.display.connect('notify::focus-window', () => {
+            this.caret = null;
+            this.publishWindows();
+        });
+        this.cursorLocation = Main.inputMethod.connect('cursor-location-changed', (_method, rect) => {
+            const window = global.display.focus_window;
+            const focus = Main.inputMethod.currentFocus;
+            if (!window || !focus || Main.sessionMode.isLocked) return;
+            const buffer = window.get_buffer_rect();
+            // Mutter supplies stage coordinates. Store the offset so moving
+            // the window does not leave the caret at its previous location.
+            this.caret = {window, focus, x: rect.get_x() - buffer.x,
+                y: rect.get_y() - buffer.y, width: rect.get_width(), height: rect.get_height()};
+        });
         for (const actor of global.get_window_actors()) this.track(actor.meta_window);
     }
 
@@ -101,6 +118,43 @@ class CompositorBridge {
     }
 
     command(client, record) {
+        if (record.op === 'input-anchor') {
+            if (Main.sessionMode.isLocked) throw new Error('Session is locked.');
+            const window = global.display.focus_window;
+            const [x, y] = global.get_pointer();
+            const frame = window?.get_frame_rect();
+            const buffer = window?.get_buffer_rect();
+            const caret = this.caret?.window === window && Main.inputMethod.currentFocus
+                && this.caret.focus === Main.inputMethod.currentFocus ? this.caret : null;
+            this.send(client, {event: 'input-anchor', x, y,
+                caret: caret ? {x: buffer.x + caret.x, y: buffer.y + caret.y,
+                    width: caret.width, height: caret.height, source: 'caret'} : null,
+                pid: window?.get_pid() || 0,
+                window: window ? String(window.get_stable_sequence()) : '',
+                buffer: buffer ? {x: buffer.x, y: buffer.y, width: buffer.width, height: buffer.height} : null,
+                frame: frame ? {x: frame.x, y: frame.y, width: frame.width, height: frame.height} : null});
+            return;
+        }
+        if (record.op === 'type-text') {
+            const window = this.windows.get(record.window)?.window;
+            if (Main.sessionMode.isLocked || !window || !this.eligible(window)
+                || global.display.focus_window !== window)
+                throw new Error('The original input window is no longer focused.');
+            if (typeof record.text !== 'string' || !record.text.length || record.text.length > 64
+                || /[\u0000-\u001f\u007f-\u009f]/.test(record.text))
+                throw new Error('Invalid text insertion.');
+            const modifiers = global.get_pointer()[2];
+            if (modifiers & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK
+                | Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK))
+                throw new Error('Release modifier keys before inserting an emoji.');
+            if (!Main.inputMethod.currentFocus)
+                throw new Error('This app does not expose a text input. Focus its input field and try again.');
+            // Commit the complete Unicode sequence through the native input
+            // method, avoiding layout-dependent synthetic keycodes.
+            Main.inputMethod.commit(record.text);
+            this.send(client, {event: 'typed', window: record.window});
+            return;
+        }
         if (record.op === 'status') {
             this.send(client, {event: 'status', bindings: [...this.actions.values()].map(binding => binding.id),
                 active: this.active?.id ?? null});
@@ -394,6 +448,7 @@ class CompositorBridge {
         Main.sessionMode.disconnect(this.session);
         global.window_manager.disconnect(this.map);
         global.display.disconnect(this.focus);
+        Main.inputMethod.disconnect(this.cursorLocation);
         for (const {window, signals} of this.windows.values()) for (const signal of signals) window.disconnect(signal);
         this.windows.clear();
         this.service.stop();

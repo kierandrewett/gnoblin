@@ -25,6 +25,21 @@ record followed by a newline. Keep the connection open. Test sessions can set
 | `{"op":"activate","window":"123"}` | Release this client's input session and activate that window. |
 | `{"op":"preview","window":"123","width":224,"height":126}` | Request a window thumbnail without raising or focusing it. |
 | `{"op":"status"}` | Return registered IDs and the active input session's ID. |
+| `{"op":"input-anchor"}` | Return the pointer, focused window, and native caret geometry when available. |
+| `{"op":"type-text","window":"123","text":"..."}` | Commit a short Unicode sequence to that window's focused text input. |
+
+`input-anchor` returns `x`, `y`, `pid`, `window`, `frame`, `buffer`, and `caret`.
+Coordinates use logical desktop space. `caret` is null until the focused native
+text input supplies a rectangle. Its fields are `x`, `y`, `width`, `height`, and
+`source: "caret"`. The bridge retains only geometry, clears it on window focus
+changes and lock, and adjusts it when the window moves. Clients can query
+accessibility geometry for `pid` when the native rectangle is absent.
+
+`type-text` accepts up to 64 UTF-16 code units without control characters. The
+window must still exist and have focus, the session must be unlocked, and Control,
+Alt and Super must be released. The client must hide its picker and restore the
+target window before sending the request. `typed` acknowledges the input-method
+commit; clients must verify received text when testing application support.
 
 `hold` is zero for a single activation, 8 for Alt, 4 for Control, or 67108864
 for Super. A held shortcut starts a temporary input grab before a client surface
