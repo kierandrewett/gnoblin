@@ -1,5 +1,8 @@
 # Configuration
 
+See [Window effects](window-effects.md) for blur rules, custom GLSL shaders,
+shader uniforms and file hot reload, including a Bingux configuration example.
+
 Gnoblin reads `~/.config/gnoblin/gnoblin.toml` and watches it for live changes.
 `$XDG_CONFIG_HOME` changes the base directory. `$GNOBLIN_CONFIG` selects an
 explicit file. A `.conf` override uses the legacy INI reader; other filenames
