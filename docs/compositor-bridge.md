@@ -51,7 +51,8 @@ return `error`; malformed JSON or excessive buffered input disconnects the
 client. Disconnection releases all resources owned by that client.
 
 Preview responses contain `event: "preview"`, the window ID, dimensions, and a
-PNG data URI in `source`. A failed capture returns an empty source and a message.
+PNG data URI in `source`. A failed capture or released image buffer returns an
+empty source and a message. Clients should retain their previous valid image.
 Requests accept dimensions up to 480 by 320 pixels and preserve aspect ratio.
 Only one capture may be pending per client. Readback runs at low priority after
 a short delay so queued keyboard input runs first. The client controls update

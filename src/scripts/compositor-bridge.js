@@ -246,10 +246,10 @@ class CompositorBridge {
             // Keep full-size pixels on the GPU. Only the small render target is
             // read back; Shell's PNG encoder runs asynchronously on a worker.
             const actor = window.get_compositor_private();
-            // Hidden actors can paint transparent content. Their retained
-            // backing texture is still available without mapping the window.
-            const backing = window.minimized || !actor?.is_mapped()
-                ? actor?.get_texture()?.get_texture() : null;
+            // Occlusion can make actor painting transparent, including when
+            // the chooser covers a mapped window. Sample the backing buffer
+            // directly where possible; it also survives minimisation.
+            const backing = actor?.get_texture()?.get_texture();
             const source = backing && (!backing.is_simple || backing.is_simple())
                 ? (backing.get_plane ? backing.get_plane(0) : backing)
                 : actor?.paint_to_content(null)?.get_texture();
@@ -270,7 +270,17 @@ class CompositorBridge {
             // composite_to_stream reads a subtexture. Flush this render target
             // explicitly; the subtexture does not own its pending draw journal.
             framebuffer.flush();
-            await Shell.Screenshot.composite_to_stream(texture, 0, 0, width, height, 1, null, 0, 0, 1, stream);
+            const pixbuf = await Shell.Screenshot.composite_to_stream(texture, 0, 0, width, height, 1, null, 0, 0, 1, stream);
+            if (pixbuf.get_has_alpha()) {
+                const pixels = pixbuf.get_pixels();
+                const stride = pixbuf.get_rowstride();
+                const channels = pixbuf.get_n_channels();
+                let visible = false;
+                for (let y = 0; y < height && !visible; y++)
+                    for (let x = 0; x < width; x++)
+                        if (pixels[y * stride + x * channels + channels - 1]) { visible = true; break; }
+                if (!visible) throw new Error('window image buffer unavailable');
+            }
             stream.close(null);
             if (client.closed || Main.sessionMode.isLocked || !this.windows.has(request.window)) return;
             const bytes = stream.steal_as_bytes().toArray();
