@@ -39,7 +39,25 @@ accessibility geometry for `pid` when the native rectangle is absent.
 window must still exist and have focus, the session must be unlocked, and Control,
 Alt and Super must be released. The client must hide its picker and restore the
 target window before sending the request. `typed` acknowledges the input-method
-commit; clients must verify received text when testing application support.
+commit or the completion of the XWayland paste workaround; clients must verify
+received text when testing application support.
+
+For XWayland, a GTK helper saves every offered clipboard format in memory, then
+serves the requested text temporarily. The compositor checks focus and modifier
+keys again before sending Ctrl+V through its virtual keyboard. The helper restores
+the saved clipboard after 600 ms. A new copy takes priority over restoration.
+Empty clipboards remain empty. The helper stays alive to serve restored data until
+the next copy, without requiring a clipboard manager. Clipboard managers can still
+record the temporary text in their history.
+
+Preparation is limited to 64 formats, 64 MiB and three seconds. A failed capture
+leaves the clipboard unchanged. Cancellation restores any temporary ownership.
+XWayland cannot confirm that a text field consumed the paste. Native Wayland inputs
+continue to use direct text-input commits without accessing the clipboard.
+
+The fallback requires Python 3 with PyGObject and GTK 3. Both helper files under
+`scripts/lib/` must be installed beside the bridge. The Nix package supplies these
+dependencies and its runtime wrapper.
 
 `hold` is zero for a single activation, 8 for Alt, 4 for Control, or 67108864
 for Super. A held shortcut starts a temporary input grab before a client surface

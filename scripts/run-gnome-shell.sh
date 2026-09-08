@@ -152,11 +152,13 @@ if [ -n "${GNOBLIN_PROFILE:-}" ]; then
 fi
 
 echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
+x11_args=(--no-x11)
+if [[ "${GNOBLIN_TEST_XWAYLAND:-0}" == 1 ]]; then x11_args=(); fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
   bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
   gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
-  "$SHELL_BIN" --headless --wayland --no-x11 --mode="$MODE" \
+  "$SHELL_BIN" --headless --wayland "${x11_args[@]}" --mode="$MODE" \
   --virtual-monitor "$MONITOR" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
