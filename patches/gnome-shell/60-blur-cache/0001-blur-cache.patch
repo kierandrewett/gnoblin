@@ -1,0 +1,414 @@
+From: Gnoblin
+Subject: [PATCH] Cache Gaussian backdrops and track bounded scene damage
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -71,6 +71,14 @@
+   ClutterEffect parent_instance;
+ 
+   ClutterActor *actor;
++  ClutterBlurCache *blur_cache;
++  gboolean has_region;
++  ClutterActorBox region;
++  ClutterActorBox paint_box;
++  gboolean background_dirty;
++  ClutterStageView *last_view;
++  MtkRectangle last_source;
++  unsigned int repaint_count;
+ 
+   unsigned int tex_width;
+   unsigned int tex_height;
+@@ -103,6 +111,109 @@
+ };
+ 
+ static GParamSpec *properties [N_PROPS] = { NULL, };
++
++/* Blur dependencies are evaluated once before each view is painted. Expanding
++ * the queued scene damage preserves backdrop pixels without forcing a full
++ * monitor redraw. Buffer-age repair does not invalidate an unchanged cache. */
++static GSList *backdrop_effects;
++static gulong backdrop_handler;
++
++static void
++get_blur_box (ShellBlurEffect *self,
++              ClutterActorBox *box)
++{
++  float width, height;
++  clutter_actor_get_size (self->actor, &width, &height);
++  *box = (ClutterActorBox) {0, 0, width, height};
++  if (self->has_region)
++    {
++      float margin = ceilf (self->radius * 2.f);
++      box->x1 = MAX (0, self->region.x1 - margin);
++      box->y1 = MAX (0, self->region.y1 - margin);
++      box->x2 = MIN (width, self->region.x2 + margin);
++      box->y2 = MIN (height, self->region.y2 + margin);
++    }
++}
++
++static MtkRectangle
++get_stage_blur_box (ShellBlurEffect *self)
++{
++  ClutterActorBox box;
++  float x, y, width, height, actor_width, actor_height;
++  clutter_actor_get_transformed_position (self->actor, &x, &y);
++  clutter_actor_get_transformed_size (self->actor, &width, &height);
++  clutter_actor_get_size (self->actor, &actor_width, &actor_height);
++  get_blur_box (self, &box);
++  float sx = actor_width > 0 ? width / actor_width : 1;
++  float sy = actor_height > 0 ? height / actor_height : 1;
++  int left = floorf (x + box.x1 * sx);
++  int top = floorf (y + box.y1 * sy);
++  return (MtkRectangle) {left, top,
++    MAX (0, (int) ceilf (x + box.x2 * sx) - left),
++    MAX (0, (int) ceilf (y + box.y2 * sy) - top)};
++}
++
++static void
++prepare_backdrops (ClutterStage *stage,
++                   ClutterStageView *view,
++                   ClutterFrame *frame,
++                   gpointer user_data)
++{
++  g_autoptr (MtkRegion) damage = clutter_stage_view_copy_redraw_clip (view);
++  g_autoptr (GHashTable) affected = g_hash_table_new (g_direct_hash, g_direct_equal);
++  MtkRectangle layout;
++  gboolean changed;
++  clutter_stage_view_get_layout (view, &layout);
++
++  /* Reach a fixed point when translucent surfaces overlap: refreshing a lower
++   * backdrop can change the pixels sampled by another backdrop above it. */
++  do
++    {
++      changed = FALSE;
++      for (GSList *l = backdrop_effects; l; l = l->next)
++        {
++          ShellBlurEffect *self = l->data;
++          MtkRectangle box, clipped;
++          if (!self->actor || self->mode == SHELL_BLUR_MODE_ACTOR ||
++              self->radius == 0 || !clutter_actor_is_mapped (self->actor) ||
++              !clutter_actor_meta_get_enabled (CLUTTER_ACTOR_META (self)))
++            continue;
++          box = get_stage_blur_box (self);
++          if (!mtk_rectangle_intersect (&box, &layout, &clipped))
++            continue;
++          if (self->last_view != view || !mtk_rectangle_equal (&box, &self->last_source))
++            self->background_dirty = TRUE;
++          if (g_hash_table_contains (affected, self))
++            continue;
++          if (self->background_dirty ||
++              mtk_region_contains_rectangle (damage, &clipped) != MTK_REGION_OVERLAP_OUT)
++            {
++              self->background_dirty = TRUE;
++              g_hash_table_add (affected, self);
++              mtk_region_union_rectangle (damage, &clipped);
++              clutter_stage_view_add_redraw_clip (view, &clipped);
++              changed = TRUE;
++            }
++        }
++    }
++  while (changed);
++}
++
++static void
++track_backdrop (ShellBlurEffect *self, gboolean enabled)
++{
++  ClutterStage *stage = shell_global_get_stage (shell_global_get ());
++  backdrop_effects = g_slist_remove (backdrop_effects, self);
++  if (enabled)
++    backdrop_effects = g_slist_prepend (backdrop_effects, self);
++  if (backdrop_effects && !backdrop_handler)
++    backdrop_handler = g_signal_connect (stage, "before-paint", G_CALLBACK (prepare_backdrops), NULL);
++  else if (!backdrop_effects && backdrop_handler)
++    {
++      g_signal_handler_disconnect (stage, backdrop_handler);
++      backdrop_handler = 0;
++    }
++}
+ 
+ static CoglPipeline*
+ create_base_pipeline (void)
+@@ -161,6 +272,18 @@
+ {
+   CoglColor color;
+ 
++  /* Compensate in the mask for the separately painted foreground. Its alpha
++   * is a*f; the backdrop contribution must be f*(1-a), not f*(1-a*f).
++   * This gives a single composited fade without another offscreen pass. */
++  if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
++    {
++      if (self->mask_pipeline_ready)
++        cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++          cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "surface_fade"),
++          paint_opacity / 255.f);
++      paint_opacity = 255;
++    }
++
+   cogl_color_init_from_4f (&color,
+                            paint_opacity / 255.0, paint_opacity / 255.0,
+                            paint_opacity / 255.0, paint_opacity / 255.0);
+@@ -328,12 +451,15 @@
+   meta_class->set_actor (meta, actor);
+ 
+   /* clear out the previous state */
++  g_clear_object (&self->blur_cache);
+   clear_framebuffer_data (&self->actor_fb);
+   clear_framebuffer_data (&self->background_fb);
+   clear_framebuffer_data (&self->brightness_fb);
+ 
+   /* we keep a back pointer here, to avoid going through the ActorMeta */
+   self->actor = clutter_actor_meta_get_actor (meta);
++  self->background_dirty = TRUE;
++  track_backdrop (self, self->actor != NULL);
+ }
+ 
+ static void
+@@ -358,6 +484,18 @@
+ 
+       clutter_actor_get_transformed_position (self->actor, &origin_x, &origin_y);
+       clutter_actor_get_transformed_size (self->actor, &width, &height);
++      get_blur_box (self, &self->paint_box);
++      if (self->has_region)
++        {
++          float actor_width, actor_height;
++          clutter_actor_get_size (self->actor, &actor_width, &actor_height);
++          float sx = actor_width > 0 ? width / actor_width : 1;
++          float sy = actor_height > 0 ? height / actor_height : 1;
++          origin_x += self->paint_box.x1 * sx;
++          origin_y += self->paint_box.y1 * sy;
++          width = (self->paint_box.x2 - self->paint_box.x1) * sx;
++          height = (self->paint_box.y2 - self->paint_box.y1) * sy;
++        }
+ 
+       if (stage_view)
+         {
+@@ -407,9 +545,10 @@
+ 
+   clutter_paint_node_add_rectangle (pipeline_node,
+                                     &(ClutterActorBox) {
+-                                      0.f, 0.f,
+-                                      width,
+-                                      height,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.x1,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.y1,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? width : self->paint_box.x2,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? height : self->paint_box.y2,
+                                     });
+ }
+ 
+@@ -432,13 +571,20 @@
+   clutter_paint_node_add_child (node, brightness_node);
+   clutter_paint_node_add_rectangle (brightness_node,
+                                     &(ClutterActorBox) {
+-                                      0.f, 0.f,
+-                                      width, height,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.x1,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.y1,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? width : self->paint_box.x2,
++                                      self->mode == SHELL_BLUR_MODE_ACTOR ? height : self->paint_box.y2,
+                                     });
+ 
+-  blur_node = clutter_blur_node_new (self->tex_width / self->downscale_factor,
+-                                     self->tex_height / self->downscale_factor,
+-                                     self->radius / self->downscale_factor);
++  if (!self->blur_cache)
++    self->blur_cache = clutter_blur_cache_new ();
++  blur_node = clutter_blur_node_new_cached (self->tex_width / self->downscale_factor,
++                                            self->tex_height / self->downscale_factor,
++                                            self->radius / self->downscale_factor,
++                                            self->blur_cache);
++  if (!blur_node)
++    return NULL;
+   clutter_paint_node_set_static_name (blur_node, "ShellBlurEffect (blur)");
+   clutter_paint_node_add_child (brightness_node, blur_node);
+   clutter_paint_node_add_rectangle (blur_node,
+@@ -612,9 +758,10 @@
+                                                       self->actor_fb.pipeline);
+   clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (alpha mask)");
+   clutter_paint_node_add_child (node, layer_node);
+-  graphene_matrix_init_scale (&transform,
+-                              1.f / self->downscale_factor,
+-                              1.f / self->downscale_factor, 1.f);
++  graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
++    -self->paint_box.x1, -self->paint_box.y1, 0));
++  graphene_matrix_scale (&transform, 1.f / self->downscale_factor,
++                         1.f / self->downscale_factor, 1.f);
+   transform_node = clutter_transform_node_new (&transform);
+   clutter_paint_node_add_child (layer_node, transform_node);
+   add_actor_node (self, transform_node, 255);
+@@ -626,8 +773,11 @@
+     {
+       g_autoptr (CoglSnippet) snippet =
+         cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
+-                         "uniform float mask_opacity;",
+-                         "cogl_texel.a = clamp (cogl_texel.a / max (mask_opacity, 0.00001), 0.0, 1.0);");
++                         "uniform float mask_opacity; uniform float surface_fade;",
++                         "float material_alpha = cogl_texel.a;"
++                         "float coverage = clamp (material_alpha / max (mask_opacity, 0.00001), 0.0, 1.0);"
++                         "cogl_texel.a = coverage * surface_fade * (1.0 - material_alpha) / "
++                         "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+       self->mask_pipeline_ready = TRUE;
+     }
+@@ -655,7 +805,7 @@
+ 
+     case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+-      return TRUE;
++      return self->background_dirty || !blur_cached;
+     }
+ 
+   return TRUE;
+@@ -675,6 +825,20 @@
+   if (self->radius > 0)
+     {
+       g_autoptr (ClutterPaintNode) blur_node = NULL;
++      g_autoptr (ClutterPaintNode) clip_node = NULL;
++      ClutterPaintNode *output = node;
++      if (self->has_region && self->mode != SHELL_BLUR_MODE_ACTOR)
++        {
++          if (self->region.x2 <= self->region.x1 || self->region.y2 <= self->region.y1)
++            goto fail;
++          clip_node = clutter_clip_node_new ();
++          clutter_paint_node_add_rectangle (clip_node, &self->region);
++          clutter_paint_node_add_child (node, clip_node);
++          output = clip_node;
++        }
++      if (self->mode != SHELL_BLUR_MODE_ACTOR &&
++          self->last_view != clutter_paint_context_get_stage_view (paint_context))
++        self->background_dirty = TRUE;
+ 
+       switch (self->mode)
+         {
+@@ -684,7 +848,7 @@
+ 
+         case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+-          paint_opacity = 255;
++          paint_opacity = clutter_actor_get_paint_opacity (self->actor);
+           break;
+ 
+         default:
+@@ -701,7 +865,8 @@
+           /* Failing to create or update the offscreen framebuffers prevents
+            * the entire effect to be applied.
+            */
+-          if (!update_framebuffers (self, paint_context, &source_actor_box))
++          if (source_actor_box.x2 <= source_actor_box.x1 || source_actor_box.y2 <= source_actor_box.y1 ||
++              !update_framebuffers (self, paint_context, &source_actor_box))
+             goto fail;
+ 
+           if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
+@@ -712,7 +877,9 @@
+               self->mask_pipeline_ready = FALSE;
+             }
+ 
+-          blur_node = create_blur_nodes (self, node, paint_opacity);
++          blur_node = create_blur_nodes (self, output, paint_opacity);
++          if (!blur_node)
++            goto fail;
+ 
+           switch (self->mode)
+             {
+@@ -723,13 +890,17 @@
+             case SHELL_BLUR_MODE_BACKGROUND_MASKED:
+     case SHELL_BLUR_MODE_BACKGROUND:
+               paint_background (self, blur_node, paint_context, &source_actor_box);
++              self->background_dirty = FALSE;
++              self->last_view = clutter_paint_context_get_stage_view (paint_context);
++              self->last_source = get_stage_blur_box (self);
++              self->repaint_count++;
+               break;
+             }
+         }
+       else
+         {
+           /* Use the cached pipeline if no repaint is needed */
+-          add_blurred_pipeline (self, node, paint_opacity);
++          add_blurred_pipeline (self, output, paint_opacity);
+         }
+ 
+       /* Background blur needs to paint the actor after painting the blurred
+@@ -761,6 +932,8 @@
+ {
+   ShellBlurEffect *self = (ShellBlurEffect *)object;
+ 
++  track_backdrop (self, FALSE);
++  g_clear_object (&self->blur_cache);
+   clear_framebuffer_data (&self->actor_fb);
+   clear_framebuffer_data (&self->background_fb);
+   clear_framebuffer_data (&self->brightness_fb);
+@@ -822,6 +995,8 @@
+       break;
+ 
+     case PROP_MASK_OPACITY:
++      if (self->mask_opacity == g_value_get_float (value))
++        break;
+       self->mask_opacity = g_value_get_float (value);
+       self->cache_flags &= ~BLUR_APPLIED;
+       if (self->actor)
+@@ -989,3 +1164,47 @@
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_MODE]);
+ }
++
++unsigned int
++shell_blur_effect_get_cache_build_count (ShellBlurEffect *self)
++{
++  return self->blur_cache ? clutter_blur_cache_get_build_count (self->blur_cache) : 0;
++}
++
++void
++shell_blur_effect_set_region (ShellBlurEffect *self,
++                              float x, float y, float width, float height)
++{
++  g_return_if_fail (isfinite (x) && isfinite (y) && isfinite (width) && isfinite (height));
++  g_return_if_fail (width >= 0 && height >= 0);
++  ClutterActorBox region = {x, y, x + width, y + height};
++  if (self->has_region && clutter_actor_box_equal (&self->region, &region))
++    return;
++  self->region = region;
++  self->has_region = TRUE;
++  self->background_dirty = TRUE;
++  self->cache_flags &= ~BLUR_APPLIED;
++  if (self->actor) clutter_actor_queue_redraw (self->actor);
++}
++
++void
++shell_blur_effect_clear_region (ShellBlurEffect *self)
++{
++  if (!self->has_region) return;
++  self->has_region = FALSE;
++  self->background_dirty = TRUE;
++  self->cache_flags &= ~BLUR_APPLIED;
++  if (self->actor) clutter_actor_queue_redraw (self->actor);
++}
++
++gboolean
++shell_blur_effect_uses_damage_tracking (ShellBlurEffect *self)
++{
++  return TRUE;
++}
++
++unsigned int
++shell_blur_effect_get_repaint_count (ShellBlurEffect *self)
++{
++  return self->repaint_count;
++}
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -56,4 +56,12 @@
+ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+                                  ShellBlurMode    mode);
+ 
++unsigned int shell_blur_effect_get_cache_build_count (ShellBlurEffect *self);
++
++void shell_blur_effect_set_region (ShellBlurEffect *self,
++                                    float x, float y, float width, float height);
++void shell_blur_effect_clear_region (ShellBlurEffect *self);
++gboolean shell_blur_effect_uses_damage_tracking (ShellBlurEffect *self);
++unsigned int shell_blur_effect_get_repaint_count (ShellBlurEffect *self);
++
+ G_END_DECLS

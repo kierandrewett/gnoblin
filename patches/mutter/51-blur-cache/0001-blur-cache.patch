@@ -1,0 +1,255 @@
+From: Gnoblin
+Subject: [PATCH] Retain Gaussian blur resources and expose scene damage
+
+diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c
+--- a/clutter/clutter/clutter-paint-nodes.c
++++ b/clutter/clutter/clutter-paint-nodes.c
+@@ -1364,11 +1364,62 @@
+  * ClutterBlurNode:
+  */
+ 
++struct _ClutterBlurCache
++{
++  GObject parent_instance;
++  ClutterBlurCache *resources;
++  unsigned int builds;
++  CoglFramebuffer *offscreen;
++  CoglPipeline *pipeline;
++  ClutterBlur *blur;
++  unsigned int width;
++  unsigned int height;
++  float radius;
++};
++
++G_DEFINE_TYPE (ClutterBlurCache, clutter_blur_cache, G_TYPE_OBJECT)
++
++static void
++clutter_blur_cache_finalize (GObject *object)
++{
++  ClutterBlurCache *cache = CLUTTER_BLUR_CACHE (object);
++
++  g_clear_object (&cache->resources);
++  g_clear_pointer (&cache->blur, clutter_blur_free);
++  g_clear_object (&cache->pipeline);
++  g_clear_object (&cache->offscreen);
++  G_OBJECT_CLASS (clutter_blur_cache_parent_class)->finalize (object);
++}
++
++static void
++clutter_blur_cache_class_init (ClutterBlurCacheClass *klass)
++{
++  G_OBJECT_CLASS (klass)->finalize = clutter_blur_cache_finalize;
++}
++
++static void
++clutter_blur_cache_init (ClutterBlurCache *cache)
++{
++}
++
++ClutterBlurCache *
++clutter_blur_cache_new (void)
++{
++  return g_object_new (CLUTTER_TYPE_BLUR_CACHE, NULL);
++}
++
++unsigned int
++clutter_blur_cache_get_build_count (ClutterBlurCache *cache)
++{
++  return cache->builds;
++}
++
+ struct _ClutterBlurNode
+ {
+   ClutterLayerNode parent_instance;
+ 
+   ClutterBlur *blur;
++  ClutterBlurCache *cache;
+ };
+ 
+ G_DEFINE_TYPE (ClutterBlurNode, clutter_blur_node, CLUTTER_TYPE_LAYER_NODE)
+@@ -1391,7 +1442,7 @@
+ {
+   ClutterBlurNode *blur_node = CLUTTER_BLUR_NODE (node);
+ 
+-  g_clear_pointer (&blur_node->blur, clutter_blur_free);
++  g_clear_object (&blur_node->cache);
+ 
+   CLUTTER_PAINT_NODE_CLASS (clutter_blur_node_parent_class)->finalize (node);
+ }
+@@ -1430,6 +1481,32 @@
+                        unsigned int height,
+                        float        radius)
+ {
++  g_autoptr (ClutterBlurCache) cache = clutter_blur_cache_new ();
++
++  return clutter_blur_node_new_cached (width, height, radius, cache);
++}
++
++/**
++ * clutter_blur_node_new_cached:
++ * @width: blur input width
++ * @height: blur input height
++ * @radius: blur radius in pixels
++ * @cache: reusable render targets, used by one effect
++ *
++ * Creates a frame-local node backed by persistent GPU resources. A size or
++ * radius change replaces the cache contents. Existing nodes retain their
++ * resource generation until they finish painting.
++ *
++ * Returns: (transfer full) (nullable): a new #ClutterPaintNode
++ */
++ClutterPaintNode *
++clutter_blur_node_new_cached (unsigned int      width,
++                              unsigned int      height,
++                              float             radius,
++                              ClutterBlurCache *cache)
++{
++  ClutterBlurCache *owner = cache;
++  g_autoptr (ClutterBlurCache) resources = NULL;
+   g_autoptr (CoglOffscreen) offscreen = NULL;
+   g_autoptr (CoglTexture) texture = NULL;
+   g_autoptr (GError) error = NULL;
+@@ -1441,7 +1518,23 @@
+   ClutterBlur *blur;
+ 
+   g_return_val_if_fail (radius >= 0.0, NULL);
+-
++  g_return_val_if_fail (CLUTTER_IS_BLUR_CACHE (cache), NULL);
++
++  cache = owner->resources;
++  if (cache && cache->blur && cache->width == width && cache->height == height &&
++      cache->radius == radius)
++    {
++      blur_node = _clutter_paint_node_create (CLUTTER_TYPE_BLUR_NODE);
++      layer_node = CLUTTER_LAYER_NODE (blur_node);
++      layer_node->offscreen = g_object_ref (cache->offscreen);
++      layer_node->pipeline = g_object_ref (cache->pipeline);
++      blur_node->blur = cache->blur;
++      blur_node->cache = g_object_ref (cache);
++      return (ClutterPaintNode *) blur_node;
++    }
++
++  resources = clutter_blur_cache_new ();
++  cache = resources;
+   context = _clutter_context_get_default ();
+   backend = clutter_context_get_backend (context);
+   cogl_context = clutter_backend_get_cogl_context (backend);
+@@ -1459,8 +1552,6 @@
+     }
+ 
+   blur = clutter_blur_new (texture, radius);
+-  blur_node->blur = blur;
+-
+   if (!blur)
+     {
+       g_warning ("Failed to create blur pipeline");
+@@ -1482,6 +1573,21 @@
+                                  width, height,
+                                  0.0, 1.0);
+ 
++  g_clear_pointer (&cache->blur, clutter_blur_free);
++  g_set_object (&cache->offscreen, layer_node->offscreen);
++  g_set_object (&cache->pipeline, layer_node->pipeline);
++  cache->width = width;
++  cache->height = height;
++  cache->radius = radius;
++  cache->blur = blur;
++  blur_node->blur = blur;
++  blur_node->cache = g_object_ref (cache);
++  g_set_object (&owner->resources, cache);
++  owner->builds++;
++
++  return (ClutterPaintNode *) blur_node;
++
+ out:
+-  return (ClutterPaintNode *) blur_node;
+-}
++  clutter_paint_node_unref ((ClutterPaintNode *) blur_node);
++  return NULL;
++}
+diff --git a/clutter/clutter/clutter-paint-nodes.h b/clutter/clutter/clutter-paint-nodes.h
+--- a/clutter/clutter/clutter-paint-nodes.h
++++ b/clutter/clutter/clutter-paint-nodes.h
+@@ -183,4 +183,22 @@
+                                           unsigned int height,
+                                           float        radius);
+ 
++/* Reusable GPU resources; paint nodes remain frame-local. */
++#define CLUTTER_TYPE_BLUR_CACHE (clutter_blur_cache_get_type ())
++CLUTTER_EXPORT
++G_DECLARE_FINAL_TYPE (ClutterBlurCache, clutter_blur_cache,
++                      CLUTTER, BLUR_CACHE, GObject)
++
++CLUTTER_EXPORT
++ClutterBlurCache * clutter_blur_cache_new (void);
++
++CLUTTER_EXPORT
++unsigned int clutter_blur_cache_get_build_count (ClutterBlurCache *cache);
++
++CLUTTER_EXPORT
++ClutterPaintNode * clutter_blur_node_new_cached (unsigned int      width,
++                                                unsigned int      height,
++                                                float             radius,
++                                                ClutterBlurCache *cache);
++
+ G_END_DECLS
+diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stage-view.c
+--- a/clutter/clutter/clutter-stage-view.c
++++ b/clutter/clutter/clutter-stage-view.c
+@@ -1567,3 +1567,27 @@
+ 
+   return priv->name;
+ }
++
++/**
++ * clutter_stage_view_copy_redraw_clip:
++ * @view: a #ClutterStageView
++ *
++ * Returns queued scene damage before buffer-age repair is applied.
++ *
++ * Returns: (transfer full): damage in stage coordinates
++ */
++MtkRegion *
++clutter_stage_view_copy_redraw_clip (ClutterStageView *view)
++{
++  ClutterStageViewPrivate *priv = clutter_stage_view_get_instance_private (view);
++  MtkRegion *region;
++
++  if ((priv->has_redraw_clip && !priv->redraw_clip) ||
++      (priv->has_accumulated_redraw_clip && !priv->accumulated_redraw_clip))
++    return mtk_region_create_rectangle (&priv->layout);
++
++  region = priv->redraw_clip ? mtk_region_copy (priv->redraw_clip) : mtk_region_create ();
++  if (priv->accumulated_redraw_clip)
++    mtk_region_union (region, priv->accumulated_redraw_clip);
++  return region;
++}
+diff --git a/clutter/clutter/clutter-stage-view.h b/clutter/clutter/clutter-stage-view.h
+--- a/clutter/clutter/clutter-stage-view.h
++++ b/clutter/clutter/clutter-stage-view.h
+@@ -94,3 +94,11 @@
+ 
+ CLUTTER_EXPORT
+ int clutter_stage_view_get_priority (ClutterStageView *view);
++
++/* Effect dependencies use stage coordinates, before buffer-age repair. */
++CLUTTER_EXPORT
++MtkRegion * clutter_stage_view_copy_redraw_clip (ClutterStageView *view);
++
++CLUTTER_EXPORT
++void clutter_stage_view_add_redraw_clip (ClutterStageView *view,
++                                         const MtkRectangle *clip);
+diff --git a/clutter/clutter/clutter-stage-view-private.h b/clutter/clutter/clutter-stage-view-private.h
+--- a/clutter/clutter/clutter-stage-view-private.h
++++ b/clutter/clutter/clutter-stage-view-private.h
+@@ -46,10 +46,6 @@
+ void clutter_stage_view_set_projection (ClutterStageView        *view,
+                                         const graphene_matrix_t *matrix);
+ 
+-CLUTTER_EXPORT
+-void clutter_stage_view_add_redraw_clip (ClutterStageView   *view,
+-                                         const MtkRectangle *clip);
+-
+ gboolean clutter_stage_view_has_full_redraw_clip (ClutterStageView *view);
+ 
+ gboolean clutter_stage_view_has_redraw_clip (ClutterStageView *view);
