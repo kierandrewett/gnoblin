@@ -65,7 +65,7 @@ export GTK_A11Y=none NO_AT_BRIDGE=1
 case "${GNOBLIN_TEST_DISABLE_NOTIFICATIONS:-0}" in
   0) ;;
   1)
-    gsettings set org.gnoblin.shell disabled-features "['notifications']" || exit 1
+    gsettings set org.gnoblin.shell disabled-features "['notifications', 'input-source-switcher']" || exit 1
     ;;
   *)
     echo "!! GNOBLIN_TEST_DISABLE_NOTIFICATIONS must be 0 or 1" >&2

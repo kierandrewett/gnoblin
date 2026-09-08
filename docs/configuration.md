@@ -46,6 +46,11 @@ cyclers. It defaults off. Disabling it suppresses those actions but does not
 release their existing shortcut bindings. Display-mode and accessibility
 switchers are separate. Stock GNOME sessions retain their native behaviour.
 
+`input-source-switcher` controls GNOME's native keyboard-layout popup. It is
+off by default in Gnoblin so external chrome can present the active layout and
+its own selector; it does not disable input sources or programmatic layout
+selection. Set it to `true` to restore GNOME's modifier-based switcher.
+
 ### Quickshell dock integration
 
 Quickshell's [Toplevel.setRectangle](https://quickshell.org/docs/types/Quickshell.Wayland/Toplevel/)
@@ -71,7 +76,80 @@ The Bingux reference is `shell/bingux/Dock.qml` in the Bingux checkout. Its
 Bingux Nix module already manages Quickshell through systemd; do not also
 start that same instance through autostart.
 
-## Autostart
+## Keyboard shortcuts
+
+Custom commands and built-in bindings can be configured in TOML, without using
+GNOME Settings. Once the updated shell is installed, changes reload on save.
+
+```toml
+# Release the built-in screenshot shortcut before assigning it to Bingux.
+[keybindings.shell]
+show-screenshot-ui = []
+
+[[shortcuts]]
+name = "capture"
+binding = "<Alt>s"
+command = ["qs", "ipc", "--any-display", "-c", "bingux", "call", "capture", "open"]
+
+[[shortcuts]]
+name = "terminal"
+binding = "<Super>Return"
+command = ["ptyxis", "--new-window"]
+
+[keybindings.wm]
+close = ["<Super>q"]
+```
+
+Each command shortcut needs a unique name (letters, numbers, `_`, `-`), a GTK-style
+accelerator, and a nonempty argument array. Arguments retain spaces, quotes and
+literal `$HOME`; no implicit shell expansion occurs. Use an explicit shell for
+pipes or substitutions. Adding, changing or removing an entry updates the
+shortcut registration; removing it does not stop a previously launched process.
+Identical saves do not re-register shortcuts. There is a limit of 256 commands.
+
+Built-in groups are `shell`, `wm`, `mutter`, `wayland`, and `media`, mapping to
+the corresponding GNOME keybinding schemas. Values are accelerator arrays;
+`[]` disables that action's binding. Unknown actions, invalid keys, malformed
+commands and duplicate configured accelerators reject the edit before any
+shortcut settings change. Policy-locked settings produce an error. Overrides
+are persistent, like explicit `[shell]` feature settings: omitting a built-in
+override stops managing it but does not restore its former value.
+
+Use `binding = "Super"` for a bare Super press and release. This uses Mutter's
+modifier-only release event, so Super shortcuts and Super-drag do not trigger it.
+For example:
+
+```toml
+[[shortcuts]]
+name = "search"
+binding = "Super"
+capture-input = true
+command = ["binguxctl", "search", "toggle"]
+```
+
+`capture-input = true` buffers keyboard events in the compositor before the
+command starts. The popup sends `shortcut-input` messages over the compositor
+bridge: `prepared` releases the temporary grab once its surface is mapped, `ready`
+replays buffered events after its text input has keyboard focus, and `closed`
+clears the handoff. Events retain their native keycodes and modifiers. A failed
+handoff releases the grab after three seconds and discards queued input.
+Bare Super still activates on release so held Super shortcuts continue to work.
+
+Gnoblin registers command accelerators directly with Mutter and ignores keyboard
+auto-repeat: holding a shortcut does not repeatedly launch or toggle its command.
+Commands are enabled in the normal desktop, overview, shell menus and modal
+dialogs, not the lock/login screen.
+Removing a command releases its grab; invalid/conflicting edits retain the
+previous working command registrations. Old config-owned media-key entries are
+removed during migration; unrelated user shortcuts remain untouched. An existing shortcut outside the file
+can still claim an accelerator: disable/rebind that action explicitly rather than
+silently stealing it. Registration failures appear in the Gnoblin config log.
+
+Do not define the same command shortcut in both TOML and another settings manager.
+Test configuration ownership without touching real shortcuts with
+`GSETTINGS_BACKEND=memory gjs -m tests/shortcuts-test.js`.
+
+## Autostart commands
 
 ```toml
 [[autostart]]
@@ -99,13 +177,14 @@ launches are logged and can be retried on a later reload.
 
 The `[shell]` table also accepts booleans for `osd`, `osd-volume`,
 `osd-microphone`, `osd-brightness`, `osd-keyboard-brightness`, `osd-pad`,
-`screenshot`, and `notifications`:
+`screenshot`, `notifications`, and `input-source-switcher`:
 
 ```toml
 [shell]
 osd = false
 screenshot = true
 notifications = false
+input-source-switcher = false
 ```
 
 Explicit entries update the existing persistent GSettings state. Omitted
@@ -164,8 +243,8 @@ GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
 
 ## `org.gnoblin.shell` GSettings
 
-One key: `disabled-features` (`as`, default `[]`). A feature is enabled
-unless its id is in this list. Read/write it directly with `gsettings`, or
+One key: `disabled-features` (`as`, default `['input-source-switcher']`). A
+feature is enabled unless its id is in this list. Read/write it directly with `gsettings`, or
 — the normal path — through `org.gnoblin.Shell`'s
 `ListFeatures`/`GetFeature`/`SetFeature` (which also emits
 `FeatureChanged`), via `gnoblinctl`.
@@ -181,6 +260,7 @@ unless its id is in this list. Read/write it directly with `gsettings`, or
 | `osd-keyboard-brightness` | Keyboard-brightness OSD popup |
 | `screenshot` | The built-in screenshot/screencast UI |
 | `notifications` | Owning `org.freedesktop.Notifications` (in Gnoblin mode, disable to let an external daemon own it; stock modes always retain the GNOME service) |
+| `input-source-switcher` | GNOME's native keyboard-layout popup; source state and switching remain available when disabled |
 
 Source of truth: the `FEATURES`/`OSD_TYPES` constants in
 `src/gnome-shell-overlay/js/ui/components/gnoblinControl.js`.
@@ -306,3 +386,8 @@ mapping, intermediate compositor frames and animation cleanup.
 Run `just --set prefix "$PWD/install" gnome-window-effects-verify` for pixel checks of masked blur and live
 rule removal. Both use a private headless session and require Quickshell; the
 pixel test also requires `grim` and Python Pillow.
+
+Layer-shell resize requests keep the current buffer anchored until replacement
+content arrives. This prevents tooltip jumps while a client changes its size
+and centring margins. `just gnome-layer-animation-verify` includes pixel checks
+for bottom, right, and top-anchored resize handshakes.

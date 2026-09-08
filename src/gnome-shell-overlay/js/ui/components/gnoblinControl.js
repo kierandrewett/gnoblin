@@ -13,7 +13,7 @@
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import {Autostart, ConfigFile, FEATURE_KEYS} from './gnoblinConfig.js';
+import {Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput} from './gnoblinConfig.js';
 import {WindowRules} from './gnoblinRules.js';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -237,6 +237,10 @@ const FEATURES = {
     // notification daemon (patches/gnome-shell/36-notifications-toggle) watching this
     // same 'disabled-features' key — disable to let an external daemon own it.
     notifications: {summary: 'Own org.freedesktop.Notifications (off → external daemon can)', apply() {}},
+    // The keyboard module reads this state before constructing its native
+    // modifier switcher. Turning it off leaves source selection intact for
+    // external shell chrome such as Bingux.
+    'input-source-switcher': {summary: 'Native GNOME keyboard-layout switcher', apply() {}},
 };
 
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
@@ -656,6 +660,14 @@ export class Component {
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
 
         this._windowRules = new WindowRules();
+        this._shortcutInput = new ShortcutInput(global.stage,
+            () => Main.pushModal(global.stage, {actionMode: Shell.ActionMode.POPUP}),
+            grab => Main.popModal(grab));
+        this._shortcuts = new Shortcuts(new CommandShortcuts(global.display, (action, enabled) => {
+            Main.wm.allowKeybinding(typeof action === 'string' ? action : Meta.external_binding_name_for_action(action),
+                enabled ? Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW |
+                    Shell.ActionMode.POPUP | Shell.ActionMode.SYSTEM_MODAL | Shell.ActionMode.LOOKING_GLASS : Shell.ActionMode.NONE);
+        }, undefined, name => this._shortcutInput.begin(name)));
         this._config = new ConfigFile(undefined, next => this._applyConfig(next));
         activeConfig = this._config;
         this._config.start();
@@ -711,6 +723,10 @@ export class Component {
     }
 
     disable() {
+        this._shortcutInput?.destroy();
+        this._shortcutInput = null;
+        this._shortcuts?.destroy();
+        this._shortcuts = null;
         this._windowRules?.destroy();
         this._windowRules = null;
         this._config?.destroy();
@@ -880,6 +896,7 @@ export class Component {
     }
 
     _applyConfig(next) {
+        this._shortcuts.apply(next);
         const disabled = new Set(this._disabledList());
         for (const id of FEATURE_KEYS) {
             if (next[id] === true)

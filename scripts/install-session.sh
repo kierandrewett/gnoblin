@@ -71,6 +71,7 @@ install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
 install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.js" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.js"
 install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.py" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.py"
+install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"
 
 echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"

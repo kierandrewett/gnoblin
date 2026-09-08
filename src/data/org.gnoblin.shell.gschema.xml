@@ -2,7 +2,7 @@
 <schemalist gettext-domain="gnome-shell">
   <schema id="org.gnoblin.shell" path="/org/gnoblin/shell/">
     <key name="disabled-features" type="as">
-      <default>[]</default>
+      <default>['input-source-switcher']</default>
       <summary>gnome-shell subsystems gnoblin has turned off</summary>
       <description>
         Ids of gnome-shell subsystems (e.g. "osd", "screenshot") that gnoblin

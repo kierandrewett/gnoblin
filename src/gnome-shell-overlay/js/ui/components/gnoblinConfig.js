@@ -2,10 +2,12 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Clutter from 'gi://Clutter';
 
 export const FEATURE_KEYS = Object.freeze([
     'osd', 'osd-volume', 'osd-microphone', 'osd-brightness',
     'osd-keyboard-brightness', 'osd-pad', 'screenshot', 'notifications',
+    'input-source-switcher',
 ]);
 
 export const DEFAULTS = Object.freeze({
@@ -19,6 +21,8 @@ export const DEFAULTS = Object.freeze({
     'layer-easing': 'ease-out-cubic',
     autostart: [],
     'window-rules': [],
+    shortcuts: [],
+    keybindings: {},
 });
 
 export let settings = {...DEFAULTS};
@@ -52,7 +56,7 @@ export function parseLegacy(text) {
         const separator = line.indexOf('=');
         const key = line.slice(0, separator).trim();
         const value = cleanValue(line.slice(separator + 1));
-        if (separator < 0 || !Object.hasOwn(DEFAULTS, key))
+        if (separator < 0 || !Object.hasOwn(DEFAULTS, key) || ['shortcuts', 'keybindings'].includes(key))
             throw new Error(`unknown shell setting: ${line}`);
         if (key === 'window-switcher' || FEATURE_KEYS.includes(key)) {
             if (!/^(true|false|on|off|yes|no|1|0)$/i.test(value))
@@ -88,13 +92,16 @@ export function parseLegacy(text) {
 }
 
 export function parse(text) {
-    const document = Meta.gnoblin_parse_toml(text).recursiveUnpack();
+    return parseDocument(Meta.gnoblin_parse_toml(text).recursiveUnpack());
+}
+
+export function parseDocument(document) {
     const next = {...DEFAULTS};
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== 'object')
         throw new Error('shell must be a table');
     for (const [key, value] of Object.entries(shell)) {
-        if (!Object.hasOwn(DEFAULTS, key) || key === 'autostart' || key === 'window-rules')
+        if (!Object.hasOwn(DEFAULTS, key) || ['autostart', 'window-rules', 'shortcuts', 'keybindings'].includes(key))
             throw new Error(`unknown shell setting: ${key}`);
         if (FEATURE_KEYS.includes(key) || key === 'window-switcher') {
             if (typeof value !== 'boolean')
@@ -173,7 +180,273 @@ export function parse(text) {
         }
     }
     next['window-rules'] = rules;
+    Object.assign(next, validateShortcuts(document));
     return next;
+}
+
+export const KEYBINDING_SCHEMAS = Object.freeze({
+    shell: 'org.gnome.shell.keybindings',
+    wm: 'org.gnome.desktop.wm.keybindings',
+    mutter: 'org.gnome.mutter.keybindings',
+    wayland: 'org.gnome.mutter.wayland.keybindings',
+    media: 'org.gnome.settings-daemon.plugins.media-keys',
+});
+const SHORTCUT_BASE = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/';
+const SHORTCUT_PREFIX = `${SHORTCUT_BASE}gnoblin-config-`;
+const SHORTCUT_SCHEMA = 'org.gnome.settings-daemon.plugins.media-keys.custom-keybinding';
+
+function acceleratorIdentity(value) {
+    if (value === 'Super') return 'overlay-key';
+    if (typeof value !== 'string' || !value || value.length > 160 ||
+        !/^(?:<(?:Shift|Control|Ctrl|Primary|Alt|Mod1|Super|Meta|Hyper|Mod[2-5])>)*[A-Za-z0-9_]+$/i.test(value))
+        throw new Error(`invalid shortcut accelerator: ${JSON.stringify(value)}; use <Alt>s or <Super>Return`);
+    const key = value.replace(/<[^>]+>/g, '').replace(/^XF86/, '');
+    if (typeof Clutter[`KEY_${key}`] !== 'number')
+        throw new Error(`unknown shortcut key: ${key}`);
+    const modifiers = [...value.matchAll(/<([^>]+)>/g)].map(([, modifier]) =>
+        modifier.toLowerCase().replace(/^(ctrl|primary)$/, 'control').replace(/^mod1$/, 'alt'));
+    return [...new Set(modifiers)].sort().join('+') + '+' + key.toLowerCase();
+}
+
+export function validateShortcuts(document) {
+    const shortcuts = document.shortcuts ?? [];
+    const keybindings = document.keybindings ?? {};
+    if (!Array.isArray(shortcuts) || shortcuts.length > 256)
+        throw new Error('shortcuts must use [[shortcuts]] tables (maximum 256)');
+    const names = new Set(), accelerators = new Set();
+    for (const entry of shortcuts) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+            Object.keys(entry).some(key => !['name', 'binding', 'command', 'capture-input'].includes(key)) ||
+            (entry['capture-input'] !== undefined && typeof entry['capture-input'] !== 'boolean') ||
+            typeof entry.name !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.name) || names.has(entry.name) ||
+            !Array.isArray(entry.command) || !entry.command.length || !entry.command[0] ||
+            !entry.command.every(arg => typeof arg === 'string' && !arg.includes('\0')))
+            throw new Error('shortcut requires a unique name, binding and nonempty command array');
+        const identity = acceleratorIdentity(entry.binding);
+        if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
+        names.add(entry.name);
+        accelerators.add(identity);
+    }
+    if (!keybindings || typeof keybindings !== 'object' || Array.isArray(keybindings))
+        throw new Error('keybindings must be a table');
+    const source = Gio.SettingsSchemaSource.get_default();
+    for (const [group, entries] of Object.entries(keybindings)) {
+        const schema = KEYBINDING_SCHEMAS[group] && source.lookup(KEYBINDING_SCHEMAS[group], true);
+        if (!schema || !entries || typeof entries !== 'object' || Array.isArray(entries))
+            throw new Error(`unknown keybinding group: ${group}`);
+        for (const [key, bindings] of Object.entries(entries)) {
+            if (!schema.has_key(key) || key === 'custom-keybindings' ||
+                schema.get_key(key).get_value_type().dup_string() !== 'as' || !Array.isArray(bindings))
+                throw new Error(`unknown or unsupported keybinding: ${group}.${key}`);
+            for (const binding of bindings) {
+                const identity = acceleratorIdentity(binding);
+                if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);
+                accelerators.add(identity);
+            }
+        }
+    }
+    return {shortcuts, keybindings};
+}
+
+// Config owns only its named command entries. Other custom shortcuts are
+// preserved; explicit built-in overrides follow the persistent feature policy.
+export class Shortcuts {
+    constructor(commands = null) {
+        this.commands = commands;
+    }
+
+    apply(config) {
+        const {shortcuts, keybindings} = validateShortcuts(config);
+        const media = new Gio.Settings({schema_id: KEYBINDING_SCHEMAS.media});
+        const previous = media.get_strv('custom-keybindings');
+        if (!this.commands && shortcuts.some(entry => entry.binding === 'Super'))
+            throw new Error('Super release requires native command shortcuts');
+        const settingsShortcuts = this.commands ? [] : shortcuts;
+        const paths = settingsShortcuts.map(entry => `${SHORTCUT_PREFIX}${entry.name}/`);
+        const writes = [];
+        if (shortcuts.some(entry => entry.binding === 'Super'))
+            writes.push([new Gio.Settings({schema_id: 'org.gnome.mutter'}), 'overlay-key', new GLib.Variant('s', 'Super')]);
+        for (const [group, entries] of Object.entries(keybindings)) {
+            const settings = new Gio.Settings({schema_id: KEYBINDING_SCHEMAS[group]});
+            for (const [key, value] of Object.entries(entries))
+                writes.push([settings, key, new GLib.Variant('as', value)]);
+        }
+        for (const [index, entry] of settingsShortcuts.entries()) {
+            const settings = new Gio.Settings({schema_id: SHORTCUT_SCHEMA, path: paths[index]});
+            for (const [key, value] of Object.entries({name: entry.name, binding: entry.binding,
+                command: entry.command.map(arg => GLib.shell_quote(arg)).join(' ')}))
+                writes.push([settings, key, new GLib.Variant('s', value)]);
+        }
+        writes.push([media, 'custom-keybindings', new GLib.Variant('as', [
+            ...previous.filter(path => !path.startsWith(SHORTCUT_PREFIX)), ...paths,
+        ])]);
+        for (const path of previous.filter(path => path.startsWith(SHORTCUT_PREFIX) && !paths.includes(path))) {
+            const settings = new Gio.Settings({schema_id: SHORTCUT_SCHEMA, path});
+            for (const key of ['binding', 'command', 'name'])
+                writes.push([settings, key, null]);
+        }
+        // Check every key before changing anything, including policy-locked keys.
+        const changes = writes.filter(([settings, key, value]) =>
+            value ? !settings.get_value(key).equal(value) : settings.get_user_value(key) !== null);
+        for (const [settings, key] of changes) {
+            if (!settings.is_writable(key)) throw new Error(`shortcut setting is locked: ${key}`);
+        }
+        const applied = [];
+        try {
+            for (const [settings, key, value] of changes) {
+                applied.push([settings, key, settings.get_user_value(key)]);
+                if (value === null) settings.reset(key);
+                else if (!settings.set_value(key, value)) throw new Error(`could not save shortcut: ${key}`);
+            }
+            this.commands?.apply(shortcuts);
+        } catch (error) {
+            for (const [settings, key, value] of applied.reverse()) {
+                if (value === null) settings.reset(key);
+                else settings.set_value(key, value);
+            }
+            throw error;
+        }
+    }
+
+    destroy() { this.commands?.destroy(); }
+}
+
+// Commands are edge-triggered, not text input: holding a shortcut must never
+// repeatedly launch it (or toggle a popup straight back closed).
+export class CommandShortcuts {
+    constructor(display, allow, launch = command => {
+        const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
+        child.wait_check_async(null, (process, result) => {
+            try { process.wait_check_finish(result); }
+            catch (error) { console.warn(`gnoblin-shortcut: ${error.message}`); }
+        });
+    }, prepareInput = () => {}) {
+        this.display = display;
+        this.prepareInput = prepareInput;
+        this.allow = allow;
+        this.launch = launch;
+        this.bindings = new Map();
+        this.overlaySignal = display.connect('overlay-key', () => {
+            const binding = this.bindings.get('overlay-key');
+            if (!binding) return;
+            try { if (binding.entry['capture-input']) this.prepareInput(binding.entry.name); this.launch(binding.entry.command); }
+            catch (error) { console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`); }
+        });
+        this.signal = display.connect('accelerator-activated', (_display, action) => {
+            const binding = [...this.bindings.values()].find(item => item.action === action);
+            if (!binding) return;
+            try { if (binding.entry['capture-input']) this.prepareInput(binding.entry.name); this.launch(binding.entry.command); }
+            catch (error) { console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`); }
+        });
+    }
+
+    apply(entries) {
+        const next = new Map(), added = [];
+        try {
+            for (const entry of entries) {
+                const identity = acceleratorIdentity(entry.binding);
+                let action = this.bindings.get(identity)?.action;
+                if (action === undefined) {
+                    action = identity === 'overlay-key' ? 'overlay-key' :
+                        this.display.grab_accelerator(entry.binding, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
+                    if (action === Meta.KeyBindingAction.NONE)
+                        throw new Error(`shortcut already claimed: ${entry.binding} (${entry.name})`);
+                    added.push(action);
+                    this.allow(action, true);
+                }
+                next.set(identity, {action, entry});
+            }
+        } catch (error) {
+            for (const action of added) this.release(action);
+            throw error;
+        }
+        for (const [identity, binding] of this.bindings) {
+            if (!next.has(identity)) this.release(binding.action);
+        }
+        this.bindings = next;
+    }
+
+    release(action) {
+        if (action !== 'overlay-key') this.display.ungrab_accelerator(action);
+        this.allow(action, false);
+    }
+
+    destroy() {
+        this.display.disconnect(this.signal);
+        this.display.disconnect(this.overlaySignal);
+        for (const binding of this.bindings.values()) this.release(binding.action);
+        this.bindings.clear();
+    }
+}
+
+// Buffer native key events only while a configured popup is taking focus.
+// The compositor already distinguishes a bare Super release from a Super chord.
+export class ShortcutInput {
+    constructor(stage, grab, ungrab) {
+        this.stage = stage;
+        this.grabKeyboard = grab;
+        this.ungrabKeyboard = ungrab;
+        this.ready = new Set();
+        this.pending = null;
+        this.timeout = 0;
+        this.signal = stage.connect('captured-event', (_stage, event) => {
+            if (!this.pending) return Clutter.EVENT_PROPAGATE;
+            const type = event.type();
+            if (![Clutter.EventType.KEY_PRESS, Clutter.EventType.KEY_RELEASE].includes(type))
+                return Clutter.EVENT_PROPAGATE;
+            // The release that triggered overlay-key can reach the stage after
+            // begin(). Replaying it would activate the shortcut a second time.
+            if ([Clutter.KEY_Super_L, Clutter.KEY_Super_R].includes(event.get_key_symbol()))
+                return Clutter.EVENT_PROPAGATE;
+            if (this.pending.events.length >= 1024) { this.cancel(); return Clutter.EVENT_PROPAGATE; }
+            this.pending.events.push(event.copy());
+            return Clutter.EVENT_STOP;
+        });
+    }
+    begin(name) {
+        if (this.ready.has(name)) return; // A toggle is closing an already focused popup.
+        this.cancel();
+        const grab = this.grabKeyboard();
+        if (!(grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) { this.ungrabKeyboard(grab); return; }
+        this.pending = {name, events: [], grab};
+        this.timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
+            this.timeout = 0;
+            this.cancel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+    prepared(name) {
+        if (this.pending?.name !== name || !this.pending.grab) return;
+        this.ungrabKeyboard(this.pending.grab);
+        this.pending.grab = null;
+    }
+    complete(name) {
+        this.ready.add(name);
+        if (this.pending?.name !== name) return;
+        this.prepared(name);
+        const events = this.pending.events;
+        this.pending = null;
+        if (this.timeout) GLib.source_remove(this.timeout);
+        this.timeout = 0;
+        // Copies retain keycodes, modifiers, press/release order and input devices.
+        // Requeue through Clutter so Qt and the input method handle them normally.
+        for (const event of events) event.put();
+    }
+    closed(name) {
+        this.ready.delete(name);
+        if (this.pending?.name === name) this.cancel();
+    }
+    cancel() {
+        if (this.timeout) GLib.source_remove(this.timeout);
+        this.timeout = 0;
+        if (this.pending?.grab) this.ungrabKeyboard(this.pending.grab);
+        this.pending = null;
+    }
+    destroy() {
+        this.cancel();
+        this.stage.disconnect(this.signal);
+        this.ready.clear();
+    }
 }
 
 // The dock hint takes precedence over the optional fallback coordinate.
@@ -222,11 +495,12 @@ export class Autostart {
 }
 
 export class ConfigFile {
-    constructor(path = null, apply = () => {}) {
+    constructor(path = null, apply = () => {}, parseToml = parse) {
         this._override = path || GLib.getenv('GNOBLIN_CONFIG') || null;
         this._directory = this._override ? GLib.path_get_dirname(this._override) :
             GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin']);
         this._apply = apply;
+        this._parseToml = parseToml;
         this._monitor = null;
         this._timeout = 0;
     }
@@ -250,7 +524,7 @@ export class ConfigFile {
                 throw e;
         }
         // Parse the complete file before replacing the last valid settings.
-        const next = this.path.endsWith('.conf') ? parseLegacy(text) : parse(text);
+        const next = this.path.endsWith('.conf') ? parseLegacy(text) : this._parseToml(text);
         this._apply(next);
         settings = next;
     }

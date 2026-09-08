@@ -23,6 +23,8 @@ assert(parsed.osd === false && parsed.screenshot === true && parsed.notification
     'explicit feature values and unspecified persistent features');
 assert(parsed['window-switcher'] && parsed['minimize-animation'] === 'none' &&
     parsed['minimize-duration'] === 70, 'comments, quotes, booleans, and last value');
+assert(parseLegacy('[shell]\ninput-source-switcher = false')['input-source-switcher'] === false,
+    'native input-source switcher can be disabled for external chrome');
 for (const invalid of ['window-switcher = maybe', 'minimize-animation = shrink',
     'minimize-duration = -1', 'minimize-duration = 5001', 'minimize-duration = 2ms',
     'typo = true', 'notifications = maybe', '[shell']) {
@@ -140,3 +142,20 @@ for (const field of ['blur = 101', 'opacity = 2', 'match.title = "["', 'match.un
     assert(rejected, 'reject invalid rule: ' + field);
 }
 print('PASS: window rule validation and precedence');
+
+const shortcutConfig = parse(`[keybindings.shell]
+show-screenshot-ui = []
+[[shortcuts]]
+name = "capture"
+binding = "<Alt>s"
+command = ["qs", "ipc", "call", "capture", "open"]
+`);
+assert(shortcutConfig.shortcuts[0].binding === '<Alt>s', 'TOML shortcut tables');
+assert(shortcutConfig.keybindings.shell['show-screenshot-ui'].length === 0, 'TOML built-in override');
+for (const text of ['[shell]\nshortcuts = []', '[[shortcuts]]\nname = "missing-fields"',
+    '[keybindings.shell]\nshow-screenshot-ui = "Print"']) {
+    let rejected = false;
+    try { parse(text); } catch { rejected = true; }
+    assert(rejected, `reject malformed shortcut TOML: ${text}`);
+}
+print('PASS: TOML shortcuts and keybinding groups');

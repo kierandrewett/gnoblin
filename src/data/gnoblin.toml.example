@@ -24,6 +24,8 @@ layer-easing = "ease-out-cubic"
 # osd-pad = true
 # screenshot = true
 # notifications = false
+# Keep GNOME's own layout popup off when Bingux owns the keyboard-layout UI.
+# input-source-switcher = false
 
 # Protocol changes require a new compositor session.
 [protocols]
@@ -50,3 +52,14 @@ ext-data-control                = true   # clipboard managers (cliphist)
 match.type = "layer"
 blur = 24
 opacity = 0.96
+
+# Shortcut changes apply live. Commands are argument arrays, not shell syntax.
+# Release any conflicting built-in binding before assigning its keys.
+# [keybindings.shell]
+# show-screenshot-ui = []
+# [[shortcuts]]
+# name = "capture"
+# binding = "<Alt>s"
+# command = ["qs", "ipc", "--any-display", "-c", "bingux", "call", "capture", "open"]
+# [keybindings.wm]
+# close = ["<Super>q"]

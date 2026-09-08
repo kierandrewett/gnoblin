@@ -22,6 +22,7 @@ class CompositorBridge {
         this.grab = null;
         this.timeout = 0;
         this.modifierCheck = 0;
+        this.modifierPoll = 0;
         this.windows = new Map();
         this.setupPrivacy();
         const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'gnoblin']);
@@ -121,6 +122,16 @@ class CompositorBridge {
     }
 
     command(client, record) {
+        if (record.op === 'shortcut-input') {
+            if (Main.sessionMode.isLocked || typeof record.name !== 'string' ||
+                !['prepared', 'ready', 'closed'].includes(record.state))
+                throw new Error('Invalid input handoff');
+            const handoff = Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput;
+            if (record.state === 'prepared') handoff?.prepared(record.name);
+            else if (record.state === 'ready') handoff?.complete(record.name);
+            else handoff?.closed(record.name);
+            return;
+        }
         if (record.op === 'command') {
             if (typeof record.id !== 'string' || !/^[\w-]{1,64}$/.test(record.id)) throw new Error('invalid request ID');
             this.send(client, {event: 'reply', id: record.id, result: this.control(record)});
@@ -215,11 +226,13 @@ class CompositorBridge {
         if (record.op !== 'bind' || typeof record.id !== 'string' || !/^[\w-]{1,64}$/.test(record.id) ||
             typeof record.accelerator !== 'string' || record.accelerator.length > 128 ||
             !Number.isInteger(record.hold) || ![0, Clutter.ModifierType.MOD1_MASK, Clutter.ModifierType.SUPER_MASK,
-                Clutter.ModifierType.CONTROL_MASK].includes(record.hold) || client.bindings.size >= 32 || client.bindings.has(record.id))
+                Clutter.ModifierType.CONTROL_MASK].includes(record.hold) ||
+            (record.modal !== undefined && typeof record.modal !== 'boolean') ||
+            client.bindings.size >= 32 || client.bindings.has(record.id))
             throw new Error('invalid shortcut registration');
         const action = global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
         if (action === Meta.KeyBindingAction.NONE) throw new Error(`shortcut already claimed: ${record.accelerator}`);
-        const binding = {client, id: record.id, hold: record.hold, action};
+        const binding = {client, id: record.id, hold: record.hold, modal: record.modal !== false, action};
         client.bindings.set(record.id, binding);
         this.actions.set(action, binding);
         Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NORMAL);
@@ -232,30 +245,82 @@ class CompositorBridge {
         if (this.active && this.active.client !== binding.client) this.end('cancelled');
         const first = !this.active;
         if (first && binding.hold) {
-            this.active = binding;
-            // Input only: the client supplies its own layer-shell surface.
-            // Grabbing the stage catches release even before that surface maps.
-            this.grab = Main.pushModal(global.stage, {actionMode: Shell.ActionMode.POPUP});
-            if (!(this.grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
-                this.end('cancelled');
-                return;
+            this.active = {...binding, focusWindow: global.display.focus_window};
+            if (binding.modal) {
+                // Input-only sessions need the stage grab so they receive
+                // navigation and release before their surface maps.
+                this.grab = Main.pushModal(global.stage, {actionMode: Shell.ActionMode.POPUP});
+                if (!(this.grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
+                    this.end('cancelled');
+                    return;
+                }
             }
             this.timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10000, () => {
                 this.timeout = 0;
                 this.end('cancelled');
                 return GLib.SOURCE_REMOVE;
             });
+            if (!binding.modal) this.startPassiveModifierPoll();
         }
         this.send(binding.client, {event: 'activated', id: binding.id, first,
             modifiers: global.get_pointer()[2], time: global.get_current_time()});
         // A release may precede the client receiving activation. Send both
         // records in order instead of waiting for the client to map a surface.
-        if (this.active && !(global.get_pointer()[2] & this.active.hold)) this.end('released');
+        if (this.active && !this.modifiersHeld(global.get_pointer()[2], this.active.hold)) this.checkModifiers();
+    }
+
+    modifiersHeld(state, hold) {
+        // Mutter reports the physical Super key as MOD4 in pointer/event
+        // state, while grab_accelerator uses Clutter's SUPER_MASK. Accept both
+        // representations so a held Super chord does not finish immediately.
+        if (hold === Clutter.ModifierType.SUPER_MASK)
+            return Boolean(state & (Clutter.ModifierType.SUPER_MASK | Clutter.ModifierType.MOD4_MASK));
+        return Boolean(state & hold);
+    }
+
+    startPassiveModifierPoll() {
+        if (this.modifierPoll) return;
+        this.modifierPoll = GLib.timeout_add(GLib.PRIORITY_HIGH_IDLE, 16, () => {
+            if (!this.active || this.active.modal) {
+                this.modifierPoll = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            if (!this.modifiersHeld(global.get_pointer()[2], this.active.hold)) {
+                this.modifierPoll = 0;
+                this.end('released');
+                return GLib.SOURCE_REMOVE;
+            }
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    checkModifiers() {
+        if (this.modifierCheck) return;
+        this.modifierCheck = GLib.idle_add(GLib.PRIORITY_HIGH_IDLE, () => {
+            this.modifierCheck = 0;
+            if (this.active && !this.modifiersHeld(global.get_pointer()[2], this.active.hold)) this.end('released');
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     event(event) {
         if (!this.active) return Clutter.EVENT_PROPAGATE;
         const type = event.type();
+        if (!this.active.modal) {
+            // A passive hold (for example Super+Space layout cycling) only
+            // observes modifier release. It must never take focus or swallow
+            // the application's pointer and keyboard input.
+            if (type === Clutter.EventType.KEY_RELEASE) {
+                this.checkModifiers();
+                // Mutter treats a propagated Super release as the overlay key
+                // even after a passive chord. This release belongs to the
+                // shortcut; consuming only it keeps the focused app intact.
+                if (event.get_key_symbol() === Clutter.KEY_Super_L ||
+                    event.get_key_symbol() === Clutter.KEY_Super_R)
+                    return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        }
         if (type === Clutter.EventType.BUTTON_PRESS) {
             const [x, y] = event.get_coords();
             this.send(this.active.client, {event: 'pointer', x, y, button: event.get_button()});
@@ -267,14 +332,12 @@ class CompositorBridge {
             // Event dispatch can precede Mutter's modifier-state update.
             // Check after dispatch, including when either left/right modifier
             // remains down. Never require a client surface to receive release.
-            if (!this.modifierCheck) this.modifierCheck = GLib.idle_add(GLib.PRIORITY_HIGH_IDLE, () => {
-                this.modifierCheck = 0;
-                if (this.active && !(global.get_pointer()[2] & this.active.hold)) this.end('released');
-                return GLib.SOURCE_REMOVE;
-            });
+            this.checkModifiers();
             return Clutter.EVENT_PROPAGATE;
         }
-        if (!(global.get_pointer()[2] & this.active.hold)) {
+        // Queued presses retain their own modifier state. The current device
+        // state may already reflect a later release in the same event batch.
+        if (!this.modifiersHeld(event.get_state(), this.active.hold)) {
             this.end('released');
             return Clutter.EVENT_PROPAGATE;
         }
@@ -290,6 +353,8 @@ class CompositorBridge {
     end(reason) {
         if (this.modifierCheck) GLib.source_remove(this.modifierCheck);
         this.modifierCheck = 0;
+        if (this.modifierPoll) GLib.source_remove(this.modifierPoll);
+        this.modifierPoll = 0;
         if (this.timeout) GLib.source_remove(this.timeout);
         this.timeout = 0;
         if (!this.active) return;
@@ -299,6 +364,9 @@ class CompositorBridge {
             const grab = this.grab;
             this.grab = null;
             Main.popModal(grab);
+            if (!Main.sessionMode.isLocked && active.focusWindow?.get_compositor_private()
+                && !active.focusWindow.minimized)
+                active.focusWindow.focus(global.get_current_time());
         }
         this.send(active.client, {event: reason});
     }

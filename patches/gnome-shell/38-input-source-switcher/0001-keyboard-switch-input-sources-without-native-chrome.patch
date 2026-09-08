@@ -1,24 +1,43 @@
 From 6547d0a7b11c4824386ec236372fb5e2be98be8f Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 24 Aug 2026 14:07:00 +0100
-Subject: [PATCH] keyboard: switch input sources without native chrome
+Subject: [PATCH] keyboard: let external chrome own the input-source switcher
 
-Gnoblin has no visible Shell chrome. Switch the selected input source directly
-in Gnoblin mode and keep the upstream popup flow in other session modes.
+Gnoblin has no visible Shell chrome. Its default feature setting disables the
+native input-source popup, leaving external chrome free to provide its own
+selector. Switching still uses GNOME Shell's InputSourceManager. Re-enabling
+the feature restores the upstream popup without affecting stock sessions.
 ---
- js/ui/status/keyboard.js | 7 +++++++
- 1 file changed, 7 insertions(+)
+ js/ui/status/keyboard.js | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
 
 diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
-index 3ddc675..33087d2 100644
+index 3ddc675..0000000 100644
 --- a/js/ui/status/keyboard.js
 +++ b/js/ui/status/keyboard.js
-@@ -434,1 +434,8 @@ export class InputSourceManager extends Signals.EventEmitter {
-+        // Gnoblin owns no visible Shell chrome. Switch immediately instead of
-+        // opening the native input-source popup.
-+        if (Main.sessionMode.currentMode === 'gnoblin') {
+@@ -18,0 +19,17 @@ import * as SwitcherPopup from '../switcherPopup.js';
++// This schema is installed by Gnoblin's settings patch. Keep lookup lazy so
++// stock GNOME modes continue to have no dependency on it.
++let gnoblinSettings = null;
++
++function externalInputSourceSwitcher() {
++    if (Main.sessionMode.currentMode !== 'gnoblin')
++        return false;
++
++    try {
++        gnoblinSettings ??= new Gio.Settings({schema_id: 'org.gnoblin.shell'});
++        return gnoblinSettings.get_strv('disabled-features').includes('input-source-switcher');
++    } catch (error) {
++        console.warn(`keyboard: cannot read Gnoblin input-source setting: ${error.message}`);
++        return false;
++    }
++}
++
+@@ -434,0 +451,7 @@ export class InputSourceManager extends Signals.EventEmitter {
++        // External Gnoblin chrome owns the presentation. Keep the source
++        // activation in this manager, which preserves layouts and IBus state.
++        if (externalInputSourceSwitcher()) {
 +            this._modifiersSwitcher();
 +            return;
 +        }
 +
-         // HACK: Fall back on simple input source switching since we
