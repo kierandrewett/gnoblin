@@ -499,12 +499,35 @@ class CompositorBridge {
         }
     }
 
+    dismissSearchChrome() {
+        const search = this.uiSessions.owners.get('search')?.state;
+        if (!search?.revealCompanions) return;
+        this.layerCompanions.dismiss(search.surface, () => {
+            this.uiSessions.command(null, {action: 'command', name: 'search', command: {action: 'close'}});
+        });
+    }
+
     track(window) {
         if (!window) return;
         const id = String(window.get_stable_sequence());
         if (this.windows.has(id)) return;
         const signals = ['notify::title', 'notify::minimized', 'notify::skip-taskbar'].map(signal =>
             window.connect(signal, () => this.publishWindows()));
+        signals.push(window.connect('raised', () => {
+            if (!window.is_fullscreen() || this.uiSessions.owners.get('search')?.state.visible) return;
+            const [x, y, modifiers] = global.get_pointer();
+            const buttons = Clutter.ModifierType.BUTTON1_MASK | Clutter.ModifierType.BUTTON2_MASK |
+                Clutter.ModifierType.BUTTON3_MASK;
+            if (!(modifiers & buttons)) return;
+            let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+            while (actor && !actor.meta_window) actor = actor.get_parent();
+            if (actor?.meta_window === window) this.dismissSearchChrome();
+        }));
+        signals.push(window.connect('notify::fullscreen', () => {
+            if (window.is_fullscreen() && this.eligible(window))
+                this.dismissSearchChrome();
+            this.publishWindows();
+        }));
         signals.push(window.connect('unmanaged', () => {
             this.windows.delete(id);
             for (const signal of signals) window.disconnect(signal);

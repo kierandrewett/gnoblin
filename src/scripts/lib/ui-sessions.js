@@ -27,6 +27,8 @@ export class UiSessions {
             this.broadcast(record.name, record.state);
             this.reveal();
         } else if (record.action === 'command') {
+            if (record.name === 'search' && ['open', 'toggle'].includes(record.command?.action))
+                this.scene.cancelDismiss?.();
             if (owner) this.send(owner.client, {event: 'ui-command', name: record.name, command: record.command});
         } else throw new Error('Invalid UI session action');
     }
@@ -37,7 +39,7 @@ export class UiSessions {
 
     reveal() {
         const requests = [...this.owners.values()].map(owner => owner.state)
-            .filter(state => state.visible && typeof state.surface === 'string' && Array.isArray(state.companions))
+            .filter(state => (state.visible || state.revealCompanions === true) && typeof state.surface === 'string' && Array.isArray(state.companions))
             .map(state => ({surface: state.surface,
                 companions: state.companions.filter(name => typeof name === 'string').slice(0, 16),
                 ...(state.companionsAbove === true ? {companionsAbove: true} : {})}));

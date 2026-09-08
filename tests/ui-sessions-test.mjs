@@ -22,6 +22,8 @@ const late = {};
 bus.command(late, {action: 'watch'});
 assert.equal(events.at(-1).client, late);
 assert.equal(events.at(-1).state.visible, true);
+state(search, 'search', {visible: false, revealCompanions: true, surface: 'chrome', companions: ['bar', 'dock'], companionsAbove: true});
+assert.deepEqual(scenes.at(-1), [{surface: 'chrome', companions: ['bar', 'dock'], companionsAbove: true}]);
 bus.close(search);
 assert.deepEqual(scenes.at(-1), []);
 const count = events.length;

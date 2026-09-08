@@ -1,4 +1,5 @@
 import Meta from 'gi://Meta';
+import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // Raise existing panel buffers with an independent overlay. This does not need
@@ -6,6 +7,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 export class LayerCompanions {
     constructor() {
         this.requests = [];
+        this.exiting = new Map();
+        this.exitRun = null;
         this.saved = new Map();
         this.signals = new Map();
         this.restacked = global.display.connect('restacked', () => {
@@ -32,7 +35,47 @@ export class LayerCompanions {
         this.signals.set(actor, [visible, destroy]);
     }
 
-    update(requests) { this.requests = requests; this.apply(); }
+    update(requests) { this.cancelDismiss(); this.requests = requests; this.apply(); }
+
+    dismiss(surface, done) {
+        if (this.exitRun) return;
+        const request = this.requests.find(request => request.surface === surface);
+        if (!request) { done(); return; }
+        const motions = [];
+        for (const actor of global.get_window_actors()) {
+            const window = actor.meta_window;
+            if (!actor.visible || !window || !request.companions.includes(Meta.gnoblin_layer_namespace(window))) continue;
+            const monitor = Main.layoutManager.monitors[window.get_monitor()];
+            if (!monitor) continue;
+            const frame = window.get_frame_rect();
+            // Full-height outlines are not edge panels.
+            if (frame.height > monitor.height / 2) continue;
+            const offset = frame.y < monitor.y + monitor.height / 2
+                ? monitor.y - frame.y - frame.height : monitor.y + monitor.height - frame.y;
+            motions.push({actor, offset});
+        }
+        if (!motions.length) { done(); return; }
+        const run = {remaining: motions.length};
+        this.exitRun = run;
+        for (const {actor, offset} of motions) {
+            this.exiting.set(actor, actor.translation_y);
+            actor.ease({translation_y: actor.translation_y + offset, duration: 180,
+                mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                onStopped: () => {
+                    if (this.exitRun === run && --run.remaining === 0) done();
+                }});
+        }
+    }
+
+    cancelDismiss() {
+        this.exitRun = null;
+        for (const [actor, translation] of this.exiting) {
+            if (!this.signals.has(actor)) continue;
+            actor.remove_transition('translation-y');
+            actor.translation_y = translation;
+        }
+        this.exiting.clear();
+    }
 
     restore() {
         for (const [parent, children] of this.saved) {
@@ -74,6 +117,7 @@ export class LayerCompanions {
     }
 
     destroy() {
+        this.cancelDismiss();
         this.restore();
         global.display.disconnect(this.restacked);
         global.window_manager.disconnect(this.mapped);
