@@ -4,6 +4,8 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import Cogl from 'gi://Cogl';
+import {ClipboardPaste} from './lib/clipboard-paste.js';
+
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 Gio._promisify(Shell.Screenshot, 'composite_to_stream');
@@ -14,6 +16,7 @@ Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 class CompositorBridge {
     constructor() {
         this.clients = new Set();
+        this.clipboardPaste = new ClipboardPaste(global.stage.context.get_backend().get_default_seat());
         this.actions = new Map();
         this.active = null;
         this.grab = null;
@@ -152,11 +155,19 @@ class CompositorBridge {
             if (modifiers & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK
                 | Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK))
                 throw new Error('Release modifier keys before inserting an emoji.');
-            if (!Main.inputMethod.currentFocus) {
-                if (window.get_client_type() === Meta.WindowClientType.X11)
-                    throw new Error('This app needs native Wayland input. Restart it with Wayland enabled.');
-                throw new Error('This app does not expose a text input. Focus its input field and try again.');
+            if (window.get_client_type() === Meta.WindowClientType.X11) {
+                this.clipboardPaste.paste(record.text, () => {
+                    if (client.closed || Main.sessionMode.isLocked || global.display.focus_window !== window)
+                        throw new Error('The original input window is no longer focused.');
+                    if (global.get_pointer()[2] & (Clutter.ModifierType.SHIFT_MASK | Clutter.ModifierType.CONTROL_MASK
+                        | Clutter.ModifierType.MOD1_MASK | Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK))
+                        throw new Error('Release modifier keys before inserting an emoji.');
+                }).then(() => this.send(client, {event: 'typed', window: record.window}),
+                    error => this.send(client, {event: 'error', message: error.message}));
+                return;
             }
+            if (!Main.inputMethod.currentFocus)
+                throw new Error('This app does not expose a text input. Focus its input field and try again.');
             // Commit the complete Unicode sequence through the native input
             // method, avoiding layout-dependent synthetic keycodes.
             Main.inputMethod.commit(record.text);
@@ -511,6 +522,7 @@ class CompositorBridge {
     }
 
     destroy() {
+        this.clipboardPaste.destroy();
         this.end('cancelled');
         global.__gnoblinPublishPrivacy = null;
         if (this.remoteSignal) this.remoteController.disconnect(this.remoteSignal);
