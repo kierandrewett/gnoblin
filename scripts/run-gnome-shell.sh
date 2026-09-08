@@ -9,6 +9,7 @@
 #      GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS (default 1 in gnoblin, 0 otherwise),
 #      GNOBLIN_TEST_CLIENT (optional Wayland client invoked after startup),
 #      GNOBLIN_TEST_DBUS_CLIENT (optional D-Bus client invoked after startup),
+#      GNOBLIN_COMPOSITOR_SOCKET (defaults to a private socket in test state),
 #      GNOBLIN_TEST_EXTENSION_ROOT (optional directory of system extension fixtures),
 #      GNOBLIN_TEST_GSETTINGS_BACKEND (default memory),
 #      GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 to seed that feature as disabled,
@@ -55,6 +56,8 @@ fi
 
 # --- isolated throwaway state ----------------------------------------------
 DK="$(mktemp -d /tmp/gnoblin-gs.XXXXXX)"
+# Test scripts must not unlink or replace the live desktop bridge socket.
+export GNOBLIN_COMPOSITOR_SOCKET="${GNOBLIN_COMPOSITOR_SOCKET:-$DK/compositor-v1.sock}"
 mkdir -p "$DK"/{data,config,cache,home}
 export HOME="$DK/home"
 export XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
