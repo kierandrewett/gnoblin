@@ -118,6 +118,11 @@ class CompositorBridge {
     }
 
     command(client, record) {
+        if (record.op === 'command') {
+            if (typeof record.id !== 'string' || !/^[\w-]{1,64}$/.test(record.id)) throw new Error('invalid request ID');
+            this.send(client, {event: 'reply', id: record.id, result: this.control(record)});
+            return;
+        }
         if (record.op === 'input-anchor') {
             if (Main.sessionMode.isLocked) throw new Error('Session is locked.');
             const window = global.display.focus_window;
@@ -413,18 +418,84 @@ class CompositorBridge {
         this.publishWindows();
     }
 
-    publishWindows(client = null) {
-        const clients = client ? [client] : [...this.clients].filter(peer => peer.trackWindows);
-        if (!clients.length) return;
+    windowRecords() {
         const tracker = Shell.WindowTracker.get_default();
-        const windows = [...this.windows].filter(([_id, entry]) => this.eligible(entry.window)).map(([id, {window}]) => {
+        return [...this.windows].filter(([_id, entry]) => this.eligible(entry.window)).map(([id, {window}]) => {
             const monitor = Main.layoutManager.monitors[window.get_monitor()];
-            return {id, title: window.title || '', appId: tracker.get_window_app(window)?.get_id() || window.get_wm_class() || '',
+            const frame = window.get_frame_rect();
+            const app = tracker.get_window_app(window);
+            return {id, title: window.title || '', appId: app && !app.is_window_backed() ? app.get_id() : window.get_wm_class() || '',
                 focused: global.display.focus_window === window, minimized: window.minimized,
+                workspace: window.get_workspace()?.index() + 1 || null, monitorIndex: window.get_monitor(),
+                maximized: window.get_maximize_flags() === Meta.MaximizeFlags.BOTH, fullscreen: window.is_fullscreen(),
+                geometry: {x: frame.x, y: frame.y, width: frame.width, height: frame.height},
                 lastUserTime: window.get_user_time(), parent: window.get_transient_for()
                     ? String(window.get_transient_for().get_stable_sequence()) : null,
                 monitor: monitor ? {x: monitor.x, y: monitor.y} : null};
         });
+    }
+
+    control(record) {
+        if (record.command === 'windows') return {windows: this.windowRecords()};
+        const manager = global.workspace_manager;
+        if (record.command === 'workspaces') return {workspaces: Array.from({length: manager.n_workspaces}, (_, index) => ({
+            id: index + 1, active: index === manager.get_active_workspace_index(),
+            windows: manager.get_workspace_by_index(index).list_windows().filter(window => this.eligible(window)).length,
+        }))};
+        if (record.command === 'monitors') return {monitors: Main.layoutManager.monitors.map(monitor => ({
+            id: monitor.index, x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height,
+            primary: monitor.index === Main.layoutManager.primaryIndex, scale: global.display.get_monitor_scale(monitor.index),
+        }))};
+        if (Main.sessionMode.isLocked) throw new Error('window management is unavailable while the session is locked');
+        const workspace = () => {
+            if (!Number.isInteger(record.workspace) || record.workspace < 1 || record.workspace > manager.n_workspaces)
+                throw new Error('workspace not found; list workspaces first');
+            return manager.get_workspace_by_index(record.workspace - 1);
+        };
+        if (record.command === 'workspace-switch') {
+            workspace().activate(global.get_current_time());
+            return {ok: true, pending: true, workspace: record.workspace};
+        }
+        if (record.command !== 'window') throw new Error('unknown compositor command');
+        const actions = ['focus', 'close', 'minimize', 'restore', 'maximize', 'unmaximize', 'fullscreen', 'unfullscreen', 'move', 'resize', 'workspace', 'monitor'];
+        if (!actions.includes(record.action)) throw new Error('unknown window action');
+        const window = record.window === 'active' ? global.display.focus_window : this.windows.get(record.window)?.window;
+        if (!window || !this.eligible(window)) throw new Error('window no longer available; list windows first');
+        const requireCapability = (allowed, message) => { if (!allowed) throw new Error(message); };
+        switch (record.action) {
+        case 'focus': Main.activateWindow(window, global.get_current_time()); break;
+        case 'close': requireCapability(window.can_close(), 'window cannot be closed'); window.delete(global.get_current_time()); break;
+        case 'minimize': requireCapability(window.can_minimize(), 'window cannot be minimized'); window.minimize(); break;
+        case 'restore': window.unminimize(); break;
+        case 'maximize': requireCapability(window.can_maximize(), 'window cannot be maximized'); window.maximize(Meta.MaximizeFlags.BOTH); break;
+        case 'unmaximize': window.unmaximize(Meta.MaximizeFlags.BOTH); break;
+        case 'fullscreen': window.make_fullscreen(); break;
+        case 'unfullscreen': window.unmake_fullscreen(); break;
+        case 'move':
+            requireCapability(window.allows_move() && !window.is_fullscreen() && !window.get_maximize_flags(), 'window cannot move; unmaximize or leave fullscreen first');
+            if (![record.x, record.y].every(value => Number.isInteger(value) && Math.abs(value) <= 100000)) throw new Error('invalid window position');
+            window.move_frame(true, record.x, record.y);
+            break;
+        case 'resize': {
+            requireCapability(window.allows_resize() && !window.is_fullscreen() && !window.get_maximize_flags(), 'window cannot resize; unmaximize or leave fullscreen first');
+            if (![record.width, record.height].every(value => Number.isInteger(value) && value >= 1 && value <= 32768)) throw new Error('invalid window size');
+            const frame = window.get_frame_rect();
+            window.move_resize_frame(true, frame.x, frame.y, record.width, record.height);
+            break;
+        }
+        case 'workspace': window.change_workspace(workspace()); break;
+        case 'monitor':
+            if (!Number.isInteger(record.monitor) || !Main.layoutManager.monitors.some(monitor => monitor.index === record.monitor)) throw new Error('monitor not found');
+            window.move_to_monitor(record.monitor);
+            break;
+        }
+        return {ok: true, pending: true, window: String(window.get_stable_sequence()), action: record.action};
+    }
+
+    publishWindows(client = null) {
+        const clients = client ? [client] : [...this.clients].filter(peer => peer.trackWindows);
+        if (!clients.length) return;
+        const windows = this.windowRecords();
         for (const peer of clients) this.send(peer, {event: 'windows', windows});
     }
 
