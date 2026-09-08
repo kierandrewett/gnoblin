@@ -4,6 +4,9 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import Cogl from 'gi://Cogl';
+import {WindowSwitcherFallback} from './lib/window-switcher-fallback.js';
+import {UiSessions} from './lib/ui-sessions.js';
+import {LayerCompanions} from './lib/layer-companions.js';
 import {ClipboardPaste} from './lib/clipboard-paste.js';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -16,6 +19,8 @@ Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 class CompositorBridge {
     constructor() {
         this.clients = new Set();
+        this.layerCompanions = new LayerCompanions();
+        this.uiSessions = new UiSessions((client, record) => this.send(client, record), this.layerCompanions);
         this.clipboardPaste = new ClipboardPaste(global.stage.context.get_backend().get_default_seat());
         this.actions = new Map();
         this.active = null;
@@ -59,19 +64,20 @@ class CompositorBridge {
                 y: rect.get_y() - buffer.y, width: rect.get_width(), height: rect.get_height()};
         });
         for (const actor of global.get_window_actors()) this.track(actor.meta_window);
+        this.switcherFallback = new WindowSwitcherFallback(this);
     }
 
     accept(connection) {
-        if (this.clients.size >= 8) { connection.close(null); return; }
+        if (this.clients.size >= 32) { connection.close(null); return; }
         const client = {connection, cancel: new Gio.Cancellable(), buffer: new Uint8Array(), queue: [], queuedBytes: 0, writing: false,
             bindings: new Map(), decoder: new TextDecoder('utf-8', {fatal: true}), closed: false};
         this.clients.add(client);
-        this.send(client, {event: 'hello', version: 1});
+        this.send(client, {event: 'hello', version: 1, features: ['ui-sessions', 'switcher-fallback']});
         this.read(client);
     }
 
     send(client, record) {
-        if (client.closed) return;
+        if (client.fallback || client.closed) return;
         if (client.queue.length > 64) { this.close(client); return; }
         const bytes = new TextEncoder().encode(JSON.stringify(record) + '\n');
         if (client.queuedBytes + bytes.length > 4 * 1024 * 1024) { this.close(client); return; }
@@ -122,6 +128,7 @@ class CompositorBridge {
     }
 
     command(client, record) {
+        if (record.op === 'ui-session') { this.uiSessions.command(client, record); return; }
         if (record.op === 'shortcut-input') {
             if (Main.sessionMode.isLocked || typeof record.name !== 'string' ||
                 !['prepared', 'ready', 'closed'].includes(record.state))
@@ -212,6 +219,7 @@ class CompositorBridge {
             return;
         }
         if (record.op === 'activate') {
+            if (!this.switcherFallback.accept(client, record.session)) return;
             const entry = this.windows.get(record.window);
             if (!entry || !this.eligible(entry.window)) throw new Error('window no longer available');
             if (this.active?.client === client) this.end('cancelled');
@@ -219,6 +227,7 @@ class CompositorBridge {
             return;
         }
         if (record.op === 'end') {
+            if (this.active?.fallback && record.session !== this.active.session) return;
             if (this.active?.client === client) this.end('cancelled');
             return;
         }
@@ -230,9 +239,10 @@ class CompositorBridge {
             (record.modal !== undefined && typeof record.modal !== 'boolean') ||
             client.bindings.size >= 32 || client.bindings.has(record.id))
             throw new Error('invalid shortcut registration');
-        const action = global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
+        const reserved = this.switcherFallback.claim(client, record);
+        const action = reserved?.action || global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
         if (action === Meta.KeyBindingAction.NONE) throw new Error(`shortcut already claimed: ${record.accelerator}`);
-        const binding = {client, id: record.id, hold: record.hold, modal: record.modal !== false, action};
+        const binding = reserved || {client, id: record.id, hold: record.hold, modal: record.modal !== false, action};
         client.bindings.set(record.id, binding);
         this.actions.set(action, binding);
         Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NORMAL);
@@ -262,7 +272,9 @@ class CompositorBridge {
             });
             if (!binding.modal) this.startPassiveModifierPoll();
         }
-        this.send(binding.client, {event: 'activated', id: binding.id, first,
+        const session = this.switcherFallback.step(binding, first);
+        if (this.active) this.active.session = session;
+        this.send(binding.client, {event: 'activated', id: binding.id, first, session,
             modifiers: global.get_pointer()[2], time: global.get_current_time()});
         // A release may precede the client receiving activation. Send both
         // records in order instead of waiting for the client to map a surface.
@@ -322,6 +334,7 @@ class CompositorBridge {
             return Clutter.EVENT_PROPAGATE;
         }
         if (type === Clutter.EventType.BUTTON_PRESS) {
+            if (this.active.client.fallback) { this.end('cancelled'); return Clutter.EVENT_STOP; }
             const [x, y] = event.get_coords();
             this.send(this.active.client, {event: 'pointer', x, y, button: event.get_button()});
             return Clutter.EVENT_STOP;
@@ -342,6 +355,7 @@ class CompositorBridge {
             return Clutter.EVENT_PROPAGATE;
         }
         if (type === Clutter.EventType.KEY_PRESS) {
+            if (this.active.fallback && this.switcherFallback.key(event.get_key_symbol())) return Clutter.EVENT_STOP;
             const action = global.display.get_keybinding_action(event.get_key_code(), event.get_state());
             if (this.actions.has(action)) this.activate(action);
             else
@@ -368,12 +382,15 @@ class CompositorBridge {
                 && !active.focusWindow.minimized)
                 active.focusWindow.focus(global.get_current_time());
         }
-        this.send(active.client, {event: reason});
+        this.send(active.client, {event: reason, session: active.session || 0});
+        this.switcherFallback.end(active, reason);
     }
 
     clear(client) {
+        this.switcherFallback.close(client);
         if (this.active?.client === client) this.end('cancelled');
         for (const binding of client.bindings.values()) {
+            if (this.switcherFallback.release(binding)) continue;
             global.display.ungrab_accelerator(binding.action);
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(binding.action), Shell.ActionMode.NONE);
             this.actions.delete(binding.action);
@@ -581,6 +598,7 @@ class CompositorBridge {
     close(client) {
         if (client.closed) return;
         client.closed = true;
+        this.uiSessions.close(client);
         if (client.preview) GLib.source_remove(client.preview);
         client.preview = 0;
         this.clear(client);
@@ -597,6 +615,8 @@ class CompositorBridge {
         this.cameraMonitor.disconnect(this.cameraSignal);
         if (this.ownsCameraMonitor) this.cameraMonitor.run_dispose();
         for (const client of this.clients) this.close(client);
+        this.layerCompanions.destroy();
+        this.switcherFallback.destroy();
         global.display.disconnect(this.accelerator);
         global.stage.disconnect(this.capture);
         Main.sessionMode.disconnect(this.session);

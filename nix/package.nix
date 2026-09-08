@@ -113,6 +113,9 @@ let
             substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
             wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
             install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
+            install -Dm644 src/scripts/lib/ui-sessions.js "$out/share/gnoblin/scripts/lib/ui-sessions.js"
+            install -Dm644 src/scripts/lib/layer-companions.js "$out/share/gnoblin/scripts/lib/layer-companions.js"
+            install -Dm644 src/scripts/lib/window-switcher-fallback.js "$out/share/gnoblin/scripts/lib/window-switcher-fallback.js"
             install -Dm644 src/scripts/lib/clipboard-paste.js "$out/share/gnoblin/scripts/lib/clipboard-paste.js"
             install -Dm644 src/scripts/lib/clipboard-paste.py "$out/share/gnoblin/scripts/lib/clipboard-paste.py"
             substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.js" \
