@@ -208,6 +208,8 @@ BuildArch: noarch
 Summary: Gnoblin session mode, login entry, and control tools for patched GNOME Shell
 Requires: %{name} = %{version}-%{release}
 Requires: gnome-session
+Requires: python3
+Requires: systemd
 
 %description -n gnoblin-session
 The `gnoblin` GNOME Shell session mode (strips the stock top bar, overview

@@ -6,6 +6,9 @@
     unzip,
     hyprcursor,
     libepoxy,
+    python3,
+    systemd,
+    makeWrapper,
 
     mutter,
     gnomeShell,
@@ -82,6 +85,7 @@ let
         version = "49.6";
         src = gnoblinSrc;
         dontBuild = true;
+        nativeBuildInputs = [ makeWrapper ];
 
         installPhase = ''
             install -Dm644 src/data/session/modes/gnoblin.json \
@@ -97,6 +101,8 @@ let
             install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
             install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
             install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
+            substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
+            wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
             install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
 
             install -Dm644 src/data/session/gnoblin.desktop \
@@ -120,13 +126,18 @@ symlinkJoin {
         gnoblinShell
         session
     ];
-    nativeBuildInputs = [ glib ];
+    nativeBuildInputs = [ glib makeWrapper ];
 
     postBuild = ''
         for tool in gnoblin-session gnoblin-shell-service gnoblinctl; do
             rm "$out/bin/$tool"
             install -Dm755 "${gnoblinSrc}/src/tools/$tool" "$out/bin/$tool"
         done
+        substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
+        # The session output already contains a wrapped CLI; remove only its
+        # copied wrapper target before wrapping the updated source here.
+        rm -f "$out/bin/.gnoblinctl-wrapped"
+        wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
         rm "$out/share/wayland-sessions/gnoblin.desktop"
         install -Dm644 "${gnoblinSrc}/src/data/session/gnoblin.desktop" \
             "$out/share/wayland-sessions/gnoblin.desktop"
