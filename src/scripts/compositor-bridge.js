@@ -147,8 +147,11 @@ class CompositorBridge {
             if (modifiers & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK
                 | Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK))
                 throw new Error('Release modifier keys before inserting an emoji.');
-            if (!Main.inputMethod.currentFocus)
+            if (!Main.inputMethod.currentFocus) {
+                if (window.get_client_type() === Meta.WindowClientType.X11)
+                    throw new Error('This app needs native Wayland input. Restart it with Wayland enabled.');
                 throw new Error('This app does not expose a text input. Focus its input field and try again.');
+            }
             // Commit the complete Unicode sequence through the native input
             // method, avoiding layout-dependent synthetic keycodes.
             Main.inputMethod.commit(record.text);
