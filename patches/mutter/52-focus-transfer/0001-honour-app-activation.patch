@@ -1,0 +1,113 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] focus: honour application activation in Gnoblin sessions
+
+diff --git a/src/core/util-private.h b/src/core/util-private.h
+--- a/src/core/util-private.h
++++ b/src/core/util-private.h
+@@ -49,3 +49,6 @@
+ 
+ #define META_CONTAINER_OF(ptr, type, member) \
+   (type *) ((uint8_t *) (ptr) - G_STRUCT_OFFSET (type, member))
++
++/* Gnoblin honours application focus requests instead of focus prevention. */
++gboolean meta_is_gnoblin_session (void);
+diff --git a/src/core/util.c b/src/core/util.c
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -672,3 +672,9 @@
+ {
+   return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
+ }
++
++gboolean
++meta_is_gnoblin_session (void)
++{
++  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
++}
+diff --git a/src/core/window.c b/src/core/window.c
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -2026,6 +2026,9 @@
+       return TRUE;
+     }
+ 
++  if (meta_is_gnoblin_session ())
++    return FALSE;
++
+   if (!(window->net_wm_user_time_set) && !(window->initial_timestamp_set))
+     {
+       meta_topic (META_DEBUG_STARTUP,
+@@ -2110,6 +2113,7 @@
+    * focus unless they are ancestors to the transient.
+    */
+   if (*takes_focus &&
++      !meta_is_gnoblin_session () &&
+       meta_prefs_get_focus_new_windows () == G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT &&
+       !meta_window_is_ancestor_of_transient (window->display->focus_window,
+                                              window))
+@@ -3842,6 +3846,11 @@
+               "by client type %u.",
+               window->desc, timestamp, source_indication);
+ 
++  /* Gnoblin treats activation as a request to raise and focus the app,
++   * including after other input or from another workspace. */
++  if (meta_is_gnoblin_session ())
++    timestamp = meta_display_get_current_time_roundtrip (window->display);
++
+   allow_workspace_switch = (timestamp != 0);
+   if (timestamp != 0 &&
+       XSERVER_TIME_IS_BEFORE (timestamp, window->display->last_user_time))
+@@ -3886,7 +3895,8 @@
+ 
+   unminimize_window_and_all_transient_parents (window);
+ 
+-  if (meta_prefs_get_raise_on_click () ||
++  if (meta_is_gnoblin_session () ||
++      meta_prefs_get_raise_on_click () ||
+       source_indication == META_CLIENT_TYPE_PAGER)
+     meta_window_raise (window);
+ 
+diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
+--- a/src/wayland/meta-wayland-activation.c
++++ b/src/wayland/meta-wayland-activation.c
+@@ -20,6 +20,7 @@
+ #include "config.h"
+ 
+ #include "wayland/meta-wayland-activation.h"
++#include "core/util-private.h"
+ 
+ #include <glib.h>
+ #include <wayland-server.h>
+@@ -349,17 +350,18 @@
+                                                             token_str);
+     }
+ 
+-  if (!sequence)
++  if (!sequence && !meta_is_gnoblin_session ())
+     return TRUE;
+ 
+-  if ((token && token_can_activate (token)) ||
++  if (meta_is_gnoblin_session () ||
++      (token && token_can_activate (token)) ||
+       (!token && startup_sequence_is_recent (display, sequence)))
+     {
+       uint32_t timestamp;
+       int32_t workspace_idx;
+ 
+-      workspace_idx = meta_startup_sequence_get_workspace (sequence);
+-      timestamp = meta_startup_sequence_get_timestamp (sequence);
++      workspace_idx = sequence ? meta_startup_sequence_get_workspace (sequence) : -1;
++      timestamp = sequence ? meta_startup_sequence_get_timestamp (sequence) : 0;
+ 
+       if (workspace_idx >= 0)
+         meta_window_change_workspace_by_index (window, workspace_idx, TRUE);
+@@ -372,7 +374,8 @@
+       meta_window_set_demands_attention (window);
+     }
+ 
+-  meta_startup_sequence_complete (sequence);
++  if (sequence)
++    meta_startup_sequence_complete (sequence);
+ 
+   return TRUE;
+ }
