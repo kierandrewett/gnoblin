@@ -36,6 +36,7 @@
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-seat.h"
+#include "wayland/meta-wayland-input.h"
 #include "wayland/gnoblin-config.h"
 #include "wayland/meta-wayland-shell-surface.h"
 #include "wayland/meta-wayland-surface-private.h"
@@ -103,6 +104,7 @@ struct _MetaWaylandLayerSurface
   gulong   output_destroyed_handler_id;
   guint    destroy_window_idle_id;
   gboolean closed;
+  MetaWaylandEventHandler *menu_keyboard_handler;
 };
 
 typedef struct _DestroyWindowIdleData
@@ -121,6 +123,58 @@ G_DEFINE_TYPE (MetaWaylandLayerSurface,
                META_TYPE_WAYLAND_SHELL_SURFACE)
 
 /* ------------------------------------------------------------------ */
+
+/* Shell menus borrow keyboard input without changing the active application.
+ * Normal exclusive panels (terminals, launchers) retain their focus semantics. */
+static gboolean
+is_shell_menu (MetaWaylandLayerSurface *layer_surface)
+{
+  return g_strcmp0 (layer_surface->namespace, "gnoblin-shell-popup") == 0;
+}
+
+static MetaWaylandSurface *
+menu_get_focus_surface (MetaWaylandEventHandler *handler,
+                        ClutterFocus            *focus,
+                        gpointer                 user_data)
+{
+  MetaWaylandLayerSurface *layer_surface = user_data;
+
+  if (CLUTTER_IS_KEY_FOCUS (focus))
+    return meta_wayland_surface_role_get_surface (
+      META_WAYLAND_SURFACE_ROLE (layer_surface));
+
+  return meta_wayland_event_handler_chain_up_get_focus_surface (handler, focus);
+}
+
+static void
+menu_focus (MetaWaylandEventHandler *handler,
+            ClutterFocus            *focus,
+            MetaWaylandSurface      *surface,
+            gpointer                 user_data)
+{
+  meta_wayland_event_handler_chain_up_focus (handler, focus, surface);
+}
+
+static const MetaWaylandEventInterface menu_keyboard_interface = {
+  .get_focus_surface = menu_get_focus_surface,
+  .focus = menu_focus,
+};
+
+static void
+release_menu_keyboard (MetaWaylandLayerSurface *layer_surface)
+{
+  MetaWaylandSurface *surface;
+
+  if (!layer_surface->menu_keyboard_handler)
+    return;
+
+  surface = meta_wayland_surface_role_get_surface (
+    META_WAYLAND_SURFACE_ROLE (layer_surface));
+  meta_wayland_input_detach_event_handler (
+    meta_wayland_seat_get_input (surface->compositor->seat),
+    layer_surface->menu_keyboard_handler);
+  layer_surface->menu_keyboard_handler = NULL;
+}
 
 static void close_layer_surface (MetaWaylandLayerSurface *layer_surface,
                                  gboolean                 invalidate_work_areas);
@@ -347,8 +401,9 @@ clamp_geometry_coordinate (gint64 value)
 }
 
 static MtkRectangle
-calculate_geometry (MetaWaylandLayerSurface *layer_surface,
-                    MtkRectangle             mon)
+calculate_geometry_for_buffer (MetaWaylandLayerSurface *layer_surface,
+                               MtkRectangle             mon,
+                               gboolean                 committed_buffer)
 {
   MetaWaylandLayerSurfaceState *state = &layer_surface->current;
   gboolean anchor_left = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
@@ -359,8 +414,12 @@ calculate_geometry (MetaWaylandLayerSurface *layer_surface,
   gint64 mr = state->margin_right;
   gint64 mt = state->margin_top;
   gint64 mb = state->margin_bottom;
-  gint64 width = state->desired_width;
-  gint64 height = state->desired_height;
+  MetaWaylandSurface *surface = meta_wayland_surface_role_get_surface (
+    META_WAYLAND_SURFACE_ROLE (layer_surface));
+  gint64 width = committed_buffer ? meta_wayland_surface_get_width (surface)
+                                 : state->desired_width;
+  gint64 height = committed_buffer ? meta_wayland_surface_get_height (surface)
+                                  : state->desired_height;
   gint64 x;
   gint64 y;
 
@@ -373,11 +432,11 @@ calculate_geometry (MetaWaylandLayerSurface *layer_surface,
   /* A surface anchored to one edge cannot extend past the opposite output
    * edge. Keep at least one pixel even when an extreme margin consumes the
    * available span. */
-  if (anchor_top != anchor_bottom)
+  if (!committed_buffer && anchor_top != anchor_bottom)
     height = MIN (height,
                   MAX ((gint64) 1,
                        (gint64) mon.height - (anchor_top ? mt : mb)));
-  if (anchor_left != anchor_right)
+  if (!committed_buffer && anchor_left != anchor_right)
     width = MIN (width,
                  MAX ((gint64) 1,
                       (gint64) mon.width - (anchor_left ? ml : mr)));
@@ -407,6 +466,13 @@ calculate_geometry (MetaWaylandLayerSurface *layer_surface,
     .width = (int) width,
     .height = (int) height,
   };
+}
+
+static MtkRectangle
+calculate_geometry (MetaWaylandLayerSurface *layer_surface,
+                    MtkRectangle             mon)
+{
+  return calculate_geometry_for_buffer (layer_surface, mon, FALSE);
 }
 
 static void
@@ -487,6 +553,7 @@ apply_window_type_and_layer (MetaWaylandLayerSurface *layer_surface,
   g_object_set_data (G_OBJECT (window),
                      META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY,
                      GINT_TO_POINTER (
+                       !is_shell_menu (layer_surface) &&
                        layer_surface->current.keyboard_interactivity !=
                        ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE));
 
@@ -681,6 +748,7 @@ close_layer_surface (MetaWaylandLayerSurface *layer_surface,
   if (layer_surface->closed)
     return;
 
+  release_menu_keyboard (layer_surface);
   layer_surface->closed = TRUE;
 
   window = meta_wayland_surface_get_window (surface);
@@ -962,6 +1030,8 @@ layer_surface_resource_destroy (struct wl_resource *resource)
   if (!layer_surface)
     return;
 
+  release_menu_keyboard (layer_surface);
+
   if (layer_surface->resource == resource)
     layer_surface->resource = NULL;
 
@@ -990,6 +1060,23 @@ focus_exclusive_layer_surface (MetaWaylandLayerSurface *layer_surface,
                                MetaWaylandSurface      *surface,
                                MetaWindow              *window)
 {
+  if (is_shell_menu (layer_surface))
+    {
+      if (layer_surface->current.keyboard_interactivity ==
+          ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE &&
+          meta_wayland_surface_get_buffer (surface))
+        {
+          if (!layer_surface->menu_keyboard_handler)
+            layer_surface->menu_keyboard_handler =
+              meta_wayland_input_attach_event_handler (
+                meta_wayland_seat_get_input (surface->compositor->seat),
+                &menu_keyboard_interface, FALSE, layer_surface);
+        }
+      else
+        release_menu_keyboard (layer_surface);
+      return;
+    }
+
   if (layer_surface->current.keyboard_interactivity !=
       ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
     return;
@@ -1059,6 +1146,7 @@ meta_wayland_layer_surface_apply_state (MetaWaylandSurfaceRole  *surface_role,
   unmapping = pending->newly_attached && !pending->buffer;
   if (unmapping)
     {
+      release_menu_keyboard (layer_surface);
       reset_layer_surface_state (layer_surface);
       update_exclusive_zone_struts (layer_surface, window,
                                     get_monitor_layout (layer_surface));
@@ -1134,11 +1222,20 @@ meta_wayland_layer_surface_post_apply_state (MetaWaylandSurfaceRole  *surface_ro
   if (meta_wayland_surface_get_buffer (surface))
     {
       MtkRectangle mon = get_monitor_layout (layer_surface);
-      MtkRectangle geom = calculate_geometry (layer_surface, mon);
+      /* A size request is not a new buffer. Anchor the pixels committed by
+       * the client, including during configure/ack negotiation, so bottom and
+       * right anchored tooltips cannot jump while the next buffer is pending. */
+      MtkRectangle geom = calculate_geometry_for_buffer (layer_surface, mon, TRUE);
+      MtkRectangle requested = calculate_geometry (layer_surface, mon);
 
       apply_window_type_and_layer (layer_surface, window);
       window->input = TRUE;
-      move_resize_layer_window (window, geom);
+      /* An empty commit requesting a different size can include centring
+       * margins for that future buffer. Keep the old buffer at its current
+       * position until the client supplies the resized content. */
+      if (pending->newly_attached ||
+          (geom.width == requested.width && geom.height == requested.height))
+        move_resize_layer_window (window, geom);
       update_exclusive_zone_struts (layer_surface, window, mon);
       meta_window_update_visibility (window);
       {
@@ -1221,6 +1318,7 @@ meta_wayland_layer_surface_finalize (GObject *object)
   g_clear_pointer (&layer_surface->resource, wl_resource_destroy);
   if (layer_surface->destroy_window_idle_id)
     g_clear_handle_id (&layer_surface->destroy_window_idle_id, g_source_remove);
+  release_menu_keyboard (layer_surface);
   g_queue_clear (&layer_surface->configure_serials);
   g_clear_pointer (&layer_surface->namespace, g_free);
 

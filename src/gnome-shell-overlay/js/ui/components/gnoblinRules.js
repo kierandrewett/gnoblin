@@ -4,6 +4,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import * as Config from './gnoblinConfig.js';
+import {BackdropRedraw} from './gnoblinBackdropRedraw.js';
 
 function shaderSource(source) {
     return `uniform sampler2D gnoblin_texture;
@@ -44,6 +45,7 @@ export class WindowRules {
     constructor() {
         this._config = Config.settings;
         this._actors = new Map();
+        this._backdropRedraw = new BackdropRedraw();
         this._sources = new Map();
         this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
         this._focus = global.display.connect('notify::focus-window', () => this.refresh());
@@ -134,10 +136,14 @@ export class WindowRules {
                 actor.add_effect_with_name('gnoblin-window-blur', entry.blur);
             }
             entry.blur.radius = effects.blur;
+            // Surface opacity dims the client, not the backdrop blur coverage.
+            entry.blur.mask_opacity = surface.opacity / Math.max(1, entry.opacity);
         } else if (entry.blur) {
             actor.remove_effect(entry.blur);
             entry.blur = null;
         }
+        this._backdropRedraw.set(actor, !!entry.blur &&
+            Config.windowProperties(actor.meta_window).layer === 'gnoblin-shell-popup');
         const source = effects.shader ? this._shader(this._shaderPath(effects.shader)) : null;
         const key = source ? JSON.stringify([source, effects['shader-uniforms']]) : null;
         if ((!effects.shader || source) && entry.shaderKey !== key) {
@@ -154,6 +160,7 @@ export class WindowRules {
     }
 
     destroy() {
+        this._backdropRedraw.destroy();
         global.window_manager.disconnect(this._map);
         global.display.disconnect(this._focus);
         for (const entry of this._sources.values()) {

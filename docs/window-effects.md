@@ -19,6 +19,7 @@ opacity = 1.0
 ```
 
 Client backgrounds must have some transparency for background blur to show.
+Rule opacity changes client pixels without weakening the backdrop blur mask.
 Keep rule opacity at 1.0 to preserve the opacity of text and icons. Use the
 client's background colour alpha to control the amount of background visible.
 Fully transparent parts of a layer surface remain transparent, including
@@ -71,3 +72,8 @@ Invalid TOML keeps the previous configuration.
 through `scripts/run-gnome-shell.sh`. It checks rendered pixels, transparency,
 blur composition, atomic edits, invalid and deleted files, uniforms, and removal.
 `scripts/test-window-effects.py` checks background blur against a checkerboard.
+
+Bingux context menus use full redraws while mapped with background blur. This
+prevents the blur from sampling stale pixels around window shadows during
+partial redraws. Partial redraws resume when the last blurred menu closes.
+The policy does not disable window culling or force continuous rendering.

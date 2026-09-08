@@ -1,50 +1,49 @@
-From: kierandrewett <kieran@drewett.dev>
-Subject: [PATCH] shell: mask background blur to client alpha coverage
+From: Gnoblin
+Subject: [PATCH] shell: mask background blur independently of window opacity
 
-diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
---- a/src/shell-blur-effect.h
-+++ b/src/shell-blur-effect.h
-@@ -28,6 +28,7 @@
-  * ShellBlurMode:
-  * @SHELL_BLUR_MODE_ACTOR: blur the actor contents, and its children
-  * @SHELL_BLUR_MODE_BACKGROUND: blur what's beneath the actor
-+ * @SHELL_BLUR_MODE_BACKGROUND_MASKED: blur beneath nontransparent actor pixels
-  *
-  * The mode of blurring of the effect.
-  */
-@@ -35,6 +36,7 @@
- {
-   SHELL_BLUR_MODE_ACTOR,
-   SHELL_BLUR_MODE_BACKGROUND,
-+  SHELL_BLUR_MODE_BACKGROUND_MASKED,
- } ShellBlurMode;
- 
- #define SHELL_TYPE_BLUR_EFFECT (shell_blur_effect_get_type())
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index d362b0a..43e9f39 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -349,6 +349,7 @@
+@@ -82,6 +82,8 @@ struct _ShellBlurEffect
+   FramebufferData background_fb;
+   FramebufferData brightness_fb;
+   int brightness_uniform;
++  gboolean mask_pipeline_ready;
++  float mask_opacity;
+
+   ShellBlurMode mode;
+   float downscale_factor;
+@@ -96,6 +98,7 @@ enum {
+   PROP_RADIUS,
+   PROP_BRIGHTNESS,
+   PROP_MODE,
++  PROP_MASK_OPACITY,
+   N_PROPS
+ };
+
+@@ -349,6 +352,7 @@ update_actor_box (ShellBlurEffect     *self,
        clutter_actor_get_allocation_box (self->actor, source_actor_box);
        break;
- 
+
 +    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
      case SHELL_BLUR_MODE_BACKGROUND:
        stage_view = clutter_paint_context_get_stage_view (paint_context);
- 
-@@ -513,7 +514,8 @@
+
+@@ -513,7 +517,8 @@ update_framebuffers (ShellBlurEffect     *self,
    updated = update_actor_fbo (self, width, height, downscale_factor) &&
              update_brightness_fbo (self, width, height, downscale_factor);
- 
+
 -  if (self->mode == SHELL_BLUR_MODE_BACKGROUND)
 +  if (self->mode == SHELL_BLUR_MODE_BACKGROUND ||
 +      self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
      updated = updated && update_background_fbo (self, width, height);
- 
+
    self->tex_width = width;
-@@ -593,6 +595,32 @@
+@@ -593,6 +598,44 @@ paint_actor_offscreen (ShellBlurEffect         *self,
      }
  }
- 
+
 +/* Capture only alpha coverage. With no output rectangle this layer updates
 + * its framebuffer without drawing the client into the stage before the blur. */
 +static void
@@ -69,66 +68,148 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
 +                                   self->actor_fb.texture);
 +  cogl_pipeline_set_layer_combine (self->brightness_fb.pipeline, 1,
 +                                   "RGBA = MODULATE (PREVIOUS, TEXTURE[A])", NULL);
++  if (!self->mask_pipeline_ready)
++    {
++      g_autoptr (CoglSnippet) snippet =
++        cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
++                         "uniform float mask_opacity;",
++                         "cogl_texel.a = clamp (cogl_texel.a / max (mask_opacity, 0.00001), 0.0, 1.0);");
++      cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
++      self->mask_pipeline_ready = TRUE;
++    }
++  cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
++    self->mask_opacity);
 +}
 +
  static gboolean
  needs_repaint (ShellBlurEffect         *self,
                 ClutterEffectPaintFlags  flags)
-@@ -610,6 +638,7 @@
+@@ -610,6 +653,7 @@ needs_repaint (ShellBlurEffect         *self,
      case SHELL_BLUR_MODE_ACTOR:
        return actor_dirty || !blur_cached || !actor_cached;
- 
+
 +    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
      case SHELL_BLUR_MODE_BACKGROUND:
        return TRUE;
      }
-@@ -638,7 +667,8 @@
+@@ -638,7 +682,8 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
            paint_opacity = clutter_actor_get_paint_opacity (self->actor);
            break;
- 
+
 -        case SHELL_BLUR_MODE_BACKGROUND:
 +        case SHELL_BLUR_MODE_BACKGROUND_MASKED:
 +    case SHELL_BLUR_MODE_BACKGROUND:
            paint_opacity = 255;
            break;
- 
-@@ -659,6 +689,11 @@
+
+@@ -659,6 +704,14 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
            if (!update_framebuffers (self, paint_context, &source_actor_box))
              goto fail;
- 
+
 +          if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
 +            paint_actor_mask (self, node);
 +          else
-+            cogl_pipeline_remove_layer (self->brightness_fb.pipeline, 1);
++            {
++              cogl_pipeline_remove_layer (self->brightness_fb.pipeline, 1);
++              self->mask_pipeline_ready = FALSE;
++            }
 +
            blur_node = create_blur_nodes (self, node, paint_opacity);
- 
+
            switch (self->mode)
-@@ -667,7 +702,8 @@
+@@ -667,7 +720,8 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
                paint_actor_offscreen (self, blur_node, flags);
                break;
- 
+
 -            case SHELL_BLUR_MODE_BACKGROUND:
 +            case SHELL_BLUR_MODE_BACKGROUND_MASKED:
 +    case SHELL_BLUR_MODE_BACKGROUND:
                paint_background (self, blur_node, paint_context, &source_actor_box);
                break;
              }
-@@ -686,7 +722,8 @@
+@@ -686,7 +740,8 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
          case SHELL_BLUR_MODE_ACTOR:
            break;
- 
+
 -        case SHELL_BLUR_MODE_BACKGROUND:
 +        case SHELL_BLUR_MODE_BACKGROUND_MASKED:
 +    case SHELL_BLUR_MODE_BACKGROUND:
            add_actor_node (self, node, -1);
            break;
          }
-@@ -903,6 +940,7 @@
+@@ -735,6 +790,10 @@ shell_blur_effect_get_property (GObject    *object,
+       g_value_set_float (value, self->brightness);
+       break;
+
++    case PROP_MASK_OPACITY:
++      g_value_set_float (value, self->mask_opacity);
++      break;
++
+     case PROP_MODE:
+       g_value_set_enum (value, self->mode);
+       break;
+@@ -762,6 +821,13 @@ shell_blur_effect_set_property (GObject      *object,
+       shell_blur_effect_set_brightness (self, g_value_get_float (value));
+       break;
+
++    case PROP_MASK_OPACITY:
++      self->mask_opacity = g_value_get_float (value);
++      self->cache_flags &= ~BLUR_APPLIED;
++      if (self->actor)
++        clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
++      break;
++
+     case PROP_MODE:
+       shell_blur_effect_set_mode (self, g_value_get_enum (value));
+       break;
+@@ -796,6 +862,13 @@ shell_blur_effect_class_init (ShellBlurEffectClass *klass)
+                         0.f, 1.f, 1.f,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+
++  /* Undo rule opacity only in coverage, retaining the client's transparent
++   * cutouts and antialiased edges. The colour pass keeps its opacity. */
++  properties[PROP_MASK_OPACITY] =
++    g_param_spec_float ("mask-opacity", NULL, NULL,
++                       0.f, 1.f, 1.f,
++                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
++
+   properties[PROP_MODE] =
+     g_param_spec_enum ("mode", NULL, NULL,
+                        SHELL_TYPE_BLUR_MODE,
+@@ -811,6 +884,7 @@ shell_blur_effect_init (ShellBlurEffect *self)
+   self->mode = SHELL_BLUR_MODE_ACTOR;
+   self->radius = 0;
+   self->brightness = 1.f;
++  self->mask_opacity = 1.f;
+
+   self->actor_fb.pipeline = create_base_pipeline ();
+   self->background_fb.pipeline = create_base_pipeline ();
+@@ -903,6 +977,7 @@ shell_blur_effect_set_mode (ShellBlurEffect *self,
        clear_framebuffer_data (&self->background_fb);
        break;
- 
+
 +    case SHELL_BLUR_MODE_BACKGROUND_MASKED:
      case SHELL_BLUR_MODE_BACKGROUND:
      default:
        /* Do nothing */
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+index a0b216a..9255bc0 100644
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -28,6 +28,7 @@ G_BEGIN_DECLS
+  * ShellBlurMode:
+  * @SHELL_BLUR_MODE_ACTOR: blur the actor contents, and its children
+  * @SHELL_BLUR_MODE_BACKGROUND: blur what's beneath the actor
++ * @SHELL_BLUR_MODE_BACKGROUND_MASKED: blur beneath nontransparent actor pixels
+  *
+  * The mode of blurring of the effect.
+  */
+@@ -35,6 +36,7 @@ typedef enum
+ {
+   SHELL_BLUR_MODE_ACTOR,
+   SHELL_BLUR_MODE_BACKGROUND,
++  SHELL_BLUR_MODE_BACKGROUND_MASKED,
+ } ShellBlurMode;
+
+ #define SHELL_TYPE_BLUR_EFFECT (shell_blur_effect_get_type())

@@ -400,6 +400,7 @@ clean:
 
 # Isolated layer-shell animation and alpha-masked blur regression tests.
 gnome-layer-animation-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-resize.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-animation.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-lifecycle.py" ./scripts/run-gnome-shell.sh
 

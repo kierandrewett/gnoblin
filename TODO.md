@@ -18,6 +18,9 @@ items stay here only when they still form part of an active delivery sequence.
 
 ## Product work
 
+- [x] Add live TOML command shortcuts and built-in keybinding overrides; verify
+  ownership, removal, invalid-edit recovery and the Alt+S capture conflict.
+
 - [x] Add TOML configuration with legacy migration, named autostart and
   per-window layer-shell dock icon targets. Verify with a real Quickshell dock.
 

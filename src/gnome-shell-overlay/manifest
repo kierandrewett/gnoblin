@@ -12,3 +12,4 @@ gnome-shell  js/ui/components/gnoblinRules.js  js/ui/components/gnoblinRules.js
 gnome-shell  js/ui/components/gnoblinLayerAnimation.js  js/ui/components/gnoblinLayerAnimation.js
 gnome-shell  shell-gnoblin-shader.c  src/shell-gnoblin-shader.c
 gnome-shell  shell-gnoblin-shader.h  src/shell-gnoblin-shader.h
+gnome-shell  js/ui/components/gnoblinBackdropRedraw.js  js/ui/components/gnoblinBackdropRedraw.js

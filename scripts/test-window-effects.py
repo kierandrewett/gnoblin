@@ -36,8 +36,8 @@ ShellRoot {
 }
 ''')
 config = root / 'gnoblin.toml'
-def configure(blur):
-    config.write_text(f'[shell]\nlayer-animation="none"\n[[window-rules]]\nmatch.layer="^effect-mask$"\nblur={blur}\n')
+def configure(blur, opacity=1):
+    config.write_text(f'[shell]\nlayer-animation="none"\n[[window-rules]]\nmatch.layer="^effect-mask$"\nblur={blur}\nopacity={opacity}\n')
     time.sleep(.5)
 def capture(name):
     path = root / name
@@ -55,6 +55,18 @@ try:
     sharp = ImageStat.Stat(before.crop((88, 88, 232, 136))).stddev[0]
     blurred = ImageStat.Stat(after.crop((88, 88, 232, 136))).stddev[0]
     assert blurred < sharp * .85, (sharp, blurred)
+    # Rule opacity must not weaken backdrop coverage as the client fades.
+    for opacity in (.5, .2):
+        configure(0, opacity)
+        translucent_before = capture(f'effect-opacity-{opacity}-before.png')
+        configure(24, opacity)
+        translucent_after = capture(f'effect-opacity-{opacity}-after.png')
+        region = (88, 88, 232, 136)
+        sharp_opacity = ImageStat.Stat(translucent_before.crop(region)).stddev[0]
+        blurred_opacity = ImageStat.Stat(translucent_after.crop(region)).stddev[0]
+        assert blurred_opacity < sharp_opacity * .6, (opacity, sharp_opacity, blurred_opacity)
+        outside = ImageChops.difference(translucent_before.crop((8, 8, 48, 48)), translucent_after.crop((8, 8, 48, 48)))
+        assert max(ImageStat.Stat(outside).mean) < 1, 'opacity compensation changed transparent pixels'
     configure(0)
     restored = capture('effect-restored.png')
     assert max(ImageStat.Stat(ImageChops.difference(before, restored)).mean) < 1, 'rule removal did not restore pixels'
