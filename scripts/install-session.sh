@@ -69,6 +69,8 @@ glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
+install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.js" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.js"
+install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.py" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.py"
 
 echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"

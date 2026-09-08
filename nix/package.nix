@@ -7,6 +7,8 @@
     hyprcursor,
     libepoxy,
     python3,
+    gtk3,
+    wrapGAppsHook3,
     systemd,
     makeWrapper,
 
@@ -22,6 +24,7 @@
     jasmineGjsSrc,
 }:
 let
+    clipboardPython = python3.withPackages (ps: [ ps.pygobject3 ]);
     patchesFor =
         project:
         lib.sort (left: right: builtins.lessThan (toString left) (toString right)) (
@@ -85,7 +88,13 @@ let
         version = "49.6";
         src = gnoblinSrc;
         dontBuild = true;
-        nativeBuildInputs = [ makeWrapper ];
+        nativeBuildInputs = [ makeWrapper wrapGAppsHook3 ];
+        buildInputs = [ gtk3 ];
+        dontWrapGApps = true;
+        postFixup = ''
+            makeWrapper ${clipboardPython}/bin/python3 "$out/libexec/gnoblin-clipboard-paste" \
+                --add-flags "$out/share/gnoblin/scripts/lib/clipboard-paste.py" "''${gappsWrapperArgs[@]}"
+        '';
 
         installPhase = ''
             install -Dm644 src/data/session/modes/gnoblin.json \
@@ -104,6 +113,14 @@ let
             substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
             wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
             install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
+            install -Dm644 src/scripts/lib/clipboard-paste.js "$out/share/gnoblin/scripts/lib/clipboard-paste.js"
+            install -Dm644 src/scripts/lib/clipboard-paste.py "$out/share/gnoblin/scripts/lib/clipboard-paste.py"
+            substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.js" \
+                --replace-fail "['python3', helper]" "['$out/libexec/gnoblin-clipboard-paste']"
+            substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.py" \
+                --replace-fail "'libgtk-3.so.0'" "'${gtk3}/lib/libgtk-3.so.0'" \
+                --replace-fail "'libgdk-3.so.0'" "'${gtk3}/lib/libgdk-3.so.0'"
+
 
             install -Dm644 src/data/session/gnoblin.desktop \
                 "$out/share/wayland-sessions/gnoblin.desktop"
