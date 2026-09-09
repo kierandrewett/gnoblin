@@ -374,6 +374,28 @@ changing content inside an already visible surface does not remap it. Clients
 that animate individual cards in a persistent surface can opt out by namespace
 with `animation = "none"`.
 
+Layer surfaces keep their assigned display while an entrance or exit animation
+crosses another display's stage view. The compositor reports that assigned
+output to Wayland clients throughout the animation. This prevents a panel's
+reported screen from changing briefly and moving related docks or popups to a
+neighbouring display.
+
+The Bingux companion repository supplies the native two-display editor check.
+It uses horizontal and vertical arrangements, different scale factors, and both
+primary and secondary outputs. Run it from the Gnoblin checkout:
+
+```sh
+MONITOR=1920x1200 EXTRA_MONITOR=1920x1200 \
+GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 \
+GNOBLIN_TEST_GSETTINGS_BACKEND=keyfile \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/../bingux/tests/customise-monitors-live.py" \
+bash scripts/run-gnome-shell.sh
+```
+
+Set `QS_TEST_BIN` if Quickshell is not available as `qs` on `PATH`. Set
+`BINGUX_REDUCED_MOTION=1` to repeat the editor checks without client animations.
+The display configuration and editor changes stay inside the private session.
+
 Background blur is rendered in the compositor and masked by client alpha. Fully
 transparent parts of a layer surface remain unchanged, including the area around
 floating docks and search panels. Applications must draw a translucent background

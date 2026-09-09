@@ -240,6 +240,31 @@ get_monitor_layout (MetaWaylandLayerSurface *layer_surface)
 }
 
 static gboolean
+meta_wayland_layer_surface_is_on_logical_monitor (MetaWaylandSurfaceRole *surface_role,
+                                                MetaLogicalMonitor     *logical_monitor)
+{
+  MetaWaylandLayerSurface *layer_surface =
+    META_WAYLAND_LAYER_SURFACE (surface_role);
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+  MetaSurfaceActor *actor =
+    meta_wayland_actor_surface_get_actor (META_WAYLAND_ACTOR_SURFACE (surface_role));
+  MtkRectangle assigned;
+  MtkRectangle candidate;
+
+  if (layer_surface->closed || !meta_wayland_surface_get_buffer (surface) ||
+      !actor || !clutter_actor_is_mapped (CLUTTER_ACTOR (actor)))
+    return FALSE;
+
+  /* A layer belongs to its assigned output. Entrance/exit transforms may
+   * briefly cross another stage view, but must not change wl_surface.enter
+   * or make clients move their other panels to that neighbouring output. */
+  assigned = get_monitor_layout (layer_surface);
+  candidate = meta_logical_monitor_get_layout (logical_monitor);
+  return mtk_rectangle_equal (&assigned, &candidate);
+}
+
+static gboolean
 is_single_anchor_edge (uint32_t edge)
 {
   return (edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP ||
@@ -1346,6 +1371,8 @@ meta_wayland_layer_surface_class_init (MetaWaylandLayerSurfaceClass *klass)
   surface_role_class->post_apply_state =
     meta_wayland_layer_surface_post_apply_state;
   surface_role_class->get_toplevel = meta_wayland_layer_surface_get_toplevel;
+  surface_role_class->is_on_logical_monitor =
+    meta_wayland_layer_surface_is_on_logical_monitor;
 
   shell_surface_class->configure = meta_wayland_layer_surface_configure;
   shell_surface_class->managed = meta_wayland_layer_surface_managed;
