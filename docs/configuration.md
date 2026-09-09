@@ -385,7 +385,7 @@ It uses horizontal and vertical arrangements, different scale factors, and both
 primary and secondary outputs. Run it from the Gnoblin checkout:
 
 ```sh
-MONITOR=1920x1200 EXTRA_MONITOR=1920x1200 \
+GNOBLIN_PREFIX="$PWD/install" MONITOR=1920x1200 EXTRA_MONITOR=1920x1200 \
 GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 \
 GNOBLIN_TEST_GSETTINGS_BACKEND=keyfile \
 GNOBLIN_TEST_DBUS_CLIENT="$PWD/../bingux/tests/customise-monitors-live.py" \
