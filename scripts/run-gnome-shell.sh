@@ -268,7 +268,7 @@ if [ -n "${GNOBLIN_TEST_CLIENT:-}" ]; then
   if [ ! -x "$GNOBLIN_TEST_CLIENT" ]; then
     echo "!! protocol test client is not executable: $GNOBLIN_TEST_CLIENT" >&2
     client_ok=0
-  elif ! WAYLAND_DISPLAY="$DISP" "$GNOBLIN_TEST_CLIENT"; then
+  elif ! WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_CLIENT"; then
     client_ok=0
   elif ! timeout 5s env WAYLAND_DISPLAY="$DISP" "$probe" >/dev/null; then
     echo "!! compositor did not respond after protocol client disconnect" >&2
