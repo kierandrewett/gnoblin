@@ -396,6 +396,12 @@ Set `QS_TEST_BIN` if Quickshell is not available as `qs` on `PATH`. Set
 `BINGUX_REDUCED_MOTION=1` to repeat the editor checks without client animations.
 The display configuration and editor changes stay inside the private session.
 
+Retained `gnoblin-shell-popup` surfaces rise above existing overlay panels when
+they request menu keyboard input again. This restores their visible and clickable
+area after the sidebar has been raised, without changing the active application.
+The Bingux `tests/desktop-layout-live.py --case control-connectivity` check covers
+this path with native clicks after moving Bluetooth into the dock, bar and sidebar.
+
 Background blur is rendered in the compositor and masked by client alpha. Fully
 transparent parts of a layer surface remain unchanged, including the area around
 floating docks and search panels. Applications must draw a translucent background

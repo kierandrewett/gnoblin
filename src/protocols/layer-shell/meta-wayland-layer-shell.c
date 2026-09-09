@@ -1092,10 +1092,15 @@ focus_exclusive_layer_surface (MetaWaylandLayerSurface *layer_surface,
           meta_wayland_surface_get_buffer (surface))
         {
           if (!layer_surface->menu_keyboard_handler)
-            layer_surface->menu_keyboard_handler =
-              meta_wayland_input_attach_event_handler (
-                meta_wayland_seat_get_input (surface->compositor->seat),
-                &menu_keyboard_interface, FALSE, layer_surface);
+            {
+              /* Retained menus can reopen after another overlay was raised.
+               * Raise once on opening without changing the active window. */
+              meta_window_raise (window);
+              layer_surface->menu_keyboard_handler =
+                meta_wayland_input_attach_event_handler (
+                  meta_wayland_seat_get_input (surface->compositor->seat),
+                  &menu_keyboard_interface, FALSE, layer_surface);
+            }
         }
       else
         release_menu_keyboard (layer_surface);
