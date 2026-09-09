@@ -15,6 +15,9 @@
 #        GNOME_DEVKIT_EXEC="cmd"   run cmd in the devkit env instead of a terminal
 #        GNOME_DEVKIT_UNSAFE_MODE=1   explicitly enable privileged shell D-Bus APIs
 set -uo pipefail
+# The devkit is a disposable development session; never write core images into
+# the checkout when a nested shell or client crashes.
+ulimit -c 0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/gnoblin-state.sh"

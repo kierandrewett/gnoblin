@@ -17,6 +17,10 @@
 #      EXTRA_MONITOR (optional second virtual monitor, e.g. 1920x1200),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
 set -uo pipefail
+# Headless verification is expected to leave logs, not multi-gigabyte core
+# images. Keep crashes diagnosable through the captured shell log while
+# preventing test sessions from filling the development checkout.
+ulimit -c 0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/gnoblin-state.sh"

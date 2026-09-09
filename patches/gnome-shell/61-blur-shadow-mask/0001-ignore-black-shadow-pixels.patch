@@ -1,0 +1,87 @@
+From: Gnoblin
+Subject: [PATCH] Optionally exclude translucent black shadows from backdrop coverage
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -92,6 +92,7 @@
+   int brightness_uniform;
+   gboolean mask_pipeline_ready;
+   float mask_opacity;
++  gboolean ignore_shadow_pixels;
+
+   ShellBlurMode mode;
+   float downscale_factor;
+@@ -107,6 +108,7 @@
+   PROP_BRIGHTNESS,
+   PROP_MODE,
+   PROP_MASK_OPACITY,
++  PROP_IGNORE_SHADOW_PIXELS,
+   N_PROPS
+ };
+
+@@ -773,9 +775,15 @@
+     {
+       g_autoptr (CoglSnippet) snippet =
+         cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
+-                         "uniform float mask_opacity; uniform float surface_fade;",
++                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels;",
+                          "float material_alpha = cogl_texel.a;"
+                          "float coverage = clamp (material_alpha / max (mask_opacity, 0.00001), 0.0, 1.0);"
++                         /* Bingux shadows are translucent black. Test straight colour,
++                          * so a fading coloured surface is not mistaken for a shadow.
++                          * Only the blur mask changes; the colour pass is untouched. */
++                         "float peak = max(cogl_texel.r, max(cogl_texel.g, cogl_texel.b));"
++                         "float shadow = (1.0-step(0.002*material_alpha, peak)) * (1.0-step(0.999, material_alpha));"
++                         "coverage *= 1.0-ignore_shadow_pixels*shadow;"
+                          "cogl_texel.a = coverage * surface_fade * (1.0 - material_alpha) / "
+                          "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+@@ -784,6 +792,9 @@
+   cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+     cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
+     self->mask_opacity);
++  cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "ignore_shadow_pixels"),
++    self->ignore_shadow_pixels ? 1.f : 0.f);
+ }
+
+ static gboolean
+@@ -967,6 +978,10 @@
+       g_value_set_float (value, self->mask_opacity);
+       break;
+
++    case PROP_IGNORE_SHADOW_PIXELS:
++      g_value_set_boolean (value, self->ignore_shadow_pixels);
++      break;
++
+     case PROP_MODE:
+       g_value_set_enum (value, self->mode);
+       break;
+@@ -1003,6 +1018,15 @@
+         clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+       break;
+
++    case PROP_IGNORE_SHADOW_PIXELS:
++      if (self->ignore_shadow_pixels == g_value_get_boolean (value))
++        break;
++      self->ignore_shadow_pixels = g_value_get_boolean (value);
++      self->cache_flags &= ~BLUR_APPLIED;
++      if (self->actor)
++        clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
++      break;
++
+     case PROP_MODE:
+       shell_blur_effect_set_mode (self, g_value_get_enum (value));
+       break;
+@@ -1043,6 +1067,10 @@
+     g_param_spec_float ("mask-opacity", NULL, NULL,
+                        0.f, 1.f, 1.f,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
++
++  properties[PROP_IGNORE_SHADOW_PIXELS] =
++    g_param_spec_boolean ("ignore-shadow-pixels", NULL, NULL, FALSE,
++                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+   properties[PROP_MODE] =
+     g_param_spec_enum ("mode", NULL, NULL,

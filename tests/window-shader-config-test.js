@@ -34,3 +34,17 @@ for (const extra of [
     assert(rejected, `invalid shader config accepted: ${JSON.stringify(extra)}`);
 }
 print('PASS: shader config, matching, precedence, removal and invalid values');
+
+const shadows = parseDocument({'window-rules': [
+    {match: {type: 'layer'}, 'blur-ignore-shadows': true},
+    {match: {layer: '^black-glass$'}, 'blur-ignore-shadows': false},
+]});
+assert(windowEffects({type: 'layer', layer: 'panel'}, shadows)['blur-ignore-shadows'], 'layer shadow exclusion');
+assert(!windowEffects({type: 'layer', layer: 'black-glass'}, shadows)['blur-ignore-shadows'], 'black glass can opt out');
+assert(!windowEffects({type: 'window'}, shadows)['blur-ignore-shadows'], 'shadow exclusion defaults off');
+for (const value of [0, 1, 'true', null, []]) {
+    let rejected = false;
+    try { parseDocument({'window-rules': [{match: {type: 'layer'}, 'blur-ignore-shadows': value}]}); } catch (_) { rejected = true; }
+    assert(rejected, 'shadow exclusion requires a boolean');
+}
+print('PASS: shadow exclusion validation, opt-in and rule override');

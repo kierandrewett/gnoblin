@@ -63,3 +63,19 @@ opacity = 0.96
 # command = ["qs", "ipc", "--any-display", "-c", "bingux", "call", "capture", "open"]
 # [keybindings.wm]
 # close = ["<Super>q"]
+
+# Built-in rounding: app/focus exceptions use the same window-rule matchers.
+# See docs/window-effects.md for borders, shadows, padding and state settings.
+# [[window-rules]]
+# match.type = "window"
+# corners = { radius = 14, smoothing = 0.6 }
+# corners.shadow-animation = { duration = 180, easing = "ease-out-cubic" }
+# [[window-rules]]
+# match.app-id = "^my-game$"
+# corners.mode = "off"
+
+# Optional desktop-owned double border. Disabled unless a rule enables it.
+# [[window-rules]]
+# match.type = "window"
+# Use outer-width = 0 for an outline entirely inside the client bounds.
+# borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 12, smoothing = 0.0 }

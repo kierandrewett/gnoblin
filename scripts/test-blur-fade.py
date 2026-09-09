@@ -51,7 +51,7 @@ ShellRoot {
  }
  PanelWindow {
   anchors { top: true; left: true }
-  implicitWidth: 320; implicitHeight: 220
+  implicitWidth: 1280; implicitHeight: 800
   WlrLayershell.layer: WlrLayer.Top
   WlrLayershell.namespace: "effect-mask"
   color: "transparent"
@@ -84,9 +84,10 @@ try:
         actual = capture(f'fade-{alpha}.png')
         factor = round(alpha * 255) / 255
         expected = Image.blend(background, after, factor)
-        # Interior avoids expected antialiasing precision at the silhouette edge.
-        delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((88,88,232,136)))
+        # Include the antialiased silhouette and the surrounding wallpaper.
+        delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((56,56,264,168)))
         assert max(delta.mean) < 2, (alpha, delta.mean)
+        assert max(high for low, high in delta.extrema) <= 4, (alpha, delta.extrema)
     print('PASS: Gaussian background and client fade as one surface at 8 opacity samples, including reversal', flush=True)
 finally:
     proc.terminate()

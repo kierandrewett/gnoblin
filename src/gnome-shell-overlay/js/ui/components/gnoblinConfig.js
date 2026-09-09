@@ -1,3 +1,4 @@
+import * as Corners from './gnoblinCornerGeometry.js';
 // Live shell settings. Protocol registration remains a compositor-startup operation.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -151,7 +152,7 @@ export function parseDocument(document) {
     for (const rule of rules) {
         if (!rule || !rule.match || Array.isArray(rule.match) || typeof rule.match !== 'object' ||
             Object.keys(rule.match).length === 0 ||
-            Object.keys(rule).some(key => !['match', 'blur', 'opacity', 'animation', 'shader', 'shader-uniforms'].includes(key)))
+            Object.keys(rule).some(key => !['match', 'blur', 'blur-ignore-shadows', 'opacity', 'animation', 'shader', 'shader-uniforms', 'corners', 'borders'].includes(key)))
             throw new Error('window rule requires match and supported effects');
         for (const [key, value] of Object.entries(rule.match)) {
             if (key === 'focused') {
@@ -163,12 +164,28 @@ export function parseDocument(document) {
                 throw new Error('unknown window rule match');
             }
         }
+        if (rule.corners !== undefined) Corners.validate(rule.corners);
+        if (rule.borders !== undefined) Corners.validateBorders(rule.borders);
         if (rule.blur !== undefined && (!Number.isInteger(rule.blur) || rule.blur < 0 || rule.blur > 100))
             throw new Error('blur must be an integer from 0 to 100');
+        if (rule['blur-ignore-shadows'] !== undefined && typeof rule['blur-ignore-shadows'] !== 'boolean')
+            throw new Error('blur-ignore-shadows must be boolean');
         if (rule.opacity !== undefined && (typeof rule.opacity !== 'number' || !Number.isFinite(rule.opacity) || rule.opacity < 0 || rule.opacity > 1))
             throw new Error('opacity must be between 0 and 1');
-        if (rule.animation !== undefined && !['slide', 'fade', 'none'].includes(rule.animation))
-            throw new Error('rule animation must be slide, fade, or none');
+        if (rule.animation !== undefined) {
+            const animation = rule.animation;
+            if (typeof animation === 'string') {
+                if (!['slide', 'fade', 'none'].includes(animation))
+                    throw new Error('rule animation must be slide, fade, or none');
+            } else {
+                if (!animation || Array.isArray(animation) || typeof animation !== 'object' ||
+                    Object.keys(animation).some(key => !['in', 'out', 'duration', 'easing'].includes(key)) ||
+                    ['in', 'out'].some(key => animation[key] !== undefined && !['slide', 'fade', 'none'].includes(animation[key])) ||
+                    (animation.duration !== undefined && (!Number.isInteger(animation.duration) || animation.duration < 0 || animation.duration > 5000)) ||
+                    (animation.easing !== undefined && !['ease-out-cubic', 'ease-out-quad', 'ease-in-out-cubic', 'linear'].includes(animation.easing)))
+                    throw new Error('invalid layer animation policy');
+            }
+        }
         if (rule.shader !== undefined && (typeof rule.shader !== 'string' || rule.shader.length > 4096 || rule.shader.includes('\0')))
             throw new Error('shader must be a file path, or an empty string to remove it');
         if (rule['shader-uniforms'] !== undefined) {
@@ -586,12 +603,14 @@ export function layerOffset(anchor, rect, monitor) {
 
 // Later matching rules override individual effects, leaving others intact.
 export function windowEffects(properties, config = settings) {
-    const effects = {blur: 0, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
+    const effects = {borders: {...Corners.borderDefaults}, corners: {...Corners.defaults}, blur: 0, 'blur-ignore-shadows': false, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
     for (const rule of config['window-rules']) {
         if (Object.entries(rule.match).every(([key, value]) =>
             key === 'type' || key === 'focused' ? properties[key] === value :
                 properties[key] !== null && new RegExp(value).test(properties[key] ?? ''))) {
-            for (const key of ['blur', 'opacity', 'animation', 'shader', 'shader-uniforms'])
+            if (rule.corners !== undefined) effects.corners = Corners.merge(effects.corners, rule.corners);
+            if (rule.borders !== undefined) effects.borders = {...effects.borders, ...rule.borders};
+            for (const key of ['blur', 'blur-ignore-shadows', 'opacity', 'animation', 'shader', 'shader-uniforms'])
                 if (rule[key] !== undefined) effects[key] = rule[key];
         }
     }
@@ -606,5 +625,15 @@ export function windowProperties(window) {
         layer: namespace,
         type: namespace !== null ? 'layer' : 'window',
         focused: window.has_focus(),
+    };
+}
+
+// Resolve each phase independently; string rules retain their existing meaning.
+export function layerAnimation(properties, opening, config = settings) {
+    const rule = windowEffects(properties, config).animation;
+    return {
+        animation: typeof rule === 'string' ? rule : rule[opening ? 'in' : 'out'] ?? config['layer-animation'],
+        duration: typeof rule === 'object' ? rule.duration ?? config['layer-duration'] : config['layer-duration'],
+        easing: typeof rule === 'object' ? rule.easing ?? config['layer-easing'] : config['layer-easing'],
     };
 }

@@ -7,9 +7,12 @@ import Cogl from 'gi://Cogl';
 import {WindowSwitcherFallback} from './lib/window-switcher-fallback.js';
 import {UiSessions} from './lib/ui-sessions.js';
 import {LayerCompanions} from './lib/layer-companions.js';
+import {WindowSnap} from './lib/window-snap.js';
 import {ClipboardPaste} from './lib/clipboard-paste.js';
+import {BlurRegions} from './lib/blur-regions.js';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Config from 'resource:///org/gnome/shell/ui/components/gnoblinConfig.js';
 
 Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 
@@ -21,6 +24,7 @@ class CompositorBridge {
         this.clients = new Set();
         this.layerCompanions = new LayerCompanions();
         this.uiSessions = new UiSessions((client, record) => this.send(client, record), this.layerCompanions);
+        this.blurRegions = new BlurRegions();
         this.clipboardPaste = new ClipboardPaste(global.stage.context.get_backend().get_default_seat());
         this.actions = new Map();
         this.active = null;
@@ -30,6 +34,7 @@ class CompositorBridge {
         this.modifierPoll = 0;
         this.windows = new Map();
         this.setupPrivacy();
+        this.windowSnap = new WindowSnap(this);
         const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'gnoblin']);
         GLib.mkdir_with_parents(directory, 0o700);
         this.path = Gio.File.new_for_path(GLib.getenv('GNOBLIN_COMPOSITOR_SOCKET') || `${directory}/compositor-v1.sock`);
@@ -44,6 +49,7 @@ class CompositorBridge {
         this.session = Main.sessionMode.connect('updated', () => {
             if (Main.sessionMode.isLocked) {
                 this.caret = null;
+                this.windowSnap.cancel();
                 this.end('cancelled');
             }
         });
@@ -72,7 +78,12 @@ class CompositorBridge {
         const client = {connection, cancel: new Gio.Cancellable(), buffer: new Uint8Array(), queue: [], queuedBytes: 0, writing: false,
             bindings: new Map(), decoder: new TextDecoder('utf-8', {fatal: true}), closed: false};
         this.clients.add(client);
-        this.send(client, {event: 'hello', version: 1, features: ['ui-sessions', 'switcher-fallback']});
+        this.send(client, {event: 'hello', version: 1,
+            features: [
+                'ui-sessions', 'switcher-fallback',
+                ...(typeof Shell.BlurEffect.prototype.set_region === 'function' ? ['blur-regions'] : []),
+                ...(typeof Shell.BlurEffect.prototype.uses_surface_fade === 'function' && Config.layerAnimation ? ['layer-animation-policy'] : []),
+            ]});
         this.read(client);
     }
 
@@ -129,6 +140,15 @@ class CompositorBridge {
 
     command(client, record) {
         if (record.op === 'ui-session') { this.uiSessions.command(client, record); return; }
+        if (record.op === 'layer-animation-policy') {
+            if (typeof record.namespace !== 'string' || record.namespace.length > 128 || !Config.layerAnimation)
+                throw new Error('Invalid layer animation query');
+            const properties = {type: 'layer', layer: record.namespace, title: '', 'app-id': '', focused: false};
+            this.send(client, {event: 'layer-animation-policy', namespace: record.namespace,
+                enter: Config.layerAnimation(properties, true), exit: Config.layerAnimation(properties, false)});
+            return;
+        }
+        if (record.op === 'blur-region') { this.blurRegions.update(client, record); return; }
         if (record.op === 'shortcut-input') {
             if (Main.sessionMode.isLocked || typeof record.name !== 'string' ||
                 !['prepared', 'ready', 'closed'].includes(record.state))
@@ -195,6 +215,24 @@ class CompositorBridge {
         if (record.op === 'status') {
             this.send(client, {event: 'status', bindings: [...this.actions.values()].map(binding => binding.id),
                 active: this.active?.id ?? null});
+            return;
+        }
+        if (record.op === 'window-drag') { this.windowSnap.subscribe(client); return; }
+        if (record.op === 'snap-offer') { this.windowSnap.offer(client, record); return; }
+        if (record.op === 'snap-context') {
+            const window = global.display.focus_window;
+            if (Main.sessionMode.isLocked || !window || !this.eligible(window) || !window.allows_resize())
+                throw new Error('Focus a resizable window to choose a snap region');
+            const monitor = Main.layoutManager.monitors[window.get_monitor()];
+            const area = window.get_workspace().get_work_area_for_monitor(monitor.index);
+            this.send(client, {event: 'snap-context', window: String(window.get_stable_sequence()),
+                monitor: {id: monitor.index, x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height},
+                area: {x: area.x, y: area.y, width: area.width, height: area.height}});
+            return;
+        }
+        if (record.op === 'snap-window') {
+            const window = this.windows.get(record.window)?.window;
+            this.windowSnap.apply(window, record.target, record.monitor);
             return;
         }
         if (record.op === 'privacy') { client.trackPrivacy = true; this.publishPrivacy(client); return; }
@@ -509,6 +547,8 @@ class CompositorBridge {
 
     track(window) {
         if (!window) return;
+        const actor = window.get_compositor_private();
+        if (actor) this.blurRegions.apply(actor);
         const id = String(window.get_stable_sequence());
         if (this.windows.has(id)) return;
         const signals = ['notify::title', 'notify::minimized', 'notify::skip-taskbar'].map(signal =>
@@ -529,6 +569,7 @@ class CompositorBridge {
             this.publishWindows();
         }));
         signals.push(window.connect('unmanaged', () => {
+            this.windowSnap.forget(id);
             this.windows.delete(id);
             for (const signal of signals) window.disconnect(signal);
             this.publishWindows();
@@ -555,6 +596,21 @@ class CompositorBridge {
     }
 
     control(record) {
+        if (record.command === 'capture-windows') {
+            if (Main.sessionMode.isLocked) throw new Error('Session is locked.');
+            const windows = global.display.sort_windows_by_stacking(
+                global.get_window_actors().map(actor => actor.meta_window));
+            return {windows: windows.reverse().filter(window => this.eligible(window)
+                && !window.minimized && window.showing_on_its_workspace()).map(window => {
+                const frame = window.get_frame_rect();
+                const app = Shell.WindowTracker.get_default().get_window_app(window);
+                const texture = window.get_compositor_private()?.get_texture()?.get_texture();
+                return {bufferWidth: texture?.get_width() || frame.width, bufferHeight: texture?.get_height() || frame.height,
+                    id: String(window.get_id()), title: window.title || app?.get_name() || '',
+                    appId: app?.get_id() || '', appName: app?.get_name() || '',
+                    x: frame.x, y: frame.y, width: frame.width, height: frame.height};
+            })};
+        }
         if (record.command === 'windows') return {windows: this.windowRecords()};
         const manager = global.workspace_manager;
         if (record.command === 'workspaces') return {workspaces: Array.from({length: manager.n_workspaces}, (_, index) => ({
@@ -622,6 +678,8 @@ class CompositorBridge {
         if (client.closed) return;
         client.closed = true;
         this.uiSessions.close(client);
+        this.windowSnap.close(client);
+        this.blurRegions.close(client);
         if (client.preview) GLib.source_remove(client.preview);
         client.preview = 0;
         this.clear(client);
@@ -631,6 +689,7 @@ class CompositorBridge {
     }
 
     destroy() {
+        this.windowSnap.destroy();
         this.clipboardPaste.destroy();
         this.end('cancelled');
         global.__gnoblinPublishPrivacy = null;

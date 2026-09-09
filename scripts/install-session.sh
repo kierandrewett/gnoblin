@@ -72,6 +72,8 @@ install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/s
 install -Dm644 "$ROOT/src/scripts/lib/ui-sessions.js" "$PREFIX/share/gnoblin/scripts/lib/ui-sessions.js"
 install -Dm644 "$ROOT/src/scripts/lib/layer-companions.js" "$PREFIX/share/gnoblin/scripts/lib/layer-companions.js"
 install -Dm644 "$ROOT/src/scripts/lib/window-switcher-fallback.js" "$PREFIX/share/gnoblin/scripts/lib/window-switcher-fallback.js"
+install -Dm644 "$ROOT/src/scripts/lib/window-snap.js" "$PREFIX/share/gnoblin/scripts/lib/window-snap.js"
+install -Dm644 "$ROOT/src/scripts/lib/blur-regions.js" "$PREFIX/share/gnoblin/scripts/lib/blur-regions.js"
 install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.js" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.js"
 install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.py" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.py"
 install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"

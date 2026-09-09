@@ -1,0 +1,73 @@
+From: Gnoblin
+Subject: [PATCH] Preserve full-resolution rounded backdrop coverage
+
+Keep the coverage mask at output resolution while downsampling the Gaussian
+backdrop. Estimate local material opacity separately from edge coverage,
+then fade the composed surface without expanding antialiased corners.
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -370,7 +370,8 @@
+
+   self->cache_flags &= ~ACTOR_PAINTED;
+
+-  return update_fbo (&self->actor_fb, width, height, downscale_factor);
++  return update_fbo (&self->actor_fb, width, height,
++                     self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED ? 1.f : downscale_factor);
+ }
+
+ static gboolean
+@@ -762,8 +763,7 @@
+   clutter_paint_node_add_child (node, layer_node);
+   graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
+     -self->paint_box.x1, -self->paint_box.y1, 0));
+-  graphene_matrix_scale (&transform, 1.f / self->downscale_factor,
+-                         1.f / self->downscale_factor, 1.f);
++  /* Keep client coverage at output resolution. Downsampling expands corners. */
+   transform_node = clutter_transform_node_new (&transform);
+   clutter_paint_node_add_child (layer_node, transform_node);
+   add_actor_node (self, transform_node, 255);
+@@ -775,20 +775,39 @@
+     {
+       g_autoptr (CoglSnippet) snippet =
+         cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
+-                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels;",
++                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels; uniform vec2 mask_pixel;",
+                          "float material_alpha = cogl_texel.a;"
+-                         "float coverage = clamp (material_alpha / max (mask_opacity, 0.00001), 0.0, 1.0);"
++                         /* Recover the local material opacity before normalising coverage.
++                          * Never turn a partially covered edge into an opaque mask. */
++                         "float local_alpha = material_alpha;"
++                         "if (material_alpha > 0.0 && material_alpha < 1.0) {"
++                         "for (int y = -1; y <= 1; y++) {"
++                         "  for (int x = -1; x <= 1; x++) {"
++                         "    local_alpha = max(local_alpha, texture2D(cogl_sampler,"
++                         "      cogl_tex_coord.st + vec2(float(x), float(y)) * mask_pixel).a);"
++                         "  }"
++                         "}"
++                         "}"
++                         "float tint_alpha = local_alpha;"
++                         "float coverage = clamp(material_alpha / max(max(tint_alpha, mask_opacity), 0.00001), 0.0, 1.0);"
+                          /* Bingux shadows are translucent black. Test straight colour,
+                           * so a fading coloured surface is not mistaken for a shadow.
+                           * Only the blur mask changes; the colour pass is untouched. */
+                          "float peak = max(cogl_texel.r, max(cogl_texel.g, cogl_texel.b));"
+                          "float shadow = (1.0-step(0.002*material_alpha, peak)) * (1.0-step(0.999, material_alpha));"
+                          "coverage *= 1.0-ignore_shadow_pixels*shadow;"
+-                         "cogl_texel.a = coverage * surface_fade * (1.0 - material_alpha) / "
++                         "cogl_texel.a = coverage * surface_fade * (1.0 - tint_alpha) / "
+                          "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+       self->mask_pipeline_ready = TRUE;
+     }
++  const float mask_pixel[] = {
++    1.f / cogl_texture_get_width (self->actor_fb.texture),
++    1.f / cogl_texture_get_height (self->actor_fb.texture),
++  };
++  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_pixel"),
++    2, 1, mask_pixel);
+   cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+     cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
+     self->mask_opacity);

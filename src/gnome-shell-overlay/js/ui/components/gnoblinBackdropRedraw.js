@@ -1,7 +1,8 @@
 import Clutter from 'gi://Clutter';
 
-// Backdrop sampling needs pixels outside the current damage rectangle. Limit
-// the full-redraw fallback to mapped menus; do not disable desktop culling.
+// Older native builds cannot expand damage around blur dependencies. Keep
+// their full-redraw fallback until the installed native effect is loaded.
+// Neither policy schedules frames or disables occlusion culling.
 export class BackdropRedraw {
     constructor() {
         this._actors = new Map();
@@ -23,7 +24,8 @@ export class BackdropRedraw {
     }
 
     _sync() {
-        const needed = [...this._actors.keys()].some(actor => actor.mapped);
+        const needed = [...this._actors.keys()].some(actor => actor.mapped &&
+            !actor.get_effect?.('gnoblin-window-blur')?.uses_damage_tracking?.());
         const flag = Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS;
         if (needed && !this._ownsFlag && !(Clutter.get_debug_flags()[1] & flag)) {
             Clutter.add_debug_flags(0, flag, 0);

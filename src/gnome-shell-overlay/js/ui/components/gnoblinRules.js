@@ -4,7 +4,10 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import * as Config from './gnoblinConfig.js';
+import {WindowCorners, WindowBorders, ToolkitCache} from './gnoblinCorners.js';
 import {BackdropRedraw} from './gnoblinBackdropRedraw.js';
+
+const supportsShadowMask = Shell.BlurEffect.list_properties().some(p => p.name === 'ignore-shadow-pixels');
 
 function shaderSource(source) {
     return `uniform sampler2D gnoblin_texture;
@@ -46,6 +49,7 @@ export class WindowRules {
         this._config = Config.settings;
         this._actors = new Map();
         this._backdropRedraw = new BackdropRedraw();
+        this._cornerToolkits = new ToolkitCache();
         this._sources = new Map();
         this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
         this._focus = global.display.connect('notify::focus-window', () => this.refresh());
@@ -110,19 +114,23 @@ export class WindowRules {
     }
 
     _apply(actor) {
-        const surface = actor.get_first_child();
-        if (!surface || !actor.meta_window) return;
         let entry = this._actors.get(actor);
+        // Shadows are inserted before the client surface. A new rules owner
+        // must never attach client effects or size listeners to that decoration.
+        const surface = entry?.surface || actor.get_children().find(child => !child._gnoblinDecoration);
+        if (!surface || !actor.meta_window) return;
         if (!entry) {
             const title = actor.meta_window.connect('notify::title', () => this._apply(actor));
             const destroy = actor.connect('destroy', () => {
                 actor.meta_window?.disconnect(title);
+                entry.corners?.destroy();
+                entry.borders?.destroy();
                 this._actors.delete(actor);
             });
             const width = surface.connect('notify::width', () => this._apply(actor));
             const height = surface.connect('notify::height', () => this._apply(actor));
             entry = {surface, title, destroy, width, height, opacity: surface.opacity, blur: null,
-                shader: null, shaderKey: null};
+                shader: null, shaderKey: null, corners: null, borders: null};
             this._actors.set(actor, entry);
         }
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
@@ -136,14 +144,17 @@ export class WindowRules {
                 actor.add_effect_with_name('gnoblin-window-blur', entry.blur);
             }
             entry.blur.radius = effects.blur;
-            // Surface opacity dims the client, not the backdrop blur coverage.
-            entry.blur.mask_opacity = surface.opacity / Math.max(1, entry.opacity);
+            if (actor._gnoblinBlurRegion && entry.blur.set_region)
+                entry.blur.set_region(...actor._gnoblinBlurRegion);
+            // Client alpha describes glass tint, not blur strength. Using it as
+            // coverage mixes sharp pixels back into translucent panel interiors.
+            entry.blur.mask_opacity = 0;
+            if (supportsShadowMask) entry.blur.ignore_shadow_pixels = effects['blur-ignore-shadows'];
         } else if (entry.blur) {
             actor.remove_effect(entry.blur);
             entry.blur = null;
         }
-        this._backdropRedraw.set(actor, !!entry.blur &&
-            Config.windowProperties(actor.meta_window).layer === 'gnoblin-shell-popup');
+        this._backdropRedraw.set(actor, !!entry.blur);
         const source = effects.shader ? this._shader(this._shaderPath(effects.shader)) : null;
         const key = source ? JSON.stringify([source, effects['shader-uniforms']]) : null;
         if ((!effects.shader || source) && entry.shaderKey !== key) {
@@ -156,6 +167,18 @@ export class WindowRules {
         if (entry.shader) {
             entry.shader.setFloat('gnoblin_width', surface.width);
             entry.shader.setFloat('gnoblin_height', surface.height);
+        }
+        if (effects.borders['inner-width'] > 0 || effects.borders['outer-width'] > 0) {
+            if (!entry.borders) entry.borders = new WindowBorders(actor, surface, () => this._apply(actor));
+            entry.borders.update(effects.borders);
+        } else if (entry.borders) {
+            entry.borders.destroy(); entry.borders = null;
+        }
+        if (effects.corners.radius > 0 && effects.corners.mode !== 'off') {
+            if (!entry.corners) entry.corners = new WindowCorners(actor, surface, this._cornerToolkits, () => this._apply(actor));
+            entry.corners.update(effects.corners);
+        } else if (entry.corners) {
+            entry.corners.destroy(); entry.corners = null;
         }
     }
 
@@ -176,7 +199,10 @@ export class WindowRules {
             entry.surface.opacity = entry.opacity;
             if (entry.blur) actor.remove_effect(entry.blur);
             if (entry.shader) entry.surface.remove_effect(entry.shader);
+            entry.corners?.destroy();
+            entry.borders?.destroy();
         }
         this._actors.clear();
+        this._cornerToolkits.destroy();
     }
 }

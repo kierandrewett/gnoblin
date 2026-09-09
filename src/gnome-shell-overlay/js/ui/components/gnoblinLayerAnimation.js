@@ -24,8 +24,7 @@ export function animate(wm, shellwm, actor, opening) {
     if (anchor < 0)
         return false;
 
-    const animation = Config.windowEffects(Config.windowProperties(window)).animation;
-    const duration = Config.settings['layer-duration'];
+    const {animation, duration, easing} = Config.layerAnimation(Config.windowProperties(window), opening);
     const complete = (finished = true) => {
         if (opening && !finished) {
             // Mutter cancels map effects before emitting destroy. GNOME then
@@ -72,7 +71,7 @@ export function animate(wm, shellwm, actor, opening) {
         translation_y: opening ? 0 : offset[1],
         opacity: !opening && fading ? 0 : 255,
         duration,
-        mode: MODES[Config.settings['layer-easing']],
+        mode: MODES[easing],
         onStopped: complete,
     });
     return true;

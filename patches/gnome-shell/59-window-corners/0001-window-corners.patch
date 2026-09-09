@@ -1,0 +1,15 @@
+From: Gnoblin
+Subject: [PATCH] shell: include built-in window corner rules
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -138,6 +138,8 @@
+     <file>ui/components/gnoblinLayerAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
+     <file>ui/components/gnoblinBackdropRedraw.js</file>
++    <file>ui/components/gnoblinCornerGeometry.js</file>
++    <file>ui/components/gnoblinCorners.js</file>
+     <file>ui/components/gnoblinControl.js</file>
+     <file>ui/components/keyring.js</file>
+     <file>ui/components/networkAgent.js</file>

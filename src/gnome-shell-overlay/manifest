@@ -13,3 +13,5 @@ gnome-shell  js/ui/components/gnoblinLayerAnimation.js  js/ui/components/gnoblin
 gnome-shell  shell-gnoblin-shader.c  src/shell-gnoblin-shader.c
 gnome-shell  shell-gnoblin-shader.h  src/shell-gnoblin-shader.h
 gnome-shell  js/ui/components/gnoblinBackdropRedraw.js  js/ui/components/gnoblinBackdropRedraw.js
+gnome-shell  js/ui/components/gnoblinCornerGeometry.js  js/ui/components/gnoblinCornerGeometry.js
+gnome-shell  js/ui/components/gnoblinCorners.js  js/ui/components/gnoblinCorners.js
