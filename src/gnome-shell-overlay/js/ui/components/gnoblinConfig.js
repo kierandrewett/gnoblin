@@ -1,3 +1,4 @@
+import * as Permissions from './gnoblinPermissions.js';
 import * as Corners from './gnoblinCornerGeometry.js';
 // Live shell settings. Protocol registration remains a compositor-startup operation.
 import Gio from 'gi://Gio';
@@ -20,6 +21,7 @@ export const DEFAULTS = Object.freeze({
     'layer-animation': 'slide',
     'layer-duration': 220,
     'layer-easing': 'ease-out-cubic',
+    permissions: Permissions.DEFAULT_POLICY,
     autostart: [],
     'window-rules': [],
     shortcuts: [],
@@ -50,6 +52,8 @@ export function parseLegacy(text) {
             if (end < 0)
                 throw new Error(`invalid section: ${line}`);
             section = line.slice(1, end).trim();
+            if (section.startsWith('permissions'))
+                throw new Error('Permission rules require gnoblin.toml');
             continue;
         }
         if (section !== 'shell')
@@ -57,7 +61,7 @@ export function parseLegacy(text) {
         const separator = line.indexOf('=');
         const key = line.slice(0, separator).trim();
         const value = cleanValue(line.slice(separator + 1));
-        if (separator < 0 || !Object.hasOwn(DEFAULTS, key) || ['shortcuts', 'keybindings'].includes(key))
+        if (separator < 0 || !Object.hasOwn(DEFAULTS, key) || ['shortcuts', 'keybindings', 'permissions'].includes(key))
             throw new Error(`unknown shell setting: ${line}`);
         if (key === 'window-switcher' || FEATURE_KEYS.includes(key)) {
             if (!/^(true|false|on|off|yes|no|1|0)$/i.test(value))
@@ -98,11 +102,12 @@ export function parse(text) {
 
 export function parseDocument(document) {
     const next = {...DEFAULTS};
+    next.permissions = Permissions.validate(document.permissions);
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== 'object')
         throw new Error('shell must be a table');
     for (const [key, value] of Object.entries(shell)) {
-        if (!Object.hasOwn(DEFAULTS, key) || ['autostart', 'window-rules', 'shortcuts', 'keybindings'].includes(key))
+        if (!Object.hasOwn(DEFAULTS, key) || ['autostart', 'window-rules', 'shortcuts', 'keybindings', 'permissions'].includes(key))
             throw new Error(`unknown shell setting: ${key}`);
         if (FEATURE_KEYS.includes(key) || key === 'window-switcher') {
             if (typeof value !== 'boolean')
@@ -553,6 +558,33 @@ export class ConfigFile {
         const next = this.path.endsWith('.conf') ? parseLegacy(text) : this._parseToml(text);
         this._apply(next);
         settings = next;
+    }
+
+    setPermissions(policy, expected) {
+        if (this.path.endsWith('.conf'))
+            throw new Error('Permission rules require gnoblin.toml; migrate the legacy configuration first');
+        const file = Gio.File.new_for_path(this.path);
+        let text = '', etag = null;
+        try {
+            const [, bytes, loadedEtag] = file.load_contents(null);
+            text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+            etag = loadedEtag;
+        } catch (e) {
+            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) throw e;
+        }
+        const decode = contents => Meta.gnoblin_parse_toml(contents).recursiveUnpack();
+        const before = decode(text);
+        if (JSON.stringify(Permissions.validate(before.permissions)) !== JSON.stringify(expected))
+            throw new Error("Permission policy changed; inspect it and retry");
+        const replacement = Permissions.replacePolicy(text, policy);
+        const after = decode(replacement);
+        delete before.permissions;
+        delete after.permissions;
+        if (JSON.stringify(before) !== JSON.stringify(after))
+            throw new Error('Cannot safely edit this TOML layout; edit the permissions table manually');
+        this._parseToml(replacement);
+        file.replace_contents(replacement, etag, false, Gio.FileCreateFlags.PRIVATE, null);
+        this.reload();
     }
 
     start() {

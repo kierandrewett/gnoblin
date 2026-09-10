@@ -1,3 +1,4 @@
+import * as Permissions from './gnoblinPermissions.js';
 // Gnoblin Core — the org.gnoblin.* control protocol.
 //
 // This is first-class gnoblin source, not an extension: it's copied verbatim
@@ -602,6 +603,22 @@ const IFACE = `
     <!-- Typed ScreenCast/RemoteDesktop grants. Each tuple is:
          [opaque id, portal kind, namespaced requester identity,
           remote device mask, clipboard enabled, screen streams enabled]. -->
+    <method name="GetPermissions">
+      <arg type="s" direction="out" name="policy"/>
+    </method>
+    <method name="SetPermissions">
+      <arg type="s" direction="in" name="policy"/>
+      <arg type="s" direction="in" name="expected"/>
+    </method>
+    <method name="CheckPermission">
+      <arg type="s" direction="in" name="capability"/>
+      <arg type="s" direction="in" name="identity"/>
+      <arg type="s" direction="out" name="level"/>
+      <arg type="s" direction="out" name="rule"/>
+      <arg type="as" direction="out" name="monitors"/>
+      <arg type="u" direction="out" name="devices"/>
+      <arg type="b" direction="out" name="clipboard"/>
+    </method>
     <method name="ListPortalGrants">
       <arg type="a(sssubb)" direction="out" name="grants"/>
     </method>
@@ -668,6 +685,7 @@ export class Component {
                 enabled ? Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW |
                     Shell.ActionMode.POPUP | Shell.ActionMode.SYSTEM_MODAL | Shell.ActionMode.LOOKING_GLASS : Shell.ActionMode.NONE);
         }, undefined, name => this._shortcutInput.begin(name)));
+        this._permissionPolicy = {default: 'deny', rules: []};
         this._config = new ConfigFile(undefined, next => this._applyConfig(next));
         activeConfig = this._config;
         this._config.start();
@@ -911,6 +929,7 @@ export class Component {
         }
         this._windowRules.refresh(next);
         autostart.apply(next.autostart);
+        this._permissionPolicy = next.permissions;
     }
 
     // --- feature toggles ---
@@ -1173,6 +1192,31 @@ export class Component {
         } catch (e) {
             logError(e, `gnoblin: ignoring invalid portal grant ${portal}/${id}`);
             return null;
+        }
+    }
+
+    GetPermissions() {
+        return JSON.stringify({policy: this._permissionPolicy ?? Permissions.DEFAULT_POLICY,
+            capabilities: Permissions.CAPABILITIES, levels: Permissions.LEVELS,
+            path: this._config.path});
+    }
+
+    SetPermissionsAsync([policy, expected], invocation) {
+        try {
+            this._config.setPermissions(Permissions.validate(JSON.parse(policy)), JSON.parse(expected));
+            invocation.return_value(null);
+        } catch (error) {
+            invocation.return_dbus_error(`${BUS_NAME}.Error.PermissionPolicy`, error.message);
+        }
+    }
+
+    CheckPermissionAsync([capability, identity], invocation) {
+        try {
+            const decision = Permissions.evaluate(this._permissionPolicy ?? Permissions.DEFAULT_POLICY, capability, identity);
+            invocation.return_value(new GLib.Variant('(ssasub)',
+                [decision.level, decision.rule, decision.monitors, decision.devices, decision.clipboard]));
+        } catch (error) {
+            invocation.return_dbus_error(`${BUS_NAME}.Error.PermissionPolicy`, error.message);
         }
     }
 

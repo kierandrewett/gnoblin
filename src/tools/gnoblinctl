@@ -66,6 +66,25 @@ def parser():
     revoke.add_argument("kind", choices=["screen-cast", "remote-desktop"])
     revoke.add_argument("id")
 
+    permissions = add(commands, "permissions", "Inspect and configure portal permission policy")
+    permission_actions = permissions.add_subparsers(dest="action", required=True)
+    add(permission_actions, "list", "Show rules, supported capabilities and configuration path")
+    check = add(permission_actions, "check", "Explain the effective decision for a namespaced identity")
+    check.add_argument("capability")
+    check.add_argument("identity", help="app-id:com.example.App or host-exe:/usr/bin/app")
+    default = add(permission_actions, "default", "Set the fallback permission level")
+    default.add_argument("level", choices=["default", "ask", "deny"])
+    remove = add(permission_actions, "remove", "Remove a named permission rule")
+    remove.add_argument("name")
+    rule = add(permission_actions, "set", "Add or replace a named permission rule")
+    rule.add_argument("name")
+    rule.add_argument("level", choices=["default", "ask", "allow", "deny"])
+    rule.add_argument("--match", required=True, help="Regex against the verified namespaced identity")
+    rule.add_argument("--capability", dest="capabilities", required=True, action="append")
+    rule.add_argument("--monitor", dest="monitors", action="append", help="primary or exact connector; repeat for multiple outputs")
+    rule.add_argument("--device", dest="devices", action="append", choices=["keyboard", "pointer", "touchscreen"])
+    rule.add_argument("--clipboard", action="store_true", help="Permit remote clipboard exchange")
+
     def window_filters(command):
         command.add_argument("--app-id", help="Match an exact application ID")
         command.add_argument("--title", help="Match title text, without case sensitivity")
@@ -195,6 +214,30 @@ def dispatch(args, cli):
         input_call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
         return {"ok": True, "type": args.type, "id": args.id}
     if cmd == "privacy": return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
+    if cmd == "permissions":
+        if args.action == "check":
+            return dict(zip(["level", "rule", "monitors", "devices", "clipboard"],
+                            call("CheckPermission", "ss", [args.capability, args.identity])))
+        current = json.loads(call("GetPermissions")[0])
+        if args.action == "list": return current
+        policy = current["policy"]
+        expected = json.dumps(policy)
+        if args.action == "default": policy["default"] = args.level
+        else:
+            existing = next((i for i, rule in enumerate(policy["rules"]) if rule["name"] == args.name), None)
+            if args.action == "remove":
+                if existing is None: raise CommandError(f"Unknown permission rule: {args.name}")
+                policy["rules"].pop(existing)
+            else:
+                rule = {"name": args.name, "level": args.level, "match": args.match,
+                        "capabilities": args.capabilities}
+                for key in ("monitors", "devices"):
+                    if getattr(args, key) is not None: rule[key] = getattr(args, key)
+                if args.clipboard: rule["clipboard"] = True
+                if existing is None: policy["rules"].append(rule)
+                else: policy["rules"][existing] = rule
+        call("SetPermissions", "ss", [json.dumps(policy), expected])
+        return {"ok": True, "policy": policy, "path": current["path"]}
     if cmd == "portal-grants": return {"grants": keyed(call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"])}
     if cmd.startswith("launch-"):
         service = "org.gnoblin.LaunchFeedback"

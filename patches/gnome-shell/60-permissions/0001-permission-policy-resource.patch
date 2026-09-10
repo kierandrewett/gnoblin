@@ -1,0 +1,10 @@
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -135,6 +135,7 @@
+     <file>ui/components/automountManager.js</file>
+     <file>ui/components/autorunManager.js</file>
+     <file>ui/components/gnoblinConfig.js</file>
++    <file>ui/components/gnoblinPermissions.js</file>
+     <file>ui/components/gnoblinLayerAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
+     <file>ui/components/gnoblinBackdropRedraw.js</file>
