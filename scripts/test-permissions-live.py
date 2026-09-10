@@ -2,6 +2,7 @@
 """Exercise the actual control service and CLI in a private Gnoblin session."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -69,7 +70,9 @@ backend_name = 'org.freedesktop.impl.portal.desktop.gnome'
 backend_log = open(Path(os.environ['XDG_CACHE_HOME']) / 'permission-backend.log', 'w+')
 backend = subprocess.Popen([str(ROOT / 'build/xdg-desktop-portal-gnome/src/xdg-desktop-portal-gnome'), '--replace'],
                            stdout=backend_log, stderr=backend_log, env={**os.environ, 'G_MESSAGES_DEBUG': 'all'})
-app = 'com.example.PermissionProbe'
+app = os.environ.get('GNOBLIN_PERMISSION_TEST_APP', 'com.example.PermissionProbe')
+app_identity = '^app-id:' + re.escape(app) + '$'
+app_match = re.escape(app)
 owner = bus.get_unique_name().removeprefix(':').replace('.', '_')
 serial = 0
 
@@ -119,14 +122,14 @@ try:
     else: raise RuntimeError('Portal backend did not initialise ScreenCast')
     ctl('permissions', 'default', 'deny')
     for capability in ('screen-cast', 'remote-desktop', 'input-capture', 'screenshot', 'access'):
-        ctl('permissions', 'set', capability, 'allow', '--match', '^app-id:com.example.PermissionProbe$',
+        ctl('permissions', 'set', capability, 'allow', '--match', app_identity,
             '--capability', capability, *(['--monitor', 'primary'] if capability == 'screen-cast' else []),
             *(['--device', 'keyboard', '--device', 'pointer'] if capability == 'remote-desktop' else []))
     result = capture()
     assert result.unpack()[0] == 0 and result.unpack()[1]['streams'], result
     restore = result.get_child_value(1).lookup_value('restore_data', None)
     assert restore is not None, result
-    ctl('permissions', 'set', 'block-capture', 'deny', '--match', 'PermissionProbe', '--capability', 'screen-cast')
+    ctl('permissions', 'set', 'block-capture', 'deny', '--match', app_match, '--capability', 'screen-cast')
     assert capture({'restore_data': restore}).unpack()[0] == 2
     ctl('permissions', 'remove', 'block-capture')
     request, session = handles()
@@ -159,7 +162,7 @@ try:
         ('screenshot', 'Screenshot', 'Screenshot', '(ossa{sv})'),
         ('access', 'Access', 'AccessDialog', '(osssssa{sv})'),
         ('input-capture', 'InputCapture', 'CreateSession', '(oossa{sv})')]:
-        ctl('permissions', 'set', 'block', 'deny', '--match', 'PermissionProbe', '--capability', capability)
+        ctl('permissions', 'set', 'block', 'deny', '--match', app_match, '--capability', capability)
         request, session = handles()
         values = (request, app, '', {})
         if capability == 'access': values = (request, app, '', 'Test', 'Test', 'Test', {})
@@ -167,7 +170,7 @@ try:
         assert portal(interface, method, signature, values).unpack()[0] != 0
         ctl('permissions', 'remove', 'block')
     # A forced prompt must ignore otherwise valid restore data and remain cancellable.
-    ctl('permissions', 'set', 'prompt', 'ask', '--match', 'PermissionProbe', '--capability', 'screen-cast')
+    ctl('permissions', 'set', 'prompt', 'ask', '--match', app_match, '--capability', 'screen-cast')
     request, session = handles()
     assert portal('ScreenCast', 'CreateSession', '(oosa{sv})', (request, session, app, {})).unpack()[0] == 0
     assert portal('ScreenCast', 'SelectSources', '(oosa{sv})', (request, session, app,
@@ -201,7 +204,6 @@ try:
     assert result[0] != 0
     direct.close_sync(None)
     # Native applications with an empty app ID use the actual caller executable.
-    import re
     executable = os.readlink('/proc/self/exe')
     ctl('permissions', 'set', 'native', 'allow', '--match', '^host-exe:' + re.escape(executable) + '$',
         '--capability', 'access')
