@@ -425,6 +425,7 @@ export class WindowBorders {
         };
         const g = windowGeometry(this.actor, this.surface, config);
         if (!Geometry.bordersEnabled(config, state) || !g) { this.remove(); return; }
+        if (state.maximized) g.radius = 0;
         const pad = Math.ceil(config['outer-width']*g.scale)+2;
         const [left, top, right, bottom] = g.bounds;
         if (!this.widget) {
@@ -436,7 +437,19 @@ export class WindowBorders {
         }
         this.widget.set_position(this.surface.x+left-pad, this.surface.y+top-pad);
         this.widget.set_size(right-left+2*pad, bottom-top+2*pad);
-        this.effect.update({...g, bounds: [pad,pad,pad+right-left,pad+bottom-top]}, config);
+        const bounds = [pad, pad, pad + right - left, pad + bottom - top];
+        if (state.maximized) {
+            const frame = win.get_frame_rect();
+            const monitor = global.display.get_monitor_geometry(win.get_monitor());
+            // Move only flush edges outside the paint box. The remaining
+            // strokes still reach the screen edge without a corner notch.
+            const inset = Math.max(config['inner-width'], config['outer-width']) * g.scale + 2;
+            if (Math.abs(frame.x - monitor.x) <= 1) bounds[0] -= inset;
+            if (Math.abs(frame.y - monitor.y) <= 1) bounds[1] -= inset;
+            if (Math.abs(frame.x + frame.width - monitor.x - monitor.width) <= 1) bounds[2] += inset;
+            if (Math.abs(frame.y + frame.height - monitor.y - monitor.height) <= 1) bounds[3] += inset;
+        }
+        this.effect.update({...g, bounds}, config);
     }
     remove() { this.widget?.destroy(); this.widget = null; this.effect = null; }
     destroy() {

@@ -33,7 +33,7 @@ export class WindowSnap {
 
     begin(window) {
         this.cancel();
-        if (!this.bridge.eligible(window) || !window.allows_move() || !window.allows_resize() || window.is_fullscreen()) return;
+        if (!this.bridge.eligible(window) || !window.allows_move() || (!window.allows_resize() && !window.get_maximize_flags()) || window.is_fullscreen()) return;
         if (![...this.bridge.clients].some(client => client.trackSnap)) return;
         const id = String(window.get_stable_sequence());
         const previous = this.saved.get(id);
@@ -89,8 +89,23 @@ export class WindowSnap {
         this.drag.offers = record.regions;
     }
 
-    apply(window, target, monitorId, original = null) {
-        if (Main.sessionMode.isLocked || !window || !target || !this.bridge.eligible(window) || !window.allows_resize()
+    restoreOrMinimize(window) {
+        const id = String(window.get_stable_sequence());
+        const saved = this.saved.get(id);
+        if (window.get_maximize_flags()) {
+            window.unmaximize(Meta.MaximizeFlags.BOTH);
+            this.saved.delete(id);
+        } else if (saved) {
+            window.move_resize_frame(true, saved.x, saved.y, saved.width, saved.height);
+            this.saved.delete(id);
+        } else {
+            if (!window.can_minimize()) throw new Error('window cannot be minimized');
+            window.minimize();
+        }
+    }
+
+    apply(window, target, monitorId, original = null, maximize = false) {
+        if (Main.sessionMode.isLocked || !window || !target || !this.bridge.eligible(window) || (!window.allows_resize() && !window.get_maximize_flags())
             || !window.allows_move() || window.is_fullscreen()) throw new Error('window cannot snap');
         const monitor = Main.layoutManager.monitors.find(m => m.index === monitorId);
         if (!monitor) throw new Error('monitor no longer available');
@@ -100,6 +115,14 @@ export class WindowSnap {
             || target.x + target.width > area.x + area.width + 1 || target.y + target.height > area.y + area.height + 1)
             throw new Error('snap region is outside the work area');
         const id = String(window.get_stable_sequence());
+        if (maximize) {
+            if (!window.can_maximize()) throw new Error('window cannot be maximized');
+            this.saved.delete(id);
+            window.move_to_monitor(monitorId);
+            window.maximize(Meta.MaximizeFlags.BOTH);
+            Main.activateWindow(window, global.get_current_time());
+            return;
+        }
         if (!this.saved.has(id)) this.saved.set(id, original || window.get_frame_rect());
         if (window.unmaximize.length === 0) window.unmaximize();
         else window.unmaximize(Meta.MaximizeFlags.BOTH);
@@ -124,7 +147,7 @@ export class WindowSnap {
         this.pending = GLib.idle_add(GLib.PRIORITY_HIGH_IDLE, () => {
             this.pending = 0;
             try {
-                this.apply(drag.window, region.target, state.monitor.id, drag.original);
+                this.apply(drag.window, region.target, state.monitor.id, drag.original, region.maximize === true);
                 this.bridge.send(drag.owner, {event: 'snap-completed', layout: region.layout});
             }
             catch (error) { this.bridge.send(drag.owner, {event: 'error', message: error.message}); }

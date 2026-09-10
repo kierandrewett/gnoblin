@@ -74,7 +74,7 @@ def parser():
     window = add(commands, "window", "Manage a window by ID; active means the focused window")
     actions = window.add_subparsers(dest="action", required=True, metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
-    for name in ("focus", "close", "minimize", "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen"):
+    for name in ("focus", "close", "minimize", "restore-or-minimize", "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen"):
         action = add(actions, name, f"{name.capitalize()} one window")
         action.add_argument("id", nargs="?", default="active", help="Window ID from windows (default: active)")
     for name, fields in (("move", ["x", "y"]), ("resize", ["width", "height"]), ("workspace", ["workspace"]), ("monitor", ["monitor"])):
@@ -254,7 +254,7 @@ def render(result, output_format):
 def completions(cli, shell):
     choices = next(action.choices for action in cli._actions if isinstance(action, argparse._SubParsersAction))
     names = " ".join(choices)
-    actions = "list focus close minimize restore maximize unmaximize fullscreen unfullscreen move resize workspace monitor"
+    actions = "list focus close minimize restore-or-minimize restore maximize unmaximize fullscreen unfullscreen move resize workspace monitor"
     if shell == "bash":
         print("""_gnoblinctl() {
     local cur=${COMP_WORDS[COMP_CWORD]} words='--help --json --format --timeout --socket'
