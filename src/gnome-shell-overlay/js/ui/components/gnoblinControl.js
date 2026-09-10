@@ -914,7 +914,16 @@ export class Component {
     }
 
     _applyConfig(next) {
-        this._shortcuts.apply(next);
+        try {
+            this._shortcuts.apply(next);
+        } catch (error) {
+            // A compositor-owned accelerator must not make an otherwise valid
+            // config (especially its permission policy) disappear. The
+            // shortcut manager has already rolled back its partial changes.
+            if (!String(error?.message ?? error).startsWith('shortcut already claimed:'))
+                throw error;
+            console.warn(`gnoblin-config: skipping conflicting command shortcut: ${error.message}`);
+        }
         const disabled = new Set(this._disabledList());
         for (const id of FEATURE_KEYS) {
             if (next[id] === true)
