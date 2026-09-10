@@ -23,7 +23,7 @@ regular GNOME session stays available.
 | Desktop | GNOME's panel, dash and Activities overview | Your choice of shell, panels and launchers |
 | Bars and docks | Changes usually need Shell extensions | Separate applications using layer-shell |
 | Window appearance | GNOME's built-in effects | Configurable blur, corners, shadows and animation rules |
-| Configuration | Settings, GSettings and extension preferences | Those settings plus a live TOML config for Gnoblin features |
+| Configuration | Settings, GSettings and extension preferences | GNOME system settings plus a live TOML config for Gnoblin features |
 | Automation | GNOME's existing interfaces | Additional window-control APIs, commands and reloadable scripts |
 
 Your applications still run on Mutter. GNOME's lock screen, password prompts,
@@ -31,8 +31,17 @@ keyring, network authentication and removable-drive handling remain. You can
 keep using GNOME Settings for hardware and system preferences.
 
 Gnoblin doesn't include a replacement desktop UI. Install a shell such as
-Bingux, or choose the individual tools you want. Existing GNOME extensions
-that depend on the panel or overview won't provide those features here.
+Bingux, or choose the individual tools you want.
+
+## What about extensions?
+
+The standard Gnoblin session disables user GNOME Shell extensions. Extensions
+that modify GNOME's panel, dash or overview have no corresponding UI to modify.
+
+Bars, docks and launchers run as separate apps. Blur, rounded corners and
+window rules are built in. Widgets and plugins belong to your chosen shell;
+for changes inside the compositor, Gnoblin supports reloadable JavaScript
+scripts with access to GNOME Shell and Mutter.
 
 ## Choose your desktop
 
