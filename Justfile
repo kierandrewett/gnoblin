@@ -1,18 +1,9 @@
-# gnoblin build orchestration — patched GNOME Shell on patched Mutter. gnoblin is
-# "just GNOME + Mutter": Mutter carries the wlr-layer-shell + protocol overlays
-# (patches/mutter/ + src/protocols/); GNOME Shell carries a thin, Gnoblin-scoped
-# patch set (extension loading, notification ownership, native top-bar policy)
-# plus portal fixes, tooling, and the session mode that strips its stock UI.
-# Chrome is bring-your-own: any layer-shell client (Quickshell, waybar, a custom
-# one, or none) draws the UI.
-#
-# The from-scratch C++ compositor + Rust/Slint clients were RETIRED; recover them
-# from the `archive/cpp-compositor` tag. Submodules are pinned + pristine; gnoblin's
-# changes are patches/ + src/ overlays. `just dev` builds the whole stack into ./install.
+# Build and test the patched Mutter, GNOME Shell and Gnoblin session.
+# Owned changes live in patches/ and src/. Upstream sources live in subprojects/.
 
 set shell := ["bash", "-uc"]
 
-# Patched subprojects built by `just dev`. (slint + the C++ compositor are retired.)
+# Patched subprojects built by `just dev`.
 patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter gnome-shell"
 
@@ -406,3 +397,11 @@ gnome-layer-animation-verify:
 
 gnome-window-effects-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-window-effects.py" ./scripts/run-gnome-shell.sh
+
+# Build a source RPM from an already prepared release source directory.
+srpm PROJECT SOURCES OUTPUT:
+    ./scripts/build-srpm.sh "{{PROJECT}}" "{{SOURCES}}" "{{OUTPUT}}"
+
+# Publish prepared source RPMs to an existing COPR project in dependency order.
+copr PROJECT MUTTER_SRPM SHELL_SRPM:
+    ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}"

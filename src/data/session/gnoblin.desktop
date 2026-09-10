@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Gnoblin
-Comment=Stripped GNOME Shell + Mutter; chrome is bring-your-own
+Comment=Wayland session for use with a separate desktop shell
 Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin
 Type=Application
 DesktopNames=Gnoblin;GNOME;

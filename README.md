@@ -1,8 +1,18 @@
 # gnoblin
 
-gnoblin is a GNOME session for people who provide their own Wayland chrome. It builds a patched Mutter and GNOME Shell into a local prefix. In the Gnoblin session, GNOME Shell remains the compositor and session manager, but its stock panel, Activities overview, dash, and app grid are absent. Use a layer-shell client such as Quickshell, Waybar, or your own client to draw those surfaces.
+Gnoblin is a Wayland desktop session built from Mutter and GNOME Shell.
+It manages windows, workspaces and input. A separate shell, such as
+[Bingux](https://github.com/kierandrewett/bingux), supplies the top bar, dock,
+search and notifications.
 
-Gnoblin adds layer-shell and related Wayland protocol overlays to Mutter, plus the `org.gnoblin.Shell` D-Bus control API. Those interfaces are available only in the Gnoblin session. The patched packages retain the stock GNOME `user` mode and its native panel, extension policy, and notification ownership.
+Gnoblin removes GNOME's panel and Activities overview from its session. It adds
+layer-shell support and window-control interfaces for external desktop shells.
+It retains GNOME's login integration, password prompts and hardware services.
+
+The current Fedora packages replace the system Mutter and GNOME Shell.
+The regular GNOME session remains available, but both sessions use the patched
+packages. See [installation](docs/installation.md) before installing them.
+Repository publication is being prepared; see [distribution](docs/distribution.md).
 
 ## Prerequisites
 

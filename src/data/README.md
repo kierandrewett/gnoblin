@@ -6,9 +6,11 @@ treating them as passive examples.
 
 ## Files
 
-- `session/modes/gnoblin.json` is the GNOME Shell **session mode** that strips
-  the stock UI (empty panel, `hasOverview: false`, minimal components +
-  `gnoblinControl`). This is the low-patch way gnoblin removes GNOME's chrome.
+- `session/modes/gnoblin.json` defines the GNOME Shell session mode.
+  It disables the stock panel, overview, notification banners and welcome dialog.
+  Password, permission, network and removable-drive agents remain enabled.
+  `gnoblinControl` provides the control API. These agents can display prompts;
+  they are not all background-only services.
 - `session/gnome-session/gnoblin.session` + `session/gnoblin.desktop` register
   the session at the login manager; installed by `scripts/install-session.sh`.
 - `org.gnoblin.shell.gschema.xml` is the GSettings schema for the
