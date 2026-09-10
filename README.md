@@ -16,89 +16,39 @@ Built on Mutter and GNOME Shell, it keeps GNOME's window management, hardware
 integration, lock screen and desktop services. Select Gnoblin at login; the
 regular GNOME session stays available.
 
-## What's different from GNOME?
+## What's different?
 
-| | GNOME | Gnoblin |
-| --- | --- | --- |
-| Desktop | GNOME's panel, dash and Activities overview | Your choice of shell, panels and launchers |
-| Bars and docks | Changes usually need Shell extensions | Separate applications using layer-shell |
-| Window appearance | GNOME's built-in effects | Configurable blur, corners, shadows and animation rules |
-| Configuration | Settings, GSettings and extension preferences | GNOME system settings plus a live TOML config for Gnoblin features |
-| Automation | GNOME's existing interfaces | Additional window-control APIs, commands and reloadable scripts |
-
-Your applications still run on Mutter. GNOME's lock screen, password prompts,
-keyring, network authentication and removable-drive handling remain. You can
-keep using GNOME Settings for hardware and system preferences.
-
-Gnoblin doesn't include a replacement desktop UI. Install a shell such as
-Bingux, or choose the individual tools you want.
-
-## What about extensions?
-
-The standard Gnoblin session disables user GNOME Shell extensions. Extensions
-that modify GNOME's panel, dash or overview have no corresponding UI to modify.
-
-Bars, docks and launchers run as separate apps. Blur, rounded corners and
-window rules are built in. Widgets and plugins belong to your chosen shell;
-for changes inside the compositor, Gnoblin supports reloadable JavaScript
-scripts with access to GNOME Shell and Mutter.
-
-## Choose your desktop
-
-Use a complete shell or combine a bar, launcher and notification daemon from
-different projects. Panels and docks run as separate applications through
-layer-shell. They don't need to be GNOME Shell extensions.
-
-Keep GNOME's screenshot tool and volume popups, or turn them off when your
-chosen tools handle those jobs. GNOME's notification banners are hidden;
-disable its notification service when using an external notification daemon.
+- Use your own shell, bar, dock and launcher.
+- User GNOME extensions are disabled; apps and shell plugins provide desktop customisation.
+- Blur, corners, shadows and animations are configurable without extensions.
+- Set window rules, shortcuts and autostart in a live TOML config.
+- Control windows through `gnoblinctl`, D-Bus, sockets or reloadable JavaScript.
 
 ## Supported protocols
 
-Gnoblin adds these protocols to Mutter's existing Wayland support:
+Added to Mutter's existing Wayland support, enabled by default:
 
-| Protocol | What it enables |
+| Protocol | Used for |
 | --- | --- |
-| `wlr-layer-shell` | Bars, docks, wallpapers and desktop overlays |
-| `wlr-screencopy` | Capturing a screen or a selected region |
-| `ext-foreign-toplevel-list` | Listing open windows, their titles and app IDs |
-| `wlr-foreign-toplevel-management` | Focusing, minimising, maximising and closing windows from a dock or taskbar |
-| `ext-data-control` | Clipboard managers, including primary selection |
-| `ext-idle-notify` | Detecting inactivity and when you return |
-| `wlr-gamma-control` | Colour-temperature tools that adjust display gamma |
-| `wlr-output-power-management` | Switching displays on and off |
+| `wlr-layer-shell` | Bars, docks, wallpapers and overlays |
+| `wlr-screencopy` | Screen and region capture |
+| `ext-foreign-toplevel-list` | Window lists, titles and app IDs |
+| `wlr-foreign-toplevel-management` | Dock and taskbar window controls |
+| `ext-data-control` | Clipboard and primary-selection managers |
+| `ext-idle-notify` | Idle detection |
+| `wlr-gamma-control` | Display gamma and colour temperature |
+| `wlr-output-power-management` | Display power control |
 
-These are enabled by default in the Gnoblin session. Protocol settings take
-effect at the next login. `ext-session-lock` and `wlr-output-management` are
-not implemented; GNOME still handles locking and display configuration.
+GNOME still handles locking and display configuration. `ext-session-lock`
+and `wlr-output-management` aren't implemented.
 
-## Make it yours
+## Get started
 
-Configure blur, rounded corners, shadows and animations. Apply window rules
-per app, set your own shortcuts and choose which programs start at login.
-Shell settings reload when you save `~/.config/gnoblin/gnoblin.toml`.
+[Install](docs/installation.md) on Fedora, NixOS or from source, or
+[try a nested session](docs/devkit.md) without logging out.
+Fedora packages replace the Mutter and GNOME Shell builds used by both sessions.
 
-[Configuration](docs/configuration.md) · [Window effects](docs/window-effects.md)
-
-## Go further
-
-Use `gnoblinctl` to control windows and workspaces from scripts or keybindings.
-Custom shells can use the D-Bus and socket APIs; reloadable JavaScript scripts
-provide access to GNOME Shell and Mutter.
-
-[Command-line tools](docs/gnoblinctl.md) · [Shell integration](docs/compositor-bridge.md)
-
-## Try it
-
-You can try Gnoblin in a nested window before changing your login session.
-For everyday use, install it and select **Gnoblin** at the login screen, then
-start your chosen shell.
-
-Fedora RPMs, NixOS and source builds are covered in the installation guide.
-The Fedora packages replace the Mutter and GNOME Shell builds used by both
-sessions.
-
-[Installation and package status](docs/installation.md) · [Documentation](docs/README.md)
+[Configuration](docs/configuration.md) · [Window effects](docs/window-effects.md) · [Scripting](docs/gnoblinctl.md) · [All docs](docs/README.md)
 
 Built from [Mutter](https://gitlab.gnome.org/GNOME/mutter) and
 [GNOME Shell](https://gitlab.gnome.org/GNOME/gnome-shell).
