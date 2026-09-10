@@ -15,11 +15,23 @@ You'll also need a [desktop shell](bring-your-own-shell.md), such as Bingux.
 ## Fedora
 
 The packages are named `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session`.
-Their runtime lives in `/usr/lib/gnoblin`. Use a Fedora installation with the
-GNOME 49 dependencies.
+Their runtime lives in `/usr/lib/gnoblin`. Your existing GNOME packages remain
+installed and selectable.
 
-See [package availability](distribution.md#repository-status) for COPR status.
-To build the RPMs yourself:
+### Install from COPR
+
+The Fedora 43 COPR has signed builds. Enable it, then install the session:
+
+```sh
+sudo dnf copr enable kierandrewett/gnoblin
+sudo dnf install gnoblin-session
+```
+
+The repository also enables the Hyprcursor dependency repository used by the
+Gnoblin Mutter build. Install your desktop shell separately, then log out and
+select **Gnoblin** at the login screen.
+
+### Build the RPMs yourself
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git

@@ -9,15 +9,15 @@ bar, dock or notification centre until that client is enabled.
 
 ## Release checklist
 
-- [ ] Build Gnoblin source RPMs from a clean checkout with all patches included.
+- [x] Build Gnoblin source RPMs from a clean checkout with all patches included.
 - [x] Create Fedora COPR projects for Gnoblin and Bingux.
-- [ ] Build Mutter before GNOME Shell in COPR.
+- [x] Build Mutter before GNOME Shell in COPR.
 - [ ] Verify installation, login and rollback on a clean supported Fedora host.
 - [x] Give Bingux a standalone build, install manifest and service definitions.
 - [x] Move Bingux packaging and runtime dependencies to its native shell tree.
 - [ ] Build and test Bingux RPMs with the matching Qt and Quickshell runtime.
 - [ ] Add signed APT and pacman repositories after distribution-specific builds pass.
-- [ ] Publish installation instructions only for verified package sets.
+- [x] Publish installation instructions for the Fedora COPR package set.
 
 ## Package boundaries
 
@@ -40,12 +40,13 @@ user-systemd units; it is no longer a machine-configuration repository.
 
 The [Gnoblin COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin/)
 and [Bingux COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/bingux/)
-exist for Fedora 43 x86_64. Package publication and fresh-install checks are
-pending. Creating a repository does not establish release readiness.
+exist for Fedora 43 x86_64. Gnoblin's private Mutter and Shell packages are
+published; fresh-install, login and rollback checks on a clean host remain.
+Creating a repository does not establish release readiness.
 
-The side-by-side RPM layout still needs a clean-host build, login and removal
-check before publication. Old replacement RPMs are not supported by the new
-installer; restoring a host already using them is a separate migration.
+The side-by-side RPM layout still needs a clean-host login and removal check.
+Old replacement RPMs are not supported by the new installer; restoring a host
+already using them is a separate migration.
 
 ## Publishing access
 
