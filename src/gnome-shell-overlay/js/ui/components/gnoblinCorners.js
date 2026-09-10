@@ -178,7 +178,9 @@ const CornersEffect = GObject.registerClass(class GnoblinCornersEffect extends G
         this.uniform('automatic', [config.mode === 'auto' ? 1 : 0]);
         this.uniform('borderWidth', [config['border-width']*g.scale]);
         this.uniform('borderColor', rgba(config['border-color']));
-        this.uniform('replaceShadow', [config.shadow ? 1 : 0]);
+        // Forced clipping owns the complete frame silhouette, including the
+        // client shadow outside it, even without a replacement shadow.
+        this.uniform('replaceShadow', [config.shadow || config.mode === 'force' ? 1 : 0]);
     }
 });
 

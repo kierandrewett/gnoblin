@@ -195,11 +195,15 @@ corners = { radius = 14, smoothing = 0.0, mode = "force", shadow = { blur = 24, 
 borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 14, smoothing = 0.0 }
 ```
 
-The replacement shadow also removes the original client shadow outside the
-frame, which can otherwise leave a rectangular outline visible on wallpaper.
+Force mode removes the original client shadow outside the frame, including
+when `shadow = false`. Disabling the replacement shadow does not restore the
+rectangular client shadow around the rounded border. Automatic mode preserves
+the client shadow unless a replacement shadow is configured.
 Keep radius, smoothing and padding equal for clipping and borders. Force mode
 clips the client even when it already draws corners; automatic mode preserves
 native corners and can leave a different curve underneath a configured border.
+`scripts/test-window-shadow-clipping.py` verifies both shadow policies with
+rendered pixels in a private compositor.
 
 A rebuilt shell must be started once to load the native renderer. Subsequent
 style changes need no logout. The current development session uses a temporary
