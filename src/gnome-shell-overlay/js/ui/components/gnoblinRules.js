@@ -52,7 +52,29 @@ export class WindowRules {
         this._cornerToolkits = new ToolkitCache();
         this._sources = new Map();
         this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
-        this._focus = global.display.connect('notify::focus-window', () => this.refresh());
+        this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
+        this._pending = new Set();
+        this._pendingId = 0;
+        this._focus = global.display.connect('notify::focus-window', () => {
+            const previous = this._focusedActor;
+            this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
+            if (!this._config['window-rules'].some(rule => 'focused' in rule.match)) return;
+            if (previous) this._schedule(previous);
+            if (this._focusedActor) this._schedule(this._focusedActor);
+        });
+    }
+
+    _schedule(actor) {
+        if (!this._actors.has(actor)) return;
+        this._pending.add(actor);
+        if (this._pendingId) return;
+        this._pendingId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._pendingId = 0;
+            const pending = this._pending;
+            this._pending = new Set();
+            for (const value of pending) if (this._actors.has(value)) this._apply(value);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     refresh(config = this._config) {
@@ -120,15 +142,18 @@ export class WindowRules {
         const surface = entry?.surface || actor.get_children().find(child => !child._gnoblinDecoration);
         if (!surface || !actor.meta_window) return;
         if (!entry) {
-            const title = actor.meta_window.connect('notify::title', () => this._apply(actor));
+            const title = actor.meta_window.connect('notify::title', () => {
+                if (this._config['window-rules'].some(rule => 'title' in rule.match)) this._schedule(actor);
+            });
             const destroy = actor.connect('destroy', () => {
                 actor.meta_window?.disconnect(title);
                 entry.corners?.destroy();
                 entry.borders?.destroy();
                 this._actors.delete(actor);
+                this._pending.delete(actor);
             });
-            const width = surface.connect('notify::width', () => this._apply(actor));
-            const height = surface.connect('notify::height', () => this._apply(actor));
+            const width = surface.connect('notify::width', () => this._schedule(actor));
+            const height = surface.connect('notify::height', () => this._schedule(actor));
             entry = {surface, title, destroy, width, height, opacity: surface.opacity, blur: null,
                 shader: null, shaderKey: null, corners: null, borders: null};
             this._actors.set(actor, entry);
@@ -169,13 +194,13 @@ export class WindowRules {
             entry.shader.setFloat('gnoblin_height', surface.height);
         }
         if (effects.borders['inner-width'] > 0 || effects.borders['outer-width'] > 0) {
-            if (!entry.borders) entry.borders = new WindowBorders(actor, surface, () => this._apply(actor));
+            if (!entry.borders) entry.borders = new WindowBorders(actor, surface, () => this._schedule(actor));
             entry.borders.update(effects.borders);
         } else if (entry.borders) {
             entry.borders.destroy(); entry.borders = null;
         }
         if (effects.corners.radius > 0 && effects.corners.mode !== 'off') {
-            if (!entry.corners) entry.corners = new WindowCorners(actor, surface, this._cornerToolkits, () => this._apply(actor));
+            if (!entry.corners) entry.corners = new WindowCorners(actor, surface, this._cornerToolkits, () => this._schedule(actor));
             entry.corners.update(effects.corners);
         } else if (entry.corners) {
             entry.corners.destroy(); entry.corners = null;
@@ -183,6 +208,9 @@ export class WindowRules {
     }
 
     destroy() {
+        if (this._pendingId) GLib.source_remove(this._pendingId);
+        this._pendingId = 0;
+        this._pending.clear();
         this._backdropRedraw.destroy();
         global.window_manager.disconnect(this._map);
         global.display.disconnect(this._focus);

@@ -26,12 +26,19 @@ function windowGeometry(actor, surface, config) {
     let cached = visibleFrames.get(actor);
     // Mapping precedes the first buffer for some clients (for example Spotify).
     // get_image() crashes in Mutter when the shaped texture has no buffer.
-    const hasBuffer = Boolean(actor.get_texture()?.get_texture());
+    const texture = actor.get_texture();
+    const hasBuffer = Boolean(texture?.get_texture());
     // Explicit client geometry is authoritative. Only inspect clients which
     // include the entire buffer (including their shadow) in the frame.
     if (frame.width === buffer.width && frame.height === buffer.height &&
         !config.padding.some(Boolean) && actor.mapped && actor.opacity === 255 && hasBuffer && !win.minimized &&
         width > 0 && height > 0 && width * height * actor.get_resource_scale() ** 2 <= 16000000) {
+        // The compositor already knows when the whole client texture is opaque.
+        // Such a buffer cannot contain an alpha shadow, so no GPU download is needed.
+        if (cached?.key !== key && texture.is_opaque()) {
+            cached = {key, insets: [0, 0, 0, 0]};
+            visibleFrames.set(actor, cached);
+        }
         if (cached?.key !== key) {
             const effects = [...actor.get_effects(), ...surface.get_effects()];
             const enabled = effects.map(effect => effect.enabled);
@@ -138,33 +145,18 @@ if (apply) {
 }`;
 
 const GeometryEffect = GObject.registerClass(class GnoblinCornerGeometryEffect extends Shell.GLSLEffect {
-    _init() { super._init(); this.locations = new Map(); this.values = new Map(); }
-    vfunc_paint_target(node, context) {
-        const texture = this.get_texture();
-        const pipeline = this.get_pipeline();
-        if (this.blendPipeline !== pipeline) {
-            pipeline.set_blend('RGBA = ADD (SRC_COLOR, DST_COLOR * (1-SRC_COLOR[A]))');
-            this.blendPipeline = pipeline;
-        }
-        const actor = this.get_actor();
-        const scale = Math.max(1, Math.ceil(actor.get_resource_scale()));
-        this.uniform('pixelWidth', [1/scale]);
-        // Clutter pads offscreen paint volumes for filtering. Texture UVs are
-        // not window UVs: account for the quantised paint box, including HiDPI.
-        // This matches _clutter_actor_box_enlarge_for_effects for a surface.
-        this.uniform('textureDimensions', [texture.get_width()/scale, texture.get_height()/scale]);
-        const [width,height] = this.logicalDimensions || [actor.width,actor.height];
-        this.uniform('textureOrigin', [Math.ceil(width+.75)-Math.round(width)-3,
-            Math.ceil(height+.75)-Math.round(height)-3]);
-        super.vfunc_paint_target(node, context);
+    _init() {
+        super._init();
+        this.locations = new Map(); this.values = new Map();
+        this.set_geometry_uniforms(-1, -1);
     }
     uniform(name, values) {
-        if (name === 'dimensions') this.logicalDimensions = values;
-        const key = values.join(',');
-        if (this.values.get(name) === key) return;
+        if (name === 'dimensions') this.set_geometry_uniforms(values[0], values[1]);
+        const previous = this.values.get(name);
+        if (previous && previous.length === values.length && values.every((value, i) => value === previous[i])) return;
         if (!this.locations.has(name)) this.locations.set(name, this.get_uniform_location(name));
         this.set_uniform_float(this.locations.get(name), values.length, values);
-        this.values.set(name, key);
+        this.values.set(name, values.slice());
         this.queue_repaint();
     }
 });

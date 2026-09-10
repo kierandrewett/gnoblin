@@ -13,6 +13,7 @@
 #      GNOBLIN_TEST_EXTENSION_ROOT (optional directory of system extension fixtures),
 #      GNOBLIN_TEST_GSETTINGS_BACKEND (default memory),
 #      GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 to seed that feature as disabled,
+#      GNOBLIN_TEST_UNSAFE_MODE=1 enables Eval on the private test bus only,
 #      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      EXTRA_MONITOR (optional second virtual monitor, e.g. 1920x1200),
 #      KEEP=1 to keep the shell alive (prints WAYLAND_DISPLAY, Ctrl-C to exit).
@@ -159,6 +160,8 @@ fi
 
 echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
 x11_args=(--no-x11)
+debug_args=()
+if [[ "${GNOBLIN_TEST_UNSAFE_MODE:-0}" == 1 ]]; then debug_args=(--unsafe-mode); fi
 if [[ "${GNOBLIN_TEST_XWAYLAND:-0}" == 1 ]]; then x11_args=(); fi
 monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
@@ -166,7 +169,7 @@ if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
   bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
   gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
-  "$SHELL_BIN" --headless --wayland "${x11_args[@]}" --mode="$MODE" \
+  "$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE" \
   "${monitor_args[@]}" --wayland-display "$DISP" \
   >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!

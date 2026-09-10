@@ -1,0 +1,126 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] shell: update opt-in effect geometry in native paint code
+
+diff --git a/src/shell-glsl-effect.c b/src/shell-glsl-effect.c
+index ab3ef77..c5c8f97 100644
+--- a/src/shell-glsl-effect.c
++++ b/src/shell-glsl-effect.c
+@@ -13,6 +13,8 @@
+ #include "config.h"
+ 
+ #include <cogl/cogl.h>
++#include <math.h>
++#include <string.h>
+ #include "shell-glsl-effect.h"
+ 
+ #include "shell-global.h"
+@@ -21,10 +23,85 @@ typedef struct _ShellGLSLEffectPrivate ShellGLSLEffectPrivate;
+ struct _ShellGLSLEffectPrivate
+ {
+   CoglPipeline  *pipeline;
++  gboolean geometry_uniforms;
++  gboolean geometry_valid;
++  float width, height;
++  float geometry[5];
++  int pixel_location, dimensions_location, origin_location;
+ };
+ 
+ G_DEFINE_TYPE_WITH_PRIVATE (ShellGLSLEffect, shell_glsl_effect, CLUTTER_TYPE_OFFSCREEN_EFFECT);
+ 
++/**
++ * shell_glsl_effect_set_geometry_uniforms:
++ * @effect: a #ShellGLSLEffect
++ * @width: logical content width, or -1 to follow the actor
++ * @height: logical content height, or -1 to follow the actor
++ *
++ * Opt into native updates of pixelWidth, textureDimensions and textureOrigin.
++ * These uniforms describe the padded offscreen texture in logical coordinates.
++ * The effect must output premultiplied alpha. Other GLSL effects are unchanged.
++ */
++void
++shell_glsl_effect_set_geometry_uniforms (ShellGLSLEffect *effect,
++                                        float            width,
++                                        float            height)
++{
++  ShellGLSLEffectPrivate *priv = shell_glsl_effect_get_instance_private (effect);
++
++  if (!priv->geometry_uniforms)
++    {
++      priv->pixel_location = cogl_pipeline_get_uniform_location (priv->pipeline, "pixelWidth");
++      priv->dimensions_location = cogl_pipeline_get_uniform_location (priv->pipeline, "textureDimensions");
++      priv->origin_location = cogl_pipeline_get_uniform_location (priv->pipeline, "textureOrigin");
++      cogl_pipeline_set_blend (priv->pipeline,
++                              "RGBA = ADD (SRC_COLOR, DST_COLOR * (1-SRC_COLOR[A]))", NULL);
++    }
++  else if (priv->width == width && priv->height == height)
++    return;
++
++  priv->geometry_uniforms = TRUE;
++  priv->width = width;
++  priv->height = height;
++  clutter_effect_queue_repaint (CLUTTER_EFFECT (effect));
++}
++
++static void
++shell_glsl_effect_paint_target (ClutterOffscreenEffect *effect,
++                                ClutterPaintNode       *node,
++                                ClutterPaintContext    *paint_context)
++{
++  ShellGLSLEffectPrivate *priv =
++    shell_glsl_effect_get_instance_private (SHELL_GLSL_EFFECT (effect));
++
++  if (priv->geometry_uniforms)
++    {
++      ClutterActor *actor = clutter_actor_meta_get_actor (CLUTTER_ACTOR_META (effect));
++      CoglTexture *texture = clutter_offscreen_effect_get_texture (effect);
++      float scale = MAX (1.f, ceilf (clutter_actor_get_resource_scale (actor)));
++      float width = priv->width < 0 ? clutter_actor_get_width (actor) : priv->width;
++      float height = priv->height < 0 ? clutter_actor_get_height (actor) : priv->height;
++      float geometry[5] = {
++        1.f / scale,
++        cogl_texture_get_width (texture) / scale,
++        cogl_texture_get_height (texture) / scale,
++        ceilf (width + .75f) - floorf (width + .5f) - 3.f,
++        ceilf (height + .75f) - floorf (height + .5f) - 3.f,
++      };
++
++      if (!priv->geometry_valid || memcmp (priv->geometry, geometry, sizeof geometry) != 0)
++        {
++          cogl_pipeline_set_uniform_float (priv->pipeline, priv->pixel_location, 1, 1, geometry);
++          cogl_pipeline_set_uniform_float (priv->pipeline, priv->dimensions_location, 2, 1, geometry + 1);
++          cogl_pipeline_set_uniform_float (priv->pipeline, priv->origin_location, 2, 1, geometry + 3);
++          memcpy (priv->geometry, geometry, sizeof geometry);
++          priv->geometry_valid = TRUE;
++        }
++    }
++
++  CLUTTER_OFFSCREEN_EFFECT_CLASS (shell_glsl_effect_parent_class)->paint_target (effect, node, paint_context);
++}
++
+ static CoglPipeline *
+ shell_glsl_effect_create_pipeline (ClutterOffscreenEffect *effect,
+                                    CoglTexture            *texture)
+@@ -147,6 +224,7 @@ shell_glsl_effect_class_init (ShellGLSLEffectClass *klass)
+ 
+   offscreen_class = CLUTTER_OFFSCREEN_EFFECT_CLASS (klass);
+   offscreen_class->create_pipeline = shell_glsl_effect_create_pipeline;
++  offscreen_class->paint_target = shell_glsl_effect_paint_target;
+ 
+   gobject_class->constructed = shell_glsl_effect_constructed;
+   gobject_class->dispose = shell_glsl_effect_dispose;
+diff --git a/src/shell-glsl-effect.h b/src/shell-glsl-effect.h
+index ae39169..333a90e 100644
+--- a/src/shell-glsl-effect.h
++++ b/src/shell-glsl-effect.h
+@@ -16,6 +16,10 @@ struct _ShellGLSLEffectClass
+   void (*build_pipeline) (ShellGLSLEffect *effect);
+ };
+ 
++void shell_glsl_effect_set_geometry_uniforms (ShellGLSLEffect *effect,
++                                             float            width,
++                                             float            height);
++
+ void shell_glsl_effect_add_glsl_snippet (ShellGLSLEffect  *effect,
+                                          CoglSnippetHook   hook,
+                                          const char       *declarations,
+

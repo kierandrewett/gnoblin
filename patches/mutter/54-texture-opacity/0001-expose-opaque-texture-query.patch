@@ -1,0 +1,30 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] compositor: expose authoritative texture opacity to shell effects
+
+diff --git a/src/compositor/meta-shaped-texture-private.h b/src/compositor/meta-shaped-texture-private.h
+index 4e07750..d598e3c 100644
+--- a/src/compositor/meta-shaped-texture-private.h
++++ b/src/compositor/meta-shaped-texture-private.h
+@@ -44,7 +44,6 @@ void meta_shaped_texture_set_fallback_size (MetaShapedTexture *stex,
+                                             int                fallback_width,
+                                             int                fallback_height);
+ MtkRegion * meta_shaped_texture_get_opaque_region (MetaShapedTexture *stex);
+-gboolean meta_shaped_texture_is_opaque (MetaShapedTexture *stex);
+ gboolean meta_shaped_texture_has_alpha (MetaShapedTexture *stex);
+ void meta_shaped_texture_set_transform (MetaShapedTexture    *stex,
+                                         MtkMonitorTransform  transform);
+diff --git a/src/meta/meta-shaped-texture.h b/src/meta/meta-shaped-texture.h
+index 2a3f546..9c1143a 100644
+--- a/src/meta/meta-shaped-texture.h
++++ b/src/meta/meta-shaped-texture.h
+@@ -47,6 +47,9 @@ void meta_shaped_texture_set_create_mipmaps (MetaShapedTexture *stex,
+ META_EXPORT
+ MetaMultiTexture * meta_shaped_texture_get_texture (MetaShapedTexture *stex);
+ 
++META_EXPORT
++gboolean meta_shaped_texture_is_opaque (MetaShapedTexture *stex);
++
+ META_EXPORT
+ void meta_shaped_texture_set_mask_texture (MetaShapedTexture *stex,
+                                            CoglTexture       *mask_texture);
+
