@@ -113,3 +113,11 @@ Errors retain the request ID and use `event: "error"` with a `message`.
 Other commands are `monitors`, `workspaces`, `workspace-switch` (with
 `workspace`), and `window` (with `action`, `window`, and the action's arguments).
 Existing shortcut and streaming-window requests retain their protocol.
+
+## Permission policy
+
+`gnoblinctl permissions list` shows the active policy and its configuration path.
+Use `permissions set`, `permissions remove`, and `permissions default` to change
+it. `permissions check <capability> <identity>` explains a decision. All these
+commands support JSON output. See [Portal permissions](permissions.md) for
+examples and the supported gates.

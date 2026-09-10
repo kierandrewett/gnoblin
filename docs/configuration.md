@@ -297,20 +297,13 @@ gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
 re-applies the shell theme/CSS and re-enables extensions in-process, without
 tearing down Mutter — your windows and your chrome survive.
 
-## Portal grants
+## Portal permissions
 
-Screen Cast and Remote Desktop grants are files under
-`$XDG_DATA_HOME/gnoblin/portal-grants/<kind>/`, which defaults to
-`~/.local/share/gnoblin/portal-grants/<kind>/`. Each filename is an opaque
-SHA-256 digest; the record contains the verified namespaced requester identity
-(`app-id:<id>` for a portal app or `host-exe:<canonical-path>` for an
-unsandboxed process) and the exact approved capabilities.
-
-Use `gnoblinctl portal-grants` to obtain each record's `<kind>` and `<id>`, then
-`gnoblinctl revoke-grant <kind> <id>` to remove it. The gnoblin Settings panel
-uses the same typed D-Bus methods. See
-[Installation: unattended screensharing](installation.md#unattended-screensharing-xdg-desktop-portal-gnome)
-for how a grant is created.
+Use `[permissions]` and `[[permissions.rules]]` in `gnoblin.toml` to set
+`default`, `ask`, `allow`, or `deny` decisions for apps matched by an identity
+regex. `gnoblinctl permissions` inspects and edits the same policy.
+See [Portal permissions](permissions.md) for the RustDesk example, supported
+capabilities, rule precedence and migration from custom grant files.
 
 ## Session mode (not user-configurable)
 

@@ -79,3 +79,17 @@ opacity = 0.96
 # match.type = "window"
 # Use outer-width = 0 for an outline entirely inside the client bounds.
 # borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 12, smoothing = 0.0 }
+
+# Portal consent policy. See docs/permissions.md for supported gates and identities.
+[permissions]
+default = "default"
+
+# Uncomment and adjust the verified identity to permit unattended capture.
+# [[permissions.rules]]
+# name = "rustdesk"
+# match = '^host-exe:/usr/bin/rustdesk$'
+# capabilities = ["screen-cast", "remote-desktop"]
+# level = "allow"
+# monitors = ["primary"]
+# devices = ["keyboard", "pointer"]
+# clipboard = true
