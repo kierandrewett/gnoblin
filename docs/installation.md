@@ -1,5 +1,8 @@
 # Installation
 
+**Gnoblin installs alongside GNOME.** It has its own runtime and login entry.
+Installing or removing it does not replace your GNOME packages or session.
+
 Choose your install method:
 
 - [Fedora — RPM packages](#fedora)
@@ -11,8 +14,9 @@ You'll also need a [desktop shell](bring-your-own-shell.md), such as Bingux.
 
 ## Fedora
 
-The RPMs replace Fedora's Mutter and GNOME Shell packages. Both login sessions
-use the patched builds. Use a Fedora installation with GNOME 49.
+The packages are named `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session`.
+Their runtime lives in `/usr/lib/gnoblin`. Use a Fedora installation with the
+GNOME 49 dependencies.
 
 See [package availability](distribution.md#repository-status) for COPR status.
 To build the RPMs yourself:
@@ -21,15 +25,19 @@ To build the RPMs yourself:
 git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
 sudo dnf install git just meson ninja-build rpmdevtools rpm-build
-sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
+sudo dnf builddep packaging/rpm/mutter.spec
 just init
-just rpm-all
+just rpm mutter
+sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-49.5-*.rpm \
+  ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-49.5-*.rpm
+sudo dnf builddep packaging/rpm/gnome-shell.spec
+just rpm gnome-shell
 ```
 
 Install the built packages:
 
 ```sh
-just install-session dry     # preview the transaction
+just install-session dry     # validate and list the packages
 just install-session         # review and confirm installation
 ```
 
@@ -38,9 +46,15 @@ No manual session registration is needed.
 
 ### Go back to GNOME
 
-Select **GNOME** at login. To restore Fedora's packages too, use DNF's
-transaction history to undo the Gnoblin installation; review the proposed
-changes before confirming. See [packaging details](../packaging/rpm/README.md).
+Select **GNOME** at login. To remove Gnoblin:
+
+```sh
+sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter
+```
+
+No GNOME reinstall or downgrade is needed. Older experimental builds that
+replaced Fedora packages need separate migration; this installer does not
+automatically remove or downgrade them.
 
 ## NixOS
 
@@ -71,7 +85,8 @@ with `sudo nixos-rebuild switch`, then select **Gnoblin** at login.
 Install your desktop shell separately.
 
 To remove Gnoblin, remove the module import and enable option, then rebuild.
-The module does not replace the system GNOME Shell package.
+The module exposes only Gnoblin's entry points; its GNOME Shell and Mutter
+builds remain in private Nix store paths.
 
 ## Arch, Debian and Ubuntu
 
@@ -111,7 +126,7 @@ After testing, register the local build:
 GNOBLIN_PREFIX="$PWD/install" just dev-session-register
 ```
 
-Run the `sudo install` command it prints, then select **Gnoblin** at login.
+Run the `sudo install` commands it prints, then select **Gnoblin** at login.
 Keep the checkout and `install` directory in place while using this session.
 
 To remove this local registration, log into another session and run:
@@ -119,8 +134,10 @@ To remove this local registration, log into another session and run:
 ```sh
 rm ~/.config/systemd/user/org.gnoblin.Shell.target
 rm ~/.config/systemd/user/org.gnoblin.Shell@wayland.service
+rm ~/.config/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf
 systemctl --user daemon-reload
 sudo rm /usr/share/wayland-sessions/gnoblin.desktop
+sudo rm /usr/share/gnome-session/sessions/gnoblin.session
 ```
 
 You can then delete the checkout's `build` and `install` directories.

@@ -1,28 +1,17 @@
 # Debian / Ubuntu packaging plan
 
-The build is planned but not implemented yet. The intended approach mirrors the
-RPM path (see the `gnoblin-session` subpackage in
-`packaging/rpm/gnome-shell.spec` for the working reference):
+Not implemented yet. Packages must install alongside the distribution's GNOME.
 
-1. `just tarball mutter` / `just tarball gnome-shell` produce reproducible
-   release tarballs with Gnoblin's patches already applied, so
-   `debian/patches/` is not used. Publication happens only after sidecar
-   staging succeeds. The GNOME Shell run also stages the session mode,
-   gnome-session file, login `.desktop`, Gnoblin systemd user units, schema
-   override, `gnoblin-env.sh`, `gnoblin-session`, `gnoblin-shell-service`, and
-   `gnoblinctl` beside the tarball.
-2. Add a `debian/` dir per package (control, rules, changelog) for **patched
-   mutter** and **patched gnome-shell**. Split a `gnoblin-session` binary
-   package out of the gnome-shell source package for the payload above (a
-   `Depends: gnome-shell (= ${binary:Version}), gnome-session` binary
-   package, matching the RPM subpackage) — do not fold it into the main
-   gnome-shell package, since the login-manager `.desktop` and systemd units
-   are gnoblin-specific and shouldn't force a rebuild of gnome-shell itself
-   to update.
-   Generate a mode-0644 `gnoblin-libdir` beside `gnoblin-env.sh` containing
-   the multiarch library path relative to `/usr` (for example,
-   `lib/x86_64-linux-gnu`). Installed wrappers use this value at login time.
-3. Wire `just deb PROJ` to run `debuild` / `dpkg-buildpackage`.
+- Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
+- Install the runtime under `/usr/lib/gnoblin`, including private libraries,
+  schemas and upstream service files.
+- Depend on the matching `gnoblin-*` runtime. Do not replace, conflict with,
+  or provide the distribution's `mutter` or `gnome-shell` packages.
+- Export only Gnoblin's login entry, control command, user units and separately
+  named backlight policy. Follow the [RPM layout](../rpm/README.md).
+- Record the private library directory in `libexec/gnoblin-libdir`, relative
+  to `/usr/lib/gnoblin` (for example `lib/x86_64-linux-gnu`).
 
-Because patches are pre-applied in the tarball, deb packaging stays a thin wrapper
-around the upstream mutter / gnome-shell builds.
+Use `just tarball mutter` and `just tarball gnome-shell` for patched sources.
+Wire `just deb` to the build only after install, coexistence and removal tests
+pass with stock GNOME installed.

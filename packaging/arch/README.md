@@ -1,23 +1,15 @@
 # Arch Linux packaging plan
 
-The build is planned but not implemented yet. The intended approach (see the
-`gnoblin-session` subpackage in `packaging/rpm/gnome-shell.spec` for the
-working reference):
+Not implemented yet. Packages must install alongside Arch's GNOME packages.
 
-1. `just tarball PROJ` produces a reproducible patched-source tarball and
-   publishes it only after sidecar staging succeeds. For `gnome-shell`,
-   `scripts/make-tarball.sh` also stages the session mode, gnome-session file,
-   login `.desktop`, Gnoblin systemd user units, schema override, shared
-   environment helper, and control/wrapper tools beside the tarball.
-2. Add a `PKGBUILD` per subproject with `source=(...the tarball...)`, building
-   the upstream meson project; wire `just arch PROJ` to run `makepkg`. Split a
-   `gnoblin-session` package out of the gnome-shell `PKGBUILD` (a
-   `split_gnoblin-session` package function, `depends=('gnome-shell'
-   'gnome-session')`) for the payload above, so updating it doesn't force a
-   gnome-shell rebuild.
-   Install a mode-0644 `gnoblin-libdir` beside `gnoblin-env.sh` containing
-   `lib`, the library path relative to `/usr`; installed wrappers read this
-   instead of assuming Fedora's `lib64`.
+- Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
+- Install the runtime under `/usr/lib/gnoblin`; set its library directory to
+  `lib` and record that in `libexec/gnoblin-libdir`.
+- Depend on the matching `gnoblin-*` runtime. Do not replace, conflict with,
+  or provide Arch's `mutter` or `gnome-shell` packages.
+- Export only Gnoblin's login entry, control command, user units and separately
+  named backlight policy. Follow the [RPM layout](../rpm/README.md).
 
-As with RPM/deb, patches live in `patches/` and are applied before the tarball
-is made, so the `PKGBUILD` carries no `prepare()` patch step.
+Use `just tarball mutter` and `just tarball gnome-shell` for patched sources.
+Wire `just arch` to `makepkg` only after install, coexistence and removal tests
+pass with stock GNOME installed.

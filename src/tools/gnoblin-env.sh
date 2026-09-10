@@ -17,6 +17,18 @@
 # checkout still being present at the same path.
 set -uo pipefail
 
+# Installation must never merge a Gnoblin runtime into a shared GNOME prefix.
+gnoblin_env_validate_install_prefix() {
+    local prefix
+    prefix="$(realpath -m -- "${1:?prefix required}")" || return
+    case "$prefix" in
+        /|/usr|/usr/local|/bin|/sbin|/lib|/lib64)
+            echo "Refusing shared system prefix $prefix; use a private directory such as ./install or /usr/lib/gnoblin." >&2
+            return 2
+            ;;
+    esac
+}
+
 gnoblin_env_validate_libdir() {
     local libdir="${1-}"
 

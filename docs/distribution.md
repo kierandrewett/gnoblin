@@ -21,10 +21,15 @@ bar, dock or notification centre until that client is enabled.
 
 ## Package boundaries
 
-The current Gnoblin RPMs replace Fedora's Mutter and GNOME Shell packages.
-The `gnoblin-session` package depends on the matching GNOME Shell build. Build
-and update the complete set together. Do not claim compatibility with another
-GNOME major version without rebuilding and testing it.
+Every package must install alongside GNOME. RPMs use `gnoblin-mutter`,
+`gnoblin-shell` and `gnoblin-session`, with a private runtime in
+`/usr/lib/gnoblin`. Only Gnoblin's login entry, control tool, service units
+and separately named backlight policy enter system directories. Private
+libraries must not provide dependencies for stock GNOME packages.
+
+NixOS exposes the same limited set of entry points from a separate store
+output. Source builds use a private prefix and reject `/usr` and `/usr/local`.
+Future Debian and Arch packages must follow the same rule.
 
 Bingux needs Quickshell, native QML plugins, its search and metrics daemons,
 and helper programs. Copying its QML directory alone is not a complete install.
@@ -37,6 +42,10 @@ The [Gnoblin COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin
 and [Bingux COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/bingux/)
 exist for Fedora 43 x86_64. Package publication and fresh-install checks are
 pending. Creating a repository does not establish release readiness.
+
+The side-by-side RPM layout still needs a clean-host build, login and removal
+check before publication. Old replacement RPMs are not supported by the new
+installer; restoring a host already using them is a separate migration.
 
 ## Publishing access
 

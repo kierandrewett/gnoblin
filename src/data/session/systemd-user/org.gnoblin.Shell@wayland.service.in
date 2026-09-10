@@ -1,7 +1,7 @@
 [Unit]
 Description=Gnoblin Shell (patched GNOME Shell) on Wayland
 # On wayland, force a session shutdown
-OnFailure=org.gnome.Shell-disable-extensions.service gnome-session-shutdown.target
+OnFailure=gnome-session-shutdown.target
 OnFailureJobMode=replace-irreversibly
 CollectMode=inactive-or-failed
 RefuseManualStart=on

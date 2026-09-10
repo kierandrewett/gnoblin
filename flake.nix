@@ -73,6 +73,11 @@
                 let
                     pkgs = import nixpkgs { inherit system; };
                     gnoblin = self.packages.${system}.gnoblin;
+                    combinedProfile = pkgs.buildEnv {
+                        name = "gnome-and-gnoblin";
+                        paths = [ pkgs.gnome-shell pkgs.mutter gnoblin ];
+                        ignoreCollisions = false;
+                    };
                     moduleTest = nixpkgs.lib.nixosSystem {
                         inherit system;
                         modules = [
@@ -88,9 +93,16 @@
                     gnoblin-session = pkgs.runCommand "gnoblin-session-check" { } ''
                         test "${toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)}" = "${gnoblin}"
                         test "${toString (builtins.head moduleTest.config.systemd.packages)}" = "${gnoblin}"
-                        test -x "${gnoblin}/bin/gnome-shell"
-                        test -x "${gnoblin}/bin/gnoblin-session"
-                        test -x "${gnoblin}/bin/gnoblin-shell-service"
+                        test ! -e "${gnoblin}/bin/gnome-shell"
+                        test ! -e "${gnoblin}/bin/mutter"
+                        test ! -e "${gnoblin}/share/glib-2.0/schemas"
+                        test ! -e "${gnoblin}/share/dbus-1"
+                        test -x "${gnoblin}/bin/gnoblinctl"
+                        test -x "${gnoblin.runtime}/bin/gnome-shell"
+                        test -x "${gnoblin.runtime}/bin/gnoblin-session"
+                        test -x "${gnoblin.runtime}/bin/gnoblin-shell-service"
+                        test "$(readlink -f ${combinedProfile}/bin/gnome-shell)" = "$(readlink -f ${pkgs.gnome-shell}/bin/gnome-shell)"
+                        test "$(readlink -f ${combinedProfile}/bin/mutter)" = "$(readlink -f ${pkgs.mutter}/bin/mutter)"
                         test -f "${gnoblin}/share/wayland-sessions/gnoblin.desktop"
                         test -f "${gnoblin}/lib/systemd/user/org.gnoblin.Shell@wayland.service"
                         test -f "${pkgs.gnome-session}/share/systemd/user/gnome-session-wayland.target"
@@ -98,12 +110,12 @@
                         test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
                         test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell.target"
                         test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell@wayland.service"
-                        bash -n "${gnoblin}/bin/gnoblin-session" "${gnoblin}/bin/gnoblin-shell-service"
-                        case "$(<"${gnoblin}/bin/gnoblin-session")" in
+                        bash -n "${gnoblin.runtime}/bin/gnoblin-session" "${gnoblin.runtime}/bin/gnoblin-shell-service"
+                        case "$(<"${gnoblin.runtime}/bin/gnoblin-session")" in
                             *"--no-reexec"*) ;;
                             *) exit 1 ;;
                         esac
-                        schema_directory="${gnoblin}/share/glib-2.0/schemas"
+                        schema_directory="${gnoblin.runtime}/share/glib-2.0/schemas"
                         test -f "$schema_directory/org.gnome.mutter.gschema.xml"
                         test -f "$schema_directory/org.gnome.shell.gschema.xml"
                         test -f "$schema_directory/org.gnoblin.shell.gschema.xml"

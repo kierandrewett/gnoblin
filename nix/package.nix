@@ -138,82 +138,111 @@ let
             # target units. Keep one systemd user-unit owner.
         '';
     };
+    runtime = symlinkJoin {
+        name = "gnoblin-runtime-49.6";
+        paths = [
+            gnoblinMutter
+            gnoblinShell
+            session
+        ];
+        nativeBuildInputs = [ glib makeWrapper ];
+
+        postBuild = ''
+            for tool in gnoblin-session gnoblin-shell-service gnoblinctl; do
+                rm "$out/bin/$tool"
+                install -Dm755 "${gnoblinSrc}/src/tools/$tool" "$out/bin/$tool"
+            done
+            substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
+            # The session output already contains a wrapped CLI; remove only its
+            # copied wrapper target before wrapping the updated source here.
+            rm -f "$out/bin/.gnoblinctl-wrapped"
+            wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
+            rm "$out/share/wayland-sessions/gnoblin.desktop"
+            install -Dm644 "${gnoblinSrc}/src/data/session/gnoblin.desktop" \
+                "$out/share/wayland-sessions/gnoblin.desktop"
+            rm "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
+            install -Dm644 "${gnoblinSrc}/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
+                "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
+
+            # The host's GNOME packages can also provide these stock units. Gnoblin
+            # starts only org.gnoblin.Shell@wayland.service through its own target.
+            rm -f \
+                "$out/lib/systemd/user/org.gnome.Shell-disable-extensions.service" \
+                "$out/lib/systemd/user/org.gnome.Shell.target" \
+                "$out/lib/systemd/user/org.gnome.Shell@wayland.service"
+
+
+            substituteInPlace "$out/bin/gnoblin-session" \
+                --replace-fail "exec gnome-session" \
+                "exec ${gnomeSession}/bin/gnome-session"
+            substituteInPlace "$out/share/wayland-sessions/gnoblin.desktop" \
+                --replace-fail "Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin" \
+                "Exec=$out/bin/gnoblin-session"
+            substituteInPlace "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service" \
+                --replace-fail "@PREFIX@" "$out"
+
+            # GNOME Shell and Mutter each keep their schemas in a versioned
+            # package directory. The session wrapper needs one concrete directory,
+            # because GSETTINGS_SCHEMA_DIR does not traverse those directories.
+            schema_directory="$out/share/glib-2.0/schemas"
+            for source_directory in "$out"/share/gsettings-schemas/*/glib-2.0/schemas; do
+                [ -d "$source_directory" ] || continue
+                for schema in "$source_directory"/*.xml "$source_directory"/*.override; do
+                    [ -e "$schema" ] || continue
+                    target="$schema_directory/''${schema##*/}"
+                    if [ -e "$target" ]; then
+                        if ! cmp -s "$schema" "$target"; then
+                            echo "conflicting GSettings schema: ''${schema##*/}" >&2
+                            exit 1
+                        fi
+                        continue
+                    fi
+                    cp --no-preserve=mode "$schema" "$target"
+                done
+            done
+            rm -f "$schema_directory/gschemas.compiled"
+            glib-compile-schemas "$schema_directory"
+        '';
+
+        passthru = {
+            inherit gnoblinMutter gnoblinShell session;
+            providedSessions = [ "gnoblin" ];
+        };
+
+        meta = {
+            description = "Patched Mutter and GNOME Shell session with an external-chrome contract";
+            homepage = "https://github.com/kierandrewett/gnoblin";
+            license = lib.licenses.gpl2Plus;
+            platforms = lib.platforms.x86_64;
+        };
+    };
 in
 symlinkJoin {
     name = "gnoblin-49.6";
-    paths = [
-        gnoblinMutter
-        gnoblinShell
-        session
-    ];
-    nativeBuildInputs = [ glib makeWrapper ];
-
+    paths = [ ];
+    nativeBuildInputs = [ makeWrapper ];
     postBuild = ''
-        for tool in gnoblin-session gnoblin-shell-service gnoblinctl; do
-            rm "$out/bin/$tool"
-            install -Dm755 "${gnoblinSrc}/src/tools/$tool" "$out/bin/$tool"
-        done
-        substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
-        # The session output already contains a wrapped CLI; remove only its
-        # copied wrapper target before wrapping the updated source here.
-        rm -f "$out/bin/.gnoblinctl-wrapped"
-        wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
-        rm "$out/share/wayland-sessions/gnoblin.desktop"
-        install -Dm644 "${gnoblinSrc}/src/data/session/gnoblin.desktop" \
+        # Only Gnoblin entry points enter the system profile. The runtime's
+        # stock-named binaries, schemas and D-Bus services stay private.
+        mkdir -p "$out/bin" "$out/share/wayland-sessions" \
+            "$out/share/gnome-session/sessions" "$out/lib/systemd/user" \
+            "$out/share/polkit-1/actions"
+        makeWrapper ${runtime}/bin/gnoblinctl "$out/bin/gnoblinctl"
+        ln -s ${runtime}/share/wayland-sessions/gnoblin.desktop \
             "$out/share/wayland-sessions/gnoblin.desktop"
-        rm "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-        install -Dm644 "${gnoblinSrc}/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
-            "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-
-        # The host's GNOME packages can also provide these stock units. Gnoblin
-        # starts only org.gnoblin.Shell@wayland.service through its own target.
-        rm -f \
-            "$out/lib/systemd/user/org.gnome.Shell-disable-extensions.service" \
-            "$out/lib/systemd/user/org.gnome.Shell.target" \
-            "$out/lib/systemd/user/org.gnome.Shell@wayland.service"
-
-
-        substituteInPlace "$out/bin/gnoblin-session" \
-            --replace-fail "exec gnome-session" \
-            "exec ${gnomeSession}/bin/gnome-session"
-        substituteInPlace "$out/share/wayland-sessions/gnoblin.desktop" \
-            --replace-fail "Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin" \
-            "Exec=$out/bin/gnoblin-session"
-        substituteInPlace "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service" \
-            --replace-fail "@PREFIX@" "$out"
-
-        # GNOME Shell and Mutter each keep their schemas in a versioned
-        # package directory. The session wrapper needs one concrete directory,
-        # because GSETTINGS_SCHEMA_DIR does not traverse those directories.
-        schema_directory="$out/share/glib-2.0/schemas"
-        for source_directory in "$out"/share/gsettings-schemas/*/glib-2.0/schemas; do
-            [ -d "$source_directory" ] || continue
-            for schema in "$source_directory"/*.xml "$source_directory"/*.override; do
-                [ -e "$schema" ] || continue
-                target="$schema_directory/''${schema##*/}"
-                if [ -e "$target" ]; then
-                    if ! cmp -s "$schema" "$target"; then
-                        echo "conflicting GSettings schema: ''${schema##*/}" >&2
-                        exit 1
-                    fi
-                    continue
-                fi
-                cp --no-preserve=mode "$schema" "$target"
-            done
+        ln -s ${runtime}/share/gnome-session/sessions/gnoblin.session \
+            "$out/share/gnome-session/sessions/gnoblin.session"
+        for unit in org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service \
+            gnome-session@gnoblin.target.d; do
+            ln -s "${runtime}/lib/systemd/user/$unit" "$out/lib/systemd/user/$unit"
         done
-        rm -f "$schema_directory/gschemas.compiled"
-        glib-compile-schemas "$schema_directory"
+        sed 's/org.gnome.mutter.backlight-helper/org.gnoblin.mutter.backlight-helper/g' \
+            ${gnoblinMutter}/share/polkit-1/actions/org.gnome.mutter.backlight-helper.policy \
+            > "$out/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy"
     '';
-
     passthru = {
-        inherit gnoblinMutter gnoblinShell session;
+        inherit runtime gnoblinMutter gnoblinShell session;
         providedSessions = [ "gnoblin" ];
     };
-
-    meta = {
-        description = "Patched Mutter and GNOME Shell session with an external-chrome contract";
-        homepage = "https://github.com/kierandrewett/gnoblin";
-        license = lib.licenses.gpl2Plus;
-        platforms = lib.platforms.x86_64;
-    };
+    meta = runtime.meta;
 }

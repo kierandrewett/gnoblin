@@ -73,7 +73,7 @@ mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
 gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Dtests=false -Dman=false -Dgtk_doc=false"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
-dev-mutter: (patch "mutter")
+dev-mutter: check-install-prefix (patch "mutter")
     meson setup --reconfigure build/mutter subprojects/mutter {{mutter_dev_opts}} || meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
     meson install -C build/mutter
 
@@ -111,7 +111,7 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 portal_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
 
 # Build + install the patched xdg-desktop-portal-gnome backend into ./install.
-dev-portal: (patch "xdg-desktop-portal-gnome")
+dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
     meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
     meson install -C build/xdg-desktop-portal-gnome
 
@@ -142,7 +142,7 @@ settings_hidden_panels := "multitasking"
 
 # Build + install the gnoblin-forked gnome-control-center into ./install, then
 # hide the panels that don't apply under gnoblin.
-dev-settings: (patch "gnome-control-center")
+dev-settings: check-install-prefix (patch "gnome-control-center")
     meson setup --reconfigure build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}} || meson setup build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}}
     # blueprint-compiler: g-c-c compiles .blp UI files. If the system package is
     # present, meson uses it. Otherwise it falls back to the meson wrap, whose
@@ -168,6 +168,10 @@ dev: dev-gnome-shell dev-session
 dev-session:
     ./scripts/install-session.sh {{prefix}}
 
+# Reject prefixes that would overwrite an existing GNOME installation.
+check-install-prefix:
+    source ./src/tools/gnoblin-env.sh; gnoblin_env_validate_install_prefix "{{prefix}}"
+
 # Register the gnoblin session with your live systemd --user instance (links
 # org.gnoblin.Shell.target/@wayland.service -- gnoblin-specific unit names,
 # does NOT touch org.gnome.Shell*) and print the (root) command to make
@@ -177,14 +181,10 @@ dev-session:
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
-# Needs `just rpm-all` first. Prompts for sudo and shows dnf's transaction
-# before changing anything. REPLACES the distro mutter/gnome-shell (standard
-# paths, so the files are the same ones). Removes any leftover /opt-era
-# gnoblin-* packages, pulls in installed subpackages like mutter-devel that
-# pin the base package to an exact release, and clears dev-prefix units from
-# ~/.config/systemd/user that would shadow the packaged ones.
+# Install private Gnoblin RPMs alongside the system's GNOME packages.
+# Package paths and dependency metadata are checked before invoking DNF.
 #   just install-session            # prompts, shows the transaction
-#   just install-session dry        # resolve + print only, changes nothing
+#   just install-session dry        # validate + print only, changes nothing
 #   just install-session yes        # no prompt
 #   just install-session reinstall  # re-apply a rebuild at the same version
 # PRODUCTION: install the built gnoblin RPMs onto THIS host (nothing points at ./install).
@@ -285,15 +285,14 @@ rpm PROJ:
         echo >&2
         echo "They are gnoblin's own packages, so build and install them first:" >&2
         echo "     just rpm mutter" >&2
-        echo "     just install-session" >&2
+        echo "     sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-49.5-*.rpm ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-49.5-*.rpm" >&2
         exit 1
     fi
     just tarball {{PROJ}}
     rpmbuild -bb "$spec"
 
-# Build every RPM in rpm_projects. gnome-shell.spec BuildRequires plain
-# mutter-devel, which the distro package already satisfies, so there is no
-# install step in the middle.
+# Build both packages. Shell requires the private gnoblin-mutter-devel package
+# to be installed first; see docs/installation.md for the initial build.
 rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
 
@@ -349,6 +348,7 @@ verify-fast:
     ./scripts/test-log-diagnostics.sh
     ./scripts/test-secure-state.sh
     ./scripts/test-rpm-sources.sh
+    python3 tests/package-isolation.test.py
     just test-config
 
 # Every isolated headless integration check against an existing ./install.

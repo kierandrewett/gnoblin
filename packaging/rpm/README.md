@@ -1,22 +1,37 @@
 # Gnoblin RPMs
 
-Gnoblin ships two Fedora source packages: patched Mutter and patched GNOME
-Shell. Build them in that order because GNOME Shell uses Mutter's headers.
+Gnoblin installs alongside Fedora's GNOME packages:
 
-Prepare a clean source tree and run the repository checks before building:
+| Package | Contents |
+| --- | --- |
+| `gnoblin-mutter` | Private Mutter runtime and a Gnoblin backlight policy |
+| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell |
+| `gnoblin-shell` | Private GNOME Shell runtime and session tools |
+| `gnoblin-session` | Login entry, user units and `gnoblinctl` command |
+
+Binaries, libraries, schemas and upstream service definitions stay under
+`/usr/lib/gnoblin`. Private libraries do not provide dependencies for Fedora's
+GNOME packages. No package replaces, conflicts with or obsoletes GNOME.
+
+[Build and install](../../docs/installation.md#fedora). Build Mutter first,
+install its private development package, then build Shell. COPR uses the same
+order; see [publication](../../docs/distribution.md).
+
+Before distributing binary packages, run:
 
 ```sh
-just init
-just verify-release
-just rpm-all
+python3 scripts/check-rpm-isolation.py PATH_TO_RPM...
+bash scripts/test-rpm-coexistence.sh MUTTER_RPM SHELL_RPM SESSION_RPM
 ```
 
-The COPR project is `kierandrewett/gnoblin`. The `just copr` recipe submits the
-prepared source RPMs in dependency order and waits for Mutter before sending
-GNOME Shell. Keep the Fedora chroot aligned with the GNOME major version in the
-spec files. A COPR project existing does not mean that a package is ready for
-installation; verify a clean host login and rollback first.
+The coexistence test uses disposable copies of installed GNOME files and
+requires Fakeroot. It checks payload installation, schema compilation and
+removal; it does not run RPM scriptlets or test DNF resolution or GDM login.
 
-The regular GNOME session remains installed alongside Gnoblin. The package
-changes the patched Mutter and GNOME Shell builds used by both sessions, while
-the Gnoblin session data keeps its own login entry and shell policy.
+Also test installation alongside stock GNOME on a clean Fedora host, log in
+to each session, and remove Gnoblin. Stock GNOME files must remain unchanged.
+The local installer runs the isolation check before invoking DNF.
+
+Old experimental RPMs named `mutter` and `gnome-shell` are replacement builds.
+Do not distribute or install them. The new installer refuses those artifacts
+and does not automatically undo an earlier replacement installation.

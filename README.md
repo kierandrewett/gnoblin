@@ -46,7 +46,8 @@ and `wlr-output-management` aren't implemented.
 
 [Install](docs/installation.md) on Fedora, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.
-Fedora packages replace the Mutter and GNOME Shell builds used by both sessions.
+Every install method adds Gnoblin alongside GNOME. Your existing GNOME binaries
+and login session stay in place; choose either session at login.
 
 [Configuration](docs/configuration.md) · [Window effects](docs/window-effects.md) · [Scripting](docs/gnoblinctl.md) · [All docs](docs/README.md)
 

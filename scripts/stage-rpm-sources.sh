@@ -34,6 +34,8 @@ case "$PROJECT" in
         install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
         install -m 0644 -- "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
+        tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -czf "$OUTDIR/gnoblin-scripts.tar.gz" -C "$ROOT/src/scripts" .
         ;;
     *)
         echo "unknown RPM source project: $PROJECT" >&2

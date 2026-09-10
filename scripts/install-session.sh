@@ -19,10 +19,11 @@
 set -euo pipefail
 
 PREFIX="${1:?usage: install-session.sh <prefix>}"
-PREFIX="$(mkdir -p "$PREFIX" && cd "$PREFIX" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/src/data/session"
 source "$ROOT/src/tools/gnoblin-env.sh"
+gnoblin_env_validate_install_prefix "$PREFIX" || exit
+PREFIX="$(mkdir -p "$PREFIX" && cd "$PREFIX" && pwd)"
 LIBDIR="${GNOBLIN_LIBDIR:-lib64}"
 gnoblin_env_validate_libdir "$LIBDIR" || exit
 
