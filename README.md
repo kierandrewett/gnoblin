@@ -2,7 +2,7 @@
 
 # Gnoblin
 
-GNOME with layer-shell support. Bring your own desktop shell.
+A no-frills fork of GNOME Shell with layer-shell support.
 
 [Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Contribute](CONTRIBUTING.md)
 
