@@ -16,13 +16,33 @@ Built on Mutter and GNOME Shell, it keeps GNOME's window management, hardware
 integration, lock screen and desktop services. Select Gnoblin at login; the
 regular GNOME session stays available.
 
-## What's different?
+## Features
 
-- Use your own shell, bar, dock and launcher.
-- User GNOME extensions are disabled; apps and shell plugins provide desktop customisation.
-- Blur, corners, shadows and animations are configurable without extensions.
-- Set window rules, shortcuts and autostart in a live TOML config.
-- Control windows through `gnoblinctl`, D-Bus, sockets or reloadable JavaScript.
+- **Bring your own chrome.** Use Bingux, Waybar or another layer-shell client
+  for the bar, dock, launcher and notifications. Gnoblin does not impose a
+  replacement desktop shell.
+- **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
+  docks, wallpapers, launchers and overlays, including layer popups and
+  exclusive zones.
+- **Hyprcursor support.** Mutter loads Hyprcursor themes with Xcursor fallback,
+  and keeps cursor-theme changes working in the Gnoblin session.
+- **Compositor effects.** Configure blur, opacity, rounded corners, borders,
+  shadows, custom shaders and layer animations with window rules.
+- **Live configuration.** Edit one TOML file for window rules, shortcuts,
+  autostart, protocol gates, animation and feature ownership. Valid changes
+  reload without restarting applications.
+- **Window control and scripting.** `gnoblinctl` exposes windows, workspaces,
+  monitors, input sources, feature toggles, reloads and a user-private
+  compositor bridge for desktop shells.
+- **External-shell handoff.** Disable native notifications, OSDs, screenshot
+  UI or the keyboard-layout popup when another client owns that part of the
+  desktop. GNOME's normal components remain available when enabled.
+- **Portal permissions.** The optional portal backend supports persistent,
+  identity-checked rules for Screen Cast, Remote Desktop, input capture,
+  screenshots and Access. Stock GNOME keeps its normal portal behaviour.
+- **Reloadable extensions.** GNOME Shell extensions still work for compositor
+  and session integrations, with cache-busted hot reload. Top-bar, dock and
+  overview chrome belongs in the external shell instead.
 
 ## Supported protocols
 

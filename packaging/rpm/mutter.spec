@@ -74,6 +74,7 @@ BuildRequires: python3-argcomplete
 BuildRequires: python3-docutils
 # Bootstrap requirements
 BuildRequires: gettext-devel git-core
+BuildRequires: gcc-c++
 BuildRequires: pkgconfig(libcanberra)
 BuildRequires: pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
 BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
