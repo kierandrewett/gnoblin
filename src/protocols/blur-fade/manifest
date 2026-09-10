@@ -1,0 +1,3 @@
+mutter meta-wayland-blur-fade.c src/wayland/meta-wayland-blur-fade.c
+mutter meta-wayland-blur-fade.h src/wayland/meta-wayland-blur-fade.h
+mutter gnoblin-blur-fade-v1.xml src/wayland/protocol/gnoblin-blur-fade-v1.xml

@@ -1,0 +1,84 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] blur: compose buffer-synchronised item fades with material coverage
+
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -19,6 +19,7 @@
+  */
+ 
+ #include <mtk/mtk.h>
++#include <meta/meta-window-actor.h>
+ 
+ #include "shell-blur-effect.h"
+ #include "shell-global.h"
+@@ -775,8 +776,19 @@
+     {
+       g_autoptr (CoglSnippet) snippet =
+         cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
+-                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels; uniform vec2 mask_pixel;",
++                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels; uniform vec2 mask_pixel;"
++                         "uniform int fade_count; uniform vec4 fade_rects[32]; uniform float fade_opacities[32]; uniform vec4 mask_bounds;",
+                          "float material_alpha = cogl_texel.a;"
++                         "vec2 point = mask_bounds.xy + cogl_tex_coord.st * mask_bounds.zw;"
++                         "float uncovered = 1.0; bool in_fade = false;"
++                         "for (int i = 0; i < 32; i++) {"
++                         "  if (i >= fade_count) break;"
++                         "  vec4 rect = fade_rects[i];"
++                         "  if (all(greaterThanEqual(point, rect.xy)) && all(lessThan(point, rect.xy + rect.zw))) {"
++                         "    in_fade = true; uncovered *= 1.0 - fade_opacities[i];"
++                         "  }"
++                         "}"
++                         "float buffer_fade = in_fade ? 1.0 - uncovered : 1.0;"
+                          /* Recover the local material opacity before normalising coverage.
+                           * Never turn a partially covered edge into an opaque mask. */
+                          "float local_alpha = material_alpha;"
+@@ -788,19 +800,45 @@
+                          "  }"
+                          "}"
+                          "}"
+-                         "float tint_alpha = local_alpha;"
+-                         "float coverage = clamp(material_alpha / max(max(tint_alpha, mask_opacity), 0.00001), 0.0, 1.0);"
++                         "float tint_alpha = min(local_alpha / max(buffer_fade, 0.00001), 1.0);"
++                         "float coverage = clamp(material_alpha / max(max(local_alpha, mask_opacity * buffer_fade), 0.00001), 0.0, 1.0);"
+                          /* Bingux shadows are translucent black. Test straight colour,
+                           * so a fading coloured surface is not mistaken for a shadow.
+                           * Only the blur mask changes; the colour pass is untouched. */
+                          "float peak = max(cogl_texel.r, max(cogl_texel.g, cogl_texel.b));"
+                          "float shadow = (1.0-step(0.002*material_alpha, peak)) * (1.0-step(0.999, material_alpha));"
+                          "coverage *= 1.0-ignore_shadow_pixels*shadow;"
+-                         "cogl_texel.a = coverage * surface_fade * (1.0 - tint_alpha) / "
++                         "cogl_texel.a = coverage * buffer_fade * surface_fade * (1.0 - tint_alpha) / "
+                          "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+       self->mask_pipeline_ready = TRUE;
+     }
++  GBytes *fades = NULL;
++  if (META_IS_WINDOW_ACTOR (self->actor))
++    fades = g_object_get_data (G_OBJECT (meta_window_actor_get_meta_window (META_WINDOW_ACTOR (self->actor))),
++                              "gnoblin-buffer-fades");
++  gsize fade_size = 0;
++  const int32_t *values = fades ? g_bytes_get_data (fades, &fade_size) : NULL;
++  int fade_count = MIN (32, fade_size / (5 * sizeof (int32_t)));
++  float rects[32 * 4], opacities[32];
++  for (int i = 0; i < fade_count; i++)
++    {
++      for (int j = 0; j < 4; j++) rects[i * 4 + j] = values[i * 5 + j] / 256.f;
++      opacities[i] = values[i * 5 + 4] / 256.f;
++    }
++  cogl_pipeline_set_uniform_1i (self->brightness_fb.pipeline,
++    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_count"), fade_count);
++  if (fade_count)
++    {
++      cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++        cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_rects"), 4, fade_count, rects);
++      cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++        cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_opacities"), 1, fade_count, opacities);
++    }
++  const float mask_bounds[] = {self->paint_box.x1, self->paint_box.y1,
++    self->paint_box.x2 - self->paint_box.x1, self->paint_box.y2 - self->paint_box.y1};
++  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_bounds"), 4, 1, mask_bounds);
+   const float mask_pixel[] = {
+     1.f / cogl_texture_get_width (self->actor_fb.texture),
+     1.f / cogl_texture_get_height (self->actor_fb.texture),
+

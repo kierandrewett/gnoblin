@@ -1,0 +1,48 @@
+From: Gnoblin
+Subject: [PATCH] Commit client blur fade metadata with surface state
+
+Wire the optional blur fade protocol into the build and carry its state
+through transaction merging and application. Foreground buffers and their
+fade metadata must become visible in the same compositor transaction.
+
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -710,2 +710,4 @@
+     'wayland/meta-gnoblin-protocols.h',
++    'wayland/meta-wayland-blur-fade.c',
++    'wayland/meta-wayland-blur-fade.h',
+     'wayland/meta-wayland-idle-notify.c',
+@@ -1240,2 +1242,3 @@
+     ['ext-data-control-v1', 'private', ],
++    ['gnoblin-blur-fade-v1', 'private', ],
+     ['xwayland-keyboard-grab', 'unstable', 1, ],
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+index 73c3229..b909fb8 100644
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -40,6 +40,7 @@
+ #include "wayland/meta-wayland-client-private.h"
+ #include "wayland/meta-wayland-color-representation.h"
+ #include "wayland/meta-gnoblin-protocols.h"
++#include "wayland/meta-wayland-blur-fade.h"
+ #include "wayland/meta-wayland-fractional-scale.h"
+ #include "wayland/meta-wayland-gtk-shell.h"
+ #include "wayland/meta-wayland-layer-shell.h"
+@@ -531,6 +532,7 @@ void
+ meta_wayland_surface_state_merge_into (MetaWaylandSurfaceState *from,
+                                        MetaWaylandSurfaceState *to)
+ {
++  meta_wayland_blur_fade_merge_state (from, to);
+   if (from->newly_attached)
+     {
+       if (to->buffer)
+@@ -1081,6 +1083,8 @@ meta_wayland_surface_apply_state (MetaWaylandSurface      *surface,
+   if (state->newly_attached && surface->buffer_held)
+     g_clear_object (&state->buffer);
+ 
++  meta_wayland_blur_fade_apply_state (surface, state);
++
+   g_signal_emit (state,
+                  surface_state_signals[SURFACE_STATE_SIGNAL_APPLIED],
+                  0);

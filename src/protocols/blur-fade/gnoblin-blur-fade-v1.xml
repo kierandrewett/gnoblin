@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="gnoblin_blur_fade_v1">
+  <interface name="gnoblin_blur_fade_manager_v1" version="1">
+    <description summary="commit animation opacity separately from glass transparency">
+      A client that fades items inside a top-level surface can describe their
+      animation opacity separately from the alpha of its glass material.
+      This metadata is double buffered and applies with wl_surface.commit.
+      It does not enable blur or change foreground pixels. Window rules remain
+      responsible for enabling blur. Without metadata, the compositor treats
+      buffer alpha as material transparency.
+    </description>
+    <request name="destroy" type="destructor">
+      <description summary="release the manager">
+        Existing surface state remains valid until replaced or the surface is destroyed.
+      </description>
+    </request>
+    <enum name="error">
+      <entry name="invalid_fades" value="0" summary="invalid fade array"/>
+    </enum>
+    <request name="set_fades">
+      <description summary="replace the surface fade regions">
+        The array contains up to 32 records of five signed 24.8 fixed point
+        values: x, y, width, height and opacity. Coordinates are in top-level
+        surface logical coordinates. Width and height must be nonnegative and
+        opacity must be in [0,1]. Each record describes an independently faded
+        item, including its inherited opacity. Records must not describe both
+        an ancestor and its child. Overlapping items contribute the union of
+        their animation coverage. Buffer alpha supplies the visible silhouette.
+        Pixels outside the records retain normal material transparency.
+        An empty array removes all metadata on the next surface commit.
+        Send the metadata before the commit of the corresponding rendered frame.
+        Each item's opacity must multiply its completed texture once, rather
+        than being applied separately to overlapping children inside the item.
+      </description>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="fades" type="array"/>
+    </request>
+  </interface>
+</protocol>
