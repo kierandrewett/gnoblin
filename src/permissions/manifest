@@ -1,0 +1,4 @@
+xdg-desktop-portal-gnome gnoblin-portal-policy.c src/gnoblin-portal-policy.c
+xdg-desktop-portal-gnome gnoblin-portal-policy.h src/gnoblin-portal-policy.h
+xdg-desktop-portal-gnome gnoblin-portal-identity.c src/gnoblin-portal-identity.c
+xdg-desktop-portal-gnome gnoblin-portal-identity.h src/gnoblin-portal-identity.h
