@@ -4,10 +4,11 @@
 control to desktop clients. It contains no Alt+Tab chooser, window ordering, or
 switcher settings. Bingux owns that feature in Quickshell.
 
-The local session installer and Nix package install the script at
+The local session installer and NixOS package install the script at
 `share/gnoblin/scripts/compositor-bridge.js`. Link that file into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload-scripts`. Bingux's Nix
-module installs the link. No compositor restart is required.
+`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload-scripts`. Bingux's
+native package includes its own client wiring; a custom shell can link the
+bridge directly. No compositor restart is required.
 
 ## Protocol
 
@@ -56,8 +57,9 @@ XWayland cannot confirm that a text field consumed the paste. Native Wayland inp
 continue to use direct text-input commits without accessing the clipboard.
 
 The fallback requires Python 3 with PyGObject and GTK 3. Both helper files under
-`scripts/lib/` must be installed beside the bridge. The Nix package supplies these
-dependencies and its runtime wrapper.
+`scripts/lib/` must be installed beside the bridge. The NixOS package supplies
+these dependencies and its runtime wrapper. A native installation must provide
+the same two helpers beside the bridge.
 
 `hold` is zero for a single activation, 8 for Alt, 4 for Control, or 67108864
 for Super. A held shortcut starts a temporary input grab before a client surface

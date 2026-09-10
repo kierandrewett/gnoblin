@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- gnoblin control-center panel template (plain GtkBuilder XML; no blueprint
-     dependency so it builds with the stock g-c-c toolchain). Feature/grant rows
-     are added at runtime from org.gnoblin.Shell; this carries only the scaffold. -->
+<!-- Gnoblin's static panel layout. Feature and grant rows are populated at
+     runtime from org.gnoblin.Shell, so this file only defines the surrounding
+     page and its empty groups. -->
 <interface>
   <template class="CcGnoblinPanel" parent="CcPanel">
     <child type="subpage">
       <object class="AdwNavigationPage">
-        <property name="title" translatable="yes">gnoblin</property>
+        <property name="title" translatable="yes">Gnoblin</property>
         <child>
           <object class="AdwToolbarView">
             <child type="top">
@@ -16,7 +16,7 @@
               <object class="AdwPreferencesPage">
                 <child>
                   <object class="AdwBanner" id="unavailable_banner">
-                    <property name="title" translatable="yes">The gnoblin shell is not running — controls are unavailable.</property>
+                    <property name="title" translatable="yes">The Gnoblin shell is not running — controls are unavailable.</property>
                     <property name="revealed">False</property>
                   </object>
                 </child>
@@ -36,7 +36,7 @@
                   <object class="AdwPreferencesGroup">
                     <child>
                       <object class="AdwButtonRow" id="reload_button">
-                        <property name="title" translatable="yes">Reload gnoblin</property>
+                        <property name="title" translatable="yes">Reload Gnoblin</property>
                         <property name="start-icon-name">view-refresh-symbolic</property>
                         <signal name="activated" handler="on_reload_clicked" swapped="no"/>
                       </object>

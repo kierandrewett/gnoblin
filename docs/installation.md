@@ -1,8 +1,19 @@
 # Installation
 
-Gnoblin has a reproducible Nix flake for NixOS and a source-prefix development
-path for other systems. The source-prefix path does not install a system package:
-delete `./install` and `./build` to remove it.
+Gnoblin adds a separate login session to a GNOME installation. It keeps the
+normal GNOME session available and starts without a top bar, dock or overview;
+you provide those surfaces with Bingux, Waybar or another layer-shell client.
+
+Choose the path that matches your machine:
+
+- **Fedora package:** build the RPMs described in [Distribution](distribution.md)
+  or use the COPR project when its builds are published.
+- **NixOS:** use the flake and module in [NixOS](#nixos).
+- **Development or another distribution:** build a private prefix below and
+  register it only when you are ready to add the session to your login manager.
+
+The source-prefix path does not install a system package. Delete `./install`
+and `./build` to remove its generated files.
 
 ## What you end up with
 
@@ -19,8 +30,8 @@ build dependencies plus `meson`, `ninja`, `git`, and [`just`](https://github.com
 (the task runner every recipe in this repo goes through).
 
 For non-NixOS systems, packaging is Fedora-first right now
-(`packaging/rpm/*.spec` is maintained and build-verified; `packaging/deb/`
-and `packaging/arch/` are scaffolds - see their READMEs). On Fedora, resolve
+(`packaging/rpm/*.spec` is the maintained path; `packaging/deb/`
+and `packaging/arch/` are planned paths - see their READMEs). On Fedora, resolve
 the base build dependencies from the spec files instead of hand-copying a
 package list that will drift:
 
@@ -217,7 +228,7 @@ Then run the patched backend so it owns the impl portal:
 The [real-hardware verification guide](real-hardware-verification.md#7-persistent-screen-cast-and-remote-desktop-grants)
 shows the first approval, exact-capability restore, storage, and revocation flow.
 
-### gnoblin Settings (forked `gnome-control-center`)
+### Gnoblin Settings (forked `gnome-control-center`)
 
 A `gnoblin` panel in GNOME Settings driving `org.gnoblin.Shell` (feature
 toggles, Screen Cast and Remote Desktop grants, and a reload button):
@@ -237,7 +248,7 @@ build-side quirk automatically. Details in
 
 ## Packaging
 
-RPM (Fedora) is the maintained, build-verified path. `just rpm PROJ` produces
+RPM (Fedora) is the maintained path. `just rpm PROJ` produces
 a real installable RPM for `mutter` or `gnome-shell`:
 
 ```sh
@@ -317,6 +328,6 @@ workaround, since there's no dev prefix to disambiguate from). Roll back
 with `sudo dnf downgrade mutter gnome-shell` (or `dnf history undo`) and
 `sudo dnf remove gnoblin-session`.
 
-Debian/Ubuntu and Arch packaging are scaffolded but not implemented — see
+Debian/Ubuntu and Arch packaging are planned but not implemented — see
 `packaging/deb/README.md` and `packaging/arch/README.md` for the intended
 approach, which mirrors this RPM path including the `gnoblin-session` split.

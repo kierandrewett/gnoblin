@@ -1,8 +1,8 @@
-# Debian / Ubuntu packaging (scaffold)
+# Debian / Ubuntu packaging plan
 
-Not implemented yet. The intended approach mirrors the RPM path (see
-`packaging/rpm/gnome-shell.spec`'s `gnoblin-session` subpackage for the
-working reference):
+The build is planned but not implemented yet. The intended approach mirrors the
+RPM path (see the `gnoblin-session` subpackage in
+`packaging/rpm/gnome-shell.spec` for the working reference):
 
 1. `just tarball mutter` / `just tarball gnome-shell` produce reproducible
    release tarballs with Gnoblin's patches already applied, so

@@ -1,7 +1,8 @@
-# Arch Linux packaging (scaffold)
+# Arch Linux packaging plan
 
-Not implemented yet. Intended approach (see `packaging/rpm/gnome-shell.spec`'s
-`gnoblin-session` subpackage for the working reference):
+The build is planned but not implemented yet. The intended approach (see the
+`gnoblin-session` subpackage in `packaging/rpm/gnome-shell.spec` for the
+working reference):
 
 1. `just tarball PROJ` produces a reproducible patched-source tarball and
    publishes it only after sidecar staging succeeds. For `gnome-shell`,

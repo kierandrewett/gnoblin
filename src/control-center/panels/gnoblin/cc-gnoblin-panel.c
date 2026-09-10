@@ -10,8 +10,8 @@
  *     RevokePortalGrant(portal, id).
  *   - "Reload gnoblin": Reload() -> soft in-process shell reload.
  *
- * The rows are built at runtime from the live bus, so the .ui only carries the
- * static scaffold (two AdwPreferencesGroups + a reload button).
+ * The rows are built at runtime from the live bus, so the .ui defines the page
+ * layout and empty groups while this file owns the live state.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */

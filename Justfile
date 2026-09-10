@@ -115,7 +115,7 @@ dev-portal: (patch "xdg-desktop-portal-gnome")
     meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
     meson install -C build/xdg-desktop-portal-gnome
 
-# --- optional: gnoblin settings (forked gnome-control-center) ---------------
+# --- optional: Gnoblin Settings (forked gnome-control-center) ---------------
 #
 # A light fork of gnome-control-center: it keeps the `gnome-control-center`
 # binary name (so "open Settings" / Exec=gnome-control-center gets this build
@@ -158,7 +158,7 @@ dev-settings: (patch "gnome-control-center")
       rm -f "{{prefix}}/share/applications/gnome-$p-panel.desktop" || exit; \
       echo ">> hid $p panel"; \
     done
-    @echo ">> gnoblin settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
+    @echo ">> Gnoblin Settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 dev: dev-gnome-shell dev-session
@@ -224,7 +224,8 @@ gnome-dbus-verify:
     ./scripts/test-gnome-dbus.sh
 
 # Headless: performance smoke test — idle memory budget + growth, soft-reload
-# leak bound, window-churn leak bound. Baselines live in TODO.md "Performance".
+# leak bound and window-churn leak bound. Real-session follow-up is tracked in
+# TODO.md and the real-hardware verification guide.
 perf-smoke:
     ./scripts/perf-smoke.sh
 
@@ -296,11 +297,11 @@ rpm PROJ:
 rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
 
-# deb / arch packaging are scaffolded; see packaging/{deb,arch}/README.md.
+# Debian / Arch packaging is planned; see packaging/{deb,arch}/README.md.
 deb PROJ:
-    @echo "deb packaging not implemented yet — see packaging/deb/README.md"
+    @echo "Debian / Ubuntu packaging is planned — see packaging/deb/README.md"
 arch PROJ:
-    @echo "arch packaging not implemented yet — see packaging/arch/README.md"
+    @echo "Arch packaging is planned — see packaging/arch/README.md"
 
 # --- tests (see scripts/ and the mutter in-tree suite) -----------------------
 
@@ -308,9 +309,9 @@ arch PROJ:
 test-config:
     ./scripts/test-config.sh
 
-# Best of 3, fails past BOOT_BUDGET_MS (default 1350). Guards the ~400 ms that
-# patches/gnome-shell/51-startup-animation buys, which a rebase could silently
-# drop. Calibrated llvmpipe numbers -- see the header in the script.
+# Best of 3, fails past BOOT_BUDGET_MS (default 1350). This catches startup
+# regressions in the patched shell; the script documents the headless test
+# boundary and the real-hardware follow-up.
 # Boot-time budget: headless boot, compositor start -> "GNOME Shell started".
 test-boot-time:
     ./scripts/test-boot-time.sh

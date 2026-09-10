@@ -145,10 +145,8 @@ SHELL_REAL_PID_FILE="$DK/shell-pid"
 # and the exec below. Read the capture with sysprof.
 #
 # This is the headless counterpart to the marker file in gnoblin-shell-service:
-# same mechanism, no login required. See TODO.md "Performance" for why a boot
-# profile is the open question -- every JS-side primitive measured so far
-# accounts for only ~118 ms of the ~700 ms the old strace split attributed to
-# "JS load".
+# same mechanism, no login required. Compare the capture with the
+# real-hardware verification checklist before changing a boot budget.
 if [ -n "${GNOBLIN_PROFILE:-}" ]; then
   if exec 9>"$GNOBLIN_PROFILE"; then
     export GJS_ENABLE_PROFILER=1

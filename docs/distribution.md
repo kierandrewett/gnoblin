@@ -3,6 +3,10 @@
 Gnoblin supplies the compositor and login session. Bingux supplies the desktop
 shell. They need separate packages and separate release checks.
 
+Install Gnoblin first, then install a layer-shell client such as Bingux. A
+successful Gnoblin package install intentionally leaves the session without a
+bar, dock or notification centre until that client is enabled.
+
 ## Release checklist
 
 - [ ] Build Gnoblin source RPMs from a clean checkout with all patches included.
@@ -70,6 +74,10 @@ Replace the owner and file paths with the actual account and generated files.
 The submission script waits for Mutter to build before submitting GNOME Shell.
 Do not use `--nowait`: Shell must build against the published Mutter headers.
 Confirm both builds succeed before testing a fresh installation.
+
+After installing the packages, select **Gnoblin** at GDM and enable the shell
+from [Bring your own shell](bring-your-own-shell.md). Keep the regular GNOME
+session as the rollback path while the first login is being verified.
 
 COPR usage and authentication are documented in the
 [official user guide](https://docs.copr.fedorainfracloud.org/user_documentation.html).

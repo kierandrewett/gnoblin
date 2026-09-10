@@ -1,4 +1,4 @@
-# Verifying gnoblin on real hardware
+# Verifying Gnoblin on real hardware
 
 `just verify` builds the current source and runs deterministic checks plus every
 isolated GNOME Shell integration recipe headlessly. `just verify-release` also
@@ -19,7 +19,7 @@ just init          # fetch pinned source checkouts and Meson subprojects
 just dev           # patched mutter + patched gnome-shell + session data -> ./install
 ```
 
-## 1. Log in to a real gnoblin session
+## 1. Log in to a real Gnoblin session
 
 ```sh
 just dev-session              # installs gnoblin.desktop + gnome-session + session mode
@@ -47,7 +47,7 @@ gnoblinctl version       # -> 49.6-gnoblin
 gnoblinctl features      # osd, screenshot, ...
 ```
 
-## 2. Bring-your-own chrome (Quickshell / waybar / …)
+## 2. Bring-your-own shell (Bingux / Quickshell / Waybar / …)
 
 gnoblin advertises `zwlr_layer_shell_v1` v5, so any layer-shell client draws the bar.
 
@@ -149,10 +149,10 @@ gnoblinctl portal-grants
 gnoblinctl revoke-grant <kind> <id>
 ```
 
-The gnoblin Settings panel in the next section shows the same typed list and
+The Gnoblin Settings panel in the next section shows the same typed list and
 provides a Revoke button for each record.
 
-## 8. gnoblin Settings (forked gnome-control-center)
+## 8. Gnoblin Settings (forked gnome-control-center)
 
 ```sh
 sudo dnf install accountsservice-devel colord-gtk4-devel cups-devel gsound-devel ibus-devel \
@@ -166,11 +166,11 @@ just dev-settings                 # builds the fork + hides the multitasking pan
 > handles it automatically — it uses the system package if present, else links the
 > meson-wrap's source package next to its launcher (the wrap's launcher otherwise can't
 > import itself). Installing `sudo dnf install blueprint-compiler` is the cleaner path
-> but not required. **Build-verified**: the `gnoblin` panel compiles + links + is listed
-> by `gnome-control-center --list`.
+> but not required. The `Gnoblin` panel should compile, link and appear in the
+> `gnome-control-center --list` output before it is used on a real session.
 
-Expect: GNOME Settings with a **gnoblin** panel, switch rows for every
+Expect: GNOME Settings with a **Gnoblin** panel, switch rows for every
 `gnoblinctl features` toggle, typed Screen Cast and Remote Desktop grant rows
-with capability summaries and Revoke buttons, and a **Reload gnoblin** button.
+with capability summaries and Revoke buttons, and a **Reload Gnoblin** button.
 The **Multitasking** panel is gone. With `./install/bin` ahead on `PATH`, "open
 Settings" or `gnome-control-center` launches this fork.

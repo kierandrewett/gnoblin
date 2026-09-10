@@ -36,8 +36,8 @@ configuration.
 
 Fedora packages use the specs in `packaging/rpm/`. The COPR project is
 `kierandrewett/gnoblin`; publish only after the local release gate and a clean
-install test pass. Debian and Arch files are scaffolds until their build and
-install checks are complete.
+install test pass. Debian and Arch files describe the planned package split
+until their build and install checks are complete.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a
 commit, and explain the user-visible result in the commit body.

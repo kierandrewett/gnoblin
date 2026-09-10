@@ -1,7 +1,7 @@
 # Devkit
 
 The devkit is the fast loop for iterating on your own chrome (Quickshell,
-waybar, a custom layer-shell client) against a real gnoblin compositor,
+waybar, a custom layer-shell client) against a real Gnoblin compositor,
 without touching your login session. It boots a **visible nested gnoblin
 session** — a window inside your current Wayland session — plus a terminal
 already wired to it.

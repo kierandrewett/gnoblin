@@ -18,8 +18,8 @@
  *
  * Deliberately allocates its own shm buffer rather than using a toolkit: the
  * point is to measure the compositor path, not GTK or EGL startup. A real
- * client pays those on top (see TODO.md "Performance" -- an EGL context alone
- * was ~33 ms on the old Slint clients).
+ * client pays those on top; keep it warm when measuring visible shell latency.
+ * See the real-hardware verification guide for that measurement boundary.
  */
 #define _GNU_SOURCE
 #include <errno.h>

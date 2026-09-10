@@ -5,8 +5,8 @@
 #   2. soft-reload memory: growth across 10 org.gnoblin.Shell.Reload calls
 #   3. window churn: shell RSS growth across 15 client open/close cycles
 # Thresholds are generous (headless llvmpipe numbers are noisy) — this catches
-# reintroduced leaks, not small drifts. See TODO.md "Performance" for the
-# measured baselines behind them.
+# reintroduced leaks, not small drifts. See TODO.md and the real-hardware
+# verification guide for the remaining baseline work.
 #
 # Env: GNOBLIN_PREFIX (default ./install), PERF_CLIENT (default foot).
 set -uo pipefail
@@ -22,10 +22,12 @@ PERF_CLIENT="${PERF_CLIENT:-foot}"
 [ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
 
 # Thresholds (kB).
-IDLE_PRIVATE_DIRTY_MAX=150000     # measured ~101 MB
-IDLE_GROWTH_MAX=4000              # measured ~0 (shrinks)
-RELOAD_GROWTH_MAX=8000            # measured ~0; was +38 MB per 10 before fixes
-CHURN_GROWTH_MAX=8000             # measured ~0 (shrinks)
+# These generous headless limits catch a reintroduced leak without pretending
+# that llvmpipe is a real-hardware baseline. Re-measure before tightening them.
+IDLE_PRIVATE_DIRTY_MAX=150000
+IDLE_GROWTH_MAX=4000
+RELOAD_GROWTH_MAX=8000
+CHURN_GROWTH_MAX=8000
 
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"

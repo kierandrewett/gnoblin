@@ -4,24 +4,12 @@
 # own "GNOME Shell started" mark -- the thing gnome-session, and the user,
 # actually wait on -- failing if it regresses past a budget.
 #
-# This exists because that number is easy to lose silently. Skipping the stock
-# 500 ms startup animation in gnoblin mode
-# (patches/gnome-shell/51-startup-animation) is worth ~400 ms here; a rebase
-# that drops or misgates that patch would give it straight back with nothing
-# failing. Same idea as the memory budgets in perf-smoke.sh.
+# The budget is intentionally a headless regression guard. It is not a claim
+# about real hardware; update it only after repeating the measurement in the
+# logged-in session described by docs/real-hardware-verification.md.
 #
-# Calibrated on this machine (llvmpipe, headless, best of 3):
-#
-#     patched   ./install   1161 ms   (runs: 1161 1350 1495)
-#     unpatched /usr        1541 ms   (runs: 1541 1596 1608)
-#
-# Budget 1350 ms sits between them with ~190 ms of margin either side. Note the
-# run-to-run spread is wide (~25%), which is why this takes the BEST of N
-# rather than a mean or median: noise only ever makes a boot slower, so the
-# fastest run is the most stable estimate of what the code can do.
-#
-# These numbers are llvmpipe and headless. They are for detecting regressions
-# against themselves, not a claim about real hardware.
+# Best-of-N is used because scheduler and software-rendering noise only make a
+# boot slower. The fastest run is the most stable estimate of the code path.
 #
 # Env: GNOBLIN_PREFIX (default ./install), BOOT_BUDGET_MS (default 1350),
 #      BOOT_RUNS (default 3, best reported), SETTLE (passed through).
@@ -100,7 +88,7 @@ FAIL: boot time ${best} ms exceeds budget ${BUDGET_MS} ms.
       The usual cause is the stock startup animation running again -- check
       patches/gnome-shell/51-startup-animation still applies and that
       _startupAnimationSession()/_prepareStartupAnimation() are gated on the
-      SAME condition. See TODO.md "Performance".
+      SAME condition. See TODO.md and docs/real-hardware-verification.md.
 EOF
     exit 1
 fi

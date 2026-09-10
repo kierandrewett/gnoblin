@@ -32,10 +32,9 @@ export GNOME_SHELL_DISABLE_EXTENSIONS=1
 #     touch ~/.config/gnoblin/profile-boot     # then log in to Gnoblin
 #     # -> $XDG_DATA_HOME/gnoblin/boot-profile-<stamp>.syscap
 #
-# Read it with sysprof (dnf install sysprof). This is how boot time gets a real
-# number: everything measurable without a login is already accounted for in
-# TODO.md and comes to ~115 ms of the ~700 ms "JS load" budget, so the rest has
-# to be found on real hardware.
+# Read it with sysprof (dnf install sysprof). This gives the real-session
+# profile that the headless checks cannot provide. Record the result with the
+# real-hardware verification checklist before changing a performance budget.
 PROFILE_MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin/profile-boot"
 if [ -e "$PROFILE_MARKER" ]; then
     # Consume the marker FIRST: if the shell then fails to start, the next boot
