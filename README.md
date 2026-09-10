@@ -16,14 +16,33 @@ Built on Mutter and GNOME Shell, it keeps GNOME's window management, hardware
 integration, lock screen and desktop services. Select Gnoblin at login; the
 regular GNOME session stays available.
 
+## What's different from GNOME?
+
+| | GNOME | Gnoblin |
+| --- | --- | --- |
+| Desktop | GNOME's panel, dash and Activities overview | Your choice of shell, panels and launchers |
+| Bars and docks | Changes usually need Shell extensions | Separate applications using layer-shell |
+| Window appearance | GNOME's built-in effects | Configurable blur, corners, shadows and animation rules |
+| Configuration | Settings, GSettings and extension preferences | Those settings plus a live TOML config for Gnoblin features |
+| Automation | GNOME's existing interfaces | Additional window-control APIs, commands and reloadable scripts |
+
+Your applications still run on Mutter. GNOME's lock screen, password prompts,
+keyring, network authentication and removable-drive handling remain. You can
+keep using GNOME Settings for hardware and system preferences.
+
+Gnoblin doesn't include a replacement desktop UI. Install a shell such as
+Bingux, or choose the individual tools you want. Existing GNOME extensions
+that depend on the panel or overview won't provide those features here.
+
 ## Choose your desktop
 
 Use a complete shell or combine a bar, launcher and notification daemon from
 different projects. Panels and docks run as separate applications through
 layer-shell. They don't need to be GNOME Shell extensions.
 
-Keep GNOME's notifications, screenshot tool and volume popups, or turn them
-off when your chosen tools handle those jobs.
+Keep GNOME's screenshot tool and volume popups, or turn them off when your
+chosen tools handle those jobs. GNOME's notification banners are hidden;
+disable its notification service when using an external notification daemon.
 
 ## Supported protocols
 
