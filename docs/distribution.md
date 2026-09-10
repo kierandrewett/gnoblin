@@ -9,8 +9,8 @@ shell. They need separate packages and separate release checks.
 - [x] Create Fedora COPR projects for Gnoblin and Bingux.
 - [ ] Build Mutter before GNOME Shell in COPR.
 - [ ] Verify installation, login and rollback on a clean supported Fedora host.
-- [ ] Give Bingux a standalone build, install manifest and service definitions.
-- [ ] Port shell dependencies from Nix before removing the NixOS configuration.
+- [x] Give Bingux a standalone build, install manifest and service definitions.
+- [x] Move Bingux packaging and runtime dependencies to its native shell tree.
 - [ ] Build and test Bingux RPMs with the matching Qt and Quickshell runtime.
 - [ ] Add signed APT and pacman repositories after distribution-specific builds pass.
 - [ ] Publish installation instructions only for verified package sets.
@@ -24,8 +24,8 @@ GNOME major version without rebuilding and testing it.
 
 Bingux needs Quickshell, native QML plugins, its search and metrics daemons,
 and helper programs. Copying its QML directory alone is not a complete install.
-Its current Nix definitions remain the migration reference until the standalone
-installation provides these components.
+The Bingux repository owns its native build, install manifest, RPM spec and
+user-systemd units; it is no longer a machine-configuration repository.
 
 ## Repository status
 
