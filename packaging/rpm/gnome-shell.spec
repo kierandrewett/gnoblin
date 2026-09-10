@@ -68,6 +68,7 @@ Source12:       gnoblin-scripts.tar.gz
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
 BuildRequires:  gcc
+BuildRequires:  sassc
 BuildRequires:  meson
 BuildRequires:  git
 BuildRequires:  desktop-file-utils
