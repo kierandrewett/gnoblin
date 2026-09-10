@@ -1,39 +1,38 @@
+<div align="center">
+
 # Gnoblin
 
-Gnoblin is a drop-in GNOME session for people who want GNOME's compositor,
-window management and desktop services without GNOME's desktop chrome. It is
-built from Mutter and GNOME Shell, with a session mode that removes the panel,
-Activities overview, dash and notification banners.
+**The GNOME session for people who bring their own shell.**
 
-You bring the chrome. Run Bingux, Waybar or another layer-shell client for the
-bar, dock, launcher and notifications. Gnoblin provides the Wayland protocols
-and the small `org.gnoblin.Shell` D-Bus API that a shell needs to integrate with
-the session.
+Mutter and GNOME Shell underneath. Your bar, dock and launcher on top.
 
-## What stays familiar
+[Install](docs/installation.md) · [Quick start](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Contribute](CONTRIBUTING.md)
 
-- GDM and the normal GNOME session remain available.
-- Applications, workspaces, keyboard input, portals, polkit, keyring,
-  automount and NetworkManager integration keep using GNOME's services.
-- Mutter manages windows and workspaces. A layer-shell client owns the visible
-  desktop controls.
-- The `gnoblin` session is separate from the stock `user` session, so you can
-  switch back at the login screen.
+</div>
 
-## Choose an install path
+Gnoblin is a drop-in Wayland session built from GNOME. It keeps the parts of
+GNOME that make a desktop work — windows, workspaces, input, portals, polkit,
+keyring and hardware integration — and leaves the visible desktop chrome to a
+layer-shell client.
 
-- **Fedora:** use the RPMs described in [distribution](docs/distribution.md).
-  The [Gnoblin COPR project](https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin/)
-  is being prepared; do not treat the repository as ready until its builds and
-  a clean login test pass.
-- **NixOS:** use the flake and module in [Installation](docs/installation.md#nixos).
-- **Development or another distribution:** build a private prefix with the
-  [source instructions](docs/installation.md#get-the-source). This does not
-  change system files until you explicitly register the session.
+Use [Bingux](https://github.com/kierandrewett/bingux), Waybar or your own shell
+for the top bar, dock, launcher, notifications and OSD. Gnoblin provides the
+Wayland protocols and the small `org.gnoblin.Shell` API those clients use.
 
-## Try it without changing your login
+## Features
 
-From a checkout with the normal Mutter and GNOME Shell build dependencies:
+- GNOME-compatible login session with GDM and the regular GNOME session kept intact
+- Mutter window management, workspaces and keyboard input
+- `zwlr_layer_shell_v1` plus compositor protocols for external shells
+- D-Bus control for feature ownership, reloads, input sources and window state
+- Live TOML configuration for protocol and window behaviour
+- External ownership of notifications, OSD and screenshot UI
+- Nested devkit so you can test a shell without logging out
+- Fedora RPMs, a NixOS module and a source-prefix development path
+
+## Quick start
+
+Build a private prefix and try Gnoblin in a nested session:
 
 ```sh
 just init
@@ -41,54 +40,48 @@ just dev
 just gnome-devkit
 ```
 
-This opens a nested Gnoblin session and a terminal connected to it. Start your
-layer shell from that terminal, for example:
+Start a layer-shell client from the terminal that opens:
 
 ```sh
 qs -p /path/to/your/shell.qml
-# or start another layer-shell client such as waybar
+# or: waybar
 ```
 
-Close the terminal to end the nested session. For a real login, use the
-[installation guide](docs/installation.md) and then the
-[real-hardware checklist](docs/real-hardware-verification.md).
+The nested session is safe to close. For a real login, follow the [installation
+guide](docs/installation.md), then enable your shell using [Bring your own
+shell](docs/bring-your-own-shell.md).
 
-## Configure the session
+## Install
 
-The compositor reads `$GNOBLIN_CONFIG`, or
-`$XDG_CONFIG_HOME/gnoblin/gnoblin.toml`, for protocol and window behaviour.
-The `gnoblinctl` command controls live shell features:
+- **Fedora:** build the RPMs in [Distribution](docs/distribution.md). The COPR
+  project exists, but its builds still need clean-host login verification.
+- **NixOS:** use the flake and module in [Installation](docs/installation.md#nixos).
+- **Other systems:** build the private source prefix described in
+  [Installation](docs/installation.md#get-the-source).
+
+Gnoblin intentionally starts without a top bar, dock or overview until a shell
+is running. That is the contract: GNOME underneath, your desktop on top.
+
+## Develop
 
 ```sh
-gnoblinctl ping
-gnoblinctl features
-gnoblinctl disable osd
+just test            # fast deterministic checks
+just verify          # build and run the headless session suite
+just verify-release  # add host Mutter tests and RPM builds
 ```
 
-Use `disable` when your layer shell owns a surface such as notifications, OSD
-or screenshots. Read the [configuration reference](docs/configuration.md) for
-the complete list and migration details.
-
-## Build and test
-
-```sh
-just test
-just verify
-just verify-release
-```
-
-`just test` is the quick deterministic gate. `just verify` builds the private
-prefix and runs the isolated headless session checks. `just verify-release`
-adds the real-host Mutter suite and RPM builds. See [Testing](docs/testing.md)
-for the boundaries of each command.
+Read [Testing](docs/testing.md) for what each gate proves. The [source
+map](src/README.md) explains where compositor protocols, session data and shell
+integration live.
 
 ## Documentation
 
 - [Installation](docs/installation.md)
 - [Bring your own shell](docs/bring-your-own-shell.md)
+- [Configuration and `gnoblinctl`](docs/configuration.md)
+- [Compositor bridge](docs/compositor-bridge.md)
 - [Distribution and COPR](docs/distribution.md)
 - [Devkit](docs/devkit.md)
-- [Configuration and `gnoblinctl`](docs/configuration.md)
 - [Testing](docs/testing.md)
 - [Real-hardware verification](docs/real-hardware-verification.md)
-- [Source map](src/README.md)
+- [Contributing](CONTRIBUTING.md)
