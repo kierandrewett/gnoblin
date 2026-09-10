@@ -4,7 +4,7 @@
 
 A no-frills fork of GNOME Shell with layer-shell support.
 
-[Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Contribute](CONTRIBUTING.md)
+[Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
 
 </div>
 
@@ -18,31 +18,36 @@ regular GNOME session stays available.
 
 ## Features
 
-- **Bring your own chrome.** Use Bingux, Waybar or another layer-shell client
+- **Bring your own chrome.** Use [Bingux](https://github.com/kierandrewett/bingux),
+  [Waybar](https://github.com/Alexays/Waybar) or another layer-shell client
   for the bar, dock, launcher and notifications. Gnoblin does not impose a
   replacement desktop shell.
 - **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
   docks, wallpapers, launchers and overlays, including layer popups and
-  exclusive zones.
-- **Hyprcursor support.** Mutter loads Hyprcursor themes with Xcursor fallback,
-  and keeps cursor-theme changes working in the Gnoblin session.
-- **Compositor effects.** Configure blur, opacity, rounded corners, borders,
-  shadows, custom shaders and layer animations with window rules.
-- **Live configuration.** Edit one TOML file for window rules, shortcuts,
+  exclusive zones. See [bring-your-own-shell](docs/bring-your-own-shell.md).
+- **Hyprcursor support.** [Mutter loads Hyprcursor themes](docs/cursors.md)
+  before falling back to Xcursor. Vector and animated frames scale to the
+  requested cursor size and monitor scale while preserving hotspots and
+  timing; the same themed wait cursor is used for launch feedback.
+- **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
+  shadows, custom shaders and layer animations](docs/window-effects.md) with
+  window rules.
+- **Live configuration.** Edit [one TOML file](docs/configuration.md) for window rules, shortcuts,
   autostart, protocol gates, animation and feature ownership. Valid changes
   reload without restarting applications.
-- **Window control and scripting.** `gnoblinctl` exposes windows, workspaces,
+- **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,
   monitors, input sources, feature toggles, reloads and a user-private
   compositor bridge for desktop shells.
 - **External-shell handoff.** Disable native notifications, OSDs, screenshot
   UI or the keyboard-layout popup when another client owns that part of the
   desktop. GNOME's normal components remain available when enabled.
-- **Portal permissions.** The optional portal backend supports persistent,
+- **Portal permissions.** The [optional portal backend](docs/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.
 - **Reloadable extensions.** GNOME Shell extensions still work for compositor
-  and session integrations, with cache-busted hot reload. Top-bar, dock and
-  overview chrome belongs in the external shell instead.
+  and session integrations, with cache-busted hot reload. [Top-bar, dock and
+  overview chrome](docs/real-hardware-verification.md#5-extensions--scripting)
+  belongs in the external shell instead.
 
 ## Supported protocols
 
