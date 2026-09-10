@@ -403,6 +403,7 @@ export class ShortcutInput {
         this.stage = stage;
         this.grabKeyboard = grab;
         this.ungrabKeyboard = ungrab;
+        this.completion = 0;
         this.ready = new Set();
         this.pending = null;
         this.timeout = 0;
@@ -439,21 +440,29 @@ export class ShortcutInput {
     }
     complete(name) {
         this.ready.add(name);
-        if (this.pending?.name !== name) return;
-        this.prepared(name);
-        const events = this.pending.events;
-        this.pending = null;
-        if (this.timeout) GLib.source_remove(this.timeout);
-        this.timeout = 0;
-        // Copies retain keycodes, modifiers, press/release order and input devices.
-        // Requeue through Clutter so Qt and the input method handle them normally.
-        for (const event of events) event.put();
+        if (this.pending?.name !== name || this.completion) return;
+        // Keys already filtered into the stage queue still belong to our grab.
+        // Finish that update before handing off, then dispatch the buffered keys
+        // synchronously so newer input cannot overtake an editing key.
+        this.completion = this.stage.connect('after-update', () => {
+            this.stage.disconnect(this.completion);
+            this.completion = 0;
+            this.prepared(name);
+            const events = this.pending.events;
+            this.pending = null;
+            if (this.timeout) GLib.source_remove(this.timeout);
+            this.timeout = 0;
+            for (const event of events) this.stage.handle_event(event);
+        });
+        this.stage.schedule_update();
     }
     closed(name) {
         this.ready.delete(name);
         if (this.pending?.name === name) this.cancel();
     }
     cancel() {
+        if (this.completion) this.stage.disconnect(this.completion);
+        this.completion = 0;
         if (this.timeout) GLib.source_remove(this.timeout);
         this.timeout = 0;
         if (this.pending?.grab) this.ungrabKeyboard(this.pending.grab);

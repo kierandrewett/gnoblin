@@ -45,6 +45,7 @@ class CompositorBridge {
         this.service.connect('incoming', (_service, connection) => { this.accept(connection); return true; });
         this.service.start();
         this.accelerator = global.display.connect('accelerator-activated', (_display, action) => this.activate(action));
+        this.overlayKey = global.display.connect('overlay-key', () => this.activate('overlay-key'));
         this.capture = global.stage.connect('event', (_stage, event) => this.event(event));
         this.session = Main.sessionMode.connect('updated', () => {
             if (Main.sessionMode.isLocked) {
@@ -80,7 +81,7 @@ class CompositorBridge {
         this.clients.add(client);
         this.send(client, {event: 'hello', version: 1,
             features: [
-                'ui-sessions', 'switcher-fallback',
+                'ui-sessions', 'switcher-fallback', 'overlay-shortcut',
                 ...(typeof Shell.BlurEffect.prototype.set_region === 'function' ? ['blur-regions'] : []),
                 ...(typeof Shell.BlurEffect.prototype.uses_surface_fade === 'function' && Config.layerAnimation ? ['layer-animation-policy'] : []),
             ]});
@@ -275,21 +276,30 @@ class CompositorBridge {
             !Number.isInteger(record.hold) || ![0, Clutter.ModifierType.MOD1_MASK, Clutter.ModifierType.SUPER_MASK,
                 Clutter.ModifierType.CONTROL_MASK].includes(record.hold) ||
             (record.modal !== undefined && typeof record.modal !== 'boolean') ||
+            (record.captureInput !== undefined && typeof record.captureInput !== 'boolean') ||
+            (record.accelerator === 'Super' && record.hold !== 0) ||
             client.bindings.size >= 32 || client.bindings.has(record.id))
             throw new Error('invalid shortcut registration');
         const reserved = this.switcherFallback.claim(client, record);
-        const action = reserved?.action || global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
+        const overlay = record.accelerator === 'Super';
+        if (overlay && this.actions.has('overlay-key')) throw new Error('shortcut already claimed: Super');
+        const action = overlay ? 'overlay-key' : reserved?.action ||
+            global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
         if (action === Meta.KeyBindingAction.NONE) throw new Error(`shortcut already claimed: ${record.accelerator}`);
-        const binding = reserved || {client, id: record.id, hold: record.hold, modal: record.modal !== false, action};
+        const binding = reserved || {client, id: record.id, hold: record.hold, modal: record.modal !== false,
+            captureInput: record.captureInput === true, action};
         client.bindings.set(record.id, binding);
         this.actions.set(action, binding);
-        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NORMAL);
+        Main.wm.allowKeybinding(overlay ? action : Meta.external_binding_name_for_action(action),
+            Shell.ActionMode.NORMAL | (overlay ? Shell.ActionMode.POPUP : 0));
         this.send(client, {event: 'bound', id: record.id});
     }
 
     activate(action) {
         const binding = this.actions.get(action);
-        if (!binding) return;
+        if (!binding || Main.sessionMode.isLocked) return;
+        if (binding.captureInput)
+            Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput?.begin(binding.id);
         if (this.active && this.active.client !== binding.client) this.end('cancelled');
         const first = !this.active;
         if (first && binding.hold) {
@@ -428,9 +438,12 @@ class CompositorBridge {
         this.switcherFallback.close(client);
         if (this.active?.client === client) this.end('cancelled');
         for (const binding of client.bindings.values()) {
+            if (binding.captureInput)
+                Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput?.closed(binding.id);
             if (this.switcherFallback.release(binding)) continue;
-            global.display.ungrab_accelerator(binding.action);
-            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(binding.action), Shell.ActionMode.NONE);
+            if (binding.action !== 'overlay-key') global.display.ungrab_accelerator(binding.action);
+            Main.wm.allowKeybinding(binding.action === 'overlay-key' ? binding.action :
+                Meta.external_binding_name_for_action(binding.action), Shell.ActionMode.NONE);
             this.actions.delete(binding.action);
         }
         client.bindings.clear();
@@ -632,7 +645,7 @@ class CompositorBridge {
             return {ok: true, pending: true, workspace: record.workspace};
         }
         if (record.command !== 'window') throw new Error('unknown compositor command');
-        const actions = ['focus', 'close', 'minimize', 'restore', 'maximize', 'unmaximize', 'fullscreen', 'unfullscreen', 'move', 'resize', 'workspace', 'monitor'];
+        const actions = ['focus', 'close', 'minimize', 'restore-or-minimize', 'restore', 'maximize', 'unmaximize', 'fullscreen', 'unfullscreen', 'move', 'resize', 'workspace', 'monitor'];
         if (!actions.includes(record.action)) throw new Error('unknown window action');
         const window = record.window === 'active' ? global.display.focus_window : this.windows.get(record.window)?.window;
         if (!window || !this.eligible(window)) throw new Error('window no longer available; list windows first');
@@ -641,6 +654,7 @@ class CompositorBridge {
         case 'focus': Main.activateWindow(window, global.get_current_time()); break;
         case 'close': requireCapability(window.can_close(), 'window cannot be closed'); window.delete(global.get_current_time()); break;
         case 'minimize': requireCapability(window.can_minimize(), 'window cannot be minimized'); window.minimize(); break;
+        case 'restore-or-minimize': this.windowSnap.restoreOrMinimize(window); break;
         case 'restore': window.unminimize(); break;
         case 'maximize': requireCapability(window.can_maximize(), 'window cannot be maximized'); window.maximize(Meta.MaximizeFlags.BOTH); break;
         case 'unmaximize': window.unmaximize(Meta.MaximizeFlags.BOTH); break;
@@ -700,6 +714,7 @@ class CompositorBridge {
         this.layerCompanions.destroy();
         this.switcherFallback.destroy();
         global.display.disconnect(this.accelerator);
+        global.display.disconnect(this.overlayKey);
         global.stage.disconnect(this.capture);
         Main.sessionMode.disconnect(this.session);
         global.window_manager.disconnect(this.map);

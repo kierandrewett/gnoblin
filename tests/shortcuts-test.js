@@ -100,8 +100,13 @@ assert(activated === null, 'destroy disconnects activation listener');
 print('PASS: native no-repeat registration, command updates, conflict rollback and lifecycle');
 
 // Buffer the opening gap, preserving editing keys and cancelling safely.
-let capture, released = 0, replayed = [];
-const stage = {connect(_signal, callback) { capture = callback; return 1; }, disconnect() {}};
+let capture, afterUpdate, released = 0, replayed = [];
+const stage = {
+    connect(signal, callback) { if (signal === 'captured-event') capture = callback; else afterUpdate = callback; return signal === 'captured-event' ? 1 : 2; },
+    disconnect(id) { if (id === 2) afterUpdate = null; },
+    schedule_update() {},
+    handle_event(event) { event.put(); },
+};
 const input = new ShortcutInput(stage,
     () => ({get_seat_state: () => Clutter.GrabState.KEYBOARD}), () => released++);
 function event(symbol, type = Clutter.EventType.KEY_PRESS) {
@@ -117,13 +122,18 @@ input.prepared('search');
 assert(released === 1 && replayed.length === 0, 'release modal before layer focus, keep input buffered');
 capture(stage, event(98));
 input.complete('search');
-assert(JSON.stringify(replayed) === JSON.stringify([97, Clutter.KEY_BackSpace, 98]), 'replay editing keys in order');
+assert(replayed.length === 0, 'wait for already queued stage events before handing off');
+capture(stage, event(Clutter.KEY_BackSpace));
+afterUpdate();
+assert(JSON.stringify(replayed) === JSON.stringify([97, Clutter.KEY_BackSpace, 98, Clutter.KEY_BackSpace]), 'replay buffered and already queued editing keys in order');
 input.begin('search');
 assert(input.pending === null, 'toggle of focused popup never steals keyboard');
 input.closed('search');
 input.begin('search');
 capture(stage, event(99));
+input.complete('search');
 input.cancel();
-assert(replayed.length === 3 && released === 2, 'cancel drops input without sending it to previous app');
+assert(afterUpdate === null, 'cancel removes the pending handoff');
+assert(replayed.length === 4 && released === 2, 'cancel drops input without sending it to previous app');
 input.destroy();
 print('PASS: popup input handoff');
