@@ -33,7 +33,19 @@ export function validate(value) {
                     k === 'blur' ? number(n, 0, 100) : ['x', 'y', 'spread'].includes(k) && number(n, -100, 100));
             valid = v === false || (Array.isArray(v) ? v.length > 0 && v.length <= 4 && v.every(layer) : layer(v));
         } else valid = typeof v === 'boolean';
-        if (!valid) throw new Error(`invalid corners.${key}`);
+        if (!valid) {
+            const expected = {
+                radius: 'a number from 0 to 200',
+                smoothing: 'a number from 0 to 1',
+                mode: '"auto", "force", or "off"',
+                padding: 'four numbers from -128 to 128',
+                'border-width': 'a number from -40 to 40',
+                'border-color': 'a #RRGGBB or #RRGGBBAA color',
+                'shadow-animation': 'a duration from 0 to 2000 and a supported easing',
+                shadow: 'false, a shadow table, or a list of shadow tables',
+            }[key] ?? 'a boolean';
+            throw new Error(`invalid corners.${key}: expected ${expected}; got ${JSON.stringify(v)}`);
+        }
     }
 }
 

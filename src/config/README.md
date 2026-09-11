@@ -12,7 +12,11 @@ quote and comment behaviour for existing installations.
 
 `gnome-shell-overlay/js/ui/components/gnoblinConfig.js` validates the shell
 schema and autostart records, watches saves and retains the last valid state.
-See `docs/configuration.md` for user-facing semantics and migration.
+TOML files may use a root-level `include` (or `source`) string/array. Paths are
+relative to the including file, included files are merged in declaration order,
+and rule arrays append. Both the native reader and the shell watch included
+files, so package fragments can be installed once and hot-reloaded. See
+`docs/configuration.md` for user-facing semantics and migration.
 
 Run `./scripts/test-config.sh` for native TOML and legacy parser tests. The
 live shell tests require the built Mutter typelib and library from the same

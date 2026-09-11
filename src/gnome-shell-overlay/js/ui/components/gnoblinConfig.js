@@ -100,6 +100,77 @@ export function parse(text) {
     return parseDocument(Meta.gnoblin_parse_toml(text).recursiveUnpack());
 }
 
+const CONCATENATED_ARRAY_KEYS = new Set(['autostart', 'window-rules', 'shortcuts', 'rules']);
+
+function isTable(value) {
+    return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+// Includes are merged in declaration order. Tables merge recursively, while
+// rule-like arrays append so a package fragment can add rules without
+// replacing the user's own rules. Scalar settings and ordinary arrays in the
+// user's file win over included values.
+function mergeDocuments(previous, next, key = null) {
+    if (isTable(previous) && isTable(next)) {
+        const merged = {...previous};
+        for (const [name, value] of Object.entries(next))
+            merged[name] = Object.hasOwn(merged, name)
+                ? mergeDocuments(merged[name], value, name) : value;
+        return merged;
+    }
+    if (Array.isArray(previous) && Array.isArray(next) && CONCATENATED_ARRAY_KEYS.has(key))
+        return [...previous, ...next];
+    return next;
+}
+
+function includePaths(document, path) {
+    if (document.include !== undefined && document.source !== undefined)
+        throw new Error(`${path}: use either include or source, not both`);
+    const value = document.include ?? document.source;
+    if (value === undefined)
+        return [];
+    const values = Array.isArray(value) ? value : [value];
+    if (!values.length || values.some(entry => typeof entry !== 'string' || !entry.trim()))
+        throw new Error(`${path}: include/source must be a nonempty path or array of paths`);
+    return values.map(entry => {
+        let included = entry;
+        if (included.startsWith('~/'))
+            included = GLib.build_filenamev([GLib.get_home_dir(), included.slice(2)]);
+        if (!GLib.path_is_absolute(included))
+            included = GLib.build_filenamev([GLib.path_get_dirname(path), included]);
+        return GLib.canonicalize_filename(included, null);
+    });
+}
+
+function loadTomlDocument(path, stack = []) {
+    const canonical = GLib.canonicalize_filename(path, null);
+    if (stack.includes(canonical))
+        throw new Error(`${canonical}: include cycle (${[...stack, canonical].join(' -> ')})`);
+    let bytes;
+    try {
+        [, bytes] = Gio.File.new_for_path(canonical).load_contents(null);
+    } catch (error) {
+        throw new Error(`${canonical}: cannot read included config: ${error.message}`);
+    }
+    let document;
+    try {
+        document = Meta.gnoblin_parse_toml(new TextDecoder('utf-8', {fatal: true}).decode(bytes)).recursiveUnpack();
+    } catch (error) {
+        throw new Error(`${canonical}: invalid TOML: ${error.message}`);
+    }
+    let merged = {};
+    const paths = [canonical];
+    for (const included of includePaths(document, canonical)) {
+        const loaded = loadTomlDocument(included, [...stack, canonical]);
+        merged = mergeDocuments(merged, loaded.document);
+        paths.push(...loaded.paths);
+    }
+    const local = {...document};
+    delete local.include;
+    delete local.source;
+    return {document: mergeDocuments(merged, local), paths};
+}
+
 export function parseDocument(document) {
     const next = {...DEFAULTS};
     next.permissions = Permissions.validate(document.permissions);
@@ -533,6 +604,8 @@ export class ConfigFile {
         this._apply = apply;
         this._parseToml = parseToml;
         this._monitor = null;
+        this._monitors = new Map();
+        this._watchedFiles = new Set();
         this._timeout = 0;
     }
 
@@ -547,17 +620,30 @@ export class ConfigFile {
 
     reload() {
         let text = '';
+        const path = this.path;
+        let loaded = {document: {}, paths: [path]};
         try {
-            const [, bytes] = Gio.File.new_for_path(this.path).load_contents(null);
+            const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
             text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+            if (path.endsWith('.conf'))
+                loaded = null;
+            else
+                loaded = loadTomlDocument(path);
         } catch (e) {
             if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                 throw e;
         }
-        // Parse the complete file before replacing the last valid settings.
-        const next = this.path.endsWith('.conf') ? parseLegacy(text) : this._parseToml(text);
+        // Parse the complete file and every included fragment before replacing
+        // the last valid settings. A missing main file means defaults.
+        let next;
+        try {
+            next = loaded ? parseDocument(loaded.document) : parseLegacy(text);
+        } catch (e) {
+            throw new Error(`${path}: ${e.message}`);
+        }
         this._apply(next);
         settings = next;
+        this._setWatchedFiles(loaded?.paths ?? [path]);
     }
 
     setPermissions(policy, expected) {
@@ -592,22 +678,47 @@ export class ConfigFile {
             return;
         const parent = Gio.File.new_for_path(this._directory);
         GLib.mkdir_with_parents(parent.get_path(), 0o700);
-        // Monitor the directory so editor rename-and-replace saves work too.
-        this._monitor = parent.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
-        this._monitor.connect('changed', (_monitor, file, otherFile) => {
-            const names = this._override ? [GLib.path_get_basename(this._override)] :
-                ['gnoblin.toml', 'gnoblin.conf'];
-            if (!names.includes(file?.get_basename()) && !names.includes(otherFile?.get_basename()))
-                return;
-            if (this._timeout)
-                GLib.source_remove(this._timeout);
-            this._timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-                this._timeout = 0;
-                this._tryReload();
-                return GLib.SOURCE_REMOVE;
-            });
-        });
+        this._setWatchedFiles([this.path]);
+        this._monitor = true;
         this._tryReload();
+    }
+
+    _setWatchedFiles(paths) {
+        const wanted = new Set(paths.map(path => GLib.canonicalize_filename(path, null)));
+        const directories = new Map();
+        for (const path of wanted) {
+            const directory = GLib.path_get_dirname(path);
+            if (!directories.has(directory))
+                directories.set(directory, new Set());
+            directories.get(directory).add(path);
+        }
+        for (const [directory, monitor] of this._monitors) {
+            if (directories.has(directory))
+                continue;
+            monitor.cancel();
+            this._monitors.delete(directory);
+        }
+        for (const [directory, files] of directories) {
+            if (this._monitors.has(directory))
+                continue;
+            const monitor = Gio.File.new_for_path(directory).monitor_directory(
+                Gio.FileMonitorFlags.WATCH_MOVES, null);
+            monitor.connect('changed', (_monitor, file, otherFile) => {
+                const changed = [file, otherFile].filter(Boolean).map(item =>
+                    GLib.canonicalize_filename(item.get_path(), null));
+                if (!changed.some(path => this._watchedFiles.has(path)))
+                    return;
+                if (this._timeout)
+                    GLib.source_remove(this._timeout);
+                this._timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                    this._timeout = 0;
+                    this._tryReload();
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+            this._monitors.set(directory, monitor);
+        }
+        this._watchedFiles = wanted;
     }
 
     _tryReload() {
@@ -623,7 +734,10 @@ export class ConfigFile {
         if (this._timeout)
             GLib.source_remove(this._timeout);
         this._timeout = 0;
-        this._monitor?.cancel();
+        for (const monitor of this._monitors.values())
+            monitor.cancel();
+        this._monitors.clear();
+        this._watchedFiles.clear();
         this._monitor = null;
     }
 }

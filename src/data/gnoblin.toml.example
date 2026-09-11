@@ -2,6 +2,9 @@
 # Location: $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.toml.
 # The shell watches saves automatically. Manual reload: gnoblinctl reload-config.
 # Invalid shell settings retain the last valid configuration.
+# Load package or user fragments with a root-level include/source directive.
+# Paths are relative to this file when not absolute; included files are watched.
+# include = ["/usr/share/bingux/gnoblin.toml"]
 
 [shell]
 # Native GNOME Alt+Tab and related window switchers are opt-in.
@@ -27,6 +30,27 @@ layer-easing = "ease-out-cubic"
 # Keep GNOME's own layout popup off when Bingux owns the keyboard-layout UI.
 # input-source-switcher = false
 
+[layer-shell]
+# Preserve the active application when a launcher, menu, or other layer-shell
+# surface requests exclusive keyboard input. Default: true (also when omitted).
+# Typing goes only to that surface; the application underneath stays active and
+# keeps its active-window styling. Closing the surface releases keyboard input.
+# This applies to all namespaces, including third-party layer-shell clients.
+# false instead activates the exclusive layer window and deactivates the app;
+# use it if a client specifically requires normal window-activation semantics.
+# On-demand layers still use click-to-focus; non-interactive layers never focus.
+# This does not grant keyboard access to surfaces that did not request it, nor
+# change native application menus or the session-lock protocol.
+# Boolean only (true/false, without quotes). Log out and back in after changing;
+# reload-config does not change keyboard routing in the current session.
+# Details: docs/configuration.md, "Layer-shell keyboard focus".
+preserve-active-window = true
+
+[window-management]
+# Keep dragged windows below layer-shell panels that reserve an exclusive zone.
+# Set false to allow the frame to move over those zones intentionally.
+constrain-drag-to-work-area = true
+
 # Protocol changes require a new compositor session.
 [protocols]
 # Each key gates one Wayland protocol overlay. true (default) = advertised;
@@ -40,6 +64,7 @@ wlr-foreign-toplevel-management = true   # window control for taskbars
 wlr-gamma-control               = true   # night-light via wlsunset
 wlr-output-power-management     = true   # DPMS via wlr clients
 ext-data-control                = true   # clipboard managers (cliphist)
+blur-fade                       = true   # buffer-synchronised panel fade metadata
 
 # Named autostart entries run once per name per login, including new entries
 # added on reload. Use either this or an existing systemd service, not both.
@@ -52,6 +77,12 @@ ext-data-control                = true   # clipboard managers (cliphist)
 match.type = "layer"
 blur = 24
 opacity = 0.96
+
+# Dense dock contents need a wider backdrop blur to keep text behind the glass
+# from remaining readable. Other layer surfaces keep the 24px default.
+[[window-rules]]
+match.layer = "^bingux-dock$"
+blur = 48
 
 # Shortcut changes apply live. Commands are argument arrays, not shell syntax.
 # Release any conflicting built-in binding before assigning its keys.

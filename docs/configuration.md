@@ -9,6 +9,32 @@ explicit file. A `.conf` override uses the legacy INI reader; other filenames
 use TOML. Without an override, TOML takes priority over `gnoblin.conf`.
 The watcher detects creation and atomic replacement of either default file.
 
+## Configuration fragments
+
+TOML configurations can load package or user fragments without copying them
+into the main file:
+
+```toml
+include = ["/usr/share/bingux/gnoblin.toml"]
+```
+
+`source` is accepted as an alias for `include`, matching the spelling used by
+Hyprland. Paths may be absolute, relative to the file containing the directive,
+or begin with `~/`. A fragment can include more fragments, but cycles and
+missing files are rejected. Fragments are merged in declaration order, then
+the containing file is applied last: tables merge recursively, while
+`window-rules`, `shortcuts`, `autostart`, and permission `rules` append. Scalar
+settings and ordinary arrays in the containing file override included values.
+
+The main file and every loaded fragment are watched. Saving any of them runs the
+same parse-and-validate transaction as `gnoblinctl reload-config`; invalid edits
+keep the last valid configuration and report the file and expected value.
+`include` and `source` cannot be used together in one file.
+
+Protocol advertisement remains a compositor-startup decision. An included
+`[protocols]` change is validated immediately but needs a new session before
+the Wayland global changes.
+
 Mutter and GNOME Shell share the native TOML parser. Duplicate keys, invalid
 values and invalid protocol types are rejected. A bad live edit retains the
 last valid configuration. The updated build needs installation and one new
@@ -45,6 +71,68 @@ still take precedence. Removing window-behaviour keys restores defaults.
 cyclers. It defaults off. Disabling it suppresses those actions but does not
 release their existing shortcut bindings. Display-mode and accessibility
 switchers are separate. Stock GNOME sessions retain their native behaviour.
+
+### Layer-shell keyboard focus
+
+```toml
+[layer-shell]
+preserve-active-window = true
+```
+
+`preserve-active-window` is a boolean, defaults to `true`, and applies to every
+layer-shell client regardless of its namespace or toolkit. Omit it to use the
+default. Use literal `true` or `false`, not quoted strings; unknown keys in this
+section and values of another type are rejected.
+
+Layer-shell surfaces include desktop launchers, panels, and shell context menus.
+Keyboard input and application activation are separate: a search box needs your
+typing, but need not make the application underneath look inactive or change
+which application is selected.
+
+With `true`, a surface requesting **exclusive** keyboard input receives typing
+while the existing application remains active. The application does not receive
+a second copy of those keys. This is the default for Search, shell menus, and
+third-party launchers alike; no special surface name is required. When the layer
+releases its keyboard request, unmaps, or disconnects, its input handler is
+removed so normal keyboard routing can resume.
+
+With `false`, exclusive layers use normal layer-window activation instead:
+opening one can deactivate the application beneath it. Choose this for a client
+that depends on that activation behavior, or to restore the previous behavior
+of ordinary exclusive layers. This also disables the old popup-specific
+exception; the policy is uniform across clients.
+
+The client's keyboard request still matters:
+
+| Request | Effect of this setting |
+| --- | --- |
+| None | No keyboard input; the surface cannot take keyboard focus. |
+| Exclusive | `true` preserves the active application; `false` activates the layer window. |
+| On demand | Unchanged: normal user-directed focus, such as click-to-focus. |
+
+This setting does not make passive bars interactive, prevent an on-demand panel
+from taking focus when clicked, or change native application menus that use
+`xdg-popup` rather than layer-shell. Session locking uses separate mechanisms.
+Multiple keyboard-interactive layers still need compositor arbitration; this
+option does not broadcast input to all of them.
+
+**Requires a new compositor session:** save the file, then log out and back in.
+The value is read when layer-shell starts. `gnoblinctl reload-config` and closing
+and reopening a menu do not change it for the running session.
+
+### Window drag boundary
+
+```toml
+[window-management]
+constrain-drag-to-work-area = true
+```
+
+When enabled, the compositor keeps a dragged window's frame below the current
+monitor work-area top. Layer-shell panels contribute their exclusive zones to
+that work area, so the setting applies to any Wayland panel and does not name
+or depend on Bingux. The default is `true`; set it to `false` when windows are
+intentionally allowed to overlap reserved panel space. The value is re-read at
+the start of each drag.
 
 `input-source-switcher` controls GNOME's native keyboard-layout popup. It is
 off by default in Gnoblin so external chrome can present the active layout and

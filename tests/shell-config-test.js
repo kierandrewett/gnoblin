@@ -55,6 +55,7 @@ for (const text of ['[shell]\nosd = "false"', '[shell]\nminimize-duration = 2\nm
 
 const dir = GLib.dir_make_tmp('gnoblin-config-test-XXXXXX');
 const path = `${dir}/new/config/gnoblin.toml`;
+const fragment = `${dir}/bingux.toml`;
 let current;
 let updates = 0;
 const config = new ConfigFile(path, next => {
@@ -95,6 +96,23 @@ try {
     config.start();
     assert(current['window-switcher'], 'restart reads latest file');
     config.destroy();
+    GLib.file_set_contents(fragment, '[shell]\nlayer-easing = "linear"\n');
+    GLib.file_set_contents(path, `include = [${JSON.stringify(fragment)}]\n[shell]\nlayer-duration = 123\n`);
+    const included = new ConfigFile(path, next => { current = next; updates++; });
+    included.start();
+    assert(current['layer-easing'] === 'linear' && current['layer-duration'] === 123,
+        'included TOML merges before local settings');
+    GLib.file_set_contents(fragment, '[shell]\nlayer-easing = "none"\n');
+    settle();
+    assert(current['layer-easing'] === 'none', 'included files are hot-reloaded');
+    GLib.file_set_contents(fragment, '[[window-rules]]\nmatch.type = "window"\ncorners = { radius = 14, smoothing = 4.0 }\n');
+    settle();
+    assert(current['layer-easing'] === 'none', 'invalid included edit retains last valid settings');
+    let diagnostic = '';
+    try { included.reload(); } catch (error) { diagnostic = error.message; }
+    assert(diagnostic.includes('expected a number from 0 to 1') && diagnostic.includes('got 4'),
+        'invalid corner smoothing explains the accepted range and value');
+    included.destroy();
     const target = minimizeTarget({get_icon_geometry: () => [false, null]},
         {x: 100, y: 200, width: 800, height: 600})[1];
     assert(target.x === 500 && target.y === 800, 'bottom-centre fallback');
@@ -105,6 +123,7 @@ try {
 } finally {
     config.destroy();
     GLib.unlink(path);
+    GLib.unlink(fragment);
     GLib.rmdir(`${dir}/new/config`);
     GLib.rmdir(`${dir}/new`);
     GLib.rmdir(dir);
