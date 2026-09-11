@@ -7,6 +7,31 @@ Use `gnoblinctl --help`, `gnoblinctl help window`, or any command's `--help`.
 Existing commands such as `enable`, `disable`, `reload-config`, `reload-ext`
 and `set-input-source` remain available.
 
+## Configuration fragments
+
+Installations can ship a Gnoblin TOML fragment without overwriting the user's
+configuration. Add one to the active TOML configuration and reload it with:
+
+```sh
+gnoblinctl load-config /usr/share/bingux/gnoblin.toml
+```
+
+The include is idempotent and the file update is atomic. If Gnoblin is not
+running yet, the command reports `reload: pending`; the next shell start will
+load the fragment. If validation fails, the user's previous configuration is
+restored and the actual setting and fragment path are reported. Legacy
+`gnoblin.conf` files must be migrated to `gnoblin.toml` before using this
+command.
+
+Remove the include before uninstalling its provider:
+
+```sh
+gnoblinctl unload-config /usr/share/bingux/gnoblin.toml
+```
+
+Unloading is idempotent and also restores the previous configuration if the
+live reload rejects the edit.
+
 ## Output and errors
 
 Structured results use tables in a terminal and JSON in a pipe. Use `--json`

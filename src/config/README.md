@@ -14,8 +14,9 @@ quote and comment behaviour for existing installations.
 schema and autostart records, watches saves and retains the last valid state.
 TOML files may use a root-level `include` (or `source`) string/array. Paths are
 relative to the including file, included files are merged in declaration order,
-and rule arrays append. Both the native reader and the shell watch included
-files, so package fragments can be installed once and hot-reloaded. See
+and rule arrays append. The shell watches included files, while the native
+reader resolves them whenever the compositor reloads configuration, so package
+fragments can be installed once and hot-reloaded in the shell. See
 `docs/configuration.md` for user-facing semantics and migration.
 
 Run `./scripts/test-config.sh` for native TOML and legacy parser tests. The

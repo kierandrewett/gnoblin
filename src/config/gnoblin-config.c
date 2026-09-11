@@ -159,6 +159,11 @@ static GVariant *load_toml_file (const char *path, GHashTable *stack, GError **e
                      "%s: include cycle", canonical);
         return NULL;
     }
+    if (g_hash_table_size (stack) >= 32) {
+        g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                     "%s: include nesting exceeds 32 files", canonical);
+        return NULL;
+    }
     if (!g_file_get_contents (canonical, &contents, NULL, error)) {
         g_prefix_error (error, "%s: cannot read included config: ", canonical);
         return NULL;

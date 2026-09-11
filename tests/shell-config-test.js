@@ -102,12 +102,14 @@ try {
     included.start();
     assert(current['layer-easing'] === 'linear' && current['layer-duration'] === 123,
         'included TOML merges before local settings');
-    GLib.file_set_contents(fragment, '[shell]\nlayer-easing = "none"\n');
+    // Let the directory monitors finish subscribing before the first edit.
     settle();
-    assert(current['layer-easing'] === 'none', 'included files are hot-reloaded');
+    GLib.file_set_contents(fragment, '[shell]\nlayer-easing = "ease-out-quad"\n');
+    settle();
+    assert(current['layer-easing'] === 'ease-out-quad', 'included files are hot-reloaded');
     GLib.file_set_contents(fragment, '[[window-rules]]\nmatch.type = "window"\ncorners = { radius = 14, smoothing = 4.0 }\n');
     settle();
-    assert(current['layer-easing'] === 'none', 'invalid included edit retains last valid settings');
+    assert(current['layer-easing'] === 'ease-out-quad', 'invalid included edit retains last valid settings');
     let diagnostic = '';
     try { included.reload(); } catch (error) { diagnostic = error.message; }
     assert(diagnostic.includes('expected a number from 0 to 1') && diagnostic.includes('got 4'),

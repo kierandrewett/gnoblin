@@ -365,6 +365,8 @@ gnoblinctl version                  shell + protocol version
 gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
 
 gnoblinctl reload-config            read gnoblin.toml immediately
+gnoblinctl load-config /path/file    add an idempotent include and reload it
+gnoblinctl unload-config /path/file  remove an include and reload it
 
 gnoblinctl features                 list feature toggles + state
 gnoblinctl feature <id>             show one feature's state

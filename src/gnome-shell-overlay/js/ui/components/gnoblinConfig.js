@@ -142,8 +142,11 @@ function includePaths(document, path) {
     });
 }
 
-function loadTomlDocument(path, stack = []) {
+function loadTomlDocument(path, stack = [], watched = null) {
     const canonical = GLib.canonicalize_filename(path, null);
+    watched?.add(canonical);
+    if (stack.length >= 32)
+        throw new Error(`${canonical}: include nesting exceeds 32 files`);
     if (stack.includes(canonical))
         throw new Error(`${canonical}: include cycle (${[...stack, canonical].join(' -> ')})`);
     let bytes;
@@ -161,13 +164,20 @@ function loadTomlDocument(path, stack = []) {
     let merged = {};
     const paths = [canonical];
     for (const included of includePaths(document, canonical)) {
-        const loaded = loadTomlDocument(included, [...stack, canonical]);
+        const loaded = loadTomlDocument(included, [...stack, canonical], watched);
         merged = mergeDocuments(merged, loaded.document);
         paths.push(...loaded.paths);
     }
     const local = {...document};
     delete local.include;
     delete local.source;
+    try {
+        // Validate fragments at their own boundary so an error names the file
+        // that contains the bad setting, not only the root configuration.
+        parseDocument(local);
+    } catch (error) {
+        throw new Error(`${canonical}: ${error.message}`);
+    }
     return {document: mergeDocuments(merged, local), paths};
 }
 
@@ -603,7 +613,7 @@ export class ConfigFile {
             GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin']);
         this._apply = apply;
         this._parseToml = parseToml;
-        this._monitor = null;
+        this._started = false;
         this._monitors = new Map();
         this._watchedFiles = new Set();
         this._timeout = 0;
@@ -622,16 +632,19 @@ export class ConfigFile {
         let text = '';
         const path = this.path;
         let loaded = {document: {}, paths: [path]};
+        const watched = new Set([path]);
         try {
             const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
             text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
             if (path.endsWith('.conf'))
                 loaded = null;
             else
-                loaded = loadTomlDocument(path);
+                loaded = loadTomlDocument(path, [], watched);
         } catch (e) {
-            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
+                this._setWatchedFiles([...watched]);
                 throw e;
+            }
         }
         // Parse the complete file and every included fragment before replacing
         // the last valid settings. A missing main file means defaults.
@@ -674,12 +687,12 @@ export class ConfigFile {
     }
 
     start() {
-        if (this._monitor)
+        if (this._started)
             return;
         const parent = Gio.File.new_for_path(this._directory);
         GLib.mkdir_with_parents(parent.get_path(), 0o700);
         this._setWatchedFiles([this.path]);
-        this._monitor = true;
+        this._started = true;
         this._tryReload();
     }
 
@@ -738,7 +751,7 @@ export class ConfigFile {
             monitor.cancel();
         this._monitors.clear();
         this._watchedFiles.clear();
-        this._monitor = null;
+        this._started = false;
     }
 }
 

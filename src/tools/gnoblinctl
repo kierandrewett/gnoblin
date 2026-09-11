@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -108,6 +109,10 @@ def parser():
     workspaces.add_argument("workspace", nargs="?", type=number(1, 1024), help="One-based workspace ID")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
+    fragment = add(commands, "load-config", "Add a TOML fragment to gnoblin.toml")
+    fragment.add_argument("path", help="TOML fragment to include")
+    fragment = add(commands, "unload-config", "Remove a TOML fragment from gnoblin.toml")
+    fragment.add_argument("path", help="TOML fragment to remove")
     return root
 
 
@@ -135,6 +140,84 @@ def input_call(method, signature="", arguments=(), timeout=5, call=dbus):
         if not re.match(r"^(?:Call failed: )?(?:Unknown method|Unknown interface|Unknown object|The name \S+ (?:was not provided by any \.service|is not activatable))", text):
             raise
         return call(method, signature, arguments, service="org.gnoblin.InputSources", timeout=timeout)
+
+
+def user_config_path():
+    override = os.environ.get("GNOBLIN_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    directory = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "gnoblin"
+    toml = directory / "gnoblin.toml"
+    legacy = directory / "gnoblin.conf"
+    return toml if toml.exists() or not legacy.exists() else legacy
+
+
+def atomic_write(path, contents):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except Exception:
+        try: os.unlink(temporary)
+        except FileNotFoundError: pass
+        raise
+
+
+def config_fragment_directive(fragment):
+    return f"include = {json.dumps(str(fragment))}\n"
+
+
+def reload_config_file(path, original, updated, fragment, removed):
+    if updated != original:
+        atomic_write(path, updated)
+    try:
+        dbus("ReloadConfig")
+    except CommandError as error:
+        message = str(error)
+        unavailable = "Failed to connect to bus" in message or re.match(
+            r"^(?:Call failed: )?(?:The name \S+ was not provided by any \.service|The name \S+ is not activatable)",
+            message)
+        if not unavailable:
+            atomic_write(path, original)
+            raise CommandError(f"fragment was not {removed}; configuration was restored: {message}") from None
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": removed, "reload": "pending"}
+    return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": removed, "reload": "applied"}
+
+
+def load_config_fragment(fragment):
+    fragment = Path(fragment).expanduser().resolve()
+    if not fragment.is_file():
+        raise CommandError(f"config fragment does not exist: {fragment}")
+    path = user_config_path()
+    if path.suffix == ".conf":
+        raise CommandError(f"cannot load a TOML fragment into legacy config {path}; migrate it to gnoblin.toml first")
+    original = path.read_text(encoding="utf-8") if path.exists() else ""
+    directive = config_fragment_directive(fragment)
+    if directive.rstrip("\n") not in original.splitlines():
+        updated = directive + ("\n" if original and not original.startswith("\n") else "") + original
+    else:
+        updated = original
+    return reload_config_file(path, original, updated, fragment, "loaded")
+
+
+def unload_config_fragment(fragment):
+    fragment = Path(fragment).expanduser().resolve()
+    path = user_config_path()
+    if path.suffix == ".conf":
+        raise CommandError(f"cannot unload a TOML fragment from legacy config {path}; migrate it to gnoblin.toml first")
+    if not path.exists():
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": False, "reload": "not-needed"}
+    original = path.read_text(encoding="utf-8")
+    directive = config_fragment_directive(fragment).rstrip("\n")
+    updated = "".join(line for line in original.splitlines(keepends=True) if line.rstrip("\r\n") != directive)
+    if updated == original:
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": False, "reload": "not-needed"}
+    return reload_config_file(path, original, updated, fragment, "unloaded")
 
 
 def compositor(request, path, timeout=5):
@@ -173,6 +256,8 @@ def keyed(rows, fields):
 
 def dispatch(args, cli):
     cmd = args.command
+    if cmd == "load-config": return load_config_fragment(args.path)
+    if cmd == "unload-config": return unload_config_fragment(args.path)
     call = lambda method, signature="", arguments=(), service="org.gnoblin.Shell": dbus(method, signature, arguments, service, args.timeout)
     rpc = lambda request: compositor(request, args.socket, args.timeout)
     if cmd == "windows" or cmd == "window" and args.action == "list":
