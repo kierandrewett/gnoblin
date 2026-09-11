@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import tomllib
 import time
 import uuid
 
@@ -172,7 +173,53 @@ def config_fragment_directive(fragment):
     return f"include = {json.dumps(str(fragment))}\n"
 
 
-def reload_config_file(path, original, updated, fragment, removed):
+def config_root_directive(contents):
+    try:
+        document = tomllib.loads(contents)
+    except tomllib.TOMLDecodeError as error:
+        raise CommandError(f"cannot edit invalid TOML configuration: {error}") from None
+    keys = [key for key in ("include", "source") if key in document]
+    if len(keys) > 1:
+        raise CommandError("configuration uses both include and source; keep only one before loading a fragment")
+    if not keys:
+        return None, []
+    key = keys[0]
+    value = document[key]
+    values = [value] if isinstance(value, str) else value
+    if not isinstance(values, list) or not all(isinstance(entry, str) for entry in values):
+        raise CommandError(f"configuration {key} must be a string or an array of strings")
+    return key, values
+
+
+def replace_root_directive(contents, key, values):
+    lines = contents.splitlines(keepends=True)
+    offset = 0
+    for line in lines:
+        if line.lstrip().startswith("["):
+            break
+        if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+            if line.count("\n") > 1 or (values and line.split("=", 1)[1].lstrip().startswith("[") and "]" not in line):
+                raise CommandError(f"configuration {key} must be on one line to edit it safely")
+            newline = "\r\n" if line.endswith("\r\n") else "\n"
+            return contents[:offset] + f"{key} = {json.dumps(values)}{newline}" + contents[offset + len(line):]
+        offset += len(line)
+    raise CommandError(f"could not locate root-level {key} directive to edit it safely")
+
+
+def remove_root_directive(contents, key):
+    lines = contents.splitlines(keepends=True)
+    offset = 0
+    for line in lines:
+        if line.lstrip().startswith("["):
+            break
+        if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+            return contents[:offset] + contents[offset + len(line):]
+        offset += len(line)
+    raise CommandError(f"could not locate root-level {key} directive to remove it safely")
+
+
+def reload_config_file(path, original, updated, fragment, action, restore=True):
+    changed = updated != original
     if updated != original:
         atomic_write(path, updated)
     try:
@@ -183,10 +230,14 @@ def reload_config_file(path, original, updated, fragment, removed):
             r"^(?:Call failed: )?(?:The name \S+ was not provided by any \.service|The name \S+ is not activatable)",
             message)
         if not unavailable:
-            atomic_write(path, original)
-            raise CommandError(f"fragment was not {removed}; configuration was restored: {message}") from None
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": removed, "reload": "pending"}
-    return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": removed, "reload": "applied"}
+            if restore:
+                atomic_write(path, original)
+                raise CommandError(f"fragment was not {action}; configuration was restored: {message}") from None
+            raise CommandError(f"fragment was {action}, but live reload failed: {message}") from None
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": action,
+                "changed": changed, "reload": "pending"}
+    return {"ok": True, "path": str(path), "fragment": str(fragment), "action": action,
+            "changed": changed, "reload": "applied"}
 
 
 def load_config_fragment(fragment):
@@ -197,11 +248,15 @@ def load_config_fragment(fragment):
     if path.suffix == ".conf":
         raise CommandError(f"cannot load a TOML fragment into legacy config {path}; migrate it to gnoblin.toml first")
     original = path.read_text(encoding="utf-8") if path.exists() else ""
-    directive = config_fragment_directive(fragment)
-    if directive.rstrip("\n") not in original.splitlines():
-        updated = directive + ("\n" if original and not original.startswith("\n") else "") + original
+    key, values = config_root_directive(original)
+    if key:
+        if str(fragment) in values:
+            updated = original
+        else:
+            updated = replace_root_directive(original, key, [*values, str(fragment)])
     else:
-        updated = original
+        directive = config_fragment_directive(fragment)
+        updated = directive + ("\n" if original and not original.startswith("\n") else "") + original
     return reload_config_file(path, original, updated, fragment, "loaded")
 
 
@@ -211,13 +266,16 @@ def unload_config_fragment(fragment):
     if path.suffix == ".conf":
         raise CommandError(f"cannot unload a TOML fragment from legacy config {path}; migrate it to gnoblin.toml first")
     if not path.exists():
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": False, "reload": "not-needed"}
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": "unloaded",
+                "changed": False, "reload": "not-needed"}
     original = path.read_text(encoding="utf-8")
-    directive = config_fragment_directive(fragment).rstrip("\n")
-    updated = "".join(line for line in original.splitlines(keepends=True) if line.rstrip("\r\n") != directive)
-    if updated == original:
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "removed": False, "reload": "not-needed"}
-    return reload_config_file(path, original, updated, fragment, "unloaded")
+    key, values = config_root_directive(original)
+    if not key or str(fragment) not in values:
+        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": "unloaded",
+                "changed": False, "reload": "not-needed"}
+    remaining = [entry for entry in values if entry != str(fragment)]
+    updated = remove_root_directive(original, key) if not remaining else replace_root_directive(original, key, remaining)
+    return reload_config_file(path, original, updated, fragment, "unloaded", restore=False)
 
 
 def compositor(request, path, timeout=5):

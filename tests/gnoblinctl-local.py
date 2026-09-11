@@ -39,8 +39,21 @@ class ConfigFragmentTests(unittest.TestCase):
         config = self.config_home / "gnoblin" / "gnoblin.toml"
         self.assertEqual(first["reload"], "applied")
         self.assertEqual(second["reload"], "applied")
+        self.assertTrue(first["changed"])
+        self.assertFalse(second["changed"])
         self.assertEqual(config.read_text(encoding="utf-8").count("include ="), 1)
         self.assertEqual(call.call_count, 2)
+
+    def test_load_extends_an_existing_include_array(self):
+        config = self.config_home / "gnoblin" / "gnoblin.toml"
+        config.parent.mkdir(parents=True)
+        existing = self.directory.name + "/existing.toml"
+        config.write_text(f'include = ["{existing}"]\n[shell]\nosd = true\n', encoding="utf-8")
+        with patch.object(GNOBLINCTL, "dbus"):
+            GNOBLINCTL.load_config_fragment(self.fragment)
+        contents = config.read_text(encoding="utf-8")
+        self.assertIn(f'include = ["{existing}", "{self.fragment.resolve()}"]', contents)
+        self.assertEqual(contents.count("include ="), 1)
 
     def test_validation_error_restores_previous_config(self):
         config = self.config_home / "gnoblin" / "gnoblin.toml"
@@ -68,8 +81,8 @@ class ConfigFragmentTests(unittest.TestCase):
         with patch.object(GNOBLINCTL, "dbus") as call:
             result = GNOBLINCTL.unload_config_fragment(self.fragment)
             again = GNOBLINCTL.unload_config_fragment(self.fragment)
-        self.assertTrue(result["removed"])
-        self.assertFalse(again["removed"])
+        self.assertTrue(result["changed"])
+        self.assertFalse(again["changed"])
         self.assertNotIn("include =", config.read_text(encoding="utf-8"))
         self.assertEqual(call.call_count, 1)
 
@@ -78,6 +91,7 @@ class ConfigFragmentTests(unittest.TestCase):
         with patch.object(GNOBLINCTL, "dbus", side_effect=GNOBLINCTL.CommandError("Failed to connect to bus: No medium found")):
             pending = GNOBLINCTL.unload_config_fragment(self.fragment)
         self.assertEqual(pending["reload"], "pending")
+        self.assertTrue(pending["changed"])
         self.assertFalse(config.read_text(encoding="utf-8").count("include ="))
 
 

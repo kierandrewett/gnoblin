@@ -29,8 +29,9 @@ Remove the include before uninstalling its provider:
 gnoblinctl unload-config /usr/share/bingux/gnoblin.toml
 ```
 
-Unloading is idempotent and also restores the previous configuration if the
-live reload rejects the edit.
+Unloading is idempotent. The include is removed even if the live reload finds
+an unrelated existing configuration error; fix that error and run
+`gnoblinctl reload-config` afterward.
 
 ## Output and errors
 
