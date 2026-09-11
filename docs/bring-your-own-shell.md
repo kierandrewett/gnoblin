@@ -8,8 +8,16 @@ your workflow.
 ## Bingux
 
 Bingux is the reference shell for Gnoblin. Build and install it from its
-[standalone guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md),
-then enable its user target:
+[standalone guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md).
+For a personal source install, the recommended command is:
+
+```sh
+make install-user
+```
+
+This keeps the Bingux payload under one managed user directory and starts its
+user target. Package installations can use their package manager instead.
+To enable an already-installed package manually:
 
 ```sh
 systemctl --user daemon-reload
