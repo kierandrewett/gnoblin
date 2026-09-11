@@ -78,7 +78,7 @@ opacity = 0.96
 # [[window-rules]]
 # match.type = "window"
 # Use outer-width = 0 for an outline entirely inside the client bounds.
-# borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 12, smoothing = 0.0 }
+# borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 12, smoothing = 0.0, keep-fullscreen = false }
 
 # Portal consent policy. See docs/permissions.md for supported gates and identities.
 [permissions]

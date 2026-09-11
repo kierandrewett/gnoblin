@@ -15,10 +15,11 @@ assert(result['inner-width'] === 1 && result['inner-color'] === '#505050ff' && r
 assert(!bordersEnabled(borderDefaults, {normal: true}), 'opt in');
 assert(bordersEnabled(result, {normal: true}), 'square border without corner clipping');
 for (const state of ['maximized', 'fullscreen', 'tiled']) {
-    assert(!bordersEnabled(result, {normal: true, [state]: true}), state);
-    assert(bordersEnabled({...result, ['keep-'+state]: true}, {normal: true, [state]: true}), 'override '+state);
+    const expected = state !== 'fullscreen';
+    assert(bordersEnabled(result, {normal: true, [state]: true}) === expected, state + ' default');
+    assert(!bordersEnabled({...result, ['keep-'+state]: false}, {normal: true, [state]: true}), 'disable '+state);
 }
-print('PASS: border validation, rule cascade, default-off and window state policy');
+print('PASS: border validation, rule cascade, fullscreen exclusion and full-size window policy');
 
 import {validate, merge} from '../src/gnome-shell-overlay/js/ui/components/gnoblinCornerGeometry.js';
 const layers = [{blur:32,y:10,opacity:.2},{blur:5,y:2,opacity:.3}];

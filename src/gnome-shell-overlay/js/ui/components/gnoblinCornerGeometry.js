@@ -2,7 +2,9 @@
 export const defaults = Object.freeze({
     radius: 0, smoothing: 0, mode: 'auto', padding: [0, 0, 0, 0],
     'border-width': 0, 'border-color': '#808080ff',
-    'keep-maximized': false, 'keep-fullscreen': false, 'keep-tiled': false,
+    // Maximized windows still have a visible work-area boundary. Keep their
+    // corner mask unless a rule explicitly opts out.
+    'keep-maximized': true, 'keep-fullscreen': false, 'keep-tiled': false,
     'skip-libadwaita': true, 'skip-libhandy': false, shadow: false,
     'keep-shadow': false,
     'shadow-animation': {duration: 0, easing: 'ease-out-cubic'},
@@ -71,7 +73,10 @@ export const borderDefaults = Object.freeze({
     'inner-width': 0, 'inner-color': '#808080ff',
     'outer-width': 0, 'outer-color': '#00000080',
     radius: 0, smoothing: 0, padding: [0, 0, 0, 0],
-    'keep-maximized': false, 'keep-fullscreen': false, 'keep-tiled': false,
+    // Borders are an explicit visual rule. Keep the stroke around maximized
+    // and tiled windows, but never decorate a true fullscreen surface unless
+    // a rule explicitly opts in.
+    'keep-maximized': true, 'keep-fullscreen': false, 'keep-tiled': true,
 });
 export function validateBorders(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value))
