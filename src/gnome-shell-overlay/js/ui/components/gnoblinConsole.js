@@ -72,6 +72,17 @@ class DeveloperConsole extends St.Widget {
             style_class: 'gnoblin-console', orientation: VERTICAL, reactive: true,
         });
         this.add_child(this._panel);
+        this._tabs = new St.BoxLayout({style_class: 'gnoblin-console-tabs'});
+        this._languageTabs = new Map();
+        this._drafts = {js: '', lua: ''};
+        for (const [language, label] of [['js', 'JavaScript'], ['lua', 'Lua']]) {
+            const tab = button(label, () => this._selectLanguage(language), 'gnoblin-console-tab');
+            tab.x_expand = false;
+            tab.get_child().x_expand = false;
+            this._languageTabs.set(language, tab);
+            this._tabs.add_child(tab);
+        }
+        this._panel.add_child(this._tabs);
         this._body = new St.BoxLayout({y_expand: true, style_class: 'gnoblin-console-body'});
         this._transcript = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
         this._scroll = new St.ScrollView({
@@ -157,6 +168,27 @@ class DeveloperConsole extends St.Widget {
             line => this._appendRow(textLabel(line, 'gnoblin-console-log', true)));
         this._language = 'js';
         this._evaluator = evaluator;
+        this._languageTabs.get('js').add_style_pseudo_class('selected');
+        this._languageTabs.get('lua').remove_style_pseudo_class('selected');
+    }
+
+    _selectLanguage(language) {
+        if (!this._languageTabs.has(language))
+            return;
+        this._drafts[this._language] = this._entry.get_text();
+        this._language = language;
+        this._evaluator = language === 'lua' ? this._luaEvaluator : this._jsEvaluator;
+        for (const [name, tab] of this._languageTabs) {
+            if (name === language)
+                tab.add_style_pseudo_class('selected');
+            else
+                tab.remove_style_pseudo_class('selected');
+        }
+        this._entry.accessible_name = language === 'lua' ? 'Lua' : 'JavaScript';
+        this._entry.set_text(this._drafts[language]);
+        highlight(this._entry.clutter_text, this._entry.get_text(), language);
+        this._hideCompletions();
+        this._entry.grab_key_focus();
     }
 
     _allowed() {
@@ -302,18 +334,10 @@ class DeveloperConsole extends St.Widget {
     }
 
     async evaluate(source) {
-        if (source === ':lua' || source === ':js') {
-            this._language = source.slice(1);
-            this._evaluator = this._language === 'lua' ? this._luaEvaluator : this._jsEvaluator;
-            this._prompt.text = this._language === 'lua' ? 'lua ›' : '›';
-            this._entry.accessible_name = this._language === 'lua' ? 'Lua' : 'JavaScript';
-            this._hideCompletions();
-            return {source, value: this._language, error: null, id: 0};
-        }
         if (source === ':reset') {
             this._luaEvaluator.reset();
             this._newEvaluator();
-            this._prompt.text = '›';
+            this._selectLanguage('js');
             this.clear();
             return {source, value: undefined, error: null, id: 0};
         }

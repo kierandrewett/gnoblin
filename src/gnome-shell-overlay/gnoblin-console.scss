@@ -5,6 +5,14 @@
   font-family: monospace;
   font-size: 13px;
 
+  .gnoblin-console-tabs { border-bottom: 1px solid #444444; spacing: 0; }
+  .gnoblin-console-tab {
+    padding: 6px 12px;
+    color: #aaaaaa;
+    border-bottom: 2px solid transparent;
+    &:hover, &:focus { background-color: #303030; color: #ffffff; }
+    &:selected { color: #dddddd; border-color: #9ac3f5; }
+  }
   .gnoblin-console-input { spacing: 6px; padding: 3px 10px; }
   .gnoblin-console-prompt { color: #9ac3f5; }
   .gnoblin-console-entry {

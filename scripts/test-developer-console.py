@@ -129,6 +129,7 @@ export default function (api) {
       <method name="Evaluate"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
       <method name="Inspect"><arg type="s" direction="out"/></method>
       <method name="Key"><arg type="u" direction="in"/></method>
+      <method name="Language"><arg type="s" direction="in"/></method>
       <method name="Type"><arg type="s" direction="in"/></method>
       <method name="Complete"><arg type="s" direction="out"/></method>
       <method name="Escape"><arg type="s" direction="out"/></method>
@@ -171,6 +172,9 @@ export default function (api) {
             const timestamp = GLib.get_monotonic_time();
             keyboard.notify_keyval(timestamp, key, Clutter.KeyState.PRESSED);
             keyboard.notify_keyval(timestamp, key, Clutter.KeyState.RELEASED);
+        },
+        Language(language) {
+            Main.devConsole._languageTabs.get(language).emit('clicked', 1);
         },
         Type(text) {
             Main.devConsole._entry.set_text(text);
@@ -321,7 +325,13 @@ assert failed['error']['name'] == 'Error' and 'console probe' in failed['error']
 print('PASS: compositor JavaScript retains bindings, supports await, and reports errors')
 
 # Exercise the language switch through the same console evaluator entrypoint.
-assert evaluate(':lua')['value'] == 'lua'
+call('Type', 'unfinishedJavaScript')
+call('Language', 'lua')
+assert state()['input'] == '', state()
+call('Language', 'js')
+assert state()['input'] == 'unfinishedJavaScript', state()
+call('Type', '')
+call('Language', 'lua')
 assert evaluate('21 * 2')['value'] == '42'
 evaluate('counter = 40')
 assert evaluate('counter + 2')['value'] == '42'
@@ -340,11 +350,11 @@ if MARKER.exists():
 call('Evaluate', "error('lua probe')")
 lua_error = wait_marker('evaluated')['result']
 assert lua_error['error']['name'] == 'LuaError' and 'lua probe' in lua_error['error']['message'], lua_error
-assert evaluate(':js')['value'] == 'js'
+call('Language', 'js')
 assert evaluate('persistent')['value'] == 42
-assert evaluate(':lua')['value'] == 'lua'
+call('Language', 'lua')
 assert evaluate('counter')['value'] == '40'
-assert evaluate(':js')['value'] == 'js'
+call('Language', 'js')
 print('PASS: Lua persists state, shares config helpers, prints, completes and reports errors; JavaScript state survives switching')
 
 

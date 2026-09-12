@@ -29,8 +29,8 @@ meson install -C build/gnome-shell --no-rebuild
 
 Run the focused integration check with `just gnome-developer-console-verify`.
 
-Type `:lua` to use Lua, or `:js` to return to JavaScript. The prompt shows
-`lua ›` while Lua is selected. Both languages retain their own state across
+Select the JavaScript or Lua tab at the top to choose the language.
+Each tab keeps its unfinished input. Both languages retain their own state across
 switches. `:reset` resets both contexts and returns to JavaScript. Ctrl+L
 clears output without resetting variables.
 
