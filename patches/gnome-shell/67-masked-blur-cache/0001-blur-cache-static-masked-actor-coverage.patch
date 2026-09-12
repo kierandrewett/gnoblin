@@ -1,0 +1,182 @@
+From 08ddfd63bdaf8e2f414f4491e5ae158124edda0d Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Sat, 12 Sep 2026 05:03:40 +0100
+Subject: [PATCH] blur: cache static masked actor coverage
+
+---
+ src/shell-blur-effect.c | 70 ++++++++++++++++++++++++++++-------------
+ src/shell-blur-effect.h |  1 +
+ 2 files changed, 50 insertions(+), 21 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index ac9a9eb..2e54a91 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -80,9 +80,11 @@ struct _ShellBlurEffect
+   ClutterStageView *last_view;
+   MtkRectangle last_source;
+   unsigned int repaint_count;
++  unsigned int mask_paint_count;
+ 
+   unsigned int tex_width;
+   unsigned int tex_height;
++  float actor_downscale_factor;
+ 
+   /* The cached contents */
+   FramebufferData actor_fb;
+@@ -407,9 +409,12 @@ update_actor_fbo (ShellBlurEffect *self,
+                   unsigned int     height,
+                   float            downscale_factor)
+ {
++  float actor_downscale_factor =
++    self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED ? 1.f : downscale_factor;
++
+   if (self->tex_width == width &&
+       self->tex_height == height &&
+-      self->downscale_factor == downscale_factor &&
++      self->actor_downscale_factor == actor_downscale_factor &&
+       self->actor_fb.framebuffer)
+     {
+       return TRUE;
+@@ -417,8 +422,11 @@ update_actor_fbo (ShellBlurEffect *self,
+ 
+   self->cache_flags &= ~ACTOR_PAINTED;
+ 
+-  return update_fbo (&self->actor_fb, width, height,
+-                     self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED ? 1.f : downscale_factor);
++  if (!update_fbo (&self->actor_fb, width, height, actor_downscale_factor))
++    return FALSE;
++
++  self->actor_downscale_factor = actor_downscale_factor;
++  return TRUE;
+ }
+ 
+ static gboolean
+@@ -798,22 +806,29 @@ paint_actor_offscreen (ShellBlurEffect         *self,
+  * its framebuffer without drawing the client into the stage before the blur. */
+ static void
+ paint_actor_mask (ShellBlurEffect *self,
+-                  ClutterPaintNode *node)
++                  ClutterPaintNode *node,
++                  ClutterEffectPaintFlags flags)
+ {
+-  g_autoptr (ClutterPaintNode) layer_node = NULL;
+-  g_autoptr (ClutterPaintNode) transform_node = NULL;
+-  graphene_matrix_t transform;
+-
+-  layer_node = clutter_layer_node_new_to_framebuffer (self->actor_fb.framebuffer,
+-                                                      self->actor_fb.pipeline);
+-  clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (alpha mask)");
+-  clutter_paint_node_add_child (node, layer_node);
+-  graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
+-    -self->paint_box.x1, -self->paint_box.y1, 0));
+-  /* Keep client coverage at output resolution. Downsampling expands corners. */
+-  transform_node = clutter_transform_node_new (&transform);
+-  clutter_paint_node_add_child (layer_node, transform_node);
+-  add_actor_node (self, transform_node, 255);
++  if ((flags & CLUTTER_EFFECT_PAINT_ACTOR_DIRTY) ||
++      !(self->cache_flags & ACTOR_PAINTED))
++    {
++      g_autoptr (ClutterPaintNode) layer_node = NULL;
++      g_autoptr (ClutterPaintNode) transform_node = NULL;
++      graphene_matrix_t transform;
++
++      layer_node = clutter_layer_node_new_to_framebuffer (self->actor_fb.framebuffer,
++                                                          self->actor_fb.pipeline);
++      clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (alpha mask)");
++      clutter_paint_node_add_child (node, layer_node);
++      graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
++        -self->paint_box.x1, -self->paint_box.y1, 0));
++      /* Keep client coverage at output resolution. Downsampling expands corners. */
++      transform_node = clutter_transform_node_new (&transform);
++      clutter_paint_node_add_child (layer_node, transform_node);
++      add_actor_node (self, transform_node, 255);
++      self->cache_flags |= ACTOR_PAINTED;
++      self->mask_paint_count++;
++    }
+   cogl_pipeline_set_layer_texture (self->brightness_fb.pipeline, 1,
+                                    self->actor_fb.texture);
+   cogl_pipeline_set_layer_combine (self->brightness_fb.pipeline, 1,
+@@ -919,6 +934,8 @@ needs_repaint (ShellBlurEffect         *self,
+       return actor_dirty || !blur_cached || !actor_cached;
+ 
+     case SHELL_BLUR_MODE_BACKGROUND_MASKED:
++      return actor_dirty || self->background_dirty || !blur_cached || !actor_cached;
++
+     case SHELL_BLUR_MODE_BACKGROUND:
+       return self->background_dirty || !blur_cached;
+     }
+@@ -985,7 +1002,7 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
+             goto fail;
+ 
+           if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
+-            paint_actor_mask (self, node);
++            paint_actor_mask (self, node, flags);
+           else
+             {
+               cogl_pipeline_remove_layer (self->brightness_fb.pipeline, 1);
+@@ -1227,6 +1244,8 @@ shell_blur_effect_set_radius (ShellBlurEffect *self,
+ 
+   self->radius = radius;
+   self->cache_flags &= ~BLUR_APPLIED;
++  if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
++    self->cache_flags &= ~ACTOR_PAINTED;
+ 
+   if (self->actor)
+     clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+@@ -1277,6 +1296,9 @@ shell_blur_effect_set_mode (ShellBlurEffect *self,
+   if (self->mode == mode)
+     return;
+ 
++  if (self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED ||
++      mode == SHELL_BLUR_MODE_BACKGROUND_MASKED)
++    self->cache_flags &= ~ACTOR_PAINTED;
+   self->mode = mode;
+   self->cache_flags &= ~BLUR_APPLIED;
+ 
+@@ -1311,6 +1333,12 @@ shell_blur_effect_get_mask_uniform_setup_count (ShellBlurEffect *self)
+   return self->mask_uniform_setup_count;
+ }
+ 
++unsigned int
++shell_blur_effect_get_mask_paint_count (ShellBlurEffect *self)
++{
++  return self->mask_paint_count;
++}
++
+ void
+ shell_blur_effect_set_region (ShellBlurEffect *self,
+                               float x, float y, float width, float height)
+@@ -1323,7 +1351,7 @@ shell_blur_effect_set_region (ShellBlurEffect *self,
+   self->region = region;
+   self->has_region = TRUE;
+   self->background_dirty = TRUE;
+-  self->cache_flags &= ~BLUR_APPLIED;
++  self->cache_flags &= ~(BLUR_APPLIED | ACTOR_PAINTED);
+   if (self->actor) clutter_actor_queue_redraw (self->actor);
+ }
+ 
+@@ -1333,7 +1361,7 @@ shell_blur_effect_clear_region (ShellBlurEffect *self)
+   if (!self->has_region) return;
+   self->has_region = FALSE;
+   self->background_dirty = TRUE;
+-  self->cache_flags &= ~BLUR_APPLIED;
++  self->cache_flags &= ~(BLUR_APPLIED | ACTOR_PAINTED);
+   if (self->actor) clutter_actor_queue_redraw (self->actor);
+ }
+ 
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+index c7e3e19..d11ce14 100644
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -58,6 +58,7 @@ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+ 
+ unsigned int shell_blur_effect_get_cache_build_count (ShellBlurEffect *self);
+ unsigned int shell_blur_effect_get_mask_uniform_setup_count (ShellBlurEffect *self);
++unsigned int shell_blur_effect_get_mask_paint_count (ShellBlurEffect *self);
+ 
+ void shell_blur_effect_set_region (ShellBlurEffect *self,
+                                     float x, float y, float width, float height);
+-- 
+2.55.0
+

@@ -17,7 +17,11 @@ scripts = root / 'scripts'
 scripts.mkdir(parents=True, exist_ok=True)
 shutil.copy2(repo / 'src/scripts/compositor-bridge.js', scripts)
 shutil.copytree(repo / 'src/scripts/lib', scripts / 'lib', dirs_exist_ok=True)
-(root / 'gnoblin.toml').write_text('[shell]\nlayer-animation="none"\n[[window-rules]]\nmatch.layer="^blur-target$"\nblur=24\n')
+(root / 'init.lua').write_text('''return {
+    shell = {['layer-animation'] = 'none'},
+    ['window-rules'] = {{match = {layer = '^blur-target$'}, blur = 24}},
+}
+''')
 fixture = config / 'blur-region-fixture'
 fixture.mkdir()
 source = Path(os.environ.get('BINGUX_SOURCE', repo.parent / 'bingux')) / 'shell/bingux'
@@ -85,13 +89,13 @@ export default function(api) {
  const timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
   const actor = global.get_window_actors().find(a => Meta.gnoblin_layer_namespace(a.meta_window) === 'blur-target');
   const effect = actor?.get_effect('gnoblin-window-blur');
-  if (effect) GLib.file_set_contents(GLib.build_filenamev([GLib.get_user_config_dir(), 'blur-observer.json']), JSON.stringify({region:actor._gnoblinBlurRegion, builds:effect.get_cache_build_count(), repaints:effect.get_repaint_count(), fullRedraw:!!(Clutter.get_debug_flags()[1] & Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS)}));
+  if (effect) GLib.file_set_contents(GLib.build_filenamev([GLib.get_user_config_dir(), 'blur-observer.json']), JSON.stringify({region:actor._gnoblinBlurRegion, builds:effect.get_cache_build_count(), repaints:effect.get_repaint_count(), maskPaints:effect.get_mask_paint_count(), fullRedraw:!!(Clutter.get_debug_flags()[1] & Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS)}));
   return GLib.SOURCE_CONTINUE;
  });
  api._disposers.push(() => GLib.source_remove(timer));
 }
 ''')
-subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'reload-scripts'], check=True)
+subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
 log = (fixture / 'runtime.log').open('w')
 qs = os.environ.get('GNOBLIN_QS', 'qs')
 proc = subprocess.Popen([qs, '-p', str(fixture)], stdout=log, stderr=log)
@@ -119,7 +123,7 @@ try:
     time.sleep(.5)
     full = capture('full')
     ipc('crop', 'true')
-    bounded = wait_for(lambda s: s.get('region') == [800,200,320,320])
+    bounded = wait_for(lambda s: s.get('region') == [800,200,320,320] and s['maskPaints'] > initial['maskPaints'])
     crop = capture('cropped')
     delta = ImageStat.Stat(ImageChops.difference(full.crop((800,200,1120,520)), crop.crop((800,200,1120,520))))
     assert max(delta.mean) < 1.5, delta.mean
@@ -139,9 +143,10 @@ try:
     reference = capture('reference')
     delta = ImageStat.Stat(ImageChops.difference(red.crop((800,200,1120,520)), reference.crop((800,200,1120,520))))
     assert max(delta.mean) < 1.5, delta.mean
+    before_move = state()
     ipc('move', 700)
     ipc('crop', 'true')
-    wait_for(lambda s: s.get('region') == [700,200,320,320])
+    wait_for(lambda s: s.get('region') == [700,200,320,320] and s['maskPaints'] > before_move['maskPaints'])
     moved = capture('moved')
     ipc('crop', 'false')
     moved_reference = capture('moved-reference')
