@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove gnoblin.conf [protocols] gating: with wlr-layer-shell disabled, the
+# Prove init.lua protocol gating: with wlr-layer-shell disabled, the
 # compositor must NOT advertise zwlr_layer_shell_v1. (The default/enabled case is
 # covered by run-gnome-shell.sh, which asserts it IS advertised.)
 set -uo pipefail
@@ -20,10 +20,10 @@ export HOME="$DK/home" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
 export GIO_USE_VFS=local GSETTINGS_BACKEND=memory GTK_A11Y=none
 export DISP="gnoblin-pg-$$" GS="$SHELL_BIN"
 
-# gnoblin.conf disabling the layer-shell protocol.
-CONF_FILE="$DK/config/gnoblin/gnoblin.conf"
+# init.lua disabling the layer-shell protocol.
+CONF_FILE="$DK/config/gnoblin/init.lua"
 mkdir -p "$(dirname "$CONF_FILE")"
-printf '[protocols]\nwlr-layer-shell = false\n' > "$CONF_FILE"
+printf 'return {protocols = {["wlr-layer-shell"] = false}}\n' > "$CONF_FILE"
 export GNOBLIN_CONFIG="$CONF_FILE"
 
 probe="$DK/wl-globals"
@@ -68,5 +68,5 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -uo pipefail -c '
   echo "  ok: zwlr_layer_shell_v1 NOT advertised (config gating works)"
 '
 rc=$?
-[ "$rc" = 0 ] && echo ">> RESULT: PASS (gnoblin.conf [protocols] gating)" || echo ">> RESULT: FAIL (rc=$rc)"
+[ "$rc" = 0 ] && echo ">> RESULT: PASS (init.lua protocol gating)" || echo ">> RESULT: FAIL (rc=$rc)"
 exit "$rc"
