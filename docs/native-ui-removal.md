@@ -16,6 +16,11 @@ The official GNOME Extensions component is not constructed in Gnoblin. Its
 management API, app and CLI are removed. GNOME extension compatibility is not
 a QuickShell replacement requirement; Gnoblin user scripts remain supported.
 
+The native Run dialog is also gone. `Alt+F2` now opens the compositor's
+developer console for JavaScript inspection and live compositor changes;
+[Bingux #4](https://github.com/kierandrewett/bingux/issues/4) remains open for
+the separate external command launcher.
+
 Implementation checklist:
 
 - [x] Remove extension loading, installation and reload entry points.

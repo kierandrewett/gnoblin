@@ -70,7 +70,9 @@ function nativeChromeState() {
 export default function (api) {
     // These calls must be harmless in the Gnoblin session. They are a direct
     // behavioural check that legacy entry points cannot make visible chrome.
-    Main.openRunDialog();
+    // The Gnoblin Run binding is covered by test-developer-console.py. Keep
+    // this probe focused on removed native chrome so it does not construct the
+    // replacement console as a side effect of the baseline assertion.
     Main.openWelcomeDialog();
     absent(Main.runDialog, 'run dialog');
     absent(Main.welcomeDialog, 'welcome dialog');

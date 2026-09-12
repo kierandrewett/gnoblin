@@ -237,6 +237,11 @@ perf-smoke:
 gnome-native-chrome-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-native-chrome.py" ./scripts/run-gnome-shell.sh
 
+# Headless: verify the Gnoblin developer console replacement, evaluator and
+# lock/unlock lifecycle against the installed patched Shell.
+gnome-developer-console-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-developer-console.py" ./scripts/run-gnome-shell.sh
+
 # Headless: prove Lua configuration watching, named autostart and live window behaviour.
 gnome-config-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
@@ -363,6 +368,7 @@ verify-installed-headless:
     just gnome-protocol-boundaries-verify
     just gnome-dbus-verify
     just gnome-native-chrome-verify
+    just gnome-developer-console-verify
     just gnome-config-verify
     just gnome-scripting-verify
     just gnome-notifications-verify
