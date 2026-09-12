@@ -23,30 +23,30 @@ diff --git a/src/meson.build b/src/meson.build
  ]
  if have_hyprcursor
    mutter_lib_deps += hyprcursor_dep
-@@ -704,6 +705,8 @@
+@@ -703,6 +704,8 @@
+     # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
      # at build time; registered via meta_gnoblin_init_protocols)
      'wayland/gnoblin-config.c',
-     'wayland/gnoblin-toml.c',
 +    'wayland/gnoblin-lua.c',
 +    'wayland/gnoblin-glob.c',
-     'wayland/tomlc99/toml.c',
      'wayland/gnoblin-config.h',
      'wayland/meta-gnoblin-protocols.c',
-@@ -1364,7 +1367,7 @@
+     'wayland/meta-gnoblin-protocols.h',
+@@ -1362,7 +1365,7 @@
  if have_introspection
    mutter_introspected_sources = []
    foreach source : mutter_sources
--    if source.endswith('.c') and not source.endswith('tomlc99/toml.c')
-+    if source.endswith('.c') and not source.endswith('tomlc99/toml.c') and not source.endswith('gnoblin-lua.c')
+-    if source.endswith('.c')
++    if source.endswith('.c') and not source.endswith('gnoblin-lua.c')
        mutter_introspected_sources += source
      endif
    endforeach
 diff --git a/src/meta/util.h b/src/meta/util.h
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -119,6 +119,9 @@
- META_EXPORT
- GVariant *meta_gnoblin_parse_toml (const char *contents, GError **error);
+@@ -116,6 +116,9 @@
+ char * meta_accelerator_name (ClutterModifierType accelerator_mods,
+                               unsigned int        accelerator_key);
  
 +META_EXPORT
 +GVariant *meta_gnoblin_load_config (const char *path);
@@ -57,10 +57,15 @@ diff --git a/src/meta/util.h b/src/meta/util.h
 diff --git a/src/core/util.c b/src/core/util.c
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -649,6 +649,45 @@
+@@ -625,6 +625,49 @@
+   va_end (args);
  }
  
- /**
++#ifdef HAVE_WAYLAND
++#include "wayland/gnoblin-config.h"
++#endif
++
++/**
 + * meta_gnoblin_load_config:
 + * @path: root configuration filename
 + *
@@ -99,7 +104,6 @@ diff --git a/src/core/util.c b/src/core/util.c
 +}
 +
 +
-+/**
+ /**
   * meta_gnoblin_layer_anchor:
   * @window: window to inspect
-  *

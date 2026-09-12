@@ -10,16 +10,16 @@ int main(void) {
     g_autofree char* dir = g_dir_make_tmp("gnoblin-lua-test-XXXXXX", &error);
     g_autofree char* conf = g_build_filename(dir, "conf.d", NULL);
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
+    g_autofree char* explicit_root = g_build_filename(dir, "personal.conf", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
-    g_autofree char* toml = g_build_filename(dir, "fragment.toml", NULL);
     g_autofree char* nested = g_build_filename(dir, "nested.lua", NULL);
     g_assert_no_error(error);
     g_assert_cmpint(g_mkdir(conf, 0700), ==, 0);
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
-        nested, "local g=require('gnoblin'); g.config.shell.from_nested=true\n", -1, &error));
-    g_assert_true(g_file_set_contents(
-        toml, "source = 'nested.lua'\n[shell]\nnotifications = false\n", -1, &error));
+        nested,
+        "local g=require('gnoblin'); g.set {shell={notifications=false,from_nested=true}}\n", -1,
+        &error));
     g_autofree char* fragment = g_build_filename(conf, "10-bingux.lua", NULL);
     g_assert_true(g_file_set_contents(
         fragment, "return { shortcuts = {{ name = 'search', command = {'binguxctl'} }} }\n", -1,
@@ -30,7 +30,7 @@ int main(void) {
         "if a~=b then error('require cache') end\n"
         "g.set { shell={osd=false}, shortcuts={} }; g.config.autostart={}\n"
         "g.config.keybindings={shell={['show-screenshot-ui']={}}}\n"
-        "g.load('fragment.toml'); g.load('conf.d/**/*.lua')\n",
+        "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));
     g_assert_no_error(error);
     g_autoptr(GPtrArray) paths = NULL;
@@ -57,7 +57,18 @@ int main(void) {
     g_autoptr(GVariant) screenshot_actions =
         g_variant_lookup_value(shell_bindings, "show-screenshot-ui", G_VARIANT_TYPE("av"));
     g_assert_cmpuint(g_variant_n_children(screenshot_actions), ==, 0);
-    g_assert_cmpuint(paths->len, >=, 5);
+    g_assert_cmpuint(paths->len, >=, 4);
+
+    g_assert_true(g_file_set_contents(explicit_root, "return { shell={osd=true} }\n", -1, &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) explicit_shell =
+        g_variant_lookup_value(document, "shell", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) explicit_osd =
+        g_variant_lookup_value(explicit_shell, "osd", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(explicit_osd));
 
     g_assert_true(g_file_set_contents(nested, "return 1\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);
@@ -86,6 +97,8 @@ int main(void) {
     }
     g_assert_true(g_file_set_contents(nested, "local g=require('gnoblin'); g.load('init.lua')\n",
                                       -1, &error));
+    g_assert_true(g_file_set_contents(root, "local g=require('gnoblin'); g.load('nested.lua')\n",
+                                      -1, &error));
     document = load(root, NULL, &error);
     g_assert_null(document);
     g_assert_nonnull(error);
@@ -93,11 +106,11 @@ int main(void) {
 
     g_unlink(fragment);
     g_unlink(nested);
-    g_unlink(toml);
     g_unlink(module);
     g_unlink(root);
+    g_unlink(explicit_root);
     g_rmdir(conf);
     g_rmdir(dir);
-    g_print("PASS: Lua config, direct values, load, glob, TOML and errors\n");
+    g_print("PASS: Lua config, direct values, load, glob and errors\n");
     return 0;
 }

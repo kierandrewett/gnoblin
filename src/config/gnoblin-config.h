@@ -2,16 +2,11 @@
  * gnoblin: shared configuration loading for Mutter and Shell.
  *
  * Read from $GNOBLIN_CONFIG, else init.lua under $XDG_CONFIG_HOME/gnoblin.
- * Existing gnoblin.toml and gnoblin.conf files remain supported.
- * Example:
- *
- *     [protocols]
- *     ext-data-control = true
+ * Configuration is Lua only. `GNOBLIN_CONFIG` can select any Lua filename.
  *
  * Missing files and keys use the caller's default. Invalid reloads retain
  * the last valid configuration. Mutter uses these accessors to gate Wayland
- * protocols; the shell shares the typed TOML parser for live settings.
- * See src/data/gnoblin.toml.example for shell and autostart settings.
+ * protocols; the shell receives the same evaluated document for live settings.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -27,8 +22,6 @@ G_BEGIN_DECLS
 
 /* Current root filename. Free the result with g_free(). */
 char* gnoblin_config_path(void);
-GVariant *gnoblin_config_parse_toml(const char *contents, GError **error);
-
 /* Evaluate one config with a fresh Lua state and record every dependency. */
 GVariant *gnoblin_config_evaluate_file(const char *path, GPtrArray *paths,
                                       GPtrArray *directories, GError **error);

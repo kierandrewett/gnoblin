@@ -1,26 +1,17 @@
 # Configuration reader
 
-`gnoblin-lua.c` evaluates the main `init.lua` and its Lua or TOML includes in
-one fresh Lua state. Lua builds one `gnoblin.config` table. The loader converts
-that table into a nested GVariant document, then Shell validates the settings.
-Mutter exposes the same loader through `Meta.gnoblin_load_config()`.
+Gnoblin evaluates one Lua root file in a fresh restricted Lua state. The
+default root is `$XDG_CONFIG_HOME/gnoblin/init.lua`. `GNOBLIN_CONFIG` selects
+an explicit root and does not require a `.lua` suffix.
 
-`gnoblin-glob.c` expands include patterns in sorted order. The loader reports
-loaded files and searched directories, including missing dependencies. The
-Shell watcher uses these paths to retry errors and detect new matching files.
+Use `require('gnoblin')` to get `g`. `g.config` is the one live settings table.
+Use `g.set { ... }` to merge settings. Use `g.load('conf.d/**/*.lua')` to load
+sorted Lua fragments in the same state. `require()` loads a local Lua module
+once and returns its original cached result.
 
-`gnoblin-toml.c` uses the pinned MIT-licensed parser in `tomlc99/`. It remains
-available through `Meta.gnoblin_parse_toml()` for existing callers and TOML edits.
-`gnoblin-config.c` selects the root file and keeps the existing native settings
-accessors and legacy INI parser. A missing root uses defaults; invalid edits
-retain the last working state.
+The reader records loaded files and glob directories. A missing root gives an
+empty document. A missing file named by `g.load()` is an error.
 
-`$GNOBLIN_CONFIG` selects an explicit file. Otherwise `init.lua` is the entry
-point under `$XDG_CONFIG_HOME/gnoblin`. Existing `gnoblin.toml` and `gnoblin.conf`
-files are fallback choices. See `docs/configuration.md` for the public API.
+There is no TOML or INI configuration path.
 
-Build with Lua 5.4 development files (`lua-devel` on Fedora). Run
-`./scripts/test-config.sh` for native readers and glob expansion. Run
-`tests/lua-shell-config-test.js` with GJS and the matching Mutter typelib for
-module and directory watches. `scripts/test-live-shell-config.py` verifies
-these behaviours in the private headless session.
+Run `./scripts/test-config.sh` for the native Lua and glob tests.

@@ -1,27 +1,12 @@
-From: kierandrewett <kieran@drewett.dev>
+From: Kieran Drewett <kieran@drewett.dev>
 Subject: [PATCH] layer-shell: expose metadata for shell rules and animation
 
-diff --git a/src/meta/util.h b/src/meta/util.h
---- a/src/meta/util.h
-+++ b/src/meta/util.h
-@@ -118,3 +118,11 @@
- 
- META_EXPORT
- GVariant *meta_gnoblin_parse_toml (const char *contents, GError **error);
-+
-+#include "meta/types.h"
-+
-+META_EXPORT
-+int meta_gnoblin_layer_anchor (MetaWindow *window);
-+
-+META_EXPORT
-+const char *meta_gnoblin_layer_namespace (MetaWindow *window);
 diff --git a/src/core/util.c b/src/core/util.c
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -647,3 +647,28 @@
-   return NULL;
- #endif
+@@ -624,3 +624,28 @@
+   g_logv (G_LOG_DOMAIN, mutter_log_level, format, args);
+   va_end (args);
  }
 +
 +/**
@@ -48,3 +33,18 @@ diff --git a/src/core/util.c b/src/core/util.c
 +{
 +  return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
 +}
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -115,3 +115,11 @@
+ META_EXPORT
+ char * meta_accelerator_name (ClutterModifierType accelerator_mods,
+                               unsigned int        accelerator_key);
++
++#include "meta/types.h"
++
++META_EXPORT
++int meta_gnoblin_layer_anchor (MetaWindow *window);
++
++META_EXPORT
++const char *meta_gnoblin_layer_namespace (MetaWindow *window);

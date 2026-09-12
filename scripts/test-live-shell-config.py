@@ -104,13 +104,14 @@ for feature in ['osd', 'screenshot']:
 # Named commands run once, including after they exit and the file reloads.
 started = root / 'autostart-count'
 command = ['sh', '-c', 'echo started >> "$1"', 'autostart-test', str(started)]
-config.write_text("return {autostart = {{name = 'probe', command = " + json.dumps(command) + "}}}\n")
+lua_command = '{' + ', '.join(json.dumps(argument) for argument in command) + '}'
+config.write_text("return {autostart = {{name = 'probe', command = " + lua_command + "}}}\n")
 call('ReloadConfig')
 time.sleep(0.3)
 call('ReloadConfig')
 time.sleep(0.3)
 assert started.read_text().splitlines() == ['started']
-config.write_text("return {autostart = {{name = 'probe', command = " + json.dumps(command) + "}, {name = 'second', command = " + json.dumps(command) + "}}}\n")
+config.write_text("return {autostart = {{name = 'probe', command = " + lua_command + "}, {name = 'second', command = " + lua_command + "}}}\n")
 time.sleep(0.5)
 assert started.read_text().splitlines() == ['started', 'started']
 print('PASS: autostart runs once per name and accepts newly added entries')

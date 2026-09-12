@@ -192,48 +192,6 @@ static GVariant* variant_from_lua(lua_State* state, int index, int depth, gboole
     return g_variant_builder_end(&out);
 }
 
-static void push_variant(lua_State* state, GVariant* value) {
-    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
-        g_autoptr(GVariant) child = g_variant_get_variant(value);
-        push_variant(state, child);
-    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN))
-        lua_pushboolean(state, g_variant_get_boolean(value));
-    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
-        lua_pushinteger(state, g_variant_get_int64(value));
-    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
-        lua_pushnumber(state, g_variant_get_double(value));
-    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
-        lua_pushstring(state, g_variant_get_string(value, NULL));
-    else if (g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
-        lua_newtable(state);
-        GVariantIter iter;
-        GVariant* child;
-        guint i = 1;
-        g_variant_iter_init(&iter, value);
-        while (g_variant_iter_next(&iter, "v", &child)) {
-            push_variant(state, child);
-            lua_rawseti(state, -2, i++);
-            g_variant_unref(child);
-        }
-        lua_newtable(state);
-        lua_pushboolean(state, TRUE);
-        lua_setfield(state, -2, "__gnoblin_array");
-        lua_setmetatable(state, -2);
-    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
-        lua_newtable(state);
-        GVariantIter iter;
-        const char* key;
-        GVariant* child;
-        g_variant_iter_init(&iter, value);
-        while (g_variant_iter_next(&iter, "{&sv}", &key, &child)) {
-            push_variant(state, child);
-            lua_setfield(state, -2, key);
-            g_variant_unref(child);
-        }
-    } else
-        lua_pushnil(state);
-}
-
 static gboolean is_array(lua_State* state, int index) {
     return marked_array(state, index) || lua_rawlen(state, index) > 0;
 }
@@ -387,93 +345,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setglobal(state, "require");
 }
 
-static gboolean merge_variant(lua_State* state, GVariant* document, GError** error) {
-    if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT)) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "loaded config must be a table");
-        return FALSE;
-    }
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    push_variant(state, document);
-    merge_table(state, -2, -1, NULL);
-    lua_pop(state, 3);
-    return TRUE;
-}
-
-static gboolean evaluate_toml(lua_State* state, LuaConfig* config, const char* path,
-                              GError** error) {
-    g_autofree char* contents = NULL;
-    if (!g_file_get_contents(path, &contents, NULL, error))
-        return FALSE;
-    g_autoptr(GVariant) document = gnoblin_config_parse_toml(contents, error);
-    if (!document)
-        return FALSE;
-    g_autoptr(GVariant) include_value = g_variant_lookup_value(document, "include", NULL);
-    g_autoptr(GVariant) source_value = g_variant_lookup_value(document, "source", NULL);
-    if (include_value && source_value) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "use either include or source, not both");
-        return FALSE;
-    }
-    const char* fields[] = {"include", "source", NULL};
-    for (guint field = 0; fields[field]; field++) {
-        g_autoptr(GVariant) includes = g_variant_lookup_value(document, fields[field], NULL);
-        if (!includes)
-            continue;
-        GPtrArray* names = g_ptr_array_new_with_free_func(g_free);
-        if (g_variant_is_of_type(includes, G_VARIANT_TYPE_STRING))
-            g_ptr_array_add(names, g_variant_dup_string(includes, NULL));
-        else if (g_variant_is_of_type(includes, G_VARIANT_TYPE("av"))) {
-            GVariantIter iter;
-            GVariant* entry;
-            g_variant_iter_init(&iter, includes);
-            while (g_variant_iter_next(&iter, "v", &entry)) {
-                if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_STRING)) {
-                    g_variant_unref(entry);
-                    g_ptr_array_free(names, TRUE);
-                    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                        "include/source must contain paths");
-                    return FALSE;
-                }
-                g_ptr_array_add(names, g_variant_dup_string(entry, NULL));
-                g_variant_unref(entry);
-            }
-        } else {
-            g_ptr_array_free(names, TRUE);
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "include/source must be a path or array");
-            return FALSE;
-        }
-        if (!names->len) {
-            g_ptr_array_free(names, TRUE);
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "include/source must not be empty");
-            return FALSE;
-        }
-        for (guint i = 0; i < names->len; i++) {
-            g_autoptr(GPtrArray) paths = gnoblin_config_expand_paths(
-                path, g_ptr_array_index(names, i), config->directories, error);
-            if (!paths) {
-                g_ptr_array_free(names, TRUE);
-                return FALSE;
-            }
-            for (guint j = 0; j < paths->len; j++)
-                if (!evaluate_path(state, config, g_ptr_array_index(paths, j), FALSE, error)) {
-                    g_ptr_array_free(names, TRUE);
-                    return FALSE;
-                }
-        }
-        g_ptr_array_free(names, TRUE);
-    }
-    GVariantDict local;
-    g_variant_dict_init(&local, document);
-    g_variant_dict_remove(&local, "include");
-    g_variant_dict_remove(&local, "source");
-    g_autoptr(GVariant) local_document = g_variant_ref_sink(g_variant_dict_end(&local));
-    return merge_variant(state, local_document, error);
-}
-
 static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                               GError** error) {
     g_autofree char* path = g_canonicalize_filename(given, NULL);
@@ -498,9 +369,7 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
     g_autofree char* old = g_steal_pointer(&config->current_path);
     config->current_path = g_strdup(path);
     gboolean ok;
-    if (!g_str_has_suffix(path, ".lua"))
-        ok = evaluate_toml(state, config, path, error);
-    else {
+    {
         int status = luaL_loadfilex(state, path, "t");
         if (status == LUA_OK)
             status = lua_pcall(state, 0, 1, 0);
@@ -520,10 +389,20 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
         } else {
             g_autoptr(GError) conversion = NULL;
             g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, FALSE, FALSE, &conversion);
-            lua_pop(state, 1);
-            ok = value && merge_variant(state, value, &conversion);
-            if (!ok)
-                g_propagate_error(error, g_steal_pointer(&conversion));
+            ok = value != NULL && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
+            if (ok) {
+                lua_getglobal(state, "gnoblin");
+                lua_getfield(state, -1, "config");
+                merge_table(state, -1, -3, NULL);
+                lua_pop(state, 3);
+            } else {
+                lua_pop(state, 1);
+                if (conversion)
+                    g_propagate_error(error, g_steal_pointer(&conversion));
+                else
+                    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                        "Lua config must return a table of settings");
+            }
         }
     }
     config->current_path = g_steal_pointer(&old);
