@@ -45,7 +45,7 @@ OSD events through `org.gnoblin.Shell.OsdRequested` automatically. GNOME
 extensions cannot load in this session.
 
 Notifications and the native keyboard-layout popup are disabled by default.
-Use `gnoblinctl features` to inspect the remaining controls. Keyboard-layout
+Use `gnoblinctl feature list` to inspect the remaining controls. Keyboard-layout
 state and switching remain available through `ListInputSources` and
 `InputSourceChanged` while the native popup is disabled.
 
@@ -53,7 +53,7 @@ state and switching remain available through `ListInputSources` and
 
 Use the [control protocol](configuration.md) for session state and the
 implemented layer-shell protocols for visible surfaces. The protocol gates in
-`gnoblin.toml` are enabled by default in the Gnoblin session and can be
+`init.lua` are enabled by default in the Gnoblin session and can be
 disabled before login when a client does not need them.
 
 Start with these checks:
@@ -61,7 +61,7 @@ Start with these checks:
 ```sh
 gnoblinctl ping
 gnoblinctl version
-gnoblinctl features
+gnoblinctl feature list
 ```
 
 If the session appears blank, that is the expected state until a layer-shell

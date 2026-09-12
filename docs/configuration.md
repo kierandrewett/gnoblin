@@ -3,52 +3,119 @@
 See [Window effects](window-effects.md) for blur rules, custom GLSL shaders,
 shader uniforms and file hot reload, including a Bingux configuration example.
 
-Gnoblin reads `~/.config/gnoblin/gnoblin.toml` and watches it for live changes.
-`$XDG_CONFIG_HOME` changes the base directory. `$GNOBLIN_CONFIG` selects an
-explicit file. A `.conf` override uses the legacy INI reader; other filenames
-use TOML. Without an override, TOML takes priority over `gnoblin.conf`.
-The watcher detects creation and atomic replacement of either default file.
+Gnoblin reads `~/.config/gnoblin/init.lua`. `$XDG_CONFIG_HOME` changes the base
+directory. `$GNOBLIN_CONFIG` selects one explicit Lua file. Gnoblin has one
+configuration format: Lua.
 
-## Configuration fragments
+## Lua configuration
 
-TOML configurations can load package or user fragments without copying them
-into the main file:
+Start with a small init file:
 
-```toml
-include = ["/usr/share/bingux/gnoblin.toml"]
+```lua
+local g = require("gnoblin")
+
+-- A component owns its defaults. Load it before your overrides.
+g.load("/usr/share/gnoblin/conf.d/*.lua")
+g.load("conf.d/**/*.lua")
+
+g.set({
+    shell = {
+        ["minimize-animation"] = "zoom",
+        ["minimize-duration"] = 150,
+    },
+    shortcuts = {
+        {name = "terminal", binding = "<Super>Return", command = {"ptyxis"}},
+    },
+})
 ```
 
-`source` is accepted as an alias for `include`, matching the spelling used by
-Hyprland. Paths may be absolute, relative to the file containing the directive,
-or begin with `~/`. A fragment can include more fragments, but cycles and
-missing files are rejected. Fragments are merged in declaration order, then
-the containing file is applied last: tables merge recursively, while
-`window-rules`, `shortcuts`, `autostart`, and permission `rules` append. Scalar
-settings and ordinary arrays in the containing file override included values.
+The model is a user init file and ordinary Lua modules. Variables, functions,
+conditions, and loops can build the settings. There is no package manager or
+second settings schema. Lua uses `{...}` for tables and arrays, and `["hyphenated-key"]`
+for keys that contain a hyphen.
 
-The main file and every loaded fragment are watched. Saving any of them runs the
-same parse-and-validate transaction as `gnoblinctl reload-config`; invalid edits
-keep the last valid configuration and report the file and expected value.
-`include` and `source` cannot be used together in one file.
+The configuration API is small:
 
-Protocol advertisement remains a compositor-startup decision. An included
-`[protocols]` change is validated immediately but needs a new session before
-the Wayland global changes.
+| API | Behaviour |
+| --- | --- |
+| `g.set(table)` | Merge a table into the configuration. Later scalar values win. |
+| `g.config` | Read or change the current configuration table directly. |
+| `g.load(path)` | Load a Lua file, or matching Lua files from a glob, at this point. |
+| `require("module")` | Run a Lua module once per reload and return its result. |
 
-Mutter and GNOME Shell share the native TOML parser. Duplicate keys, invalid
-values and invalid protocol types are rejected. A bad live edit retains the
-last valid configuration. The updated build needs installation and one new
-login; later supported edits apply without logout.
+`g.set` and `g.load` merge tables recursively. Rule arrays (`window-rules`,
+`shortcuts`, `autostart`, and permission `rules`) append. Ordinary arrays replace
+the previous value. Direct assignment replaces a value and can remove imported
+rules, for example `g.config.shortcuts = {}`. Load order is explicit: a package
+loaded after an override can replace that override.
+
+A component file can return a plain table:
+
+```lua
+-- ~/.config/gnoblin/appearance.lua
+return {
+    shell = {["minimize-duration"] = 120},
+    ["window-rules"] = {
+        {match = {type = "layer"}, blur = 24},
+    },
+}
+```
+
+Load that file with `g.load("appearance.lua")`. Relative paths resolve from the
+file that calls `g.load`. Absolute paths and `~/` paths also work. Use
+`require("appearance")` for a module that calls `g.set` itself, or use
+`g.set(require("appearance"))` for a module that returns a settings table.
+`require` caches its result for the current reload. A new reload starts with a
+fresh Lua state, so previous rules do not accumulate.
+
+Use one main file to include the settings you need, as with nginx:
+
+```lua
+local g = require("gnoblin")
+g.load("/usr/share/gnoblin/conf.d/*.lua") -- installed component settings
+g.load("conf.d/**/*.lua")              -- your settings, including subdirectories
+```
+
+A glob loads matching files in bytewise path order. Prefix names with numbers
+such as `10-appearance.lua` and `90-local.lua` when order matters. `*`, `?`, and
+`[abc]` match within a path segment; `**` includes subdirectories. Hidden files
+and hidden directories require an explicit dot in the pattern. Recursive `**`
+does not follow directory symlinks. An unmatched glob is allowed. A missing
+exact file is an error. All searched directories are watched, so adding or
+removing a matching file also reloads the configuration.
+
+Bingux installs `share/gnoblin/conf.d/bingux.lua` under its installation prefix.
+Its installer prints the corresponding include pattern. The main init file owns
+the include; each component owns its file. The CLI stays small:
+
+```sh
+gnoblinctl config path
+gnoblinctl config reload
+```
+
+All loaded files are watched. Syntax errors, missing modules, and invalid
+settings retain the last working configuration. The error reports through the
+shell log and `gnoblinctl config reload`. Correcting the file retries the load.
+Lua computes configuration data. The base, table, string, math, and UTF-8
+functions are available. External I/O, process execution, and native Lua modules
+are not exposed. Start processes through named `autostart` or `shortcuts` entries
+so repeated reloads retain their existing lifecycle rules. Evaluation has limits
+of 8 MiB of Lua memory, one million Lua instructions, and 32 nested files.
+
+Protocol advertisement remains a compositor-startup operation. The updated
+build requires installation and one new login. Supported settings reload on
+save after that login; protocol changes still require a new session.
 
 ## Window behaviour
 
-```toml
-[shell]
-window-switcher = false
-minimize-animation = "zoom"
-minimize-duration = 200
-# Optional fallback, in logical desktop coordinates:
-# minimize-target = [960, 1040]
+```lua
+g.set({shell = {
+    ["window-switcher"] = false,
+    ["minimize-animation"] = "zoom",
+    ["minimize-duration"] = 200,
+    -- Optional fallback, in logical desktop coordinates:
+    -- ["minimize-target"] = {960, 1040},
+}})
 ```
 
 `zoom` is the default. Minimise and restore use, in order:
@@ -74,9 +141,8 @@ switchers are separate. Stock GNOME sessions retain their native behaviour.
 
 ### Layer-shell keyboard focus
 
-```toml
-[layer-shell]
-preserve-active-window = true
+```lua
+g.set({["layer-shell"] = { ["preserve-active-window"] = true }})
 ```
 
 `preserve-active-window` is a boolean, defaults to `true`, and applies to every
@@ -117,14 +183,13 @@ Multiple keyboard-interactive layers still need compositor arbitration; this
 option does not broadcast input to all of them.
 
 **Requires a new compositor session:** save the file, then log out and back in.
-The value is read when layer-shell starts. `gnoblinctl reload-config` and closing
+The value is read when layer-shell starts. `gnoblinctl config reload` and closing
 and reopening a menu do not change it for the running session.
 
 ### Window drag boundary
 
-```toml
-[window-management]
-constrain-drag-to-work-area = true
+```lua
+g.set({["window-management"] = { ["constrain-drag-to-work-area"] = true }})
 ```
 
 When enabled, the compositor keeps a dragged window's frame below the current
@@ -166,22 +231,17 @@ start that same instance through autostart.
 
 ## Keyboard shortcuts
 
-Custom commands and built-in bindings can be configured in TOML, without using
+Custom commands and built-in bindings can be configured in the file, without using
 GNOME Settings. Once the updated shell is installed, changes reload on save.
 
-```toml
-[[shortcuts]]
-name = "capture"
-binding = "<Alt>s"
-command = ["qs", "ipc", "--any-display", "-c", "bingux", "call", "capture", "open"]
-
-[[shortcuts]]
-name = "terminal"
-binding = "<Super>Return"
-command = ["ptyxis", "--new-window"]
-
-[keybindings.wm]
-close = ["<Super>q"]
+```lua
+g.set({
+shortcuts = {
+    {name = "capture", binding = "<Alt>s", command = {"qs", "ipc", "--any-display", "-c", "bingux", "call", "capture", "open"}},
+    {name = "terminal", binding = "<Super>Return", command = {"ptyxis", "--new-window"}},
+},
+keybindings = {wm = {close = {"<Super>q"}}},
+})
 ```
 
 Each command shortcut needs a unique name (letters, numbers, `_`, `-`), a GTK-style
@@ -196,19 +256,18 @@ the corresponding GNOME keybinding schemas. Values are accelerator arrays;
 `[]` disables that action's binding. Unknown actions, invalid keys, malformed
 commands and duplicate configured accelerators reject the edit before any
 shortcut settings change. Policy-locked settings produce an error. Overrides
-are persistent, like explicit `[shell]` feature settings: omitting a built-in
+are persistent, like explicit `shell` feature settings: omitting a built-in
 override stops managing it but does not restore its former value.
 
-Use `binding = "Super"` for a bare Super press and release. This uses Mutter's
+Use `binding = "Super"` in a shortcut table for a bare Super press and release. This uses Mutter's
 modifier-only release event, so Super shortcuts and Super-drag do not trigger it.
 For example:
 
-```toml
-[[shortcuts]]
-name = "search"
-binding = "Super"
-capture-input = true
-command = ["binguxctl", "search", "toggle"]
+```lua
+g.set({shortcuts = {{
+    name = "search", binding = "Super", ["capture-input"] = true,
+    command = {"binguxctl", "search", "toggle"},
+}}})
 ```
 
 `capture-input = true` buffers keyboard events in the compositor before the
@@ -229,20 +288,17 @@ removed during migration; unrelated user shortcuts remain untouched. An existing
 can still claim an accelerator: disable/rebind that action explicitly rather than
 silently stealing it. Registration failures appear in the Gnoblin config log.
 
-Do not define the same command shortcut in both TOML and another settings manager.
+Do not define the same command shortcut in both Lua and another settings manager.
 Test configuration ownership without touching real shortcuts with
 `GSETTINGS_BACKEND=memory gjs -m tests/shortcuts-test.js`.
 
 ## Autostart commands
 
-```toml
-[[autostart]]
-name = "bingux"
-command = ["qs", "-c", "bingux"]
-
-[[autostart]]
-name = "clipboard"
-command = ["wl-paste", "--watch", "cliphist", "store"]
+```lua
+g.set({autostart = {
+    {name = "bingux", command = {"qs", "-c", "bingux"}},
+    {name = "clipboard", command = {"wl-paste", "--watch", "cliphist", "store"}},
+}})
 ```
 
 Each unique name starts once per login. Adding a new name on reload starts it.
@@ -259,13 +315,11 @@ launches are logged and can be retried on a later reload.
 
 ## Runtime feature controls
 
-The `[shell]` table accepts booleans for `notifications` and
+The `shell` table accepts booleans for `notifications` and
 `input-source-switcher`:
 
-```toml
-[shell]
-notifications = true
-input-source-switcher = false
+```lua
+g.set({shell = {notifications = true, ["input-source-switcher"] = false}})
 ```
 
 Explicit entries update the existing persistent GSettings state. Omitted
@@ -277,42 +331,27 @@ before feature settings or autostart commands are applied.
 Gnoblin never shows GNOME OSD popups or the GNOME screenshot UI. Legacy
 `osd`, `osd-*`, and `screenshot` entries with `false` remain accepted for
 configuration compatibility. A `true` value is stale configuration and is
-ignored. `gnoblinctl enable` rejects these removed features.
+ignored. `gnoblinctl feature enable` rejects these removed features.
 
 ## Protocol settings
 
-```toml
-[protocols]
-wlr-layer-shell = true
-wlr-screencopy = true
-ext-idle-notify = true
-ext-foreign-toplevel-list = true
-wlr-foreign-toplevel-management = true
-wlr-gamma-control = true
-wlr-output-power-management = true
-ext-data-control = true
+```lua
+g.set({protocols = {
+    ["wlr-layer-shell"] = true, ["wlr-screencopy"] = true,
+    ["ext-idle-notify"] = true, ["ext-foreign-toplevel-list"] = true,
+    ["wlr-foreign-toplevel-management"] = true, ["wlr-gamma-control"] = true,
+    ["wlr-output-power-management"] = true, ["ext-data-control"] = true,
+}})
 ```
 
 These settings require a new compositor session. Reload does not change
 registered Wayland globals. All implemented protocols default on in Gnoblin;
 stock sessions do not expose these Gnoblin globals. See
-`src/data/gnoblin.toml.example` for the reference file.
+`src/data/init.lua.example` for the reference file.
 
-## Migration and verification
+## Verification
 
-From the checkout, migrate supported legacy settings with:
-
-```sh
-python3 scripts/migrate-config.py
-```
-
-The command preserves the original `.conf` and refuses to overwrite an
-existing `.toml`. It copies supported `[shell]` settings and protocol booleans,
-and reports ignored legacy sections. Old `[startup]` commands were not used
-by the current GNOME-based shell and are deliberately not activated during
-migration. Add the desired commands as named `[[autostart]]` entries.
-
-Saves apply after a 150 ms debounce. `gnoblinctl reload-config` reads the file
+Saves apply after a 150 ms debounce. `gnoblinctl config reload` reads the file
 immediately and reports validation errors. `gnoblinctl reload` also rereads it,
 alongside the theme and user-script reload.
 
@@ -359,20 +398,19 @@ gnoblinctl ping                     health check (-> pong)
 gnoblinctl version                  shell + protocol version
 gnoblinctl reload                   Wayland soft-reload (config + theme + user scripts)
 
-gnoblinctl reload-config            read gnoblin.toml immediately
-gnoblinctl load-config /path/file    add an idempotent include and reload it
-gnoblinctl unload-config /path/file  remove an include and reload it
+gnoblinctl config path              show the active init file
+gnoblinctl config reload            reload the active configuration
 
-gnoblinctl features                 list feature toggles + state
-gnoblinctl feature <id>             show one feature's state
-gnoblinctl enable  <id>             turn a subsystem ON  (SetFeature true)
-gnoblinctl disable <id>             turn a subsystem OFF (SetFeature false)
+gnoblinctl feature list             list feature toggles + state
+gnoblinctl feature show <id>        show one feature's state
+gnoblinctl feature enable <id>      turn a subsystem ON
+gnoblinctl feature disable <id>     turn a subsystem OFF
 
-gnoblinctl scripts                  list loaded user scripts
-gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
+gnoblinctl script list              list loaded user scripts
+gnoblinctl script reload            reload ~/.config/gnoblin/scripts/*.js
 
-gnoblinctl portal-grants            list persistent Screen Cast and Remote Desktop grants
-gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
+gnoblinctl grant list               list persistent Screen Cast and Remote Desktop grants
+gnoblinctl grant revoke <kind> <id> revoke one portal-scoped grant
 ```
 
 `gnoblinctl reload` re-applies the shell theme/CSS and reloads user scripts in-process, without
@@ -380,9 +418,10 @@ tearing down Mutter — your windows and your chrome survive.
 
 ## Portal permissions
 
-Use `[permissions]` and `[[permissions.rules]]` in `gnoblin.toml` to set
+Use `permissions` and `permissions.rules` tables in `init.lua` to set
 `default`, `ask`, `allow`, or `deny` decisions for apps matched by an identity
-regex. `gnoblinctl permissions` inspects and edits the same policy.
+regex. Edit the `permissions` table in the Lua file, then reload. `gnoblinctl
+permissions list` and `gnoblinctl permissions check` inspect the effective policy.
 See [Portal permissions](permissions.md) for the RustDesk example, supported
 capabilities, rule precedence and migration from custom grant files.
 
@@ -393,7 +432,7 @@ overview, dash, app grid and panel contents. A small GNOME Shell patch makes the
 native panel non-interactive and non-strutting only when the immutable primary
 session mode is `gnoblin`; stock GNOME keeps its upstream panel. This is not a
 runtime setting. Changing the chrome policy means editing the session data or
-patch and rebuilding, not adding a `gnoblin.toml` key.
+patch and rebuilding, not adding an `init.lua` key.
 
 The session configures Mutter's `overlay-key` as `Super`. Mutter emits its
 release event only when no other input is used. `gnoblinControl` forwards that
@@ -406,25 +445,16 @@ disabled.
 These options require the rebuilt Mutter and GNOME Shell once. After the next
 login, edits reload automatically. Normal application animations are unchanged.
 
-```toml
-[shell]
-layer-animation = "slide" # slide, fade, none
-layer-duration = 220      # milliseconds, 0 disables animation
-layer-easing = "ease-out-cubic" # also ease-out-quad, ease-in-out-cubic, linear
-
-[[window-rules]]
-match.type = "layer"
-blur = 24                # radius, 0 disables blur; maximum 100
-opacity = 0.96           # 0 to 1, multiplied with client opacity
-
-[[window-rules]]
-match.layer = "^gnoblin-dock-tooltip$"
-animation = "fade"
-
-[[window-rules]]
-match.app-id = "^org\\.gnome\\.Ptyxis$"
-match.focused = false
-opacity = 0.92
+```lua
+g.set({
+shell = {["layer-animation"] = "slide", ["layer-duration"] = 220,
+         ["layer-easing"] = "ease-out-cubic"},
+["window-rules"] = {
+    {match = {type = "layer"}, blur = 24, opacity = 0.96},
+    {match = {layer = "^gnoblin-dock-tooltip$"}, animation = "fade"},
+    {match = {["app-id"] = "^org\\.gnome\\.Ptyxis$", focused = false}, opacity = 0.92},
+},
+})
 ```
 
 A rule can match `app-id`, `title`, `layer`, `type`, and `focused`. String

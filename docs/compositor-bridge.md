@@ -6,7 +6,7 @@ switcher settings. Bingux owns that feature in Quickshell.
 
 The local session installer and NixOS package install the script at
 `share/gnoblin/scripts/compositor-bridge.js`. Link that file into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload-scripts`. Bingux's
+`~/.config/gnoblin/scripts/`, then run `gnoblinctl script reload`. Bingux's
 native package includes its own client wiring; a custom shell can link the
 bridge directly. No compositor restart is required.
 

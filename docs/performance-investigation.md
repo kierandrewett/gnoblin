@@ -165,7 +165,7 @@ From the repository root, after building and installing:
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_CONFIG="$PWD/tests/performance-effects.toml" \
+GNOBLIN_CONFIG="$PWD/tests/performance-effects.lua" \
 GNOBLIN_BENCH_REQUIRE_OCCLUSION=1 \
 GNOBLIN_BENCH_REPORT=/tmp/gnoblin-performance.json \
 GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/benchmark-desktop.py" \

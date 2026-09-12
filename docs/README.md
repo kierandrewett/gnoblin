@@ -11,7 +11,7 @@ own chrome when you are ready. Start with the [README](../README.md).
   custom layer-shell client.
 - [Distribution](distribution.md): package boundaries and repository publication.
 - [Devkit](devkit.md): test in a nested session without logging out.
-- [Configuration](configuration.md): `gnoblin.toml` and `gnoblinctl`.
+- [Configuration](configuration.md): `init.lua` and `gnoblinctl`.
 - [Testing](testing.md): automated checks and release requirements.
 - [Real-hardware verification](real-hardware-verification.md): login, graphics,
   screen sharing and other checks that need a physical session.

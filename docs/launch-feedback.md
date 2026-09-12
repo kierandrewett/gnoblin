@@ -8,7 +8,7 @@ overlay, with Adwaita as a fallback. Window focus and input remain with the
 application under the pointer.
 
 Install or link `src/scripts/launch-feedback.js` into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload-scripts`. The script is
+`~/.config/gnoblin/scripts/`, then run `gnoblinctl script reload`. The script is
 also loaded at login. Reloading it releases the native override or fallback
 visibility inhibitor.
 
@@ -34,9 +34,9 @@ failed activation or explicit cancellation releases it immediately. If a client
 dies, the compositor-owned timeout still restores the cursor.
 
 ```sh
-gnoblinctl launch-begin example org.gnome.Nautilus 3000
-gnoblinctl launch-state
-gnoblinctl launch-end example
+gnoblinctl launch begin example org.gnome.Nautilus 3000
+gnoblinctl launch status
+gnoblinctl launch end example
 ```
 
 Run the isolated integration check with:

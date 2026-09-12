@@ -1,22 +1,17 @@
 # Window state shortcuts
 
 Gnoblin can restore a maximised or snapped window before minimising it. Configure
-these bindings in `~/.config/gnoblin/gnoblin.toml`:
+these bindings in `~/.config/gnoblin/init.lua`:
 
-```toml
-[keybindings.wm]
-maximize = ["<Super>Up"]
-minimize = []
-unmaximize = []
-
-[keybindings.mutter]
-toggle-tiled-left = ["<Super>Left"]
-toggle-tiled-right = ["<Super>Right"]
-
-[[shortcuts]]
-name = "restore-or-minimize"
-binding = "<Super>Down"
-command = ["gnoblinctl", "window", "restore-or-minimize", "active"]
+```lua
+g.config.keybindings = {
+    wm = {maximize = {"<Super>Up"}, minimize = {}, unmaximize = {}},
+    mutter = {["toggle-tiled-left"] = {"<Super>Left"}, ["toggle-tiled-right"] = {"<Super>Right"}},
+}
+g.config.shortcuts = {
+    {name = "restore-or-minimize", binding = "<Super>Down",
+     command = {"gnoblinctl", "window", "restore-or-minimize", "active"}},
+}
 ```
 
 When replacing an existing Super+Down binding, save the empty `minimize` and

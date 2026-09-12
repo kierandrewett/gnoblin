@@ -1,21 +1,14 @@
 # Window effects
 
 Gnoblin applies effects in the compositor. Rules in
-`~/.config/gnoblin/gnoblin.toml` apply to existing windows when the file changes.
+`~/.config/gnoblin/init.lua` apply to existing windows when the file changes.
 This requires the Gnoblin native build. After an upgrade, log out and in once
 to load the native code. Subsequent rule and shader edits do not need a restart.
 
 For Bingux's dock, search and shared context menus:
 
-```toml
-[[window-rules]]
-match.type = "layer"
-match.layer = "^(bingux-dock|bingux-search|gnoblin-shell-popup)$"
-blur = 24
-opacity = 1.0
-# Optional custom effect, relative to this config file:
-# shader = "shaders/tint.frag"
-# shader-uniforms.strength = 0.08
+```lua
+g.set({["window-rules"] = {{match = {type = "layer", layer = "^(bingux-dock|bingux-search|gnoblin-shell-popup)$"}, blur = 24, opacity = 1.0}}})
 ```
 
 Client backgrounds must have some transparency for background blur to show.
@@ -64,7 +57,7 @@ Gnoblin watches the shader's parent directory, including atomic file replacement
 Edits settle for 100 ms before compilation. Create the directory before enabling
 the rule. Invalid or missing shader files keep the previous working effect and
 log a `gnoblin-shader` warning. Fixing the file restores normal hot reload.
-Invalid TOML keeps the previous configuration.
+Invalid Lua keeps the previous configuration.
 
 ## Validation
 
@@ -125,22 +118,8 @@ CPU usage with applications running.
 
 Rounding is built into Gnoblin's window rules; no extension is required. For example:
 
-```toml
-[[window-rules]]
-match = { type = "window" }
-corners = { radius = 14, smoothing = 0.6 }
-
-[[window-rules]]
-match = { app-id = "^my-game$" }
-corners = { mode = "off" }
-
-[[window-rules]]
-match = { type = "window", focused = false }
-corners = { shadow = { blur = 24, opacity = 0.25 } }
-
-[[window-rules]]
-match = { type = "window", focused = true }
-corners = { shadow = { blur = 28, opacity = 0.5 } }
+```lua
+g.set({["window-rules"] = {{match = {type = "window"}, corners = {radius = 14, smoothing = 0.6}}, {match = {["app-id"] = "^my-game$"}, corners = {mode = "off"}}, {match = {type = "window", focused = false}, corners = {shadow = {blur = 24, opacity = 0.25}}}, {match = {type = "window", focused = true}, corners = {shadow = {blur = 28, opacity = 0.5}}}}})
 ```
 
 Later rules merge individual corner settings, including individual shadow fields.
@@ -168,13 +147,11 @@ excluded. The setting has no effect until `radius` is greater than zero.
 Gnoblin and Bingux leave compositor borders disabled by default. To opt into
 one 1px grey inner stroke, use this window rule:
 
-```toml
-[[window-rules]]
-match.type = "window"
-borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 14, smoothing = 0.0 }
+```lua
+g.set({["window-rules"] = {{match = {type = "window"}, borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000", radius = 14, smoothing = 0.0}}}})
 ```
 
-Edit `~/.config/gnoblin/gnoblin.toml`; valid changes reload automatically.
+Edit `~/.config/gnoblin/init.lua`; valid changes reload automatically.
 Colours use `#RRGGBB` or `#RRGGBBAA`, with alpha last (unlike QML).
 Widths accept 0 to 40 logical pixels. Set both widths to zero to disable them.
 Radius accepts 0 to 200, smoothing 0 to 1, and padding is
@@ -188,11 +165,8 @@ them. Later matching rules override only the border fields they specify.
 
 Bingux requests real clipping with the same 14px circular shape as its borders:
 
-```toml
-[[window-rules]]
-match.type = "window"
-corners = { radius = 14, smoothing = 0.0, mode = "force", shadow = { blur = 24, spread = 0, opacity = 0.35 } }
-borders = { inner-width = 1, inner-color = "#505050ff", outer-width = 0, outer-color = "#00000000", radius = 14, smoothing = 0.0 }
+```lua
+g.set({["window-rules"] = {{match = {type = "window"}, corners = {radius = 14, smoothing = 0.0, mode = "force", shadow = {blur = 24, spread = 0, opacity = 0.35}}, borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000", radius = 14, smoothing = 0.0}}}})
 ```
 
 Force mode removes the original client shadow outside the frame, including
@@ -220,14 +194,8 @@ list; single-table rules retain their existing field-merge behaviour.
 
 Bingux uses a softer inactive shadow and this deeper focused-window treatment:
 
-```toml
-[[window-rules]]
-match.type = "window"
-match.focused = true
-corners.shadow = [
-    { x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22 },
-    { x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28 },
-]
+```lua
+g.set({["window-rules"] = {{match = {type = "window", focused = true}, corners = {shadow = {{x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22}, {x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28}}}}}})
 ```
 
 The broad layer provides depth; the smaller layer defines the edge. These are
@@ -237,10 +205,8 @@ The current inner border uses `#505050bf` (approximately 75% alpha).
 
 Shadow fades can be enabled independently of the shadow layers:
 
-```toml
-[[window-rules]]
-match.type = "window"
-corners.shadow-animation = { duration = 180, easing = "ease-out-cubic" }
+```lua
+g.set({["window-rules"] = {{match = {type = "window"}, corners = {["shadow-animation"] = {duration = 180, easing = "ease-out-cubic"}}}}})
 ```
 
 The compositor crossfades complete shadow styles, including changes to blur,

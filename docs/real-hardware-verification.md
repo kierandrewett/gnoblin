@@ -44,7 +44,7 @@ Sanity from a terminal in the session:
 ```sh
 gnoblinctl ping          # -> pong
 gnoblinctl version       # -> 49.6-gnoblin
-gnoblinctl features      # notifications, input-source-switcher
+gnoblinctl feature list  # notifications, input-source-switcher
 ```
 
 ## 2. Bring-your-own shell (Bingux / Quickshell / Waybar / …)
@@ -64,9 +64,9 @@ qs -p ~/path/to/shell.qml        # Quickshell
 ## 3. Feature toggles
 
 ```sh
-gnoblinctl enable notifications   # let GNOME Shell own org.freedesktop.Notifications
-gnoblinctl disable notifications  # release it for your notification daemon
-gnoblinctl enable input-source-switcher
+gnoblinctl feature enable notifications   # let GNOME Shell own org.freedesktop.Notifications
+gnoblinctl feature disable notifications  # release it for your notification daemon
+gnoblinctl feature enable input-source-switcher
 ```
 
 GNOME OSD popups and the GNOME screenshot UI are permanently absent in Gnoblin.
@@ -86,8 +86,8 @@ Your windows and your chrome stay up (mutter is never torn down); the JS layer r
 ## 5. User scripting
 
 ```sh
-gnoblinctl scripts
-gnoblinctl reload-scripts
+gnoblinctl script list
+gnoblinctl script reload
 ```
 
 ## 6. Mutter's own test suite
@@ -134,8 +134,8 @@ to `~/.local/share/gnoblin/portal-grants/<kind>/`. Sandboxed apps use a verified
 `host-exe:<canonical-executable-path>`. Filenames are opaque SHA-256 digests.
 
 ```sh
-gnoblinctl portal-grants
-gnoblinctl revoke-grant <kind> <id>
+gnoblinctl grant list
+gnoblinctl grant revoke <kind> <id>
 ```
 
 The Gnoblin Settings panel in the next section shows the same typed list and
@@ -159,7 +159,7 @@ just dev-settings                 # builds the fork + hides the multitasking pan
 > `gnome-control-center --list` output before it is used on a real session.
 
 Expect: GNOME Settings with a **Gnoblin** panel, switch rows for every
-`gnoblinctl features` toggle, typed Screen Cast and Remote Desktop grant rows
+`gnoblinctl feature list` output, typed Screen Cast and Remote Desktop grant rows
 with capability summaries and Revoke buttons, and a **Reload Gnoblin** button.
 The **Multitasking** panel is gone. With `./install/bin` ahead on `PATH`, "open
 Settings" or `gnome-control-center` launches this fork.

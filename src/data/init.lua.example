@@ -1,0 +1,20 @@
+-- Copy to ~/.config/gnoblin/init.lua.
+local g = require("gnoblin")
+
+-- Load component settings before your overrides.
+g.load("/usr/share/gnoblin/conf.d/*.lua")
+g.load("conf.d/**/*.lua")
+g.set({
+    shell = {
+        ["window-switcher"] = false,
+        ["minimize-animation"] = "zoom",
+        ["minimize-duration"] = 150,
+    },
+    shortcuts = {
+        {name = "terminal", binding = "<Super>Return", command = {"ptyxis"}},
+    },
+})
+
+-- Split your configuration into ordinary Lua files:
+-- g.load("appearance.lua")
+-- g.set(require("bindings"))

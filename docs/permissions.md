@@ -1,6 +1,6 @@
 # Portal permissions
 
-Gnoblin has one permission policy in `gnoblin.toml`. The shell validates and
+Gnoblin has one permission policy in `init.lua`. The shell validates and
 reloads it. Portal handlers ask the existing `org.gnoblin.Shell` control service
 for a decision before they restore a session or show a consent dialog.
 
@@ -21,24 +21,17 @@ A fallback of `default` with `deny` rules forms a blocklist.
 
 ## Example: RustDesk
 
-```toml
-[permissions]
-default = "default"
-
-[[permissions.rules]]
-name = "rustdesk"
-match = '^host-exe:/usr/bin/rustdesk$'
-capabilities = ["screen-cast", "remote-desktop"]
-level = "allow"
-monitors = ["primary"]
-devices = ["keyboard", "pointer"]
-clipboard = true
-
-[[permissions.rules]]
-name = "blocked-capture"
-match = '^app-id:com\.example\.Untrusted$'
-capabilities = ["screen-cast", "remote-desktop", "screenshot"]
-level = "deny"
+```lua
+g.set({permissions = {
+    default = "default",
+    rules = {
+        {name = "rustdesk", match = "^host-exe:/usr/bin/rustdesk$",
+         capabilities = {"screen-cast", "remote-desktop"}, level = "allow",
+         monitors = {"primary"}, devices = {"keyboard", "pointer"}, clipboard = true},
+        {name = "blocked-capture", match = "^app-id:com\\.example\\.Untrusted$",
+         capabilities = {"screen-cast", "remote-desktop", "screenshot"}, level = "deny"},
+    },
+}})
 ```
 
 Set the identity to the one used by your installation. A Flatpak installation
@@ -98,45 +91,33 @@ separate camera, microphone, or location requests. The `access` rule is therefor
 a generic gate, not three separate permissions. Frontend-cached permissions
 that do not call a backend cannot be overridden here. File chooser, USB,
 background, global shortcuts, direct Mutter D-Bus calls, raw Wayland protocols,
-and kernel device access are outside these five gates. Startup `[protocols]`
+and kernel device access are outside these five gates. Startup `protocols`
 switches continue to control protocol availability.
 
 ## Control commands
 
 ```sh
 gnoblinctl permissions list
-gnoblinctl permissions default ask
-gnoblinctl permissions set rustdesk allow \
-  --match '^host-exe:/usr/bin/rustdesk$' \
-  --capability screen-cast --capability remote-desktop \
-  --monitor primary --device keyboard --device pointer --clipboard
 gnoblinctl permissions check screen-cast host-exe:/usr/bin/rustdesk
-gnoblinctl permissions remove rustdesk
 ```
 
-`set` replaces a named rule in place or appends a new rule. `check` reports the
+Edit Lua directly, then run `gnoblinctl config reload`. `check` reports the
 level, matching rule and selection limits. It evaluates a supplied identity;
 it does not authenticate a process or check current monitor availability.
 `list` includes supported capabilities, levels and the active configuration path.
 
-The commands edit the same TOML file used by the shell. They preserve other
-settings and use atomic replacement with a file version check. Stale policy
-updates fail instead of replacing another client's changes. Unusual TOML
-layouts that cannot be edited without changing other tables require manual
-editing. Invalid configuration edits retain the last valid policy. An invalid
+Invalid configuration edits retain the last valid policy. An invalid
 configuration at initial startup, or an unavailable policy service in a Gnoblin
 session, causes backend requests to be denied.
 
 Changes apply to new permission requests. They do not disconnect an active
 remote session. A dialog that is already open belongs to its original request.
-Legacy `gnoblin.conf` must be migrated to TOML before adding permission rules.
-
 ## Migration and verification
 
 The old custom `portal-grants` files no longer grant access, and the additional
 "remember forever" checkboxes are removed. Standard portal restore tokens remain
 available under `default`. Existing custom files are retained for inspection
-and removal with `gnoblinctl portal-grants` and `gnoblinctl revoke-grant`.
+and removal with `gnoblinctl grant list` and `gnoblinctl grant revoke`.
 There is no automatic conversion into broader regex rules.
 
 Both the shell overlay and patched portal backend must be built and installed.
@@ -155,4 +136,4 @@ bash scripts/run-gnome-shell.sh
 
 The live test uses real backend calls on an isolated bus. It checks unattended
 capture and input, restore-token denial, forced consent and cancellation,
-identity verification, rule precedence, configuration writes and reloads.
+identity verification, rule precedence, configuration reloads.

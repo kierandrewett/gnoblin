@@ -32,7 +32,7 @@ regular GNOME session stays available.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows, custom shaders and layer animations](docs/window-effects.md) with
   window rules.
-- **Live configuration.** Edit [one TOML file](docs/configuration.md) for window rules, shortcuts,
+- **Live configuration.** Edit [one Lua file](docs/configuration.md) for window rules, shortcuts,
   autostart, protocol gates, animation and feature ownership. Valid changes
   reload without restarting applications.
 - **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,

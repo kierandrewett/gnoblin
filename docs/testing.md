@@ -22,7 +22,7 @@ GDM login, visible chrome, and portal consent remain manual checks covered by
 | `just gnome-native-chrome-verify` | Removed desktop widgets stay absent across mode changes, workspace operations still work, and interactive capture returns an explicit unsupported response | Current install prefix |
 | `just gnome-scripting-verify` | The GJS user-scripting layer (`~/.config/gnoblin/scripts/*.js`) loads and waits for asynchronous reload completion | Current install prefix |
 | `just gnome-notifications-verify` | In Gnoblin mode, disabling `notifications` releases `org.freedesktop.Notifications` and re-enabling it reclaims the name | Current install prefix |
-| `just gnome-protocol-gating-verify` | Turning a protocol off in `gnoblin.conf` stops it being advertised | Current install prefix |
+| `just gnome-protocol-gating-verify` | Turning a protocol off in `init.lua` stops it being advertised | Current install prefix |
 | `just verify-installed-headless` | Every isolated GNOME Shell integration recipe above, run serially against the current install | Current install prefix |
 | `just verify` | `verify-fast`, a fresh `just dev`, and the complete installed headless suite | Build dependencies |
 | `just verify-release` | `verify`, Mutter's real-host suite, and both RPM builds | Real host plus RPM build dependencies |
@@ -39,7 +39,7 @@ both package builds; it is intentionally unsuitable for restricted sandboxes.
 - Editing a protocol overlay (`src/protocols/`) or a Mutter patch: `just
   gnome-verify` after `just dev-mutter` + `just dev-gnome-shell` (or the
   matching `gnome-*-verify` for the specific behaviour you changed, e.g.
-  `gnome-protocol-gating-verify` for a `[protocols]` gate).
+  `gnome-protocol-gating-verify` for a `protocols` table gate).
 - Editing `gnoblinControl.js` or the `org.gnoblin.Shell` protocol: `just
   gnome-dbus-verify`.
 - Editing anything devkit-related (`scripts/run-gnome-devkit.sh`,

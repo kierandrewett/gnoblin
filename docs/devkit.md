@@ -71,8 +71,8 @@ Your bar/dock appears inside the nested gnoblin window, anchored via
 gnoblinctl ping
 gnoblinctl version
 gnoblinctl reload
-gnoblinctl features
-gnoblinctl disable osd            # let your bar's OSD own volume/brightness popups
+gnoblinctl feature list
+gnoblinctl feature disable osd    # let your bar's OSD own volume/brightness popups
 ```
 
 Full command + feature reference in [Configuration](configuration.md).
