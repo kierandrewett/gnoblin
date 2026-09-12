@@ -79,6 +79,35 @@ class IsolationTests(unittest.TestCase):
         unit = (ROOT / "src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in").read_text()
         self.assertNotIn("org.gnome.Shell-disable-extensions.service", unit)
 
+    def test_session_install_removes_legacy_extension_manager_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory) / "runtime"
+            legacy_paths = (
+                "bin/gnome-extensions",
+                "bin/gnome-extensions-app",
+                "share/applications/org.gnome.Extensions.desktop",
+                "share/dbus-1/services/org.gnome.Extensions.service",
+                "share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml",
+                "share/metainfo/org.gnome.Extensions.metainfo.xml",
+                "share/gnome-shell/org.gnome.Extensions",
+                "share/gnome-shell/org.gnome.Extensions.data.gresource",
+                "share/gnome-shell/org.gnome.Extensions.src.gresource",
+                "share/bash-completion/completions/gnome-extensions",
+                "lib/systemd/user/org.gnome.Shell-disable-extensions.service",
+                "share/icons/hicolor/64x64/apps/org.gnome.Extensions.png",
+            )
+            for relative_path in legacy_paths:
+                path = prefix / relative_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("legacy extension manager file\n")
+
+            subprocess.run(["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                           check=True, capture_output=True)
+
+            for relative_path in legacy_paths:
+                with self.subTest(path=relative_path):
+                    self.assertFalse((prefix / relative_path).exists())
+
     def test_rpm_build_paths_and_metadata(self):
         for project in ("mutter", "gnome-shell"):
             expanded = subprocess.check_output(["rpmspec", "-P", str(ROOT / f"packaging/rpm/{project}.spec")], text=True)
@@ -89,6 +118,20 @@ class IsolationTests(unittest.TestCase):
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
+                self.assertIn("-Dextensions_app=false", expanded)
+                self.assertIn("-Dextensions_tool=false", expanded)
+                self.assertNotIn("Requires:       gnome-control-center", expanded)
+                self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
+
+    def test_build_routes_disable_extension_manager_tools(self):
+        justfile = (ROOT / "Justfile").read_text()
+        nix_package = (ROOT / "nix/package.nix").read_text()
+        self.assertIn('if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_app=false -Dextensions_tool=false)',
+                      justfile)
+        self.assertIn("-Dextensions_app=false", justfile)
+        self.assertIn("-Dextensions_tool=false", justfile)
+        self.assertIn('"-Dextensions_app=false"', nix_package)
+        self.assertIn('"-Dextensions_tool=false"', nix_package)
 
 
 if __name__ == "__main__":

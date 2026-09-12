@@ -78,9 +78,11 @@ let
                 substituteInPlace js/ui/extensionDownloader.js \
                     --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
                     --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
-                substituteInPlace subprojects/extensions-tool/src/command-install.c \
-                    --replace-fail '"glib-compile-schemas"' '"${glib.dev}/bin/glib-compile-schemas"'
             '';
+        mesonFlags = (old.mesonFlags or [ ]) ++ [
+            "-Dextensions_app=false"
+            "-Dextensions_tool=false"
+        ];
     });
 
     session = stdenv.mkDerivation {

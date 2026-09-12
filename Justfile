@@ -55,7 +55,7 @@ reset-all:
 
 # Configure + compile a subproject with meson into build/<proj> (dev build).
 build PROJ: (patch PROJ)
-    meson setup --reconfigure build/{{PROJ}} subprojects/{{PROJ}} || meson setup build/{{PROJ}} subprojects/{{PROJ}}
+    if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_app=false -Dextensions_tool=false); else options=(); fi; meson setup --reconfigure build/{{PROJ}} subprojects/{{PROJ}} "${options[@]}" || meson setup build/{{PROJ}} subprojects/{{PROJ}} "${options[@]}"
     meson compile -C build/{{PROJ}}
 
 # --- dev stack: build the whole gnoblin stack into ./install and run it ------
@@ -70,7 +70,7 @@ mutter_test_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Ddevkit=en
 mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland --suite mutter:mutter/backends/native"
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
 mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
-gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Dtests=false -Dman=false -Dgtk_doc=false"
+gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Dextensions_app=false -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
 dev-mutter: check-install-prefix (patch "mutter")
@@ -90,6 +90,7 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
     rm -rf build/gnome-shell
     PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
     PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson install -C build/gnome-shell
+    rm -f {{prefix}}/lib/systemd/user/org.gnome.Shell-disable-extensions.service
 
 # --- optional: unattended screen-share portal backend -----------------------
 #

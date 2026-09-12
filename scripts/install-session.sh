@@ -27,6 +27,25 @@ PREFIX="$(mkdir -p "$PREFIX" && cd "$PREFIX" && pwd)"
 LIBDIR="${GNOBLIN_LIBDIR:-lib64}"
 gnoblin_env_validate_libdir "$LIBDIR" || exit
 
+# A prior development install may have included GNOME's extension manager.
+# Remove only the old Gnoblin-prefix artefacts. System GNOME files are never
+# considered by this script.
+rm -f \
+  "$PREFIX/bin/gnome-extensions" \
+  "$PREFIX/bin/gnome-extensions-app" \
+  "$PREFIX/share/applications/org.gnome.Extensions.desktop" \
+  "$PREFIX/share/dbus-1/services/org.gnome.Extensions.service" \
+  "$PREFIX/share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml" \
+  "$PREFIX/share/metainfo/org.gnome.Extensions.metainfo.xml" \
+  "$PREFIX/share/gnome-shell/org.gnome.Extensions" \
+  "$PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
+  "$PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
+  "$PREFIX/share/bash-completion/completions/gnome-extensions" \
+  "$PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
+if [ -d "$PREFIX/share/icons/hicolor" ]; then
+  find "$PREFIX/share/icons/hicolor" -type f -name 'org.gnome.Extensions*' -delete
+fi
+
 
 install -Dm644 "$SRC/modes/gnoblin.json" \
   "$PREFIX/share/gnome-shell/modes/gnoblin.json"

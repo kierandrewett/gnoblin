@@ -134,8 +134,6 @@ Requires:       tecla
 # needed for the user menu
 Requires:       accountsservice-libs%{?_isa}
 Requires:       gdm-libs%{?_isa}
-# needed for settings items in menus
-Requires:       gnome-control-center
 # needed by some utilities
 Requires:       python3%{_isa}
 # needed for the dual-GPU launch menu
@@ -143,8 +141,6 @@ Requires:       switcheroo-control
 # needed for clocks/weather integration
 Requires:       geoclue2-libs%{?_isa}
 Requires:       libgweather4%{?_isa}
-# for gnome-extensions CLI tool
-Requires:  gettext
 # needed for thunderbolt support
 Recommends:     bolt%{?_isa}
 # Needed for launching flatpak apps etc
@@ -184,6 +180,9 @@ test "$(pkg-config --variable=prefix libmutter-17)" = "%{_prefix}"
 %install
 %meson_install
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
+# Gnoblin does not expose GNOME Shell extension management. The runtime uses
+# only its Gnoblin-named systemd units.
+rm -f %{buildroot}%{_libdir}/systemd/user/org.gnome.Shell-disable-extensions.service
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
 install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm644 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
