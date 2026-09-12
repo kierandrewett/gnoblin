@@ -465,3 +465,5 @@ out:
         g_ptr_array_free(config.paths, TRUE);
     return run.result;
 }
+
+#include "gnoblin-console-lua.inc"

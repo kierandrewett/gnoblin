@@ -28,3 +28,26 @@ meson install -C build/gnome-shell --no-rebuild
 ```
 
 Run the focused integration check with `just gnome-developer-console-verify`.
+
+Type `:lua` to use Lua, or `:js` to return to JavaScript. The prompt shows
+`lua ›` while Lua is selected. Both languages retain their own state across
+switches. `:reset` resets both contexts and returns to JavaScript. Ctrl+L
+clears output without resetting variables.
+
+Lua supports expressions, chunks, multiple return values, `print()`, and
+completion while typing. Globals persist between submissions; `local`
+variables belong to the submitted chunk, as in a standard Lua interpreter.
+For example:
+
+```lua
+counter = 40
+counter + 2
+local g = require('gnoblin'); g.load('scripts/probe.lua')
+```
+
+The Lua console uses the configuration runtime's restricted libraries, memory
+and instruction limits, and `require('gnoblin')` API. Its initial settings
+are loaded from the current config file. `g.load()` paths and local modules
+resolve relative to that root. `g.set()` and changes to `g.config` affect only
+this console's copy: they do not write files or apply live desktop settings.
+Use JavaScript for direct `Main`, `global`, and Mutter object access.

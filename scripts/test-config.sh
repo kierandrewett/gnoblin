@@ -12,7 +12,7 @@ sources=(
     "$ROOT/src/config/gnoblin-lua.c"
     "$ROOT/src/config/gnoblin-glob.c"
 )
-for test in lua-config glob-config; do
+for test in lua-config glob-config lua-console; do
     cc "$ROOT/tests/$test-test.c" "${sources[@]}" \
        -I "$ROOT/src/config" $CFLAGS -o "$BIN/$test-test"
     timeout 20 "$BIN/$test-test"

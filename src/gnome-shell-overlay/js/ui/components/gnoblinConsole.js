@@ -9,7 +9,7 @@ import St from 'gi://St';
 import System from 'system';
 
 import * as Main from '../main.js';
-import {ConsoleEvaluator, isInspectable, preview} from './gnoblinConsoleEvaluator.js';
+import {ConsoleEvaluator, LuaConsoleEvaluator, isInspectable, preview} from './gnoblinConsoleEvaluator.js';
 
 const HISTORY_KEY = 'looking-glass-history';
 const MAX_ROWS = 200;
@@ -34,16 +34,17 @@ function button(label, action, styleClass = 'gnoblin-console-button') {
     return actor;
 }
 
-function highlight(actor, source) {
+function highlight(actor, source, language = 'js') {
     const attributes = new Pango.AttrList();
     const base = Pango.attr_foreground_new(0xdddd, 0xdddd, 0xdddd);
     base.start_index = 0;
     base.end_index = 0xffffffff;
     attributes.insert(base);
-    const tokens = /(?:\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|(?:"(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|`(?:\\.|[^`\\])*`?)|\b(?:const|let|var|function|class|return|throw|new|await|async|if|else|for|while|try|catch|typeof|instanceof|true|false|null|undefined)\b|\b(?:0x[\da-f]+|\d+(?:\.\d+)?)\b/gi;
-    for (const match of source.matchAll(tokens)) {
+    const tokens = /(?:\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|(?:"(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|`(?:\\.|[^`\\])*`?)|\b(?:const|let|var|function|class|return|throw|new|await|async|if|else|for|while|try|catch|typeof|instanceof|true|false|null|undefined|local|end|then|do|elseif|repeat|until|and|or|not|nil|in)\b|\b(?:0x[\da-f]+|\d+(?:\.\d+)?)\b/gi;
+    const pattern = language === 'lua' ? new RegExp('--[^\\n]*|' + tokens.source, 'g') : tokens;
+    for (const match of source.matchAll(pattern)) {
         const token = match[0];
-        const color = token.startsWith('/') ? [138, 161, 126]
+        const color = (token.startsWith('/') || token.startsWith('--')) ? [138, 161, 126]
             : /^["'`]/.test(token) ? [233, 166, 145]
                 : /^\d/.test(token) ? [153, 201, 255] : [197, 165, 232];
         const attribute = Pango.attr_foreground_new(...color.map(channel => channel * 257));
@@ -83,7 +84,8 @@ class DeveloperConsole extends St.Widget {
         this._flow = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
         this._flow.add_child(this._transcript);
         this._input = new St.BoxLayout({style_class: 'gnoblin-console-input'});
-        this._input.add_child(new St.Label({text: '›', style_class: 'gnoblin-console-prompt'}));
+        this._prompt = new St.Label({text: '›', style_class: 'gnoblin-console-prompt'});
+        this._input.add_child(this._prompt);
         this._entry = new St.Entry({
             style_class: 'gnoblin-console-entry', x_expand: true, can_focus: true,
             accessible_name: 'JavaScript',
@@ -93,9 +95,9 @@ class DeveloperConsole extends St.Widget {
         this._entry.clutter_text.set_line_wrap(true);
         this._entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         this._entry.clutter_text.connect('key-press-event', (_text, event) => this._inputKey(event));
-        this._entry.connect_after('style-changed', () => highlight(this._entry.clutter_text, this._entry.get_text()));
+        this._entry.connect_after('style-changed', () => highlight(this._entry.clutter_text, this._entry.get_text(), this._language));
         this._entry.clutter_text.connect('text-changed', () => {
-            highlight(this._entry.clutter_text, this._entry.get_text());
+            highlight(this._entry.clutter_text, this._entry.get_text(), this._language);
             this._queueCompletion();
         });
         this._entry.clutter_text.connect('notify::cursor-position', () => this._queueCompletion());
@@ -129,6 +131,7 @@ class DeveloperConsole extends St.Widget {
                 GLib.source_remove(this._completionIdle);
             this._rows.clear();
             this._evaluator.clear();
+            this._luaEvaluator?.reset();
         });
     }
 
@@ -148,6 +151,11 @@ class DeveloperConsole extends St.Widget {
                     this._clearTranscript();
             },
         });
+        this._jsEvaluator = evaluator;
+        this._luaEvaluator ??= new LuaConsoleEvaluator(
+            (operation, source) => Meta.gnoblin_console_lua(operation, source).recursiveUnpack(),
+            line => this._appendRow(textLabel(line, 'gnoblin-console-log', true)));
+        this._language = 'js';
         this._evaluator = evaluator;
     }
 
@@ -294,11 +302,27 @@ class DeveloperConsole extends St.Widget {
     }
 
     async evaluate(source) {
+        if (source === ':lua' || source === ':js') {
+            this._language = source.slice(1);
+            this._evaluator = this._language === 'lua' ? this._luaEvaluator : this._jsEvaluator;
+            this._prompt.text = this._language === 'lua' ? 'lua ›' : '›';
+            this._entry.accessible_name = this._language === 'lua' ? 'Lua' : 'JavaScript';
+            this._hideCompletions();
+            return {source, value: this._language, error: null, id: 0};
+        }
+        if (source === ':reset') {
+            this._luaEvaluator.reset();
+            this._newEvaluator();
+            this._prompt.text = '›';
+            this.clear();
+            return {source, value: undefined, error: null, id: 0};
+        }
+        const language = this._language;
         const model = this._evaluator;
         const row = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-result'});
         const command = textLabel(`› ${source}`, 'gnoblin-console-source', true);
-        command.connect_after('style-changed', () => highlight(command.clutter_text, `› ${source}`));
-        highlight(command.clutter_text, `› ${source}`);
+        command.connect_after('style-changed', () => highlight(command.clutter_text, `› ${source}`, language));
+        highlight(command.clutter_text, `› ${source}`, language);
         row.add_child(command);
         const pending = textLabel('Pending...', 'gnoblin-console-hint');
         row.add_child(pending);
@@ -323,7 +347,7 @@ class DeveloperConsole extends St.Widget {
             row.add_child(output);
             row.add_child(detail);
         } else {
-            output.add_child(this._valueActor(result.value));
+            output.add_child(result.lua ? textLabel(result.value || 'nil', 'gnoblin-console-value', true) : this._valueActor(result.value));
             row.add_child(output);
         }
         this._scrollBottom();
@@ -393,6 +417,7 @@ class DeveloperConsole extends St.Widget {
 
     clear() {
         this._evaluator.clear();
+        this._clearTranscript();
     }
 
     reset() {

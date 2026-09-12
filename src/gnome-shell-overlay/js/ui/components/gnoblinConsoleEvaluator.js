@@ -300,3 +300,48 @@ export class ConsoleEvaluator {
         return rows;
     }
 }
+
+// The native Lua state uses the same restricted libraries and gnoblin module
+// as config evaluation. It is independent of both the config loader and GJS.
+export class LuaConsoleEvaluator {
+    constructor(invoke, onLog) {
+        this._invoke = invoke;
+        this._onLog = onLog;
+        this._results = [];
+        this._nextId = 1;
+    }
+
+    async evaluate(source) {
+        const started = Date.now();
+        const reply = this._invoke('eval', source);
+        for (const line of reply.lines ?? [])
+            this._onLog(line);
+        const error = reply.error ? new Error(reply.error.split('\n')[0]) : null;
+        if (error) {
+            error.name = 'LuaError';
+            error.stack = reply.error;
+        }
+        const row = {id: this._nextId++, source, value: (reply.values ?? []).join('\t'),
+            error, durationMs: Date.now() - started, lua: true};
+        this._results.push(row);
+        if (this._results.length > 200)
+            this._results.shift();
+        return row;
+    }
+
+    complete(text, cursor = text.length) {
+        const match = text.slice(0, cursor).match(/([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*\.?)$/);
+        if (!match)
+            return {start: cursor, end: cursor, items: []};
+        const prefix = match[0].split('.').at(-1);
+        const reply = this._invoke('complete', match[0]);
+        return {start: cursor - prefix.length, end: cursor,
+            items: (reply.lines ?? []).sort().map(name => ({label: name, value: name}))};
+    }
+
+    get lastValue() { return this._results.at(-1)?.value; }
+    result(id) { return this._results.find(row => row.id === id)?.value; }
+    properties() { return []; }
+    clear() { this._results = []; }
+    reset() { this._invoke('reset', ''); this.clear(); }
+}

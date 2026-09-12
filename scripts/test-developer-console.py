@@ -320,6 +320,34 @@ failed = wait_marker('evaluated')['result']
 assert failed['error']['name'] == 'Error' and 'console probe' in failed['error']['message'], failed
 print('PASS: compositor JavaScript retains bindings, supports await, and reports errors')
 
+# Exercise the language switch through the same console evaluator entrypoint.
+assert evaluate(':lua')['value'] == 'lua'
+assert evaluate('21 * 2')['value'] == '42'
+evaluate('counter = 40')
+assert evaluate('counter + 2')['value'] == '42'
+assert evaluate("local g = require('gnoblin'); g.set { shell = { probe = 7 } }; return g.config.shell.probe")['value'] == '7'
+evaluate("print('lua output', counter)")
+call('Type', 'math.sq')
+time.sleep(.1)
+lua_completion = json.loads(value(call('Complete')))
+assert 'sqrt' in lua_completion['labels'], lua_completion
+call('Key', 0xff09)
+time.sleep(.1)
+assert state()['input'] == 'math.sqrt', state()
+call('Type', '')
+if MARKER.exists():
+    MARKER.unlink()
+call('Evaluate', "error('lua probe')")
+lua_error = wait_marker('evaluated')['result']
+assert lua_error['error']['name'] == 'LuaError' and 'lua probe' in lua_error['error']['message'], lua_error
+assert evaluate(':js')['value'] == 'js'
+assert evaluate('persistent')['value'] == 42
+assert evaluate(':lua')['value'] == 'lua'
+assert evaluate('counter')['value'] == '40'
+assert evaluate(':js')['value'] == 'js'
+print('PASS: Lua persists state, shares config helpers, prints, completes and reports errors; JavaScript state survives switching')
+
+
 
 inspected = json.loads(value(call('Inspect')))
 assert inspected['inspectorVisible'] and inspected['inspectorRows'] > 0, inspected

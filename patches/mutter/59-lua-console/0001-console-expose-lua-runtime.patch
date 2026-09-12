@@ -1,0 +1,46 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] console: expose persistent Lua evaluation to Shell
+
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -119,6 +119,9 @@
+ META_EXPORT
+ GVariant *meta_gnoblin_load_config (const char *path);
+ 
++META_EXPORT
++GVariant *meta_gnoblin_console_lua (const char *operation, const char *source);
++
+ #include "meta/types.h"
+ 
+ META_EXPORT
+diff --git a/src/core/util.c b/src/core/util.c
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -627,7 +627,25 @@
+ 
+ #ifdef HAVE_WAYLAND
+ #include "wayland/gnoblin-config.h"
+-#endif
++#include "wayland/gnoblin-console-lua.h"
++#endif
++
++/**
++ * meta_gnoblin_console_lua:
++ * @operation: eval, complete, or reset
++ * @source: Lua source or completion prefix
++ *
++ * Returns: (transfer full): console values, printed lines and optional error
++ */
++GVariant *
++meta_gnoblin_console_lua (const char *operation, const char *source)
++{
++#ifdef HAVE_WAYLAND
++  return gnoblin_console_lua (operation, source);
++#else
++  return NULL;
++#endif
++}
+ 
+ /**
+  * meta_gnoblin_load_config:
