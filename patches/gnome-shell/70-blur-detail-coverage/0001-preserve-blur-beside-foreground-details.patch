@@ -1,0 +1,46 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Preserve backdrop blur beside foreground alpha changes
+
+The neighbourhood maximum treated opaque icon details and separators as
+the material opacity of adjacent translucent pixels. That suppressed blur
+in a one-pixel ring around foreground content. Only recover antialiased
+coverage beside the surface silhouette, using neighbours with matching
+straight colour. Keep interior material alpha independent of neighbours.
+
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -850,17 +850,30 @@
+                          "  }"
+                          "}"
+                          "float buffer_fade = in_fade ? 1.0 - uncovered : 1.0;"
+-                         /* Recover the local material opacity before normalising coverage.
+-                          * Never turn a partially covered edge into an opaque mask. */
++                         /* Only normalise antialiasing at the surface silhouette.
++                          * Interior alpha changes belong to foreground content. A
++                          * nearby opaque line must not remove its neighbour's blur.
++                          * Match premultiplied colours before borrowing edge alpha,
++                          * so an icon or border cannot supply the material opacity. */
+                          "float local_alpha = material_alpha;"
++                         "bool silhouette_edge = false;"
+                          "if (material_alpha > 0.0 && material_alpha < 1.0) {"
+                          "for (int y = -1; y <= 1; y++) {"
+                          "  for (int x = -1; x <= 1; x++) {"
+-                         "    local_alpha = max(local_alpha, texture2D(cogl_sampler,"
+-                         "      cogl_tex_coord.st + vec2(float(x), float(y)) * mask_pixel).a);"
++                         "    vec4 neighbour = texture2D(cogl_sampler,"
++                         "      cogl_tex_coord.st + vec2(float(x), float(y)) * mask_pixel);"
++                         "    float neighbour_peak = max(neighbour.r, max(neighbour.g, neighbour.b));"
++                         "    bool neighbour_shadow = ignore_shadow_pixels > 0.5 &&"
++                         "      neighbour_peak < 0.002 * neighbour.a && neighbour.a < 0.999;"
++                         "    silhouette_edge = silhouette_edge || neighbour.a == 0.0 || neighbour_shadow;"
++                         "    vec3 colour_delta = abs(neighbour.rgb * material_alpha - cogl_texel.rgb * neighbour.a);"
++                         "    float quantisation = (material_alpha + neighbour.a) / 255.0;"
++                         "    if (all(lessThanEqual(colour_delta, vec3(quantisation))))"
++                         "      local_alpha = max(local_alpha, neighbour.a);"
+                          "  }"
+                          "}"
+                          "}"
++                         "if (!silhouette_edge) local_alpha = material_alpha;"
+                          "float tint_alpha = min(local_alpha / max(buffer_fade, 0.00001), 1.0);"
+                          "float coverage = clamp(material_alpha / max(max(local_alpha, mask_opacity * buffer_fade), 0.00001), 0.0, 1.0);"
+                          /* Bingux shadows are translucent black. Test straight colour,
