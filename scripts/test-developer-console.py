@@ -126,6 +126,7 @@ export default function (api) {
       <method name="RunBinding"><arg type="s" direction="out"/></method>
       <method name="Evaluate"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
       <method name="Inspect"><arg type="s" direction="out"/></method>
+      <method name="Complete"><arg type="s" direction="out"/></method>
       <method name="Escape"><arg type="s" direction="out"/></method>
       <method name="StartLock"><arg type="s" direction="out"/></method>
     </interface></node>`;
@@ -160,6 +161,17 @@ export default function (api) {
             const console = Main.createDevConsole();
             console.inspectObject(global.stage);
             return JSON.stringify(consoleState());
+        },
+        Complete() {
+            const console = Main.createDevConsole();
+            console._entry.set_text('global.g');
+            console._entry.clutter_text.set_cursor_position(-1);
+            console._complete();
+            const labels = console._completions.get_children().map(child =>
+                String(child.label ?? child.get_child?.()?.text ?? ''));
+            const result = {labels, visible: console._completions.visible, ...consoleState()};
+            console._hideCompletions();
+            return JSON.stringify(result);
         },
         Escape() {
             keyboard ??= keyboardDevice();
@@ -303,6 +315,12 @@ assert inspected['inspectorVisible'] and inspected['inspectorRows'] > 0, inspect
 print('PASS: object inspection exposes descriptor rows without leaving the console')
 
 
+completion = json.loads(value(call('Complete')))
+assert completion['visible'] and completion['labels'] and all(
+    label != '[object Object]' for label in completion['labels']), completion
+print('PASS: completion choices render labels and preserve their insertion values')
+
+
 value(call('Escape'))
 closed = wait_for(lambda current: not current['open'] and not current['visible'])
 assert not closed['focusEntry'], closed
@@ -315,6 +333,10 @@ assert opened_again['open'] and opened_again['lookingGlassAlias'], opened_again
 print('PASS: the panel-run-dialog keybinding opens the developer console')
 if MARKER.exists():
     MARKER.unlink()
+# Let the stock NetworkManager/Polkit probes settle before changing session
+# component lists. This keeps their asynchronous callbacks attached to live
+# Quick Settings actors while this focused console test exercises the lock.
+time.sleep(3)
 value(call('StartLock'))
 locked = wait_marker('locked')['state']
 assert locked['locked'] and not locked['open'] and not locked['visible'], locked

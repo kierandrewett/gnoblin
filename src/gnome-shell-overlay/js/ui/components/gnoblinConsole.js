@@ -9,7 +9,6 @@ import St from 'gi://St';
 import System from 'system';
 
 import * as Main from '../main.js';
-import * as ShellEntry from '../shellEntry.js';
 import {ConsoleEvaluator, isInspectable, preview} from './gnoblinConsoleEvaluator.js';
 
 const HISTORY_KEY = 'looking-glass-history';
@@ -39,6 +38,7 @@ class DeveloperConsole extends St.Widget {
         this._destroyed = false;
         this._expanded = false;
         this._pending = 0;
+        this._rows = new Set();
         this._inspectStack = [];
         this._history = global.settings.get_strv(HISTORY_KEY).slice(-MAX_ROWS);
         this._historyIndex = this._history.length;
@@ -110,7 +110,6 @@ class DeveloperConsole extends St.Widget {
         this._entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         this._entry.clutter_text.connect('key-press-event', (_text, event) => this._inputKey(event));
         this._entry.clutter_text.connect('text-changed', () => this._hideCompletions());
-        ShellEntry.addContextMenu(this._entry);
         input.add_child(this._entry);
         input.add_child(button('Run', () => this._submit(), 'gnoblin-console-run'));
         this._panel.add_child(input);
@@ -134,12 +133,12 @@ class DeveloperConsole extends St.Widget {
                 this.close(true);
         }, this);
         this.connect('destroy', () => {
-            this.close(true);
             this._destroyed = true;
+            this.close(true);
             if (this._scrollIdle)
                 GLib.source_remove(this._scrollIdle);
-            this._entry.menu?.destroy();
             this._inspectStack = [];
+            this._rows.clear();
             this._evaluator.clear();
         });
     }
@@ -224,7 +223,6 @@ class DeveloperConsole extends St.Widget {
         if (!this._open && !this.visible)
             return;
         this._open = false;
-        this._entry.menu?.close();
         this._hideCompletions();
         this._panel.remove_all_transitions();
         if (this._grab) {
@@ -322,7 +320,7 @@ class DeveloperConsole extends St.Widget {
         if (this._destroyed || model !== this._evaluator)
             return result;
         this._updateStatus();
-        if (!row.get_parent())
+        if (!this._rows.has(row))
             return result;
         pending.destroy();
         const output = new St.BoxLayout({style_class: 'gnoblin-console-output'});
@@ -359,9 +357,13 @@ class DeveloperConsole extends St.Widget {
     }
 
     _appendRow(row) {
+        this._rows.add(row);
         this._transcript.add_child(row);
-        while (this._transcript.get_n_children() > MAX_ROWS)
-            this._transcript.get_first_child().destroy();
+        while (this._transcript.get_n_children() > MAX_ROWS) {
+            const first = this._transcript.get_first_child();
+            this._rows.delete(first);
+            first.destroy();
+        }
         this._scrollBottom();
     }
 
@@ -381,6 +383,7 @@ class DeveloperConsole extends St.Widget {
     }
 
     _clearTranscript() {
+        this._rows.clear();
         this._transcript.destroy_all_children();
         this._properties.destroy_all_children();
         this._inspector.hide();
@@ -443,7 +446,7 @@ class DeveloperConsole extends St.Widget {
         }
         this._hideCompletions();
         for (const item of completion.items.slice(0, 6))
-            this._completions.add_child(button(item, () => accept(item)));
+            this._completions.add_child(button(item.label, () => accept(item)));
         if (completion.items.length > 6)
             this._completions.add_child(textLabel(`+${completion.items.length - 6} matches; type to narrow`, 'gnoblin-console-hint'));
         this._completions.show();
