@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 /* Black-box client harness for Gnoblin-owned Wayland protocol boundaries. */
+#include "xdg-shell-client-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
@@ -24,6 +25,7 @@ struct protocols
   struct wl_output *output;
   struct wl_shm *shm;
   struct wl_compositor *compositor;
+  struct xdg_wm_base *xdg_wm_base;
 };
 
 static uint32_t
@@ -34,6 +36,90 @@ supported_version (uint32_t advertised, uint32_t supported)
 struct foreign_toplevel_state
 {
   bool finished;
+  struct zwlr_foreign_toplevel_handle_v1 *test_toplevel;
+  unsigned int test_state_events;
+  unsigned int test_done_events;
+};
+
+static void
+foreign_handle_title (void *data,
+                      struct zwlr_foreign_toplevel_handle_v1 *toplevel,
+                      const char *title)
+{
+  (void) data;
+  (void) toplevel;
+  (void) title;
+}
+
+static void
+foreign_handle_app_id (void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *toplevel,
+                       const char *app_id)
+{
+  (void) data;
+  (void) toplevel;
+  (void) app_id;
+}
+
+static void
+foreign_handle_output (void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *toplevel,
+                       struct wl_output *output)
+{
+  (void) data;
+  (void) toplevel;
+  (void) output;
+}
+
+static void
+foreign_handle_state (void *data,
+                      struct zwlr_foreign_toplevel_handle_v1 *toplevel,
+                      struct wl_array *states)
+{
+  struct foreign_toplevel_state *state = data;
+
+  (void) states;
+  if (toplevel == state->test_toplevel)
+    state->test_state_events++;
+}
+
+static void
+foreign_handle_done (void *data,
+                     struct zwlr_foreign_toplevel_handle_v1 *toplevel)
+{
+  struct foreign_toplevel_state *state = data;
+
+  if (toplevel == state->test_toplevel)
+    state->test_done_events++;
+}
+
+static void
+foreign_handle_closed (void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *toplevel)
+{
+  (void) data;
+  (void) toplevel;
+}
+
+static void
+foreign_handle_parent (void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *toplevel,
+                       struct zwlr_foreign_toplevel_handle_v1 *parent)
+{
+  (void) data;
+  (void) toplevel;
+  (void) parent;
+}
+
+static const struct zwlr_foreign_toplevel_handle_v1_listener foreign_handle_listener = {
+  .title = foreign_handle_title,
+  .app_id = foreign_handle_app_id,
+  .output_enter = foreign_handle_output,
+  .output_leave = foreign_handle_output,
+  .state = foreign_handle_state,
+  .done = foreign_handle_done,
+  .closed = foreign_handle_closed,
+  .parent = foreign_handle_parent,
 };
 
 static void
@@ -41,9 +127,18 @@ foreign_toplevel (void *data,
                   struct zwlr_foreign_toplevel_manager_v1 *manager,
                   struct zwlr_foreign_toplevel_handle_v1 *toplevel)
 {
-  (void) data;
+  struct foreign_toplevel_state *state = data;
+
   (void) manager;
-  (void) toplevel;
+
+  /* The manager listener is installed after the initial registry round trip.
+   * This is the first new normal toplevel in this client. */
+  if (!state->test_toplevel)
+    state->test_toplevel = toplevel;
+
+  zwlr_foreign_toplevel_handle_v1_add_listener (toplevel,
+                                                 &foreign_handle_listener,
+                                                 data);
 }
 
 static void
@@ -59,6 +154,67 @@ foreign_finished (void *data,
 static const struct zwlr_foreign_toplevel_manager_v1_listener foreign_listener = {
   .toplevel = foreign_toplevel,
   .finished = foreign_finished,
+};
+
+struct xdg_surface_state
+{
+  bool configured;
+  uint32_t serial;
+};
+
+static void
+xdg_wm_base_ping (void *data,
+                  struct xdg_wm_base *xdg_wm_base,
+                  uint32_t serial)
+{
+  (void) data;
+  xdg_wm_base_pong (xdg_wm_base, serial);
+}
+
+static const struct xdg_wm_base_listener xdg_wm_base_listener = {
+  .ping = xdg_wm_base_ping,
+};
+
+static void
+xdg_surface_configure (void *data,
+                       struct xdg_surface *xdg_surface,
+                       uint32_t serial)
+{
+  struct xdg_surface_state *state = data;
+
+  (void) xdg_surface;
+  state->configured = true;
+  state->serial = serial;
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+  .configure = xdg_surface_configure,
+};
+
+static void
+xdg_toplevel_configure (void *data,
+                        struct xdg_toplevel *xdg_toplevel,
+                        int32_t width,
+                        int32_t height,
+                        struct wl_array *states)
+{
+  (void) data;
+  (void) xdg_toplevel;
+  (void) width;
+  (void) height;
+  (void) states;
+}
+
+static void
+xdg_toplevel_close (void *data, struct xdg_toplevel *xdg_toplevel)
+{
+  (void) data;
+  (void) xdg_toplevel;
+}
+
+static const struct xdg_toplevel_listener xdg_toplevel_listener = {
+  .configure = xdg_toplevel_configure,
+  .close = xdg_toplevel_close,
 };
 
 struct layer_surface_state
@@ -247,6 +403,10 @@ registry_global (void *data,
     protocols->compositor =
       wl_registry_bind (registry, name, &wl_compositor_interface,
                         supported_version (version, 6));
+  else if (strcmp (interface, xdg_wm_base_interface.name) == 0)
+    protocols->xdg_wm_base =
+      wl_registry_bind (registry, name, &xdg_wm_base_interface,
+                        supported_version (version, 1));
 }
 
 static void
@@ -263,16 +423,98 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static bool
-test_foreign_toplevel_stop (struct wl_display *display,
-                            struct protocols  *protocols)
+test_foreign_toplevel_broadcasts (struct wl_display          *display,
+                                  struct protocols           *protocols,
+                                  struct foreign_toplevel_state *foreign_state)
 {
-  struct foreign_toplevel_state state = { 0 };
+  struct xdg_surface_state xdg_state = { 0 };
+  struct wl_surface *surface;
+  struct xdg_surface *xdg_surface;
+  struct xdg_toplevel *xdg_toplevel;
+  struct wl_shm_pool *pool;
+  struct wl_buffer *buffer;
+  unsigned int state_events;
+  unsigned int done_events;
+  char path[] = "/tmp/gnoblin-foreign-toplevel-XXXXXX";
+  int fd;
 
-  zwlr_foreign_toplevel_manager_v1_add_listener (protocols->foreign_toplevel,
-                                                  &foreign_listener,
-                                                  &state);
+  xdg_wm_base_add_listener (protocols->xdg_wm_base,
+                            &xdg_wm_base_listener,
+                            NULL);
+  surface = wl_compositor_create_surface (protocols->compositor);
+  xdg_surface = xdg_wm_base_get_xdg_surface (protocols->xdg_wm_base, surface);
+  xdg_surface_add_listener (xdg_surface, &xdg_surface_listener, &xdg_state);
+  xdg_toplevel = xdg_surface_get_toplevel (xdg_surface);
+  xdg_toplevel_add_listener (xdg_toplevel, &xdg_toplevel_listener, NULL);
+  xdg_toplevel_set_app_id (xdg_toplevel, "org.gnoblin.ProtocolBoundary");
+  wl_surface_commit (surface);
+  if (wl_display_roundtrip (display) < 0 || !xdg_state.configured)
+    {
+      fprintf (stderr, "FAIL: test toplevel did not configure\n");
+      return false;
+    }
+
+  fd = mkstemp (path);
+  if (fd < 0 || unlink (path) != 0 || ftruncate (fd, 4) != 0)
+    {
+      fprintf (stderr, "FAIL: could not create foreign-toplevel SHM buffer\n");
+      if (fd >= 0)
+        close (fd);
+      return false;
+    }
+  pool = wl_shm_create_pool (protocols->shm, fd, 4);
+  buffer = wl_shm_pool_create_buffer (pool, 0, 1, 1, 4,
+                                      WL_SHM_FORMAT_ARGB8888);
+  wl_shm_pool_destroy (pool);
+  xdg_surface_ack_configure (xdg_surface, xdg_state.serial);
+  wl_surface_attach (surface, buffer, 0, 0);
+  wl_surface_damage_buffer (surface, 0, 0, 1, 1);
+  wl_surface_commit (surface);
+  if (wl_display_roundtrip (display) < 0 ||
+      wl_display_roundtrip (display) < 0 ||
+      !foreign_state->test_toplevel ||
+      foreign_state->test_state_events == 0 ||
+      foreign_state->test_done_events == 0)
+    {
+      fprintf (stderr,
+               "FAIL: test toplevel did not settle (state=%u done=%u target=%d)\n",
+               foreign_state->test_state_events,
+               foreign_state->test_done_events,
+               foreign_state->test_toplevel != NULL);
+      close (fd);
+      return false;
+    }
+
+  state_events = foreign_state->test_state_events;
+  done_events = foreign_state->test_done_events;
+  zwlr_foreign_toplevel_handle_v1_set_maximized (foreign_state->test_toplevel);
+  if (wl_display_roundtrip (display) < 0 || wl_display_roundtrip (display) < 0 ||
+      foreign_state->test_state_events != state_events + 1 ||
+      foreign_state->test_done_events != done_events + 1)
+    {
+      fprintf (stderr,
+               "FAIL: maximise did not produce one state snapshot and done\n");
+      close (fd);
+      return false;
+    }
+
+  zwlr_foreign_toplevel_handle_v1_destroy (foreign_state->test_toplevel);
+  foreign_state->test_toplevel = NULL;
+  wl_buffer_destroy (buffer);
+  xdg_toplevel_destroy (xdg_toplevel);
+  xdg_surface_destroy (xdg_surface);
+  wl_surface_destroy (surface);
+  close (fd);
+  return true;
+}
+
+static bool
+test_foreign_toplevel_stop (struct wl_display          *display,
+                            struct protocols           *protocols,
+                            struct foreign_toplevel_state *state)
+{
   zwlr_foreign_toplevel_manager_v1_stop (protocols->foreign_toplevel);
-  if (wl_display_roundtrip (display) < 0 || !state.finished)
+  if (wl_display_roundtrip (display) < 0 || !state->finished)
     {
       fprintf (stderr,
                "FAIL: foreign-toplevel manager did not finish after stop\n");
@@ -576,15 +818,19 @@ main (void)
       !protocols.layer_shell ||
       !protocols.screencopy ||
       !protocols.output ||
-      !protocols.shm)
+      !protocols.shm ||
+      !protocols.compositor ||
+      !protocols.xdg_wm_base)
     {
       fprintf (stderr,
-               "FAIL: missing protocol: foreign=%d layer=%d screencopy=%d output=%d shm=%d\n",
+               "FAIL: missing protocol: foreign=%d layer=%d screencopy=%d output=%d shm=%d compositor=%d xdg=%d\n",
                protocols.foreign_toplevel != NULL,
                protocols.layer_shell != NULL,
                protocols.screencopy != NULL,
                protocols.output != NULL,
-               protocols.shm != NULL);
+               protocols.shm != NULL,
+               protocols.compositor != NULL,
+               protocols.xdg_wm_base != NULL);
       return 1;
     }
 
@@ -597,8 +843,17 @@ main (void)
   if (!test_layer_surface_boundaries ())
     return 1;
 
-  if (!test_foreign_toplevel_stop (display, &protocols))
-    return 1;
+  {
+    struct foreign_toplevel_state foreign_state = { 0 };
+
+    zwlr_foreign_toplevel_manager_v1_add_listener (protocols.foreign_toplevel,
+                                                    &foreign_listener,
+                                                    &foreign_state);
+    if (!test_foreign_toplevel_broadcasts (display, &protocols, &foreign_state))
+      return 1;
+    if (!test_foreign_toplevel_stop (display, &protocols, &foreign_state))
+      return 1;
+  }
 
   if (!test_screencopy_boundaries (display, &protocols))
     return 1;

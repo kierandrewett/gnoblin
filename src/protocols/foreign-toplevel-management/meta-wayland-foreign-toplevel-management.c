@@ -63,6 +63,12 @@ typedef struct _MetaWaylandForeignToplevelHandle
   gulong notify_maximized_v_id;
   gulong notify_fullscreen_id;
   gulong notify_focus_id;
+  char *last_title;
+  char *last_app_id;
+  uint32_t last_state;
+  gboolean title_sent;
+  gboolean app_id_sent;
+  gboolean state_sent;
   MetaWaylandSurface *target_surface;
   MetaWindow *target_window;
   MtkRectangle target_rect;
@@ -83,51 +89,82 @@ current_time (MetaWaylandForeignToplevelHandle *handle)
   return meta_display_get_current_time_roundtrip (display);
 }
 
-static void
+static gboolean
 handle_send_title (MetaWaylandForeignToplevelHandle *handle)
 {
   const char *title = meta_window_get_title (handle->window);
 
+  title = title ? title : "";
+  if (handle->title_sent && g_strcmp0 (handle->last_title, title) == 0)
+    return FALSE;
+
+  g_free (handle->last_title);
+  handle->last_title = g_strdup (title);
+  handle->title_sent = TRUE;
   zwlr_foreign_toplevel_handle_v1_send_title (handle->resource,
-                                              title ? title : "");
+                                              title);
+  return TRUE;
 }
 
-static void
+static gboolean
 handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
 {
   const char *app_id =
     meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
 
+  if (handle->app_id_sent && g_strcmp0 (handle->last_app_id, app_id) == 0)
+    return FALSE;
+
+  g_free (handle->last_app_id);
+  handle->last_app_id = g_strdup (app_id);
+  handle->app_id_sent = TRUE;
   zwlr_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
+  return TRUE;
 }
 
-static void
+static gboolean
 handle_send_state (MetaWaylandForeignToplevelHandle *handle)
 {
   struct wl_array states;
   gboolean minimized = FALSE;
   uint32_t *entry;
-
-  wl_array_init (&states);
+  uint32_t state = 0;
 
   g_object_get (handle->window, "minimized", &minimized, NULL);
 
   if (meta_window_get_maximize_flags (handle->window) == META_MAXIMIZE_BOTH)
+    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+  if (minimized)
+    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
+  if (meta_window_has_focus (handle->window))
+    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
+  if (meta_window_is_fullscreen (handle->window))
+    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
+
+  if (handle->state_sent && handle->last_state == state)
+    return FALSE;
+
+  handle->last_state = state;
+  handle->state_sent = TRUE;
+
+  wl_array_init (&states);
+
+  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED))
     {
       entry = wl_array_add (&states, sizeof *entry);
       *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
     }
-  if (minimized)
+  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED))
     {
       entry = wl_array_add (&states, sizeof *entry);
       *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
     }
-  if (meta_window_has_focus (handle->window))
+  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED))
     {
       entry = wl_array_add (&states, sizeof *entry);
       *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
     }
-  if (meta_window_is_fullscreen (handle->window))
+  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN))
     {
       entry = wl_array_add (&states, sizeof *entry);
       *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
@@ -135,6 +172,7 @@ handle_send_state (MetaWaylandForeignToplevelHandle *handle)
 
   zwlr_foreign_toplevel_handle_v1_send_state (handle->resource, &states);
   wl_array_release (&states);
+  return TRUE;
 }
 
 static void
@@ -144,8 +182,8 @@ on_notify_title (GObject *o, GParamSpec *p, gpointer user_data)
 
   if (!handle->window)
     return;
-  handle_send_title (handle);
-  zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+  if (handle_send_title (handle))
+    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
 static void
@@ -155,8 +193,8 @@ on_notify_app_id (GObject *o, GParamSpec *p, gpointer user_data)
 
   if (!handle->window)
     return;
-  handle_send_app_id (handle);
-  zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+  if (handle_send_app_id (handle))
+    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
 static void
@@ -166,8 +204,8 @@ on_notify_state (GObject *o, GParamSpec *p, gpointer user_data)
 
   if (!handle->window)
     return;
-  handle_send_state (handle);
-  zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+  if (handle_send_state (handle))
+    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
 #define TARGET_OWNER "gnoblin-minimize-target-owner"
@@ -429,6 +467,8 @@ handle_destroy (struct wl_resource *resource)
   MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
 
   handle_disconnect_window (handle);
+  g_free (handle->last_title);
+  g_free (handle->last_app_id);
   g_free (handle);
 }
 
