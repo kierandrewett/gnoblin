@@ -1,0 +1,281 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] shell: remove native desktop popups from Gnoblin
+
+Keep window and capture services while external chrome owns desktop controls.
+OSD requests use the existing transport without allocating native widgets.
+Stock GNOME retains its UI.
+
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -489,6 +489,9 @@
+     }
+ 
+     _addBackgroundMenu(bgManager) {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         BackgroundMenu.addBackgroundMenu(bgManager.backgroundActor, this);
+     }
+ 
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -244,7 +244,8 @@
+     global.connect('shutdown',
+         () => global.stage.context.get_backend().set_input_method(null));
+ 
+-    screenshotUI = new Screenshot.ScreenshotUI();
++    if (global.session_mode !== 'gnoblin')
++        screenshotUI = new Screenshot.ScreenshotUI();
+ 
+     messageTray = new MessageTray.MessageTray();
+     panel = new Panel.Panel();
+@@ -259,8 +260,10 @@
+     breakManager = new BreakManager.BreakManager();
+     timeLimitsManager = new TimeLimitsManager.TimeLimitsManager();
+     screenTimeDBus = new ShellDBus.ScreenTimeDBus(breakManager);
+-    breakManagerDispatcher = new BreakManager.BreakDispatcher(breakManager);
+-    timeLimitsDispatcher = new TimeLimitsManager.TimeLimitsDispatcher(timeLimitsManager);
++    if (global.session_mode !== 'gnoblin') {
++        breakManagerDispatcher = new BreakManager.BreakDispatcher(breakManager);
++        timeLimitsDispatcher = new TimeLimitsManager.TimeLimitsDispatcher(timeLimitsManager);
++    }
+ 
+     brightnessManager = new BrightnessManager.BrightnessManager();
+     brightnessDBus = new ShellDBus.BrightnessDBus(brightnessManager);
+@@ -829,6 +832,9 @@
+  * Opens the run dialog
+  */
+ export function openRunDialog() {
++    if (!sessionMode.hasRunDialog)
++        return;
++
+     if (runDialog == null)
+         runDialog = new RunDialog.RunDialog();
+ 
+@@ -836,6 +842,9 @@
+ }
+ 
+ export function openWelcomeDialog() {
++    if (!sessionMode.showWelcomeDialog)
++        return;
++
+     if (welcomeDialog === null)
+         welcomeDialog = new WelcomeDialog.WelcomeDialog();
+ 
+diff --git a/js/ui/osdMonitorLabeler.js b/js/ui/osdMonitorLabeler.js
+--- a/js/ui/osdMonitorLabeler.js
++++ b/js/ui/osdMonitorLabeler.js
+@@ -92,6 +92,9 @@
+     }
+ 
+     show(client, params) {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         if (!this._trackClient(client))
+             return;
+ 
+diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
+--- a/js/ui/osdWindow.js
++++ b/js/ui/osdWindow.js
+@@ -144,12 +144,19 @@
+ export class OsdWindowManager {
+     constructor() {
+         this._osdWindows = [];
++        // Gnoblin forwards OSD requests to external chrome without actors.
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         Main.layoutManager.connect('monitors-changed',
+             this._monitorsChanged.bind(this));
+         this._monitorsChanged();
+     }
+ 
+     _monitorsChanged() {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
+             if (this._osdWindows[i] === undefined)
+                 this._osdWindows[i] = new OsdWindow(i);
+@@ -164,6 +171,10 @@
+     }
+ 
+     _showOsdWindow(monitorIndex, icon, label, level, maxLevel) {
++        // gnoblinControl installs the external OSD transport on this method.
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         this._osdWindows[monitorIndex].setIcon(icon);
+         this._osdWindows[monitorIndex].setLabel(label);
+         this._osdWindows[monitorIndex].setMaxLevel(maxLevel);
+@@ -172,12 +183,12 @@
+     }
+ 
+     show(icon, label, levels) {
+-        for (let i = 0; i < this._osdWindows.length; i++) {
++        for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
+             if (levels[i]) {
+                 const {level, maxLevel = -1} = levels[i];
+                 this._showOsdWindow(i, icon, label, level, maxLevel);
+             } else {
+-                this._osdWindows[i].cancel();
++                this._osdWindows[i]?.cancel();
+             }
+         }
+     }
+@@ -189,7 +200,7 @@
+     }
+ 
+     showAll(icon, label, level, maxLevel) {
+-        for (let i = 0; i < this._osdWindows.length; i++)
++        for (let i = 0; i < Main.layoutManager.monitors.length; i++)
+             this._showOsdWindow(i, icon, label, level, maxLevel);
+     }
+ 
+diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
+--- a/js/ui/padOsd.js
++++ b/js/ui/padOsd.js
+@@ -19,34 +19,9 @@
+ 
+ const ACTIVE_COLOR = 'st-lighten(-st-accent-color, 15%)';
+ 
+-const GNOBLIN_SETTINGS_SCHEMA = 'org.gnoblin.shell';
+-const GNOBLIN_DISABLED_FEATURES_KEY = 'disabled-features';
+-
+-let gnoblinSettings = null;
+-let gnoblinSettingsResolved = false;
+-
+-// Tablet-pad requests do not use OsdWindowManager. This shared predicate lets
+-// the Gnoblin feature contract cover the dedicated PadOsd path as well.
++// The external shell owns tablet-pad controls throughout the Gnoblin session.
+ export function isPadOsdEnabled() {
+-    if (Main.sessionMode?.currentMode !== 'gnoblin')
+-        return true;
+-
+-    if (!gnoblinSettingsResolved) {
+-        try {
+-            gnoblinSettings = new Gio.Settings({
+-                schema_id: GNOBLIN_SETTINGS_SCHEMA,
+-            });
+-        } catch (error) {
+-            log(`pad-osd: unable to load Gnoblin settings: ${error.message}`);
+-        }
+-        gnoblinSettingsResolved = true;
+-    }
+-
+-    if (!gnoblinSettings)
+-        return true;
+-
+-    const disabled = gnoblinSettings.get_strv(GNOBLIN_DISABLED_FEATURES_KEY);
+-    return !disabled.includes('osd') && !disabled.includes('osd-pad');
++    return global.session_mode !== 'gnoblin';
+ }
+ 
+ const LTR = 0;
+diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
+--- a/js/ui/screenshot.js
++++ b/js/ui/screenshot.js
+@@ -2424,6 +2424,9 @@
+  * Shows the screenshot UI.
+  */
+ export function showScreenshotUI() {
++    if (!Main.screenshotUI)
++        return;
++
+     Main.screenshotUI.open().catch(err => {
+         logError(err, 'Error opening the screenshot UI');
+     });
+@@ -2433,6 +2436,9 @@
+  * Shows the screen recording UI.
+  */
+ export function showScreenRecordingUI() {
++    if (!Main.screenshotUI)
++        return;
++
+     Main.screenshotUI.open(UIMode.SCREENCAST).catch(err => {
+         logError(err, 'Error opening the screenshot UI');
+     });
+@@ -2685,6 +2691,12 @@
+     }
+ 
+     async InteractiveScreenshotAsync(params, invocation) {
++        if (!Main.screenshotUI) {
++            invocation.return_error_literal(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED,
++                'Gnoblin delegates interactive screenshots to the external shell');
++            return;
++        }
++
+         try {
+             await this._senderChecker.checkInvocation(invocation);
+         } catch (e) {
+diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
+--- a/js/ui/status/remoteAccess.js
++++ b/js/ui/status/remoteAccess.js
+@@ -37,7 +37,7 @@
+     _isRecording() {
+         // Screenshot UI screencasts have their own panel, so don't show this
+         // indicator if there's only a screenshot UI screencast.
+-        if (Main.screenshotUI.screencast_in_progress)
++        if (Main.screenshotUI?.screencast_in_progress)
+             return this._handles.size > 1;
+ 
+         return this._handles.size > 0;
+@@ -89,7 +89,7 @@
+         this._box.add_child(this._icon);
+ 
+         this.hide();
+-        Main.screenshotUI.connect(
++        Main.screenshotUI?.connect(
+             'notify::screencast-in-progress',
+             this._onScreencastInProgressChanged.bind(this));
+     }
+@@ -97,7 +97,7 @@
+     vfunc_event(event) {
+         if (event.type() === Clutter.EventType.TOUCH_BEGIN ||
+             event.type() === Clutter.EventType.BUTTON_PRESS)
+-            Main.screenshotUI.stopScreencast();
++            Main.screenshotUI?.stopScreencast();
+ 
+         return Clutter.EVENT_PROPAGATE;
+     }
+@@ -109,6 +109,9 @@
+     }
+ 
+     _onScreencastInProgressChanged() {
++        if (!Main.screenshotUI)
++            return;
++
+         if (Main.screenshotUI.screencast_in_progress) {
+             this.show();
+ 
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1843,7 +1843,7 @@
+         else
+             this.actionMoveWindow(window, newWs);
+ 
+-        if (!Main.overview.visible) {
++        if (global.session_mode !== 'gnoblin' && !Main.overview.visible) {
+             if (this._workspaceSwitcherPopup == null) {
+                 this._workspaceTracker.blockUpdates();
+                 this._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -279,8 +279,10 @@
+             GObject.BindingFlags.SYNC_CREATE);
+         this.child.add_child(this._laptopSpacer);
+ 
+-        const screenshotItem = new ScreenshotItem();
+-        this.child.add_child(screenshotItem);
++        if (Main.screenshotUI) {
++            const screenshotItem = new ScreenshotItem();
++            this.child.add_child(screenshotItem);
++        }
+ 
+         const settingsItem = new SettingsItem();
+         this.child.add_child(settingsItem);

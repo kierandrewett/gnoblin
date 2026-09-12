@@ -100,7 +100,7 @@ config.write_text('[shell]\nosd = true\nscreenshot = true\n')
 time.sleep(0.5)
 for feature in ['osd', 'screenshot']:
     result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell', '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', feature], text=True)
-    assert result.strip() == '(true,)', result
+    assert result.strip() == '(false,)', result
 # Named commands run once, including after they exit and the file reloads.
 started = root / 'autostart-count'
 command = ['sh', '-c', 'echo started >> "$1"', 'autostart-test', str(started)]

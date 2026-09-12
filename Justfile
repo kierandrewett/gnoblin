@@ -233,10 +233,9 @@ gnome-dbus-verify:
 perf-smoke:
     ./scripts/perf-smoke.sh
 
-# Headless: prove live extension hot-reload — install a probe extension, edit its
-# code, ReloadExtension over org.gnoblin.*, confirm the new code ran (no relogin).
-gnome-hot-reload-verify:
-    ./scripts/test-hot-reload.sh
+# Headless: verify external chrome owns the removed native desktop UI.
+gnome-native-chrome-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-native-chrome.py" ./scripts/run-gnome-shell.sh
 
 # Headless: prove TOML/config watching, named autostart and live window behaviour.
 gnome-config-verify:
@@ -363,7 +362,7 @@ verify-installed-headless:
     just gnome-stock-protocol-isolation-verify
     just gnome-protocol-boundaries-verify
     just gnome-dbus-verify
-    just gnome-hot-reload-verify
+    just gnome-native-chrome-verify
     just gnome-config-verify
     just gnome-scripting-verify
     just gnome-notifications-verify

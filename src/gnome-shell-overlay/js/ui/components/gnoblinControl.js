@@ -82,15 +82,6 @@ function stylesheetDigest() {
 // code instead of reusing the cached module.
 let scriptImportSeq = 0;
 
-// OSD subsystems gnoblin can gate individually, classified from the OSD icon.
-// The single osd gate (installed in enable()) reads these live; `osd` is the master.
-const OSD_TYPES = {
-    'osd-volume': ['audio-volume', 'audio-speaker'],
-    'osd-microphone': ['microphone', 'audio-input'],
-    'osd-brightness': ['display-brightness'],
-    'osd-keyboard-brightness': ['keyboard-brightness'],
-};
-
 // Return a GIcon's theme names without trusting the object supplied by the caller.
 function osdIconNames(icon) {
     try {
@@ -197,49 +188,15 @@ function osdOutputNamesForMonitorIndex(monitorIndex) {
     }
 }
 
-// Classify an OSD by its icon → the per-type feature id, or null (unknown type,
-// gated only by the master switch). Volume/brightness/etc. pass a Gio.ThemedIcon.
-function classifyOsd(icon) {
-    const hay = osdIconNames(icon).join(' ');
-    for (const [feature, prefixes] of Object.entries(OSD_TYPES)) {
-        if (prefixes.some(p => hay.includes(p)))
-            return feature;
-    }
-    return null;
-}
-
-// Runtime feature toggles. Each feature gates a gnome-shell subsystem so an
-// external userspace (Quickshell, waybar, custom) can own it instead — live, with
-// no compositor restart. A feature is ENABLED unless its id is in the
-// org.gnoblin.shell 'disabled-features' list. Two kinds: 'screenshot' shadows a
-// method in its apply(); the OSD family is enforced by a shared state-driven gate
-// (installed in enable()), so their apply() is a no-op — the gate reads state live.
+// Removed UI features remain readable so existing external-shell configuration
+// can keep setting them to false. They cannot recreate GNOME widgets.
+const REMOVED_FEATURES = new Set([
+    'osd', 'osd-volume', 'osd-microphone', 'osd-brightness',
+    'osd-keyboard-brightness', 'osd-pad', 'screenshot',
+]);
 const FEATURES = {
-    osd: {summary: 'On-screen display popups — master switch (all OSDs)', apply() {}},
-    'osd-volume': {summary: 'Volume OSD popup', apply() {}},
-    'osd-microphone': {summary: 'Microphone OSD popup', apply() {}},
-    'osd-brightness': {summary: 'Screen-brightness OSD popup', apply() {}},
-    'osd-keyboard-brightness': {summary: 'Keyboard-brightness OSD popup', apply() {}},
-    'osd-pad': {summary: 'Tablet-pad OSD popup', apply() {}},
-    screenshot: {
-        summary: 'Built-in screenshot / screencast UI',
-        apply(enabled) {
-            const ui = Main.screenshotUI;
-            if (!ui)
-                return;
-            if (enabled)
-                delete ui.open;              // restore ScreenshotUI.prototype.open
-            else
-                ui.open = async () => {};     // no-op the built-in capture UI
-        },
-    },
-    // Owning org.freedesktop.Notifications. Enforced out-of-process by the fdo
-    // notification daemon (patches/gnome-shell/36-notifications-toggle) watching this
-    // same 'disabled-features' key — disable to let an external daemon own it.
-    notifications: {summary: 'Own org.freedesktop.Notifications (off → external daemon can)', apply() {}},
-    // The keyboard module reads this state before constructing its native
-    // modifier switcher. Turning it off leaves source selection intact for
-    // external shell chrome such as Bingux.
+    // The separate notification daemon reads this setting before owning the bus.
+    notifications: {summary: 'Own org.freedesktop.Notifications', apply() {}},
     'input-source-switcher': {summary: 'Native GNOME keyboard-layout switcher', apply() {}},
 };
 
@@ -489,8 +446,7 @@ const IFACE = `
       <arg type="u" name="protocolVersion"/>
       <arg type="t" name="monotonicUsec"/>
     </signal>
-    <!-- Emitted instead of drawing a standard OSD when the osd master switch or
-         its matching per-type feature is disabled. Payload: [protocol version,
+    <!-- OSD requests are always forwarded to external chrome. Payload: [protocol version,
          monitor index, icon name, label, level, maximum level, physical output
          connector names]. The connector names identify every physical output in
          the logical monitor that owns monitorIndex. -->
@@ -874,7 +830,9 @@ export class Component {
         }
         const disabled = new Set(this._disabledList());
         for (const id of FEATURE_KEYS) {
-            if (next[id] === true)
+            if (REMOVED_FEATURES.has(id))
+                disabled.add(id);
+            else if (next[id] === true)
                 disabled.delete(id);
             else if (next[id] === false)
                 disabled.add(id);
@@ -895,14 +853,12 @@ export class Component {
     }
 
     _isEnabled(id) {
-        return !this._disabledList().includes(id);
+        return !REMOVED_FEATURES.has(id) && !this._disabledList().includes(id);
     }
 
     _syncFeatureState() {
-        const disabled = new Set(this._disabledList());
-
         for (const id of Object.keys(FEATURES)) {
-            const enabled = !disabled.has(id);
+            const enabled = this._isEnabled(id);
             const previous = this._featureState.get(id);
             if (previous === enabled)
                 continue;
@@ -950,27 +906,12 @@ export class Component {
         }
     }
 
-    // Install a single state-driven wrapper on OsdWindowManager._showOsdWindow —
-    // the chokepoint both show() and showAll() funnel through. It reads the feature
-    // state live per call, so the master 'osd' switch and the per-type switches
-    // (osd-volume, osd-brightness, ...) take effect immediately with no re-apply.
+    // Keep the existing OSD transport contract without any native OSD widgets.
     _installOsdGate() {
         const mgr = Main.osdWindowManager;
         if (!mgr || this._osdGateInstalled)
             return;
-        const control = this;
-        const orig = mgr._showOsdWindow;   // the prototype method
-        mgr._showOsdWindow = function (monitorIndex, icon, label, level, maxLevel) {
-            const feature = classifyOsd(icon);
-            const osdSuppressed = !control._isEnabled('osd')
-                || (feature && !control._isEnabled(feature));
-            if (osdSuppressed) {
-                control._emitOsdRequested(monitorIndex, icon, label, level, maxLevel);
-                return;
-            }
-
-            return orig.call(this, monitorIndex, icon, label, level, maxLevel);
-        };
+        mgr._showOsdWindow = (...args) => this._emitOsdRequested(...args);
         this._osdGateInstalled = true;
     }
 
@@ -991,6 +932,11 @@ export class Component {
     }
 
     SetFeature(id, enabled) {
+        if (REMOVED_FEATURES.has(id)) {
+            if (enabled)
+                throw new Error(`${id}: native UI has been removed; use the external shell`);
+            return;
+        }
         if (!Object.hasOwn(FEATURES, id))
             throw new Error(`unknown feature: ${id}`);
         if (this._isEnabled(id) === enabled)

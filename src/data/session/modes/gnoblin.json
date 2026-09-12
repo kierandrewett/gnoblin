@@ -7,6 +7,8 @@
   },
   "hasOverview": false,
   "hasNotifications": false,
+  "hasRunDialog": false,
+  "hasWmMenus": false,
   "showWelcomeDialog": false,
   "components": [
     "polkitAgent",

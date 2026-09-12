@@ -103,8 +103,8 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
     esac
   }
 
-  feature_signal_count_is() {
-    [ "$(grep -c FeatureChanged "$SIGNAL_LOG" || true)" -eq "$1" ]
+  input_source_switcher_signal_count_is() {
+    [ "$(grep -c FeatureChanged "$INPUT_SOURCE_SWITCHER_SIGNAL_LOG" || true)" -eq "$1" ]
   }
 
   super_release_signal_is_valid() {
@@ -157,12 +157,6 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
   else
     echo "  FAIL: Reload replied before completion"; rc=1
   fi
-  if callp ReloadExtension missing@gnoblin >/dev/null; then
-    echo "  FAIL: unknown extension reload reported success"; rc=1
-  else
-    echo "  ok: failed extension reload returned a D-Bus error"
-  fi
-
   # --- input source + privacy state ---
   sources="$(call ListInputSources)"; echo "ListInputSources -> $sources"
   case "$sources" in
@@ -220,18 +214,16 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
 
   # --- feature toggles ---
   feats="$(call ListFeatures)"; echo "ListFeatures -> $feats"
-  case "$feats" in *osd*screenshot*|*screenshot*osd*) echo "  ok: ListFeatures (osd + screenshot)";; *) echo "  FAIL: ListFeatures"; rc=1;; esac
+  case "$feats" in *osd*|*screenshot*) echo "  FAIL: removed controls remain listed"; rc=1;; esac
+  case "$feats" in *notifications*input-source-switcher*) echo "  ok: only remaining controls listed";; *) echo "  FAIL: ListFeatures"; rc=1;; esac
 
-  g0="$(callp GetFeature osd)";                 echo "GetFeature osd (default) -> $g0"
-  case "$g0" in *true*)  echo "  ok: osd default enabled";; *) echo "  FAIL: osd default"; rc=1;; esac
-
-  callp SetFeature osd false >/dev/null
-  g1="$(callp GetFeature osd)";                 echo "GetFeature osd (after off) -> $g1"
-  case "$g1" in *false*) echo "  ok: SetFeature osd off";; *) echo "  FAIL: SetFeature off"; rc=1;; esac
-
-  callp SetFeature osd true >/dev/null
-  g2="$(callp GetFeature osd)";                 echo "GetFeature osd (after on) -> $g2"
-  case "$g2" in *true*)  echo "  ok: SetFeature osd on";; *) echo "  FAIL: SetFeature on"; rc=1;; esac
+  for feature in osd osd-volume osd-microphone osd-brightness osd-keyboard-brightness osd-pad screenshot; do
+    feature_is "$feature" false || { echo "FAIL: native $feature available"; rc=1; }
+    callp SetFeature "$feature" false >/dev/null
+    if callp SetFeature "$feature" true >/dev/null; then
+      echo "FAIL: removed native $feature enabled"; rc=1
+    fi
+  done
 
   # Eval is private to this unsafe test shell. It drives the exact
   # OsdWindowManager chokepoint without adding a production test command.
@@ -260,107 +252,58 @@ dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
     echo "  active OSD outputs -> $OSD_OUTPUT_NAMES"
   fi
 
-  show_test_osd
-  sleep 1
-  if grep -q OsdRequested "$OSD_SIGNAL_LOG"; then
-    echo "  FAIL: native OSD was forwarded"; cat "$OSD_SIGNAL_LOG"; rc=1
-  else
-    echo "  ok: native OSD was not forwarded"
-  fi
-
-  callp SetFeature osd false >/dev/null
   previous_count="$(osd_signal_count)"
   show_test_osd
   if gnoblin_wait_until 5 osd_signal_records_are_valid_after "$previous_count"; then
-    echo "  ok: suppressed OSD emitted one complete protocol v2 record"
+    echo "  ok: OSD request forwarded with its output and level"
   else
-    echo "  FAIL: suppressed OSD handoff"; cat "$OSD_SIGNAL_LOG"; rc=1
+    echo "  FAIL: external OSD handoff"; cat "$OSD_SIGNAL_LOG"; rc=1
   fi
 
-  # The master gate stays enabled while the per-type gate suppresses volume.
-  callp SetFeature osd true >/dev/null
-  master_osd="$(callp GetFeature osd)"
-  case "$master_osd" in
-    *true*) echo "  ok: master osd enabled for osd-volume gate";;
-    *) echo "  FAIL: master osd not enabled for osd-volume gate"; rc=1;;
-  esac
-  callp SetFeature osd-volume false >/dev/null
-  volume_gate="$(callp GetFeature osd-volume)"
-  case "$volume_gate" in
-    *false*) echo "  ok: osd-volume disabled for forwarding check";;
-    *) echo "  FAIL: osd-volume gate did not disable"; rc=1;;
-  esac
-  previous_count="$(osd_signal_count)"
-  show_test_osd
-  if gnoblin_wait_until 5 osd_signal_records_are_valid_after "$previous_count"; then
-    echo "  ok: disabled osd-volume forwarded a new complete OSD record"
-  else
-    echo "  FAIL: osd-volume OSD handoff"; cat "$OSD_SIGNAL_LOG"; rc=1
-  fi
-  callp SetFeature osd-volume true >/dev/null
   kill "$OSD_SIGNAL_PID" 2>/dev/null || true
 
-  # Changes made outside org.gnoblin.Shell must follow the same live apply and
-  # FeatureChanged path, without duplicating the signal on each transition.
-  SIGNAL_LOG="$XDG_CACHE_HOME/feature-signals.log"
+  # Direct GSettings changes still apply to a supported live feature and emit
+  # exactly one FeatureChanged event per state change. Keep notifications
+  # disabled while this test enables the native input-source switcher.
+  callp SetFeature input-source-switcher true >/dev/null
+  feature_is input-source-switcher true || {
+    echo "FAIL: input-source switcher did not enable"; rc=1;
+  }
+  INPUT_SOURCE_SWITCHER_SIGNAL_LOG="$XDG_CACHE_HOME/input-source-switcher-feature-signals.log"
   gdbus monitor --session --dest org.gnoblin.Shell \
-    --object-path /org/gnoblin/Shell >"$SIGNAL_LOG" 2>&1 &
-  SIGNAL_PID=$!
-  gnoblin_wait_for_log "$SIGNAL_LOG" "Monitoring signals" 5
-  gsettings set org.gnoblin.shell disabled-features "['\''screenshot'\'']"
-  if gnoblin_wait_until 10 feature_is screenshot false; then
-    echo "  ok: direct GSettings disable applied live"
+    --object-path /org/gnoblin/Shell >"$INPUT_SOURCE_SWITCHER_SIGNAL_LOG" 2>&1 &
+  INPUT_SOURCE_SWITCHER_SIGNAL_PID=$!
+  gnoblin_wait_for_log "$INPUT_SOURCE_SWITCHER_SIGNAL_LOG" "Monitoring signals" 5
+  gsettings set org.gnoblin.shell disabled-features "['\''notifications'\'', '\''input-source-switcher'\'']"
+  if gnoblin_wait_until 10 feature_is input-source-switcher false; then
+    echo "  ok: direct GSettings disable applied to input-source switcher"
   else
-    echo "  FAIL: direct GSettings disable not applied"; rc=1
+    echo "  FAIL: direct GSettings input-source disable not applied"; rc=1
   fi
-  gsettings set org.gnoblin.shell disabled-features "[]"
-  if gnoblin_wait_until 10 feature_is screenshot true &&
-     gnoblin_wait_until 10 feature_signal_count_is 2; then
-    echo "  ok: direct GSettings transitions emitted exactly once"
+  gsettings set org.gnoblin.shell disabled-features "['\''notifications'\'']"
+  if gnoblin_wait_until 10 feature_is input-source-switcher true &&
+     gnoblin_wait_until 10 input_source_switcher_signal_count_is 2; then
+    echo "  ok: direct GSettings input-source transitions emitted exactly once"
   else
-    echo "  FAIL: direct GSettings transition signals"; cat "$SIGNAL_LOG"; rc=1
+    echo "  FAIL: direct GSettings input-source transition signals"
+    cat "$INPUT_SOURCE_SWITCHER_SIGNAL_LOG"; rc=1
   fi
-  kill "$SIGNAL_PID" 2>/dev/null || true
+  kill "$INPUT_SOURCE_SWITCHER_SIGNAL_PID" 2>/dev/null || true
+
+  # Stale preferences must not recreate removed widgets.
+  for feature in osd osd-volume osd-pad screenshot; do
+    feature_is "$feature" false || { echo "FAIL: GSettings restored native $feature"; rc=1; }
+  done
 
   gu="$(callp GetFeature bogus)";               echo "GetFeature bogus -> $gu"
   case "$gu" in *false*) echo "  ok: unknown feature -> false";; *) echo "  FAIL: unknown feature"; rc=1;; esac
 
-  # per-OSD toggles (master osd + per-type)
-  case "$feats" in *osd-volume*) echo "  ok: per-OSD features listed (osd-volume)";; *) echo "  FAIL: no per-OSD features"; rc=1;; esac
-  callp SetFeature osd-volume false >/dev/null
-  gv="$(callp GetFeature osd-volume)";          echo "GetFeature osd-volume (after off) -> $gv"
-  case "$gv" in *false*) echo "  ok: SetFeature osd-volume off";; *) echo "  FAIL: per-OSD set"; rc=1;; esac
-  callp SetFeature osd-volume true >/dev/null
-
-  # Tablet-pad OSD bypasses OsdWindowManager. Verify the dedicated path obeys
-  # both the master and tablet-pad feature gates before it constructs native UI.
-  shell_eval_is_true() {
-    gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
-      --method org.gnome.Shell.Eval "$1" | grep -Eq ", [[:punct:]]true[[:punct:]]"
-  }
-  pad_osd_is_suppressed_by_window_manager() {
-    shell_eval_is_true "Main.wm._showPadOsd(null, null, null, null, false, 0) === null"
-  }
-
-  pad_gate="$(callp GetFeature osd-pad)"
-  case "$pad_gate" in
-    *true*) echo "  ok: tablet-pad OSD default enabled";;
-    *) echo "  FAIL: tablet-pad OSD default"; rc=1;;
+  pad_result="$(gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+    --method org.gnome.Shell.Eval "Main.wm._showPadOsd(null, null, null, null, false, 0) === null")"
+  case "$pad_result" in
+    *true*true*) echo "  ok: tablet-pad request creates no native UI";;
+    *) echo "  FAIL: tablet-pad request: $pad_result"; rc=1;;
   esac
-  callp SetFeature osd-pad false >/dev/null
-  if pad_osd_is_suppressed_by_window_manager; then
-    echo "  ok: osd-pad gate suppresses the native tablet-pad path"
-  else
-    echo "  FAIL: osd-pad gate"; rc=1
-  fi
-  callp SetFeature osd-pad true >/dev/null
-  callp SetFeature osd false >/dev/null
-  if pad_osd_is_suppressed_by_window_manager; then
-    echo "  ok: master osd gate suppresses the native tablet-pad path"
-  else
-    echo "  FAIL: master tablet-pad OSD gate"; rc=1
-  fi
-  callp SetFeature osd true >/dev/null
 
   # typed, portal-scoped grants: list both kinds, reject traversal, revoke one
   grants="$(callp ListPortalGrants)"; echo "ListPortalGrants -> $grants"

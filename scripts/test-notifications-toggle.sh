@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# Prove the `notifications` feature toggle: gnoblin owns org.freedesktop.Notifications
-# by default, and DISABLING the feature releases the bus name so an external daemon
-# (e.g. a quickshell notification service) can own it — live, no restart.
-#
-# Uses the keyfile gsettings backend so the shell and the (separate-process) fdo
-# notification daemon share the org.gnoblin.shell key, as dconf does on a real session.
+# Prove external notification ownership by default and explicit native opt-in.
+# The isolated dconf backend shares preferences across the Shell and daemon.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,14 +50,14 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
   name_is_owned() { case "$(owned)" in *true*) return 0;; *) return 1;; esac; }
   name_is_unowned() { ! name_is_owned; }
 
-  # Start the fdo notification daemon (it owns org.freedesktop.Notifications).
+  # Starting the compatibility daemon must leave notifications with external chrome.
   gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
     --method org.freedesktop.DBus.StartServiceByName org.gnome.Shell.Notifications 0 >/dev/null 2>&1
-  gnoblin_wait_until 10 name_is_owned || true
+  gnoblin_wait_until 10 name_is_unowned || true
 
   rc=0
   d="$(owned)";  echo "default          -> $d"
-  case "$d" in *true*)  echo "  ok: gnome owns org.freedesktop.Notifications by default";; *) echo "  FAIL: not owned by default"; rc=1;; esac
+  case "$d" in *false*) echo "  ok: external notification ownership by default";; *) echo "  FAIL: owned by default"; rc=1;; esac
 
   ctl SetFeature notifications false
   gnoblin_wait_until 10 name_is_unowned || true
