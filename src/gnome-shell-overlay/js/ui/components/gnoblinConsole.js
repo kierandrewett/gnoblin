@@ -25,9 +25,33 @@ function textLabel(text, styleClass = '', selectable = false) {
 }
 
 function button(label, action, styleClass = 'gnoblin-console-button') {
-    const actor = new St.Button({label, style_class: styleClass, can_focus: true});
+    const actor = new St.Button({label, style_class: styleClass, can_focus: true, x_align: Clutter.ActorAlign.FILL});
+    actor.get_child().x_align = Clutter.ActorAlign.START;
+    actor.get_child().x_expand = true;
+    actor.connect_after('style-changed', () => actor.get_child().set_line_alignment(Pango.Alignment.LEFT));
+    actor.get_child().set_line_alignment(Pango.Alignment.LEFT);
     actor.connect('clicked', action);
     return actor;
+}
+
+function highlight(actor, source) {
+    const attributes = new Pango.AttrList();
+    const base = Pango.attr_foreground_new(0xdddd, 0xdddd, 0xdddd);
+    base.start_index = 0;
+    base.end_index = 0xffffffff;
+    attributes.insert(base);
+    const tokens = /(?:\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|(?:"(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|`(?:\\.|[^`\\])*`?)|\b(?:const|let|var|function|class|return|throw|new|await|async|if|else|for|while|try|catch|typeof|instanceof|true|false|null|undefined)\b|\b(?:0x[\da-f]+|\d+(?:\.\d+)?)\b/gi;
+    for (const match of source.matchAll(tokens)) {
+        const token = match[0];
+        const color = token.startsWith('/') ? [138, 161, 126]
+            : /^["'`]/.test(token) ? [233, 166, 145]
+                : /^\d/.test(token) ? [153, 201, 255] : [197, 165, 232];
+        const attribute = Pango.attr_foreground_new(...color.map(channel => channel * 257));
+        attribute.start_index = new TextEncoder().encode(source.slice(0, match.index)).length;
+        attribute.end_index = attribute.start_index + new TextEncoder().encode(token).length;
+        attributes.change(attribute);
+    }
+    actor.set_attributes(attributes);
 }
 
 export const DeveloperConsole = GObject.registerClass(
@@ -39,7 +63,6 @@ class DeveloperConsole extends St.Widget {
         this._expanded = false;
         this._pending = 0;
         this._rows = new Set();
-        this._inspectStack = [];
         this._history = global.settings.get_strv(HISTORY_KEY).slice(-MAX_ROWS);
         this._historyIndex = this._history.length;
         this._historyDraft = '';
@@ -48,79 +71,44 @@ class DeveloperConsole extends St.Widget {
             style_class: 'gnoblin-console', orientation: VERTICAL, reactive: true,
         });
         this.add_child(this._panel);
-        const toolbar = new St.BoxLayout({style_class: 'gnoblin-console-toolbar'});
-        toolbar.add_child(new St.Label({text: 'GNOBLIN', style_class: 'gnoblin-console-title'}));
-        toolbar.add_child(new St.Label({text: 'JavaScript console', style_class: 'gnoblin-console-context'}));
-        toolbar.add_child(new St.Widget({x_expand: true}));
-        toolbar.add_child(button('Clear', () => this.clear()));
-        toolbar.add_child(button('Reset context', () => this.reset()));
-        this._expandButton = button('Expand', () => {
-            this._expanded = !this._expanded;
-            this._expandButton.label = this._expanded ? 'Reduce' : 'Expand';
-            this._resize();
-        });
-        toolbar.add_child(this._expandButton);
-        toolbar.add_child(button('Close  Esc', () => this.close()));
-        this._panel.add_child(toolbar);
-
         this._body = new St.BoxLayout({y_expand: true, style_class: 'gnoblin-console-body'});
         this._transcript = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
         this._scroll = new St.ScrollView({
-            child: this._transcript, x_expand: true, y_expand: true,
+            x_expand: true, y_expand: true,
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
         });
         this._body.add_child(this._scroll);
-        this._inspector = new St.BoxLayout({
-            orientation: VERTICAL, visible: false, style_class: 'gnoblin-console-inspector',
-        });
-        const inspectorHeader = new St.BoxLayout({style_class: 'gnoblin-console-inspector-header'});
-        inspectorHeader.add_child(button('Back', () => {
-            this._inspectStack.pop();
-            if (this._inspectStack.length)
-                this._showProperties(this._inspectStack.at(-1));
-            else
-                this._inspector.hide();
-        }));
-        inspectorHeader.add_child(textLabel('Inspector', 'gnoblin-console-context'));
-        inspectorHeader.add_child(button('Close', () => {
-            this._inspectStack = [];
-            this._inspector.hide();
-        }));
-        this._inspector.add_child(inspectorHeader);
-        this._properties = new St.BoxLayout({orientation: VERTICAL});
-        this._inspector.add_child(new St.ScrollView({
-            child: this._properties, y_expand: true,
-            hscrollbar_policy: St.PolicyType.NEVER,
-        }));
-        this._body.add_child(this._inspector);
         this._panel.add_child(this._body);
-
-        this._completions = new St.BoxLayout({style_class: 'gnoblin-console-completions', visible: false});
-        this._panel.add_child(this._completions);
-        const input = new St.BoxLayout({style_class: 'gnoblin-console-input'});
-        input.add_child(new St.Label({text: '>', style_class: 'gnoblin-console-prompt'}));
+        this._flow = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
+        this._flow.add_child(this._transcript);
+        this._input = new St.BoxLayout({style_class: 'gnoblin-console-input'});
+        this._input.add_child(new St.Label({text: '›', style_class: 'gnoblin-console-prompt'}));
         this._entry = new St.Entry({
             style_class: 'gnoblin-console-entry', x_expand: true, can_focus: true,
-            hint_text: 'Evaluate JavaScript in the compositor',
+            accessible_name: 'JavaScript',
         });
         this._entry.clutter_text.set_single_line_mode(false);
         this._entry.clutter_text.set_activatable(false);
         this._entry.clutter_text.set_line_wrap(true);
         this._entry.clutter_text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         this._entry.clutter_text.connect('key-press-event', (_text, event) => this._inputKey(event));
-        this._entry.clutter_text.connect('text-changed', () => this._hideCompletions());
-        input.add_child(this._entry);
-        input.add_child(button('Run', () => this._submit(), 'gnoblin-console-run'));
-        this._panel.add_child(input);
-        const footer = new St.BoxLayout({style_class: 'gnoblin-console-footer'});
-        footer.add_child(textLabel('Enter run   Shift+Enter newline   Tab complete   Up/Down history', 'gnoblin-console-hint'));
-        this._status = new St.Label({text: 'Compositor context', style_class: 'gnoblin-console-context'});
-        footer.add_child(this._status);
-        this._panel.add_child(footer);
+        this._entry.connect_after('style-changed', () => highlight(this._entry.clutter_text, this._entry.get_text()));
+        this._entry.clutter_text.connect('text-changed', () => {
+            highlight(this._entry.clutter_text, this._entry.get_text());
+            this._queueCompletion();
+        });
+        this._entry.clutter_text.connect('notify::cursor-position', () => this._queueCompletion());
+        this._input.add_child(this._entry);
+        this._flow.add_child(this._input);
+        this._completions = new St.BoxLayout({
+            orientation: VERTICAL, style_class: 'gnoblin-console-completions',
+            visible: false, x_align: Clutter.ActorAlign.START,
+        });
+        this._flow.add_child(this._completions);
+        this._scroll.set_child(this._flow);
 
         this._newEvaluator();
-        this._welcome();
         Main.layoutManager.addTopChrome(this, {
             affectsInputRegion: true, affectsStruts: false, trackFullscreen: false,
         });
@@ -137,7 +125,8 @@ class DeveloperConsole extends St.Widget {
             this.close(true);
             if (this._scrollIdle)
                 GLib.source_remove(this._scrollIdle);
-            this._inspectStack = [];
+            if (this._completionIdle)
+                GLib.source_remove(this._completionIdle);
             this._rows.clear();
             this._evaluator.clear();
         });
@@ -160,20 +149,6 @@ class DeveloperConsole extends St.Widget {
             },
         });
         this._evaluator = evaluator;
-    }
-
-    _welcome() {
-        const row = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-welcome'});
-        row.add_child(textLabel('Inspect the running compositor.', 'gnoblin-console-welcome-title'));
-        row.add_child(textLabel('Main, global, Meta, St and windows() are available. Use await, $_ or r(index).', 'gnoblin-console-hint'));
-        const examples = new St.BoxLayout({style_class: 'gnoblin-console-examples'});
-        for (const source of ['windows()', 'Main.layoutManager.monitors', 'inspect(global.stage)'])
-            examples.add_child(button(source, () => {
-                this._entry.set_text(source);
-                this._entry.grab_key_focus();
-            }));
-        row.add_child(examples);
-        this._transcript.add_child(row);
     }
 
     _allowed() {
@@ -251,7 +226,6 @@ class DeveloperConsole extends St.Widget {
         this.set_size(monitor.width, height);
         this.set_clip(0, 0, monitor.width, height + 24);
         this._panel.set_size(monitor.width, height);
-        this._inspector.width = Math.min(420, Math.floor(monitor.width * .36));
     }
 
     vfunc_key_press_event(event) {
@@ -268,6 +242,19 @@ class DeveloperConsole extends St.Widget {
     _inputKey(event) {
         const key = event.get_key_symbol();
         const state = event.get_state();
+        if (this._completions.visible && [Clutter.KEY_Up, Clutter.KEY_Down].includes(key)) {
+            this._selectCompletion(this._completionIndex + (key === Clutter.KEY_Up ? -1 : 1));
+            return Clutter.EVENT_STOP;
+        }
+        if (key === Clutter.KEY_Tab && this._completions.visible) {
+            this._acceptCompletion();
+            return Clutter.EVENT_STOP;
+        }
+        if ((key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter) &&
+            this._completions.visible && !(state & Clutter.ModifierType.SHIFT_MASK)) {
+            this._acceptCompletion();
+            return Clutter.EVENT_STOP;
+        }
         if ((key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter) && !(state & Clutter.ModifierType.SHIFT_MASK)) {
             this._submit();
             return Clutter.EVENT_STOP;
@@ -309,48 +296,69 @@ class DeveloperConsole extends St.Widget {
     async evaluate(source) {
         const model = this._evaluator;
         const row = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-result'});
-        row.add_child(textLabel(`> ${source}`, 'gnoblin-console-source', true));
+        const command = textLabel(`› ${source}`, 'gnoblin-console-source', true);
+        command.connect_after('style-changed', () => highlight(command.clutter_text, `› ${source}`));
+        highlight(command.clutter_text, `› ${source}`);
+        row.add_child(command);
         const pending = textLabel('Pending...', 'gnoblin-console-hint');
         row.add_child(pending);
         this._appendRow(row);
         this._pending++;
-        this._updateStatus();
         const result = await model.evaluate(source);
         this._pending--;
         if (this._destroyed || model !== this._evaluator)
             return result;
-        this._updateStatus();
         if (!this._rows.has(row))
             return result;
         pending.destroy();
         const output = new St.BoxLayout({style_class: 'gnoblin-console-output'});
-        output.add_child(new St.Label({text: `r(${result.id})`, style_class: 'gnoblin-console-index'}));
-        output.add_child(this._valueActor(result.error ?? result.value, Boolean(result.error)));
-        output.add_child(button('Copy', () => St.Clipboard.get_default().set_text(
-            St.ClipboardType.CLIPBOARD, result.error?.stack ?? preview(result.value))));
-        row.add_child(output);
-        if (result.error?.stack) {
-            const stack = textLabel(result.error.stack.slice(0, 6000), 'gnoblin-console-stack', true);
-            stack.hide();
-            row.add_child(button('Stack trace', () => stack.visible = !stack.visible));
-            row.add_child(stack);
+        if (result.error) {
+            output.add_style_class_name('gnoblin-console-error');
+            const detail = textLabel(result.error.stack?.slice(0, 6000) ?? '', 'gnoblin-console-stack', true);
+            detail.hide();
+            output.add_child(button(`▸ Uncaught ${preview(result.error)}`, () => {
+                detail.visible = !detail.visible;
+                this._scrollBottom();
+            }, 'gnoblin-console-error-text'));
+            row.add_child(output);
+            row.add_child(detail);
+        } else {
+            output.add_child(this._valueActor(result.value));
+            row.add_child(output);
         }
         this._scrollBottom();
         return result;
     }
 
-    _valueActor(value, error = false) {
-        const label = textLabel(preview(value), error ? 'gnoblin-console-error' : 'gnoblin-console-value', !isInspectable(value));
-        if (!isInspectable(value))
+    _valueActor(value, error = false, depth = 0) {
+        const label = textLabel(preview(value), error ? 'gnoblin-console-error-text' : 'gnoblin-console-value', true);
+        if (!isInspectable(value) || depth >= 5)
             return label;
-        const link = new St.Button({child: label, x_expand: true, can_focus: true, style_class: 'gnoblin-console-object'});
-        link.connect('clicked', () => this.inspectObject(value));
-        return link;
+        const group = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
+        let properties = null;
+        const toggle = button(`▸ ${preview(value)}`, () => {
+            if (!properties) {
+                properties = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-properties'});
+                for (const property of this._evaluator.properties(value).slice(0, 100)) {
+                    const row = new St.BoxLayout({style_class: 'gnoblin-console-property'});
+                    row.add_child(new St.Label({text: `${property.name}: `}));
+                    row.add_child(property.accessor
+                        ? textLabel('[Accessor]', 'gnoblin-console-hint')
+                        : this._valueActor(property.value, false, depth + 1));
+                    properties.add_child(row);
+                }
+                group.add_child(properties);
+            } else {
+                properties.visible = !properties.visible;
+            }
+            toggle.label = `${properties.visible ? '▾' : '▸'} ${preview(value)}`;
+        }, 'gnoblin-console-object');
+        group.add_child(toggle);
+        return group;
     }
 
     _appendValues(level, values) {
         const row = new St.BoxLayout({orientation: VERTICAL, style_class: `gnoblin-console-log ${level === 'error' ? 'gnoblin-console-error' : ''}`});
-        row.add_child(textLabel(level, 'gnoblin-console-index'));
         for (const value of values)
             row.add_child(this._valueActor(value, level === 'error'));
         this._appendRow(row);
@@ -378,17 +386,9 @@ class DeveloperConsole extends St.Widget {
         });
     }
 
-    _updateStatus() {
-        this._status.text = this._pending ? `${this._pending} pending` : 'Compositor context';
-    }
-
     _clearTranscript() {
         this._rows.clear();
         this._transcript.destroy_all_children();
-        this._properties.destroy_all_children();
-        this._inspector.hide();
-        this._inspectStack = [];
-        this._updateStatus();
     }
 
     clear() {
@@ -398,58 +398,71 @@ class DeveloperConsole extends St.Widget {
     reset() {
         this.clear();
         this._newEvaluator();
-        this._welcome();
         this._entry.grab_key_focus();
     }
 
     inspectObject(value) {
-        this._inspectStack.push(value);
-        if (this._inspectStack.length > 30)
-            this._inspectStack.shift();
-        this._showProperties(value);
+        const row = new St.BoxLayout({orientation: VERTICAL});
+        const actor = this._valueActor(value);
+        row.add_child(actor);
+        this._appendRow(row);
+        if (isInspectable(value))
+            actor.get_first_child().emit('clicked', 1);
         return value;
     }
 
-    _showProperties(value) {
-        this._properties.destroy_all_children();
-        this._properties.add_child(textLabel(preview(value), 'gnoblin-console-source', true));
-        for (const property of this._evaluator.properties(value)) {
-            const row = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-property'});
-            row.add_child(textLabel(property.name, 'gnoblin-console-property-name'));
-            row.add_child(property.accessor
-                ? textLabel(property.preview, 'gnoblin-console-hint')
-                : this._valueActor(property.value));
-            this._properties.add_child(row);
-        }
-        this._inspector.show();
+    _queueCompletion() {
+        if (this._completionIdle || this._destroyed)
+            return;
+        this._completionIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._completionIdle = 0;
+            if (!this._suppressCompletion)
+                this._complete();
+            this._suppressCompletion = false;
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _complete() {
+        this._hideCompletions();
         const text = this._entry.get_text();
         const position = this._entry.clutter_text.get_cursor_position();
         const cursor = position < 0 ? text.length : [...text].slice(0, position).join('').length;
         const completion = this._evaluator.complete(text, cursor);
-        if (!completion.items.length) {
-            this._status.text = 'No completions';
+        if (!completion.items.length || !this._open)
             return;
+        this._completion = {...completion, text};
+        for (const [index, item] of completion.items.slice(0, 12).entries()) {
+            const choice = button(item.label, () => {
+                this._completionIndex = index;
+                this._acceptCompletion();
+            }, 'gnoblin-console-completion');
+            this._completions.add_child(choice);
         }
-        const accept = candidate => {
-            const item = typeof candidate === 'string' ? candidate : candidate.value;
-            this._entry.set_text(text.slice(0, completion.start) + item + text.slice(completion.end));
-            this._entry.clutter_text.set_cursor_position([...text.slice(0, completion.start) + item].length);
-            this._hideCompletions();
-            this._entry.grab_key_focus();
-        };
-        if (completion.items.length === 1) {
-            accept(completion.items[0]);
-            return;
-        }
-        this._hideCompletions();
-        for (const item of completion.items.slice(0, 6))
-            this._completions.add_child(button(item.label, () => accept(item)));
-        if (completion.items.length > 6)
-            this._completions.add_child(textLabel(`+${completion.items.length - 6} matches; type to narrow`, 'gnoblin-console-hint'));
         this._completions.show();
+        this._selectCompletion(0);
+        this._scrollBottom();
+    }
+
+    _selectCompletion(index) {
+        const children = this._completions.get_children();
+        this._completionIndex = (index + children.length) % children.length;
+        children.forEach((child, i) => {
+            if (i === this._completionIndex)
+                child.add_style_pseudo_class('selected');
+            else
+                child.remove_style_pseudo_class('selected');
+        });
+    }
+
+    _acceptCompletion() {
+        const {text, start, end, items} = this._completion;
+        const value = items[this._completionIndex].value;
+        this._suppressCompletion = true;
+        this._entry.set_text(text.slice(0, start) + value + text.slice(end));
+        this._entry.clutter_text.set_cursor_position([...text.slice(0, start) + value].length);
+        this._hideCompletions();
+        this._entry.grab_key_focus();
     }
 
     _hideCompletions() {

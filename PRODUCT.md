@@ -12,8 +12,9 @@ clients provide the desktop controls. These boundaries are described in
 README.md and docs/bring-your-own-shell.md.
 
 The developer console is for inspecting and changing the running compositor.
-The requested reference is a Doom-style console at the top of the screen,
-with JavaScript evaluation and inspection similar to developer tools.
+The reference is a compact developer-tools console at the top of the screen: an
+empty prompt, inline results, syntax highlighting and suggestions while typing.
+No welcome content, toolbar, branding or permanent instruction text.
 
 ## Design principles
 

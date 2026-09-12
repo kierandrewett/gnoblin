@@ -65,6 +65,8 @@ function consoleState() {
     const children = Main.uiGroup?.get_children() ?? [];
     const focus = global.stage.get_key_focus();
     return {
+        input: console?._entry.get_text() ?? '',
+        attributes: console?._entry.clutter_text.get_attributes()?.to_string() ?? '',
         exists: Boolean(console),
         open: Boolean(console?.isOpen),
         visible: Boolean(console?.visible),
@@ -81,8 +83,8 @@ function consoleState() {
         topIndex: console ? children.indexOf(console) : -1,
         childCount: children.length,
         topSibling: actorName(children.at(-1)),
-        inspectorVisible: Boolean(console?._inspector?.visible),
-        inspectorRows: console?._properties?.get_n_children() ?? 0,
+        inspectorVisible: Boolean(console?._transcript?.get_last_child()?.get_first_child()?.get_n_children() > 1),
+        inspectorRows: console?._transcript?.get_last_child()?.get_first_child()?.get_last_child()?.get_n_children() ?? 0,
         transcriptRows: console?._transcript?.get_n_children() ?? 0,
         runDialogAbsent: Main.runDialog === null,
         lookingGlassAbsent: Main.lookingGlass === null,
@@ -126,6 +128,8 @@ export default function (api) {
       <method name="RunBinding"><arg type="s" direction="out"/></method>
       <method name="Evaluate"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
       <method name="Inspect"><arg type="s" direction="out"/></method>
+      <method name="Key"><arg type="u" direction="in"/></method>
+      <method name="Type"><arg type="s" direction="in"/></method>
       <method name="Complete"><arg type="s" direction="out"/></method>
       <method name="Escape"><arg type="s" direction="out"/></method>
       <method name="StartLock"><arg type="s" direction="out"/></method>
@@ -162,15 +166,21 @@ export default function (api) {
             console.inspectObject(global.stage);
             return JSON.stringify(consoleState());
         },
+        Key(key) {
+            keyboard ??= keyboardDevice();
+            const timestamp = GLib.get_monotonic_time();
+            keyboard.notify_keyval(timestamp, key, Clutter.KeyState.PRESSED);
+            keyboard.notify_keyval(timestamp, key, Clutter.KeyState.RELEASED);
+        },
+        Type(text) {
+            Main.devConsole._entry.set_text(text);
+            Main.devConsole._entry.clutter_text.set_cursor_position(-1);
+        },
         Complete() {
             const console = Main.createDevConsole();
-            console._entry.set_text('global.g');
-            console._entry.clutter_text.set_cursor_position(-1);
-            console._complete();
             const labels = console._completions.get_children().map(child =>
                 String(child.label ?? child.get_child?.()?.text ?? ''));
-            const result = {labels, visible: console._completions.visible, ...consoleState()};
-            console._hideCompletions();
+            const result = {...consoleState(), labels, completionVisible: console._completions.visible};
             return JSON.stringify(result);
         },
         Escape() {
@@ -266,6 +276,7 @@ assert not before['exists'] and before['runDialogAbsent'] and before['lookingGla
 opened = json.loads(value(call('Open')))
 assert opened['opened'] and opened['open'] and opened['visible'], opened
 assert opened['parent'] == 'uiGroup', opened
+assert opened['transcriptRows'] == 0, opened
 assert opened['y'] == opened['monitorY'], opened
 assert opened['topIndex'] == opened['childCount'] - 1, opened
 focused = wait_for(lambda current: current['open'] and current['focusEntry'])
@@ -315,10 +326,26 @@ assert inspected['inspectorVisible'] and inspected['inspectorRows'] > 0, inspect
 print('PASS: object inspection exposes descriptor rows without leaving the console')
 
 
+evaluate('console.clear(); 42')
+evaluate('const name = "gnoblin"; name')
+call('Type', 'global.g')
+time.sleep(.1)
 completion = json.loads(value(call('Complete')))
-assert completion['visible'] and completion['labels'] and all(
+assert completion['completionVisible'] and completion['labels'] and all(
     label != '[object Object]' for label in completion['labels']), completion
-print('PASS: completion choices render labels and preserve their insertion values')
+print('PASS: suggestions appear while typing')
+if shutil.which('grim'):
+    subprocess.run(['grim', '/tmp/gnoblin-console-completion.png'], check=True)
+call('Key', 0xff09)  # Tab accepts the selected suggestion.
+time.sleep(.1)
+assert state()['input'] == 'global.' + completion['labels'][0], state()
+call('Type', 'const color = 42;')
+time.sleep(.1)
+assert 'foreground' in state()['attributes'], state()
+if shutil.which('grim'):
+    subprocess.run(['grim', '/tmp/gnoblin-console-highlight.png'], check=True)
+call('Type', '')
+time.sleep(.1)
 
 
 value(call('Escape'))

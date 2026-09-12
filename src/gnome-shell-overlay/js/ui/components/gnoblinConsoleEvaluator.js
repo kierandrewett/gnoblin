@@ -255,7 +255,7 @@ export class ConsoleEvaluator {
 
     complete(text, cursor = text.length) {
         const before = text.slice(0, cursor);
-        const match = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/);
+        const match = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\.?)$/);
         if (!match)
             return {start: cursor, end: cursor, items: []};
         const path = match[1].split('.');

@@ -50,6 +50,7 @@ Object.defineProperty(getterObject, 'danger', {get() { getterCalls++; return 2; 
 const getterEvaluator = new ConsoleEvaluator({getterObject});
 const completion = getterEvaluator.complete('getterObject.da');
 assert(completion.items.some(item => item.label === 'danger') && getterCalls === 0, 'completion does not invoke getters');
+assert(getterEvaluator.complete('getterObject.').items.some(item => item.label === 'safe'), 'completion after a dot lists properties');
 const inspected = getterEvaluator.properties(getterObject);
 assert(inspected.find(row => row.name === 'danger').accessor && getterCalls === 0, 'inspection does not invoke getters');
 
