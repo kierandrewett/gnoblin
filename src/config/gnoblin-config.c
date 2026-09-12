@@ -88,6 +88,8 @@ GVariant *gnoblin_config_load_document (const char *path, GPtrArray **paths,
         document = g_variant_ref_sink (g_variant_builder_end (&empty));
     } else {
         document = gnoblin_config_evaluate_file (canonical, loaded_paths, watched_dirs, error);
+        if (document)
+            g_variant_ref_sink (document);
         if (document && !g_variant_is_of_type (document, G_VARIANT_TYPE_VARDICT)) {
             g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                  "configuration must be a table of settings");

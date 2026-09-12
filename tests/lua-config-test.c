@@ -37,6 +37,7 @@ int main(void) {
     g_autoptr(GVariant) document = load(root, &paths, &error);
     g_assert_no_error(error);
     g_assert_nonnull(document);
+    g_assert_false(g_variant_is_floating(document));
     g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) osd = g_variant_lookup_value(shell, "osd", G_VARIANT_TYPE_BOOLEAN);
     g_autoptr(GVariant) notifications =
