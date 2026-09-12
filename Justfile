@@ -420,3 +420,11 @@ srpm PROJECT SOURCES OUTPUT:
 # Publish prepared source RPMs to an existing COPR project in dependency order.
 copr PROJECT MUTTER_SRPM SHELL_SRPM:
     ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}"
+
+# Read-only checks across repository-owned source files.
+lint *args:
+    ./scripts/quality.sh lint {{args}}
+
+# Apply formatting. Pass --files followed by paths to limit the change.
+format *args:
+    ./scripts/quality.sh format {{args}}

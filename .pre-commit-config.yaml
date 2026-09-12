@@ -1,0 +1,164 @@
+# Keep identical in Gnoblin and Bingux. Checks never rewrite source files.
+minimum_pre_commit_version: "4.6.2"
+default_stages: [pre-commit]
+exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|banks)/|\.patch$|\.lock$'
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: ruff check
+        language: python
+        types: [python]
+        additional_dependencies: ["ruff==0.16.7"]
+        require_serial: true
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck --severity=warning
+        language: python
+        types: [shell]
+        additional_dependencies: ["shellcheck-py==0.11.0.1"]
+        require_serial: true
+      - id: eslint
+        name: eslint
+        entry: eslint --no-warn-ignored
+        language: node
+        files: '\.(js|mjs|cjs)$'
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        require_serial: true
+      - id: ruff-check
+        name: ruff-check
+        entry: ruff format --check
+        language: python
+        types: [python]
+        additional_dependencies: ["ruff==0.16.7"]
+        require_serial: true
+      - id: clang-check
+        name: clang-check
+        entry: clang-format --dry-run --Werror
+        language: python
+        types_or: [c, c++]
+        additional_dependencies: ["clang-format==23.1.1"]
+        require_serial: true
+      - id: shfmt-check
+        name: shfmt-check
+        entry: shfmt -i 4 -ci -d
+        language: python
+        types: [shell]
+        additional_dependencies: ["shfmt-py==4.2.0"]
+        require_serial: true
+      - id: prettier-check
+        name: prettier-check
+        entry: prettier --check
+        language: node
+        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        require_serial: true
+      - id: javascript-check
+        name: javascript-check
+        entry: python3 scripts/format-qt.py --javascript
+        language: node
+        files: '\.js$'
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        require_serial: true
+      - id: qml-check
+        name: qml-check
+        entry: python3 scripts/format-qt.py
+        language: system
+        files: '\.qml$'
+        require_serial: true
+      - id: stylua-check
+        name: stylua-check
+        entry: stylua --check
+        language: node
+        types: [lua]
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        require_serial: true
+      - id: rustfmt-check
+        name: rustfmt-check
+        entry: rustfmt --edition 2024 --config skip_children=true --check
+        language: system
+        types: [rust]
+        require_serial: true
+      - id: nixfmt-check
+        name: nixfmt-check
+        entry: env -u LD_LIBRARY_PATH nix shell github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41#nixfmt --command nixfmt --check
+        language: system
+        types: [nix]
+        require_serial: true
+      - id: ruff-format
+        name: ruff-format
+        entry: ruff format
+        language: python
+        types: [python]
+        additional_dependencies: ["ruff==0.16.7"]
+        stages: [manual]
+        require_serial: true
+      - id: clang-format
+        name: clang-format
+        entry: clang-format -i
+        language: python
+        types_or: [c, c++]
+        additional_dependencies: ["clang-format==23.1.1"]
+        stages: [manual]
+        require_serial: true
+      - id: shfmt-format
+        name: shfmt-format
+        entry: shfmt -i 4 -ci -w
+        language: python
+        types: [shell]
+        additional_dependencies: ["shfmt-py==4.2.0"]
+        stages: [manual]
+        require_serial: true
+      - id: prettier-format
+        name: prettier-format
+        entry: prettier --write
+        language: node
+        files: '\.(mjs|cjs|json|ya?ml|md|scss|css|html)$'
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        stages: [manual]
+        require_serial: true
+      - id: javascript-format
+        name: javascript-format
+        entry: python3 scripts/format-qt.py --javascript --write
+        language: node
+        files: '\.js$'
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        stages: [manual]
+        require_serial: true
+      - id: qml-format
+        name: qml-format
+        entry: python3 scripts/format-qt.py --write
+        language: system
+        files: '\.qml$'
+        stages: [manual]
+        require_serial: true
+      - id: stylua-format
+        name: stylua-format
+        entry: stylua
+        language: node
+        types: [lua]
+        additional_dependencies: ["prettier@3.9.6", "@johnnymorganz/stylua-bin@2.5.2", "eslint@10.10.0"]
+        language_version: "22.16.0"
+        stages: [manual]
+        require_serial: true
+      - id: rustfmt-format
+        name: rustfmt-format
+        entry: rustfmt --edition 2024 --config skip_children=true
+        language: system
+        types: [rust]
+        stages: [manual]
+        require_serial: true
+      - id: nixfmt-format
+        name: nixfmt-format
+        entry: env -u LD_LIBRARY_PATH nix shell github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41#nixfmt --command nixfmt
+        language: system
+        types: [nix]
+        stages: [manual]
+        require_serial: true

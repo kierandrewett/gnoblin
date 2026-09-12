@@ -41,3 +41,8 @@ until their build and install checks are complete.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a
 commit, and explain the user-visible result in the commit body.
+
+## Lint and format
+
+See [Code quality](docs/code-quality.md) for tool setup, language coverage,
+whole-repository checks and formatting selected files.
