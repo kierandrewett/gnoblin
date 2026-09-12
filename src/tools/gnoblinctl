@@ -9,8 +9,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
-import tomllib
 import time
 import uuid
 
@@ -37,67 +35,36 @@ def parser():
     common.add_argument("--timeout", type=number(1, 60), default=argparse.SUPPRESS, metavar="SECONDS", help="Request timeout (default: 5)")
     common.add_argument("--socket", default=argparse.SUPPRESS, metavar="PATH", help="Compositor socket path")
     root = argparse.ArgumentParser(prog="gnoblinctl", description=__doc__, parents=[common],
-        epilog="Examples: gnoblinctl windows | gnoblinctl window focus 42 | gnoblinctl features --json\nUse COMMAND --help for arguments and examples.",
+        epilog="Examples: gnoblinctl status | gnoblinctl window list | gnoblinctl config path\nUse GROUP --help to see its actions.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = root.add_subparsers(dest="command", metavar="COMMAND")
 
-    def add(parent, name, help_text, **kwargs):
-        return parent.add_parser(name, help=help_text, description=help_text, parents=[common], **kwargs)
+    def add(parent, name, help_text):
+        return parent.add_parser(name, help=help_text, description=help_text, parents=[common])
 
-    for name, description in [("ping", "Check the shell connection"), ("version", "Show shell and protocol version"),
-            ("status", "Show compositor and shell status"), ("reload", "Soft-reload the shell, keeping open windows"),
-            ("reload-config", "Reload gnoblin.toml"), ("features", "List shell feature switches"),
-            ("scripts", "List loaded user scripts"),
-            ("reload-scripts", "Reload user scripts"), ("input-sources", "List configured keyboard sources"),
-            ("input-source", "Show the active keyboard source"), ("privacy", "Show privacy indicators"),
-            ("portal-grants", "List persistent portal permissions"), ("launch-state", "Show pending app launches"),
-            ("monitors", "List logical monitors and geometry")]:
+    for name, description in (("ping", "Check the shell connection"), ("version", "Show shell and protocol version"),
+                              ("status", "Show compositor and shell status"),
+                              ("reload", "Soft-reload the shell, keeping open windows"),
+                              ("privacy", "Show privacy indicators")):
         add(commands, name, description)
-    for name, description, arg in [("feature", "Show one feature switch", "id"), ("enable", "Enable a shell feature", "id"),
-            ("disable", "Disable a shell feature", "id"),
-            ("launch-end", "End a busy-cursor request", "token")]:
-        add(commands, name, description).add_argument(arg)
-    source = add(commands, "set-input-source", "Select a configured keyboard source")
-    source.add_argument("type", help="Source type from input-sources, such as xkb or ibus")
-    source.add_argument("id", help="Exact source ID")
-    begin = add(commands, "launch-begin", "Start a global busy-cursor request")
-    begin.add_argument("token")
-    begin.add_argument("application", help="Desktop application ID")
-    begin.add_argument("milliseconds", nargs="?", default=3000, type=number(1, 60000))
-    revoke = add(commands, "revoke-grant", "Revoke one persistent portal permission")
-    revoke.add_argument("kind", choices=["screen-cast", "remote-desktop"])
-    revoke.add_argument("id")
 
-    permissions = add(commands, "permissions", "Inspect and configure portal permission policy")
-    permission_actions = permissions.add_subparsers(dest="action", required=True)
+    permissions = add(commands, "permissions", "Inspect portal permission policy")
+    permission_actions = permissions.add_subparsers(dest="action")
     add(permission_actions, "list", "Show rules, supported capabilities and configuration path")
     check = add(permission_actions, "check", "Explain the effective decision for a namespaced identity")
     check.add_argument("capability")
     check.add_argument("identity", help="app-id:com.example.App or host-exe:/usr/bin/app")
-    default = add(permission_actions, "default", "Set the fallback permission level")
-    default.add_argument("level", choices=["default", "ask", "deny"])
-    remove = add(permission_actions, "remove", "Remove a named permission rule")
-    remove.add_argument("name")
-    rule = add(permission_actions, "set", "Add or replace a named permission rule")
-    rule.add_argument("name")
-    rule.add_argument("level", choices=["default", "ask", "allow", "deny"])
-    rule.add_argument("--match", required=True, help="Regex against the verified namespaced identity")
-    rule.add_argument("--capability", dest="capabilities", required=True, action="append")
-    rule.add_argument("--monitor", dest="monitors", action="append", help="primary or exact connector; repeat for multiple outputs")
-    rule.add_argument("--device", dest="devices", action="append", choices=["keyboard", "pointer", "touchscreen"])
-    rule.add_argument("--clipboard", action="store_true", help="Permit remote clipboard exchange")
 
     def window_filters(command):
         command.add_argument("--app-id", help="Match an exact application ID")
         command.add_argument("--title", help="Match title text, without case sensitivity")
         command.add_argument("--focused", action="store_true", help="Only show the focused window")
-    window_filters(add(commands, "windows", "List open windows, IDs and geometry"))
-    window = add(commands, "window", "Manage a window by ID; active means the focused window")
-    actions = window.add_subparsers(dest="action", required=True, metavar="ACTION")
+    window = add(commands, "window", "List and manage windows")
+    actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
     for name in ("focus", "close", "minimize", "restore-or-minimize", "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen"):
         action = add(actions, name, f"{name.capitalize()} one window")
-        action.add_argument("id", nargs="?", default="active", help="Window ID from windows (default: active)")
+        action.add_argument("id", nargs="?", default="active", help="Window ID from window list (default: active)")
     for name, fields in (("move", ["x", "y"]), ("resize", ["width", "height"]), ("workspace", ["workspace"]), ("monitor", ["monitor"])):
         action = add(actions, name, {"move": "Set position in logical screen coordinates", "resize": "Set frame size in logical pixels",
             "workspace": "Move to an existing workspace (one-based)", "monitor": "Move to a logical monitor (zero-based)"}[name])
@@ -105,15 +72,67 @@ def parser():
         for field in fields:
             bounds = (1, 32768) if field in ("width", "height") else (1, 1024) if field == "workspace" else (0, 1024) if field == "monitor" else (-100000, 100000)
             action.add_argument(field, type=number(*bounds))
-    workspaces = add(commands, "workspaces", "List workspaces or switch to an existing workspace")
-    workspaces.add_argument("action", nargs="?", default="list", choices=["list", "switch"])
-    workspaces.add_argument("workspace", nargs="?", type=number(1, 1024), help="One-based workspace ID")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
-    fragment = add(commands, "load-config", "Add a TOML fragment to gnoblin.toml")
-    fragment.add_argument("path", help="TOML fragment to include")
-    fragment = add(commands, "unload-config", "Remove a TOML fragment from gnoblin.toml")
-    fragment.add_argument("path", help="TOML fragment to remove")
+    config = add(commands, "config", "Show or reload the active configuration")
+    config_actions = config.add_subparsers(dest="action")
+    add(config_actions, "path", "Show the active configuration path")
+    add(config_actions, "reload", "Reload the active configuration")
+    for name, description in (("workspace", "List and switch workspaces"),
+                              ("monitor", "List monitors"), ("input", "Inspect and select input sources"),
+                              ("feature", "Inspect and change shell features"), ("script", "List and reload user scripts"),
+                              ("grant", "List and revoke portal grants"),
+                              ("launch", "Inspect launch feedback")):
+        add(commands, name, description)
+
+    workspace = commands.choices["workspace"]
+    workspace_actions = workspace.add_subparsers(dest="action")
+    add(workspace_actions, "list", "List workspaces")
+    switch = add(workspace_actions, "switch", "Switch to an existing workspace")
+    switch.add_argument("workspace", type=number(1, 1024), help="One-based workspace ID")
+
+    monitor = commands.choices["monitor"]
+    monitor_actions = monitor.add_subparsers(dest="action")
+    add(monitor_actions, "list", "List logical monitors and geometry")
+
+    input_group = commands.choices["input"]
+    input_actions = input_group.add_subparsers(dest="action")
+    add(input_actions, "list", "List configured keyboard sources")
+    add(input_actions, "current", "Show the active keyboard source")
+    select = add(input_actions, "select", "Select a configured keyboard source")
+    select.add_argument("type", help="Source type, such as xkb or ibus")
+    select.add_argument("id", help="Exact source ID")
+
+    feature_group = commands.choices["feature"]
+    feature_actions = feature_group.add_subparsers(dest="action")
+    add(feature_actions, "list", "List shell feature switches")
+    show = add(feature_actions, "show", "Show one feature switch")
+    show.add_argument("id")
+    for name, description in (("enable", "Enable a shell feature"), ("disable", "Disable a shell feature")):
+        feature_action = add(feature_actions, name, description)
+        feature_action.add_argument("id")
+
+    script_group = commands.choices["script"]
+    script_actions = script_group.add_subparsers(dest="action")
+    add(script_actions, "list", "List loaded user scripts")
+    add(script_actions, "reload", "Reload user scripts")
+
+    grant = commands.choices["grant"]
+    grant_actions = grant.add_subparsers(dest="action")
+    add(grant_actions, "list", "List persistent portal permissions")
+    revoke = add(grant_actions, "revoke", "Revoke one persistent portal permission")
+    revoke.add_argument("kind", choices=["screen-cast", "remote-desktop"])
+    revoke.add_argument("id")
+
+    launch = commands.choices["launch"]
+    launch_actions = launch.add_subparsers(dest="action")
+    add(launch_actions, "status", "Show pending app launches")
+    begin = add(launch_actions, "begin", "Start a global busy-cursor request")
+    begin.add_argument("token")
+    begin.add_argument("application", help="Desktop application ID")
+    begin.add_argument("milliseconds", nargs="?", default=3000, type=number(1, 60000))
+    end = add(launch_actions, "end", "End a busy-cursor request")
+    end.add_argument("token")
     return root
 
 
@@ -148,134 +167,7 @@ def user_config_path():
     if override:
         return Path(override).expanduser()
     directory = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "gnoblin"
-    toml = directory / "gnoblin.toml"
-    legacy = directory / "gnoblin.conf"
-    return toml if toml.exists() or not legacy.exists() else legacy
-
-
-def atomic_write(path, contents):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(contents)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    except Exception:
-        try: os.unlink(temporary)
-        except FileNotFoundError: pass
-        raise
-
-
-def config_fragment_directive(fragment):
-    return f"include = {json.dumps(str(fragment))}\n"
-
-
-def config_root_directive(contents):
-    try:
-        document = tomllib.loads(contents)
-    except tomllib.TOMLDecodeError as error:
-        raise CommandError(f"cannot edit invalid TOML configuration: {error}") from None
-    keys = [key for key in ("include", "source") if key in document]
-    if len(keys) > 1:
-        raise CommandError("configuration uses both include and source; keep only one before loading a fragment")
-    if not keys:
-        return None, []
-    key = keys[0]
-    value = document[key]
-    values = [value] if isinstance(value, str) else value
-    if not isinstance(values, list) or not all(isinstance(entry, str) for entry in values):
-        raise CommandError(f"configuration {key} must be a string or an array of strings")
-    return key, values
-
-
-def replace_root_directive(contents, key, values):
-    lines = contents.splitlines(keepends=True)
-    offset = 0
-    for line in lines:
-        if line.lstrip().startswith("["):
-            break
-        if re.match(rf"^\s*{re.escape(key)}\s*=", line):
-            if line.count("\n") > 1 or (values and line.split("=", 1)[1].lstrip().startswith("[") and "]" not in line):
-                raise CommandError(f"configuration {key} must be on one line to edit it safely")
-            newline = "\r\n" if line.endswith("\r\n") else "\n"
-            return contents[:offset] + f"{key} = {json.dumps(values)}{newline}" + contents[offset + len(line):]
-        offset += len(line)
-    raise CommandError(f"could not locate root-level {key} directive to edit it safely")
-
-
-def remove_root_directive(contents, key):
-    lines = contents.splitlines(keepends=True)
-    offset = 0
-    for line in lines:
-        if line.lstrip().startswith("["):
-            break
-        if re.match(rf"^\s*{re.escape(key)}\s*=", line):
-            return contents[:offset] + contents[offset + len(line):]
-        offset += len(line)
-    raise CommandError(f"could not locate root-level {key} directive to remove it safely")
-
-
-def reload_config_file(path, original, updated, fragment, action, restore=True):
-    changed = updated != original
-    if updated != original:
-        atomic_write(path, updated)
-    try:
-        dbus("ReloadConfig")
-    except CommandError as error:
-        message = str(error)
-        unavailable = "Failed to connect to bus" in message or re.match(
-            r"^(?:Call failed: )?(?:The name \S+ was not provided by any \.service|The name \S+ is not activatable)",
-            message)
-        if not unavailable:
-            if restore:
-                atomic_write(path, original)
-                raise CommandError(f"fragment was not {action}; configuration was restored: {message}") from None
-            raise CommandError(f"fragment was {action}, but live reload failed: {message}") from None
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": action,
-                "changed": changed, "reload": "pending"}
-    return {"ok": True, "path": str(path), "fragment": str(fragment), "action": action,
-            "changed": changed, "reload": "applied"}
-
-
-def load_config_fragment(fragment):
-    fragment = Path(fragment).expanduser().resolve()
-    if not fragment.is_file():
-        raise CommandError(f"config fragment does not exist: {fragment}")
-    path = user_config_path()
-    if path.suffix == ".conf":
-        raise CommandError(f"cannot load a TOML fragment into legacy config {path}; migrate it to gnoblin.toml first")
-    original = path.read_text(encoding="utf-8") if path.exists() else ""
-    key, values = config_root_directive(original)
-    if key:
-        if str(fragment) in values:
-            updated = original
-        else:
-            updated = replace_root_directive(original, key, [*values, str(fragment)])
-    else:
-        directive = config_fragment_directive(fragment)
-        updated = directive + ("\n" if original and not original.startswith("\n") else "") + original
-    return reload_config_file(path, original, updated, fragment, "loaded")
-
-
-def unload_config_fragment(fragment):
-    fragment = Path(fragment).expanduser().resolve()
-    path = user_config_path()
-    if path.suffix == ".conf":
-        raise CommandError(f"cannot unload a TOML fragment from legacy config {path}; migrate it to gnoblin.toml first")
-    if not path.exists():
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": "unloaded",
-                "changed": False, "reload": "not-needed"}
-    original = path.read_text(encoding="utf-8")
-    key, values = config_root_directive(original)
-    if not key or str(fragment) not in values:
-        return {"ok": True, "path": str(path), "fragment": str(fragment), "action": "unloaded",
-                "changed": False, "reload": "not-needed"}
-    remaining = [entry for entry in values if entry != str(fragment)]
-    updated = remove_root_directive(original, key) if not remaining else replace_root_directive(original, key, remaining)
-    return reload_config_file(path, original, updated, fragment, "unloaded", restore=False)
+    return directory / "init.lua"
 
 
 def compositor(request, path, timeout=5):
@@ -285,7 +177,7 @@ def compositor(request, path, timeout=5):
         connection.settimeout(timeout)
         try: connection.connect(path)
         except OSError as error:
-            raise CommandError(f"Cannot connect to compositor socket {path}: {error.strerror}. Check the compositor-bridge script with gnoblinctl scripts.") from None
+            raise CommandError(f"Cannot connect to compositor socket {path}: {error.strerror}. Check gnoblinctl script list.") from None
         connection.sendall((json.dumps(dict(request, op="command", id=identity)) + "\n").encode())
         buffer = b""
         while True:
@@ -314,11 +206,10 @@ def keyed(rows, fields):
 
 def dispatch(args, cli):
     cmd = args.command
-    if cmd == "load-config": return load_config_fragment(args.path)
-    if cmd == "unload-config": return unload_config_fragment(args.path)
+    if cmd == "config" and args.action == "path": return str(user_config_path())
     call = lambda method, signature="", arguments=(), service="org.gnoblin.Shell": dbus(method, signature, arguments, service, args.timeout)
     rpc = lambda request: compositor(request, args.socket, args.timeout)
-    if cmd == "windows" or cmd == "window" and args.action == "list":
+    if cmd == "window" and args.action == "list":
         result = rpc({"command": "windows"})
         result["windows"] = [window for window in result["windows"] if
             (not args.app_id or window["appId"] == args.app_id) and
@@ -330,9 +221,8 @@ def dispatch(args, cli):
         for field in ("x", "y", "width", "height", "workspace", "monitor"):
             if hasattr(args, field): request[field] = getattr(args, field)
         return rpc(request)
-    if cmd == "monitors": return rpc({"command": "monitors"})
-    if cmd == "workspaces":
-        if (args.action == "switch") != (args.workspace is not None): cli.error("workspaces switch requires an ID; workspaces list takes no ID")
+    if cmd == "monitor": return rpc({"command": "monitors"})
+    if cmd == "workspace":
         return rpc({"command": "workspaces"} if args.action == "list" else {"command": "workspace-switch", "workspace": args.workspace})
     if cmd == "status":
         result = {"version": call("GetVersion")[0], "connected": call("Ping")[0] == "pong"}
@@ -343,58 +233,43 @@ def dispatch(args, cli):
         return result
     if cmd == "ping": return call("Ping")[0]
     if cmd == "version": return call("GetVersion")[0]
-    if cmd == "features": return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}
-    if cmd == "feature": return {"id": args.id, "enabled": call("GetFeature", "s", [args.id])[0]}
-    if cmd in ("enable", "disable"):
-        call("SetFeature", "sb", [args.id, str(cmd == "enable").lower()])
-        return {"ok": True, "id": args.id, "enabled": cmd == "enable"}
-    if cmd == "scripts": return {"scripts": call("ListScripts")[0]}
-    if cmd in ("input-sources", "input-source", "set-input-source"):
+    if cmd == "feature":
+        if args.action == "list": return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}
+        if args.action == "show": return {"id": args.id, "enabled": call("GetFeature", "s", [args.id])[0]}
+        call("SetFeature", "sb", [args.id, str(args.action == "enable").lower()])
+        return {"ok": True, "id": args.id, "enabled": args.action == "enable"}
+    if cmd == "script":
+        if args.action == "list": return {"scripts": call("ListScripts")[0]}
+        call("ReloadScripts")
+        return {"ok": True, "action": "script reload"}
+    if cmd == "input":
         fields = ["type", "id", "shortName", "name"]
-        if cmd == "input-sources": return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
-        if cmd == "input-source": return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
+        if args.action == "list": return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
+        if args.action == "current": return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
         input_call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
         return {"ok": True, "type": args.type, "id": args.id}
     if cmd == "privacy": return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
     if cmd == "permissions":
+        if args.action in (None, "list"): return json.loads(call("GetPermissions")[0])
         if args.action == "check":
             return dict(zip(["level", "rule", "monitors", "devices", "clipboard"],
                             call("CheckPermission", "ss", [args.capability, args.identity])))
-        current = json.loads(call("GetPermissions")[0])
-        if args.action == "list": return current
-        policy = current["policy"]
-        expected = json.dumps(policy)
-        if args.action == "default": policy["default"] = args.level
-        else:
-            existing = next((i for i, rule in enumerate(policy["rules"]) if rule["name"] == args.name), None)
-            if args.action == "remove":
-                if existing is None: raise CommandError(f"Unknown permission rule: {args.name}")
-                policy["rules"].pop(existing)
-            else:
-                rule = {"name": args.name, "level": args.level, "match": args.match,
-                        "capabilities": args.capabilities}
-                for key in ("monitors", "devices"):
-                    if getattr(args, key) is not None: rule[key] = getattr(args, key)
-                if args.clipboard: rule["clipboard"] = True
-                if existing is None: policy["rules"].append(rule)
-                else: policy["rules"][existing] = rule
-        call("SetPermissions", "ss", [json.dumps(policy), expected])
-        return {"ok": True, "policy": policy, "path": current["path"]}
-    if cmd == "portal-grants": return {"grants": keyed(call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"])}
-    if cmd.startswith("launch-"):
+    if cmd == "grant":
+        if args.action == "list": return {"grants": keyed(call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"])}
+        call("RevokePortalGrant", "ss", [args.kind, args.id])
+        return {"ok": True, "id": args.id}
+    if cmd == "launch":
         service = "org.gnoblin.LaunchFeedback"
-        if cmd == "launch-state":
+        if args.action == "status":
             result = call("GetState", service=service)[0]
             return json.loads(result) if isinstance(result, str) else result
-        if cmd == "launch-begin": call("Begin", "ssu", [args.token, args.application, args.milliseconds], service)
+        if args.action == "begin": call("Begin", "ssu", [args.token, args.application, args.milliseconds], service)
         else: call("End", "s", [args.token], service)
         return {"ok": True, "token": args.token}
-    operations = {"reload": ("Reload", "", []), "reload-config": ("ReloadConfig", "", []),
-        "reload-scripts": ("ReloadScripts", "", []),
-        "revoke-grant": ("RevokePortalGrant", "ss", [getattr(args, "kind", ""), getattr(args, "id", "")])}
+    operations = {"reload": ("Reload", "", []), "config": ("ReloadConfig", "", [])}
     method, signature, values = operations[cmd]
     call(method, signature, values)
-    return {"ok": True, "action": cmd}
+    return {"ok": True, "action": "config reload" if cmd == "config" else cmd}
 
 
 def text(value):
@@ -415,13 +290,15 @@ def table(rows):
     if "appId" in fields:
         fields = ["id", "focused", "workspace", "monitorIndex", "appId", "title"]
     values = [[text(row.get(field)) for field in fields] for row in rows]
-    widths = [max(len(field), *(len(row[index]) for row in values)) for index, field in enumerate(fields)]
+    labels = {"appId": "APP ID", "monitorIndex": "MONITOR", "shortName": "SHORT NAME"}
+    headers = [labels.get(field, field.upper()) for field in fields]
+    widths = [max(len(header), *(len(row[index]) for row in values)) for index, header in enumerate(headers)]
     available = max(40, shutil.get_terminal_size((120, 24)).columns) - 2 * (len(fields) - 1)
     while sum(widths) > available and max(widths) > 10:
         index = widths.index(max(widths)); widths[index] -= 1
     def line(row):
         return "  ".join((value if len(value) <= width else value[:max(0, width - 3)] + "...").ljust(width) for value, width in zip(row, widths)).rstrip()
-    print(line([field.upper() for field in fields]))
+    print(line(headers))
     print(line(["-" * width for width in widths]))
     for row in values: print(line(row))
 
@@ -432,22 +309,46 @@ def render(result, output_format):
     elif isinstance(result, str): print(text(result))
     elif isinstance(result, dict) and len(result) == 1 and isinstance(next(iter(result.values())), list): table(next(iter(result.values())))
     elif isinstance(result, dict):
-        for key, value in result.items(): print(f"{key}: {text(value)}")
+        for key, value in result.items(): print(f"{human_label(key)}: {text(value)}")
     else: print(text(result))
 
 
+def subcommands(cli):
+    return next((action.choices for action in cli._actions if isinstance(action, argparse._SubParsersAction)), {})
+
+
+def human_label(key):
+    return re.sub(r"(?<!^)([A-Z])", r" \1", str(key)).replace("_", " ").lower()
+
+
+def option_words(cli):
+    return " ".join(option for action in cli._actions if action.option_strings and action.dest != "help"
+                    for option in action.option_strings)
+
+
 def completions(cli, shell):
-    choices = next(action.choices for action in cli._actions if isinstance(action, argparse._SubParsersAction))
+    choices = subcommands(cli)
     names = " ".join(choices)
-    actions = "list focus close minimize restore-or-minimize restore maximize unmaximize fullscreen unfullscreen move resize workspace monitor"
+    nested = {name: " ".join((*subcommands(command), option_words(command)))
+              for name, command in choices.items() if subcommands(command)}
+    bash_cases = "\n".join(f"        {name}:2) words='{actions}' ;;" for name, actions in nested.items())
+    bash_action_cases = "\n".join(
+        f"        {group}:{action}:3) words='{option_words(parser)}' ;;"
+        for group, command in choices.items() for action, parser in subcommands(command).items())
+    zsh_cases = "\n".join(f"            {name}) compadd {actions} ;;" for name, actions in nested.items())
     if shell == "bash":
         print("""_gnoblinctl() {
-    local cur=${COMP_WORDS[COMP_CWORD]} words='--help --json --format --timeout --socket'
-    case "${COMP_WORDS[1]}:$COMP_CWORD" in
+    local cur=${COMP_WORDS[COMP_CWORD]} words='--help --json --format --timeout --socket' index=1 command action position
+    while [[ ${COMP_WORDS[index]} == -* ]]; do
+        case ${COMP_WORDS[index]} in --format|--timeout|--socket) ((index += 2));; *) ((index++));; esac
+    done
+    command=${COMP_WORDS[index]}; action=${COMP_WORDS[index + 1]}; position=$((COMP_CWORD - index + 1))
+    case "$command:$position" in
         *:1) words='NAMES' ;;
-        window:2) words='ACTIONS' ;;
-        workspaces:2) words='list switch' ;;
-        completion:2) words='bash zsh fish' ;;
+CASES
+    esac
+    case "$command:$action:$position" in
+ACTION_CASES
     esac
     case "${COMP_WORDS[COMP_CWORD-1]}" in
         --format) words='auto json table' ;;
@@ -455,7 +356,7 @@ def completions(cli, shell):
     esac
     COMPREPLY=($(compgen -W "$words" -- "$cur"))
 }
-complete -F _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("ACTIONS", actions))
+complete -F _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("ACTION_CASES", bash_action_cases).replace("CASES", bash_cases))
     elif shell == "zsh":
         print("""#compdef gnoblinctl
 _gnoblinctl() {
@@ -463,19 +364,17 @@ _gnoblinctl() {
         compadd NAMES
     elif (( CURRENT == 3 )); then
         case $words[2] in
-            window) compadd ACTIONS ;;
-            workspaces) compadd list switch ;;
-            completion) compadd bash zsh fish ;;
+CASES
         esac
     else
         _arguments '--json[JSON output]' '--format[Output format]:format:(auto json table)' '--socket[Compositor socket]:path:_files' '--timeout[Request timeout]:seconds:'
     fi
 }
-compdef _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("ACTIONS", actions))
+compdef _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("CASES", zsh_cases))
     else:
         print("complete -c gnoblinctl -f")
         for name in choices: print(f"complete -c gnoblinctl -n '__fish_use_subcommand' -a '{name}'")
-        print(f"complete -c gnoblinctl -n '__fish_seen_subcommand_from window' -a '{actions}'")
+        for name, actions in nested.items(): print(f"complete -c gnoblinctl -n '__fish_seen_subcommand_from {name}' -a '{actions}'")
         print("complete -c gnoblinctl -l json -s j -d 'JSON output'")
 
 
@@ -492,6 +391,9 @@ def main(argv=None):
         return 0
     if args.command == "completion":
         completions(cli, args.shell)
+        return 0
+    if args.command in ("config", "window", "workspace", "monitor", "input", "feature", "script", "grant", "launch", "permissions") and args.action is None:
+        subcommands(cli)[args.command].print_help()
         return 0
     try:
         render(dispatch(args, cli), args.format)

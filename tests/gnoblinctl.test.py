@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 loader = importlib.machinery.SourceFileLoader("gnoblinctl", str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -28,8 +28,8 @@ class CliTests(unittest.TestCase):
 
     def test_invalid_values_are_rejected_before_transport(self):
         for words in (["window", "resize", "active", "0", "40"], ["--timeout", "0", "ping"],
-                      ["window", "workspace", "2", "0"], ["launch-begin", "token", "app", "-1"],
-                      ["enable"], ["ping", "extra"], ["window", "move", "1", "nan", "2"]):
+                      ["window", "workspace", "2", "0"], ["launch", "begin", "token", "app", "-1"],
+                      ["feature", "enable"], ["ping", "extra"], ["window", "move", "1", "nan", "2"]):
             with self.subTest(words=words), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 ctl.parser().parse_args(words)
 
@@ -76,6 +76,51 @@ class CliTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue()), value)
         with contextlib.redirect_stdout(io.StringIO()) as output: ctl.render(value, "table")
         self.assertNotIn("\x1b", output.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.render({"windowControlError": "offline"}, "table")
+        self.assertEqual(output.getvalue(), "window control error: offline\n")
+        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.table([{"appId": "org.example.App"}])
+        self.assertIn("APP ID", output.getvalue())
+
+    def test_canonical_groups_are_discoverable_and_flat_commands_are_rejected(self):
+        self.assertEqual(set(ctl.subcommands(ctl.parser())), {
+            "ping", "version", "status", "reload", "privacy", "permissions", "window", "completion",
+            "config", "workspace", "monitor", "input", "feature", "script", "grant", "launch",
+        })
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(ctl.main(["feature"]), 0)
+        self.assertIn("{list,show,enable,disable}", output.getvalue())
+        for words in (("features",), ("reload-config",), ("input-sources",), ("load-config", "file.lua")):
+            with self.subTest(words=words), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                ctl.parser().parse_args(words)
+
+    def test_canonical_commands_keep_transport_arguments(self):
+        cli = ctl.parser()
+        cases = [
+            (["config", "reload"], ("ReloadConfig", "", [])),
+            (["script", "reload"], ("ReloadScripts", "", [])),
+            (["feature", "enable", "osd"], ("SetFeature", "sb", ["osd", "true"])),
+            (["grant", "revoke", "screen-cast", "grant-1"], ("RevokePortalGrant", "ss", ["screen-cast", "grant-1"])),
+        ]
+        for words, expected in cases:
+            with self.subTest(words=words):
+                args = cli.parse_args(words)
+                args.timeout = 5
+                args.socket = ""
+                call = Mock()
+                with patch.object(ctl, "dbus", call):
+                    ctl.dispatch(args, cli)
+                method, signature, values, service, timeout = call.call_args.args
+                self.assertEqual((method, signature, list(values), service, timeout),
+                                 (expected[0], expected[1], expected[2], "org.gnoblin.Shell", 5))
+
+    def test_completion_uses_canonical_parser_groups(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            ctl.completions(ctl.parser(), "bash")
+        script = output.getvalue()
+        self.assertIn("feature:2) words='list show enable disable -j --json --format --timeout --socket'", script)
+        self.assertIn("input:2) words='list current select -j --json --format --timeout --socket'", script)
+        self.assertIn("window:list:3) words='-j --json --format --timeout --socket --app-id --title --focused'", script)
+        self.assertNotIn("reload-config", script)
 
 
 if __name__ == "__main__": unittest.main()
