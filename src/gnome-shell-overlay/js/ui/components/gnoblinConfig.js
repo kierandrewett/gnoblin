@@ -181,6 +181,25 @@ function loadTomlDocument(path, stack = [], watched = null) {
     return {document: mergeDocuments(merged, local), paths};
 }
 
+const WINDOW_RULE_EFFECT_KEYS = Object.freeze(['blur', 'blur-ignore-shadows', 'opacity', 'animation', 'shader', 'shader-uniforms']);
+const STRING_MATCH_KEYS = new Set(['app-id', 'title', 'layer']);
+const WINDOW_RULE_MATCHERS = new WeakMap();
+
+function windowRuleMatchers(rule) {
+    const cached = WINDOW_RULE_MATCHERS.get(rule);
+    if (cached?.match === rule.match)
+        return cached.entries;
+    const entries = Object.entries(rule.match).map(([key, value]) =>
+        [key, STRING_MATCH_KEYS.has(key) ? new RegExp(value) : value]);
+    WINDOW_RULE_MATCHERS.set(rule, {match: rule.match, entries});
+    return entries;
+}
+
+function compileWindowRuleMatchers(rules) {
+    for (const rule of rules)
+        windowRuleMatchers(rule);
+}
+
 export function parseDocument(document) {
     const next = {...DEFAULTS};
     next.permissions = Permissions.validate(document.permissions);
@@ -245,7 +264,6 @@ export function parseDocument(document) {
                 if (typeof value !== 'boolean') throw new Error('focused match must be boolean');
             } else if (['app-id', 'title', 'layer'].includes(key)) {
                 if (typeof value !== 'string' || value.length > 512) throw new Error('rule matcher must be a regex string');
-                new RegExp(value);
             } else if (key !== 'type' || !['layer', 'window'].includes(value)) {
                 throw new Error('unknown window rule match');
             }
@@ -282,6 +300,8 @@ export function parseDocument(document) {
                 throw new Error('shader-uniforms must contain up to 64 named finite floats; gnoblin_ names are reserved');
         }
     }
+    // Compile validated patterns once for this configuration.
+    compileWindowRuleMatchers(rules);
     next['window-rules'] = rules;
     Object.assign(next, validateShortcuts(document));
     return next;
@@ -773,12 +793,19 @@ export function layerOffset(anchor, rect, monitor) {
 export function windowEffects(properties, config = settings) {
     const effects = {borders: {...Corners.borderDefaults}, corners: {...Corners.defaults}, blur: 0, 'blur-ignore-shadows': false, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
     for (const rule of config['window-rules']) {
-        if (Object.entries(rule.match).every(([key, value]) =>
-            key === 'type' || key === 'focused' ? properties[key] === value :
-                properties[key] !== null && new RegExp(value).test(properties[key] ?? ''))) {
+        let matches = true;
+        for (const [key, matcher] of windowRuleMatchers(rule)) {
+            if (key === 'type' || key === 'focused'
+                ? properties[key] !== matcher
+                : properties[key] === null || !matcher.test(properties[key] ?? '')) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
             if (rule.corners !== undefined) effects.corners = Corners.merge(effects.corners, rule.corners);
             if (rule.borders !== undefined) effects.borders = {...effects.borders, ...rule.borders};
-            for (const key of ['blur', 'blur-ignore-shadows', 'opacity', 'animation', 'shader', 'shader-uniforms'])
+            for (const key of WINDOW_RULE_EFFECT_KEYS)
                 if (rule[key] !== undefined) effects[key] = rule[key];
         }
     }
