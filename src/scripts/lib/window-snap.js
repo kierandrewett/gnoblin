@@ -34,7 +34,7 @@ export class WindowSnap {
     begin(window) {
         this.cancel();
         if (!this.bridge.eligible(window) || !window.allows_move() || (!window.allows_resize() && !window.get_maximize_flags()) || window.is_fullscreen()) return;
-        if (![...this.bridge.clients].some(client => client.trackSnap)) return;
+        if (!this.hasSubscribers()) return;
         const id = String(window.get_stable_sequence());
         const previous = this.saved.get(id);
         if (previous) {
@@ -70,7 +70,18 @@ export class WindowSnap {
         const key = JSON.stringify(state);
         if (!client && key === this.last) return;
         this.last = key;
-        for (const peer of client ? [client] : [...this.bridge.clients].filter(peer => peer.trackSnap)) this.bridge.send(peer, state);
+        if (client) {
+            this.bridge.send(client, state);
+            return;
+        }
+        for (const peer of this.bridge.clients)
+            if (peer.trackSnap) this.bridge.send(peer, state);
+    }
+
+    hasSubscribers() {
+        for (const client of this.bridge.clients)
+            if (client.trackSnap) return true;
+        return false;
     }
 
     offer(client, record) {

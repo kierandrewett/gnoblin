@@ -38,6 +38,23 @@ context.Main.sessionMode.isLocked = true;
 layers.apply();
 assert.deepEqual(parent.children, original, 'The lock screen cancels temporary stacking');
 layers.destroy();
+let namespaceCalls = 0;
+const performanceContext = vm.createContext({
+    global: {display: signals, window_manager: signals, get_window_actors: () => original},
+    Main: {sessionMode: {...signals, isLocked: false}},
+    Meta: {gnoblin_layer_namespace(window) { namespaceCalls++; return window.name; }},
+});
+vm.runInContext(source, performanceContext);
+const performanceLayers = new performanceContext.LayerCompanions();
+performanceLayers.apply();
+assert.equal(namespaceCalls, 0, 'No companion request does not inspect layer namespaces');
+performanceLayers.update([
+    {surface: 'editor', companions: ['bar', 'dock']},
+    {surface: 'popup', companions: ['bar', 'dock']},
+]);
+assert.equal(namespaceCalls, original.length,
+    'One apply reads each visible layer namespace once, regardless of request count');
+performanceLayers.destroy();
 const sessionSource = readFileSync(new URL('../src/scripts/lib/ui-sessions.js', import.meta.url), 'utf8');
 const {UiSessions} = await import('data:text/javascript;base64,' + Buffer.from(sessionSource).toString('base64'));
 let request;

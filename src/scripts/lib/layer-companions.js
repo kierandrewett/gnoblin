@@ -92,15 +92,28 @@ export class LayerCompanions {
 
     apply() {
         this.restore();
-        if (Main.sessionMode.isLocked) return;
-        const actors = global.get_window_actors().filter(actor => actor.visible && actor.meta_window);
-        const namespace = actor => Meta.gnoblin_layer_namespace(actor.meta_window);
+        if (Main.sessionMode.isLocked || !this.requests.length) return;
+        const byNamespace = new Map();
+        const byParent = new Map();
+        for (const actor of global.get_window_actors()) {
+            if (!actor.visible || !actor.meta_window) continue;
+            const namespace = Meta.gnoblin_layer_namespace(actor.meta_window);
+            if (typeof namespace !== 'string') continue;
+            const parent = actor.get_parent();
+            const entry = {actor, namespace};
+            if (!byNamespace.has(namespace)) byNamespace.set(namespace, []);
+            byNamespace.get(namespace).push(entry);
+            if (!parent) continue;
+            if (!byParent.has(parent)) byParent.set(parent, []);
+            byParent.get(parent).push(entry);
+        }
         for (const request of this.requests) {
-            for (const overlay of actors.filter(actor => namespace(actor) === request.surface)) {
+            for (const {actor: overlay} of byNamespace.get(request.surface) ?? []) {
                 const parent = overlay.get_parent();
                 if (!parent) continue;
-                const companions = actors.filter(actor => actor.get_parent() === parent &&
-                    actor.meta_window.get_monitor() === overlay.meta_window.get_monitor() && request.companions.includes(namespace(actor)));
+                const companions = (byParent.get(parent) ?? []).filter(entry =>
+                    entry.actor.meta_window.get_monitor() === overlay.meta_window.get_monitor() &&
+                    request.companions.includes(entry.namespace)).map(entry => entry.actor);
                 if (!companions.length) continue;
                 if (!this.saved.has(parent)) this.saved.set(parent, parent.get_children());
                 if (request.companionsAbove) {

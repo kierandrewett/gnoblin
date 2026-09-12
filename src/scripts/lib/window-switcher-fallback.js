@@ -84,8 +84,8 @@ export class WindowSwitcherFallback {
         const gesture = this.gesture;
         if (!gesture) return;
         const selected = gesture.windows[gesture.selected];
-        const live = global.display.list_all_windows();
-        gesture.windows = gesture.windows.filter(window => live.includes(window));
+        const live = new Set(global.display.list_all_windows());
+        gesture.windows = gesture.windows.filter(window => live.has(window));
         const retained = gesture.windows.indexOf(selected);
         gesture.selected = retained >= 0 ? retained : 0;
         if (gesture.windows.length)
@@ -121,10 +121,10 @@ export class WindowSwitcherFallback {
         const gesture = this.pending;
         this.pending = null;
         if (!gesture || Main.sessionMode.isLocked) return;
-        const live = global.display.list_all_windows();
-        const windows = gesture.windows.filter(window => live.includes(window));
+        const live = new Set(global.display.list_all_windows());
+        const windows = gesture.windows.filter(window => live.has(window));
         const selected = gesture.windows[gesture.selected];
-        const window = windows.includes(selected) ? selected : windows[Math.min(gesture.selected, windows.length - 1)];
+        const window = live.has(selected) ? selected : windows[Math.min(gesture.selected, windows.length - 1)];
         if (window) Main.activateWindow(window, global.get_current_time());
     }
 
