@@ -38,6 +38,8 @@ regular GNOME session stays available.
 - **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,
   monitors, input sources, feature toggles, reloads and a user-private
   compositor bridge for desktop shells.
+- **Compositor developer console.** `Alt+F2` opens a Doom-style top-edge console
+  with retained JavaScript evaluation, `await`, completion and object inspection.
 - **External desktop controls.** The external shell owns OSDs, capture controls,
   desktop menus and workspace feedback. Gnoblin forwards OSD requests without
   creating GNOME widgets. Native notifications and the keyboard-layout popup
