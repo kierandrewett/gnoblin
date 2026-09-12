@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Pixel regression for masked layer blur in an isolated Gnoblin session."""
+
 import os
 from pathlib import Path
 import subprocess
 import time
 from PIL import Image, ImageChops, ImageStat
 
-root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
+root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
 root.mkdir(parents=True, exist_ok=True)
-if not str(root).startswith('/tmp/gnoblin-gs.'):
-    raise SystemExit('Run inside run-gnome-shell.sh')
-scripts = root / 'scripts'
+if not str(root).startswith("/tmp/gnoblin-gs."):
+    raise SystemExit("Run inside run-gnome-shell.sh")
+scripts = root / "scripts"
 scripts.mkdir(exist_ok=True)
-(scripts / 'surface-fade.js').write_text('''import GLib from 'gi://GLib';
+(scripts / "surface-fade.js").write_text("""import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 export default function(api) {
  let previous = '';
@@ -28,13 +29,13 @@ export default function(api) {
  });
  api._disposers.push(() => GLib.source_remove(timer));
 }
-''')
+""")
 repo = Path(__file__).resolve().parents[1]
-qs = os.environ.get('QS_TEST_BIN', 'qs')
-subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
+qs = os.environ.get("QS_TEST_BIN", "qs")
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 
-qml = root / 'effect.qml'
-qml.write_text('''import QtQuick
+qml = root / "effect.qml"
+qml.write_text("""import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -64,65 +65,76 @@ ShellRoot {
   Rectangle { id: panel; x: 64; y: 64; width: 192; height: 96; radius: 16; color: "#80303030" }
  }
 }
-''')
-if os.environ.get('GNOBLIN_TEST_CLIENT_FADE') == '1':
-    qml.write_text(qml.read_text().replace('import QtQuick', 'import QtQuick\nimport Bingux.Effects 1.0 as Native', 1)
-                   .replace('id: panel;', 'id: panel; Native.SurfaceFade { target: panel }'))
-config = root / 'init.lua'
+""")
+if os.environ.get("GNOBLIN_TEST_CLIENT_FADE") == "1":
+    qml.write_text(
+        qml.read_text()
+        .replace("import QtQuick", "import QtQuick\nimport Bingux.Effects 1.0 as Native", 1)
+        .replace("id: panel;", "id: panel; Native.SurfaceFade { target: panel }")
+    )
+config = root / "init.lua"
+
+
 def configure(blur, opacity=1):
-    config.write_text(f'''local g = require("gnoblin")
+    config.write_text(f"""local g = require("gnoblin")
 g.set({{
     shell = {{["layer-animation"] = "none"}},
     ["window-rules"] = {{{{match = {{layer = "^effect-mask$"}}, blur = {blur}, opacity = {opacity}}}}},
 }})
-''')
-    time.sleep(.5)
+""")
+    time.sleep(0.5)
+
+
 def capture(name):
     path = root / name
-    subprocess.run(['grim', str(path)], check=True)
-    return Image.open(path).convert('RGB')
+    subprocess.run(["grim", str(path)], check=True)
+    return Image.open(path).convert("RGB")
+
+
 configure(0)
-proc = subprocess.Popen([qs, '-p', str(qml)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+proc = subprocess.Popen([qs, "-p", str(qml)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
     time.sleep(1.5)
-    before = capture('effect-before.png')
+    before = capture("effect-before.png")
     configure(24)
-    after = capture('effect-after.png')
-    assert proc.poll() is None, 'The panel client exited'
-    assert max(ImageStat.Stat(ImageChops.difference(before, after)).mean) > .01, 'Blur did not change the panel'
+    after = capture("effect-after.png")
+    assert proc.poll() is None, "The panel client exited"
+    assert max(ImageStat.Stat(ImageChops.difference(before, after)).mean) > 0.01, "Blur did not change the panel"
     # Reference is the fully composed blurred panel, faded as a single image.
-    (root / 'fade').write_text('0')
-    time.sleep(.2)
-    background = capture('background.png')
-    for alpha in (1, .75, .5, .25, .1, 0, .5, 1):
-        (root / 'fade').write_text(str(alpha))
-        time.sleep(.2)
-        actual = capture(f'fade-{alpha}.png')
+    (root / "fade").write_text("0")
+    time.sleep(0.2)
+    background = capture("background.png")
+    for alpha in (1, 0.75, 0.5, 0.25, 0.1, 0, 0.5, 1):
+        (root / "fade").write_text(str(alpha))
+        time.sleep(0.2)
+        actual = capture(f"fade-{alpha}.png")
         factor = round(alpha * 255) / 255
         expected = Image.blend(background, after, factor)
         # Include the antialiased silhouette and the surrounding wallpaper.
-        delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((56,56,264,168)))
+        delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((56, 56, 264, 168)))
         assert max(delta.mean) < 2, (alpha, delta.mean)
         assert max(high for low, high in delta.extrema) <= 4, (alpha, delta.extrema)
-    print('PASS: Gaussian background and client fade as one surface at 8 opacity samples, including reversal', flush=True)
-    if os.environ.get('GNOBLIN_TEST_CLIENT_FADE') == '1':
-        for alpha in (1, .75, .5, .25, .1, .01, 0, .5, 1):
-            subprocess.run([qs, '-p', str(qml), 'ipc', 'call', 'fade', 'set', '--', str(alpha)], check=True)
-            time.sleep(.2)
-            actual = capture(f'client-fade-{alpha}.png')
+    print(
+        "PASS: Gaussian background and client fade as one surface at 8 opacity samples, including reversal", flush=True
+    )
+    if os.environ.get("GNOBLIN_TEST_CLIENT_FADE") == "1":
+        for alpha in (1, 0.75, 0.5, 0.25, 0.1, 0.01, 0, 0.5, 1):
+            subprocess.run([qs, "-p", str(qml), "ipc", "call", "fade", "set", "--", str(alpha)], check=True)
+            time.sleep(0.2)
+            actual = capture(f"client-fade-{alpha}.png")
             expected = Image.blend(background, after, alpha)
-            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((72,72,248,152)))
-            assert max(delta.mean) < 2, ('client fade', alpha, delta.mean)
-        print('PASS: client-rendered opacity fades the background and panel together', flush=True)
-        for actor_alpha, client_alpha in ((.5, .75), (.25, .5), (.75, .1), (1, 1)):
-            (root / 'fade').write_text(str(actor_alpha))
-            subprocess.run([qs, '-p', str(qml), 'ipc', 'call', 'fade', 'set', '--', str(client_alpha)], check=True)
-            time.sleep(.2)
-            actual = capture('combined-fade.png')
+            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((72, 72, 248, 152)))
+            assert max(delta.mean) < 2, ("client fade", alpha, delta.mean)
+        print("PASS: client-rendered opacity fades the background and panel together", flush=True)
+        for actor_alpha, client_alpha in ((0.5, 0.75), (0.25, 0.5), (0.75, 0.1), (1, 1)):
+            (root / "fade").write_text(str(actor_alpha))
+            subprocess.run([qs, "-p", str(qml), "ipc", "call", "fade", "set", "--", str(client_alpha)], check=True)
+            time.sleep(0.2)
+            actual = capture("combined-fade.png")
             expected = Image.blend(background, after, round(actor_alpha * 255) / 255 * client_alpha)
-            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((72,72,248,152)))
-            assert max(delta.mean) < 2, ('combined fade', actor_alpha, client_alpha, delta.mean)
-        print('PASS: simultaneous actor and client fades compose correctly', flush=True)
+            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((72, 72, 248, 152)))
+            assert max(delta.mean) < 2, ("combined fade", actor_alpha, client_alpha, delta.mean)
+        print("PASS: simultaneous actor and client fades compose correctly", flush=True)
 finally:
     proc.terminate()
     proc.wait(timeout=5)

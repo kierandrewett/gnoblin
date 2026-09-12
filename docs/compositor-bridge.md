@@ -17,18 +17,18 @@ Connect to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`. The server sends
 record followed by a newline. Keep the connection open. Test sessions can set
 `GNOBLIN_COMPOSITOR_SOCKET` to a private path on both server and client.
 
-| Request | Behaviour |
-| --- | --- |
-| `{"op":"bind","id":"example","accelerator":"<Alt>F8","hold":8}` | Register a shortcut and acknowledge with `bound`. |
+| Request                                                                          | Behaviour                                                                             |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `{"op":"bind","id":"example","accelerator":"<Alt>F8","hold":8}`                  | Register a shortcut and acknowledge with `bound`.                                     |
 | `{"op":"bind","id":"search","accelerator":"Super","hold":0,"captureInput":true}` | Subscribe to bare Super release and buffer typing until the popup acknowledges focus. |
-| `{"op":"clear"}` | Remove this client's bindings and cancel its input session. |
-| `{"op":"end"}` | Cancel this client's input session. |
-| `{"op":"windows"}` | Subscribe to complete `windows` snapshots. |
-| `{"op":"activate","window":"123"}` | Release this client's input session and activate that window. |
-| `{"op":"preview","window":"123","width":224,"height":126}` | Request a window thumbnail without raising or focusing it. |
-| `{"op":"status"}` | Return registered IDs and the active input session's ID. |
-| `{"op":"input-anchor"}` | Return the pointer, focused window, and native caret geometry when available. |
-| `{"op":"type-text","window":"123","text":"..."}` | Commit a short Unicode sequence to that window's focused text input. |
+| `{"op":"clear"}`                                                                 | Remove this client's bindings and cancel its input session.                           |
+| `{"op":"end"}`                                                                   | Cancel this client's input session.                                                   |
+| `{"op":"windows"}`                                                               | Subscribe to complete `windows` snapshots.                                            |
+| `{"op":"activate","window":"123"}`                                               | Release this client's input session and activate that window.                         |
+| `{"op":"preview","window":"123","width":224,"height":126}`                       | Request a window thumbnail without raising or focusing it.                            |
+| `{"op":"status"}`                                                                | Return registered IDs and the active input session's ID.                              |
+| `{"op":"input-anchor"}`                                                          | Return the pointer, focused window, and native caret geometry when available.         |
+| `{"op":"type-text","window":"123","text":"..."}`                                 | Commit a short Unicode sequence to that window's focused text input.                  |
 
 The `overlay-shortcut` feature advertises direct bare-Super subscriptions. The
 compositor suppresses Super chords and sends the normal `activated` event on

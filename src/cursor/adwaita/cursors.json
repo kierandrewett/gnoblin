@@ -1,364 +1,210 @@
 {
   "alias": {
-    "hotspot": [
-      18,
-      5
-    ],
+    "hotspot": [18, 5],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "all-resize": {
-    "hotspot": [
-      12,
-      11
-    ],
+    "hotspot": [12, 11],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "fleur"
-    ]
+    "aliases": ["fleur"]
   },
   "all-scroll": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "cell": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "col-resize": {
-    "hotspot": [
-      12,
-      12
-    ],
+    "hotspot": [12, 12],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "context-menu": {
-    "hotspot": [
-      3,
-      1
-    ],
+    "hotspot": [3, 1],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "dnd-ask"
-    ]
+    "aliases": ["dnd-ask"]
   },
   "copy": {
-    "hotspot": [
-      3,
-      1
-    ],
+    "hotspot": [3, 1],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "crosshair": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "cross",
-      "cross_reverse",
-      "diamond_cross",
-      "tcross"
-    ]
+    "aliases": ["cross", "cross_reverse", "diamond_cross", "tcross"]
   },
   "default": {
-    "hotspot": [
-      3,
-      1
-    ],
+    "hotspot": [3, 1],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "arrow",
-      "dnd-move",
-      "left_ptr",
-      "move",
-      "top_left_arrow"
-    ]
+    "aliases": ["arrow", "dnd-move", "left_ptr", "move", "top_left_arrow"]
   },
   "e-resize": {
-    "hotspot": [
-      19,
-      13
-    ],
+    "hotspot": [19, 13],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "right_side"
-    ]
+    "aliases": ["right_side"]
   },
   "ew-resize": {
-    "hotspot": [
-      12,
-      12
-    ],
+    "hotspot": [12, 12],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "sb_h_double_arrow"
-    ]
+    "aliases": ["sb_h_double_arrow"]
   },
   "grab": {
-    "hotspot": [
-      11,
-      2
-    ],
+    "hotspot": [11, 2],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "hand1"
-    ]
+    "aliases": ["hand1"]
   },
   "grabbing": {
-    "hotspot": [
-      9,
-      5
-    ],
+    "hotspot": [9, 5],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "help": {
-    "hotspot": [
-      12,
-      21
-    ],
+    "hotspot": [12, 21],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "question_arrow"
-    ]
+    "aliases": ["question_arrow"]
   },
   "ne-resize": {
-    "hotspot": [
-      15,
-      10
-    ],
+    "hotspot": [15, 10],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "top_right_corner"
-    ]
+    "aliases": ["top_right_corner"]
   },
   "nesw-resize": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "fd_double_arrow"
-    ]
+    "aliases": ["fd_double_arrow"]
   },
   "no-drop": {
-    "hotspot": [
-      3,
-      1
-    ],
+    "hotspot": [3, 1],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "not-allowed": {
-    "hotspot": [
-      12,
-      12
-    ],
+    "hotspot": [12, 12],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "n-resize": {
-    "hotspot": [
-      13,
-      6
-    ],
+    "hotspot": [13, 6],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "top_side"
-    ]
+    "aliases": ["top_side"]
   },
   "ns-resize": {
-    "hotspot": [
-      12,
-      13
-    ],
+    "hotspot": [12, 13],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "sb_v_double_arrow"
-    ]
+    "aliases": ["sb_v_double_arrow"]
   },
   "nw-resize": {
-    "hotspot": [
-      10,
-      10
-    ],
+    "hotspot": [10, 10],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "top_left_corner"
-    ]
+    "aliases": ["top_left_corner"]
   },
   "nwse-resize": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "bd_double_arrow"
-    ]
+    "aliases": ["bd_double_arrow"]
   },
   "pointer": {
-    "hotspot": [
-      7,
-      5
-    ],
+    "hotspot": [7, 5],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "hand2"
-    ]
+    "aliases": ["hand2"]
   },
   "progress": {
-    "hotspot": [
-      3,
-      1
-    ],
+    "hotspot": [3, 1],
     "frames": 60,
     "duration": 16,
     "aliases": []
   },
   "row-resize": {
-    "hotspot": [
-      12,
-      13
-    ],
+    "hotspot": [12, 13],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "se-resize": {
-    "hotspot": [
-      15,
-      15
-    ],
+    "hotspot": [15, 15],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "bottom_right_corner"
-    ]
+    "aliases": ["bottom_right_corner"]
   },
   "s-resize": {
-    "hotspot": [
-      13,
-      18
-    ],
+    "hotspot": [13, 18],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "bottom_side"
-    ]
+    "aliases": ["bottom_side"]
   },
   "sw-resize": {
-    "hotspot": [
-      10,
-      15
-    ],
+    "hotspot": [10, 15],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "bottom_left_corner"
-    ]
+    "aliases": ["bottom_left_corner"]
   },
   "text": {
-    "hotspot": [
-      11,
-      12
-    ],
+    "hotspot": [11, 12],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "xterm"
-    ]
+    "aliases": ["xterm"]
   },
   "vertical-text": {
-    "hotspot": [
-      12,
-      11
-    ],
+    "hotspot": [12, 11],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "wait": {
-    "hotspot": [
-      11,
-      11
-    ],
+    "hotspot": [11, 11],
     "frames": 60,
     "duration": 16,
-    "aliases": [
-      "watch"
-    ]
+    "aliases": ["watch"]
   },
   "w-resize": {
-    "hotspot": [
-      6,
-      13
-    ],
+    "hotspot": [6, 13],
     "frames": 1,
     "duration": 0,
-    "aliases": [
-      "left_side"
-    ]
+    "aliases": ["left_side"]
   },
   "zoom-in": {
-    "hotspot": [
-      11,
-      10
-    ],
+    "hotspot": [11, 10],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "zoom-out": {
-    "hotspot": [
-      11,
-      10
-    ],
+    "hotspot": [11, 10],
     "frames": 1,
     "duration": 0,
     "aliases": []
   },
   "X_cursor": {
-    "hotspot": [
-      11,
-      12
-    ],
+    "hotspot": [11, 12],
     "frames": 1,
     "duration": 0,
     "aliases": []

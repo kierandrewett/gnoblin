@@ -36,11 +36,11 @@ SETTLE="${SETTLE:-25}"
 MODE="${GNOBLIN_TEST_MODE:-gnoblin}"
 ENV_MODE="${GNOBLIN_TEST_ENV_MODE:-$MODE}"
 if [ -n "${GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS:-}" ]; then
-  EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
+    EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
 elif [ "$MODE" = gnoblin ]; then
-  EXPECT_PRIVILEGED_PROTOCOLS=1
+    EXPECT_PRIVILEGED_PROTOCOLS=1
 else
-  EXPECT_PRIVILEGED_PROTOCOLS=0
+    EXPECT_PRIVILEGED_PROTOCOLS=0
 fi
 
 # --- runtime lookup paths (shared with run-gnome-devkit.sh, the installed
@@ -48,16 +48,22 @@ fi
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build/install first" >&2; exit 1; }
-[ -f "$PREFIX/$GNOBLIN_LIBDIR/libmutter-17.so.0" ] || { echo "no mutter in $PREFIX/$GNOBLIN_LIBDIR" >&2; exit 1; }
+[ -x "$SHELL_BIN" ] || {
+    echo "no gnome-shell in $PREFIX — build/install first" >&2
+    exit 1
+}
+[ -f "$PREFIX/$GNOBLIN_LIBDIR/libmutter-17.so.0" ] || {
+    echo "no mutter in $PREFIX/$GNOBLIN_LIBDIR" >&2
+    exit 1
+}
 export GDK_BACKEND=wayland
 # Keep the launcher-provided environment explicit. GNOME Shell must replace a
 # stale value with the effective command-line mode before Mutter initialises.
 export GNOME_SHELL_SESSION_MODE="$ENV_MODE"
 if [ "$MODE" = gnoblin ]; then
-  export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+    export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
 else
-  export XDG_CURRENT_DESKTOP=GNOME
+    export XDG_CURRENT_DESKTOP=GNOME
 fi
 
 # --- isolated throwaway state ----------------------------------------------
@@ -72,64 +78,64 @@ export GSETTINGS_BACKEND="${GNOBLIN_TEST_GSETTINGS_BACKEND:-memory}"
 export GTK_A11Y=none NO_AT_BRIDGE=1
 
 case "${GNOBLIN_TEST_DISABLE_NOTIFICATIONS:-0}" in
-  0) ;;
-  1)
-    gsettings set org.gnoblin.shell disabled-features "['notifications', 'input-source-switcher']" || exit 1
-    ;;
-  *)
-    echo "!! GNOBLIN_TEST_DISABLE_NOTIFICATIONS must be 0 or 1" >&2
-    exit 1
-    ;;
+    0) ;;
+    1)
+        gsettings set org.gnoblin.shell disabled-features "['notifications', 'input-source-switcher']" || exit 1
+        ;;
+    *)
+        echo "!! GNOBLIN_TEST_DISABLE_NOTIFICATIONS must be 0 or 1" >&2
+        exit 1
+        ;;
 esac
 
 if [ -n "${GNOBLIN_TEST_EXTENSION_ROOT:-}" ]; then
-  if [ ! -d "$GNOBLIN_TEST_EXTENSION_ROOT" ]; then
-    echo "!! extension fixture root is not a directory: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
-    exit 1
-  fi
+    if [ ! -d "$GNOBLIN_TEST_EXTENSION_ROOT" ]; then
+        echo "!! extension fixture root is not a directory: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
+        exit 1
+    fi
 
-  extension_data="$DK/test-system/gnome-shell/extensions"
-  mkdir -p "$extension_data"
-  extension_count=0
-  for extension in "$GNOBLIN_TEST_EXTENSION_ROOT"/*; do
-    [ -d "$extension" ] || continue
-    cp -a -- "$extension" "$extension_data/"
-    extension_count=$((extension_count + 1))
-  done
-  if [ "$extension_count" -eq 0 ]; then
-    echo "!! extension fixture root contains no extension directories: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
-    exit 1
-  fi
-  export XDG_DATA_DIRS="$DK/test-system:$XDG_DATA_DIRS"
+    extension_data="$DK/test-system/gnome-shell/extensions"
+    mkdir -p "$extension_data"
+    extension_count=0
+    for extension in "$GNOBLIN_TEST_EXTENSION_ROOT"/*; do
+        [ -d "$extension" ] || continue
+        cp -a -- "$extension" "$extension_data/"
+        extension_count=$((extension_count + 1))
+    done
+    if [ "$extension_count" -eq 0 ]; then
+        echo "!! extension fixture root contains no extension directories: $GNOBLIN_TEST_EXTENSION_ROOT" >&2
+        exit 1
+    fi
+    export XDG_DATA_DIRS="$DK/test-system:$XDG_DATA_DIRS"
 fi
 
 DISP="gnoblin-gs-$$"
 SHELL_PID=
 SHELL_REAL_PID_FILE=
 cleanup() {
-  # Kill the shell by its real PID. $SHELL_PID is dbus-run-session, and
-  # killing only that orphans gnome-shell (its environ carries the host
-  # WAYLAND_DISPLAY, so the env sweep below never matches it either).
-  shell_real_pid="$(cat "$SHELL_REAL_PID_FILE" 2>/dev/null || true)"
-  if [ -n "$shell_real_pid" ]; then
-    kill "$shell_real_pid" 2>/dev/null
-    for _ in $(seq 1 10); do
-      kill -0 "$shell_real_pid" 2>/dev/null || break
-      sleep 0.5
+    # Kill the shell by its real PID. $SHELL_PID is dbus-run-session, and
+    # killing only that orphans gnome-shell (its environ carries the host
+    # WAYLAND_DISPLAY, so the env sweep below never matches it either).
+    shell_real_pid="$(cat "$SHELL_REAL_PID_FILE" 2>/dev/null || true)"
+    if [ -n "$shell_real_pid" ]; then
+        kill "$shell_real_pid" 2>/dev/null
+        for _ in $(seq 1 10); do
+            kill -0 "$shell_real_pid" 2>/dev/null || break
+            sleep 0.5
+        done
+        kill -KILL "$shell_real_pid" 2>/dev/null
+    fi
+    [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
+    [ -n "$SHELL_PID" ] && wait "$SHELL_PID" 2>/dev/null || true
+    # the isolated dbus-daemon references $DK in its command line
+    pkill -f "$DK/" 2>/dev/null
+    # sweep any children that joined the nested display
+    for proc in /proc/[0-9]*; do
+        env="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
+        case "$env" in *"WAYLAND_DISPLAY=$DISP"*) kill "-KILL" "${proc##*/}" 2>/dev/null || true ;; esac
     done
-    kill -KILL "$shell_real_pid" 2>/dev/null
-  fi
-  [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null
-  [ -n "$SHELL_PID" ] && wait "$SHELL_PID" 2>/dev/null || true
-  # the isolated dbus-daemon references $DK in its command line
-  pkill -f "$DK/" 2>/dev/null
-  # sweep any children that joined the nested display
-  for proc in /proc/[0-9]*; do
-    env="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$env" in *"WAYLAND_DISPLAY=$DISP"*) kill "-KILL" "${proc##*/}" 2>/dev/null || true ;; esac
-  done
-  [ -f "$DK/shell.log" ] && gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
-  rm -rf "$DK"
+    [ -f "$DK/shell.log" ] && gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
+    rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -149,13 +155,13 @@ SHELL_REAL_PID_FILE="$DK/shell-pid"
 # same mechanism, no login required. Compare the capture with the
 # real-hardware verification checklist before changing a boot budget.
 if [ -n "${GNOBLIN_PROFILE:-}" ]; then
-  if exec 9>"$GNOBLIN_PROFILE"; then
-    export GJS_ENABLE_PROFILER=1
-    export GJS_TRACE_FD=9
-    echo ">> GJS boot profiler armed -> $GNOBLIN_PROFILE"
-  else
-    echo "!! could not open $GNOBLIN_PROFILE; booting without the profiler" >&2
-  fi
+    if exec 9>"$GNOBLIN_PROFILE"; then
+        export GJS_ENABLE_PROFILER=1
+        export GJS_TRACE_FD=9
+        echo ">> GJS boot profiler armed -> $GNOBLIN_PROFILE"
+    else
+        echo "!! could not open $GNOBLIN_PROFILE; booting without the profiler" >&2
+    fi
 fi
 
 echo ">> booting patched gnome-shell (mode=$MODE) headless from $PREFIX ..."
@@ -167,47 +173,53 @@ monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
-  bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
-  gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
-  "$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE" \
-  "${monitor_args[@]}" --wayland-display "$DISP" \
-  >"$DK/shell.log" 2>&1 &
+    bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
+    gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
+    "$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE" \
+    "${monitor_args[@]}" --wayland-display "$DISP" \
+    >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
 
 # Wait for the wayland socket to appear.
 for _ in $(seq 1 60); do
-  sleep 0.5
-  [ -S "$XDG_RUNTIME_DIR/$DISP" ] && break
-  kill -0 "$SHELL_PID" 2>/dev/null || break
+    sleep 0.5
+    [ -S "$XDG_RUNTIME_DIR/$DISP" ] && break
+    kill -0 "$SHELL_PID" 2>/dev/null || break
 done
 if [ ! -S "$XDG_RUNTIME_DIR/$DISP" ]; then
-  echo "!! gnome-shell did not create the wayland socket:" >&2
-  tail -n 40 "$DK/shell.log" >&2
-  gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
-  exit 1
+    echo "!! gnome-shell did not create the wayland socket:" >&2
+    tail -n 40 "$DK/shell.log" >&2
+    gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
+    exit 1
 fi
 
 # Wait for "started" (the shell's own readiness signal) or a crash.
 started=0
 for _ in $(seq 1 $((SETTLE * 2))); do
-  if grep -qE "GNOME Shell started|running-state.*RUNNING|Shell.* started" "$DK/shell.log" 2>/dev/null; then
-    started=1; break
-  fi
-  kill -0 "$SHELL_PID" 2>/dev/null || { echo "!! gnome-shell exited during startup" >&2; break; }
-  sleep 0.5
+    if grep -qE "GNOME Shell started|running-state.*RUNNING|Shell.* started" "$DK/shell.log" 2>/dev/null; then
+        started=1
+        break
+    fi
+    kill -0 "$SHELL_PID" 2>/dev/null || {
+        echo "!! gnome-shell exited during startup" >&2
+        break
+    }
+    sleep 0.5
 done
 
 echo "== session mode / startup log lines =="
 grep -iE "session.?mode|gnoblin|GNOME Shell started|CRITICAL|JS ERROR|JS WARNING|Traceback|error|assert|abort" \
-  "$DK/shell.log" 2>/dev/null | head -40 | sed 's/^/   /'
+    "$DK/shell.log" 2>/dev/null | head -40 | sed 's/^/   /'
 fatal=0
 if gnoblin_log_has_fatal "$DK/shell.log" >/dev/null; then
-  fatal=1
+    fatal=1
 fi
 
 # --- probe advertised globals ----------------------------------------------
 probe="$DK/wl-globals"
-cc "$ROOT/tests/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
+compiler_flags="$(pkg-config --cflags --libs wayland-client)" || exit 1
+read -r -a compiler_args <<<"$compiler_flags"
+cc "$ROOT/tests/wl-globals.c" "${compiler_args[@]}" -o "$probe" || exit 1
 globals="$(WAYLAND_DISPLAY="$DISP" "$probe")"
 echo "== wlr_/ext_ protocols advertised by gnome-shell =="
 printf '%s\n' "$globals" | grep -iE "wlr_|ext_" | sort | sed 's/^/   /'
@@ -215,92 +227,92 @@ total="$(printf '%s\n' "$globals" | wc -l)"
 echo "   (+ $total globals total)"
 
 privileged_protocols=(
-  ext_data_control_manager_v1
-  ext_foreign_toplevel_list_v1
-  ext_idle_notifier_v1
-  zwlr_foreign_toplevel_manager_v1
-  zwlr_gamma_control_manager_v1
-  zwlr_layer_shell_v1
-  zwlr_output_power_manager_v1
-  zwlr_screencopy_manager_v1
+    ext_data_control_manager_v1
+    ext_foreign_toplevel_list_v1
+    ext_idle_notifier_v1
+    zwlr_foreign_toplevel_manager_v1
+    zwlr_gamma_control_manager_v1
+    zwlr_layer_shell_v1
+    zwlr_output_power_manager_v1
+    zwlr_screencopy_manager_v1
 )
 protocol_scope_ok=1
 for protocol in "${privileged_protocols[@]}"; do
-  if printf '%s\n' "$globals" | grep -q "^$protocol "; then
-    present=1
-  else
-    present=0
-  fi
-  if [ "$present" != "$EXPECT_PRIVILEGED_PROTOCOLS" ]; then
-    protocol_scope_ok=0
-    echo "!! $protocol exposure mismatch: expected=$EXPECT_PRIVILEGED_PROTOCOLS actual=$present" >&2
-  fi
+    if printf '%s\n' "$globals" | grep -q "^$protocol "; then
+        present=1
+    else
+        present=0
+    fi
+    if [ "$present" != "$EXPECT_PRIVILEGED_PROTOCOLS" ]; then
+        protocol_scope_ok=0
+        echo "!! $protocol exposure mismatch: expected=$EXPECT_PRIVILEGED_PROTOCOLS actual=$present" >&2
+    fi
 done
 
 control_present=0
 if [ -s "$BUS_ADDRESS_FILE" ]; then
-  bus_address="$(cat "$BUS_ADDRESS_FILE")"
-  if DBUS_SESSION_BUS_ADDRESS="$bus_address" gdbus call --session \
-      --dest org.gnoblin.Shell \
-      --object-path /org/gnoblin/Shell \
-      --method org.gnoblin.Shell.Ping >/dev/null 2>&1; then
-    control_present=1
-  fi
+    bus_address="$(cat "$BUS_ADDRESS_FILE")"
+    if DBUS_SESSION_BUS_ADDRESS="$bus_address" gdbus call --session \
+        --dest org.gnoblin.Shell \
+        --object-path /org/gnoblin/Shell \
+        --method org.gnoblin.Shell.Ping >/dev/null 2>&1; then
+        control_present=1
+    fi
 fi
 if { [ "$MODE" = gnoblin ] && [ "$control_present" = 1 ]; } ||
-   { [ "$MODE" != gnoblin ] && [ "$control_present" = 0 ]; }; then
-  control_scope_ok=1
+    { [ "$MODE" != gnoblin ] && [ "$control_present" = 0 ]; }; then
+    control_scope_ok=1
 else
-  control_scope_ok=0
-  echo "!! gnoblin control scope mismatch: mode=$MODE present=$control_present" >&2
+    control_scope_ok=0
+    echo "!! gnoblin control scope mismatch: mode=$MODE present=$control_present" >&2
 fi
 
 dbus_client_ok=1
 if [ -n "${GNOBLIN_TEST_DBUS_CLIENT:-}" ]; then
-  if [ ! -x "$GNOBLIN_TEST_DBUS_CLIENT" ]; then
-    echo "!! D-Bus test client is not executable: $GNOBLIN_TEST_DBUS_CLIENT" >&2
-    dbus_client_ok=0
-  elif [ -z "${bus_address:-}" ]; then
-    echo "!! isolated D-Bus address is unavailable" >&2
-    dbus_client_ok=0
-  elif ! GNOBLIN_ACTIVE_MODE="$MODE" WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
-    dbus_client_ok=0
-  fi
+    if [ ! -x "$GNOBLIN_TEST_DBUS_CLIENT" ]; then
+        echo "!! D-Bus test client is not executable: $GNOBLIN_TEST_DBUS_CLIENT" >&2
+        dbus_client_ok=0
+    elif [ -z "${bus_address:-}" ]; then
+        echo "!! isolated D-Bus address is unavailable" >&2
+        dbus_client_ok=0
+    elif ! GNOBLIN_ACTIVE_MODE="$MODE" WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_DBUS_CLIENT"; then
+        dbus_client_ok=0
+    fi
 fi
 
 client_ok=1
 if [ -n "${GNOBLIN_TEST_CLIENT:-}" ]; then
-  if [ ! -x "$GNOBLIN_TEST_CLIENT" ]; then
-    echo "!! protocol test client is not executable: $GNOBLIN_TEST_CLIENT" >&2
-    client_ok=0
-  elif ! WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_CLIENT"; then
-    client_ok=0
-  elif ! timeout 5s env WAYLAND_DISPLAY="$DISP" "$probe" >/dev/null; then
-    echo "!! compositor did not respond after protocol client disconnect" >&2
-    client_ok=0
-  elif ! kill -0 "$SHELL_PID" 2>/dev/null; then
-    echo "!! gnome-shell exited after protocol client disconnect" >&2
-    client_ok=0
-  fi
+    if [ ! -x "$GNOBLIN_TEST_CLIENT" ]; then
+        echo "!! protocol test client is not executable: $GNOBLIN_TEST_CLIENT" >&2
+        client_ok=0
+    elif ! WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_CLIENT"; then
+        client_ok=0
+    elif ! timeout 5s env WAYLAND_DISPLAY="$DISP" "$probe" >/dev/null; then
+        echo "!! compositor did not respond after protocol client disconnect" >&2
+        client_ok=0
+    elif ! kill -0 "$SHELL_PID" 2>/dev/null; then
+        echo "!! gnome-shell exited after protocol client disconnect" >&2
+        client_ok=0
+    fi
 fi
 
 # A client may expose diagnostics after the initial startup scan.
 if gnoblin_log_has_fatal "$DK/shell.log" >/dev/null; then
-  fatal=1
+    fatal=1
 fi
 
 gnoblin_publish_log "$DK/shell.log" gnome-shell-last.log 2>/dev/null || true
 
 if [ "${KEEP:-0}" = 1 ]; then
-  echo ">> KEEP=1: shell alive on WAYLAND_DISPLAY=$DISP (Ctrl-C to exit). log -> $LAST_LOG"
-  wait "$SHELL_PID"
+    echo ">> KEEP=1: shell alive on WAYLAND_DISPLAY=$DISP (Ctrl-C to exit). log -> $LAST_LOG"
+    wait "$SHELL_PID"
 fi
 
 if [ "$started" = 1 ] && [ "$protocol_scope_ok" = 1 ] &&
-   [ "$control_scope_ok" = 1 ] && [ "$client_ok" = 1 ] &&
-   [ "$dbus_client_ok" = 1 ] && [ "$fatal" = 0 ]; then
-  echo ">> RESULT: PASS (mode=$MODE started, protocol/control scope correct, clients=$client_ok/$dbus_client_ok, no fatal diagnostics). log -> $LAST_LOG"
-  exit 0
+    [ "$control_scope_ok" = 1 ] && [ "$client_ok" = 1 ] &&
+    [ "$dbus_client_ok" = 1 ] && [ "$fatal" = 0 ]; then
+    echo ">> RESULT: PASS (mode=$MODE started, protocol/control scope correct, clients=$client_ok/$dbus_client_ok, no fatal diagnostics). log -> $LAST_LOG"
+    exit 0
 fi
 echo ">> RESULT: incomplete (mode=$MODE started=$started protocol_scope=$protocol_scope_ok control_scope=$control_scope_ok clients=$client_ok/$dbus_client_ok fatal_diagnostics=$fatal). log -> $LAST_LOG" >&2
 exit 1

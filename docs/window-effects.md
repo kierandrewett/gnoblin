@@ -100,7 +100,6 @@ Bingux currently animates some popup opacity inside its buffers. The live mask
 correction improves their settled blur, but their client-rendered fade still
 needs a separate resolution. No alpha-modifier integration is installed.
 
-
 Run native checks with the repo installation, without restarting the desktop:
 
 ```sh
@@ -127,20 +126,20 @@ Use existing app-ID/title matchers for exceptions and `focused` for active/inact
 borders and shadows. Desktop surfaces, menus and override-redirect windows are
 excluded. The setting has no effect until `radius` is greater than zero.
 
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| `radius` | `0` | Corner radius in logical pixels, 0–200; zero disables rounding. |
-| `smoothing` | `0` | 0–1; circular through progressively smoother superellipse corners, using Reborn's parameterisation. |
-| `mode` | `"auto"` | `auto` preserves existing transparent/rounded corners; `force` applies the requested mask; `off` disables it. |
-| `padding` | `[0, 0, 0, 0]` | Top, right, bottom, left inset from the compositor's window frame, −128–128 logical pixels. |
-| `border-width` | `0` | −40–40 pixels. Positive draws inside, negative outside; zero disables. Outset borders need space within the surface buffer, or an inset via `padding`. |
-| `border-color` | `"#808080ff"` | `#RRGGBB` or `#RRGGBBAA`. |
-| `keep-maximized`, `keep-fullscreen`, `keep-tiled` | `false` | Keep rounding in those window states. |
-| `skip-libadwaita` | `true` | Preserve libadwaita corners in automatic mode. |
-| `skip-libhandy` | `false` | Skip libhandy applications in automatic mode. |
-| `shadow` | `false` | Optional table: `x`, `y`, `blur`, `spread`, `opacity`, `color`. |
-| `shadow-animation` | `{ duration = 0, easing = "ease-out-cubic" }` | Fade between shadow styles. Duration: 0–2000 ms. Easing: `linear`, `ease-out-cubic`, `ease-out-quad`, `ease-in-out-cubic`. Respects reduced motion. |
-| `keep-shadow` | `false` | Keep the replacement shadow in maximized, fullscreen or tiled states. |
+| Setting                                           | Default                                       | Meaning                                                                                                                                                |
+| ------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `radius`                                          | `0`                                           | Corner radius in logical pixels, 0–200; zero disables rounding.                                                                                        |
+| `smoothing`                                       | `0`                                           | 0–1; circular through progressively smoother superellipse corners, using Reborn's parameterisation.                                                    |
+| `mode`                                            | `"auto"`                                      | `auto` preserves existing transparent/rounded corners; `force` applies the requested mask; `off` disables it.                                          |
+| `padding`                                         | `[0, 0, 0, 0]`                                | Top, right, bottom, left inset from the compositor's window frame, −128–128 logical pixels.                                                            |
+| `border-width`                                    | `0`                                           | −40–40 pixels. Positive draws inside, negative outside; zero disables. Outset borders need space within the surface buffer, or an inset via `padding`. |
+| `border-color`                                    | `"#808080ff"`                                 | `#RRGGBB` or `#RRGGBBAA`.                                                                                                                              |
+| `keep-maximized`, `keep-fullscreen`, `keep-tiled` | `false`                                       | Keep rounding in those window states.                                                                                                                  |
+| `skip-libadwaita`                                 | `true`                                        | Preserve libadwaita corners in automatic mode.                                                                                                         |
+| `skip-libhandy`                                   | `false`                                       | Skip libhandy applications in automatic mode.                                                                                                          |
+| `shadow`                                          | `false`                                       | Optional table: `x`, `y`, `blur`, `spread`, `opacity`, `color`.                                                                                        |
+| `shadow-animation`                                | `{ duration = 0, easing = "ease-out-cubic" }` | Fade between shadow styles. Duration: 0–2000 ms. Easing: `linear`, `ease-out-cubic`, `ease-out-quad`, `ease-in-out-cubic`. Respects reduced motion.    |
+| `keep-shadow`                                     | `false`                                       | Keep the replacement shadow in maximized, fullscreen or tiled states.                                                                                  |
 
 ## Inner and outer window borders
 
@@ -183,7 +182,6 @@ A rebuilt shell must be started once to load the native renderer. Subsequent
 style changes need no logout. The current development session uses a temporary
 user-script bridge until the native build is installed system-wide.
 
-
 ### Layered shadows
 
 `corners.shadow` accepts its original table or a list of one to four tables.
@@ -201,7 +199,6 @@ g.set({["window-rules"] = {{match = {type = "window", focused = true}, corners =
 The broad layer provides depth; the smaller layer defines the edge. These are
 Bingux design values inspired by macOS, not Apple's private rendering values.
 The current inner border uses `#505050bf` (approximately 75% alpha).
-
 
 Shadow fades can be enabled independently of the shadow layers:
 
@@ -221,7 +218,6 @@ the replacement shadow. Uncertain edges retain the reported frame. Explicit
 `padding` bypasses this detection. The result is shared and cached across focus,
 move and resize events; state and scale changes trigger a new measurement.
 Capture waits until the client has an image buffer. There is no per-frame scan.
-
 
 `blur-ignore-shadows = true` excludes translucent black pixels from the backdrop
 mask. Their original colour and opacity remain in the foreground pass. Bingux

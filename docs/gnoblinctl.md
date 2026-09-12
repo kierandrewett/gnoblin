@@ -9,18 +9,18 @@ Running a group on its own shows its available actions.
 
 ## Command map
 
-| Group | Actions |
-| --- | --- |
-| `config` | `path`, `reload` |
-| `window` | `list`, `focus`, `close`, `minimize`, `restore`, `restore-or-minimize`, `maximize`, `unmaximize`, `fullscreen`, `unfullscreen`, `move`, `resize`, `workspace`, `monitor` |
-| `workspace` | `list`, `switch` |
-| `monitor` | `list` |
-| `input` | `list`, `current`, `select` |
-| `feature` | `list`, `show`, `enable`, `disable` |
-| `script` | `list`, `reload` |
-| `permissions` | `list`, `check` |
-| `grant` | `list`, `revoke` |
-| `launch` | `status`, `begin`, `end` |
+| Group         | Actions                                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config`      | `path`, `reload`                                                                                                                                                         |
+| `window`      | `list`, `focus`, `close`, `minimize`, `restore`, `restore-or-minimize`, `maximize`, `unmaximize`, `fullscreen`, `unfullscreen`, `move`, `resize`, `workspace`, `monitor` |
+| `workspace`   | `list`, `switch`                                                                                                                                                         |
+| `monitor`     | `list`                                                                                                                                                                   |
+| `input`       | `list`, `current`, `select`                                                                                                                                              |
+| `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                      |
+| `script`      | `list`, `reload`                                                                                                                                                         |
+| `permissions` | `list`, `check`                                                                                                                                                          |
+| `grant`       | `list`, `revoke`                                                                                                                                                         |
+| `launch`      | `status`, `begin`, `end`                                                                                                                                                 |
 
 `status`, `ping`, `version`, `privacy`, and `reload` are direct commands.
 `completion SHELL` prints setup for Bash, Zsh, or Fish. `launch` controls busy-cursor

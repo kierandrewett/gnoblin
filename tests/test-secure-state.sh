@@ -10,14 +10,14 @@ trap 'rm -rf "$TMP"' EXIT
 export XDG_STATE_HOME="$TMP/state"
 source "$ROOT/scripts/gnoblin-state.sh"
 
-printf 'original\n' > "$TMP/source.log"
+printf 'original\n' >"$TMP/source.log"
 state_dir="$(gnoblin_state_dir)"
 [ "$(stat -c %a "$state_dir")" = 700 ] || {
     echo "FAIL: state directory is not mode 700" >&2
     exit 1
 }
 
-printf 'do not overwrite\n' > "$TMP/victim"
+printf 'do not overwrite\n' >"$TMP/victim"
 ln -s "$TMP/victim" "$state_dir/test.log"
 gnoblin_publish_log "$TMP/source.log" test.log
 

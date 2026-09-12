@@ -9,11 +9,8 @@
  * "host-exe:<canonical-path>" for a live unsandboxed caller. Any failed check
  * returns NULL so policy cannot automatically authorise the caller.
  */
-char *gnoblin_portal_requester_identity (GDBusConnection *connection,
-                                         const char      *backend_sender,
-                                         const char      *app_id,
-                                         const char      *request_handle);
+char* gnoblin_portal_requester_identity(GDBusConnection* connection, const char* backend_sender,
+                                        const char* app_id, const char* request_handle);
 
 /* Return the readable part of a verified namespaced identity. */
-const char *gnoblin_portal_identity_name (const char *identity);
-
+const char* gnoblin_portal_identity_name(const char* identity);

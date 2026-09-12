@@ -7,7 +7,7 @@ Neither gate can prove a GDM login, visible bring-your-own chrome, interactive
 portal consent, or an installed system-package transaction. This checklist
 covers those boundaries.
 
-**Fastest path to eyeball it without logging out:** `just gnome-devkit` opens a *nested*
+**Fastest path to eyeball it without logging out:** `just gnome-devkit` opens a _nested_
 gnoblin session (a window in your current Wayland session) + a terminal wired to it; run
 your chrome (`qs -p ~/dev/kobel-shell`) from that terminal. Everything below can be poked
 from there too. The full login-session checks (§1) still matter for GDM/session wiring.
@@ -56,7 +56,7 @@ qs -p ~/path/to/shell.qml        # Quickshell
 # or: waybar
 ```
 
-- If Quickshell warns *"built against Qt X but system has Qt Y … must be rebuilt"*,
+- If Quickshell warns _"built against Qt X but system has Qt Y … must be rebuilt"_,
   rebuild the quickshell package first — a stale build crashes before it maps a surface.
 - A client's surface should appear at the anchored edge. Drive gnoblin from QML/JS via
   the `org.gnoblin.Shell` D-Bus interface (see the control protocol in the README).
@@ -99,8 +99,8 @@ just test-mutter
 Validates that gnoblin's mutter patches (layer-shell, protocol overlays, WM/crash fixes)
 don't regress mutter. The native/Wayland backend tests boot a compositor that monitors an
 ICC profile directory, so they need a real environment with a working local file monitor
-(inotify) and a seat — in a restricted sandbox they all bail with *"Unable to find default
-local file monitor type"* (exit 251), which is environmental, not a regression. The unit
+(inotify) and a seat — in a restricted sandbox they all bail with _"Unable to find default
+local file monitor type"_ (exit 251), which is environmental, not a regression. The unit
 tests (no backend) pass anywhere.
 
 ## 7. Persistent Screen Cast and Remote Desktop grants

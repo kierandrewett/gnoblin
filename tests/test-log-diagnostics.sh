@@ -8,13 +8,13 @@ trap 'rm -rf "$TMP"' EXIT
 
 source "$ROOT/tests/gnoblin-test-lib.sh"
 
-cat > "$TMP/benign.log" <<'EOF'
+cat >"$TMP/benign.log" <<'EOF'
 portal is not running: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown
 DeprecationWarning: Gio.DBusConnection.register_object is deprecated
 GNOME Shell started
 EOF
 
-cat > "$TMP/fatal.log" <<'EOF'
+cat >"$TMP/fatal.log" <<'EOF'
 GNOME Shell-CRITICAL **: TypeError: can't access property "join"
 EOF
 
@@ -29,8 +29,11 @@ if ! gnoblin_log_has_fatal "$TMP/fatal.log"; then
 fi
 
 wait_log="$TMP/wait.log"
-: > "$wait_log"
-(sleep 0.1; echo "state: ready" >> "$wait_log") &
+: >"$wait_log"
+(
+    sleep 0.1
+    echo "state: ready" >>"$wait_log"
+) &
 if ! gnoblin_wait_for_log "$wait_log" '^state: ready$' 2; then
     echo "FAIL: state-based log wait missed the transition" >&2
     exit 1

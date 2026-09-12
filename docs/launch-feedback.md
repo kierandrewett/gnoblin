@@ -15,11 +15,11 @@ visibility inhibitor.
 The session-bus name and interface are `org.gnoblin.LaunchFeedback`, at
 `/org/gnoblin/LaunchFeedback`:
 
-| Method | Arguments | Behaviour |
-| --- | --- | --- |
-| `Begin` | token (string), application (string), timeout (uint32, milliseconds) | Start one busy-cursor request. |
-| `End` | token (string) | Release that request. Unknown tokens are harmless. |
-| `GetState` | none | Return JSON with pending count, cursor visibility and artwork source. |
+| Method     | Arguments                                                            | Behaviour                                                             |
+| ---------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `Begin`    | token (string), application (string), timeout (uint32, milliseconds) | Start one busy-cursor request.                                        |
+| `End`      | token (string)                                                       | Release that request. Unknown tokens are harmless.                    |
+| `GetState` | none                                                                 | Return JSON with pending count, cursor visibility and artwork source. |
 
 Tokens must be unique per launch. The application hint can be its desktop ID,
 WM class, GTK application ID or desktop name. Requests complete when a matching

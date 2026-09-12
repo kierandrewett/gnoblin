@@ -1,4 +1,4 @@
-import * as Permissions from './gnoblinPermissions.js';
+import * as Permissions from "./gnoblinPermissions.js";
 // Gnoblin Core — the org.gnoblin.* control protocol.
 //
 // This is first-class gnoblin source, not an extension: it's copied verbatim
@@ -14,31 +14,30 @@ import * as Permissions from './gnoblinPermissions.js';
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import {Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput} from './gnoblinConfig.js';
-import {WindowRules} from './gnoblinRules.js';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
-import St from 'gi://St';
-import * as Keyboard from '../status/keyboard.js';
-import * as Location from '../status/location.js';
-import * as Main from '../main.js';
-import * as Volume from '../status/volume.js';
-import * as Config from '../../misc/config.js';
+import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput } from "./gnoblinConfig.js";
+import { WindowRules } from "./gnoblinRules.js";
+import Gio from "gi://Gio";
+import GLib from "gi://GLib";
+import Meta from "gi://Meta";
+import Shell from "gi://Shell";
+import St from "gi://St";
+import * as Keyboard from "../status/keyboard.js";
+import * as Location from "../status/location.js";
+import * as Main from "../main.js";
+import * as Volume from "../status/volume.js";
+import * as Config from "../../misc/config.js";
 
-const BUS_NAME = 'org.gnoblin.Shell';
-const OBJECT_PATH = '/org/gnoblin/Shell';
-const SCHEMA_ID = 'org.gnoblin.shell';
-const DISABLED_KEY = 'disabled-features';
-const PORTAL_GRANT_KINDS = ['screen-cast', 'remote-desktop'];
+const BUS_NAME = "org.gnoblin.Shell";
+const OBJECT_PATH = "/org/gnoblin/Shell";
+const SCHEMA_ID = "org.gnoblin.shell";
+const DISABLED_KEY = "disabled-features";
+const PORTAL_GRANT_KINDS = ["screen-cast", "remote-desktop"];
 const PORTAL_GRANT_FILE_PATTERN = /^[0-9a-f]{64}\.grant$/;
-const PORTAL_GRANT_GROUP = 'Grant';
+const PORTAL_GRANT_GROUP = "Grant";
 const PORTAL_GRANT_VERSION = 1;
 const SUPER_RELEASE_PROTOCOL_VERSION = 1;
 const OSD_REQUEST_PROTOCOL_VERSION = 2;
 const TRIM_INTERVAL_SECONDS = 300;
-
 
 // The live ScriptHost, so the module-level softReload() can re-run user scripts.
 let activeScriptHost = null;
@@ -54,27 +53,26 @@ let lastStylesheetDigest = null;
 
 function stylesheetDigest() {
     const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
-    if (!theme)
-        return null;
-    const files = [
-        theme.default_stylesheet,
-        theme.application_stylesheet,
-        ...theme.get_custom_stylesheets(),
-    ].filter((f) => f !== null);
+    if (!theme) return null;
+    const files = [theme.default_stylesheet, theme.application_stylesheet, ...theme.get_custom_stylesheets()].filter(
+        (f) => f !== null,
+    );
     const parts = [];
     for (const f of files) {
         let part = f.get_uri();
         try {
             const info = f.query_info(
-                'standard::size,time::modified,time::modified-usec',
-                Gio.FileQueryInfoFlags.NONE, null);
-            part += `:${info.get_size()}:${info.get_attribute_uint64('time::modified')}:${info.get_attribute_uint32('time::modified-usec')}`;
+                "standard::size,time::modified,time::modified-usec",
+                Gio.FileQueryInfoFlags.NONE,
+                null,
+            );
+            part += `:${info.get_size()}:${info.get_attribute_uint64("time::modified")}:${info.get_attribute_uint32("time::modified-usec")}`;
         } catch {
-            part += ':unreadable';
+            part += ":unreadable";
         }
         parts.push(part);
     }
-    return parts.sort().join('|');
+    return parts.sort().join("|");
 }
 
 // Process-wide monotonic counter for the script import cache-bust. Module-level
@@ -86,10 +84,9 @@ let scriptImportSeq = 0;
 function osdIconNames(icon) {
     try {
         const names = icon?.get_names?.();
-        if (Array.isArray(names))
-            return names.filter(name => typeof name === 'string');
+        if (Array.isArray(names)) return names.filter((name) => typeof name === "string");
         const name = icon?.to_string?.();
-        return typeof name === 'string' ? [name] : [];
+        return typeof name === "string" ? [name] : [];
     } catch {
         return [];
     }
@@ -100,24 +97,22 @@ function osdIconNames(icon) {
 function serialiseOsdString(value) {
     let string;
     try {
-        string = typeof value === 'string' ? value : String(value ?? '');
+        string = typeof value === "string" ? value : String(value ?? "");
     } catch {
-        return '';
+        return "";
     }
 
-    let result = '';
+    let result = "";
     for (let i = 0; i < string.length; i++) {
         const code = string.charCodeAt(i);
         if (code === 0) {
-            result += '\ufffd';
+            result += "\ufffd";
         } else if (code >= 0xd800 && code <= 0xdbff) {
             const next = string.charCodeAt(i + 1);
-            if (next >= 0xdc00 && next <= 0xdfff)
-                result += string[i] + string[++i];
-            else
-                result += '\ufffd';
+            if (next >= 0xdc00 && next <= 0xdfff) result += string[i] + string[++i];
+            else result += "\ufffd";
         } else if (code >= 0xdc00 && code <= 0xdfff) {
-            result += '\ufffd';
+            result += "\ufffd";
         } else {
             result += string[i];
         }
@@ -126,10 +121,9 @@ function serialiseOsdString(value) {
 }
 
 function serialiseOsdIcon(icon) {
-    if (typeof icon === 'string')
-        return serialiseOsdString(icon);
+    if (typeof icon === "string") return serialiseOsdString(icon);
 
-    return serialiseOsdString(osdIconNames(icon)[0] ?? '');
+    return serialiseOsdString(osdIconNames(icon)[0] ?? "");
 }
 
 function serialiseOsdMonitorIndex(value) {
@@ -140,8 +134,7 @@ function serialiseOsdMonitorIndex(value) {
         return 0;
     }
 
-    if (!Number.isFinite(index))
-        return 0;
+    if (!Number.isFinite(index)) return 0;
     return Math.max(-0x80000000, Math.min(0x7fffffff, Math.trunc(index)));
 }
 
@@ -161,25 +154,19 @@ function serialiseOsdLevel(value) {
 // without relying on either side's monitor enumeration order.
 function osdOutputNamesForMonitorIndex(monitorIndex) {
     const index = serialiseOsdMonitorIndex(monitorIndex);
-    if (index < 0)
-        return [];
+    if (index < 0) return [];
 
     try {
-        const logicalMonitors = global.backend
-            .get_monitor_manager()
-            .get_logical_monitors();
-        const logicalMonitor = logicalMonitors.find(monitor => monitor.get_number() === index);
-        if (!logicalMonitor)
-            return [];
+        const logicalMonitors = global.backend.get_monitor_manager().get_logical_monitors();
+        const logicalMonitor = logicalMonitors.find((monitor) => monitor.get_number() === index);
+        if (!logicalMonitor) return [];
 
         const outputNames = [];
         for (const monitor of logicalMonitor.get_monitors()) {
-            if (!monitor.is_active())
-                continue;
+            if (!monitor.is_active()) continue;
 
             const connector = serialiseOsdString(monitor.get_connector());
-            if (connector.length > 0 && !outputNames.includes(connector))
-                outputNames.push(connector);
+            if (connector.length > 0 && !outputNames.includes(connector)) outputNames.push(connector);
         }
 
         return outputNames;
@@ -191,13 +178,18 @@ function osdOutputNamesForMonitorIndex(monitorIndex) {
 // Removed UI features remain readable so existing external-shell configuration
 // can keep setting them to false. They cannot recreate GNOME widgets.
 const REMOVED_FEATURES = new Set([
-    'osd', 'osd-volume', 'osd-microphone', 'osd-brightness',
-    'osd-keyboard-brightness', 'osd-pad', 'screenshot',
+    "osd",
+    "osd-volume",
+    "osd-microphone",
+    "osd-brightness",
+    "osd-keyboard-brightness",
+    "osd-pad",
+    "screenshot",
 ]);
 const FEATURES = {
     // The separate notification daemon reads this setting before owning the bus.
-    notifications: {summary: 'Own org.freedesktop.Notifications', apply() {}},
-    'input-source-switcher': {summary: 'Native GNOME keyboard-layout switcher', apply() {}},
+    notifications: { summary: "Own org.freedesktop.Notifications", apply() {} },
+    "input-source-switcher": { summary: "Native GNOME keyboard-layout switcher", apply() {} },
 };
 
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
@@ -208,19 +200,19 @@ const FEATURES = {
 // layer-shell client — so this covers the practical need. A true process re-exec
 // on Wayland cannot preserve clients (no handoff protocol), which is exactly why
 // this is a soft reload and not global.reexec_self().
-export async function softReload(reason = 'manual') {
+export async function softReload(reason = "manual") {
     console.log(`gnoblin: soft-reload (${reason}) — reloading theme and user scripts in-process`);
     const failures = [];
     try {
         activeConfig?.reload();
     } catch (e) {
-        failures.push('config');
+        failures.push("config");
         console.warn(`gnoblin: config reload failed: ${e.message}`);
     }
 
     const digest = stylesheetDigest();
     if (digest !== null && digest === lastStylesheetDigest) {
-        console.log('gnoblin: soft-reload: stylesheets unchanged, keeping current theme');
+        console.log("gnoblin: soft-reload: stylesheets unchanged, keeping current theme");
     } else {
         try {
             Main.loadTheme();
@@ -229,20 +221,19 @@ export async function softReload(reason = 'manual') {
             // arenas (~4 MB per swap, measured); hand it back to the kernel.
             Shell.util_trim_memory();
         } catch (e) {
-            failures.push('theme');
-            logError(e, 'gnoblin: soft-reload loadTheme failed');
+            failures.push("theme");
+            logError(e, "gnoblin: soft-reload loadTheme failed");
         }
     }
 
     try {
         await activeScriptHost?.reload();
     } catch (e) {
-        failures.push('user scripts');
-        logError(e, 'gnoblin: soft-reload user scripts failed');
+        failures.push("user scripts");
+        logError(e, "gnoblin: soft-reload user scripts failed");
     }
 
-    if (failures.length > 0)
-        throw new Error(`soft reload failed: ${failures.join(', ')}`);
+    if (failures.length > 0) throw new Error(`soft reload failed: ${failures.join(", ")}`);
 
     console.log(`gnoblin: soft-reload (${reason}) complete`);
 }
@@ -257,17 +248,18 @@ class EventBus {
 
     connectSources() {
         const display = global.display;
-        this._handlers.push([display,
-            display.connect('window-created', (_d, win) => this.emit('window-opened', win))]);
+        this._handlers.push([display, display.connect("window-created", (_d, win) => this.emit("window-opened", win))]);
         const wm = global.workspace_manager;
-        this._handlers.push([wm,
-            wm.connect('active-workspace-changed',
-                () => this.emit('workspace-changed', wm.get_active_workspace_index()))]);
+        this._handlers.push([
+            wm,
+            wm.connect("active-workspace-changed", () =>
+                this.emit("workspace-changed", wm.get_active_workspace_index()),
+            ),
+        ]);
     }
 
     subscribe(event, cb) {
-        if (!this._subs.has(event))
-            this._subs.set(event, new Set());
+        if (!this._subs.has(event)) this._subs.set(event, new Set());
         this._subs.get(event).add(cb);
         return () => this._subs.get(event)?.delete(cb);
     }
@@ -286,7 +278,9 @@ class EventBus {
         for (const [obj, id] of this._handlers) {
             try {
                 obj.disconnect(id);
-            } catch { /* already gone */ }
+            } catch {
+                /* already gone */
+            }
         }
         this._handlers = [];
         this._subs.clear();
@@ -301,9 +295,9 @@ class ScriptHost {
     constructor(control, bus) {
         this._control = control;
         this._bus = bus;
-        this._dir = GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin', 'scripts']);
+        this._dir = GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin", "scripts"]);
         this._loaded = [];
-        this._generation = 0;   // bumped on every load/unload to drop stale in-flight imports
+        this._generation = 0; // bumped on every load/unload to drop stale in-flight imports
         this._destroyed = false;
     }
 
@@ -313,9 +307,9 @@ class ScriptHost {
             _disposers: disposers,
             log: (...a) => console.log(`gnoblin-script[${name}]:`, ...a),
             version: () => this._control.GetVersion(),
-            getFeature: id => this._control.GetFeature(id),
+            getFeature: (id) => this._control.GetFeature(id),
             setFeature: (id, on) => this._control.SetFeature(id, on),
-            reloadShell: () => softReload('script'),
+            reloadShell: () => softReload("script"),
             on: (event, cb) => {
                 const d = this._bus.subscribe(event, cb);
                 disposers.push(d);
@@ -326,11 +320,10 @@ class ScriptHost {
 
     _scriptNames() {
         const dir = Gio.File.new_for_path(this._dir);
-        if (!dir.query_exists(null))
-            return [];
+        if (!dir.query_exists(null)) return [];
         let e;
         try {
-            e = dir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+            e = dir.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
         } catch {
             return [];
         }
@@ -338,8 +331,7 @@ class ScriptHost {
         let info;
         while ((info = e.next_file(null)) !== null) {
             const n = info.get_name();
-            if (n.endsWith('.js'))
-                names.push(n);
+            if (n.endsWith(".js")) names.push(n);
         }
         return names.sort();
     }
@@ -348,13 +340,14 @@ class ScriptHost {
         for (const d of api._disposers ?? []) {
             try {
                 d();
-            } catch { /* ignore */ }
+            } catch {
+                /* ignore */
+            }
         }
     }
 
     async load() {
-        if (this._destroyed)
-            return;
+        if (this._destroyed) return;
 
         const gen = ++this._generation;
         const failures = [];
@@ -364,9 +357,7 @@ class ScriptHost {
             // cache-busts so code edits take effect. Module-level seq so a re-enable
             // in the same process is still fresh.
             scriptImportSeq++;
-            const uri = scriptImportSeq > 1
-                ? `file://${path}?gnoblinScript=${scriptImportSeq}`
-                : `file://${path}`;
+            const uri = scriptImportSeq > 1 ? `file://${path}?gnoblinScript=${scriptImportSeq}` : `file://${path}`;
 
             let mod;
             try {
@@ -379,9 +370,8 @@ class ScriptHost {
 
             // Drop stale in-flight imports: a newer load/unload happened, or the
             // host was destroyed, while this import was pending.
-            if (this._destroyed || gen !== this._generation)
-                return;
-            if (typeof mod.default !== 'function') {
+            if (this._destroyed || gen !== this._generation) return;
+            if (typeof mod.default !== "function") {
                 failures.push(name);
                 console.warn(`gnoblin-script: ${name} has no default-exported function`);
                 continue;
@@ -390,7 +380,7 @@ class ScriptHost {
             const api = this._api(name);
             try {
                 mod.default(api);
-                this._loaded.push({name, api});
+                this._loaded.push({ name, api });
                 console.log(`gnoblin-script: loaded ${name}`);
             } catch (e) {
                 // The script may have subscribed via api.on() before throwing —
@@ -401,15 +391,13 @@ class ScriptHost {
             }
         }
 
-        if (failures.length > 0)
-            throw new Error(`failed to load user scripts: ${failures.join(', ')}`);
+        if (failures.length > 0) throw new Error(`failed to load user scripts: ${failures.join(", ")}`);
     }
 
     unload() {
         // Invalidate any in-flight imports from the current generation.
         this._generation++;
-        for (const {api} of this._loaded)
-            this._disposeApi(api);
+        for (const { api } of this._loaded) this._disposeApi(api);
         this._loaded = [];
     }
 
@@ -424,7 +412,7 @@ class ScriptHost {
     }
 
     list() {
-        return this._loaded.map(s => s.name);
+        return this._loaded.map((s) => s.name);
     }
 }
 
@@ -569,24 +557,39 @@ export class Component {
     }
 
     enable() {
-        this._settings = new Gio.Settings({schema_id: SCHEMA_ID});
-        this._settingsChangedId = this._settings.connect(
-            `changed::${DISABLED_KEY}`, () => this._syncFeatureState());
+        this._settings = new Gio.Settings({ schema_id: SCHEMA_ID });
+        this._settingsChangedId = this._settings.connect(`changed::${DISABLED_KEY}`, () => this._syncFeatureState());
 
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
 
         this._windowRules = new WindowRules();
-        this._shortcutInput = new ShortcutInput(global.stage,
-            () => Main.pushModal(global.stage, {actionMode: Shell.ActionMode.POPUP}),
-            grab => Main.popModal(grab));
-        this._shortcuts = new Shortcuts(new CommandShortcuts(global.display, (action, enabled) => {
-            Main.wm.allowKeybinding(typeof action === 'string' ? action : Meta.external_binding_name_for_action(action),
-                enabled ? Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW |
-                    Shell.ActionMode.POPUP | Shell.ActionMode.SYSTEM_MODAL | Shell.ActionMode.LOOKING_GLASS : Shell.ActionMode.NONE);
-        }, undefined, name => this._shortcutInput.begin(name)));
-        this._permissionPolicy = {default: 'deny', rules: []};
-        this._config = new ConfigFile(undefined, next => this._applyConfig(next));
+        this._shortcutInput = new ShortcutInput(
+            global.stage,
+            () => Main.pushModal(global.stage, { actionMode: Shell.ActionMode.POPUP }),
+            (grab) => Main.popModal(grab),
+        );
+        this._shortcuts = new Shortcuts(
+            new CommandShortcuts(
+                global.display,
+                (action, enabled) => {
+                    Main.wm.allowKeybinding(
+                        typeof action === "string" ? action : Meta.external_binding_name_for_action(action),
+                        enabled
+                            ? Shell.ActionMode.NORMAL |
+                                  Shell.ActionMode.OVERVIEW |
+                                  Shell.ActionMode.POPUP |
+                                  Shell.ActionMode.SYSTEM_MODAL |
+                                  Shell.ActionMode.LOOKING_GLASS
+                            : Shell.ActionMode.NONE,
+                    );
+                },
+                undefined,
+                (name) => this._shortcutInput.begin(name),
+            ),
+        );
+        this._permissionPolicy = { default: "deny", rules: [] };
+        this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
         activeConfig = this._config;
         this._config.start();
 
@@ -602,18 +605,17 @@ export class Component {
             Gio.BusNameOwnerFlags.NONE,
             null,
             () => console.log(`gnoblin-control: acquired ${BUS_NAME} at ${OBJECT_PATH}`),
-            () => console.warn(`gnoblin-control: lost ${BUS_NAME} (another owner?)`));
+            () => console.warn(`gnoblin-control: lost ${BUS_NAME} (another owner?)`),
+        );
 
         // Mutter emits 'overlay-key' only when the configured Super key is
         // released without other input. This preserves Super-drag while
         // giving external chrome one precise edge to react to.
-        this._overlayKeyId = global.display.connect('overlay-key', () => {
+        this._overlayKeyId = global.display.connect("overlay-key", () => {
             this._impl?.emit_signal(
-                'SuperReleased',
-                new GLib.Variant('(ut)', [
-                    SUPER_RELEASE_PROTOCOL_VERSION,
-                    GLib.get_monotonic_time(),
-                ]));
+                "SuperReleased",
+                new GLib.Variant("(ut)", [SUPER_RELEASE_PROTOCOL_VERSION, GLib.get_monotonic_time()]),
+            );
         });
 
         // User scripting: event bus + script host, loaded from the config dir.
@@ -621,8 +623,7 @@ export class Component {
         this._bus.connectSources();
         this._scripts = new ScriptHost(this, this._bus);
         activeScriptHost = this._scripts;
-        this._scripts.load().catch(
-            e => logError(e, 'gnoblin-script: initial load failed'));
+        this._scripts.load().catch((e) => logError(e, "gnoblin-script: initial load failed"));
 
         // Seed the stylesheet identity so a first no-change Reload can skip the
         // theme swap (see stylesheetDigest above).
@@ -631,11 +632,10 @@ export class Component {
         // Periodically hand freed heap pages back to the kernel. Churn (theme
         // swaps, notification traffic, GC) otherwise ratchets RSS up for the
         // session lifetime; a full trim measures <10 ms on a ~230 MB heap.
-        this._trimTimeoutId = GLib.timeout_add_seconds(
-            GLib.PRIORITY_LOW, TRIM_INTERVAL_SECONDS, () => {
-                Shell.util_trim_memory();
-                return GLib.SOURCE_CONTINUE;
-            });
+        this._trimTimeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, TRIM_INTERVAL_SECONDS, () => {
+            Shell.util_trim_memory();
+            return GLib.SOURCE_CONTINUE;
+        });
 
         console.log(`gnoblin-control: enabled (mode=${this._mode()}, wayland=${Meta.is_wayland_compositor()})`);
     }
@@ -666,8 +666,7 @@ export class Component {
         this._teardownDesktopState();
         // Restore every gated subsystem to stock before we go.
         this._removeOsdGate();
-        for (const id of Object.keys(FEATURES))
-            FEATURES[id].apply(true);
+        for (const id of Object.keys(FEATURES)) FEATURES[id].apply(true);
 
         if (this._scripts) {
             this._scripts.destroy();
@@ -689,39 +688,45 @@ export class Component {
         }
         this._settings = null;
         this._featureState.clear();
-        console.log('gnoblin-control: disabled');
+        console.log("gnoblin-control: disabled");
     }
 
     // --- desktop state ---
     _setupDesktopState() {
         this._inputSourceManager = Keyboard.getInputSourceManager();
         this._inputSourceManager.connectObject(
-            'current-source-changed', () => this._emitInputSourceChanged(),
-            'sources-changed', () => this._emitInputSourcesChanged(),
-            this);
+            "current-source-changed",
+            () => this._emitInputSourceChanged(),
+            "sources-changed",
+            () => this._emitInputSourcesChanged(),
+            this,
+        );
 
         try {
             this._mixerControl = Volume.getMixerControl();
             this._mixerControl.connectObject(
-                'stream-added', () => this._emitPrivacyState(),
-                'stream-removed', () => this._emitPrivacyState(),
-                this);
+                "stream-added",
+                () => this._emitPrivacyState(),
+                "stream-removed",
+                () => this._emitPrivacyState(),
+                this,
+            );
         } catch (e) {
-            logError(e, 'gnoblin-control: microphone state monitoring failed');
+            logError(e, "gnoblin-control: microphone state monitoring failed");
         }
 
         this._screenShareController = global.backend.get_remote_access_controller();
         this._screenShareController?.connectObject(
-            'new-handle', (_controller, handle) => this._onRemoteAccessHandle(handle),
-            this);
+            "new-handle",
+            (_controller, handle) => this._onRemoteAccessHandle(handle),
+            this,
+        );
 
         try {
             this._locationAgent = Location.getGeoclueAgent();
-            this._locationAgent.connectObject(
-                'notify::in-use', () => this._emitPrivacyState(),
-                this);
+            this._locationAgent.connectObject("notify::in-use", () => this._emitPrivacyState(), this);
         } catch (e) {
-            logError(e, 'gnoblin-control: location state monitoring failed');
+            logError(e, "gnoblin-control: location state monitoring failed");
         }
 
         this._privacyState = this._currentPrivacyState();
@@ -732,8 +737,7 @@ export class Component {
         this._mixerControl?.disconnectObject(this);
         this._screenShareController?.disconnectObject(this);
         this._locationAgent?.disconnectObject(this);
-        for (const handle of this._screenShareHandles)
-            handle.disconnectObject(this);
+        for (const handle of this._screenShareHandles) handle.disconnectObject(this);
 
         this._inputSourceManager = null;
         this._mixerControl = null;
@@ -744,73 +748,55 @@ export class Component {
     }
 
     _inputSourceRecord(source) {
-        if (!source)
-            return ['', '', '', ''];
+        if (!source) return ["", "", "", ""];
 
-        return [
-            source.type ?? '',
-            source.id ?? '',
-            source.shortName ?? '',
-            source.displayName ?? '',
-        ];
+        return [source.type ?? "", source.id ?? "", source.shortName ?? "", source.displayName ?? ""];
     }
 
     _emitInputSourceChanged() {
         const source = this._inputSourceManager?.currentSource;
-        this._impl?.emit_signal(
-            'InputSourceChanged',
-            new GLib.Variant('(ssss)', this._inputSourceRecord(source)));
+        this._impl?.emit_signal("InputSourceChanged", new GLib.Variant("(ssss)", this._inputSourceRecord(source)));
     }
 
     _emitInputSourcesChanged() {
-        this._impl?.emit_signal(
-            'InputSourcesChanged',
-            new GLib.Variant('(b)', [true]));
+        this._impl?.emit_signal("InputSourcesChanged", new GLib.Variant("(b)", [true]));
         this._emitInputSourceChanged();
     }
 
     _onRemoteAccessHandle(handle) {
-        if (handle.isRecording ?? handle.is_recording ?? false)
-            return;
+        if (handle.isRecording ?? handle.is_recording ?? false) return;
 
         this._screenShareHandles.add(handle);
-        handle.connectObject('stopped', () => {
-            this._screenShareHandles.delete(handle);
-            this._emitPrivacyState();
-        }, this);
+        handle.connectObject(
+            "stopped",
+            () => {
+                this._screenShareHandles.delete(handle);
+                this._emitPrivacyState();
+            },
+            this,
+        );
         this._emitPrivacyState();
     }
 
     _currentPrivacyState() {
         let microphoneInUse = false;
         try {
-            const ignoredApplications = new Set([
-                'org.gnome.VolumeControl',
-                'org.PulseAudio.pavucontrol',
-            ]);
+            const ignoredApplications = new Set(["org.gnome.VolumeControl", "org.PulseAudio.pavucontrol"]);
             const sourceOutputs = this._mixerControl?.get_source_outputs() ?? [];
-            microphoneInUse = sourceOutputs.some(
-                output => !ignoredApplications.has(output.get_application_id()));
+            microphoneInUse = sourceOutputs.some((output) => !ignoredApplications.has(output.get_application_id()));
         } catch {
             microphoneInUse = false;
         }
 
-        return [
-            this._screenShareHandles.size > 0,
-            microphoneInUse,
-            this._locationAgent?.inUse ?? false,
-        ];
+        return [this._screenShareHandles.size > 0, microphoneInUse, this._locationAgent?.inUse ?? false];
     }
 
     _emitPrivacyState() {
         const state = this._currentPrivacyState();
-        if (this._privacyState?.every((value, index) => value === state[index]))
-            return;
+        if (this._privacyState?.every((value, index) => value === state[index])) return;
 
         this._privacyState = state;
-        this._impl?.emit_signal(
-            'PrivacyStateChanged',
-            new GLib.Variant('(bbb)', state));
+        this._impl?.emit_signal("PrivacyStateChanged", new GLib.Variant("(bbb)", state));
     }
 
     _applyConfig(next) {
@@ -820,23 +806,19 @@ export class Component {
             // A compositor-owned accelerator must not make an otherwise valid
             // config (especially its permission policy) disappear. The
             // shortcut manager has already rolled back its partial changes.
-            if (!String(error?.message ?? error).startsWith('shortcut already claimed:'))
-                throw error;
+            if (!String(error?.message ?? error).startsWith("shortcut already claimed:")) throw error;
             console.warn(`gnoblin-config: skipping conflicting command shortcut: ${error.message}`);
         }
         const disabled = new Set(this._disabledList());
         for (const id of FEATURE_KEYS) {
-            if (REMOVED_FEATURES.has(id))
-                disabled.add(id);
-            else if (next[id] === true)
-                disabled.delete(id);
-            else if (next[id] === false)
-                disabled.add(id);
+            if (REMOVED_FEATURES.has(id)) disabled.add(id);
+            else if (next[id] === true) disabled.delete(id);
+            else if (next[id] === false) disabled.add(id);
         }
         const previous = this._disabledList();
-        if (disabled.size !== previous.length || !previous.every(id => disabled.has(id))) {
+        if (disabled.size !== previous.length || !previous.every((id) => disabled.has(id))) {
             if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
-                throw new Error('could not save configured feature settings');
+                throw new Error("could not save configured feature settings");
         }
         this._windowRules.refresh(next);
         autostart.apply(next.autostart);
@@ -856,8 +838,7 @@ export class Component {
         for (const id of Object.keys(FEATURES)) {
             const enabled = this._isEnabled(id);
             const previous = this._featureState.get(id);
-            if (previous === enabled)
-                continue;
+            if (previous === enabled) continue;
 
             try {
                 FEATURES[id].apply(enabled);
@@ -866,12 +847,10 @@ export class Component {
             }
 
             this._featureState.set(id, enabled);
-            if (previous === undefined)
-                continue;
+            if (previous === undefined) continue;
 
-            this._impl?.emit_signal(
-                'FeatureChanged', new GLib.Variant('(sb)', [id, enabled]));
-            console.log(`gnoblin-control: feature '${id}' ${enabled ? 'ENABLED' : 'DISABLED'}`);
+            this._impl?.emit_signal("FeatureChanged", new GLib.Variant("(sb)", [id, enabled]));
+            console.log(`gnoblin-control: feature '${id}' ${enabled ? "ENABLED" : "DISABLED"}`);
         }
     }
 
@@ -893,11 +872,10 @@ export class Component {
         ];
 
         try {
-            this._impl?.emit_signal(
-                'OsdRequested', new GLib.Variant('(uissddas)', fields));
+            this._impl?.emit_signal("OsdRequested", new GLib.Variant("(uissddas)", fields));
             return true;
         } catch (e) {
-            logError(e, 'gnoblin-control: failed to emit OsdRequested');
+            logError(e, "gnoblin-control: failed to emit OsdRequested");
             return false;
         }
     }
@@ -905,22 +883,19 @@ export class Component {
     // Keep the existing OSD transport contract without any native OSD widgets.
     _installOsdGate() {
         const mgr = Main.osdWindowManager;
-        if (!mgr || this._osdGateInstalled)
-            return;
+        if (!mgr || this._osdGateInstalled) return;
         mgr._showOsdWindow = (...args) => this._emitOsdRequested(...args);
         this._osdGateInstalled = true;
     }
 
     _removeOsdGate() {
         const mgr = Main.osdWindowManager;
-        if (mgr && this._osdGateInstalled)
-            delete mgr._showOsdWindow;   // restore the prototype method
+        if (mgr && this._osdGateInstalled) delete mgr._showOsdWindow; // restore the prototype method
         this._osdGateInstalled = false;
     }
 
     ListFeatures() {
-        return Object.entries(FEATURES).map(
-            ([id, f]) => [id, f.summary, this._isEnabled(id)]);
+        return Object.entries(FEATURES).map(([id, f]) => [id, f.summary, this._isEnabled(id)]);
     }
 
     GetFeature(id) {
@@ -929,38 +904,31 @@ export class Component {
 
     SetFeature(id, enabled) {
         if (REMOVED_FEATURES.has(id)) {
-            if (enabled)
-                throw new Error(`${id}: native UI has been removed; use the external shell`);
+            if (enabled) throw new Error(`${id}: native UI has been removed; use the external shell`);
             return;
         }
-        if (!Object.hasOwn(FEATURES, id))
-            throw new Error(`unknown feature: ${id}`);
-        if (this._isEnabled(id) === enabled)
-            return;
+        if (!Object.hasOwn(FEATURES, id)) throw new Error(`unknown feature: ${id}`);
+        if (this._isEnabled(id) === enabled) return;
 
         const disabled = new Set(this._disabledList());
-        if (enabled)
-            disabled.delete(id);
-        else
-            disabled.add(id);
+        if (enabled) disabled.delete(id);
+        else disabled.add(id);
 
-        if (!this._settings.set_strv(DISABLED_KEY, [...disabled]))
-            throw new Error(`failed to persist feature: ${id}`);
+        if (!this._settings.set_strv(DISABLED_KEY, [...disabled])) throw new Error(`failed to persist feature: ${id}`);
     }
 
     // --- org.gnoblin.Shell ---
     Ping() {
-        return 'pong';
+        return "pong";
     }
 
     GetVersion() {
-        return Config.PACKAGE_VERSION ?? 'unknown';
+        return Config.PACKAGE_VERSION ?? "unknown";
     }
 
     ListInputSources() {
         const manager = this._inputSourceManager ?? Keyboard.getInputSourceManager();
-        return Object.values(manager.inputSources).map(
-            source => this._inputSourceRecord(source));
+        return Object.values(manager.inputSources).map((source) => this._inputSourceRecord(source));
     }
 
     GetCurrentInputSource() {
@@ -971,9 +939,9 @@ export class Component {
     SetInputSource(type, id) {
         const manager = this._inputSourceManager ?? Keyboard.getInputSourceManager();
         const source = Object.values(manager.inputSources).find(
-            candidate => candidate.type === type && candidate.id === id);
-        if (!source)
-            throw new Error(`unknown input source: ${type}/${id}`);
+            (candidate) => candidate.type === type && candidate.id === id,
+        );
+        if (!source) throw new Error(`unknown input source: ${type}/${id}`);
 
         manager.activateInputSource(source, true);
     }
@@ -993,10 +961,7 @@ export class Component {
     }
 
     ReloadAsync(_params, invocation) {
-        return this._runReload(
-            invocation,
-            () => softReload('org.gnoblin.Shell.Reload'),
-            'soft reload');
+        return this._runReload(invocation, () => softReload("org.gnoblin.Shell.Reload"), "soft reload");
     }
 
     ListScripts() {
@@ -1004,10 +969,14 @@ export class Component {
     }
 
     ReloadScriptsAsync(_params, invocation) {
-        return this._runReload(invocation, async () => {
-            console.log('gnoblin-control: reloading user scripts');
-            await this._scripts?.reload();
-        }, 'user script reload');
+        return this._runReload(
+            invocation,
+            async () => {
+                console.log("gnoblin-control: reloading user scripts");
+                await this._scripts?.reload();
+            },
+            "user script reload",
+        );
     }
 
     async _runReload(invocation, operation, description) {
@@ -1016,16 +985,12 @@ export class Component {
             invocation.return_value(null);
         } catch (e) {
             logError(e, `gnoblin-control: ${description} failed`);
-            invocation.return_dbus_error(
-                `${BUS_NAME}.Error.ReloadFailed`,
-                `${description} failed: ${e.message}`);
+            invocation.return_dbus_error(`${BUS_NAME}.Error.ReloadFailed`, `${description} failed: ${e.message}`);
         }
     }
 
     _grantsDir(portal) {
-        return GLib.build_filenamev([
-            GLib.get_user_data_dir(), 'gnoblin', 'portal-grants', portal,
-        ]);
+        return GLib.build_filenamev([GLib.get_user_data_dir(), "gnoblin", "portal-grants", portal]);
     }
 
     _readPortalGrant(portal, id) {
@@ -1034,37 +999,31 @@ export class Component {
 
         try {
             keyFile.load_from_file(path, 0);
-            const version = keyFile.get_integer(PORTAL_GRANT_GROUP, 'version');
-            const storedPortal = keyFile.get_string(PORTAL_GRANT_GROUP, 'portal');
-            const identity = keyFile.get_string(PORTAL_GRANT_GROUP, 'identity');
-            const deviceTypes =
-                keyFile.get_integer(PORTAL_GRANT_GROUP, 'device-types');
-            const clipboardEnabled =
-                keyFile.get_boolean(PORTAL_GRANT_GROUP, 'clipboard-enabled');
+            const version = keyFile.get_integer(PORTAL_GRANT_GROUP, "version");
+            const storedPortal = keyFile.get_string(PORTAL_GRANT_GROUP, "portal");
+            const identity = keyFile.get_string(PORTAL_GRANT_GROUP, "identity");
+            const deviceTypes = keyFile.get_integer(PORTAL_GRANT_GROUP, "device-types");
+            const clipboardEnabled = keyFile.get_boolean(PORTAL_GRANT_GROUP, "clipboard-enabled");
             let hasStreams = true;
             try {
-                keyFile.get_string(PORTAL_GRANT_GROUP, 'streams');
+                keyFile.get_string(PORTAL_GRANT_GROUP, "streams");
             } catch {
                 hasStreams = false;
             }
             const validIdentity =
-                (identity.startsWith('app-id:') && identity.length > 7) ||
-                (identity.startsWith('host-exe:/') && identity.length > 10);
-            const validCapabilities = portal === 'screen-cast'
-                ? deviceTypes === 0 && !clipboardEnabled && hasStreams
-                : deviceTypes >= 0 &&
-                    (deviceTypes & ~7) === 0 &&
-                    (deviceTypes !== 0 || clipboardEnabled || hasStreams);
+                (identity.startsWith("app-id:") && identity.length > 7) ||
+                (identity.startsWith("host-exe:/") && identity.length > 10);
+            const validCapabilities =
+                portal === "screen-cast"
+                    ? deviceTypes === 0 && !clipboardEnabled && hasStreams
+                    : deviceTypes >= 0 &&
+                      (deviceTypes & ~7) === 0 &&
+                      (deviceTypes !== 0 || clipboardEnabled || hasStreams);
 
-            if (version !== PORTAL_GRANT_VERSION ||
-                storedPortal !== portal ||
-                !validIdentity ||
-                !validCapabilities)
-                throw new Error('grant metadata does not match its scope');
+            if (version !== PORTAL_GRANT_VERSION || storedPortal !== portal || !validIdentity || !validCapabilities)
+                throw new Error("grant metadata does not match its scope");
 
-            return [
-                id, portal, identity, deviceTypes, clipboardEnabled, hasStreams,
-            ];
+            return [id, portal, identity, deviceTypes, clipboardEnabled, hasStreams];
         } catch (e) {
             logError(e, `gnoblin: ignoring invalid portal grant ${portal}/${id}`);
             return null;
@@ -1072,16 +1031,30 @@ export class Component {
     }
 
     GetPermissions() {
-        return JSON.stringify({policy: this._permissionPolicy ?? Permissions.DEFAULT_POLICY,
-            capabilities: Permissions.CAPABILITIES, levels: Permissions.LEVELS,
-            path: this._config.path});
+        return JSON.stringify({
+            policy: this._permissionPolicy ?? Permissions.DEFAULT_POLICY,
+            capabilities: Permissions.CAPABILITIES,
+            levels: Permissions.LEVELS,
+            path: this._config.path,
+        });
     }
 
     CheckPermissionAsync([capability, identity], invocation) {
         try {
-            const decision = Permissions.evaluate(this._permissionPolicy ?? Permissions.DEFAULT_POLICY, capability, identity);
-            invocation.return_value(new GLib.Variant('(ssasub)',
-                [decision.level, decision.rule, decision.monitors, decision.devices, decision.clipboard]));
+            const decision = Permissions.evaluate(
+                this._permissionPolicy ?? Permissions.DEFAULT_POLICY,
+                capability,
+                identity,
+            );
+            invocation.return_value(
+                new GLib.Variant("(ssasub)", [
+                    decision.level,
+                    decision.rule,
+                    decision.monitors,
+                    decision.devices,
+                    decision.clipboard,
+                ]),
+            );
         } catch (error) {
             invocation.return_dbus_error(`${BUS_NAME}.Error.PermissionPolicy`, error.message);
         }
@@ -1095,19 +1068,13 @@ export class Component {
             let enumerator;
 
             try {
-                enumerator = dir.enumerate_children(
-                    'standard::name,standard::type',
-                    Gio.FileQueryInfoFlags.NONE,
-                    null);
+                enumerator = dir.enumerate_children("standard::name,standard::type", Gio.FileQueryInfoFlags.NONE, null);
                 let info;
                 while ((info = enumerator.next_file(null)) !== null) {
                     const id = info.get_name();
-                    if (info.get_file_type() !== Gio.FileType.REGULAR ||
-                        !PORTAL_GRANT_FILE_PATTERN.test(id))
-                        continue;
+                    if (info.get_file_type() !== Gio.FileType.REGULAR || !PORTAL_GRANT_FILE_PATTERN.test(id)) continue;
                     const grant = this._readPortalGrant(portal, id);
-                    if (grant)
-                        grants.push(grant);
+                    if (grant) grants.push(grant);
                 }
             } catch (e) {
                 if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
@@ -1117,20 +1084,15 @@ export class Component {
             }
         }
 
-        return grants.sort((a, b) =>
-            `${a[1]}:${a[2]}:${a[0]}`.localeCompare(`${b[1]}:${b[2]}:${b[0]}`));
+        return grants.sort((a, b) => `${a[1]}:${a[2]}:${a[0]}`.localeCompare(`${b[1]}:${b[2]}:${b[0]}`));
     }
 
     RevokePortalGrant(portal, id) {
-        if (!PORTAL_GRANT_KINDS.includes(portal))
-            throw new Error(`invalid portal grant kind: ${portal}`);
-        if (!PORTAL_GRANT_FILE_PATTERN.test(id))
-            throw new Error(`invalid portal grant id: ${id}`);
+        if (!PORTAL_GRANT_KINDS.includes(portal)) throw new Error(`invalid portal grant kind: ${portal}`);
+        if (!PORTAL_GRANT_FILE_PATTERN.test(id)) throw new Error(`invalid portal grant id: ${id}`);
 
-        const file = Gio.File.new_for_path(
-            GLib.build_filenamev([this._grantsDir(portal), id]));
-        if (!file.query_exists(null))
-            throw new Error(`no such portal grant: ${portal}/${id}`);
+        const file = Gio.File.new_for_path(GLib.build_filenamev([this._grantsDir(portal), id]));
+        if (!file.query_exists(null)) throw new Error(`no such portal grant: ${portal}/${id}`);
         file.delete(null);
         console.log(`gnoblin-control: revoked portal grant '${portal}/${id}'`);
     }
@@ -1144,6 +1106,6 @@ export class Component {
     }
 
     _mode() {
-        return Main.sessionMode?.currentMode ?? GLib.getenv('GNOME_SHELL_SESSION_MODE') ?? 'unknown';
+        return Main.sessionMode?.currentMode ?? GLib.getenv("GNOME_SHELL_SESSION_MODE") ?? "unknown";
     }
 }

@@ -13,5 +13,5 @@
 
 #include "meta/window.h"
 
-gboolean meta_gnoblin_foreign_toplevel_window_is_exposable (MetaWindow *window);
-const char *meta_gnoblin_foreign_toplevel_window_app_id (MetaWindow *window);
+gboolean meta_gnoblin_foreign_toplevel_window_is_exposable(MetaWindow* window);
+const char* meta_gnoblin_foreign_toplevel_window_app_id(MetaWindow* window);

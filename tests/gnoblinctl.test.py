@@ -1,4 +1,5 @@
 """CLI validation, D-Bus transport and correlated compositor replies."""
+
 import contextlib
 import importlib.machinery
 import importlib.util
@@ -12,7 +13,9 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
-loader = importlib.machinery.SourceFileLoader("gnoblinctl", str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl"))
+loader = importlib.machinery.SourceFileLoader(
+    "gnoblinctl", str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl")
+)
 spec = importlib.util.spec_from_loader(loader.name, loader)
 ctl = importlib.util.module_from_spec(spec)
 loader.exec_module(ctl)
@@ -27,9 +30,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.id, "active")
 
     def test_invalid_values_are_rejected_before_transport(self):
-        for words in (["window", "resize", "active", "0", "40"], ["--timeout", "0", "ping"],
-                      ["window", "workspace", "2", "0"], ["launch", "begin", "token", "app", "-1"],
-                      ["feature", "enable"], ["ping", "extra"], ["window", "move", "1", "nan", "2"]):
+        for words in (
+            ["window", "resize", "active", "0", "40"],
+            ["--timeout", "0", "ping"],
+            ["window", "workspace", "2", "0"],
+            ["launch", "begin", "token", "app", "-1"],
+            ["feature", "enable"],
+            ["ping", "extra"],
+            ["window", "move", "1", "nan", "2"],
+        ):
             with self.subTest(words=words), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 ctl.parser().parse_args(words)
 
@@ -44,9 +53,14 @@ class CliTests(unittest.TestCase):
         call = Mock(side_effect=[ctl.CommandError("Unknown method ListInputSources"), [[]]])
         self.assertEqual(ctl.input_call("ListInputSources", call=call), [[]])
         self.assertEqual(call.call_args.kwargs["service"], "org.gnoblin.InputSources")
-        for error in (ctl.CommandError("Unknown input source: xkb/Unknown method"), ctl.CommandError("Access denied"), subprocess.TimeoutExpired("busctl", 5)):
+        for error in (
+            ctl.CommandError("Unknown input source: xkb/Unknown method"),
+            ctl.CommandError("Access denied"),
+            subprocess.TimeoutExpired("busctl", 5),
+        ):
             call = Mock(side_effect=error)
-            with self.assertRaises(type(error)): ctl.input_call("SetInputSource", "ss", ["xkb", "gb"], call=call)
+            with self.assertRaises(type(error)):
+                ctl.input_call("SetInputSource", "ss", ["xkb", "gb"], call=call)
             self.assertEqual(call.call_count, 1)
 
     def test_socket_handles_fragments_and_unrelated_events(self):
@@ -56,13 +70,19 @@ class CliTests(unittest.TestCase):
                 server.bind(path)
                 server.listen()
                 received = []
+
                 def respond():
                     with server.accept()[0] as connection:
                         record = json.loads(connection.makefile("rb").readline())
                         received.append(record)
                         connection.sendall(b'{"event":"hello","version":1}\n')
-                        reply = json.dumps({"event": "reply", "id": record["id"], "result": {"windows": []}}).encode() + b"\n"
-                        connection.sendall(reply[:9]); connection.sendall(reply[9:])
+                        reply = (
+                            json.dumps({"event": "reply", "id": record["id"], "result": {"windows": []}}).encode()
+                            + b"\n"
+                        )
+                        connection.sendall(reply[:9])
+                        connection.sendall(reply[9:])
+
                 worker = threading.Thread(target=respond)
                 worker.start()
                 self.assertEqual(ctl.compositor({"command": "windows"}, path), {"windows": []})
@@ -72,20 +92,41 @@ class CliTests(unittest.TestCase):
 
     def test_output_is_safe_for_terminals_and_json_is_lossless(self):
         value = {"title": "text\n\x1b[2J'"}
-        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.render(value, "json")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            ctl.render(value, "json")
         self.assertEqual(json.loads(output.getvalue()), value)
-        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.render(value, "table")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            ctl.render(value, "table")
         self.assertNotIn("\x1b", output.getvalue())
-        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.render({"windowControlError": "offline"}, "table")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            ctl.render({"windowControlError": "offline"}, "table")
         self.assertEqual(output.getvalue(), "window control error: offline\n")
-        with contextlib.redirect_stdout(io.StringIO()) as output: ctl.table([{"appId": "org.example.App"}])
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            ctl.table([{"appId": "org.example.App"}])
         self.assertIn("APP ID", output.getvalue())
 
     def test_canonical_groups_are_discoverable_and_flat_commands_are_rejected(self):
-        self.assertEqual(set(ctl.subcommands(ctl.parser())), {
-            "ping", "version", "status", "reload", "privacy", "permissions", "window", "completion",
-            "config", "workspace", "monitor", "input", "feature", "script", "grant", "launch",
-        })
+        self.assertEqual(
+            set(ctl.subcommands(ctl.parser())),
+            {
+                "ping",
+                "version",
+                "status",
+                "reload",
+                "privacy",
+                "permissions",
+                "window",
+                "completion",
+                "config",
+                "workspace",
+                "monitor",
+                "input",
+                "feature",
+                "script",
+                "grant",
+                "launch",
+            },
+        )
         with contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(ctl.main(["feature"]), 0)
         self.assertIn("{list,show,enable,disable}", output.getvalue())
@@ -110,8 +151,10 @@ class CliTests(unittest.TestCase):
                 with patch.object(ctl, "dbus", call):
                     ctl.dispatch(args, cli)
                 method, signature, values, service, timeout = call.call_args.args
-                self.assertEqual((method, signature, list(values), service, timeout),
-                                 (expected[0], expected[1], expected[2], "org.gnoblin.Shell", 5))
+                self.assertEqual(
+                    (method, signature, list(values), service, timeout),
+                    (expected[0], expected[1], expected[2], "org.gnoblin.Shell", 5),
+                )
 
     def test_completion_uses_canonical_parser_groups(self):
         with contextlib.redirect_stdout(io.StringIO()) as output:
@@ -123,4 +166,5 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("reload-config", script)
 
 
-if __name__ == "__main__": unittest.main()
+if __name__ == "__main__":
+    unittest.main()

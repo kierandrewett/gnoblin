@@ -24,19 +24,21 @@ BUDGET_MS="${LAYER_BUDGET_MS:-0}"
 # type table references xdg_popup_interface, so xdg-shell has to come along.
 xml="$ROOT/src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"
 wayland-scanner client-header "$xml" "$TMP/wlr-layer-shell-unstable-v1-client-protocol.h"
-wayland-scanner private-code  "$xml" "$TMP/wlr-layer-shell-unstable-v1-protocol.c"
+wayland-scanner private-code "$xml" "$TMP/wlr-layer-shell-unstable-v1-protocol.c"
 
 wayland_protocols_dir="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 xdg_xml="$wayland_protocols_dir/stable/xdg-shell/xdg-shell.xml"
 wayland-scanner client-header "$xdg_xml" "$TMP/xdg-shell-client-protocol.h"
-wayland-scanner private-code  "$xdg_xml" "$TMP/xdg-shell-protocol.c"
+wayland-scanner private-code "$xdg_xml" "$TMP/xdg-shell-protocol.c"
 
+compiler_flags="$(pkg-config --cflags --libs wayland-client)" || exit 1
+read -r -a compiler_args <<<"$compiler_flags"
 cc -std=c11 -Wall -Wextra -Werror \
     -I"$TMP" \
     "$ROOT/tests/layer-shell-latency-client.c" \
     "$TMP/wlr-layer-shell-unstable-v1-protocol.c" \
     "$TMP/xdg-shell-protocol.c" \
-    $(pkg-config --cflags --libs wayland-client) \
+    "${compiler_args[@]}" \
     -o "$TMP/layer-latency-client"
 
 echo "== layer-shell chrome latency (headless, ${GNOBLIN_PREFIX:-$ROOT/install}) =="
@@ -51,8 +53,8 @@ if ! grep -q "LAYER_SHELL_LATENCY" "$OUT"; then
 fi
 
 grep -E "^   (connect|globals|configure|frame) " "$OUT" || true
-read -r _ c_us g_us cfg_us frame_us < <(grep "LAYER_SHELL_LATENCY" "$OUT" | tail -1)
-frame_ms=$(( frame_us / 1000 ))
+read -r _ _ _ _ frame_us < <(grep "LAYER_SHELL_LATENCY" "$OUT" | tail -1)
+frame_ms=$((frame_us / 1000))
 echo "   -> first pixel at ${frame_ms} ms from client start"
 
 if [ "$BUDGET_MS" -gt 0 ] && [ "$frame_ms" -gt "$BUDGET_MS" ]; then

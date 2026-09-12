@@ -27,8 +27,10 @@ wlr-tool compatibility.
 ## Implementation approach
 
 ### READ side (tractable — advertise heads/modes)
-This is what `wlr-randr`/`kanshi` need to *enumerate* outputs. Enumerate from
+
+This is what `wlr-randr`/`kanshi` need to _enumerate_ outputs. Enumerate from
 `MetaMonitorManager`:
+
 - For each `MetaMonitor` / `MetaLogicalMonitor`: emit a `head` with name
   (connector), make/model/serial (`MetaMonitor` info), physical size, enabled,
   current logical position/scale/transform.
@@ -37,6 +39,7 @@ This is what `wlr-randr`/`kanshi` need to *enumerate* outputs. Enumerate from
 - Track a `serial` per `done`; bump and re-advertise on `monitors-changed`.
 
 ### APPLY side (the risky part — needs runtime validation)
+
 - Accumulate `zwlr_output_configuration_head_v1` requests into a target config,
   translate to a `MetaMonitorsConfig`, and apply via
   `meta_monitor_manager_apply_monitors_config(...)` (the same machinery behind the

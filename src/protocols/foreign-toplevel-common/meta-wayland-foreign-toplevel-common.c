@@ -13,26 +13,22 @@
 
 #include "meta/window.h"
 
-gboolean
-meta_gnoblin_foreign_toplevel_window_is_exposable (MetaWindow *window)
-{
-  return meta_window_get_window_type (window) == META_WINDOW_NORMAL;
+gboolean meta_gnoblin_foreign_toplevel_window_is_exposable(MetaWindow* window) {
+    return meta_window_get_window_type(window) == META_WINDOW_NORMAL;
 }
 
-const char *
-meta_gnoblin_foreign_toplevel_window_app_id (MetaWindow *window)
-{
-  const char *app_id;
+const char* meta_gnoblin_foreign_toplevel_window_app_id(MetaWindow* window) {
+    const char* app_id;
 
-  app_id = meta_window_get_sandboxed_app_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_gtk_application_id (window);
-  if (app_id)
-    return app_id;
-  app_id = meta_window_get_wm_class (window);
-  if (app_id)
-    return app_id;
+    app_id = meta_window_get_sandboxed_app_id(window);
+    if (app_id)
+        return app_id;
+    app_id = meta_window_get_gtk_application_id(window);
+    if (app_id)
+        return app_id;
+    app_id = meta_window_get_wm_class(window);
+    if (app_id)
+        return app_id;
 
-  return "";
+    return "";
 }

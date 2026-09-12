@@ -29,18 +29,18 @@ GNOME modes of the patched build is not an unpatched GNOME comparison.
 
 ## Verified changes
 
-| Workload | Before | After | Evidence |
-| --- | ---: | ---: | --- |
-| Static blur mask, 300 moving-backdrop frames | 300 mask captures during sample | 0 after initial capture | Same optimised native build, cache disabled/enabled; pixel and fade regressions pass |
-| Mask uniform-location setup, same sample | 300 setups (2,400 lookups) | 0 after initial setup | Native effect counters |
-| Clutter stage-view redraw-region copies | 420 copies | 0 copies | Actual MtkRegion callsites over whole fixture, including startup |
-| Five-second animated exclusive-zone panel | 301 work-area invalidations, 301 frames | 0 invalidations, 300 frames | Native private compositor; only the three protocol files rebuilt |
-| Same panel compositor CPU, one core | 6.20% | 5.80% | Short sample; operation count is the acceptance signal |
-| 500 unchanged blur-region registrations | 500 window scans, 1,000 effect writes | 0 scans, 0 writes | Production module with counted calls; real blur pixel suite also passed |
-| Six rules, 10,000 evaluations | 60,000 regex constructions during evaluation | 6 at config installation, 0 during evaluation | Production matcher test |
-| Native blur redraw fallback | Two signal handlers per registered actor | No fallback handlers or retained actor | GJS lifetime test |
-| Window-state broadcast | Encode once per subscriber | Encode once for all subscribers | Production transport test |
-| Maximise protocol transition | Duplicate state/done events | One state/done pair | Native black-box protocol test failed before and passed after |
+| Workload                                     |                                       Before |                                         After | Evidence                                                                             |
+| -------------------------------------------- | -------------------------------------------: | --------------------------------------------: | ------------------------------------------------------------------------------------ |
+| Static blur mask, 300 moving-backdrop frames |              300 mask captures during sample |                       0 after initial capture | Same optimised native build, cache disabled/enabled; pixel and fade regressions pass |
+| Mask uniform-location setup, same sample     |                   300 setups (2,400 lookups) |                         0 after initial setup | Native effect counters                                                               |
+| Clutter stage-view redraw-region copies      |                                   420 copies |                                      0 copies | Actual MtkRegion callsites over whole fixture, including startup                     |
+| Five-second animated exclusive-zone panel    |      301 work-area invalidations, 301 frames |                   0 invalidations, 300 frames | Native private compositor; only the three protocol files rebuilt                     |
+| Same panel compositor CPU, one core          |                                        6.20% |                                         5.80% | Short sample; operation count is the acceptance signal                               |
+| 500 unchanged blur-region registrations      |        500 window scans, 1,000 effect writes |                             0 scans, 0 writes | Production module with counted calls; real blur pixel suite also passed              |
+| Six rules, 10,000 evaluations                | 60,000 regex constructions during evaluation | 6 at config installation, 0 during evaluation | Production matcher test                                                              |
+| Native blur redraw fallback                  |     Two signal handlers per registered actor |        No fallback handlers or retained actor | GJS lifetime test                                                                    |
+| Window-state broadcast                       |                   Encode once per subscriber |               Encode once for all subscribers | Production transport test                                                            |
+| Maximise protocol transition                 |                  Duplicate state/done events |                           One state/done pair | Native black-box protocol test failed before and passed after                        |
 
 The native cache A/B used the same optimised build and Lua fixture. The red
 variant forced mask capture and uniform-location resolution on every effect
@@ -144,25 +144,25 @@ system GNOME installation was not used as stock because it is Gnoblin-patched.
 The stock versions and visual effects differ from Gnoblin's; this is a useful
 reference, not a controlled comparison of identical rendering features.
 
-| Phase | Gnoblin before CPU | Gnoblin after CPU | Stock GNOME CPU |
-| --- | ---: | ---: | ---: |
-| Empty | 1.00% | 0.75% | 0.75% |
-| Eight static windows | 0.00% | 0.00% | 0.25% |
-| Visible animation | 7.75% | 5.50% | 5.75% |
-| Partly covered animation | 7.25% | 6.50% | 5.50% |
-| Fully covered animation | 0.75% | 0.00% | 1.00% |
-| Revealed animation | 7.50% | 5.50% | 4.75% |
-| After close | 0.25% | 0.25% | 0.25% |
+| Phase                    | Gnoblin before CPU | Gnoblin after CPU | Stock GNOME CPU |
+| ------------------------ | -----------------: | ----------------: | --------------: |
+| Empty                    |              1.00% |             0.75% |           0.75% |
+| Eight static windows     |              0.00% |             0.00% |           0.25% |
+| Visible animation        |              7.75% |             5.50% |           5.75% |
+| Partly covered animation |              7.25% |             6.50% |           5.50% |
+| Fully covered animation  |              0.75% |             0.00% |           1.00% |
+| Revealed animation       |              7.50% |             5.50% |           4.75% |
+| After close              |              0.25% |             0.25% |           0.25% |
 
-| Phase | Gnoblin before PSS | Gnoblin after PSS | Stock GNOME PSS |
-| --- | ---: | ---: | ---: |
-| Empty | 177.6 MiB | 171.1 MiB | 239.9 MiB |
-| Eight static windows | 189.5 MiB | 188.1 MiB | 215.9 MiB |
-| Visible animation | 188.3 MiB | 185.1 MiB | 215.7 MiB |
-| Partly covered animation | 192.5 MiB | 188.6 MiB | 215.7 MiB |
-| Fully covered animation | 198.4 MiB | 201.2 MiB | 217.0 MiB |
-| Revealed animation | 198.3 MiB | 188.4 MiB | 217.0 MiB |
-| After close | 197.0 MiB | 187.2 MiB | 216.0 MiB |
+| Phase                    | Gnoblin before PSS | Gnoblin after PSS | Stock GNOME PSS |
+| ------------------------ | -----------------: | ----------------: | --------------: |
+| Empty                    |          177.6 MiB |         171.1 MiB |       239.9 MiB |
+| Eight static windows     |          189.5 MiB |         188.1 MiB |       215.9 MiB |
+| Visible animation        |          188.3 MiB |         185.1 MiB |       215.7 MiB |
+| Partly covered animation |          192.5 MiB |         188.6 MiB |       215.7 MiB |
+| Fully covered animation  |          198.4 MiB |         201.2 MiB |       217.0 MiB |
+| Revealed animation       |          198.3 MiB |         188.4 MiB |       217.0 MiB |
+| After close              |          197.0 MiB |         187.2 MiB |       216.0 MiB |
 
 The visible-animation sample used about 29% less compositor CPU than the
 previous Gnoblin build. Empty-session PSS was about 29% below stock GNOME and

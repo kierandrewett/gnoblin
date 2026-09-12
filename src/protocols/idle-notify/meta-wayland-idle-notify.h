@@ -11,4 +11,4 @@
 
 #include "wayland/meta-wayland-types.h"
 
-void meta_wayland_init_idle_notify (MetaWaylandCompositor *compositor);
+void meta_wayland_init_idle_notify(MetaWaylandCompositor* compositor);

@@ -11,11 +11,11 @@ CPU and memory while that window is visible, partly covered, fully covered and
 revealed. CPU percentages are percentages of one core. Each phase samples four
 seconds after settling. Tests use a private 1280x800, 60 Hz headless session.
 
-| Effect-enabled workload | Before | After |
-| --- | ---: | ---: |
-| Fully covered client draws in four seconds | 241 | 0 |
-| Compositor CPU during full coverage | 14.49% | 0.00% |
-| Client draws after reveal | 239 | 240 |
+| Effect-enabled workload                    | Before | After |
+| ------------------------------------------ | -----: | ----: |
+| Fully covered client draws in four seconds |    241 |     0 |
+| Compositor CPU during full coverage        | 14.49% | 0.00% |
+| Client draws after reveal                  |    239 |   240 |
 
 A second run with a partial-coverage phase produced 241 draws while partly
 covered, zero while fully covered, and 240 after reveal. Its covered CPU sample

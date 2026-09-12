@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Control Gnoblin, its windows and live shell settings."""
+
 import argparse
 import json
 import os
@@ -19,33 +20,61 @@ class CommandError(Exception):
 
 def number(low, high):
     def parse(value):
-        try: result = int(value)
-        except ValueError: raise argparse.ArgumentTypeError("must be an integer") from None
-        if not low <= result <= high: raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
+        try:
+            result = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError("must be an integer") from None
+        if not low <= result <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
         return result
+
     return parse
 
 
 def parser():
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("-j", "--json", dest="format", action="store_const", const="json", default=argparse.SUPPRESS,
-                        help="Print JSON, including when used in a terminal")
-    common.add_argument("--format", choices=["auto", "json", "table"], default=argparse.SUPPRESS,
-                        help="Output format (auto: tables in terminals, JSON in pipes)")
-    common.add_argument("--timeout", type=number(1, 60), default=argparse.SUPPRESS, metavar="SECONDS", help="Request timeout (default: 5)")
+    common.add_argument(
+        "-j",
+        "--json",
+        dest="format",
+        action="store_const",
+        const="json",
+        default=argparse.SUPPRESS,
+        help="Print JSON, including when used in a terminal",
+    )
+    common.add_argument(
+        "--format",
+        choices=["auto", "json", "table"],
+        default=argparse.SUPPRESS,
+        help="Output format (auto: tables in terminals, JSON in pipes)",
+    )
+    common.add_argument(
+        "--timeout",
+        type=number(1, 60),
+        default=argparse.SUPPRESS,
+        metavar="SECONDS",
+        help="Request timeout (default: 5)",
+    )
     common.add_argument("--socket", default=argparse.SUPPRESS, metavar="PATH", help="Compositor socket path")
-    root = argparse.ArgumentParser(prog="gnoblinctl", description=__doc__, parents=[common],
+    root = argparse.ArgumentParser(
+        prog="gnoblinctl",
+        description=__doc__,
+        parents=[common],
         epilog="Examples: gnoblinctl status | gnoblinctl window list | gnoblinctl config path\nUse GROUP --help to see its actions.",
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     commands = root.add_subparsers(dest="command", metavar="COMMAND")
 
     def add(parent, name, help_text):
         return parent.add_parser(name, help=help_text, description=help_text, parents=[common])
 
-    for name, description in (("ping", "Check the shell connection"), ("version", "Show shell and protocol version"),
-                              ("status", "Show compositor and shell status"),
-                              ("reload", "Soft-reload the shell, keeping open windows"),
-                              ("privacy", "Show privacy indicators")):
+    for name, description in (
+        ("ping", "Check the shell connection"),
+        ("version", "Show shell and protocol version"),
+        ("status", "Show compositor and shell status"),
+        ("reload", "Soft-reload the shell, keeping open windows"),
+        ("privacy", "Show privacy indicators"),
+    ):
         add(commands, name, description)
 
     permissions = add(commands, "permissions", "Inspect portal permission policy")
@@ -59,18 +88,50 @@ def parser():
         command.add_argument("--app-id", help="Match an exact application ID")
         command.add_argument("--title", help="Match title text, without case sensitivity")
         command.add_argument("--focused", action="store_true", help="Only show the focused window")
+
     window = add(commands, "window", "List and manage windows")
     actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
-    for name in ("focus", "close", "minimize", "restore-or-minimize", "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen"):
+    for name in (
+        "focus",
+        "close",
+        "minimize",
+        "restore-or-minimize",
+        "restore",
+        "maximize",
+        "unmaximize",
+        "fullscreen",
+        "unfullscreen",
+    ):
         action = add(actions, name, f"{name.capitalize()} one window")
         action.add_argument("id", nargs="?", default="active", help="Window ID from window list (default: active)")
-    for name, fields in (("move", ["x", "y"]), ("resize", ["width", "height"]), ("workspace", ["workspace"]), ("monitor", ["monitor"])):
-        action = add(actions, name, {"move": "Set position in logical screen coordinates", "resize": "Set frame size in logical pixels",
-            "workspace": "Move to an existing workspace (one-based)", "monitor": "Move to a logical monitor (zero-based)"}[name])
+    for name, fields in (
+        ("move", ["x", "y"]),
+        ("resize", ["width", "height"]),
+        ("workspace", ["workspace"]),
+        ("monitor", ["monitor"]),
+    ):
+        action = add(
+            actions,
+            name,
+            {
+                "move": "Set position in logical screen coordinates",
+                "resize": "Set frame size in logical pixels",
+                "workspace": "Move to an existing workspace (one-based)",
+                "monitor": "Move to a logical monitor (zero-based)",
+            }[name],
+        )
         action.add_argument("id", help="Window ID, or active")
         for field in fields:
-            bounds = (1, 32768) if field in ("width", "height") else (1, 1024) if field == "workspace" else (0, 1024) if field == "monitor" else (-100000, 100000)
+            bounds = (
+                (1, 32768)
+                if field in ("width", "height")
+                else (1, 1024)
+                if field == "workspace"
+                else (0, 1024)
+                if field == "monitor"
+                else (-100000, 100000)
+            )
             action.add_argument(field, type=number(*bounds))
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
@@ -78,11 +139,15 @@ def parser():
     config_actions = config.add_subparsers(dest="action")
     add(config_actions, "path", "Show the active configuration path")
     add(config_actions, "reload", "Reload the active configuration")
-    for name, description in (("workspace", "List and switch workspaces"),
-                              ("monitor", "List monitors"), ("input", "Inspect and select input sources"),
-                              ("feature", "Inspect and change shell features"), ("script", "List and reload user scripts"),
-                              ("grant", "List and revoke portal grants"),
-                              ("launch", "Inspect launch feedback")):
+    for name, description in (
+        ("workspace", "List and switch workspaces"),
+        ("monitor", "List monitors"),
+        ("input", "Inspect and select input sources"),
+        ("feature", "Inspect and change shell features"),
+        ("script", "List and reload user scripts"),
+        ("grant", "List and revoke portal grants"),
+        ("launch", "Inspect launch feedback"),
+    ):
         add(commands, name, description)
 
     workspace = commands.choices["workspace"]
@@ -138,13 +203,24 @@ def parser():
 
 def dbus(method, signature="", arguments=(), service="org.gnoblin.Shell", timeout=5, run=subprocess.run):
     path = "/" + service.replace(".", "/")
-    command = [os.environ.get("GNOBLIN_BUSCTL", "busctl"), "--user", "--json=short", f"--timeout={timeout}s",
-               "call", service, path, service, method]
-    if signature: command += [signature, *map(str, arguments)]
+    command = [
+        os.environ.get("GNOBLIN_BUSCTL", "busctl"),
+        "--user",
+        "--json=short",
+        f"--timeout={timeout}s",
+        "call",
+        service,
+        path,
+        service,
+        method,
+    ]
+    if signature:
+        command += [signature, *map(str, arguments)]
     result = run(command, capture_output=True, text=True, timeout=timeout + 1)
     if result.returncode:
         raise CommandError(result.stderr.strip() or "D-Bus request failed")
-    if not result.stdout.strip(): return []
+    if not result.stdout.strip():
+        return []
     try:
         value = json.loads(result.stdout)
         return value["data"]
@@ -153,11 +229,15 @@ def dbus(method, signature="", arguments=(), service="org.gnoblin.Shell", timeou
 
 
 def input_call(method, signature="", arguments=(), timeout=5, call=dbus):
-    try: return call(method, signature, arguments, timeout=timeout)
+    try:
+        return call(method, signature, arguments, timeout=timeout)
     except CommandError as error:
         # Fall back only when the interface is absent, never after an uncertain mutation.
         text = str(error)
-        if not re.match(r"^(?:Call failed: )?(?:Unknown method|Unknown interface|Unknown object|The name \S+ (?:was not provided by any \.service|is not activatable))", text):
+        if not re.match(
+            r"^(?:Call failed: )?(?:Unknown method|Unknown interface|Unknown object|The name \S+ (?:was not provided by any \.service|is not activatable))",
+            text,
+        ):
             raise
         return call(method, signature, arguments, service="org.gnoblin.InputSources", timeout=timeout)
 
@@ -175,28 +255,40 @@ def compositor(request, path, timeout=5):
     deadline = time.monotonic() + timeout
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
-        try: connection.connect(path)
+        try:
+            connection.connect(path)
         except OSError as error:
-            raise CommandError(f"Cannot connect to compositor socket {path}: {error.strerror}. Check gnoblinctl script list.") from None
+            raise CommandError(
+                f"Cannot connect to compositor socket {path}: {error.strerror}. Check gnoblinctl script list."
+            ) from None
         connection.sendall((json.dumps(dict(request, op="command", id=identity)) + "\n").encode())
         buffer = b""
         while True:
             remaining = deadline - time.monotonic()
-            if remaining <= 0: raise TimeoutError("Compositor request timed out; it was not retried")
+            if remaining <= 0:
+                raise TimeoutError("Compositor request timed out; it was not retried")
             connection.settimeout(remaining)
             chunk = connection.recv(65536)
-            if not chunk: raise CommandError("Compositor disconnected before replying; the request was not retried")
+            if not chunk:
+                raise CommandError("Compositor disconnected before replying; the request was not retried")
             buffer += chunk
-            if len(buffer) > 4 * 1024 * 1024: raise CommandError("Compositor response is too large")
+            if len(buffer) > 4 * 1024 * 1024:
+                raise CommandError("Compositor response is too large")
             while b"\n" in buffer:
                 line, buffer = buffer.split(b"\n", 1)
-                try: response = json.loads(line)
-                except (ValueError, UnicodeDecodeError): raise CommandError("Invalid compositor response") from None
-                if not isinstance(response, dict): raise CommandError("Invalid compositor response")
-                if response.get("id") != identity: continue
-                if response.get("event") == "error": raise CommandError(response.get("message", "Compositor rejected request"))
+                try:
+                    response = json.loads(line)
+                except (ValueError, UnicodeDecodeError):
+                    raise CommandError("Invalid compositor response") from None
+                if not isinstance(response, dict):
+                    raise CommandError("Invalid compositor response")
+                if response.get("id") != identity:
+                    continue
+                if response.get("event") == "error":
+                    raise CommandError(response.get("message", "Compositor rejected request"))
                 if response.get("event") == "reply":
-                    if not isinstance(response.get("result"), dict): raise CommandError("Invalid compositor response")
+                    if not isinstance(response.get("result"), dict):
+                        raise CommandError("Invalid compositor response")
                     return response["result"]
 
 
@@ -206,56 +298,92 @@ def keyed(rows, fields):
 
 def dispatch(args, cli):
     cmd = args.command
-    if cmd == "config" and args.action == "path": return str(user_config_path())
-    call = lambda method, signature="", arguments=(), service="org.gnoblin.Shell": dbus(method, signature, arguments, service, args.timeout)
-    rpc = lambda request: compositor(request, args.socket, args.timeout)
+    if cmd == "config" and args.action == "path":
+        return str(user_config_path())
+
+    def call(method, signature="", arguments=(), service="org.gnoblin.Shell"):
+        return dbus(method, signature, arguments, service, args.timeout)
+
+    def rpc(request):
+        return compositor(request, args.socket, args.timeout)
+
     if cmd == "window" and args.action == "list":
         result = rpc({"command": "windows"})
-        result["windows"] = [window for window in result["windows"] if
-            (not args.app_id or window["appId"] == args.app_id) and
-            (not args.title or args.title.casefold() in window["title"].casefold()) and
-            (not args.focused or window["focused"])]
+        result["windows"] = [
+            window
+            for window in result["windows"]
+            if (not args.app_id or window["appId"] == args.app_id)
+            and (not args.title or args.title.casefold() in window["title"].casefold())
+            and (not args.focused or window["focused"])
+        ]
         return result
     if cmd == "window":
         request = {"command": "window", "action": args.action, "window": args.id}
         for field in ("x", "y", "width", "height", "workspace", "monitor"):
-            if hasattr(args, field): request[field] = getattr(args, field)
+            if hasattr(args, field):
+                request[field] = getattr(args, field)
         return rpc(request)
-    if cmd == "monitor": return rpc({"command": "monitors"})
+    if cmd == "monitor":
+        return rpc({"command": "monitors"})
     if cmd == "workspace":
-        return rpc({"command": "workspaces"} if args.action == "list" else {"command": "workspace-switch", "workspace": args.workspace})
+        return rpc(
+            {"command": "workspaces"}
+            if args.action == "list"
+            else {"command": "workspace-switch", "workspace": args.workspace}
+        )
     if cmd == "status":
         result = {"version": call("GetVersion")[0], "connected": call("Ping")[0] == "pong"}
         try:
             windows = rpc({"command": "windows"})["windows"]
-            result.update(windows=len(windows), focused=next((window["id"] for window in windows if window["focused"]), None))
-        except (CommandError, TimeoutError) as error: result["windowControlError"] = str(error)
+            result.update(
+                windows=len(windows), focused=next((window["id"] for window in windows if window["focused"]), None)
+            )
+        except (CommandError, TimeoutError) as error:
+            result["windowControlError"] = str(error)
         return result
-    if cmd == "ping": return call("Ping")[0]
-    if cmd == "version": return call("GetVersion")[0]
+    if cmd == "ping":
+        return call("Ping")[0]
+    if cmd == "version":
+        return call("GetVersion")[0]
     if cmd == "feature":
-        if args.action == "list": return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}
-        if args.action == "show": return {"id": args.id, "enabled": call("GetFeature", "s", [args.id])[0]}
+        if args.action == "list":
+            return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}
+        if args.action == "show":
+            return {"id": args.id, "enabled": call("GetFeature", "s", [args.id])[0]}
         call("SetFeature", "sb", [args.id, str(args.action == "enable").lower()])
         return {"ok": True, "id": args.id, "enabled": args.action == "enable"}
     if cmd == "script":
-        if args.action == "list": return {"scripts": call("ListScripts")[0]}
+        if args.action == "list":
+            return {"scripts": call("ListScripts")[0]}
         call("ReloadScripts")
         return {"ok": True, "action": "script reload"}
     if cmd == "input":
         fields = ["type", "id", "shortName", "name"]
-        if args.action == "list": return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
-        if args.action == "current": return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
+        if args.action == "list":
+            return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
+        if args.action == "current":
+            return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
         input_call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
         return {"ok": True, "type": args.type, "id": args.id}
-    if cmd == "privacy": return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
+    if cmd == "privacy":
+        return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
     if cmd == "permissions":
-        if args.action in (None, "list"): return json.loads(call("GetPermissions")[0])
+        if args.action in (None, "list"):
+            return json.loads(call("GetPermissions")[0])
         if args.action == "check":
-            return dict(zip(["level", "rule", "monitors", "devices", "clipboard"],
-                            call("CheckPermission", "ss", [args.capability, args.identity])))
+            return dict(
+                zip(
+                    ["level", "rule", "monitors", "devices", "clipboard"],
+                    call("CheckPermission", "ss", [args.capability, args.identity]),
+                )
+            )
     if cmd == "grant":
-        if args.action == "list": return {"grants": keyed(call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"])}
+        if args.action == "list":
+            return {
+                "grants": keyed(
+                    call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"]
+                )
+            }
         call("RevokePortalGrant", "ss", [args.kind, args.id])
         return {"ok": True, "id": args.id}
     if cmd == "launch":
@@ -263,8 +391,10 @@ def dispatch(args, cli):
         if args.action == "status":
             result = call("GetState", service=service)[0]
             return json.loads(result) if isinstance(result, str) else result
-        if args.action == "begin": call("Begin", "ssu", [args.token, args.application, args.milliseconds], service)
-        else: call("End", "s", [args.token], service)
+        if args.action == "begin":
+            call("Begin", "ssu", [args.token, args.application, args.milliseconds], service)
+        else:
+            call("End", "s", [args.token], service)
         return {"ok": True, "token": args.token}
     operations = {"reload": ("Reload", "", []), "config": ("ReloadConfig", "", [])}
     method, signature, values = operations[cmd]
@@ -273,9 +403,12 @@ def dispatch(args, cli):
 
 
 def text(value):
-    if value is None: return "-"
-    if isinstance(value, bool): return "yes" if value else "no"
-    if isinstance(value, (list, dict)): value = json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (list, dict)):
+        value = json.dumps(value, ensure_ascii=False)
     return "".join(character if character.isprintable() else " " for character in str(value))
 
 
@@ -284,7 +417,8 @@ def table(rows):
         print("No items.")
         return
     if not isinstance(rows[0], dict):
-        for row in rows: print(text(row))
+        for row in rows:
+            print(text(row))
         return
     fields = list(rows[0])
     if "appId" in fields:
@@ -295,22 +429,33 @@ def table(rows):
     widths = [max(len(header), *(len(row[index]) for row in values)) for index, header in enumerate(headers)]
     available = max(40, shutil.get_terminal_size((120, 24)).columns) - 2 * (len(fields) - 1)
     while sum(widths) > available and max(widths) > 10:
-        index = widths.index(max(widths)); widths[index] -= 1
+        index = widths.index(max(widths))
+        widths[index] -= 1
+
     def line(row):
-        return "  ".join((value if len(value) <= width else value[:max(0, width - 3)] + "...").ljust(width) for value, width in zip(row, widths)).rstrip()
+        return "  ".join(
+            (value if len(value) <= width else value[: max(0, width - 3)] + "...").ljust(width)
+            for value, width in zip(row, widths)
+        ).rstrip()
+
     print(line(headers))
     print(line(["-" * width for width in widths]))
-    for row in values: print(line(row))
+    for row in values:
+        print(line(row))
 
 
 def render(result, output_format):
     if output_format == "json" or output_format == "auto" and not sys.stdout.isatty() and not isinstance(result, str):
         print(json.dumps(result, ensure_ascii=False))
-    elif isinstance(result, str): print(text(result))
-    elif isinstance(result, dict) and len(result) == 1 and isinstance(next(iter(result.values())), list): table(next(iter(result.values())))
+    elif isinstance(result, str):
+        print(text(result))
+    elif isinstance(result, dict) and len(result) == 1 and isinstance(next(iter(result.values())), list):
+        table(next(iter(result.values())))
     elif isinstance(result, dict):
-        for key, value in result.items(): print(f"{human_label(key)}: {text(value)}")
-    else: print(text(result))
+        for key, value in result.items():
+            print(f"{human_label(key)}: {text(value)}")
+    else:
+        print(text(result))
 
 
 def subcommands(cli):
@@ -322,22 +467,32 @@ def human_label(key):
 
 
 def option_words(cli):
-    return " ".join(option for action in cli._actions if action.option_strings and action.dest != "help"
-                    for option in action.option_strings)
+    return " ".join(
+        option
+        for action in cli._actions
+        if action.option_strings and action.dest != "help"
+        for option in action.option_strings
+    )
 
 
 def completions(cli, shell):
     choices = subcommands(cli)
     names = " ".join(choices)
-    nested = {name: " ".join((*subcommands(command), option_words(command)))
-              for name, command in choices.items() if subcommands(command)}
+    nested = {
+        name: " ".join((*subcommands(command), option_words(command)))
+        for name, command in choices.items()
+        if subcommands(command)
+    }
     bash_cases = "\n".join(f"        {name}:2) words='{actions}' ;;" for name, actions in nested.items())
     bash_action_cases = "\n".join(
         f"        {group}:{action}:3) words='{option_words(parser)}' ;;"
-        for group, command in choices.items() for action, parser in subcommands(command).items())
+        for group, command in choices.items()
+        for action, parser in subcommands(command).items()
+    )
     zsh_cases = "\n".join(f"            {name}) compadd {actions} ;;" for name, actions in nested.items())
     if shell == "bash":
-        print("""_gnoblinctl() {
+        print(
+            """_gnoblinctl() {
     local cur=${COMP_WORDS[COMP_CWORD]} words='--help --json --format --timeout --socket' index=1 command action position
     while [[ ${COMP_WORDS[index]} == -* ]]; do
         case ${COMP_WORDS[index]} in --format|--timeout|--socket) ((index += 2));; *) ((index++));; esac
@@ -356,9 +511,13 @@ ACTION_CASES
     esac
     COMPREPLY=($(compgen -W "$words" -- "$cur"))
 }
-complete -F _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("ACTION_CASES", bash_action_cases).replace("CASES", bash_cases))
+complete -F _gnoblinctl gnoblinctl""".replace("NAMES", names)
+            .replace("ACTION_CASES", bash_action_cases)
+            .replace("CASES", bash_cases)
+        )
     elif shell == "zsh":
-        print("""#compdef gnoblinctl
+        print(
+            """#compdef gnoblinctl
 _gnoblinctl() {
     if (( CURRENT == 2 )); then
         compadd NAMES
@@ -370,29 +529,43 @@ CASES
         _arguments '--json[JSON output]' '--format[Output format]:format:(auto json table)' '--socket[Compositor socket]:path:_files' '--timeout[Request timeout]:seconds:'
     fi
 }
-compdef _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("CASES", zsh_cases))
+compdef _gnoblinctl gnoblinctl""".replace("NAMES", names).replace("CASES", zsh_cases)
+        )
     else:
         print("complete -c gnoblinctl -f")
-        for name in choices: print(f"complete -c gnoblinctl -n '__fish_use_subcommand' -a '{name}'")
-        for name, actions in nested.items(): print(f"complete -c gnoblinctl -n '__fish_seen_subcommand_from {name}' -a '{actions}'")
+        for name in choices:
+            print(f"complete -c gnoblinctl -n '__fish_use_subcommand' -a '{name}'")
+        for name, actions in nested.items():
+            print(f"complete -c gnoblinctl -n '__fish_seen_subcommand_from {name}' -a '{actions}'")
         print("complete -c gnoblinctl -l json -s j -d 'JSON output'")
 
 
 def main(argv=None):
     cli = parser()
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "help": argv = [*argv[1:], "--help"]
+    if argv and argv[0] == "help":
+        argv = [*argv[1:], "--help"]
     args = cli.parse_args(argv)
-    defaults = {"format": "auto", "timeout": 5, "socket": os.environ.get("GNOBLIN_COMPOSITOR_SOCKET") or str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "gnoblin/compositor-v1.sock")}
+    defaults = {
+        "format": "auto",
+        "timeout": 5,
+        "socket": os.environ.get("GNOBLIN_COMPOSITOR_SOCKET")
+        or str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "gnoblin/compositor-v1.sock"),
+    }
     for key, value in defaults.items():
-        if not hasattr(args, key): setattr(args, key, value)
+        if not hasattr(args, key):
+            setattr(args, key, value)
     if not args.command:
         cli.print_help()
         return 0
     if args.command == "completion":
         completions(cli, args.shell)
         return 0
-    if args.command in ("config", "window", "workspace", "monitor", "input", "feature", "script", "grant", "launch", "permissions") and args.action is None:
+    if (
+        args.command
+        in ("config", "window", "workspace", "monitor", "input", "feature", "script", "grant", "launch", "permissions")
+        and args.action is None
+    ):
         subcommands(cli)[args.command].print_help()
         return 0
     try:
@@ -402,7 +575,8 @@ def main(argv=None):
         return 0
     except (CommandError, OSError, subprocess.TimeoutExpired, TimeoutError) as error:
         message = str(error)
-        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)): message = "Request timed out; it was not retried. Check current state before repeating an action."
+        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+            message = "Request timed out; it was not retried. Check current state before repeating an action."
         print(f"gnoblinctl: {message}", file=sys.stderr)
         return 1
 

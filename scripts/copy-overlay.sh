@@ -15,8 +15,11 @@ PROJ="${1:?usage: copy-overlay.sh <project> <submodule-dir>}"
 SM="${2:?usage: copy-overlay.sh <project> <submodule-dir>}"
 MODE="${3:-copy}"
 case "$MODE" in
-    copy|--list-destinations|--remove-destinations) ;;
-    *) echo "unknown overlay action: $MODE" >&2; exit 1 ;;
+    copy | --list-destinations | --remove-destinations) ;;
+    *)
+        echo "unknown overlay action: $MODE" >&2
+        exit 1
+        ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -28,9 +31,12 @@ while IFS= read -r manifest; do
     while read -r proj src dest _rest; do
         [[ -z "${proj:-}" || "$proj" == \#* ]] && continue
         [[ "$proj" != "$PROJ" ]] && continue
-        [[ -f "$feature_dir/$src" ]] || { echo "overlay: missing $feature_dir/$src" >&2; exit 1; }
+        [[ -f "$feature_dir/$src" ]] || {
+            echo "overlay: missing $feature_dir/$src" >&2
+            exit 1
+        }
         case "$dest" in
-            ""|..|/*|../*|*/../*|*/..)
+            "" | .. | /* | ../* | */../* | */..)
                 echo "overlay: invalid destination outside subproject: $dest" >&2
                 exit 1
                 ;;
@@ -49,9 +55,9 @@ while IFS= read -r manifest; do
         cp "$feature_dir/$src" "$SM/$dest"
         # keep the submodule's git status clean
         excl="$SM/.git/info/exclude"
-        [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >> "$excl"
+        [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >>"$excl"
         n=$((n + 1))
-    done < "$manifest"
+    done <"$manifest"
 done < <(find "$ROOT/src" -name manifest -type f | sort)
 if [[ "$MODE" == copy ]]; then
     echo ">> copied $n overlay file(s) into $PROJ"

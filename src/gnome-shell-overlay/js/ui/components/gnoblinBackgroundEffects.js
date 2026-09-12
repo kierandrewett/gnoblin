@@ -1,6 +1,6 @@
-import GObject from 'gi://GObject';
-import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
+import GObject from "gi://GObject";
+import Meta from "gi://Meta";
+import Shell from "gi://Shell";
 
 // Protocol state belongs to individual wl_surfaces, including subsurfaces.
 // Apply it synchronously with the native transaction, before the frame paints.
@@ -9,16 +9,19 @@ export class BackgroundEffects {
         this._effects = new Map();
         this._changed = changed;
         this._signal = 0;
-        if (!Meta.gnoblin_background_effect_get_region ||
+        if (
+            !Meta.gnoblin_background_effect_get_region ||
             !Shell.BlurEffect.prototype.set_clip_region ||
-            !GObject.signal_lookup('gnoblin-background-effect-changed', Meta.Display)) return;
-        this._signal = global.display.connect('gnoblin-background-effect-changed',
-            (_display, actor) => this._sync(actor));
+            !GObject.signal_lookup("gnoblin-background-effect-changed", Meta.Display)
+        )
+            return;
+        this._signal = global.display.connect("gnoblin-background-effect-changed", (_display, actor) =>
+            this._sync(actor),
+        );
     }
 
     refresh() {
-        if (this._signal)
-            for (const actor of global.get_window_actors()) this._walk(actor);
+        if (this._signal) for (const actor of global.get_window_actors()) this._walk(actor);
     }
 
     _walk(actor) {
@@ -29,7 +32,7 @@ export class BackgroundEffects {
     owns(actor) {
         if (!this._signal) return false;
         if (Meta.gnoblin_background_effect_get_region(actor) !== null) return true;
-        return actor.get_children().some(child => this.owns(child));
+        return actor.get_children().some((child) => this.owns(child));
     }
 
     _sync(actor) {
@@ -37,14 +40,18 @@ export class BackgroundEffects {
         if (region === null) return;
         let entry = this._effects.get(actor);
         if (!entry) {
-            entry = {effect: null, destroy: actor.connect('destroy', () => this._effects.delete(actor))};
+            entry = { effect: null, destroy: actor.connect("destroy", () => this._effects.delete(actor)) };
             this._effects.set(actor, entry);
         }
         if (!region.is_empty()) {
             if (!entry.effect) {
-                entry.effect = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND_MASKED,
-                    brightness: 1, radius: 24, 'mask-opacity': 0});
-                actor.add_effect_with_name('gnoblin-standard-background-blur', entry.effect);
+                entry.effect = new Shell.BlurEffect({
+                    mode: Shell.BlurMode.BACKGROUND_MASKED,
+                    brightness: 1,
+                    radius: 24,
+                    "mask-opacity": 0,
+                });
+                actor.add_effect_with_name("gnoblin-standard-background-blur", entry.effect);
             }
             entry.effect.set_clip_region(region);
         } else if (entry.effect) {

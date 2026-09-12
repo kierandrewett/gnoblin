@@ -31,64 +31,62 @@ gnoblin_env_validate_libdir "$LIBDIR" || exit
 # Remove only the old Gnoblin-prefix artefacts. System GNOME files are never
 # considered by this script.
 rm -f \
-  "$PREFIX/bin/gnome-extensions" \
-  "$PREFIX/bin/gnome-extensions-app" \
-  "$PREFIX/share/applications/org.gnome.Extensions.desktop" \
-  "$PREFIX/share/dbus-1/services/org.gnome.Extensions.service" \
-  "$PREFIX/share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml" \
-  "$PREFIX/share/metainfo/org.gnome.Extensions.metainfo.xml" \
-  "$PREFIX/share/gnome-shell/org.gnome.Extensions" \
-  "$PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
-  "$PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
-  "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions" \
-  "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource" \
-  "$PREFIX/share/bash-completion/completions/gnome-extensions" \
-  "$PREFIX/share/applications/org.gnome.Shell.Extensions.desktop" \
-  "$PREFIX/share/dbus-1/services/org.gnome.Shell.Extensions.service" \
-  "$PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
+    "$PREFIX/bin/gnome-extensions" \
+    "$PREFIX/bin/gnome-extensions-app" \
+    "$PREFIX/share/applications/org.gnome.Extensions.desktop" \
+    "$PREFIX/share/dbus-1/services/org.gnome.Extensions.service" \
+    "$PREFIX/share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml" \
+    "$PREFIX/share/metainfo/org.gnome.Extensions.metainfo.xml" \
+    "$PREFIX/share/gnome-shell/org.gnome.Extensions" \
+    "$PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
+    "$PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
+    "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions" \
+    "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource" \
+    "$PREFIX/share/bash-completion/completions/gnome-extensions" \
+    "$PREFIX/share/applications/org.gnome.Shell.Extensions.desktop" \
+    "$PREFIX/share/dbus-1/services/org.gnome.Shell.Extensions.service" \
+    "$PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
 if [ -d "$PREFIX/share/icons/hicolor" ]; then
-  find "$PREFIX/share/icons/hicolor" -type f \( -name 'org.gnome.Extensions*' -o -name 'org.gnome.Shell.Extensions*' \) -delete
+    find "$PREFIX/share/icons/hicolor" -type f \( -name 'org.gnome.Extensions*' -o -name 'org.gnome.Shell.Extensions*' \) -delete
 fi
 
-
 install -Dm644 "$SRC/modes/gnoblin.json" \
-  "$PREFIX/share/gnome-shell/modes/gnoblin.json"
+    "$PREFIX/share/gnome-shell/modes/gnoblin.json"
 install -Dm644 "$SRC/gnome-session/gnoblin.session" \
-  "$PREFIX/share/gnome-session/sessions/gnoblin.session"
+    "$PREFIX/share/gnome-session/sessions/gnoblin.session"
 
 # Shared env helper first: gnoblin-session/gnoblin-shell-service both source
 # it from their installed location.
 install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$PREFIX/libexec/gnoblin-env.sh"
 install -Dm644 /dev/null "$PREFIX/libexec/gnoblin-libdir"
-printf '%s\n' "$LIBDIR" > "$PREFIX/libexec/gnoblin-libdir"
+printf '%s\n' "$LIBDIR" >"$PREFIX/libexec/gnoblin-libdir"
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
-  "$PREFIX/share/wayland-sessions/gnoblin.desktop"
+    "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 
 # Gnoblin-specific systemd --user units (ExecStart/Environment= need the
 # resolved absolute prefix, so the *.service is generated from its .in).
 install -Dm755 "$ROOT/src/tools/gnoblin-shell-service" "$PREFIX/bin/gnoblin-shell-service"
 install -Dm644 "$SRC/systemd-user/org.gnoblin.Shell.target" \
-  "$PREFIX/lib/systemd/user/org.gnoblin.Shell.target"
+    "$PREFIX/lib/systemd/user/org.gnoblin.Shell.target"
 # The drop-in that actually pulls the shell target into the session. Modern
 # systemd-managed gnome-session ignores the .session RequiredComponents= line;
 # gnome-session@gnoblin.target takes its deps from this .d/ drop-in instead.
 # Without it the session logs in to a frozen screen with no compositor.
 install -Dm644 "$SRC/systemd-user/gnome-session@gnoblin.target.d.conf" \
-  "$PREFIX/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+    "$PREFIX/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
 sed "s|@PREFIX@|$PREFIX|g" "$SRC/systemd-user/org.gnoblin.Shell@wayland.service.in" \
-  > "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
+    >"$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
 install -Dm644 "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp" \
-  "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service"
+    "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service"
 rm -f "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
-
 
 # Desktop-specific schema defaults. This runs after mutter/gnome-shell have
 # installed their schemas, so the override is compiled into the prefix used by
 # Gnoblin's wrappers (`XDG_CURRENT_DESKTOP=GNOME:Gnoblin`).
 install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
-  "$PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
+    "$PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
 glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"

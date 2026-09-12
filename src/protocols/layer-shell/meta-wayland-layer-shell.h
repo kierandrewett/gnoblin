@@ -23,6 +23,6 @@
  * wlr-layer-shell unless the client sets an empty input region. */
 #define META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY "gnoblin-layer-shell-keyboard-focusable"
 
-gboolean meta_wayland_surface_is_layer_shell (MetaWaylandSurface *surface);
+gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface);
 
-void meta_wayland_init_layer_shell (MetaWaylandCompositor *compositor);
+void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor);

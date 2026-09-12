@@ -7,7 +7,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ROOT
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
+[ -x "$SHELL_BIN" ] || {
+    echo "no gnome-shell in $PREFIX — build first" >&2
+    exit 1
+}
 
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
@@ -25,11 +28,11 @@ export GSETTINGS_BACKEND=dconf
 export DISP="gnoblin-nt-$$" GS="$SHELL_BIN"
 
 cleanup() {
-  for proc in /proc/[0-9]*; do
-    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
-  done
-  rm -rf "$DK"
+    for proc in /proc/[0-9]*; do
+        e="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
+        case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
+    done
+    rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
 

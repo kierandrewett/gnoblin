@@ -27,11 +27,13 @@ wayland-scanner client-header "$xdg_xml" "$TMP/xdg-shell-client-protocol.h"
 wayland-scanner private-code "$xdg_xml" "$TMP/xdg-shell-protocol.c"
 sources+=("$TMP/xdg-shell-protocol.c")
 
+compiler_flags="$(pkg-config --cflags --libs wayland-client)" || exit 1
+read -r -a compiler_args <<<"$compiler_flags"
 cc -std=c11 -Wall -Wextra -Werror \
     -I"$TMP" \
     "$ROOT/tests/protocol-boundary-client.c" \
     "${sources[@]}" \
-    $(pkg-config --cflags --libs wayland-client) \
+    "${compiler_args[@]}" \
     -o "$TMP/protocol-boundary-client"
 
 GNOBLIN_TEST_CLIENT="$TMP/protocol-boundary-client" \

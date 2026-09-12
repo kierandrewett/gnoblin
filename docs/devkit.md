@@ -34,12 +34,12 @@ your host session.
 
 Environment variables:
 
-| Variable | Default | Effect |
-|---|---|---|
-| `MONITOR` | `1600x900` | Nested virtual monitor resolution |
-| `GNOME_DEVKIT_HEADLESS` | unset | `1` boots with no visible window (see below) |
-| `GNOME_DEVKIT_EXEC` | unset | Run this command instead of opening a terminal, with children pointed at the nested display |
-| `GNOME_DEVKIT_UNSAFE_MODE` | unset | `1` enables privileged shell D-Bus APIs in this nested process only |
+| Variable                   | Default    | Effect                                                                                      |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| `MONITOR`                  | `1600x900` | Nested virtual monitor resolution                                                           |
+| `GNOME_DEVKIT_HEADLESS`    | unset      | `1` boots with no visible window (see below)                                                |
+| `GNOME_DEVKIT_EXEC`        | unset      | Run this command instead of opening a terminal, with children pointed at the nested display |
+| `GNOME_DEVKIT_UNSAFE_MODE` | unset      | `1` enables privileged shell D-Bus APIs in this nested process only                         |
 
 Normal, headless, and login sessions leave `org.gnome.Shell.Eval` restricted.
 Set `GNOME_DEVKIT_UNSAFE_MODE=1` only when a development tool specifically
@@ -59,8 +59,8 @@ qs -p ~/dev/kobel-shell     # Quickshell
 Your bar/dock appears inside the nested gnoblin window, anchored via
 `zwlr_layer_shell_v1`.
 
-> If Quickshell warns *"built against Qt X but system has Qt Y … must be
-> rebuilt"*, rebuild the Quickshell package first — a stale build crashes
+> If Quickshell warns _"built against Qt X but system has Qt Y … must be
+> rebuilt"_, rebuild the Quickshell package first — a stale build crashes
 > before it maps a surface.
 
 ## Drive gnoblin

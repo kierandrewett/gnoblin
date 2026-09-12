@@ -22,7 +22,6 @@ nix flake check                  # check the Nix flake
 nix build .#gnoblin              # build the Nix package
 ```
 
-
 ## Optional components
 
 Neither of these is part of `just dev` — build them explicitly once you need

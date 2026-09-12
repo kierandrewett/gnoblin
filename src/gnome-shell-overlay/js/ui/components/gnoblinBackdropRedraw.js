@@ -1,4 +1,4 @@
-import Clutter from 'gi://Clutter';
+import Clutter from "gi://Clutter";
 
 // Older native builds cannot expand damage around blur dependencies. Keep
 // their full-redraw fallback until the installed native effect is loaded.
@@ -12,12 +12,12 @@ export class BackdropRedraw {
     set(actor, enabled) {
         // Native effects maintain their own damage dependencies. Only legacy
         // effects need these lifetime handlers and the full-redraw fallback.
-        enabled = enabled && !actor.get_effect?.('gnoblin-window-blur')?.uses_damage_tracking?.();
+        enabled = enabled && !actor.get_effect?.("gnoblin-window-blur")?.uses_damage_tracking?.();
         if (enabled === this._actors.has(actor)) return;
         if (enabled) {
-            const mapped = actor.connect('notify::mapped', () => this._sync());
-            const destroy = actor.connect('destroy', () => this.set(actor, false));
-            this._actors.set(actor, {mapped, destroy});
+            const mapped = actor.connect("notify::mapped", () => this._sync());
+            const destroy = actor.connect("destroy", () => this.set(actor, false));
+            this._actors.set(actor, { mapped, destroy });
         } else {
             const entry = this._actors.get(actor);
             actor.disconnect(entry.mapped);
@@ -30,7 +30,10 @@ export class BackdropRedraw {
     _sync() {
         let needed = false;
         for (const actor of this._actors.keys()) {
-            if (actor.mapped) { needed = true; break; }
+            if (actor.mapped) {
+                needed = true;
+                break;
+            }
         }
         const flag = Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS;
         if (needed && !this._ownsFlag && !(Clutter.get_debug_flags()[1] & flag)) {

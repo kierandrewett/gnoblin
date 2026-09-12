@@ -16,4 +16,4 @@
 
 #include "wayland/meta-wayland-types.h"
 
-void meta_gnoblin_init_protocols (MetaWaylandCompositor *compositor);
+void meta_gnoblin_init_protocols(MetaWaylandCompositor* compositor);

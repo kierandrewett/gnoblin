@@ -28,8 +28,8 @@ assert_local_sources() {
 assert_local_sources mutter "$TMP/mutter"
 assert_local_sources gnome-shell "$TMP/gnome-shell"
 
-"$ROOT/scripts/list-tarball-sources.sh" mutter > "$TMP/mutter.sources"
-"$ROOT/scripts/list-tarball-sources.sh" gnome-shell > "$TMP/gnome-shell.sources"
+"$ROOT/scripts/list-tarball-sources.sh" mutter >"$TMP/mutter.sources"
+"$ROOT/scripts/list-tarball-sources.sh" gnome-shell >"$TMP/gnome-shell.sources"
 
 assert_archive_source() {
     local project="${1:?project required}"
@@ -42,7 +42,7 @@ assert_archive_source() {
             found=true
             break
         fi
-    done < "$manifest"
+    done <"$manifest"
 
     if [ "$found" != true ]; then
         echo "FAIL: $project archive omits required source: $expected" >&2

@@ -14,6 +14,6 @@ sources=(
 )
 for test in lua-config glob-config lua-console; do
     cc "$ROOT/tests/$test-test.c" "${sources[@]}" \
-       -I "$ROOT/src/config" $CFLAGS -o "$BIN/$test-test"
+        -I "$ROOT/src/config" $CFLAGS -o "$BIN/$test-test"
     timeout 20 "$BIN/$test-test"
 done

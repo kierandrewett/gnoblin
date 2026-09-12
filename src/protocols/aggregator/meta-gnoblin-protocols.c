@@ -20,15 +20,13 @@
 #include "wayland/meta-wayland-idle-notify.h"
 #include "wayland/meta-wayland-output-power-management.h"
 
-void
-meta_gnoblin_init_protocols (MetaWaylandCompositor *compositor)
-{
-  meta_wayland_init_idle_notify (compositor);
-  meta_wayland_init_foreign_toplevel_list (compositor);
-  meta_wayland_init_foreign_toplevel_management (compositor);
-  meta_wayland_init_gamma_control (compositor);
-  meta_wayland_init_output_power_management (compositor);
-  meta_wayland_init_data_control (compositor);
-  meta_wayland_init_blur_fade (compositor);
-  meta_wayland_init_background_effect (compositor);
+void meta_gnoblin_init_protocols(MetaWaylandCompositor* compositor) {
+    meta_wayland_init_idle_notify(compositor);
+    meta_wayland_init_foreign_toplevel_list(compositor);
+    meta_wayland_init_foreign_toplevel_management(compositor);
+    meta_wayland_init_gamma_control(compositor);
+    meta_wayland_init_output_power_management(compositor);
+    meta_wayland_init_data_control(compositor);
+    meta_wayland_init_blur_fade(compositor);
+    meta_wayland_init_background_effect(compositor);
 }

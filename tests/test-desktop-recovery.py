@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Drive desktop recovery with real pointer events in a private compositor."""
+
 import ast
 import json
 import os
@@ -11,10 +12,22 @@ assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 
 
 def evaluate(code):
-    output = subprocess.check_output([
-        "gdbus", "call", "--session", "--dest", "org.gnome.Shell",
-        "--object-path", "/org/gnome/Shell", "--method", "org.gnome.Shell.Eval", code,
-    ], text=True, timeout=5)
+    output = subprocess.check_output(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell",
+            "--method",
+            "org.gnome.Shell.Eval",
+            code,
+        ],
+        text=True,
+        timeout=5,
+    )
     ok, value = ast.literal_eval(output.replace("(true,", "(True,", 1).replace("(false,", "(False,", 1))
     assert ok, value
     return json.loads(value)
@@ -26,8 +39,11 @@ def wait_for(code, seconds=12):
         result = evaluate(code)
         if result:
             return result
-        time.sleep(.1)
-    print("Windows:", evaluate("global.get_window_actors().map(a => ({title: a.meta_window?.title, mapped: a.is_mapped()}))"))
+        time.sleep(0.1)
+    print(
+        "Windows:",
+        evaluate("global.get_window_actors().map(a => ({title: a.meta_window?.title, mapped: a.is_mapped()}))"),
+    )
     raise AssertionError(f"Timed out: {code}")
 
 
@@ -38,7 +54,7 @@ def click(x, y, button):
         global.recoveryPointer.notify_absolute_motion(imports.gi.GLib.get_monotonic_time(), {x}, {y});
         return true;
     }})()""")
-    time.sleep(.1)
+    time.sleep(0.1)
     evaluate(f"""(() => {{
         global.recoveryPointer.notify_button(imports.gi.GLib.get_monotonic_time(), {button}, 1);
         global.recoveryPointer.notify_button(imports.gi.GLib.get_monotonic_time(), {button}, 0);
@@ -47,7 +63,7 @@ def click(x, y, button):
 
 
 def click_actor(expression):
-    time.sleep(.4)
+    time.sleep(0.4)
     x, y = evaluate(f"""(() => {{
         const actor = {expression};
         const [x, y] = actor.get_transformed_position();
@@ -62,7 +78,9 @@ main = "global.recoveryMain"
 background = f"{main}.layoutManager._bgManagers[0].backgroundActor"
 menu = f"{background}._backgroundMenu"
 # Use an actual terminal with a unique title and private Wayland connection.
-evaluate("new imports.gi.Gio.Settings({schema_id: 'org.gnome.desktop.default-applications.terminal'}).set_string('exec', 'foot --title=Gnoblin-Recovery-Test')")
+evaluate(
+    "new imports.gi.Gio.Settings({schema_id: 'org.gnome.desktop.default-applications.terminal'}).set_string('exec', 'foot --title=Gnoblin-Recovery-Test')"
+)
 assert evaluate(f"Boolean({menu})"), "desktop recovery menu is missing"
 wait_for(f"!{main}.layoutManager._startingUp")
 click(60, 60, 3)
@@ -124,29 +142,39 @@ if shell_path := os.environ.get("BINGUX_SHELL_TEST_PATH"):
                 if process.poll() is not None:
                     log.seek(0)
                     raise AssertionError(log.read())
-                status = subprocess.run([qs, "ipc", "--pid", str(process.pid), "call", "shell", "status"],
-                                        capture_output=True, text=True, timeout=3)
+                status = subprocess.run(
+                    [qs, "ipc", "--pid", str(process.pid), "call", "shell", "status"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
                 if status.returncode == 0:
                     break
-                time.sleep(.2)
+                time.sleep(0.2)
             assert status.returncode == 0, status.stderr
             print("Bingux state:", status.stdout.strip())
             layers = "global.get_window_actors().filter(a => a.is_mapped() && a.meta_window && imports.gi.Meta.gnoblin_layer_anchor(a.meta_window) >= 0).length"
             assert wait_for(layers) >= 1
-            subprocess.run([qs, "ipc", "--pid", str(process.pid), "call", "shell", "panel", "calendar", "open"], check=True)
-            time.sleep(.5)
-            output = subprocess.check_output([qs, "ipc", "--pid", str(process.pid), "call", "shell", "status"], text=True)
+            subprocess.run(
+                [qs, "ipc", "--pid", str(process.pid), "call", "shell", "panel", "calendar", "open"], check=True
+            )
+            time.sleep(0.5)
+            output = subprocess.check_output(
+                [qs, "ipc", "--pid", str(process.pid), "call", "shell", "status"], text=True
+            )
             assert json.loads(output)["calendar"]
             print("PASS: full Bingux starts, maps layer surfaces and opens its calendar")
             subprocess.run([qs, "ipc", "--pid", str(process.pid), "call", "sidebar", "select", "terminal"], check=True)
             subprocess.run([qs, "ipc", "--pid", str(process.pid), "call", "sidebar", "open"], check=True)
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
-                output = subprocess.check_output([qs, "ipc", "--pid", str(process.pid), "call", "sidebar", "status"], text=True)
+                output = subprocess.check_output(
+                    [qs, "ipc", "--pid", str(process.pid), "call", "sidebar", "status"], text=True
+                )
                 sidebar = json.loads(output)
                 if sidebar["ready"] and sidebar["running"]:
                     break
-                time.sleep(.2)
+                time.sleep(0.2)
             assert sidebar["ready"] and sidebar["running"] and sidebar["pid"] > 0, sidebar
             print("PASS: native terminal sidebar starts a real shell")
         finally:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run CLI window actions only in the isolated Gnoblin test desktop."""
+
 import json
 import os
 from pathlib import Path
@@ -16,7 +17,11 @@ script_dir.mkdir(parents=True, exist_ok=True)
 if (repo / "src/scripts/lib").is_dir():
     shutil.copytree(repo / "src/scripts/lib", script_dir / "lib", ignore=shutil.ignore_patterns("__pycache__"))
 path = config / "compositor.sock"
-bridge = (repo / "src/scripts/compositor-bridge.js").read_text().replace("GLib.getenv('GNOBLIN_COMPOSITOR_SOCKET')", json.dumps(str(path)))
+bridge = (
+    (repo / "src/scripts/compositor-bridge.js")
+    .read_text()
+    .replace("GLib.getenv('GNOBLIN_COMPOSITOR_SOCKET')", json.dumps(str(path)))
+)
 (script_dir / "00-cli-workspaces.js").write_text("""
 import Gio from 'gi://Gio';
 export default function () {
@@ -29,7 +34,9 @@ export default function () {
 
 
 def call(*args):
-    result = subprocess.run([ctl, "--json", "--socket", str(path), *map(str, args)], capture_output=True, text=True, timeout=8)
+    result = subprocess.run(
+        [ctl, "--json", "--socket", str(path), *map(str, args)], capture_output=True, text=True, timeout=8
+    )
     assert result.returncode == 0, (args, result.stderr)
     return json.loads(result.stdout)
 
@@ -39,26 +46,35 @@ def until(query, predicate):
     result = None
     while time.monotonic() < deadline:
         result = query()
-        if predicate(result): return result
-        time.sleep(.05)
+        if predicate(result):
+            return result
+        time.sleep(0.05)
     raise AssertionError({"last": result, "windows": call("window", "list")})
 
 
 call("script", "reload")
 for _ in range(40):
-    if path.exists(): break
-    time.sleep(.05)
+    if path.exists():
+        break
+    time.sleep(0.05)
 assert call("ping") == "pong"
 assert call("monitor", "list")["monitors"]
 assert call("feature", "list")["features"]
 call("launch", "begin", "cli-private-test", "cli-test", 1000)
 assert call("launch", "status")["busy"]
 call("launch", "end", "cli-private-test")
-window = subprocess.Popen(["foot", "--app-id", "gnoblin-cli-test", "--title", "CLI 'quoted' window", "sleep", "60"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+window = subprocess.Popen(
+    ["foot", "--app-id", "gnoblin-cli-test", "--title", "CLI 'quoted' window", "sleep", "60"],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
 try:
     rows = until(lambda: call("window", "list", "--app-id", "gnoblin-cli-test")["windows"], bool)
     identity = rows[0]["id"]
-    def state(): return next(row for row in call("window", "list")["windows"] if row["id"] == identity)
+
+    def state():
+        return next(row for row in call("window", "list")["windows"] if row["id"] == identity)
+
     call("window", "focus", identity)
     until(state, lambda row: row["focused"])
     call("window", "minimize", identity)
@@ -73,7 +89,7 @@ try:
     until(state, lambda row: row["fullscreen"])
     call("window", "unfullscreen", identity)
     until(state, lambda row: not row["fullscreen"])
-    time.sleep(.3)
+    time.sleep(0.3)
     call("window", "move", identity, 80, 100)
     until(state, lambda row: row["geometry"]["x"] == 80 and row["geometry"]["y"] == 100)
     call("window", "resize", identity, 600, 400)
@@ -83,14 +99,20 @@ try:
     call("window", "workspace", identity, destination)
     until(state, lambda row: row["workspace"] == destination)
     call("workspace", "switch", destination)
-    until(lambda: call("workspace", "list")["workspaces"], lambda rows: any(row["id"] == destination and row["active"] for row in rows))
+    until(
+        lambda: call("workspace", "list")["workspaces"],
+        lambda rows: any(row["id"] == destination and row["active"] for row in rows),
+    )
     call("window", "monitor", identity, 0)
     assert state()["monitorIndex"] == 0
     invalid = subprocess.run([ctl, "--socket", str(path), "window", "focus", "invalid"], capture_output=True, text=True)
     assert invalid.returncode == 1 and "no longer available" in invalid.stderr
     call("window", "close", identity)
     until(lambda: call("window", "list")["windows"], lambda rows: all(row["id"] != identity for row in rows))
-    print("PASS: CLI lists, focus, minimise, restore, maximise, fullscreen, geometry, workspace, monitor, stale IDs and close")
+    print(
+        "PASS: CLI lists, focus, minimise, restore, maximise, fullscreen, geometry, workspace, monitor, stale IDs and close"
+    )
 finally:
-    if window.poll() is None: window.terminate()
+    if window.poll() is None:
+        window.terminate()
     window.wait(timeout=5)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render a generated vector cursor theme inside the private test session."""
+
 import os
 import json
 from pathlib import Path
@@ -12,10 +13,16 @@ repo = Path(__file__).resolve().parent.parent
 work = Path(os.environ["XDG_CONFIG_HOME"]) / "hyprcursor-test"
 shape = work / "source/hyprcursors/arrow"
 shape.mkdir(parents=True)
-(work / "source/manifest.hl").write_text("name = GnoblinVectorTest\ndescription = Test fixture\nversion = 1\ncursors_directory = hyprcursors\n")
-(shape / "meta.hl").write_text("resize_algorithm = bilinear\nhotspot_x = 0.25\nhotspot_y = 0.25\ndefine_override = default\ndefine_override = wait\ndefine_size = 24, first.svg, 35\ndefine_size = 24, second.svg, 70\n")
+(work / "source/manifest.hl").write_text(
+    "name = GnoblinVectorTest\ndescription = Test fixture\nversion = 1\ncursors_directory = hyprcursors\n"
+)
+(shape / "meta.hl").write_text(
+    "resize_algorithm = bilinear\nhotspot_x = 0.25\nhotspot_y = 0.25\ndefine_override = default\ndefine_override = wait\ndefine_size = 24, first.svg, 35\ndefine_size = 24, second.svg, 70\n"
+)
 for filename, colour in [("first.svg", "#ff00ff"), ("second.svg", "#00ffff")]:
-    (shape / filename).write_text(f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" fill="{colour}"/></svg>')
+    (shape / filename).write_text(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" fill="{colour}"/></svg>'
+    )
 subprocess.run(["hyprcursor-util", "--create", str(work / "source"), "--output", str(work)], check=True)
 icons = Path.home() / ".icons"
 icons.mkdir(exist_ok=True)
@@ -27,7 +34,8 @@ subprocess.run([str(repo / "build/test-hyprcursor")], check=True)
 scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
 scripts.mkdir(parents=True, exist_ok=True)
 report = work / "native-cursor.json"
-(scripts / "hyprcursor-probe.js").write_text('''
+(scripts / "hyprcursor-probe.js").write_text(
+    """
 import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -53,7 +61,8 @@ export default function enable(api) {
         device.run_dispose();
     });
 }
-'''.replace("REPORT", json.dumps(str(report))))
+""".replace("REPORT", json.dumps(str(report)))
+)
 subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 deadline = time.monotonic() + 4
 while not report.exists() and time.monotonic() < deadline:

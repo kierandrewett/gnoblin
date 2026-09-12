@@ -7,6 +7,6 @@ OUTPUT="${1:?usage: build-mtk-region-copy-probe.sh OUTPUT_DIRECTORY}"
 
 mkdir -p "$OUTPUT"
 cc -std=c11 -Wall -Wextra -Werror -fPIC -shared \
-   "$ROOT/tests/mtk-region-copy-probe.c" \
-   -ldl -pthread \
-   -o "$OUTPUT/libmtk-region-copy-probe.so"
+    "$ROOT/tests/mtk-region-copy-probe.c" \
+    -ldl -pthread \
+    -o "$OUTPUT/libmtk-region-copy-probe.so"

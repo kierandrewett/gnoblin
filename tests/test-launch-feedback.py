@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check global launch feedback in the isolated Gnoblin session."""
+
 import ast
 import json
 import os
@@ -13,7 +14,7 @@ repo = Path(__file__).resolve().parent.parent
 scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
 scripts.mkdir(parents=True, exist_ok=True)
 shutil.copy2(repo / "src/scripts/launch-feedback.js", scripts)
-(scripts / "launch-test-pointer.js").write_text('''
+(scripts / "launch-test-pointer.js").write_text("""
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
 export default function enable(api) {
@@ -22,7 +23,7 @@ export default function enable(api) {
     device.notify_absolute_motion(GLib.get_monotonic_time(), 200, 200);
     api._disposers.push(() => device.run_dispose());
 }
-''')
+""")
 
 
 def reload():
@@ -30,9 +31,23 @@ def reload():
 
 
 def call(method, *args):
-    result = subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnoblin.LaunchFeedback",
-        "--object-path", "/org/gnoblin/LaunchFeedback", "--method", "org.gnoblin.LaunchFeedback." + method,
-        *map(str, args)], check=True, capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnoblin.LaunchFeedback",
+            "--object-path",
+            "/org/gnoblin/LaunchFeedback",
+            "--method",
+            "org.gnoblin.LaunchFeedback." + method,
+            *map(str, args),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     return ast.literal_eval(result.stdout)
 
 
@@ -69,8 +84,11 @@ reload()
 assert state()["pointerVisible"] and not state()["busy"]
 call("Begin", "window", "gnoblin-launch-feedback-test", 5000)
 started = time.monotonic()
-app = subprocess.Popen(["foot", "--app-id=gnoblin-launch-feedback-test", "sleep", "30"],
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+app = subprocess.Popen(
+    ["foot", "--app-id=gnoblin-launch-feedback-test", "sleep", "30"],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
 try:
     wait_for(lambda value: not value["busy"] and value["pointerVisible"], timeout=4)
     assert time.monotonic() - started < 4, "Window matching must finish before the timeout"

@@ -1,14 +1,14 @@
-import Shell from 'gi://Shell';
-import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
-import * as Config from './gnoblinConfig.js';
-import {WindowCorners, WindowBorders, ToolkitCache} from './gnoblinCorners.js';
-import {BackdropRedraw} from './gnoblinBackdropRedraw.js';
-import {BackgroundEffects} from './gnoblinBackgroundEffects.js';
+import Shell from "gi://Shell";
+import Clutter from "gi://Clutter";
+import Gio from "gi://Gio";
+import GLib from "gi://GLib";
+import GObject from "gi://GObject";
+import * as Config from "./gnoblinConfig.js";
+import { WindowCorners, WindowBorders, ToolkitCache } from "./gnoblinCorners.js";
+import { BackdropRedraw } from "./gnoblinBackdropRedraw.js";
+import { BackgroundEffects } from "./gnoblinBackgroundEffects.js";
 
-const supportsShadowMask = Shell.BlurEffect.list_properties().some(p => p.name === 'ignore-shadow-pixels');
+const supportsShadowMask = Shell.BlurEffect.list_properties().some((p) => p.name === "ignore-shadow-pixels");
 
 function shaderSource(source) {
     return `uniform sampler2D gnoblin_texture;
@@ -25,25 +25,26 @@ void main() {
 }`;
 }
 
-const WindowShader = GObject.registerClass(class GnoblinWindowShader extends Clutter.ShaderEffect {
-    _init(source, uniforms) {
-        super._init();
-        this.set_shader_source(source);
-        const sampler = new GObject.Value();
-        sampler.init(GObject.TYPE_INT);
-        sampler.set_int(0);
-        this.set_uniform_value('gnoblin_texture', sampler);
-        for (const [name, value] of Object.entries(uniforms))
-            this.setFloat(name, value);
-    }
+const WindowShader = GObject.registerClass(
+    class GnoblinWindowShader extends Clutter.ShaderEffect {
+        _init(source, uniforms) {
+            super._init();
+            this.set_shader_source(source);
+            const sampler = new GObject.Value();
+            sampler.init(GObject.TYPE_INT);
+            sampler.set_int(0);
+            this.set_uniform_value("gnoblin_texture", sampler);
+            for (const [name, value] of Object.entries(uniforms)) this.setFloat(name, value);
+        }
 
-    setFloat(name, number) {
-        const value = new GObject.Value();
-        value.init(GObject.TYPE_FLOAT);
-        value.set_float(number);
-        this.set_uniform_value(name, value);
-    }
-});
+        setFloat(name, number) {
+            const value = new GObject.Value();
+            value.init(GObject.TYPE_FLOAT);
+            value.set_float(number);
+            this.set_uniform_value(name, value);
+        }
+    },
+);
 
 export class WindowRules {
     constructor() {
@@ -55,11 +56,11 @@ export class WindowRules {
         this._pending = new Set();
         this._pendingSpare = new Set();
         this._pendingId = 0;
-        this._backgroundEffects = new BackgroundEffects(actor => this._apply(actor));
+        this._backgroundEffects = new BackgroundEffects((actor) => this._apply(actor));
         this._updateRuleDependencies(this._config);
-        this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
+        this._map = global.window_manager.connect("map", (_wm, actor) => this._apply(actor));
         this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
-        this._focus = global.display.connect('notify::focus-window', () => {
+        this._focus = global.display.connect("notify::focus-window", () => {
             const previous = this._focusedActor;
             this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
             if (!this._hasFocusedRules) return;
@@ -89,9 +90,9 @@ export class WindowRules {
         this._hasTitleRules = false;
         this._shaderPaths = new Map();
         this._shaderSourcePaths = new Set();
-        for (const rule of config['window-rules']) {
-            this._hasFocusedRules ||= Object.hasOwn(rule.match, 'focused');
-            this._hasTitleRules ||= Object.hasOwn(rule.match, 'title');
+        for (const rule of config["window-rules"]) {
+            this._hasFocusedRules ||= Object.hasOwn(rule.match, "focused");
+            this._hasTitleRules ||= Object.hasOwn(rule.match, "title");
             if (rule.shader) {
                 const path = this._shaderPath(rule.shader);
                 this._shaderPaths.set(rule.shader, path);
@@ -103,8 +104,7 @@ export class WindowRules {
     refresh(config = this._config) {
         this._config = config;
         this._updateRuleDependencies(config);
-        for (const actor of global.get_window_actors())
-            this._apply(actor);
+        for (const actor of global.get_window_actors()) this._apply(actor);
         for (const [path, entry] of this._sources) {
             if (this._shaderSourcePaths.has(path)) continue;
             entry.monitor?.cancel();
@@ -114,25 +114,26 @@ export class WindowRules {
     }
 
     _shaderPath(path) {
-        if (path.startsWith('~/')) return GLib.build_filenamev([GLib.get_home_dir(), path.slice(2)]);
+        if (path.startsWith("~/")) return GLib.build_filenamev([GLib.get_home_dir(), path.slice(2)]);
         if (GLib.path_is_absolute(path)) return path;
-        const override = GLib.getenv('GNOBLIN_CONFIG');
-        const directory = override ? GLib.path_get_dirname(override) :
-            GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin']);
+        const override = GLib.getenv("GNOBLIN_CONFIG");
+        const directory = override
+            ? GLib.path_get_dirname(override)
+            : GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin"]);
         return GLib.build_filenamev([directory, path]);
     }
 
     _shader(path) {
         if (this._sources.has(path)) return this._sources.get(path).source;
         const file = Gio.File.new_for_path(path);
-        const entry = {source: null, monitor: null, timer: 0};
+        const entry = { source: null, monitor: null, timer: 0 };
         this._sources.set(path, entry);
         const load = () => {
             try {
-                if (file.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null).get_size() > 65536)
-                    throw new Error('shader exceeds 64 KiB');
+                if (file.query_info("standard::size", Gio.FileQueryInfoFlags.NONE, null).get_size() > 65536)
+                    throw new Error("shader exceeds 64 KiB");
                 const [, bytes] = file.load_contents(null);
-                const source = shaderSource(new TextDecoder('utf-8', {fatal: true}).decode(bytes));
+                const source = shaderSource(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
                 Shell.gnoblin_validate_shader(source);
                 entry.source = source;
             } catch (error) {
@@ -141,7 +142,7 @@ export class WindowRules {
         };
         try {
             entry.monitor = file.get_parent().monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
-            entry.monitor.connect('changed', (_monitor, changed, other) => {
+            entry.monitor.connect("changed", (_monitor, changed, other) => {
                 if (!changed?.equal(file) && !other?.equal(file)) return;
                 if (entry.timer) GLib.source_remove(entry.timer);
                 entry.timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
@@ -162,23 +163,34 @@ export class WindowRules {
         let entry = this._actors.get(actor);
         // Shadows are inserted before the client surface. A new rules owner
         // must never attach client effects or size listeners to that decoration.
-        const surface = entry?.surface || actor.get_children().find(child => !child._gnoblinDecoration);
+        const surface = entry?.surface || actor.get_children().find((child) => !child._gnoblinDecoration);
         if (!surface || !actor.meta_window) return;
         if (!entry) {
-            const title = actor.meta_window.connect('notify::title', () => {
+            const title = actor.meta_window.connect("notify::title", () => {
                 if (this._hasTitleRules) this._schedule(actor);
             });
-            const destroy = actor.connect('destroy', () => {
+            const destroy = actor.connect("destroy", () => {
                 actor.meta_window?.disconnect(title);
                 entry.corners?.destroy();
                 entry.borders?.destroy();
                 this._actors.delete(actor);
                 this._pending.delete(actor);
             });
-            const width = surface.connect('notify::width', () => this._schedule(actor));
-            const height = surface.connect('notify::height', () => this._schedule(actor));
-            entry = {surface, title, destroy, width, height, opacity: surface.opacity, blur: null,
-                shader: null, shaderKey: null, corners: null, borders: null};
+            const width = surface.connect("notify::width", () => this._schedule(actor));
+            const height = surface.connect("notify::height", () => this._schedule(actor));
+            entry = {
+                surface,
+                title,
+                destroy,
+                width,
+                height,
+                opacity: surface.opacity,
+                blur: null,
+                shader: null,
+                shaderKey: null,
+                corners: null,
+                borders: null,
+            };
             this._actors.set(actor, entry);
         }
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
@@ -190,48 +202,52 @@ export class WindowRules {
         }
         if (effects.blur > 0 && !standardBlur) {
             if (!entry.blur) {
-                entry.blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND_MASKED, brightness: 1});
+                entry.blur = new Shell.BlurEffect({ mode: Shell.BlurMode.BACKGROUND_MASKED, brightness: 1 });
                 // Keep backdrop capture outside the surface shader. Blur paints
                 // the client twice (alpha mask and colour); each child paint
                 // must start with a fresh shader effect chain.
-                actor.add_effect_with_name('gnoblin-window-blur', entry.blur);
+                actor.add_effect_with_name("gnoblin-window-blur", entry.blur);
             }
             entry.blur.radius = effects.blur;
-            if (actor._gnoblinBlurRegion && entry.blur.set_region)
-                entry.blur.set_region(...actor._gnoblinBlurRegion);
+            if (actor._gnoblinBlurRegion && entry.blur.set_region) entry.blur.set_region(...actor._gnoblinBlurRegion);
             // Client alpha describes glass tint, not blur strength. Using it as
             // coverage mixes sharp pixels back into translucent panel interiors.
             entry.blur.mask_opacity = 0;
-            if (supportsShadowMask) entry.blur.ignore_shadow_pixels = effects['blur-ignore-shadows'];
+            if (supportsShadowMask) entry.blur.ignore_shadow_pixels = effects["blur-ignore-shadows"];
         } else if (entry.blur) {
             actor.remove_effect(entry.blur);
             entry.blur = null;
         }
         this._backdropRedraw.set(actor, !!entry.blur);
-        const source = effects.shader ? this._shader(this._shaderPaths.get(effects.shader) ?? this._shaderPath(effects.shader)) : null;
-        const key = source ? JSON.stringify([source, effects['shader-uniforms']]) : null;
+        const source = effects.shader
+            ? this._shader(this._shaderPaths.get(effects.shader) ?? this._shaderPath(effects.shader))
+            : null;
+        const key = source ? JSON.stringify([source, effects["shader-uniforms"]]) : null;
         if ((!effects.shader || source) && entry.shaderKey !== key) {
-            const shader = source ? new WindowShader(source, effects['shader-uniforms']) : null;
+            const shader = source ? new WindowShader(source, effects["shader-uniforms"]) : null;
             if (entry.shader) surface.remove_effect(entry.shader);
             entry.shader = shader;
             entry.shaderKey = key;
-            if (shader) surface.add_effect_with_name('gnoblin-window-shader', shader);
+            if (shader) surface.add_effect_with_name("gnoblin-window-shader", shader);
         }
         if (entry.shader) {
-            entry.shader.setFloat('gnoblin_width', surface.width);
-            entry.shader.setFloat('gnoblin_height', surface.height);
+            entry.shader.setFloat("gnoblin_width", surface.width);
+            entry.shader.setFloat("gnoblin_height", surface.height);
         }
-        if (effects.borders['inner-width'] > 0 || effects.borders['outer-width'] > 0) {
+        if (effects.borders["inner-width"] > 0 || effects.borders["outer-width"] > 0) {
             if (!entry.borders) entry.borders = new WindowBorders(actor, surface, () => this._schedule(actor));
             entry.borders.update(effects.borders);
         } else if (entry.borders) {
-            entry.borders.destroy(); entry.borders = null;
+            entry.borders.destroy();
+            entry.borders = null;
         }
-        if (effects.corners.radius > 0 && effects.corners.mode !== 'off') {
-            if (!entry.corners) entry.corners = new WindowCorners(actor, surface, this._cornerToolkits, () => this._schedule(actor));
+        if (effects.corners.radius > 0 && effects.corners.mode !== "off") {
+            if (!entry.corners)
+                entry.corners = new WindowCorners(actor, surface, this._cornerToolkits, () => this._schedule(actor));
             entry.corners.update(effects.corners);
         } else if (entry.corners) {
-            entry.corners.destroy(); entry.corners = null;
+            entry.corners.destroy();
+            entry.corners = null;
         }
     }
 

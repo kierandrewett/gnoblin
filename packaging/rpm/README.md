@@ -2,12 +2,12 @@
 
 Gnoblin installs alongside Fedora's GNOME packages:
 
-| Package | Contents |
-| --- | --- |
-| `gnoblin-mutter` | Private Mutter runtime and a Gnoblin backlight policy |
-| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell |
-| `gnoblin-shell` | Private GNOME Shell runtime and session tools |
-| `gnoblin-session` | Login entry, user units and `gnoblinctl` command |
+| Package                | Contents                                              |
+| ---------------------- | ----------------------------------------------------- |
+| `gnoblin-mutter`       | Private Mutter runtime and a Gnoblin backlight policy |
+| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell            |
+| `gnoblin-shell`        | Private GNOME Shell runtime and session tools         |
+| `gnoblin-session`      | Login entry, user units and `gnoblinctl` command      |
 
 Binaries, libraries, schemas and upstream service definitions stay under
 `/usr/lib/gnoblin`. Private libraries do not provide dependencies for Fedora's

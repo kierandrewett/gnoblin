@@ -16,7 +16,7 @@
 
 G_BEGIN_DECLS
 
-#define CC_TYPE_GNOBLIN_PANEL (cc_gnoblin_panel_get_type ())
-G_DECLARE_FINAL_TYPE (CcGnoblinPanel, cc_gnoblin_panel, CC, GNOBLIN_PANEL, CcPanel)
+#define CC_TYPE_GNOBLIN_PANEL (cc_gnoblin_panel_get_type())
+G_DECLARE_FINAL_TYPE(CcGnoblinPanel, cc_gnoblin_panel, CC, GNOBLIN_PANEL, CcPanel)
 
 G_END_DECLS

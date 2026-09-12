@@ -11,7 +11,10 @@ SUBPROJECT="$ROOT/subprojects/$PROJECT"
 STATE_DIR="$ROOT/build/subproject-state"
 STATE_FILE="$STATE_DIR/$PROJECT.sha256"
 
-[ -d "$SUBPROJECT" ] || { echo "subproject not found: $PROJECT" >&2; exit 1; }
+[ -d "$SUBPROJECT" ] || {
+    echo "subproject not found: $PROJECT" >&2
+    exit 1
+}
 
 git -C "$SUBPROJECT" rev-parse --verify "$TAG^{commit}" >/dev/null 2>&1 || {
     echo "subproject $PROJECT has no tag $TAG; run 'just init'" >&2
@@ -61,7 +64,7 @@ case "$ACTION" in
     record)
         mkdir -p "$STATE_DIR"
         temporary="$STATE_FILE.tmp.$$"
-        snapshot > "$temporary"
+        snapshot >"$temporary"
         mv -f "$temporary" "$STATE_FILE"
         ;;
     *)

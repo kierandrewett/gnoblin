@@ -17,11 +17,14 @@ OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
 case "$PROJ" in
     mutter) VER="49.5" ;;
     gnome-shell) VER="49.6" ;;
-    *) echo "unknown subproject: $PROJ" >&2; exit 1 ;;
+    *)
+        echo "unknown subproject: $PROJ" >&2
+        exit 1
+        ;;
 esac
 EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$SM" log -1 --format=%ct "$VER")}"
 case "$EPOCH" in
-    ""|*[!0-9]*)
+    "" | *[!0-9]*)
         echo "invalid SOURCE_DATE_EPOCH: $EPOCH" >&2
         exit 2
         ;;

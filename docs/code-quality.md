@@ -94,7 +94,9 @@ same command with `uninstall`. Tool setup does not install Git hooks itself.
 | JSON, YAML, Markdown, CSS, SCSS and HTML                | Parser and formatting check    | Prettier     |
 
 Qt `.pragma` and `.import` lines in JavaScript are preserved. The adapter masks
-these lines only while passing the source to Prettier or ESLint. ESLint avoids
+these lines only while passing the source to Prettier or ESLint. QML test
+fragments (`*.inc.qml`) are formatted inside a temporary root object; the
+wrapper is removed before the fragment is written. ESLint avoids
 undefined-global rules because GJS and QML supply runtime globals.
 
 C/C++ keeps Gnoblin's existing 100-column style. Other configurable formatters
@@ -108,10 +110,9 @@ the portable QML check only parses and formats. XML protocols, Meson files,
 packaging specs, shader sources, generated C include data and other build data
 retain their existing build-specific validation.
 
-The initial rollout adds tooling without a mass rewrite or a suppressed error
-baseline. Whole-repository checks report existing debt and can fail until it is
-corrected. Fix issues in focused changes. No new full-repository CI gate is
-added while that backlog exists.
+Whole-repository lint is expected to pass before committing. Fix findings in
+focused changes. Necessary import-order exceptions have local comments; there
+is no suppressed error baseline.
 
 Keep the configuration and adapter files identical in both repos. Each checkout
 is self-contained and does not depend on the other being present.

@@ -3,7 +3,7 @@
 **Status:** vendored protocol XML only (`ext-session-lock-v1.xml`). Not wired into
 the build. Deferred because the security-critical behaviour cannot be verified by
 inspection and cannot be runtime-tested headless — a session lock that compiles but
-subtly leaks input or shows content underneath is *worse than none*.
+subtly leaks input or shows content underneath is _worse than none_.
 
 Enables `swaylock`, `hyprlock`, `gtklock`, `waylock`, and any other
 ext-session-lock-v1 client. Protocol XML is the canonical wayland-protocols
@@ -28,7 +28,7 @@ and drives the configure/ack handshake).
   to the output's logical-monitor geometry, stacked **above everything** (reuse the
   stacking-layer mechanism from `patches/mutter/30-layer-shell/0002-*honor-wlr-stacking*`;
   use the topmost layer / `META_LAYER_OVERRIDE_REDIRECT`). Send `configure(serial,
-  w, h)` on map and on output resize; require `ack_configure` before the buffer is
+w, h)` on map and on output resize; require `ack_configure` before the buffer is
   shown (same gate as layer-shell).
 - Manager `lock()`: refuse (send `finished`) if a lock is already active; otherwise
   begin locking.
@@ -73,6 +73,7 @@ an `ext-session-lock` key in the `[protocols]` section of `gnoblin.conf` (see
 ## Runtime validation checklist (the actual "validated")
 
 Run in a real Gnoblin/mutter session with a lock client:
+
 - [ ] `swaylock` (or gtklock) locks; input cannot reach apps underneath.
 - [ ] No desktop content visible at any point while locked (incl. the lock→map gap).
 - [ ] Killing the lock client (`kill -9`) leaves the screen locked and blank.

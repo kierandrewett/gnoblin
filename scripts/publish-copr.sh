@@ -10,8 +10,14 @@ mutter_srpm="$(realpath "$2")"
 shell_srpm="$(realpath "$3")"
 command -v copr-cli >/dev/null
 for package in "$mutter_srpm" "$shell_srpm"; do
-    [[ -f "$package" ]] || { echo "Missing source RPM: $package" >&2; exit 1; }
-    [[ "$(rpm -qp --qf '%{SOURCEPACKAGE}' "$package")" == 1 ]] || { echo "Not a source RPM: $package" >&2; exit 1; }
+    [[ -f "$package" ]] || {
+        echo "Missing source RPM: $package" >&2
+        exit 1
+    }
+    [[ "$(rpm -qp --qf '%{SOURCEPACKAGE}' "$package")" == 1 ]] || {
+        echo "Not a source RPM: $package" >&2
+        exit 1
+    }
 done
 [[ "$(rpm -qp --qf '%{NAME}' "$mutter_srpm")" == gnoblin-mutter ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$shell_srpm")" == gnoblin-shell ]]

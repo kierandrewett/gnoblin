@@ -8,10 +8,10 @@ g.set({
             {
                 name = "rustdesk",
                 match = "^app-id:com\\.rustdesk\\.RustDesk$",
-                capabilities = {"screen-cast", "remote-desktop", "input-capture", "screenshot", "access"},
+                capabilities = { "screen-cast", "remote-desktop", "input-capture", "screenshot", "access" },
                 level = "allow",
-                monitors = {"primary"},
-                devices = {"keyboard", "pointer", "touchscreen"},
+                monitors = { "primary" },
+                devices = { "keyboard", "pointer", "touchscreen" },
                 clipboard = true,
             },
         },

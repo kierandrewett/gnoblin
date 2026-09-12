@@ -11,4 +11,4 @@
 
 #include "wayland/meta-wayland-types.h"
 
-void meta_wayland_init_output_power_management (MetaWaylandCompositor *compositor);
+void meta_wayland_init_output_power_management(MetaWaylandCompositor* compositor);

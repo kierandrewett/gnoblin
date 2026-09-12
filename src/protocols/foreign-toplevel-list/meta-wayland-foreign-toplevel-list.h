@@ -11,4 +11,4 @@
 
 #include "wayland/meta-wayland-types.h"
 
-void meta_wayland_init_foreign_toplevel_list (MetaWaylandCompositor *compositor);
+void meta_wayland_init_foreign_toplevel_list(MetaWaylandCompositor* compositor);

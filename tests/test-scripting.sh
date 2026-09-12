@@ -12,7 +12,10 @@ export GNOBLIN_STATE_DIR
 LAST_LOG="$GNOBLIN_STATE_DIR/scripting-last.log"
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
+[ -x "$SHELL_BIN" ] || {
+    echo "no gnome-shell in $PREFIX — build first" >&2
+    exit 1
+}
 
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
@@ -27,16 +30,16 @@ export DISP="gnoblin-scr-$$" SHELL_LOG="$DK/shell.log"
 # Drop a user script (version A) into the config dir the ScriptHost watches.
 SCRIPTDIR="$DK/config/gnoblin/scripts"
 mkdir -p "$SCRIPTDIR"
-printf 'export default (api) => { api.log("SCRIPT version=A"); };\n' > "$SCRIPTDIR/hello.js"
+printf 'export default (api) => { api.log("SCRIPT version=A"); };\n' >"$SCRIPTDIR/hello.js"
 export SCRIPTDIR
 
 cleanup() {
-  for proc in /proc/[0-9]*; do
-    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
-  done
-  [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" scripting-last.log 2>/dev/null || true
-  rm -rf "$DK"
+    for proc in /proc/[0-9]*; do
+        e="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
+        case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
+    done
+    [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" scripting-last.log 2>/dev/null || true
+    rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
 

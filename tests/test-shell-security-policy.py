@@ -10,7 +10,7 @@ from typing import cast
 import gi
 
 gi.require_version("Gio", "2.0")
-from gi.repository import Gio, GLib
+from gi.repository import Gio, GLib  # noqa: E402 - Select GI versions before importing their modules.
 
 ALLOWED_NAME = "org.gnome.RemoteDesktop.Handover"
 SHELL_NAME = "org.gnome.Shell"
@@ -110,9 +110,8 @@ def extension_scope_matches(connection: Gio.DBusConnection) -> bool:
         try:
             enable_extension(connection, COMPATIBLE_EXTENSION)
         except GLib.Error as error:
-            unavailable = (
-                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_INTERFACE) or
-                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD)
+            unavailable = error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_INTERFACE) or error.matches(
+                Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD
             )
             if unavailable:
                 print("PASS: Gnoblin mode does not export the GNOME Extensions API")

@@ -32,320 +32,253 @@
 
 #define META_EXT_FOREIGN_TOPLEVEL_LIST_VERSION 1
 
-typedef struct _MetaWaylandForeignToplevelList
-{
-  struct wl_resource *resource;
-  MetaDisplay *display;
-  gulong window_created_id;
-  gboolean stopped;
-  GList *handles; /* MetaWaylandForeignToplevelHandle* (not owned) */
+typedef struct _MetaWaylandForeignToplevelList {
+    struct wl_resource* resource;
+    MetaDisplay* display;
+    gulong window_created_id;
+    gboolean stopped;
+    GList* handles; /* MetaWaylandForeignToplevelHandle* (not owned) */
 } MetaWaylandForeignToplevelList;
 
-typedef struct _MetaWaylandForeignToplevelHandle
-{
-  struct wl_resource *resource;
-  MetaWaylandForeignToplevelList *list; /* NULL once the manager is gone */
-  MetaWindow *window;                   /* NULL once unmanaged */
-  GList *link;
-  gulong unmanaged_id;
-  gulong notify_title_id;
-  gulong notify_wm_class_id;
-  gulong notify_gtk_app_id_id;
-  char *last_title;
-  char *last_app_id;
-  gboolean title_sent;
-  gboolean app_id_sent;
+typedef struct _MetaWaylandForeignToplevelHandle {
+    struct wl_resource* resource;
+    MetaWaylandForeignToplevelList* list; /* NULL once the manager is gone */
+    MetaWindow* window;                   /* NULL once unmanaged */
+    GList* link;
+    gulong unmanaged_id;
+    gulong notify_title_id;
+    gulong notify_wm_class_id;
+    gulong notify_gtk_app_id_id;
+    char* last_title;
+    char* last_app_id;
+    gboolean title_sent;
+    gboolean app_id_sent;
 } MetaWaylandForeignToplevelHandle;
 
+static gboolean handle_send_title(MetaWaylandForeignToplevelHandle* handle) {
+    const char* title = meta_window_get_title(handle->window);
 
-static gboolean
-handle_send_title (MetaWaylandForeignToplevelHandle *handle)
-{
-  const char *title = meta_window_get_title (handle->window);
+    title = title ? title : "";
+    if (handle->title_sent && g_strcmp0(handle->last_title, title) == 0)
+        return FALSE;
 
-  title = title ? title : "";
-  if (handle->title_sent && g_strcmp0 (handle->last_title, title) == 0)
-    return FALSE;
-
-  g_free (handle->last_title);
-  handle->last_title = g_strdup (title);
-  handle->title_sent = TRUE;
-  ext_foreign_toplevel_handle_v1_send_title (handle->resource,
-                                             title);
-  return TRUE;
+    g_free(handle->last_title);
+    handle->last_title = g_strdup(title);
+    handle->title_sent = TRUE;
+    ext_foreign_toplevel_handle_v1_send_title(handle->resource, title);
+    return TRUE;
 }
 
-static gboolean
-handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
-{
-  const char *app_id =
-    meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
+static gboolean handle_send_app_id(MetaWaylandForeignToplevelHandle* handle) {
+    const char* app_id = meta_gnoblin_foreign_toplevel_window_app_id(handle->window);
 
-  if (handle->app_id_sent && g_strcmp0 (handle->last_app_id, app_id) == 0)
-    return FALSE;
+    if (handle->app_id_sent && g_strcmp0(handle->last_app_id, app_id) == 0)
+        return FALSE;
 
-  g_free (handle->last_app_id);
-  handle->last_app_id = g_strdup (app_id);
-  handle->app_id_sent = TRUE;
-  ext_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
-  return TRUE;
+    g_free(handle->last_app_id);
+    handle->last_app_id = g_strdup(app_id);
+    handle->app_id_sent = TRUE;
+    ext_foreign_toplevel_handle_v1_send_app_id(handle->resource, app_id);
+    return TRUE;
 }
 
-static void
-on_window_notify_title (GObject    *object,
-                        GParamSpec *pspec,
-                        gpointer    user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_window_notify_title(GObject* object, GParamSpec* pspec, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  if (!handle->window)
-    return;
+    if (!handle->window)
+        return;
 
-  if (handle_send_title (handle))
-    ext_foreign_toplevel_handle_v1_send_done (handle->resource);
+    if (handle_send_title(handle))
+        ext_foreign_toplevel_handle_v1_send_done(handle->resource);
 }
 
-static void
-on_window_notify_app_id (GObject    *object,
-                         GParamSpec *pspec,
-                         gpointer    user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_window_notify_app_id(GObject* object, GParamSpec* pspec, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  if (!handle->window)
-    return;
+    if (!handle->window)
+        return;
 
-  if (handle_send_app_id (handle))
-    ext_foreign_toplevel_handle_v1_send_done (handle->resource);
+    if (handle_send_app_id(handle))
+        ext_foreign_toplevel_handle_v1_send_done(handle->resource);
 }
 
-static void
-handle_disconnect_window (MetaWaylandForeignToplevelHandle *handle)
-{
-  if (!handle->window)
-    return;
+static void handle_disconnect_window(MetaWaylandForeignToplevelHandle* handle) {
+    if (!handle->window)
+        return;
 
-  g_clear_signal_handler (&handle->unmanaged_id, handle->window);
-  g_clear_signal_handler (&handle->notify_title_id, handle->window);
-  g_clear_signal_handler (&handle->notify_wm_class_id, handle->window);
-  g_clear_signal_handler (&handle->notify_gtk_app_id_id, handle->window);
-  handle->window = NULL;
+    g_clear_signal_handler(&handle->unmanaged_id, handle->window);
+    g_clear_signal_handler(&handle->notify_title_id, handle->window);
+    g_clear_signal_handler(&handle->notify_wm_class_id, handle->window);
+    g_clear_signal_handler(&handle->notify_gtk_app_id_id, handle->window);
+    handle->window = NULL;
 }
 
-static void
-on_window_unmanaged (MetaWindow *window,
-                     gpointer    user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_window_unmanaged(MetaWindow* window, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  handle_disconnect_window (handle);
-  ext_foreign_toplevel_handle_v1_send_closed (handle->resource);
+    handle_disconnect_window(handle);
+    ext_foreign_toplevel_handle_v1_send_closed(handle->resource);
 }
 
-static void
-handle_destroy (struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle =
-    wl_resource_get_user_data (resource);
+static void handle_destroy(struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
 
-  handle_disconnect_window (handle);
-  if (handle->list)
-    handle->list->handles = g_list_delete_link (handle->list->handles,
-                                                handle->link);
+    handle_disconnect_window(handle);
+    if (handle->list)
+        handle->list->handles = g_list_delete_link(handle->list->handles, handle->link);
 
-  handle->link = NULL;
-  g_free (handle->last_title);
-  g_free (handle->last_app_id);
-  g_free (handle);
+    handle->link = NULL;
+    g_free(handle->last_title);
+    g_free(handle->last_app_id);
+    g_free(handle);
 }
 
-static void
-handle_handle_destroy (struct wl_client   *client,
-                       struct wl_resource *resource)
-{
-  wl_resource_destroy (resource);
+static void handle_handle_destroy(struct wl_client* client, struct wl_resource* resource) {
+    wl_resource_destroy(resource);
 }
 
 static const struct ext_foreign_toplevel_handle_v1_interface handle_interface = {
-  handle_handle_destroy,
+    handle_handle_destroy,
 };
 
-static void
-foreign_toplevel_list_advertise (MetaWaylandForeignToplevelList *list,
-                                 MetaWindow                     *window)
-{
-  struct wl_client *client = wl_resource_get_client (list->resource);
-  MetaWaylandForeignToplevelHandle *handle;
-  struct wl_resource *resource;
-  g_autofree char *identifier = NULL;
+static void foreign_toplevel_list_advertise(MetaWaylandForeignToplevelList* list,
+                                            MetaWindow* window) {
+    struct wl_client* client = wl_resource_get_client(list->resource);
+    MetaWaylandForeignToplevelHandle* handle;
+    struct wl_resource* resource;
+    g_autofree char* identifier = NULL;
 
-  resource = wl_resource_create (client,
-                                 &ext_foreign_toplevel_handle_v1_interface,
-                                 wl_resource_get_version (list->resource),
-                                 0);
-  if (!resource)
-    {
-      wl_client_post_no_memory (client);
-      return;
+    resource = wl_resource_create(client, &ext_foreign_toplevel_handle_v1_interface,
+                                  wl_resource_get_version(list->resource), 0);
+    if (!resource) {
+        wl_client_post_no_memory(client);
+        return;
     }
 
-  handle = g_new0 (MetaWaylandForeignToplevelHandle, 1);
-  handle->resource = resource;
-  handle->list = list;
-  handle->window = window;
+    handle = g_new0(MetaWaylandForeignToplevelHandle, 1);
+    handle->resource = resource;
+    handle->list = list;
+    handle->window = window;
 
-  wl_resource_set_implementation (resource, &handle_interface, handle,
-                                  handle_destroy);
+    wl_resource_set_implementation(resource, &handle_interface, handle, handle_destroy);
 
-  handle->link = g_list_prepend (list->handles, handle);
-  list->handles = handle->link;
+    handle->link = g_list_prepend(list->handles, handle);
+    list->handles = handle->link;
 
-  ext_foreign_toplevel_list_v1_send_toplevel (list->resource, resource);
+    ext_foreign_toplevel_list_v1_send_toplevel(list->resource, resource);
 
-  /* The identifier must be unique per toplevel and never reused; mutter's
-   * window id is monotonic and not recycled. */
-  identifier = g_strdup_printf ("gnoblin-%" G_GUINT64_FORMAT,
-                                meta_window_get_id (window));
-  ext_foreign_toplevel_handle_v1_send_identifier (resource, identifier);
+    /* The identifier must be unique per toplevel and never reused; mutter's
+     * window id is monotonic and not recycled. */
+    identifier = g_strdup_printf("gnoblin-%" G_GUINT64_FORMAT, meta_window_get_id(window));
+    ext_foreign_toplevel_handle_v1_send_identifier(resource, identifier);
 
-  handle_send_title (handle);
-  handle_send_app_id (handle);
-  ext_foreign_toplevel_handle_v1_send_done (resource);
+    handle_send_title(handle);
+    handle_send_app_id(handle);
+    ext_foreign_toplevel_handle_v1_send_done(resource);
 
-  handle->unmanaged_id =
-    g_signal_connect (window, "unmanaged",
-                      G_CALLBACK (on_window_unmanaged), handle);
-  handle->notify_title_id =
-    g_signal_connect (window, "notify::title",
-                      G_CALLBACK (on_window_notify_title), handle);
-  handle->notify_wm_class_id =
-    g_signal_connect (window, "notify::wm-class",
-                      G_CALLBACK (on_window_notify_app_id), handle);
-  handle->notify_gtk_app_id_id =
-    g_signal_connect (window, "notify::gtk-application-id",
-                      G_CALLBACK (on_window_notify_app_id), handle);
+    handle->unmanaged_id =
+        g_signal_connect(window, "unmanaged", G_CALLBACK(on_window_unmanaged), handle);
+    handle->notify_title_id =
+        g_signal_connect(window, "notify::title", G_CALLBACK(on_window_notify_title), handle);
+    handle->notify_wm_class_id =
+        g_signal_connect(window, "notify::wm-class", G_CALLBACK(on_window_notify_app_id), handle);
+    handle->notify_gtk_app_id_id = g_signal_connect(window, "notify::gtk-application-id",
+                                                    G_CALLBACK(on_window_notify_app_id), handle);
 }
 
-static void
-on_window_created (MetaDisplay *display,
-                   MetaWindow  *window,
-                   gpointer     user_data)
-{
-  MetaWaylandForeignToplevelList *list = user_data;
+static void on_window_created(MetaDisplay* display, MetaWindow* window, gpointer user_data) {
+    MetaWaylandForeignToplevelList* list = user_data;
 
-  if (list->stopped)
-    return;
-  if (!meta_gnoblin_foreign_toplevel_window_is_exposable (window))
-    return;
+    if (list->stopped)
+        return;
+    if (!meta_gnoblin_foreign_toplevel_window_is_exposable(window))
+        return;
 
-  foreign_toplevel_list_advertise (list, window);
+    foreign_toplevel_list_advertise(list, window);
 }
 
-static void
-foreign_toplevel_list_destroy (struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelList *list = wl_resource_get_user_data (resource);
-  GList *l;
+static void foreign_toplevel_list_destroy(struct wl_resource* resource) {
+    MetaWaylandForeignToplevelList* list = wl_resource_get_user_data(resource);
+    GList* l;
 
-  g_clear_signal_handler (&list->window_created_id, list->display);
+    g_clear_signal_handler(&list->window_created_id, list->display);
 
-  /* Handles outlive the manager: detach them so their own destructor does not
-   * touch freed list state. */
-  for (l = list->handles; l; l = l->next)
-    {
-      MetaWaylandForeignToplevelHandle *handle = l->data;
-      handle->list = NULL;
-      handle->link = NULL;
+    /* Handles outlive the manager: detach them so their own destructor does not
+     * touch freed list state. */
+    for (l = list->handles; l; l = l->next) {
+        MetaWaylandForeignToplevelHandle* handle = l->data;
+        handle->list = NULL;
+        handle->link = NULL;
     }
-  g_clear_pointer (&list->handles, g_list_free);
+    g_clear_pointer(&list->handles, g_list_free);
 
-  g_free (list);
+    g_free(list);
 }
 
-static void
-foreign_toplevel_list_handle_stop (struct wl_client   *client,
-                                   struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelList *list = wl_resource_get_user_data (resource);
+static void foreign_toplevel_list_handle_stop(struct wl_client* client,
+                                              struct wl_resource* resource) {
+    MetaWaylandForeignToplevelList* list = wl_resource_get_user_data(resource);
 
-  if (list->stopped)
-    return;
+    if (list->stopped)
+        return;
 
-  list->stopped = TRUE;
-  g_clear_signal_handler (&list->window_created_id, list->display);
-  ext_foreign_toplevel_list_v1_send_finished (resource);
+    list->stopped = TRUE;
+    g_clear_signal_handler(&list->window_created_id, list->display);
+    ext_foreign_toplevel_list_v1_send_finished(resource);
 }
 
-static void
-foreign_toplevel_list_handle_destroy (struct wl_client   *client,
-                                      struct wl_resource *resource)
-{
-  wl_resource_destroy (resource);
+static void foreign_toplevel_list_handle_destroy(struct wl_client* client,
+                                                 struct wl_resource* resource) {
+    wl_resource_destroy(resource);
 }
 
 static const struct ext_foreign_toplevel_list_v1_interface list_interface = {
-  foreign_toplevel_list_handle_stop,
-  foreign_toplevel_list_handle_destroy,
+    foreign_toplevel_list_handle_stop,
+    foreign_toplevel_list_handle_destroy,
 };
 
-static void
-bind_foreign_toplevel_list (struct wl_client *client,
-                            void             *data,
-                            uint32_t          version,
-                            uint32_t          id)
-{
-  MetaWaylandCompositor *compositor = data;
-  MetaContext *context = meta_wayland_compositor_get_context (compositor);
-  MetaDisplay *display = meta_context_get_display (context);
-  MetaWaylandForeignToplevelList *list;
-  struct wl_resource *resource;
-  GList *windows, *l;
+static void bind_foreign_toplevel_list(struct wl_client* client, void* data, uint32_t version,
+                                       uint32_t id) {
+    MetaWaylandCompositor* compositor = data;
+    MetaContext* context = meta_wayland_compositor_get_context(compositor);
+    MetaDisplay* display = meta_context_get_display(context);
+    MetaWaylandForeignToplevelList* list;
+    struct wl_resource* resource;
+    GList *windows, *l;
 
-  resource = wl_resource_create (client,
-                                 &ext_foreign_toplevel_list_v1_interface,
-                                 version,
-                                 id);
-  if (!resource)
-    {
-      wl_client_post_no_memory (client);
-      return;
+    resource = wl_resource_create(client, &ext_foreign_toplevel_list_v1_interface, version, id);
+    if (!resource) {
+        wl_client_post_no_memory(client);
+        return;
     }
 
-  list = g_new0 (MetaWaylandForeignToplevelList, 1);
-  list->resource = resource;
-  list->display = display;
+    list = g_new0(MetaWaylandForeignToplevelList, 1);
+    list->resource = resource;
+    list->display = display;
 
-  wl_resource_set_implementation (resource, &list_interface, list,
-                                  foreign_toplevel_list_destroy);
+    wl_resource_set_implementation(resource, &list_interface, list, foreign_toplevel_list_destroy);
 
-  list->window_created_id =
-    g_signal_connect (display, "window-created",
-                      G_CALLBACK (on_window_created), list);
+    list->window_created_id =
+        g_signal_connect(display, "window-created", G_CALLBACK(on_window_created), list);
 
-  windows = meta_display_list_all_windows (display);
-  for (l = windows; l; l = l->next)
-    {
-      MetaWindow *window = l->data;
+    windows = meta_display_list_all_windows(display);
+    for (l = windows; l; l = l->next) {
+        MetaWindow* window = l->data;
 
-      if (meta_gnoblin_foreign_toplevel_window_is_exposable (window))
-        foreign_toplevel_list_advertise (list, window);
+        if (meta_gnoblin_foreign_toplevel_window_is_exposable(window))
+            foreign_toplevel_list_advertise(list, window);
     }
-  g_list_free (windows);
+    g_list_free(windows);
 }
 
-void
-meta_wayland_init_foreign_toplevel_list (MetaWaylandCompositor *compositor)
-{
-  if (!gnoblin_config_protocol_enabled ("ext-foreign-toplevel-list"))
-    {
-      g_message ("Gnoblin ext-foreign-toplevel-list protocol disabled by settings");
-      return;
+void meta_wayland_init_foreign_toplevel_list(MetaWaylandCompositor* compositor) {
+    if (!gnoblin_config_protocol_enabled("ext-foreign-toplevel-list")) {
+        g_message("Gnoblin ext-foreign-toplevel-list protocol disabled by settings");
+        return;
     }
 
-  if (!wl_global_create (compositor->wayland_display,
-                         &ext_foreign_toplevel_list_v1_interface,
-                         META_EXT_FOREIGN_TOPLEVEL_LIST_VERSION,
-                         compositor,
-                         bind_foreign_toplevel_list))
-    g_error ("Failed to register ext-foreign-toplevel-list global");
+    if (!wl_global_create(compositor->wayland_display, &ext_foreign_toplevel_list_v1_interface,
+                          META_EXT_FOREIGN_TOPLEVEL_LIST_VERSION, compositor,
+                          bind_foreign_toplevel_list))
+        g_error("Failed to register ext-foreign-toplevel-list global");
 }

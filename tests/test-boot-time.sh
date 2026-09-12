@@ -26,7 +26,10 @@ BUDGET_MS="${BOOT_BUDGET_MS:-1350}"
 RUNS="${BOOT_RUNS:-3}"
 LAST_LOG="$GNOBLIN_STATE_DIR/gnome-shell-last.log"
 
-[ -x "$PREFIX/bin/gnome-shell" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
+[ -x "$PREFIX/bin/gnome-shell" ] || {
+    echo "no gnome-shell in $PREFIX — build first" >&2
+    exit 1
+}
 
 # "13:45:04.213" -> ms since midnight. Used for both ends of the measurement,
 # so the absolute epoch does not matter, only the difference.
@@ -34,29 +37,35 @@ hhmmss_to_ms() {
     local t="$1" h m s
     IFS=: read -r h m s <<<"$t"
     # s is "SS.mmm"; strip the dot rather than use floating point in bash
-    printf '%s\n' "$(( (10#$h * 3600000) + (10#$m * 60000) + (10#${s%%.*} * 1000) + 10#${s##*.} ))"
+    printf '%s\n' "$(((10#$h * 3600000) + (10#$m * 60000) + (10#${s%%.*} * 1000) + 10#${s##*.}))"
 }
 
 measure_once() {
     SETTLE="${SETTLE:-15}" GNOBLIN_PREFIX="$PREFIX" \
         "$ROOT/scripts/run-gnome-shell.sh" >/dev/null 2>&1
     local rc=$?
-    [ -f "$LAST_LOG" ] || { echo "no log at $LAST_LOG" >&2; return 1; }
+    [ -f "$LAST_LOG" ] || {
+        echo "no log at $LAST_LOG" >&2
+        return 1
+    }
 
     # Compositor start = first libmutter message; end = the shell's own
     # "started" mark, which is what gnome-session and the user actually wait on.
     local start_t end_t
-    start_t="$(grep -oE 'libmutter-Message: [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}' "$LAST_LOG" \
-        | head -1 | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}')"
-    end_t="$(grep -E 'GNOME Shell started' "$LAST_LOG" \
-        | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}' | head -1)"
-    [ -n "$start_t" ] && [ -n "$end_t" ] || { echo "could not find both marks (rc=$rc)" >&2; return 1; }
+    start_t="$(grep -oE 'libmutter-Message: [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}' "$LAST_LOG" |
+        head -1 | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}')"
+    end_t="$(grep -E 'GNOME Shell started' "$LAST_LOG" |
+        grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}' | head -1)"
+    [ -n "$start_t" ] && [ -n "$end_t" ] || {
+        echo "could not find both marks (rc=$rc)" >&2
+        return 1
+    }
 
     local a b d
     a="$(hhmmss_to_ms "$start_t")"
     b="$(hhmmss_to_ms "$end_t")"
-    d=$(( b - a ))
-    [ "$d" -lt 0 ] && d=$(( d + 86400000 ))   # clock wrapped past midnight
+    d=$((b - a))
+    [ "$d" -lt 0 ] && d=$((d + 86400000)) # clock wrapped past midnight
     printf '%s\n' "$d"
 }
 
@@ -71,7 +80,10 @@ for i in $(seq 1 "$RUNS"); do
     fi
 done
 
-[ "${#times[@]}" -gt 0 ] || { echo "FAIL: no successful boots" >&2; exit 1; }
+[ "${#times[@]}" -gt 0 ] || {
+    echo "FAIL: no successful boots" >&2
+    exit 1
+}
 
 # Best of N, not mean or median. Scheduler noise and llvmpipe only ever make a
 # boot slower, so the fastest run is the cleanest estimate of what the code can

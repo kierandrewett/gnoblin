@@ -19,7 +19,10 @@ export GNOBLIN_STATE_DIR
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 PERF_CLIENT="${PERF_CLIENT:-foot}"
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
+[ -x "$SHELL_BIN" ] || {
+    echo "no gnome-shell in $PREFIX — build first" >&2
+    exit 1
+}
 
 # Thresholds (kB).
 # These generous headless limits catch a reintroduced leak without pretending
@@ -40,13 +43,13 @@ export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=n
 export DISP="gnoblin-perf-$$" SHELL_LOG="$DK/shell.log"
 
 cleanup() {
-  for proc in /proc/[0-9]*; do
-    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
-  done
-  pkill -f "$DK/" 2>/dev/null
-  [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" perf-smoke-last.log 2>/dev/null || true
-  rm -rf "$DK"
+    for proc in /proc/[0-9]*; do
+        e="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
+        case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
+    done
+    pkill -f "$DK/" 2>/dev/null
+    [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" perf-smoke-last.log 2>/dev/null || true
+    rm -rf "$DK"
 }
 trap cleanup EXIT TERM HUP INT
 
@@ -110,6 +113,6 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
   exit $rc
 '
 rc=$?
-[ "$rc" = 0 ] && echo ">> RESULT: PASS (perf smoke within budgets)" \
-              || echo ">> RESULT: FAIL (perf smoke, rc=$rc). log -> $GNOBLIN_STATE_DIR/perf-smoke-last.log" >&2
+[ "$rc" = 0 ] && echo ">> RESULT: PASS (perf smoke within budgets)" ||
+    echo ">> RESULT: FAIL (perf smoke, rc=$rc). log -> $GNOBLIN_STATE_DIR/perf-smoke-last.log" >&2
 exit "$rc"

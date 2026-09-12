@@ -6,12 +6,12 @@ for a decision before they restore a session or show a consent dialog.
 
 ## Levels
 
-| Level | Behaviour |
-| --- | --- |
-| `default` | Use the normal portal flow, including standard restore tokens. This is the initial fallback. |
-| `ask` | Require the portal's consent or selection dialog. Capture restore tokens cannot skip consent. |
-| `allow` | Approve the matching request within the rule's configured capabilities. |
-| `deny` | Reject the request without a dialog, including requests with restore tokens. |
+| Level     | Behaviour                                                                                     |
+| --------- | --------------------------------------------------------------------------------------------- |
+| `default` | Use the normal portal flow, including standard restore tokens. This is the initial fallback.  |
+| `ask`     | Require the portal's consent or selection dialog. Capture restore tokens cannot skip consent. |
+| `allow`   | Approve the matching request within the rule's configured capabilities.                       |
+| `deny`    | Reject the request without a dialog, including requests with restore tokens.                  |
 
 The global fallback accepts `default`, `ask`, or `deny`. Automatic approval
 requires an explicit app rule. A matching `deny` rule always wins. Otherwise,
@@ -65,13 +65,13 @@ IDs. Use executable matching where the frontend provides an empty app ID.
 
 ## Supported capabilities
 
-| Capability | Automatic approval |
-| --- | --- |
-| `screen-cast` | Capture the configured monitors. |
-| `remote-desktop` | Grant only the configured input devices, clipboard access and monitors. |
-| `input-capture` | Approve the requested supported input-capture capabilities. |
-| `screenshot` | Skip screenshot consent; an explicitly requested interactive capture still needs a selection. |
-| `access` | Approve a generic Access dialog; dialogs with choices still need user input. |
+| Capability       | Automatic approval                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `screen-cast`    | Capture the configured monitors.                                                              |
+| `remote-desktop` | Grant only the configured input devices, clipboard access and monitors.                       |
+| `input-capture`  | Approve the requested supported input-capture capabilities.                                   |
+| `screenshot`     | Skip screenshot consent; an explicitly requested interactive capture still needs a selection. |
+| `access`         | Approve a generic Access dialog; dialogs with choices still need user input.                  |
 
 `monitors` contains `primary` or exact connector names such as `DP-1`. Multiple
 entries require a client that requests multiple streams. A missing monitor,
@@ -112,6 +112,7 @@ session, causes backend requests to be denied.
 
 Changes apply to new permission requests. They do not disconnect an active
 remote session. A dialog that is already open belongs to its original request.
+
 ## Migration and verification
 
 The old custom `portal-grants` files no longer grant access, and the additional

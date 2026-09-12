@@ -6,6 +6,7 @@ uses the normal user-script host to inspect the real Shell actor and drives the
 same Run binding that users use, rather than exposing a second evaluator over
 D-Bus.
 """
+
 import ast
 import json
 import os
@@ -15,24 +16,37 @@ import subprocess
 import time
 
 
-assert os.environ.get('WAYLAND_DISPLAY', '').startswith('gnoblin-gs-')
+assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin' / 'scripts'
+SCRIPTS = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "scripts"
 SCRIPTS.mkdir(parents=True, exist_ok=True)
-MARKER = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin' / 'developer-console-result.json'
+MARKER = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "developer-console-result.json"
 
 
 def gdbus(service, path, interface, method, *arguments, ok=True, timeout=5):
-    result = subprocess.run([
-        'gdbus', 'call', '--session', '--dest', service, '--object-path', path,
-        '--method', f'{interface}.{method}', *map(str, arguments),
-    ], capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            service,
+            "--object-path",
+            path,
+            "--method",
+            f"{interface}.{method}",
+            *map(str, arguments),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
     assert (result.returncode == 0) == ok, result.stdout + result.stderr
     return result
 
 
-(SCRIPTS / 'developer-console-test.js').write_text(r'''
+(SCRIPTS / "developer-console-test.js").write_text(r"""
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -258,12 +272,12 @@ export default function (api) {
         keyboard = null;
     });
 }
-''')
+""")
 
 
-INTERFACE = 'org.gnoblin.DeveloperConsoleTest'
+INTERFACE = "org.gnoblin.DeveloperConsoleTest"
 SERVICE = INTERFACE
-PATH = '/org/gnoblin/DeveloperConsoleTest'
+PATH = "/org/gnoblin/DeveloperConsoleTest"
 
 
 def call(method, *arguments, ok=True, timeout=5):
@@ -275,7 +289,7 @@ def value(result):
 
 
 def state():
-    return json.loads(value(call('State')))
+    return json.loads(value(call("State")))
 
 
 def wait_for(predicate, timeout=5):
@@ -285,7 +299,7 @@ def wait_for(predicate, timeout=5):
         current = state()
         if predicate(current):
             return current
-        time.sleep(.05)
+        time.sleep(0.05)
     raise AssertionError(current)
 
 
@@ -296,194 +310,202 @@ def wait_marker(phase, timeout=5):
         try:
             current = json.loads(MARKER.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
-            time.sleep(.05)
+            time.sleep(0.05)
             continue
-        if current.get('phase') == phase:
+        if current.get("phase") == phase:
             return current
-        time.sleep(.05)
+        time.sleep(0.05)
     raise AssertionError(current)
 
 
-subprocess.run([str(ROOT / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
+subprocess.run([str(ROOT / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
     try:
         before = state()
         break
     except (AssertionError, subprocess.CalledProcessError, SyntaxError, ValueError):
-        time.sleep(.05)
+        time.sleep(0.05)
 else:
-    raise AssertionError('developer-console test object was not exported')
+    raise AssertionError("developer-console test object was not exported")
 
-assert not before['exists'] and before['runDialogAbsent'] and before['lookingGlassAbsent'], before
-opened = json.loads(value(call('Open')))
-assert opened['opened'] and opened['open'] and opened['visible'], opened
-assert opened['parent'] == 'uiGroup', opened
-assert opened['transcriptRows'] == 0, opened
-assert opened['y'] == opened['monitorY'], opened
-assert opened['topIndex'] == opened['childCount'] - 1, opened
-focused = wait_for(lambda current: current['open'] and current['focusEntry'])
-assert focused['modalCount'] > 0, focused
-assert opened['lookingGlassAlias'] and opened['runDialogAbsent'], opened
-if shutil.which('grim'):
-    time.sleep(.25)
-    screenshot = Path('/tmp/gnoblin-developer-console.png')
+assert not before["exists"] and before["runDialogAbsent"] and before["lookingGlassAbsent"], before
+opened = json.loads(value(call("Open")))
+assert opened["opened"] and opened["open"] and opened["visible"], opened
+assert opened["parent"] == "uiGroup", opened
+assert opened["transcriptRows"] == 0, opened
+assert opened["y"] == opened["monitorY"], opened
+assert opened["topIndex"] == opened["childCount"] - 1, opened
+focused = wait_for(lambda current: current["open"] and current["focusEntry"])
+assert focused["modalCount"] > 0, focused
+assert opened["lookingGlassAlias"] and opened["runDialogAbsent"], opened
+if shutil.which("grim"):
+    time.sleep(0.25)
+    screenshot = Path("/tmp/gnoblin-developer-console.png")
     try:
-        subprocess.run(['grim', str(screenshot)], check=True, timeout=5)
-        print(f'NOTE: console frame captured at {screenshot}')
+        subprocess.run(["grim", str(screenshot)], check=True, timeout=5)
+        print(f"NOTE: console frame captured at {screenshot}")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-        print(f'NOTE: could not capture console frame: {error}')
-print('PASS: Alt+F2 replacement opens a focused top-edge modal above the Shell chrome')
+        print(f"NOTE: could not capture console frame: {error}")
+print("PASS: Alt+F2 replacement opens a focused top-edge modal above the Shell chrome")
 
 # Exercise an untouched prompt and the shortcut while its modal grab is active.
-value(call('Escape'))
-wait_for(lambda current: not current['open'] and not current['visible'])
-value(call('RunBinding'))
-wait_for(lambda current: current['open'] and current['focusEntry'])
-value(call('RunBinding'))
-wait_for(lambda current: not current['open'] and not current['visible'])
-value(call('RunBinding'))
-wait_for(lambda current: current['open'] and current['focusEntry'])
-print('PASS: Escape closes a fresh prompt and repeated Alt+F2 toggles the modal safely')
+value(call("Escape"))
+wait_for(lambda current: not current["open"] and not current["visible"])
+value(call("RunBinding"))
+wait_for(lambda current: current["open"] and current["focusEntry"])
+value(call("RunBinding"))
+wait_for(lambda current: not current["open"] and not current["visible"])
+value(call("RunBinding"))
+wait_for(lambda current: current["open"] and current["focusEntry"])
+print("PASS: Escape closes a fresh prompt and repeated Alt+F2 toggles the modal safely")
 
 
 def evaluate(source):
     if MARKER.exists():
         MARKER.unlink()
-    value(call('Evaluate', source))
-    result = wait_marker('evaluated')['result']
-    assert result['source'] == source, result
-    assert result['error'] is None, result
+    value(call("Evaluate", source))
+    result = wait_marker("evaluated")["result"]
+    assert result["source"] == source, result
+    assert result["error"] is None, result
     return result
 
 
-first = evaluate('21 * 2')
-assert first['value'] == 42, first
-persistent = evaluate('let persistent = 41; persistent + 1')
-assert persistent['value'] == 42, persistent
-retained = evaluate('persistent += 1; persistent')
-assert retained['value'] == 42, retained
-awaited = evaluate('await Promise.resolve(9 * 5)')
-assert awaited['value'] == 45, awaited
-cleared = evaluate('console.clear(); 7')
-assert cleared['value'] == 7, cleared
+first = evaluate("21 * 2")
+assert first["value"] == 42, first
+persistent = evaluate("let persistent = 41; persistent + 1")
+assert persistent["value"] == 42, persistent
+retained = evaluate("persistent += 1; persistent")
+assert retained["value"] == 42, retained
+awaited = evaluate("await Promise.resolve(9 * 5)")
+assert awaited["value"] == 45, awaited
+cleared = evaluate("console.clear(); 7")
+assert cleared["value"] == 7, cleared
 if MARKER.exists():
     MARKER.unlink()
-value(call('Evaluate', 'throw new Error("console probe")'))
-failed = wait_marker('evaluated')['result']
-assert failed['error']['name'] == 'Error' and 'console probe' in failed['error']['message'], failed
-print('PASS: compositor JavaScript retains bindings, supports await, and reports errors')
+value(call("Evaluate", 'throw new Error("console probe")'))
+failed = wait_marker("evaluated")["result"]
+assert failed["error"]["name"] == "Error" and "console probe" in failed["error"]["message"], failed
+print("PASS: compositor JavaScript retains bindings, supports await, and reports errors")
 
 # Exercise the language switch through the same console evaluator entrypoint.
-call('Type', 'unfinishedJavaScript')
-call('Language', 'lua')
-assert state()['input'] == '', state()
-call('Language', 'js')
-assert state()['input'] == 'unfinishedJavaScript', state()
-call('Type', '')
-call('Language', 'lua')
-assert evaluate('21 * 2')['value'] == '42'
-evaluate('counter = 40')
-assert evaluate('counter + 2')['value'] == '42'
-assert evaluate("local g = require('gnoblin'); g.set { shell = { probe = 7 } }; return g.config.shell.probe")['value'] == '7'
+call("Type", "unfinishedJavaScript")
+call("Language", "lua")
+assert state()["input"] == "", state()
+call("Language", "js")
+assert state()["input"] == "unfinishedJavaScript", state()
+call("Type", "")
+call("Language", "lua")
+assert evaluate("21 * 2")["value"] == "42"
+evaluate("counter = 40")
+assert evaluate("counter + 2")["value"] == "42"
+assert (
+    evaluate("local g = require('gnoblin'); g.set { shell = { probe = 7 } }; return g.config.shell.probe")["value"]
+    == "7"
+)
 evaluate("print('lua output', counter)")
-call('Type', 'math.sq')
-time.sleep(.1)
-lua_completion = json.loads(value(call('Complete')))
-assert 'sqrt' in lua_completion['labels'], lua_completion
-call('Key', 0xff09)
-time.sleep(.1)
-assert state()['input'] == 'math.sqrt', state()
-call('Type', '')
+call("Type", "math.sq")
+time.sleep(0.1)
+lua_completion = json.loads(value(call("Complete")))
+assert "sqrt" in lua_completion["labels"], lua_completion
+call("Key", 0xFF09)
+time.sleep(0.1)
+assert state()["input"] == "math.sqrt", state()
+call("Type", "")
 if MARKER.exists():
     MARKER.unlink()
-call('Evaluate', "error('lua probe')")
-lua_error = wait_marker('evaluated')['result']
-assert lua_error['error']['name'] == 'LuaError' and 'lua probe' in lua_error['error']['message'], lua_error
-call('Language', 'js')
-assert evaluate('persistent')['value'] == 42
-call('Language', 'lua')
-assert evaluate('counter')['value'] == '40'
-call('Language', 'js')
-print('PASS: Lua persists state, shares config helpers, prints, completes and reports errors; JavaScript state survives switching')
+call("Evaluate", "error('lua probe')")
+lua_error = wait_marker("evaluated")["result"]
+assert lua_error["error"]["name"] == "LuaError" and "lua probe" in lua_error["error"]["message"], lua_error
+call("Language", "js")
+assert evaluate("persistent")["value"] == 42
+call("Language", "lua")
+assert evaluate("counter")["value"] == "40"
+call("Language", "js")
+print(
+    "PASS: Lua persists state, shares config helpers, prints, completes and reports errors; JavaScript state survives switching"
+)
 
 
+inspected = json.loads(value(call("Inspect")))
+assert inspected["inspectorVisible"] and inspected["inspectorRows"] > 0, inspected
+print("PASS: object inspection exposes descriptor rows without leaving the console")
+rich = json.loads(value(call("InspectRich")))
+assert rich["before"] == 0 and rich["after"] == 1, rich
+assert "getter failure" in rich["failure"], rich
+assert "[[Prototype]]: " in rich["names"] and "[Symbol(token)]: " in rich["names"], rich
+if shutil.which("grim"):
+    time.sleep(0.15)
+    subprocess.run(["grim", "/tmp/gnoblin-js-inspector.png"], check=True)
+print("PASS: getters run only on click, thrown getters stay inline, symbols and prototypes render")
+call("Language", "lua")
+lua_tree = evaluate(
+    'tree = {title = "Lua inspector", items = {1, 2, 3}}; tree.self = tree; setmetatable(tree, {kind = "sample"}); return tree'
+)
+lua_expanded = json.loads(value(call("ExpandLua")))
+assert "[[Metatable]]: " in lua_expanded["names"] and '"self": ' in lua_expanded["names"], lua_expanded
+if shutil.which("grim"):
+    time.sleep(0.15)
+    subprocess.run(["grim", "/tmp/gnoblin-lua-inspector.png"], check=True)
+call("Language", "js")
+print("PASS: Lua tables render expandable keys, cycles and metatables")
 
-inspected = json.loads(value(call('Inspect')))
-assert inspected['inspectorVisible'] and inspected['inspectorRows'] > 0, inspected
-print('PASS: object inspection exposes descriptor rows without leaving the console')
-rich = json.loads(value(call('InspectRich')))
-assert rich['before'] == 0 and rich['after'] == 1, rich
-assert 'getter failure' in rich['failure'], rich
-assert '[[Prototype]]: ' in rich['names'] and '[Symbol(token)]: ' in rich['names'], rich
-if shutil.which('grim'):
-    time.sleep(.15)
-    subprocess.run(['grim', '/tmp/gnoblin-js-inspector.png'], check=True)
-print('PASS: getters run only on click, thrown getters stay inline, symbols and prototypes render')
-call('Language', 'lua')
-lua_tree = evaluate('tree = {title = "Lua inspector", items = {1, 2, 3}}; tree.self = tree; setmetatable(tree, {kind = "sample"}); return tree')
-lua_expanded = json.loads(value(call('ExpandLua')))
-assert '[[Metatable]]: ' in lua_expanded['names'] and '"self": ' in lua_expanded['names'], lua_expanded
-if shutil.which('grim'):
-    time.sleep(.15)
-    subprocess.run(['grim', '/tmp/gnoblin-lua-inspector.png'], check=True)
-call('Language', 'js')
-print('PASS: Lua tables render expandable keys, cycles and metatables')
 
-
-
-evaluate('console.clear(); 42')
+evaluate("console.clear(); 42")
 evaluate('const name = "gnoblin"; name')
-call('Type', 'global.g')
-time.sleep(.1)
-completion = json.loads(value(call('Complete')))
-assert completion['completionVisible'] and completion['labels'] and all(
-    label != '[object Object]' for label in completion['labels']), completion
-print('PASS: suggestions appear while typing')
-if shutil.which('grim'):
-    subprocess.run(['grim', '/tmp/gnoblin-console-completion.png'], check=True)
-call('Key', 0xff09)  # Tab accepts the selected suggestion.
-time.sleep(.1)
-assert state()['input'] == 'global.' + completion['labels'][0], state()
-call('Type', 'const color = 42;')
-time.sleep(.1)
-assert 'foreground' in state()['attributes'], state()
-if shutil.which('grim'):
-    subprocess.run(['grim', '/tmp/gnoblin-console-highlight.png'], check=True)
-call('Type', 'global.g')
-time.sleep(.1)
-assert json.loads(value(call('Complete')))['completionVisible']
-call('FocusCompletion')
-value(call('Escape'))
-wait_for(lambda current: not current['open'] and not current['visible'])
-value(call('RunBinding'))
-wait_for(lambda current: current['open'] and current['focusEntry'])
-call('Type', '')
-time.sleep(.1)
-print('PASS: Escape closes the console with a completion button focused')
+call("Type", "global.g")
+time.sleep(0.1)
+completion = json.loads(value(call("Complete")))
+assert (
+    completion["completionVisible"]
+    and completion["labels"]
+    and all(label != "[object Object]" for label in completion["labels"])
+), completion
+print("PASS: suggestions appear while typing")
+if shutil.which("grim"):
+    subprocess.run(["grim", "/tmp/gnoblin-console-completion.png"], check=True)
+call("Key", 0xFF09)  # Tab accepts the selected suggestion.
+time.sleep(0.1)
+assert state()["input"] == "global." + completion["labels"][0], state()
+call("Type", "const color = 42;")
+time.sleep(0.1)
+assert "foreground" in state()["attributes"], state()
+if shutil.which("grim"):
+    subprocess.run(["grim", "/tmp/gnoblin-console-highlight.png"], check=True)
+call("Type", "global.g")
+time.sleep(0.1)
+assert json.loads(value(call("Complete")))["completionVisible"]
+call("FocusCompletion")
+value(call("Escape"))
+wait_for(lambda current: not current["open"] and not current["visible"])
+value(call("RunBinding"))
+wait_for(lambda current: current["open"] and current["focusEntry"])
+call("Type", "")
+time.sleep(0.1)
+print("PASS: Escape closes the console with a completion button focused")
 
-value(call('Escape'))
-closed = wait_for(lambda current: not current['open'] and not current['visible'])
-assert not closed['focusEntry'], closed
-print('PASS: Escape releases the modal grab and hides the console')
+value(call("Escape"))
+closed = wait_for(lambda current: not current["open"] and not current["visible"])
+assert not closed["focusEntry"], closed
+print("PASS: Escape releases the modal grab and hides the console")
 
 
-value(call('RunBinding'))
-opened_again = wait_for(lambda current: current['open'])
-assert opened_again['open'] and opened_again['lookingGlassAlias'], opened_again
-print('PASS: the panel-run-dialog keybinding opens the developer console')
+value(call("RunBinding"))
+opened_again = wait_for(lambda current: current["open"])
+assert opened_again["open"] and opened_again["lookingGlassAlias"], opened_again
+print("PASS: the panel-run-dialog keybinding opens the developer console")
 if MARKER.exists():
     MARKER.unlink()
 # Let the stock NetworkManager/Polkit probes settle before changing session
 # component lists. This keeps their asynchronous callbacks attached to live
 # Quick Settings actors while this focused console test exercises the lock.
 time.sleep(3)
-value(call('StartLock'))
-locked = wait_marker('locked')['state']
-assert locked['locked'] and not locked['open'] and not locked['visible'], locked
-restored_marker = wait_marker('restored')
-assert not restored_marker['state']['locked'] and not restored_marker['state']['open'], restored_marker
-print('PASS: lock-mode transition closes the console before the user session returns')
+value(call("StartLock"))
+locked = wait_marker("locked")["state"]
+assert locked["locked"] and not locked["open"] and not locked["visible"], locked
+restored_marker = wait_marker("restored")
+assert not restored_marker["state"]["locked"] and not restored_marker["state"]["open"], restored_marker
+print("PASS: lock-mode transition closes the console before the user session returns")
 
 
 # The user-script host is recreated after unlock. Wait for the fresh test
@@ -491,12 +513,12 @@ print('PASS: lock-mode transition closes the console before the user session ret
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
     try:
-        reopened = json.loads(value(call('Open')))
-        if reopened['open']:
+        reopened = json.loads(value(call("Open")))
+        if reopened["open"]:
             break
     except (AssertionError, SyntaxError, ValueError, subprocess.TimeoutExpired):
-        time.sleep(.05)
+        time.sleep(0.05)
 else:
-    raise AssertionError('console did not reopen after unlock')
-value(call('Escape'))
-print('PASS: the console is recreated cleanly after unlock')
+    raise AssertionError("console did not reopen after unlock")
+value(call("Escape"))
+print("PASS: the console is recreated cleanly after unlock")

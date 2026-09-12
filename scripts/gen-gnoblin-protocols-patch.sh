@@ -29,34 +29,34 @@ PROTOCOLS_FILE="$TMP/protocols.txt"
 
 # Overlay sources copied into src/wayland/ (aggregator first, then per protocol).
 SOURCES=(
-  gnoblin-config.c
-  gnoblin-config.h
-  meta-gnoblin-protocols.c
-  meta-gnoblin-protocols.h
-  meta-wayland-idle-notify.c
-  meta-wayland-idle-notify.h
-  meta-wayland-foreign-toplevel-common.c
-  meta-wayland-foreign-toplevel-common.h
-  meta-wayland-foreign-toplevel-list.c
-  meta-wayland-foreign-toplevel-list.h
-  meta-wayland-foreign-toplevel-management.c
-  meta-wayland-foreign-toplevel-management.h
-  meta-wayland-gamma-control.c
-  meta-wayland-gamma-control.h
-  meta-wayland-output-power-management.c
-  meta-wayland-output-power-management.h
-  meta-wayland-data-control.c
-  meta-wayland-data-control.h
+    gnoblin-config.c
+    gnoblin-config.h
+    meta-gnoblin-protocols.c
+    meta-gnoblin-protocols.h
+    meta-wayland-idle-notify.c
+    meta-wayland-idle-notify.h
+    meta-wayland-foreign-toplevel-common.c
+    meta-wayland-foreign-toplevel-common.h
+    meta-wayland-foreign-toplevel-list.c
+    meta-wayland-foreign-toplevel-list.h
+    meta-wayland-foreign-toplevel-management.c
+    meta-wayland-foreign-toplevel-management.h
+    meta-wayland-gamma-control.c
+    meta-wayland-gamma-control.h
+    meta-wayland-output-power-management.c
+    meta-wayland-output-power-management.h
+    meta-wayland-data-control.c
+    meta-wayland-data-control.h
 )
 
 # Vendored protocol XML basenames (loaded as 'private' from overlay protocol/).
 PROTOCOLS=(
-  ext-idle-notify-v1
-  ext-foreign-toplevel-list-v1
-  wlr-foreign-toplevel-management-unstable-v1
-  wlr-gamma-control-unstable-v1
-  wlr-output-power-management-unstable-v1
-  ext-data-control-v1
+    ext-idle-notify-v1
+    ext-foreign-toplevel-list-v1
+    wlr-foreign-toplevel-management-unstable-v1
+    wlr-gamma-control-unstable-v1
+    wlr-output-power-management-unstable-v1
+    ext-data-control-v1
 )
 
 "$ROOT/scripts/subproject-state.sh" check mutter "$TAG"
@@ -71,10 +71,10 @@ surface="$SM/src/wayland/meta-wayland-surface.c"
 
 # 1. meson sources block — anchored after meta-wayland-shell-surface.h.
 {
-  echo "    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays"
-  echo "    # at build time; registered via meta_gnoblin_init_protocols)"
-  for s in "${SOURCES[@]}"; do echo "    'wayland/$s',"; done
-} > "$SOURCES_FILE"
+    echo "    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays"
+    echo "    # at build time; registered via meta_gnoblin_init_protocols)"
+    for s in "${SOURCES[@]}"; do echo "    'wayland/$s',"; done
+} >"$SOURCES_FILE"
 GNOBLIN_SOURCES_FILE="$SOURCES_FILE" perl -0pi -e '
   local $/; open(my $f, "<", $ENV{"GNOBLIN_SOURCES_FILE"}); my $blk = <$f>; close($f);
   s@(    '"'"'wayland/meta-wayland-shell-surface.h'"'"',\n)@$1$blk@;
@@ -82,9 +82,9 @@ GNOBLIN_SOURCES_FILE="$SOURCES_FILE" perl -0pi -e '
 
 # 2. meson protocol list block — anchored after xdg-toplevel-tag.
 {
-  echo "    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)"
-  for p in "${PROTOCOLS[@]}"; do echo "    ['$p', 'private', ],"; done
-} > "$PROTOCOLS_FILE"
+    echo "    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)"
+    for p in "${PROTOCOLS[@]}"; do echo "    ['$p', 'private', ],"; done
+} >"$PROTOCOLS_FILE"
 GNOBLIN_PROTOCOLS_FILE="$PROTOCOLS_FILE" perl -0pi -e '
   local $/; open(my $f, "<", $ENV{"GNOBLIN_PROTOCOLS_FILE"}); my $blk = <$f>; close($f);
   s@(    \['"'"'xdg-toplevel-tag'"'"', '"'"'staging'"'"', 1, \],\n)@$1$blk@;

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local tests for gnoblinctl's non-D-Bus configuration-fragment workflow."""
+
 from importlib.machinery import SourceFileLoader
 import importlib.util
 import os
@@ -10,8 +11,7 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_loader(
-    "gnoblinctl", SourceFileLoader("gnoblinctl", str(ROOT / "src/tools/gnoblinctl")))
+SPEC = importlib.util.spec_from_loader("gnoblinctl", SourceFileLoader("gnoblinctl", str(ROOT / "src/tools/gnoblinctl")))
 GNOBLINCTL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GNOBLINCTL)
 
@@ -20,10 +20,14 @@ class ConfigFragmentTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix="gnoblinctl-test-")
         self.config_home = Path(self.directory.name) / "config"
-        self.environment = patch.dict(os.environ, {
-            "XDG_CONFIG_HOME": str(self.config_home),
-            "GNOBLIN_CONFIG": "",
-        }, clear=False)
+        self.environment = patch.dict(
+            os.environ,
+            {
+                "XDG_CONFIG_HOME": str(self.config_home),
+                "GNOBLIN_CONFIG": "",
+            },
+            clear=False,
+        )
         self.environment.start()
 
     def tearDown(self):

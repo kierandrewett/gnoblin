@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 def main():
@@ -49,13 +50,21 @@ def main():
                 formatted = formatted.replace(marker, directive, 1)
             output = formatted.encode()
         else:
-            result = subprocess.run(
-                [tool, "--ignore-settings", "--indent-width", "4", "--newline", "unix", name], capture_output=True
-            )
-            output = result.stdout
+            command = [tool, "--ignore-settings", "--indent-width", "4", "--newline", "unix"]
+            if name.endswith(".inc.qml"):
+                # Test fragments contain sibling objects inserted into an existing root.
+                with tempfile.NamedTemporaryFile(suffix=".qml") as wrapper:
+                    wrapper.write(b"Item {\n" + original + b"\n}\n")
+                    wrapper.flush()
+                    result = subprocess.run([*command, wrapper.name], capture_output=True)
+                output = b"".join(result.stdout.splitlines(keepends=True)[1:-1])
+            else:
+                result = subprocess.run([*command, name], capture_output=True)
+                output = result.stdout
         if result.stderr:
             sys.stderr.buffer.write(result.stderr)
         if result.returncode:
+            print(f"{name}: {tool} failed (exit {result.returncode})", file=sys.stderr)
             failed = True
             continue
         if output != original:

@@ -18,6 +18,6 @@ awk -v library="$CLUTTER_LIBRARY" '
       print offset, count
   }
 ' "$LOG" | while read -r offset count; do
-  printf 'count=%s offset=%s ' "$count" "$offset"
-  addr2line -f -C -e "$CLUTTER_LIBRARY" "$offset" | paste -sd ' ' -
+    printf 'count=%s offset=%s ' "$count" "$offset"
+    addr2line -f -C -e "$CLUTTER_LIBRARY" "$offset" | paste -sd ' ' -
 done

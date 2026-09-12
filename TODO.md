@@ -7,33 +7,33 @@ history or the relevant guide.
 ## Release checks
 
 - [ ] Verify the repaired Fedora runtime and desktop recovery panel through a
-  real GDM login. Private-session terminal, layer-client and lock tests pass.
+      real GDM login. Private-session terminal, layer-client and lock tests pass.
 
 - [ ] Log in through GDM with a real layer-shell client, then complete logout,
-  lock and unlock.
+      lock and unlock.
 - [ ] Install the generated RPMs on a clean Fedora host. Verify Gnoblin, stock
-  GNOME, rollback and removal.
+      GNOME, rollback and removal.
 - [ ] Exercise persistent Screen Cast and Remote Desktop grants, including
-  narrowing and revocation.
+      narrowing and revocation.
 - [ ] Use the Gnoblin Settings panel while the Shell D-Bus service starts,
-  stops and returns errors.
+      stops and returns errors.
 - [ ] Re-measure memory, boot time and layer-shell latency on real hardware.
 
 ## Product work
 
 - [ ] Replace remaining native authentication, lock and portal interfaces with
-  external-shell services. See `docs/native-ui-removal.md` for the boundary.
+      external-shell services. See `docs/native-ui-removal.md` for the boundary.
 - [ ] Validate Bingux as the reference external shell in a real login session.
 - [ ] Add the remaining `polkit` feature toggle without changing stock GNOME's
-  authentication-agent ownership.
+      authentication-agent ownership.
 
 ## Deferred protocols
 
 - [ ] Implement `ext-session-lock-v1` with the security and hardware checks in
-  `src/protocols/session-lock/README.md`.
+      `src/protocols/session-lock/README.md`.
 - [ ] Implement `wlr-output-management-unstable-v1` with transactional apply,
-  rollback and real-display validation from
-  `src/protocols/output-management/README.md`.
+      rollback and real-display validation from
+      `src/protocols/output-management/README.md`.
 
 ## Performance follow-up
 
@@ -48,4 +48,4 @@ useful saving there.
 - [ ] Build and test the Debian/Ubuntu package split in `packaging/deb/`.
 - [ ] Build and test the Arch package split in `packaging/arch/`.
 - [ ] Publish Fedora packages only after the clean-host login and rollback
-  checks pass.
+      checks pass.

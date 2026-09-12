@@ -56,17 +56,17 @@ regular GNOME session stays available.
 
 Added to Mutter's existing Wayland support, enabled by default:
 
-| Protocol | Used for |
-| --- | --- |
-| `wlr-layer-shell` | Bars, docks, wallpapers and overlays |
-| `ext-background-effect-v1` | [Client-requested background blur](docs/background-effects.md) |
-| `wlr-screencopy` | Screen and region capture |
-| `ext-foreign-toplevel-list` | Window lists, titles and app IDs |
-| `wlr-foreign-toplevel-management` | Dock and taskbar window controls |
-| `ext-data-control` | Clipboard and primary-selection managers |
-| `ext-idle-notify` | Idle detection |
-| `wlr-gamma-control` | Display gamma and colour temperature |
-| `wlr-output-power-management` | Display power control |
+| Protocol                          | Used for                                                       |
+| --------------------------------- | -------------------------------------------------------------- |
+| `wlr-layer-shell`                 | Bars, docks, wallpapers and overlays                           |
+| `ext-background-effect-v1`        | [Client-requested background blur](docs/background-effects.md) |
+| `wlr-screencopy`                  | Screen and region capture                                      |
+| `ext-foreign-toplevel-list`       | Window lists, titles and app IDs                               |
+| `wlr-foreign-toplevel-management` | Dock and taskbar window controls                               |
+| `ext-data-control`                | Clipboard and primary-selection managers                       |
+| `ext-idle-notify`                 | Idle detection                                                 |
+| `wlr-gamma-control`               | Display gamma and colour temperature                           |
+| `wlr-output-power-management`     | Display power control                                          |
 
 GNOME still handles locking and display configuration. `ext-session-lock`
 and `wlr-output-management` aren't implemented.

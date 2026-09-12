@@ -36,12 +36,12 @@ for keys that contain a hyphen.
 
 The configuration API is small:
 
-| API | Behaviour |
-| --- | --- |
-| `g.set(table)` | Merge a table into the configuration. Later scalar values win. |
-| `g.config` | Read or change the current configuration table directly. |
-| `g.load(path)` | Load a Lua file, or matching Lua files from a glob, at this point. |
-| `require("module")` | Run a Lua module once per reload and return its result. |
+| API                 | Behaviour                                                          |
+| ------------------- | ------------------------------------------------------------------ |
+| `g.set(table)`      | Merge a table into the configuration. Later scalar values win.     |
+| `g.config`          | Read or change the current configuration table directly.           |
+| `g.load(path)`      | Load a Lua file, or matching Lua files from a glob, at this point. |
+| `require("module")` | Run a Lua module once per reload and return its result.            |
 
 `g.set` and `g.load` merge tables recursively. Rule arrays (`window-rules`,
 `shortcuts`, `autostart`, and permission `rules`) append. Ordinary arrays replace
@@ -170,11 +170,11 @@ exception; the policy is uniform across clients.
 
 The client's keyboard request still matters:
 
-| Request | Effect of this setting |
-| --- | --- |
-| None | No keyboard input; the surface cannot take keyboard focus. |
+| Request   | Effect of this setting                                                       |
+| --------- | ---------------------------------------------------------------------------- |
+| None      | No keyboard input; the surface cannot take keyboard focus.                   |
 | Exclusive | `true` preserves the active application; `false` activates the layer window. |
-| On demand | Unchanged: normal user-directed focus, such as click-to-focus. |
+| On demand | Unchanged: normal user-directed focus, such as click-to-focus.               |
 
 This setting does not make passive bars interactive, prevent an on-demand panel
 from taking focus when clicked, or change native application menus that use
@@ -379,9 +379,9 @@ Read/write it directly with `gsettings`, or
 
 ### Feature ids
 
-| id | Gates |
-|---|---|
-| `notifications` | Own `org.freedesktop.Notifications`; disabled by default so an external daemon can own it |
+| id                      | Gates                                                                                           |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `notifications`         | Own `org.freedesktop.Notifications`; disabled by default so an external daemon can own it       |
 | `input-source-switcher` | GNOME's native keyboard-layout popup; source state and switching remain available when disabled |
 
 Source of truth: the `FEATURES` constant in
@@ -438,7 +438,6 @@ The session configures Mutter's `overlay-key` as `Super`. Mutter emits its
 release event only when no other input is used. `gnoblinControl` forwards that
 event to external chrome, while `hasOverview: false` keeps the native overview
 disabled.
-
 
 ## Layer animations and window effects
 

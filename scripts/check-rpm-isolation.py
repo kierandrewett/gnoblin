@@ -26,7 +26,10 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip() or obsoletes.strip():
         raise ValueError(f"{name} declares Conflicts or Obsoletes")
     for capability in provides.splitlines():
-        if re.match(r"(?:mutter|gnome-shell|libmutter|libshell-|libst-|pkgconfig\(|desktop-notification-daemon|PolicyKit-authentication-agent)", capability):
+        if re.match(
+            r"(?:mutter|gnome-shell|libmutter|libshell-|libst-|pkgconfig\(|desktop-notification-daemon|PolicyKit-authentication-agent)",
+            capability,
+        ):
             raise ValueError(f"{name} provides a system capability: {capability}")
     for filename in files.splitlines():
         path = PurePosixPath(filename)
@@ -34,8 +37,9 @@ def validate(name, files, provides, conflicts, obsoletes):
             raise ValueError(f"invalid package path: {filename}")
         if filename in PUBLIC_FILES or filename in ("/usr/lib/gnoblin", "/usr/lib/.build-id"):
             continue
-        if filename.startswith(("/usr/lib/gnoblin/", "/usr/lib/.build-id/",
-                                f"/usr/share/licenses/{name}/", f"/usr/share/doc/{name}/")):
+        if filename.startswith(
+            ("/usr/lib/gnoblin/", "/usr/lib/.build-id/", f"/usr/share/licenses/{name}/", f"/usr/share/doc/{name}/")
+        ):
             continue
         if filename in (f"/usr/share/licenses/{name}", f"/usr/share/doc/{name}"):
             continue
@@ -46,8 +50,7 @@ def check_package(path):
     def query(*args):
         return subprocess.check_output(["rpm", "-qp", *args, str(path)], text=True).strip()
 
-    validate(query("--qf", "%{NAME}"), query("--list"), query("--provides"),
-             query("--conflicts"), query("--obsoletes"))
+    validate(query("--qf", "%{NAME}"), query("--list"), query("--provides"), query("--conflicts"), query("--obsoletes"))
 
 
 def main():

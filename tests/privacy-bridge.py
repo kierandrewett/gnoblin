@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real Mutter recording and sharing sessions on a private bus."""
+
 import json
 import os
 from pathlib import Path
@@ -9,8 +10,9 @@ import subprocess
 import time
 
 import gi
+
 gi.require_version("Gio", "2.0")
-from gi.repository import Gio, GLib
+from gi.repository import Gio, GLib  # noqa: E402 - Select GI versions before importing their modules.
 
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET", "").startswith("/tmp/")
@@ -24,8 +26,17 @@ name = "org.gnome.Mutter.ScreenCast"
 
 
 def call(path, interface, method, signature=None, args=()):
-    result = bus.call_sync(name, path, interface, method,
-        GLib.Variant(signature, args) if signature else None, None, Gio.DBusCallFlags.NONE, 3000, None)
+    result = bus.call_sync(
+        name,
+        path,
+        interface,
+        method,
+        GLib.Variant(signature, args) if signature else None,
+        None,
+        Gio.DBusCallFlags.NONE,
+        3000,
+        None,
+    )
     return result.unpack()
 
 

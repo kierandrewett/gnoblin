@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Inspect compositor frames from a client with no animation code."""
+
 import json
 import os
 from pathlib import Path
 import subprocess
 import time
 
-assert os.environ.get('WAYLAND_DISPLAY', '').startswith('gnoblin-gs-'), 'Use the private test session'
-root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
-(root / 'scripts').mkdir(parents=True, exist_ok=True)
-report = root / 'layer-report.json'
-motion = root / 'motion.txt'
-motion.write_text('on')
-config = root / 'init.lua'
-(root / 'scripts/layer-probe.js').write_text('''
+assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"), "Use the private test session"
+root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
+(root / "scripts").mkdir(parents=True, exist_ok=True)
+report = root / "layer-report.json"
+motion = root / "motion.txt"
+motion.write_text("on")
+config = root / "init.lua"
+(root / "scripts/layer-probe.js").write_text(
+    """
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -61,17 +63,27 @@ export default function enable(api) {
         global.window_manager.disconnect(destroy);
     });
 }
-'''.replace('REPORT', json.dumps(str(report))).replace('MOTION', json.dumps(str(motion))))
-subprocess.run(['gnoblinctl', 'script', 'reload'], check=True)
+""".replace("REPORT", json.dumps(str(report))).replace("MOTION", json.dumps(str(motion)))
+)
+subprocess.run(["gnoblinctl", "script", "reload"], check=True)
 
-cases = [(13, 'slide', 240), (14, 'slide', 180), (7, 'slide', 240),
-         (11, 'slide', 240), (5, 'slide', 240), (15, 'slide', 240),
-         (13, 'fade', 240), (13, 'none', 240), (13, 'slide', 0),
-         (13, 'slide', 240), (13, 'slide', 240)]
+cases = [
+    (13, "slide", 240),
+    (14, "slide", 180),
+    (7, "slide", 240),
+    (11, "slide", 240),
+    (5, "slide", 240),
+    (15, "slide", 240),
+    (13, "fade", 240),
+    (13, "none", 240),
+    (13, "slide", 0),
+    (13, "slide", 240),
+    (13, "slide", 240),
+]
 for index, (anchor, animation, duration) in enumerate(cases):
     reduced_motion = index == 9
     interrupted = index == 10
-    motion.write_text('off' if reduced_motion else 'on')
+    motion.write_text("off" if reduced_motion else "on")
     config.write_text(f'''local g = require("gnoblin")
 g.set({{shell = {{
     ["layer-animation"] = "{animation}",
@@ -79,10 +91,11 @@ g.set({{shell = {{
     ["layer-easing"] = "ease-out-cubic",
 }}}})
 ''')
-    time.sleep(.35)
-    name = f'animation-test-{index}'
-    qml = root / f'layer-{index}.qml'
-    qml.write_text('''import QtQuick
+    time.sleep(0.35)
+    name = f"animation-test-{index}"
+    qml = root / f"layer-{index}.qml"
+    qml.write_text(
+        """import QtQuick
 import Quickshell
 import Quickshell.Wayland
 PanelWindow {
@@ -96,35 +109,51 @@ PanelWindow {
   onTriggered: { panel.step++; if (panel.step === 3) Qt.quit(); else panel.visible = panel.step === 2; }
  }
 }
-'''.replace('INTERVAL', '80' if interrupted else '600').replace('NAMESPACE', name).replace('ANCHORS', '\n'.join(
-        f'anchors.{edge}: true' for bit, edge in [(1, 'top'), (2, 'bottom'), (4, 'left'), (8, 'right')] if anchor & bit)))
-    result = subprocess.run(['qs', '-p', str(qml)], capture_output=True, text=True, timeout=6)
+""".replace("INTERVAL", "80" if interrupted else "600")
+        .replace("NAMESPACE", name)
+        .replace(
+            "ANCHORS",
+            "\n".join(
+                f"anchors.{edge}: true"
+                for bit, edge in [(1, "top"), (2, "bottom"), (4, "left"), (8, "right")]
+                if anchor & bit
+            ),
+        )
+    )
+    result = subprocess.run(["qs", "-p", str(qml)], capture_output=True, text=True, timeout=6)
     assert result.returncode == 0, result.stderr
-    time.sleep(.4)
-    entries = [entry for entry in json.loads(report.read_text()) if entry['namespace'] == name]
-    mapped = [entry for entry in entries if entry['phase'] == 'map']
+    time.sleep(0.4)
+    entries = [entry for entry in json.loads(report.read_text()) if entry["namespace"] == name]
+    mapped = [entry for entry in entries if entry["phase"] == "map"]
     assert len(mapped) == 2, (name, entries)
-    enabled = animation != 'none' and duration > 0 and not reduced_motion
+    enabled = animation != "none" and duration > 0 and not reduced_motion
     for entry in mapped:
-        frames = entry['frames']
+        frames = entry["frames"]
         first, last = frames[0], frames[-1]
         if not interrupted:
-            assert last == [0, 0, 255], (name, 'not settled', last)
+            assert last == [0, 0, 255], (name, "not settled", last)
         if not enabled:
             assert all(frame == [0, 0, 255] for frame in frames), (name, frames)
-        elif animation == 'fade' or anchor == 15:
+        elif animation == "fade" or anchor == 15:
             assert first == [0, 0, 0] and any(0 < frame[2] < 255 for frame in frames), (name, frames)
         else:
             x, y, opacity = first
-            assert opacity == 255, 'A slide must remain opaque like a notification'
-            assert (y < 0 if anchor in (13, 5) else y > 0 if anchor == 14 else y == 0), (name, first)
-            assert (x < 0 if anchor in (7, 5) else x > 0 if anchor == 11 else x == 0), (name, first)
-            assert any(0 < abs(frame[0]) + abs(frame[1]) < abs(x) + abs(y) for frame in frames), (name, 'no intermediate frames')
+            assert opacity == 255, "A slide must remain opaque like a notification"
+            assert y < 0 if anchor in (13, 5) else y > 0 if anchor == 14 else y == 0, (name, first)
+            assert x < 0 if anchor in (7, 5) else x > 0 if anchor == 11 else x == 0, (name, first)
+            assert any(0 < abs(frame[0]) + abs(frame[1]) < abs(x) + abs(y) for frame in frames), (
+                name,
+                "no intermediate frames",
+            )
     if enabled:
-        exits = [entry for entry in entries if entry['phase'] == 'destroy']
-        assert exits and all(entry.get('destroyed') for entry in exits), (name, 'exit not completed')
-        assert any(len(entry['frames']) > 2 for entry in exits), (name, 'no exit frames')
+        exits = [entry for entry in entries if entry["phase"] == "destroy"]
+        assert exits and all(entry.get("destroyed") for entry in exits), (name, "exit not completed")
+        assert any(len(entry["frames"]) > 2 for entry in exits), (name, "no exit frames")
         if interrupted:
-            assert all(entry['frames'][0][1] < 0 for entry in exits), (
-                'Interrupted entrance jumped to its final position', [entry['frames'][0] for entry in exits])
-    print(f'PASS: anchor={anchor} {animation} duration={duration} reduced={reduced_motion} interrupted={interrupted}: frames and cleanup')
+            assert all(entry["frames"][0][1] < 0 for entry in exits), (
+                "Interrupted entrance jumped to its final position",
+                [entry["frames"][0] for entry in exits],
+            )
+    print(
+        f"PASS: anchor={anchor} {animation} duration={duration} reduced={reduced_motion} interrupted={interrupted}: frames and cleanup"
+    )

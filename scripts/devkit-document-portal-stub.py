@@ -41,43 +41,40 @@ INTERFACE_NAME = "org.freedesktop.portal.Documents"
 # signature check before we get a chance to return NotSupported.
 UNSUPPORTED_METHODS = {
     "Add": '<arg type="h" name="o_path_fd" direction="in"/>'
-           '<arg type="b" name="reuse_existing" direction="in"/>'
-           '<arg type="b" name="persistent" direction="in"/>'
-           '<arg type="s" name="doc_id" direction="out"/>',
+    '<arg type="b" name="reuse_existing" direction="in"/>'
+    '<arg type="b" name="persistent" direction="in"/>'
+    '<arg type="s" name="doc_id" direction="out"/>',
     "AddNamed": '<arg type="h" name="o_path_parent_fd" direction="in"/>'
-                '<arg type="ay" name="filename" direction="in"/>'
-                '<arg type="b" name="reuse_existing" direction="in"/>'
-                '<arg type="b" name="persistent" direction="in"/>'
-                '<arg type="s" name="doc_id" direction="out"/>',
+    '<arg type="ay" name="filename" direction="in"/>'
+    '<arg type="b" name="reuse_existing" direction="in"/>'
+    '<arg type="b" name="persistent" direction="in"/>'
+    '<arg type="s" name="doc_id" direction="out"/>',
     "AddFull": '<arg type="ah" name="o_path_fds" direction="in"/>'
-               '<arg type="u" name="flags" direction="in"/>'
-               '<arg type="s" name="app_id" direction="in"/>'
-               '<arg type="as" name="permissions" direction="in"/>'
-               '<arg type="as" name="doc_ids" direction="out"/>'
-               '<arg type="a{sv}" name="extra_out" direction="out"/>',
+    '<arg type="u" name="flags" direction="in"/>'
+    '<arg type="s" name="app_id" direction="in"/>'
+    '<arg type="as" name="permissions" direction="in"/>'
+    '<arg type="as" name="doc_ids" direction="out"/>'
+    '<arg type="a{sv}" name="extra_out" direction="out"/>',
     "AddNamedFull": '<arg type="h" name="o_path_fd" direction="in"/>'
-                    '<arg type="ay" name="filename" direction="in"/>'
-                    '<arg type="u" name="flags" direction="in"/>'
-                    '<arg type="s" name="app_id" direction="in"/>'
-                    '<arg type="as" name="permissions" direction="in"/>'
-                    '<arg type="s" name="doc_id" direction="out"/>'
-                    '<arg type="a{sv}" name="extra_out" direction="out"/>',
+    '<arg type="ay" name="filename" direction="in"/>'
+    '<arg type="u" name="flags" direction="in"/>'
+    '<arg type="s" name="app_id" direction="in"/>'
+    '<arg type="as" name="permissions" direction="in"/>'
+    '<arg type="s" name="doc_id" direction="out"/>'
+    '<arg type="a{sv}" name="extra_out" direction="out"/>',
     "GrantPermissions": '<arg type="s" name="doc_id" direction="in"/>'
-                        '<arg type="s" name="app_id" direction="in"/>'
-                        '<arg type="as" name="permissions" direction="in"/>',
+    '<arg type="s" name="app_id" direction="in"/>'
+    '<arg type="as" name="permissions" direction="in"/>',
     "RevokePermissions": '<arg type="s" name="doc_id" direction="in"/>'
-                         '<arg type="s" name="app_id" direction="in"/>'
-                         '<arg type="as" name="permissions" direction="in"/>',
+    '<arg type="s" name="app_id" direction="in"/>'
+    '<arg type="as" name="permissions" direction="in"/>',
     "Delete": '<arg type="s" name="doc_id" direction="in"/>',
-    "Lookup": '<arg type="ay" name="filename" direction="in"/>'
-              '<arg type="s" name="doc_id" direction="out"/>',
+    "Lookup": '<arg type="ay" name="filename" direction="in"/><arg type="s" name="doc_id" direction="out"/>',
     "Info": '<arg type="s" name="doc_id" direction="in"/>'
-            '<arg type="ay" name="path" direction="out"/>'
-            '<arg type="a{sas}" name="apps" direction="out"/>',
-    "List": '<arg type="s" name="app_id" direction="in"/>'
-            '<arg type="a{say}" name="docs" direction="out"/>',
-    "GetHostPaths": '<arg type="as" name="doc_ids" direction="in"/>'
-                    '<arg type="a{say}" name="paths" direction="out"/>',
+    '<arg type="ay" name="path" direction="out"/>'
+    '<arg type="a{sas}" name="apps" direction="out"/>',
+    "List": '<arg type="s" name="app_id" direction="in"/><arg type="a{say}" name="docs" direction="out"/>',
+    "GetHostPaths": '<arg type="as" name="doc_ids" direction="in"/><arg type="a{say}" name="paths" direction="out"/>',
 }
 
 INTERFACE_XML = f"""
@@ -103,8 +100,7 @@ def main() -> int:
     iface_info = node_info.lookup_interface(INTERFACE_NAME)
     loop = GLib.MainLoop()
 
-    def handle_method_call(connection, sender, object_path, interface_name,
-                            method_name, parameters, invocation):
+    def handle_method_call(connection, sender, object_path, interface_name, method_name, parameters, invocation):
         del connection, sender, object_path, interface_name, parameters
         if method_name == "GetMountPoint":
             invocation.return_value(GLib.Variant("(ay)", (mount_point,)))
@@ -114,8 +110,7 @@ def main() -> int:
             f"gnoblin devkit stub: {method_name} needs the real xdg-document-portal",
         )
 
-    def handle_get_property(connection, sender, object_path, interface_name,
-                             property_name):
+    def handle_get_property(connection, sender, object_path, interface_name, property_name):
         del connection, sender, object_path, interface_name
         if property_name == "version":
             return GLib.Variant("u", 5)
@@ -123,9 +118,7 @@ def main() -> int:
 
     def on_bus_acquired(connection, name):
         del name
-        connection.register_object(
-            OBJECT_PATH, iface_info,
-            handle_method_call, handle_get_property, None)
+        connection.register_object(OBJECT_PATH, iface_info, handle_method_call, handle_get_property, None)
 
     def on_name_lost(connection, name):
         # The real portal already owns the name, or D-Bus activation raced --
@@ -133,9 +126,7 @@ def main() -> int:
         del connection, name
         loop.quit()
 
-    Gio.bus_own_name(
-        Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
-        on_bus_acquired, None, on_name_lost)
+    Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_bus_acquired, None, on_name_lost)
 
     loop.run()
     return 0

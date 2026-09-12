@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """Measure a fixed animated backdrop in the private Gnoblin compositor."""
+
 import json
 import os
 from pathlib import Path
 import subprocess
 import time
 
-config = Path(os.environ['XDG_CONFIG_HOME'])
-if not str(config).startswith('/tmp/gnoblin-gs.'):
-    raise SystemExit('Run as GNOBLIN_TEST_DBUS_CLIENT in run-gnome-shell.sh')
-root = config / 'gnoblin'
+config = Path(os.environ["XDG_CONFIG_HOME"])
+if not str(config).startswith("/tmp/gnoblin-gs."):
+    raise SystemExit("Run as GNOBLIN_TEST_DBUS_CLIENT in run-gnome-shell.sh")
+root = config / "gnoblin"
 root.mkdir(exist_ok=True)
-(root / 'init.lua').write_text('''return {
+(root / "init.lua").write_text("""return {
     shell = {['layer-animation'] = 'none'},
     ['window-rules'] = {{match = {layer = '^blur-benchmark$'}, blur = 24}},
 }
-''')
-fixture = root / 'blur-benchmark.qml'
-fixture.write_text('''import QtQuick
+""")
+fixture = root / "blur-benchmark.qml"
+fixture.write_text("""import QtQuick
 import Quickshell
 import Quickshell.Wayland
 ShellRoot {
@@ -42,10 +43,10 @@ ShellRoot {
   Rectangle { x: 800; y: 0; width: 480; height: 800; color: "#80303030" }
  }
 }
-''')
-script_dir = root / 'scripts'
+""")
+script_dir = root / "scripts"
 script_dir.mkdir(exist_ok=True)
-(script_dir / 'blur-benchmark.js').write_text('''import GLib from 'gi://GLib';
+(script_dir / "blur-benchmark.js").write_text("""import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 export default function(api) {
  let frames = 0, paint = 0, start = 0;
@@ -67,27 +68,33 @@ export default function(api) {
  });
  api._disposers.push(() => {if(timer) GLib.source_remove(timer); global.stage.disconnect(before); global.stage.disconnect(after);});
 }
-''')
-proc = subprocess.Popen([os.environ.get('GNOBLIN_QS', 'qs'), '-p', str(fixture)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+""")
+proc = subprocess.Popen(
+    [os.environ.get("GNOBLIN_QS", "qs"), "-p", str(fixture)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+)
 try:
     time.sleep(2)
-    subprocess.run([str(Path(__file__).resolve().parents[1] / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True, stdout=subprocess.DEVNULL)
-    report = config / 'blur-result.json'
+    subprocess.run(
+        [str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl"), "script", "reload"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    report = config / "blur-result.json"
     deadline = time.monotonic() + 10
     while not report.exists() and time.monotonic() < deadline:
-        time.sleep(.1)
+        time.sleep(0.1)
     result = json.loads(report.read_text())
-    assert result['frames'] > 30, result
-    if os.environ.get('GNOBLIN_BLUR_REQUIRE_CACHE') == '1':
-        assert result['cacheBuilds'] == 1, result
-        assert result['maskUniformSetups'] == 1, result
-        assert result['maskPaints'] <= 3 and result['maskPaints'] < result['frames'] / 10, result
-        assert result['maskPaintsDuringSample'] == 0, result
-        assert result['maskUniformSetupsDuringSample'] == 0, result
+    assert result["frames"] > 30, result
+    if os.environ.get("GNOBLIN_BLUR_REQUIRE_CACHE") == "1":
+        assert result["cacheBuilds"] == 1, result
+        assert result["maskUniformSetups"] == 1, result
+        assert result["maskPaints"] <= 3 and result["maskPaints"] < result["frames"] / 10, result
+        assert result["maskPaintsDuringSample"] == 0, result
+        assert result["maskUniformSetupsDuringSample"] == 0, result
     print(json.dumps(result), flush=True)
-    output = os.environ.get('GNOBLIN_BLUR_REPORT')
+    output = os.environ.get("GNOBLIN_BLUR_REPORT")
     if output:
-        Path(output).write_text(json.dumps(result) + '\n')
+        Path(output).write_text(json.dumps(result) + "\n")
 finally:
     proc.terminate()
     proc.wait(timeout=5)

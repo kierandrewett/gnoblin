@@ -32,7 +32,7 @@ Implementation checklist:
 - [x] Remove extension loading, installation and reload entry points.
 - [x] Remove native OSD actors and keep external OSD events.
 - [x] Remove screenshot controls, Run dialog, monitor labels and
-  workspace popup. Keep workspace operations and non-interactive capture.
+      workspace popup. Keep workspace operations and non-interactive capture.
 - [x] Stop building the extension app, preferences service and command-line tool.
 - [x] Verify the private Gnoblin session and stock session isolation.
 

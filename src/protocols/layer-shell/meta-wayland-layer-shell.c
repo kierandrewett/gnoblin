@@ -59,1501 +59,1180 @@
  * hot-unplug has settled. */
 #define CLOSED_LAYER_WINDOW_DESTROY_DELAY_MS 250
 
-#define META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY \
-  "gnoblin-layer-shell-properties-applied"
+#define META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY "gnoblin-layer-shell-properties-applied"
 
-#define META_LAYER_SURFACE_ANCHOR_MASK \
-  (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | \
-   ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM | \
-   ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | \
-   ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)
+#define META_LAYER_SURFACE_ANCHOR_MASK                                                             \
+    (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |                      \
+     ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT)
 
-typedef struct _MetaWaylandLayerSurfaceState
-{
-  uint32_t anchor;
-  int32_t  exclusive_zone;
-  int32_t  margin_top;
-  int32_t  margin_right;
-  int32_t  margin_bottom;
-  int32_t  margin_left;
-  uint32_t keyboard_interactivity;
-  uint32_t desired_width;
-  uint32_t desired_height;
-  uint32_t layer;
-  uint32_t exclusive_edge;
-  gboolean has_exclusive_edge;
+typedef struct _MetaWaylandLayerSurfaceState {
+    uint32_t anchor;
+    int32_t exclusive_zone;
+    int32_t margin_top;
+    int32_t margin_right;
+    int32_t margin_bottom;
+    int32_t margin_left;
+    uint32_t keyboard_interactivity;
+    uint32_t desired_width;
+    uint32_t desired_height;
+    uint32_t layer;
+    uint32_t exclusive_edge;
+    gboolean has_exclusive_edge;
 } MetaWaylandLayerSurfaceState;
 
-struct _MetaWaylandLayerSurface
-{
-  MetaWaylandShellSurface parent;
+struct _MetaWaylandLayerSurface {
+    MetaWaylandShellSurface parent;
 
-  struct wl_resource *resource;
-  MetaWaylandOutput  *output;
-  char               *namespace;
+    struct wl_resource* resource;
+    MetaWaylandOutput* output;
+    char* namespace;
 
-  MetaWaylandLayerSurfaceState pending;
-  MetaWaylandLayerSurfaceState current;
-  gboolean has_pending_state;
+    MetaWaylandLayerSurfaceState pending;
+    MetaWaylandLayerSurfaceState current;
+    gboolean has_pending_state;
 
-  gboolean configured;
-  gboolean has_acked_configure;
-  GQueue   configure_serials;
-  uint32_t configure_serial;
-  uint32_t acked_configure_serial;
-  int      last_sent_width;
-  int      last_sent_height;
-  uint32_t initial_layer;
-  gulong   output_destroyed_handler_id;
-  guint    destroy_window_idle_id;
-  gboolean closed;
-  MetaWaylandEventHandler *menu_keyboard_handler;
+    gboolean configured;
+    gboolean has_acked_configure;
+    GQueue configure_serials;
+    uint32_t configure_serial;
+    uint32_t acked_configure_serial;
+    int last_sent_width;
+    int last_sent_height;
+    uint32_t initial_layer;
+    gulong output_destroyed_handler_id;
+    guint destroy_window_idle_id;
+    gboolean closed;
+    MetaWaylandEventHandler* menu_keyboard_handler;
 };
 
-typedef struct _DestroyWindowIdleData
-{
-  GWeakRef layer_surface;
+typedef struct _DestroyWindowIdleData {
+    GWeakRef layer_surface;
 } DestroyWindowIdleData;
 
-#define META_TYPE_WAYLAND_LAYER_SURFACE (meta_wayland_layer_surface_get_type ())
-G_DECLARE_FINAL_TYPE (MetaWaylandLayerSurface,
-                      meta_wayland_layer_surface,
-                      META, WAYLAND_LAYER_SURFACE,
-                      MetaWaylandShellSurface)
+#define META_TYPE_WAYLAND_LAYER_SURFACE (meta_wayland_layer_surface_get_type())
+G_DECLARE_FINAL_TYPE(MetaWaylandLayerSurface, meta_wayland_layer_surface, META,
+                     WAYLAND_LAYER_SURFACE, MetaWaylandShellSurface)
 
-G_DEFINE_TYPE (MetaWaylandLayerSurface,
-               meta_wayland_layer_surface,
-               META_TYPE_WAYLAND_SHELL_SURFACE)
+G_DEFINE_TYPE(MetaWaylandLayerSurface, meta_wayland_layer_surface, META_TYPE_WAYLAND_SHELL_SURFACE)
 
 /* ------------------------------------------------------------------ */
 
 /* Shell menus borrow keyboard input without changing the active application.
  * Normal exclusive panels (terminals, launchers) retain their focus semantics. */
-static gboolean
-is_shell_menu (MetaWaylandLayerSurface *layer_surface)
-{
-  return g_strcmp0 (layer_surface->namespace, "gnoblin-shell-popup") == 0;
+static gboolean is_shell_menu(MetaWaylandLayerSurface* layer_surface) {
+    return g_strcmp0(layer_surface->namespace, "gnoblin-shell-popup") == 0;
 }
 
-static MetaWaylandSurface *
-menu_get_focus_surface (MetaWaylandEventHandler *handler,
-                        ClutterFocus            *focus,
-                        gpointer                 user_data)
-{
-  MetaWaylandLayerSurface *layer_surface = user_data;
+static MetaWaylandSurface* menu_get_focus_surface(MetaWaylandEventHandler* handler,
+                                                  ClutterFocus* focus, gpointer user_data) {
+    MetaWaylandLayerSurface* layer_surface = user_data;
 
-  if (CLUTTER_IS_KEY_FOCUS (focus))
-    return meta_wayland_surface_role_get_surface (
-      META_WAYLAND_SURFACE_ROLE (layer_surface));
+    if (CLUTTER_IS_KEY_FOCUS(focus))
+        return meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
 
-  return meta_wayland_event_handler_chain_up_get_focus_surface (handler, focus);
+    return meta_wayland_event_handler_chain_up_get_focus_surface(handler, focus);
 }
 
-static void
-menu_focus (MetaWaylandEventHandler *handler,
-            ClutterFocus            *focus,
-            MetaWaylandSurface      *surface,
-            gpointer                 user_data)
-{
-  meta_wayland_event_handler_chain_up_focus (handler, focus, surface);
+static void menu_focus(MetaWaylandEventHandler* handler, ClutterFocus* focus,
+                       MetaWaylandSurface* surface, gpointer user_data) {
+    meta_wayland_event_handler_chain_up_focus(handler, focus, surface);
 }
 
 static const MetaWaylandEventInterface menu_keyboard_interface = {
-  .get_focus_surface = menu_get_focus_surface,
-  .focus = menu_focus,
+    .get_focus_surface = menu_get_focus_surface,
+    .focus = menu_focus,
 };
 
-static void
-release_menu_keyboard (MetaWaylandLayerSurface *layer_surface)
-{
-  MetaWaylandSurface *surface;
+static void release_menu_keyboard(MetaWaylandLayerSurface* layer_surface) {
+    MetaWaylandSurface* surface;
 
-  if (!layer_surface->menu_keyboard_handler)
-    return;
+    if (!layer_surface->menu_keyboard_handler)
+        return;
 
-  surface = meta_wayland_surface_role_get_surface (
-    META_WAYLAND_SURFACE_ROLE (layer_surface));
-  meta_wayland_input_detach_event_handler (
-    meta_wayland_seat_get_input (surface->compositor->seat),
-    layer_surface->menu_keyboard_handler);
-  layer_surface->menu_keyboard_handler = NULL;
+    surface = meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    meta_wayland_input_detach_event_handler(meta_wayland_seat_get_input(surface->compositor->seat),
+                                            layer_surface->menu_keyboard_handler);
+    layer_surface->menu_keyboard_handler = NULL;
 }
 
-static void close_layer_surface (MetaWaylandLayerSurface *layer_surface,
-                                 gboolean                 invalidate_work_areas);
+static void close_layer_surface(MetaWaylandLayerSurface* layer_surface,
+                                gboolean invalidate_work_areas);
 
-static void
-gnoblin_layer_dismiss_trampoline (MetaWindow *window)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    g_object_get_data (G_OBJECT (window), "gnoblin-layer-surface");
+static void gnoblin_layer_dismiss_trampoline(MetaWindow* window) {
+    MetaWaylandLayerSurface* layer_surface =
+        g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface");
 
-  if (layer_surface)
-    close_layer_surface (layer_surface, FALSE);
+    if (layer_surface)
+        close_layer_surface(layer_surface, FALSE);
 }
 
-gboolean
-meta_wayland_surface_is_layer_shell (MetaWaylandSurface *surface)
-{
-  return surface &&
-         surface->role &&
-         META_IS_WAYLAND_LAYER_SURFACE (surface->role);
+gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface) {
+    return surface && surface->role && META_IS_WAYLAND_LAYER_SURFACE(surface->role);
 }
 
-static MetaDisplay *
-display_from_surface (MetaWaylandSurface *surface)
-{
-  MetaContext *context =
-    meta_wayland_compositor_get_context (surface->compositor);
+static MetaDisplay* display_from_surface(MetaWaylandSurface* surface) {
+    MetaContext* context = meta_wayland_compositor_get_context(surface->compositor);
 
-  return meta_context_get_display (context);
+    return meta_context_get_display(context);
 }
 
-static MtkRectangle
-get_monitor_layout (MetaWaylandLayerSurface *layer_surface)
-{
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
-  MetaContext *context =
-    meta_wayland_compositor_get_context (surface->compositor);
-  MetaBackend *backend = meta_context_get_backend (context);
-  MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
-  MetaLogicalMonitor *logical_monitor = NULL;
+static MtkRectangle get_monitor_layout(MetaWaylandLayerSurface* layer_surface) {
+    MetaWaylandSurface* surface =
+        meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    MetaContext* context = meta_wayland_compositor_get_context(surface->compositor);
+    MetaBackend* backend = meta_context_get_backend(context);
+    MetaMonitorManager* monitor_manager = meta_backend_get_monitor_manager(backend);
+    MetaLogicalMonitor* logical_monitor = NULL;
 
-  /* Honour the output the client requested in get_layer_surface, if any and
-   * still connected; otherwise fall back to the primary monitor. */
-  if (layer_surface->output)
-    {
-      MetaMonitor *monitor =
-        meta_wayland_output_get_monitor (layer_surface->output);
+    /* Honour the output the client requested in get_layer_surface, if any and
+     * still connected; otherwise fall back to the primary monitor. */
+    if (layer_surface->output) {
+        MetaMonitor* monitor = meta_wayland_output_get_monitor(layer_surface->output);
 
-      if (monitor)
-        logical_monitor = meta_monitor_get_logical_monitor (monitor);
+        if (monitor)
+            logical_monitor = meta_monitor_get_logical_monitor(monitor);
     }
 
-  if (!logical_monitor)
-    logical_monitor =
-      meta_monitor_manager_get_primary_logical_monitor (monitor_manager);
+    if (!logical_monitor)
+        logical_monitor = meta_monitor_manager_get_primary_logical_monitor(monitor_manager);
 
-  if (logical_monitor)
-    return meta_logical_monitor_get_layout (logical_monitor);
+    if (logical_monitor)
+        return meta_logical_monitor_get_layout(logical_monitor);
 
-  return (MtkRectangle) { 0, 0, 1920, 1080 };
+    return (MtkRectangle){0, 0, 1920, 1080};
 }
 
 static gboolean
-meta_wayland_layer_surface_is_on_logical_monitor (MetaWaylandSurfaceRole *surface_role,
-                                                MetaLogicalMonitor     *logical_monitor)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    META_WAYLAND_LAYER_SURFACE (surface_role);
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (surface_role);
-  MetaSurfaceActor *actor =
-    meta_wayland_actor_surface_get_actor (META_WAYLAND_ACTOR_SURFACE (surface_role));
-  MtkRectangle assigned;
-  MtkRectangle candidate;
+meta_wayland_layer_surface_is_on_logical_monitor(MetaWaylandSurfaceRole* surface_role,
+                                                 MetaLogicalMonitor* logical_monitor) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(surface_role);
+    MetaWaylandSurface* surface = meta_wayland_surface_role_get_surface(surface_role);
+    MetaSurfaceActor* actor =
+        meta_wayland_actor_surface_get_actor(META_WAYLAND_ACTOR_SURFACE(surface_role));
+    MtkRectangle assigned;
+    MtkRectangle candidate;
 
-  if (layer_surface->closed || !meta_wayland_surface_get_buffer (surface) ||
-      !actor || !clutter_actor_is_mapped (CLUTTER_ACTOR (actor)))
+    if (layer_surface->closed || !meta_wayland_surface_get_buffer(surface) || !actor ||
+        !clutter_actor_is_mapped(CLUTTER_ACTOR(actor)))
+        return FALSE;
+
+    /* A layer belongs to its assigned output. Entrance/exit transforms may
+     * briefly cross another stage view, but must not change wl_surface.enter
+     * or make clients move their other panels to that neighbouring output. */
+    assigned = get_monitor_layout(layer_surface);
+    candidate = meta_logical_monitor_get_layout(logical_monitor);
+    return mtk_rectangle_equal(&assigned, &candidate);
+}
+
+static gboolean is_single_anchor_edge(uint32_t edge) {
+    return (
+        edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP || edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM ||
+        edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT || edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+}
+
+static gboolean has_horizontal_span(uint32_t anchor) {
+    return ((anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) &&
+            (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT));
+}
+
+static gboolean has_vertical_span(uint32_t anchor) {
+    return ((anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) &&
+            (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM));
+}
+
+static gboolean validate_layer_surface_state(MetaWaylandLayerSurface* layer_surface,
+                                             MetaWaylandLayerSurfaceState* state) {
+    if (state->anchor & ~META_LAYER_SURFACE_ANCHOR_MASK) {
+        wl_resource_post_error(layer_surface->resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
+                               "invalid anchor bitfield 0x%x", state->anchor);
+        return FALSE;
+    }
+
+    if (state->desired_width > G_MAXINT || state->desired_height > G_MAXINT) {
+        wl_resource_post_error(layer_surface->resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
+                               "layer surface size %ux%u exceeds compositor limits",
+                               state->desired_width, state->desired_height);
+        return FALSE;
+    }
+
+    if (state->desired_width == 0 && !has_horizontal_span(state->anchor)) {
+        wl_resource_post_error(layer_surface->resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
+                               "width 0 requires left and right anchors");
+        return FALSE;
+    }
+
+    if (state->desired_height == 0 && !has_vertical_span(state->anchor)) {
+        wl_resource_post_error(layer_surface->resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
+                               "height 0 requires top and bottom anchors");
+        return FALSE;
+    }
+
+    if (state->keyboard_interactivity > ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+        wl_resource_post_error(layer_surface->resource,
+                               ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_KEYBOARD_INTERACTIVITY,
+                               "invalid keyboard interactivity %u", state->keyboard_interactivity);
+        return FALSE;
+    }
+
+    if (state->layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+        wl_resource_post_error(layer_surface->resource,
+                               ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "invalid layer %u", state->layer);
+        return FALSE;
+    }
+
+    if (state->has_exclusive_edge && (!is_single_anchor_edge(state->exclusive_edge) ||
+                                      !(state->anchor & state->exclusive_edge))) {
+        wl_resource_post_error(
+            layer_surface->resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_EXCLUSIVE_EDGE,
+            "exclusive edge 0x%x is not one anchored edge", state->exclusive_edge);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static gboolean layer_surface_state_equal(const MetaWaylandLayerSurfaceState* a,
+                                          const MetaWaylandLayerSurfaceState* b) {
+    return (a->anchor == b->anchor && a->exclusive_zone == b->exclusive_zone &&
+            a->margin_top == b->margin_top && a->margin_right == b->margin_right &&
+            a->margin_bottom == b->margin_bottom && a->margin_left == b->margin_left &&
+            a->keyboard_interactivity == b->keyboard_interactivity &&
+            a->desired_width == b->desired_width && a->desired_height == b->desired_height &&
+            a->layer == b->layer && a->exclusive_edge == b->exclusive_edge &&
+            a->has_exclusive_edge == b->has_exclusive_edge);
+}
+
+static gboolean get_effective_exclusive_edge(MetaWaylandLayerSurfaceState* state, uint32_t* edge) {
+    gboolean anchor_left = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    gboolean anchor_right = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+    gboolean anchor_top = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+    gboolean anchor_bottom = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+
+    if (state->has_exclusive_edge) {
+        *edge = state->exclusive_edge;
+        return TRUE;
+    }
+
+    if (anchor_top && !anchor_bottom && (!anchor_left || anchor_right) &&
+        (!anchor_right || anchor_left)) {
+        *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
+        return TRUE;
+    } else if (anchor_bottom && !anchor_top && (!anchor_left || anchor_right) &&
+               (!anchor_right || anchor_left)) {
+        *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+        return TRUE;
+    } else if (anchor_left && !anchor_right && (!anchor_top || anchor_bottom) &&
+               (!anchor_bottom || anchor_top)) {
+        *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
+        return TRUE;
+    } else if (anchor_right && !anchor_left && (!anchor_top || anchor_bottom) &&
+               (!anchor_bottom || anchor_top)) {
+        *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+        return TRUE;
+    }
+
     return FALSE;
-
-  /* A layer belongs to its assigned output. Entrance/exit transforms may
-   * briefly cross another stage view, but must not change wl_surface.enter
-   * or make clients move their other panels to that neighbouring output. */
-  assigned = get_monitor_layout (layer_surface);
-  candidate = meta_logical_monitor_get_layout (logical_monitor);
-  return mtk_rectangle_equal (&assigned, &candidate);
 }
 
-static gboolean
-is_single_anchor_edge (uint32_t edge)
-{
-  return (edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP ||
-          edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM ||
-          edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT ||
-          edge == ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+static int clamp_geometry_coordinate(gint64 value) {
+    return (int)CLAMP(value, G_MININT, G_MAXINT);
 }
 
-static gboolean
-has_horizontal_span (uint32_t anchor)
-{
-  return ((anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) &&
-          (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT));
+static MtkRectangle calculate_geometry_for_buffer(MetaWaylandLayerSurface* layer_surface,
+                                                  MtkRectangle mon, gboolean committed_buffer) {
+    MetaWaylandLayerSurfaceState* state = &layer_surface->current;
+    gboolean anchor_left = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    gboolean anchor_right = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+    gboolean anchor_top = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
+    gboolean anchor_bottom = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+    gint64 ml = state->margin_left;
+    gint64 mr = state->margin_right;
+    gint64 mt = state->margin_top;
+    gint64 mb = state->margin_bottom;
+    MetaWaylandSurface* surface =
+        meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    gint64 width =
+        committed_buffer ? meta_wayland_surface_get_width(surface) : state->desired_width;
+    gint64 height =
+        committed_buffer ? meta_wayland_surface_get_height(surface) : state->desired_height;
+    gint64 x;
+    gint64 y;
+
+    /* A zero dimension means "stretch between opposite anchors". */
+    if (width == 0)
+        width = MAX((gint64)1, (gint64)mon.width - ml - mr);
+    if (height == 0)
+        height = MAX((gint64)1, (gint64)mon.height - mt - mb);
+
+    /* A surface anchored to one edge cannot extend past the opposite output
+     * edge. Keep at least one pixel even when an extreme margin consumes the
+     * available span. */
+    if (!committed_buffer && anchor_top != anchor_bottom)
+        height = MIN(height, MAX((gint64)1, (gint64)mon.height - (anchor_top ? mt : mb)));
+    if (!committed_buffer && anchor_left != anchor_right)
+        width = MIN(width, MAX((gint64)1, (gint64)mon.width - (anchor_left ? ml : mr)));
+
+    width = CLAMP(width, (gint64)1, (gint64)G_MAXINT);
+    height = CLAMP(height, (gint64)1, (gint64)G_MAXINT);
+
+    if (anchor_left && !anchor_right)
+        x = (gint64)mon.x + ml;
+    else if (anchor_right && !anchor_left)
+        x = (gint64)mon.x + mon.width - width - mr;
+    else
+        x = (gint64)mon.x + ((gint64)mon.width - width) / 2 + (ml - mr) / 2;
+
+    if (anchor_top && !anchor_bottom)
+        y = (gint64)mon.y + mt;
+    else if (anchor_bottom && !anchor_top)
+        y = (gint64)mon.y + mon.height - height - mb;
+    else
+        y = (gint64)mon.y + ((gint64)mon.height - height) / 2 + (mt - mb) / 2;
+
+    return (MtkRectangle){
+        .x = clamp_geometry_coordinate(x),
+        .y = clamp_geometry_coordinate(y),
+        .width = (int)width,
+        .height = (int)height,
+    };
 }
 
-static gboolean
-has_vertical_span (uint32_t anchor)
-{
-  return ((anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) &&
-          (anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM));
+static MtkRectangle calculate_geometry(MetaWaylandLayerSurface* layer_surface, MtkRectangle mon) {
+    return calculate_geometry_for_buffer(layer_surface, mon, FALSE);
 }
 
-static gboolean
-validate_layer_surface_state (MetaWaylandLayerSurface      *layer_surface,
-                              MetaWaylandLayerSurfaceState *state)
-{
-  if (state->anchor & ~META_LAYER_SURFACE_ANCHOR_MASK)
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
-                              "invalid anchor bitfield 0x%x", state->anchor);
-      return FALSE;
-    }
+static void send_configure(MetaWaylandLayerSurface* layer_surface, int width, int height) {
+    MetaWaylandSurface* surface =
+        meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    struct wl_display* display = surface->compositor->wayland_display;
+    uint32_t serial = wl_display_next_serial(display);
 
-  if (state->desired_width > G_MAXINT ||
-      state->desired_height > G_MAXINT)
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
-                              "layer surface size %ux%u exceeds compositor limits",
-                              state->desired_width,
-                              state->desired_height);
-      return FALSE;
-    }
+    layer_surface->configure_serial = serial;
+    g_queue_push_tail(&layer_surface->configure_serials, GUINT_TO_POINTER(serial));
+    layer_surface->last_sent_width = width;
+    layer_surface->last_sent_height = height;
+    layer_surface->configured = TRUE;
 
-  if (state->desired_width == 0 && !has_horizontal_span (state->anchor))
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
-                              "width 0 requires left and right anchors");
-      return FALSE;
-    }
-
-  if (state->desired_height == 0 && !has_vertical_span (state->anchor))
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SIZE,
-                              "height 0 requires top and bottom anchors");
-      return FALSE;
-    }
-
-  if (state->keyboard_interactivity >
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND)
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_KEYBOARD_INTERACTIVITY,
-                              "invalid keyboard interactivity %u",
-                              state->keyboard_interactivity);
-      return FALSE;
-    }
-
-  if (state->layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY)
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                              "invalid layer %u", state->layer);
-      return FALSE;
-    }
-
-  if (state->has_exclusive_edge &&
-      (!is_single_anchor_edge (state->exclusive_edge) ||
-       !(state->anchor & state->exclusive_edge)))
-    {
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_EXCLUSIVE_EDGE,
-                              "exclusive edge 0x%x is not one anchored edge",
-                              state->exclusive_edge);
-      return FALSE;
-    }
-
-  return TRUE;
+    zwlr_layer_surface_v1_send_configure(layer_surface->resource, serial, width, height);
 }
 
-static gboolean
-layer_surface_state_equal (const MetaWaylandLayerSurfaceState *a,
-                           const MetaWaylandLayerSurfaceState *b)
-{
-  return (a->anchor == b->anchor &&
-          a->exclusive_zone == b->exclusive_zone &&
-          a->margin_top == b->margin_top &&
-          a->margin_right == b->margin_right &&
-          a->margin_bottom == b->margin_bottom &&
-          a->margin_left == b->margin_left &&
-          a->keyboard_interactivity == b->keyboard_interactivity &&
-          a->desired_width == b->desired_width &&
-          a->desired_height == b->desired_height &&
-          a->layer == b->layer &&
-          a->exclusive_edge == b->exclusive_edge &&
-          a->has_exclusive_edge == b->has_exclusive_edge);
+static void reset_layer_surface_state(MetaWaylandLayerSurface* layer_surface) {
+    layer_surface->pending = (MetaWaylandLayerSurfaceState){
+        .layer = layer_surface->initial_layer,
+    };
+    layer_surface->current = layer_surface->pending;
+    layer_surface->has_pending_state = FALSE;
+    layer_surface->configured = FALSE;
+    layer_surface->has_acked_configure = FALSE;
+    g_queue_clear(&layer_surface->configure_serials);
+    layer_surface->configure_serial = 0;
+    layer_surface->acked_configure_serial = 0;
+    layer_surface->last_sent_width = 0;
+    layer_surface->last_sent_height = 0;
 }
 
-static gboolean
-get_effective_exclusive_edge (MetaWaylandLayerSurfaceState *state,
-                              uint32_t                     *edge)
-{
-  gboolean anchor_left   = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-  gboolean anchor_right  = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-  gboolean anchor_top    = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
-  gboolean anchor_bottom = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
-
-  if (state->has_exclusive_edge)
-    {
-      *edge = state->exclusive_edge;
-      return TRUE;
-    }
-
-  if (anchor_top && !anchor_bottom && (!anchor_left || anchor_right) &&
-      (!anchor_right || anchor_left))
-    {
-      *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
-      return TRUE;
-    }
-  else if (anchor_bottom && !anchor_top && (!anchor_left || anchor_right) &&
-           (!anchor_right || anchor_left))
-    {
-      *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-      return TRUE;
-    }
-  else if (anchor_left && !anchor_right && (!anchor_top || anchor_bottom) &&
-           (!anchor_bottom || anchor_top))
-    {
-      *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-      return TRUE;
-    }
-  else if (anchor_right && !anchor_left && (!anchor_top || anchor_bottom) &&
-           (!anchor_bottom || anchor_top))
-    {
-      *edge = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-      return TRUE;
-    }
-
-  return FALSE;
-}
-
-static int
-clamp_geometry_coordinate (gint64 value)
-{
-  return (int) CLAMP (value, G_MININT, G_MAXINT);
-}
-
-static MtkRectangle
-calculate_geometry_for_buffer (MetaWaylandLayerSurface *layer_surface,
-                               MtkRectangle             mon,
-                               gboolean                 committed_buffer)
-{
-  MetaWaylandLayerSurfaceState *state = &layer_surface->current;
-  gboolean anchor_left = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-  gboolean anchor_right = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-  gboolean anchor_top = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP);
-  gboolean anchor_bottom = !!(state->anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
-  gint64 ml = state->margin_left;
-  gint64 mr = state->margin_right;
-  gint64 mt = state->margin_top;
-  gint64 mb = state->margin_bottom;
-  MetaWaylandSurface *surface = meta_wayland_surface_role_get_surface (
-    META_WAYLAND_SURFACE_ROLE (layer_surface));
-  gint64 width = committed_buffer ? meta_wayland_surface_get_width (surface)
-                                 : state->desired_width;
-  gint64 height = committed_buffer ? meta_wayland_surface_get_height (surface)
-                                  : state->desired_height;
-  gint64 x;
-  gint64 y;
-
-  /* A zero dimension means "stretch between opposite anchors". */
-  if (width == 0)
-    width = MAX ((gint64) 1, (gint64) mon.width - ml - mr);
-  if (height == 0)
-    height = MAX ((gint64) 1, (gint64) mon.height - mt - mb);
-
-  /* A surface anchored to one edge cannot extend past the opposite output
-   * edge. Keep at least one pixel even when an extreme margin consumes the
-   * available span. */
-  if (!committed_buffer && anchor_top != anchor_bottom)
-    height = MIN (height,
-                  MAX ((gint64) 1,
-                       (gint64) mon.height - (anchor_top ? mt : mb)));
-  if (!committed_buffer && anchor_left != anchor_right)
-    width = MIN (width,
-                 MAX ((gint64) 1,
-                      (gint64) mon.width - (anchor_left ? ml : mr)));
-
-  width = CLAMP (width, (gint64) 1, (gint64) G_MAXINT);
-  height = CLAMP (height, (gint64) 1, (gint64) G_MAXINT);
-
-  if (anchor_left && !anchor_right)
-    x = (gint64) mon.x + ml;
-  else if (anchor_right && !anchor_left)
-    x = (gint64) mon.x + mon.width - width - mr;
-  else
-    x = (gint64) mon.x + ((gint64) mon.width - width) / 2 +
-        (ml - mr) / 2;
-
-  if (anchor_top && !anchor_bottom)
-    y = (gint64) mon.y + mt;
-  else if (anchor_bottom && !anchor_top)
-    y = (gint64) mon.y + mon.height - height - mb;
-  else
-    y = (gint64) mon.y + ((gint64) mon.height - height) / 2 +
-        (mt - mb) / 2;
-
-  return (MtkRectangle) {
-    .x = clamp_geometry_coordinate (x),
-    .y = clamp_geometry_coordinate (y),
-    .width = (int) width,
-    .height = (int) height,
-  };
-}
-
-static MtkRectangle
-calculate_geometry (MetaWaylandLayerSurface *layer_surface,
-                    MtkRectangle             mon)
-{
-  return calculate_geometry_for_buffer (layer_surface, mon, FALSE);
-}
-
-static void
-send_configure (MetaWaylandLayerSurface *layer_surface,
-                int                      width,
-                int                      height)
-{
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
-  struct wl_display *display = surface->compositor->wayland_display;
-  uint32_t serial = wl_display_next_serial (display);
-
-  layer_surface->configure_serial = serial;
-  g_queue_push_tail (&layer_surface->configure_serials,
-                     GUINT_TO_POINTER (serial));
-  layer_surface->last_sent_width = width;
-  layer_surface->last_sent_height = height;
-  layer_surface->configured = TRUE;
-
-  zwlr_layer_surface_v1_send_configure (layer_surface->resource,
-                                        serial, width, height);
-}
-
-static void
-reset_layer_surface_state (MetaWaylandLayerSurface *layer_surface)
-{
-  layer_surface->pending = (MetaWaylandLayerSurfaceState) {
-    .layer = layer_surface->initial_layer,
-  };
-  layer_surface->current = layer_surface->pending;
-  layer_surface->has_pending_state = FALSE;
-  layer_surface->configured = FALSE;
-  layer_surface->has_acked_configure = FALSE;
-  g_queue_clear (&layer_surface->configure_serials);
-  layer_surface->configure_serial = 0;
-  layer_surface->acked_configure_serial = 0;
-  layer_surface->last_sent_width = 0;
-  layer_surface->last_sent_height = 0;
-}
-
-static MetaStackLayer
-stack_layer_for_wlr_layer (uint32_t wlr_layer)
-{
-  switch (wlr_layer)
-    {
+static MetaStackLayer stack_layer_for_wlr_layer(uint32_t wlr_layer) {
+    switch (wlr_layer) {
     case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-      return META_LAYER_DESKTOP;
+        return META_LAYER_DESKTOP;
     case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-      return META_LAYER_BOTTOM;
+        return META_LAYER_BOTTOM;
     case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-      return META_LAYER_DOCK;
+        return META_LAYER_DOCK;
     case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
     default:
-      return META_LAYER_OVERRIDE_REDIRECT;
+        return META_LAYER_OVERRIDE_REDIRECT;
     }
 }
 
-static void
-apply_window_type_and_layer (MetaWaylandLayerSurface *layer_surface,
-                             MetaWindow              *window)
-{
-  MetaStackLayer stack_layer =
-    stack_layer_for_wlr_layer (layer_surface->current.layer);
-  MetaWindowType window_type;
-  gboolean keyboard_focusable;
+static void apply_window_type_and_layer(MetaWaylandLayerSurface* layer_surface,
+                                        MetaWindow* window) {
+    MetaStackLayer stack_layer = stack_layer_for_wlr_layer(layer_surface->current.layer);
+    MetaWindowType window_type;
+    gboolean keyboard_focusable;
 
-  if (layer_surface->current.layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
-    window_type = META_WINDOW_DESKTOP;
-  else
-    window_type = META_WINDOW_DOCK;
+    if (layer_surface->current.layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
+        window_type = META_WINDOW_DESKTOP;
+    else
+        window_type = META_WINDOW_DOCK;
 
-  keyboard_focusable =
-    !is_shell_menu (layer_surface) &&
-    layer_surface->current.keyboard_interactivity !=
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+    keyboard_focusable =
+        !is_shell_menu(layer_surface) && layer_surface->current.keyboard_interactivity !=
+                                             ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 
-  /* Buffer commits are frequent. Window properties change only when layer or
-   * keyboard state changes, so avoid expensive compositor work for a frame
-   * with the same effective state. */
-  if (GPOINTER_TO_INT (g_object_get_data (
-        G_OBJECT (window),
-        META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY)) &&
-      window->type == window_type &&
-      GPOINTER_TO_INT (g_object_get_data (
-        G_OBJECT (window),
-        META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY)) == (int) stack_layer + 1 &&
-      !!GPOINTER_TO_INT (g_object_get_data (
-        G_OBJECT (window),
-        META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY)) ==
-        keyboard_focusable)
-    return;
+    /* Buffer commits are frequent. Window properties change only when layer or
+     * keyboard state changes, so avoid expensive compositor work for a frame
+     * with the same effective state. */
+    if (GPOINTER_TO_INT(
+            g_object_get_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY)) &&
+        window->type == window_type &&
+        GPOINTER_TO_INT(g_object_get_data(
+            G_OBJECT(window), META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY)) == (int)stack_layer + 1 &&
+        !!GPOINTER_TO_INT(
+            g_object_get_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY)) ==
+            keyboard_focusable)
+        return;
 
-  /* Window type drives general dock-like behaviour (skip taskbar, etc.). */
-  window->type = window_type;
+    /* Window type drives general dock-like behaviour (skip taskbar, etc.). */
+    window->type = window_type;
 
-  meta_window_recalc_features (window);
+    meta_window_recalc_features(window);
 
-  /* Pin the exact stacking layer (background/bottom/top/overlay). The
-   * gnoblin calculate_layer patch in meta-window-wayland.c reads this. */
-  g_object_set_data (G_OBJECT (window),
-                     META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY,
-                     GINT_TO_POINTER ((int) stack_layer + 1));
-  g_object_set_data (G_OBJECT (window),
-                     META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY,
-                     GINT_TO_POINTER (keyboard_focusable));
-  g_object_set_data (G_OBJECT (window),
-                     META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY,
-                     GINT_TO_POINTER (1));
+    /* Pin the exact stacking layer (background/bottom/top/overlay). The
+     * gnoblin calculate_layer patch in meta-window-wayland.c reads this. */
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY,
+                      GINT_TO_POINTER((int)stack_layer + 1));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY,
+                      GINT_TO_POINTER(keyboard_focusable));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY,
+                      GINT_TO_POINTER(1));
 
-  meta_window_update_layer (window);
+    meta_window_update_layer(window);
 
-  meta_window_on_all_workspaces_changed (window);
+    meta_window_on_all_workspaces_changed(window);
 }
 
-static void
-invalidate_work_areas_for_window (MetaWindow *window)
-{
-  MetaWorkspace *workspace;
+static void invalidate_work_areas_for_window(MetaWindow* window) {
+    MetaWorkspace* workspace;
 
-  workspace = meta_window_get_workspace (window);
-  if (workspace)
-    {
-      meta_workspace_invalidate_work_area (workspace);
-    }
-  else
-    {
-      MetaWorkspaceManager *workspace_manager =
-        meta_display_get_workspace_manager (meta_window_get_display (window));
-      GList *l;
+    workspace = meta_window_get_workspace(window);
+    if (workspace) {
+        meta_workspace_invalidate_work_area(workspace);
+    } else {
+        MetaWorkspaceManager* workspace_manager =
+            meta_display_get_workspace_manager(meta_window_get_display(window));
+        GList* l;
 
-      for (l = meta_workspace_manager_get_workspaces (workspace_manager);
-           l; l = l->next)
-        meta_workspace_invalidate_work_area (l->data);
+        for (l = meta_workspace_manager_get_workspaces(workspace_manager); l; l = l->next)
+            meta_workspace_invalidate_work_area(l->data);
     }
 }
 
-static void
-clear_exclusive_zone_struts (MetaWindow *window,
-                             gboolean    invalidate_work_areas)
-{
-  g_clear_slist (&window->struts, g_free);
+static void clear_exclusive_zone_struts(MetaWindow* window, gboolean invalidate_work_areas) {
+    g_clear_slist(&window->struts, g_free);
 
-  if (invalidate_work_areas)
-    invalidate_work_areas_for_window (window);
+    if (invalidate_work_areas)
+        invalidate_work_areas_for_window(window);
 }
 
-static void
-update_exclusive_zone_struts (MetaWaylandLayerSurface *layer_surface,
-                              MetaWindow              *window,
-                              MtkRectangle             mon)
-{
-  MetaWaylandLayerSurfaceState *state = &layer_surface->current;
-  MetaStrut new_strut = { 0 };
-  gboolean has_new_strut = FALSE;
-  gint64 extent = 0;
-  uint32_t edge;
-  MetaSide side = META_SIDE_TOP;
+static void update_exclusive_zone_struts(MetaWaylandLayerSurface* layer_surface, MetaWindow* window,
+                                         MtkRectangle mon) {
+    MetaWaylandLayerSurfaceState* state = &layer_surface->current;
+    MetaStrut new_strut = {0};
+    gboolean has_new_strut = FALSE;
+    gint64 extent = 0;
+    uint32_t edge;
+    MetaSide side = META_SIDE_TOP;
 
-  if (state->exclusive_zone > 0 &&
-      mon.width > 0 &&
-      mon.height > 0 &&
-      get_effective_exclusive_edge (state, &edge))
-    {
-      switch (edge)
-        {
+    if (state->exclusive_zone > 0 && mon.width > 0 && mon.height > 0 &&
+        get_effective_exclusive_edge(state, &edge)) {
+        switch (edge) {
         case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
-          side = META_SIDE_TOP;
-          extent = (gint64) state->exclusive_zone + state->margin_top;
-          extent = CLAMP (extent, (gint64) 0, (gint64) mon.height);
-          break;
+            side = META_SIDE_TOP;
+            extent = (gint64)state->exclusive_zone + state->margin_top;
+            extent = CLAMP(extent, (gint64)0, (gint64)mon.height);
+            break;
         case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
-          side = META_SIDE_BOTTOM;
-          extent = (gint64) state->exclusive_zone + state->margin_bottom;
-          extent = CLAMP (extent, (gint64) 0, (gint64) mon.height);
-          break;
+            side = META_SIDE_BOTTOM;
+            extent = (gint64)state->exclusive_zone + state->margin_bottom;
+            extent = CLAMP(extent, (gint64)0, (gint64)mon.height);
+            break;
         case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
-          side = META_SIDE_LEFT;
-          extent = (gint64) state->exclusive_zone + state->margin_left;
-          extent = CLAMP (extent, (gint64) 0, (gint64) mon.width);
-          break;
+            side = META_SIDE_LEFT;
+            extent = (gint64)state->exclusive_zone + state->margin_left;
+            extent = CLAMP(extent, (gint64)0, (gint64)mon.width);
+            break;
         case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
-          side = META_SIDE_RIGHT;
-          extent = (gint64) state->exclusive_zone + state->margin_right;
-          extent = CLAMP (extent, (gint64) 0, (gint64) mon.width);
-          break;
+            side = META_SIDE_RIGHT;
+            extent = (gint64)state->exclusive_zone + state->margin_right;
+            extent = CLAMP(extent, (gint64)0, (gint64)mon.width);
+            break;
         default:
-          g_assert_not_reached ();
+            g_assert_not_reached();
         }
 
-      if (extent > 0)
-        {
-          new_strut.side = side;
-          if (side == META_SIDE_TOP)
-            new_strut.rect = (MtkRectangle) {
-              mon.x, mon.y, mon.width, (int) extent
-            };
-          else if (side == META_SIDE_BOTTOM)
-            new_strut.rect = (MtkRectangle) {
-              mon.x,
-              clamp_geometry_coordinate ((gint64) mon.y + mon.height - extent),
-              mon.width,
-              (int) extent
-            };
-          else if (side == META_SIDE_LEFT)
-            new_strut.rect = (MtkRectangle) {
-              mon.x, mon.y, (int) extent, mon.height
-            };
-          else
-            new_strut.rect = (MtkRectangle) {
-              clamp_geometry_coordinate ((gint64) mon.x + mon.width - extent),
-              mon.y,
-              (int) extent,
-              mon.height
-            };
-          has_new_strut = TRUE;
+        if (extent > 0) {
+            new_strut.side = side;
+            if (side == META_SIDE_TOP)
+                new_strut.rect = (MtkRectangle){mon.x, mon.y, mon.width, (int)extent};
+            else if (side == META_SIDE_BOTTOM)
+                new_strut.rect = (MtkRectangle){
+                    mon.x, clamp_geometry_coordinate((gint64)mon.y + mon.height - extent),
+                    mon.width, (int)extent};
+            else if (side == META_SIDE_LEFT)
+                new_strut.rect = (MtkRectangle){mon.x, mon.y, (int)extent, mon.height};
+            else
+                new_strut.rect =
+                    (MtkRectangle){clamp_geometry_coordinate((gint64)mon.x + mon.width - extent),
+                                   mon.y, (int)extent, mon.height};
+            has_new_strut = TRUE;
         }
     }
 
-  if ((!has_new_strut && !window->struts) ||
-      (has_new_strut && window->struts && !window->struts->next &&
-       ((MetaStrut *) window->struts->data)->side == new_strut.side &&
-       mtk_rectangle_equal (&((MetaStrut *) window->struts->data)->rect,
-                            &new_strut.rect)))
-    return;
+    if ((!has_new_strut && !window->struts) ||
+        (has_new_strut && window->struts && !window->struts->next &&
+         ((MetaStrut*)window->struts->data)->side == new_strut.side &&
+         mtk_rectangle_equal(&((MetaStrut*)window->struts->data)->rect, &new_strut.rect)))
+        return;
 
-  g_clear_slist (&window->struts, g_free);
-  if (has_new_strut)
-    window->struts = g_slist_prepend (NULL,
-                                      g_memdup2 (&new_strut,
-                                                 sizeof (new_strut)));
+    g_clear_slist(&window->struts, g_free);
+    if (has_new_strut)
+        window->struts = g_slist_prepend(NULL, g_memdup2(&new_strut, sizeof(new_strut)));
 
-  invalidate_work_areas_for_window (window);
+    invalidate_work_areas_for_window(window);
 }
 
-static gboolean
-destroy_closed_layer_window_idle (gpointer data)
-{
-  DestroyWindowIdleData *idle_data = data;
-  MetaWaylandLayerSurface *layer_surface =
-    g_weak_ref_get (&idle_data->layer_surface);
+static gboolean destroy_closed_layer_window_idle(gpointer data) {
+    DestroyWindowIdleData* idle_data = data;
+    MetaWaylandLayerSurface* layer_surface = g_weak_ref_get(&idle_data->layer_surface);
 
-  if (!layer_surface)
+    if (!layer_surface)
+        return G_SOURCE_REMOVE;
+
+    layer_surface->destroy_window_idle_id = 0;
+
+    if (layer_surface->closed)
+        meta_wayland_shell_surface_destroy_window(META_WAYLAND_SHELL_SURFACE(layer_surface));
+
+    g_object_unref(layer_surface);
+
     return G_SOURCE_REMOVE;
-
-  layer_surface->destroy_window_idle_id = 0;
-
-  if (layer_surface->closed)
-    meta_wayland_shell_surface_destroy_window (
-      META_WAYLAND_SHELL_SURFACE (layer_surface));
-
-  g_object_unref (layer_surface);
-
-  return G_SOURCE_REMOVE;
 }
 
-static void
-destroy_window_idle_data_free (gpointer data)
-{
-  DestroyWindowIdleData *idle_data = data;
+static void destroy_window_idle_data_free(gpointer data) {
+    DestroyWindowIdleData* idle_data = data;
 
-  g_weak_ref_clear (&idle_data->layer_surface);
-  g_free (idle_data);
+    g_weak_ref_clear(&idle_data->layer_surface);
+    g_free(idle_data);
 }
 
-static void
-queue_closed_layer_window_destroy (MetaWaylandLayerSurface *layer_surface)
-{
-  DestroyWindowIdleData *idle_data;
+static void queue_closed_layer_window_destroy(MetaWaylandLayerSurface* layer_surface) {
+    DestroyWindowIdleData* idle_data;
 
-  if (layer_surface->destroy_window_idle_id)
-    return;
+    if (layer_surface->destroy_window_idle_id)
+        return;
 
-  idle_data = g_new0 (DestroyWindowIdleData, 1);
-  g_weak_ref_init (&idle_data->layer_surface, layer_surface);
+    idle_data = g_new0(DestroyWindowIdleData, 1);
+    g_weak_ref_init(&idle_data->layer_surface, layer_surface);
 
-  /* Do not keep the role alive just for this timeout. MetaWaylandSurfaceRole
-   * keeps only a weak surface pointer, so extending the role after wl_surface
-   * teardown can make the shell-surface dispose path dereference a finalized
-   * surface. */
-  layer_surface->destroy_window_idle_id =
-    g_timeout_add_full (G_PRIORITY_DEFAULT,
-                        CLOSED_LAYER_WINDOW_DESTROY_DELAY_MS,
-                        destroy_closed_layer_window_idle,
-                        idle_data,
-                        destroy_window_idle_data_free);
+    /* Do not keep the role alive just for this timeout. MetaWaylandSurfaceRole
+     * keeps only a weak surface pointer, so extending the role after wl_surface
+     * teardown can make the shell-surface dispose path dereference a finalized
+     * surface. */
+    layer_surface->destroy_window_idle_id = g_timeout_add_full(
+        G_PRIORITY_DEFAULT, CLOSED_LAYER_WINDOW_DESTROY_DELAY_MS, destroy_closed_layer_window_idle,
+        idle_data, destroy_window_idle_data_free);
 }
 
-static void
-disconnect_layer_surface_output (MetaWaylandLayerSurface *layer_surface)
-{
-  if (layer_surface->output && layer_surface->output_destroyed_handler_id)
-    g_clear_signal_handler (&layer_surface->output_destroyed_handler_id,
-                            layer_surface->output);
+static void disconnect_layer_surface_output(MetaWaylandLayerSurface* layer_surface) {
+    if (layer_surface->output && layer_surface->output_destroyed_handler_id)
+        g_clear_signal_handler(&layer_surface->output_destroyed_handler_id, layer_surface->output);
 
-  layer_surface->output_destroyed_handler_id = 0;
-  layer_surface->output = NULL;
+    layer_surface->output_destroyed_handler_id = 0;
+    layer_surface->output = NULL;
 }
 
-static void
-close_layer_surface (MetaWaylandLayerSurface *layer_surface,
-                     gboolean                 invalidate_work_areas)
-{
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
-  MetaWindow *window;
+static void close_layer_surface(MetaWaylandLayerSurface* layer_surface,
+                                gboolean invalidate_work_areas) {
+    MetaWaylandSurface* surface =
+        meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    MetaWindow* window;
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  release_menu_keyboard (layer_surface);
-  layer_surface->closed = TRUE;
+    release_menu_keyboard(layer_surface);
+    layer_surface->closed = TRUE;
 
-  window = meta_wayland_surface_get_window (surface);
-  if (window)
-    {
-      clear_exclusive_zone_struts (window, invalidate_work_areas);
-      queue_closed_layer_window_destroy (layer_surface);
+    window = meta_wayland_surface_get_window(surface);
+    if (window) {
+        clear_exclusive_zone_struts(window, invalidate_work_areas);
+        queue_closed_layer_window_destroy(layer_surface);
     }
 
-  if (layer_surface->resource)
-    zwlr_layer_surface_v1_send_closed (layer_surface->resource);
+    if (layer_surface->resource)
+        zwlr_layer_surface_v1_send_closed(layer_surface->resource);
 }
 
-static void
-layer_surface_handle_output_destroyed (MetaWaylandOutput       *output,
-                                       MetaWaylandLayerSurface *layer_surface)
-{
-  (void) output;
+static void layer_surface_handle_output_destroyed(MetaWaylandOutput* output,
+                                                  MetaWaylandLayerSurface* layer_surface) {
+    (void)output;
 
-  layer_surface->output_destroyed_handler_id = 0;
-  layer_surface->output = NULL;
+    layer_surface->output_destroyed_handler_id = 0;
+    layer_surface->output = NULL;
 
-  /* This signal is emitted during MetaMonitorManager::monitors-changing, before
-   * Mutter has rebuilt native stage views for the new monitor set. Invalidating
-   * work areas here queues every window and can schedule a frame on the removed
-   * virtual CRTC. The following monitors-changed-internal handler reloads work
-   * areas after the backend has settled, so just drop our stale strut now. */
-  close_layer_surface (layer_surface, FALSE);
+    /* This signal is emitted during MetaMonitorManager::monitors-changing, before
+     * Mutter has rebuilt native stage views for the new monitor set. Invalidating
+     * work areas here queues every window and can schedule a frame on the removed
+     * virtual CRTC. The following monitors-changed-internal handler reloads work
+     * areas after the backend has settled, so just drop our stale strut now. */
+    close_layer_surface(layer_surface, FALSE);
 }
 
-static void
-move_resize_layer_window (MetaWindow   *window,
-                          MtkRectangle  geom)
-{
-  MetaMoveResizeFlags flags =
-    (META_MOVE_RESIZE_WAYLAND_FINISH_MOVE_RESIZE |
-     META_MOVE_RESIZE_MOVE_ACTION |
-     META_MOVE_RESIZE_RESIZE_ACTION |
-     META_MOVE_RESIZE_FORCE_UPDATE_MONITOR);
+static void move_resize_layer_window(MetaWindow* window, MtkRectangle geom) {
+    MetaMoveResizeFlags flags =
+        (META_MOVE_RESIZE_WAYLAND_FINISH_MOVE_RESIZE | META_MOVE_RESIZE_MOVE_ACTION |
+         META_MOVE_RESIZE_RESIZE_ACTION | META_MOVE_RESIZE_FORCE_UPDATE_MONITOR);
 
-  /* Layer-shell has its own configure/ack handshake. Once the client commits the
-   * matching buffer, apply the compositor-chosen rect directly instead of
-   * feeding it through normal toplevel placement/constraining. */
-  meta_window_move_resize_internal (window, flags, META_PLACE_FLAG_NONE,
-                                    geom, NULL);
-  window->unconstrained_rect = geom;
-  window->unconstrained_rect_valid = TRUE;
-  window->placed = TRUE;
+    /* Layer-shell has its own configure/ack handshake. Once the client commits the
+     * matching buffer, apply the compositor-chosen rect directly instead of
+     * feeding it through normal toplevel placement/constraining. */
+    meta_window_move_resize_internal(window, flags, META_PLACE_FLAG_NONE, geom, NULL);
+    window->unconstrained_rect = geom;
+    window->unconstrained_rect_valid = TRUE;
+    window->placed = TRUE;
 }
 
 /* ---- zwlr_layer_surface_v1 requests ------------------------------ */
 
-static void
-layer_surface_set_size (struct wl_client   *client,
-                        struct wl_resource *resource,
-                        uint32_t            width,
-                        uint32_t            height)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_size(struct wl_client* client, struct wl_resource* resource,
+                                   uint32_t width, uint32_t height) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  layer_surface->pending.desired_width = width;
-  layer_surface->pending.desired_height = height;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.desired_width = width;
+    layer_surface->pending.desired_height = height;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_set_anchor (struct wl_client   *client,
-                          struct wl_resource *resource,
-                          uint32_t            anchor)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_anchor(struct wl_client* client, struct wl_resource* resource,
+                                     uint32_t anchor) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  if (anchor & ~META_LAYER_SURFACE_ANCHOR_MASK)
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
-                              "invalid anchor bitfield 0x%x", anchor);
-      return;
+    if (anchor & ~META_LAYER_SURFACE_ANCHOR_MASK) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
+                               "invalid anchor bitfield 0x%x", anchor);
+        return;
     }
 
-  layer_surface->pending.anchor = anchor;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.anchor = anchor;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_set_exclusive_zone (struct wl_client   *client,
-                                  struct wl_resource *resource,
-                                  int32_t             zone)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_exclusive_zone(struct wl_client* client, struct wl_resource* resource,
+                                             int32_t zone) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  layer_surface->pending.exclusive_zone = zone;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.exclusive_zone = zone;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_set_margin (struct wl_client   *client,
-                          struct wl_resource *resource,
-                          int32_t             top,
-                          int32_t             right,
-                          int32_t             bottom,
-                          int32_t             left)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_margin(struct wl_client* client, struct wl_resource* resource,
+                                     int32_t top, int32_t right, int32_t bottom, int32_t left) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  layer_surface->pending.margin_top = top;
-  layer_surface->pending.margin_right = right;
-  layer_surface->pending.margin_bottom = bottom;
-  layer_surface->pending.margin_left = left;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.margin_top = top;
+    layer_surface->pending.margin_right = right;
+    layer_surface->pending.margin_bottom = bottom;
+    layer_surface->pending.margin_left = left;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_set_keyboard_interactivity (struct wl_client   *client,
-                                          struct wl_resource *resource,
-                                          uint32_t            keyboard_interactivity)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_keyboard_interactivity(struct wl_client* client,
+                                                     struct wl_resource* resource,
+                                                     uint32_t keyboard_interactivity) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  if (keyboard_interactivity >
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND)
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_KEYBOARD_INTERACTIVITY,
-                              "invalid keyboard interactivity %u",
-                              keyboard_interactivity);
-      return;
+    if (keyboard_interactivity > ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_KEYBOARD_INTERACTIVITY,
+                               "invalid keyboard interactivity %u", keyboard_interactivity);
+        return;
     }
 
-  layer_surface->pending.keyboard_interactivity = keyboard_interactivity;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.keyboard_interactivity = keyboard_interactivity;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_get_popup (struct wl_client   *client,
-                         struct wl_resource *resource,
-                         struct wl_resource *popup_resource)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
+static void layer_surface_get_popup(struct wl_client* client, struct wl_resource* resource,
+                                    struct wl_resource* popup_resource) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
+    MetaWaylandSurface* surface =
+        meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  if (!meta_wayland_xdg_popup_set_parent_surface (popup_resource, surface))
-    wl_resource_post_error (resource,
-                            ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                            "xdg_popup is not ready for a layer-surface parent");
+    if (!meta_wayland_xdg_popup_set_parent_surface(popup_resource, surface))
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "xdg_popup is not ready for a layer-surface parent");
 }
 
-static void
-layer_surface_ack_configure (struct wl_client   *client,
-                             struct wl_resource *resource,
-                             uint32_t            serial)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
-  GList *serial_link;
+static void layer_surface_ack_configure(struct wl_client* client, struct wl_resource* resource,
+                                        uint32_t serial) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
+    GList* serial_link;
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  serial_link = g_queue_find (&layer_surface->configure_serials,
-                              GUINT_TO_POINTER (serial));
-  if (!layer_surface->configured || serial == 0 || !serial_link)
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                              "invalid configure serial %u", serial);
-      return;
+    serial_link = g_queue_find(&layer_surface->configure_serials, GUINT_TO_POINTER(serial));
+    if (!layer_surface->configured || serial == 0 || !serial_link) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "invalid configure serial %u", serial);
+        return;
     }
 
-  while (!g_queue_is_empty (&layer_surface->configure_serials))
-    {
-      uint32_t queued_serial =
-        GPOINTER_TO_UINT (g_queue_pop_head (&layer_surface->configure_serials));
+    while (!g_queue_is_empty(&layer_surface->configure_serials)) {
+        uint32_t queued_serial =
+            GPOINTER_TO_UINT(g_queue_pop_head(&layer_surface->configure_serials));
 
-      if (queued_serial == serial)
-        break;
+        if (queued_serial == serial)
+            break;
     }
 
-  layer_surface->acked_configure_serial = serial;
-  /* Per wlr-layer-shell, attaching a buffer is permitted once the client has
-   * acked *any* configure — it may render against an earlier configure while a
-   * newer one is still in flight (e.g. a configure storm during a monitor
-   * hotplug/resize). Gating this on the *latest* serial spuriously rejected
-   * valid buffers mid-storm, which then tripped the frame-callback assertion in
-   * apply_state. Once acked, the surface stays acked. */
-  layer_surface->has_acked_configure = TRUE;
+    layer_surface->acked_configure_serial = serial;
+    /* Per wlr-layer-shell, attaching a buffer is permitted once the client has
+     * acked *any* configure — it may render against an earlier configure while a
+     * newer one is still in flight (e.g. a configure storm during a monitor
+     * hotplug/resize). Gating this on the *latest* serial spuriously rejected
+     * valid buffers mid-storm, which then tripped the frame-callback assertion in
+     * apply_state. Once acked, the surface stays acked. */
+    layer_surface->has_acked_configure = TRUE;
 }
 
-static void
-layer_surface_destroy (struct wl_client   *client,
-                       struct wl_resource *resource)
-{
-  wl_resource_destroy (resource);
+static void layer_surface_destroy(struct wl_client* client, struct wl_resource* resource) {
+    wl_resource_destroy(resource);
 }
 
-static void
-layer_surface_set_layer (struct wl_client   *client,
-                         struct wl_resource *resource,
-                         uint32_t            layer)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_layer(struct wl_client* client, struct wl_resource* resource,
+                                    uint32_t layer) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY)
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                              "invalid layer %u", layer);
-      return;
+    if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "invalid layer %u", layer);
+        return;
     }
 
-  layer_surface->pending.layer = layer;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.layer = layer;
+    layer_surface->has_pending_state = TRUE;
 }
 
-static void
-layer_surface_set_exclusive_edge (struct wl_client   *client,
-                                  struct wl_resource *resource,
-                                  uint32_t            edge)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_set_exclusive_edge(struct wl_client* client, struct wl_resource* resource,
+                                             uint32_t edge) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  if (layer_surface->closed)
-    return;
+    if (layer_surface->closed)
+        return;
 
-  if (!is_single_anchor_edge (edge))
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_EXCLUSIVE_EDGE,
-                              "exclusive edge 0x%x is not a single edge", edge);
-      return;
+    if (!is_single_anchor_edge(edge)) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_EXCLUSIVE_EDGE,
+                               "exclusive edge 0x%x is not a single edge", edge);
+        return;
     }
 
-  layer_surface->pending.exclusive_edge = edge;
-  layer_surface->pending.has_exclusive_edge = TRUE;
-  layer_surface->has_pending_state = TRUE;
+    layer_surface->pending.exclusive_edge = edge;
+    layer_surface->pending.has_exclusive_edge = TRUE;
+    layer_surface->has_pending_state = TRUE;
 }
 
 static const struct zwlr_layer_surface_v1_interface layer_surface_implementation = {
-  .set_size = layer_surface_set_size,
-  .set_anchor = layer_surface_set_anchor,
-  .set_exclusive_zone = layer_surface_set_exclusive_zone,
-  .set_margin = layer_surface_set_margin,
-  .set_keyboard_interactivity = layer_surface_set_keyboard_interactivity,
-  .get_popup = layer_surface_get_popup,
-  .ack_configure = layer_surface_ack_configure,
-  .destroy = layer_surface_destroy,
-  .set_layer = layer_surface_set_layer,
-  .set_exclusive_edge = layer_surface_set_exclusive_edge,
+    .set_size = layer_surface_set_size,
+    .set_anchor = layer_surface_set_anchor,
+    .set_exclusive_zone = layer_surface_set_exclusive_zone,
+    .set_margin = layer_surface_set_margin,
+    .set_keyboard_interactivity = layer_surface_set_keyboard_interactivity,
+    .get_popup = layer_surface_get_popup,
+    .ack_configure = layer_surface_ack_configure,
+    .destroy = layer_surface_destroy,
+    .set_layer = layer_surface_set_layer,
+    .set_exclusive_edge = layer_surface_set_exclusive_edge,
 };
 
-static void
-layer_surface_resource_destroy (struct wl_resource *resource)
-{
-  MetaWaylandLayerSurface *layer_surface = wl_resource_get_user_data (resource);
+static void layer_surface_resource_destroy(struct wl_resource* resource) {
+    MetaWaylandLayerSurface* layer_surface = wl_resource_get_user_data(resource);
 
-  wl_resource_set_user_data (resource, NULL);
+    wl_resource_set_user_data(resource, NULL);
 
-  if (!layer_surface)
-    return;
+    if (!layer_surface)
+        return;
 
-  release_menu_keyboard (layer_surface);
+    release_menu_keyboard(layer_surface);
 
-  if (layer_surface->resource == resource)
-    layer_surface->resource = NULL;
+    if (layer_surface->resource == resource)
+        layer_surface->resource = NULL;
 
-  disconnect_layer_surface_output (layer_surface);
+    disconnect_layer_surface_output(layer_surface);
 
-  {
-    MetaWaylandSurface *surface =
-      meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (layer_surface));
-    MetaWindow *window = surface ? meta_wayland_surface_get_window (surface) : NULL;
-
-    if (window)
-      {
-        g_object_set_data (G_OBJECT (window), "gnoblin-layer-surface", NULL);
-        g_object_set_data (G_OBJECT (window), "gnoblin-layer-dismiss", NULL);
-      }
-  }
-
-  if (layer_surface->destroy_window_idle_id)
-    g_clear_handle_id (&layer_surface->destroy_window_idle_id, g_source_remove);
-
-  meta_wayland_shell_surface_destroy_window (META_WAYLAND_SHELL_SURFACE (layer_surface));
-}
-
-static void
-focus_exclusive_layer_surface (MetaWaylandLayerSurface *layer_surface,
-                               MetaWaylandSurface      *surface,
-                               MetaWindow              *window)
-{
-  if (is_shell_menu (layer_surface))
     {
-      if (layer_surface->current.keyboard_interactivity ==
-          ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE &&
-          meta_wayland_surface_get_buffer (surface))
-        {
-          if (!layer_surface->menu_keyboard_handler)
-            {
-              /* Retained menus can reopen after another overlay was raised.
-               * Raise once on opening without changing the active window. */
-              meta_window_raise (window);
-              layer_surface->menu_keyboard_handler =
-                meta_wayland_input_attach_event_handler (
-                  meta_wayland_seat_get_input (surface->compositor->seat),
-                  &menu_keyboard_interface, FALSE, layer_surface);
-            }
+        MetaWaylandSurface* surface =
+            meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+        MetaWindow* window = surface ? meta_wayland_surface_get_window(surface) : NULL;
+
+        if (window) {
+            g_object_set_data(G_OBJECT(window), "gnoblin-layer-surface", NULL);
+            g_object_set_data(G_OBJECT(window), "gnoblin-layer-dismiss", NULL);
         }
-      else
-        release_menu_keyboard (layer_surface);
-      return;
     }
 
-  if (layer_surface->current.keyboard_interactivity !=
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-    return;
+    if (layer_surface->destroy_window_idle_id)
+        g_clear_handle_id(&layer_surface->destroy_window_idle_id, g_source_remove);
 
-  {
-    MetaDisplay *display = display_from_surface (surface);
-    MetaWaylandSeat *seat = surface->compositor->seat;
+    meta_wayland_shell_surface_destroy_window(META_WAYLAND_SHELL_SURFACE(layer_surface));
+}
 
-    meta_window_focus (window, meta_display_get_current_time (display));
-    if (seat && meta_wayland_seat_has_keyboard (seat))
-      meta_wayland_keyboard_set_focus (seat->keyboard, surface);
-  }
+static void focus_exclusive_layer_surface(MetaWaylandLayerSurface* layer_surface,
+                                          MetaWaylandSurface* surface, MetaWindow* window) {
+    if (is_shell_menu(layer_surface)) {
+        if (layer_surface->current.keyboard_interactivity ==
+                ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE &&
+            meta_wayland_surface_get_buffer(surface)) {
+            if (!layer_surface->menu_keyboard_handler) {
+                /* Retained menus can reopen after another overlay was raised.
+                 * Raise once on opening without changing the active window. */
+                meta_window_raise(window);
+                layer_surface->menu_keyboard_handler = meta_wayland_input_attach_event_handler(
+                    meta_wayland_seat_get_input(surface->compositor->seat),
+                    &menu_keyboard_interface, FALSE, layer_surface);
+            }
+        } else
+            release_menu_keyboard(layer_surface);
+        return;
+    }
+
+    if (layer_surface->current.keyboard_interactivity !=
+        ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+        return;
+
+    {
+        MetaDisplay* display = display_from_surface(surface);
+        MetaWaylandSeat* seat = surface->compositor->seat;
+
+        meta_window_focus(window, meta_display_get_current_time(display));
+        if (seat && meta_wayland_seat_has_keyboard(seat))
+            meta_wayland_keyboard_set_focus(seat->keyboard, surface);
+    }
 }
 
 /* ---- MetaWaylandLayerSurface role ------------------------------- */
 
-static void
-meta_wayland_layer_surface_apply_state (MetaWaylandSurfaceRole  *surface_role,
-                                        MetaWaylandSurfaceState *pending)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    META_WAYLAND_LAYER_SURFACE (surface_role);
-  MetaWaylandActorSurface *actor_surface =
-    META_WAYLAND_ACTOR_SURFACE (surface_role);
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (surface_role);
-  MetaWaylandSurfaceRoleClass *surface_role_class;
-  MetaWindow *window;
-  gboolean unmapping;
-  gboolean state_changed = FALSE;
+static void meta_wayland_layer_surface_apply_state(MetaWaylandSurfaceRole* surface_role,
+                                                   MetaWaylandSurfaceState* pending) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(surface_role);
+    MetaWaylandActorSurface* actor_surface = META_WAYLAND_ACTOR_SURFACE(surface_role);
+    MetaWaylandSurface* surface = meta_wayland_surface_role_get_surface(surface_role);
+    MetaWaylandSurfaceRoleClass* surface_role_class;
+    MetaWindow* window;
+    gboolean unmapping;
+    gboolean state_changed = FALSE;
 
-  window = meta_wayland_surface_get_window (surface);
-  if (!window)
-    {
-      meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
-      return;
+    window = meta_wayland_surface_get_window(surface);
+    if (!window) {
+        meta_wayland_actor_surface_queue_frame_callbacks(actor_surface, pending);
+        return;
     }
 
-  if (layer_surface->closed)
-    {
-      meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
-      return;
+    if (layer_surface->closed) {
+        meta_wayland_actor_surface_queue_frame_callbacks(actor_surface, pending);
+        return;
     }
 
-  if (pending->newly_attached && pending->buffer && !layer_surface->configured)
-    {
-      /* Consume the pending frame callbacks before bailing: mutter asserts that
-       * apply_state always empties state->frame_callback_list, and posting an
-       * error here does not tear the surface down synchronously. */
-      meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                              "cannot attach a buffer before first configure");
-      return;
+    if (pending->newly_attached && pending->buffer && !layer_surface->configured) {
+        /* Consume the pending frame callbacks before bailing: mutter asserts that
+         * apply_state always empties state->frame_callback_list, and posting an
+         * error here does not tear the surface down synchronously. */
+        meta_wayland_actor_surface_queue_frame_callbacks(actor_surface, pending);
+        wl_resource_post_error(layer_surface->resource,
+                               ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "cannot attach a buffer before first configure");
+        return;
     }
 
-  if (pending->newly_attached && pending->buffer &&
-      !layer_surface->has_acked_configure)
-    {
-      meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
-      wl_resource_post_error (layer_surface->resource,
-                              ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                              "cannot attach a buffer before ack_configure");
-      return;
+    if (pending->newly_attached && pending->buffer && !layer_surface->has_acked_configure) {
+        meta_wayland_actor_surface_queue_frame_callbacks(actor_surface, pending);
+        wl_resource_post_error(layer_surface->resource,
+                               ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
+                               "cannot attach a buffer before ack_configure");
+        return;
     }
 
-  unmapping = pending->newly_attached && !pending->buffer;
-  if (unmapping)
-    {
-      release_menu_keyboard (layer_surface);
-      reset_layer_surface_state (layer_surface);
-      update_exclusive_zone_struts (layer_surface, window,
-                                    get_monitor_layout (layer_surface));
+    unmapping = pending->newly_attached && !pending->buffer;
+    if (unmapping) {
+        release_menu_keyboard(layer_surface);
+        reset_layer_surface_state(layer_surface);
+        update_exclusive_zone_struts(layer_surface, window, get_monitor_layout(layer_surface));
     }
 
-  if (layer_surface->has_pending_state)
-    {
-      if (!validate_layer_surface_state (layer_surface,
-                                         &layer_surface->pending))
-        {
-          meta_wayland_actor_surface_queue_frame_callbacks (actor_surface,
-                                                            pending);
-          return;
+    if (layer_surface->has_pending_state) {
+        if (!validate_layer_surface_state(layer_surface, &layer_surface->pending)) {
+            meta_wayland_actor_surface_queue_frame_callbacks(actor_surface, pending);
+            return;
         }
 
-      state_changed =
-        !layer_surface_state_equal (&layer_surface->pending,
-                                    &layer_surface->current);
-      layer_surface->current = layer_surface->pending;
-      layer_surface->has_pending_state = FALSE;
+        state_changed =
+            !layer_surface_state_equal(&layer_surface->pending, &layer_surface->current);
+        layer_surface->current = layer_surface->pending;
+        layer_surface->has_pending_state = FALSE;
     }
 
-  g_object_set_data (G_OBJECT (window), "gnoblin-layer-anchor",
-                     GUINT_TO_POINTER (layer_surface->current.anchor + 1));
+    g_object_set_data(G_OBJECT(window), "gnoblin-layer-anchor",
+                      GUINT_TO_POINTER(layer_surface->current.anchor + 1));
 
-  surface_role_class =
-    META_WAYLAND_SURFACE_ROLE_CLASS (meta_wayland_layer_surface_parent_class);
-  surface_role_class->apply_state (surface_role, pending);
+    surface_role_class = META_WAYLAND_SURFACE_ROLE_CLASS(meta_wayland_layer_surface_parent_class);
+    surface_role_class->apply_state(surface_role, pending);
 
-  if (unmapping)
-    return;
+    if (unmapping)
+        return;
 
-  if (!validate_layer_surface_state (layer_surface, &layer_surface->current))
-    return;
+    if (!validate_layer_surface_state(layer_surface, &layer_surface->current))
+        return;
 
-  focus_exclusive_layer_surface (layer_surface, surface, window);
+    focus_exclusive_layer_surface(layer_surface, surface, window);
 
-  {
-    MtkRectangle mon = get_monitor_layout (layer_surface);
-    MtkRectangle geom = calculate_geometry (layer_surface, mon);
-
-    if (!layer_surface->configured ||
-        state_changed ||
-        geom.width != layer_surface->last_sent_width ||
-        geom.height != layer_surface->last_sent_height)
-      send_configure (layer_surface, geom.width, geom.height);
-  }
-}
-
-static void
-meta_wayland_layer_surface_post_apply_state (MetaWaylandSurfaceRole  *surface_role,
-                                             MetaWaylandSurfaceState *pending)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    META_WAYLAND_LAYER_SURFACE (surface_role);
-  MetaWaylandSurface *surface =
-    meta_wayland_surface_role_get_surface (surface_role);
-  MetaWaylandSurfaceRoleClass *surface_role_class;
-  MetaWindow *window;
-
-  window = meta_wayland_surface_get_window (surface);
-  if (!window)
-    return;
-
-  if (layer_surface->closed)
-    return;
-
-  surface_role_class =
-    META_WAYLAND_SURFACE_ROLE_CLASS (meta_wayland_layer_surface_parent_class);
-  if (surface_role_class->post_apply_state)
-    surface_role_class->post_apply_state (surface_role, pending);
-
-  if (meta_wayland_surface_get_buffer (surface))
     {
-      MtkRectangle mon = get_monitor_layout (layer_surface);
-      /* A size request is not a new buffer. Anchor the pixels committed by
-       * the client, including during configure/ack negotiation, so bottom and
-       * right anchored tooltips cannot jump while the next buffer is pending. */
-      MtkRectangle geom = calculate_geometry_for_buffer (layer_surface, mon, TRUE);
-      MtkRectangle requested = calculate_geometry (layer_surface, mon);
+        MtkRectangle mon = get_monitor_layout(layer_surface);
+        MtkRectangle geom = calculate_geometry(layer_surface, mon);
 
-      apply_window_type_and_layer (layer_surface, window);
-      window->input = TRUE;
-      /* An empty commit requesting a different size can include centring
-       * margins for that future buffer. Keep the old buffer at its current
-       * position until the client supplies the resized content. */
-      if (pending->newly_attached ||
-          (geom.width == requested.width && geom.height == requested.height))
-        move_resize_layer_window (window, geom);
-      update_exclusive_zone_struts (layer_surface, window, mon);
-      meta_window_update_visibility (window);
-      {
-        MetaContext *context =
-          meta_wayland_compositor_get_context (surface->compositor);
-        MetaBackend *backend = meta_context_get_backend (context);
-        ClutterActor *stage = meta_backend_get_stage (backend);
-
-        if (stage)
-          clutter_stage_schedule_update (CLUTTER_STAGE (stage));
-      }
-
-      if (layer_surface->current.keyboard_interactivity ==
-          ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-        focus_exclusive_layer_surface (layer_surface, surface, window);
+        if (!layer_surface->configured || state_changed ||
+            geom.width != layer_surface->last_sent_width ||
+            geom.height != layer_surface->last_sent_height)
+            send_configure(layer_surface, geom.width, geom.height);
     }
 }
 
-static MetaWaylandSurface *
-meta_wayland_layer_surface_get_toplevel (MetaWaylandSurfaceRole *surface_role)
-{
-  return meta_wayland_surface_role_get_surface (surface_role);
+static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* surface_role,
+                                                        MetaWaylandSurfaceState* pending) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(surface_role);
+    MetaWaylandSurface* surface = meta_wayland_surface_role_get_surface(surface_role);
+    MetaWaylandSurfaceRoleClass* surface_role_class;
+    MetaWindow* window;
+
+    window = meta_wayland_surface_get_window(surface);
+    if (!window)
+        return;
+
+    if (layer_surface->closed)
+        return;
+
+    surface_role_class = META_WAYLAND_SURFACE_ROLE_CLASS(meta_wayland_layer_surface_parent_class);
+    if (surface_role_class->post_apply_state)
+        surface_role_class->post_apply_state(surface_role, pending);
+
+    if (meta_wayland_surface_get_buffer(surface)) {
+        MtkRectangle mon = get_monitor_layout(layer_surface);
+        /* A size request is not a new buffer. Anchor the pixels committed by
+         * the client, including during configure/ack negotiation, so bottom and
+         * right anchored tooltips cannot jump while the next buffer is pending. */
+        MtkRectangle geom = calculate_geometry_for_buffer(layer_surface, mon, TRUE);
+        MtkRectangle requested = calculate_geometry(layer_surface, mon);
+
+        apply_window_type_and_layer(layer_surface, window);
+        window->input = TRUE;
+        /* An empty commit requesting a different size can include centring
+         * margins for that future buffer. Keep the old buffer at its current
+         * position until the client supplies the resized content. */
+        if (pending->newly_attached ||
+            (geom.width == requested.width && geom.height == requested.height))
+            move_resize_layer_window(window, geom);
+        update_exclusive_zone_struts(layer_surface, window, mon);
+        meta_window_update_visibility(window);
+        {
+            MetaContext* context = meta_wayland_compositor_get_context(surface->compositor);
+            MetaBackend* backend = meta_context_get_backend(context);
+            ClutterActor* stage = meta_backend_get_stage(backend);
+
+            if (stage)
+                clutter_stage_schedule_update(CLUTTER_STAGE(stage));
+        }
+
+        if (layer_surface->current.keyboard_interactivity ==
+            ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+            focus_exclusive_layer_surface(layer_surface, surface, window);
+    }
 }
 
-static void
-meta_wayland_layer_surface_configure (MetaWaylandShellSurface        *shell_surface,
-                                      MetaWaylandWindowConfiguration *configuration)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    META_WAYLAND_LAYER_SURFACE (shell_surface);
-  MtkRectangle mon;
-  MtkRectangle geom;
-
-  if (!layer_surface->resource)
-    return;
-
-  if (layer_surface->closed)
-    return;
-
-  mon = get_monitor_layout (layer_surface);
-  geom = calculate_geometry (layer_surface, mon);
-
-  if (!layer_surface->configured ||
-      geom.width != layer_surface->last_sent_width ||
-      geom.height != layer_surface->last_sent_height)
-    send_configure (layer_surface, geom.width, geom.height);
+static MetaWaylandSurface*
+meta_wayland_layer_surface_get_toplevel(MetaWaylandSurfaceRole* surface_role) {
+    return meta_wayland_surface_role_get_surface(surface_role);
 }
 
-static void
-meta_wayland_layer_surface_managed (MetaWaylandShellSurface *shell_surface,
-                                    MetaWindow              *window)
-{
+static void meta_wayland_layer_surface_configure(MetaWaylandShellSurface* shell_surface,
+                                                 MetaWaylandWindowConfiguration* configuration) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(shell_surface);
+    MtkRectangle mon;
+    MtkRectangle geom;
+
+    if (!layer_surface->resource)
+        return;
+
+    if (layer_surface->closed)
+        return;
+
+    mon = get_monitor_layout(layer_surface);
+    geom = calculate_geometry(layer_surface, mon);
+
+    if (!layer_surface->configured || geom.width != layer_surface->last_sent_width ||
+        geom.height != layer_surface->last_sent_height)
+        send_configure(layer_surface, geom.width, geom.height);
 }
 
-static void
-meta_wayland_layer_surface_ping (MetaWaylandShellSurface *shell_surface,
-                                 uint32_t                 serial)
-{
-  /* wlr-layer-shell has no ping/pong request pair. MetaWindowWayland is taught
-   * not to ping layer-shell windows, but keep this vfunc non-NULL as a guard
-   * against future direct shell-surface ping callers. */
+static void meta_wayland_layer_surface_managed(MetaWaylandShellSurface* shell_surface,
+                                               MetaWindow* window) {}
+
+static void meta_wayland_layer_surface_ping(MetaWaylandShellSurface* shell_surface,
+                                            uint32_t serial) {
+    /* wlr-layer-shell has no ping/pong request pair. MetaWindowWayland is taught
+     * not to ping layer-shell windows, but keep this vfunc non-NULL as a guard
+     * against future direct shell-surface ping callers. */
 }
 
-static void
-meta_wayland_layer_surface_close (MetaWaylandShellSurface *shell_surface)
-{
-  MetaWaylandLayerSurface *layer_surface =
-    META_WAYLAND_LAYER_SURFACE (shell_surface);
+static void meta_wayland_layer_surface_close(MetaWaylandShellSurface* shell_surface) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(shell_surface);
 
-  disconnect_layer_surface_output (layer_surface);
-  close_layer_surface (layer_surface, TRUE);
+    disconnect_layer_surface_output(layer_surface);
+    close_layer_surface(layer_surface, TRUE);
 }
 
-static void
-meta_wayland_layer_surface_finalize (GObject *object)
-{
-  MetaWaylandLayerSurface *layer_surface = META_WAYLAND_LAYER_SURFACE (object);
+static void meta_wayland_layer_surface_finalize(GObject* object) {
+    MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(object);
 
-  disconnect_layer_surface_output (layer_surface);
-  g_clear_pointer (&layer_surface->resource, wl_resource_destroy);
-  if (layer_surface->destroy_window_idle_id)
-    g_clear_handle_id (&layer_surface->destroy_window_idle_id, g_source_remove);
-  release_menu_keyboard (layer_surface);
-  g_queue_clear (&layer_surface->configure_serials);
-  g_clear_pointer (&layer_surface->namespace, g_free);
+    disconnect_layer_surface_output(layer_surface);
+    g_clear_pointer(&layer_surface->resource, wl_resource_destroy);
+    if (layer_surface->destroy_window_idle_id)
+        g_clear_handle_id(&layer_surface->destroy_window_idle_id, g_source_remove);
+    release_menu_keyboard(layer_surface);
+    g_queue_clear(&layer_surface->configure_serials);
+    g_clear_pointer(&layer_surface->namespace, g_free);
 
-  G_OBJECT_CLASS (meta_wayland_layer_surface_parent_class)->finalize (object);
+    G_OBJECT_CLASS(meta_wayland_layer_surface_parent_class)->finalize(object);
 }
 
-static void
-meta_wayland_layer_surface_init (MetaWaylandLayerSurface *layer_surface)
-{
-  g_queue_init (&layer_surface->configure_serials);
+static void meta_wayland_layer_surface_init(MetaWaylandLayerSurface* layer_surface) {
+    g_queue_init(&layer_surface->configure_serials);
 }
 
-static void
-meta_wayland_layer_surface_class_init (MetaWaylandLayerSurfaceClass *klass)
-{
-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
-  MetaWaylandSurfaceRoleClass *surface_role_class =
-    META_WAYLAND_SURFACE_ROLE_CLASS (klass);
-  MetaWaylandShellSurfaceClass *shell_surface_class =
-    META_WAYLAND_SHELL_SURFACE_CLASS (klass);
+static void meta_wayland_layer_surface_class_init(MetaWaylandLayerSurfaceClass* klass) {
+    GObjectClass* object_class = G_OBJECT_CLASS(klass);
+    MetaWaylandSurfaceRoleClass* surface_role_class = META_WAYLAND_SURFACE_ROLE_CLASS(klass);
+    MetaWaylandShellSurfaceClass* shell_surface_class = META_WAYLAND_SHELL_SURFACE_CLASS(klass);
 
-  object_class->finalize = meta_wayland_layer_surface_finalize;
+    object_class->finalize = meta_wayland_layer_surface_finalize;
 
-  surface_role_class->apply_state = meta_wayland_layer_surface_apply_state;
-  surface_role_class->post_apply_state =
-    meta_wayland_layer_surface_post_apply_state;
-  surface_role_class->get_toplevel = meta_wayland_layer_surface_get_toplevel;
-  surface_role_class->is_on_logical_monitor =
-    meta_wayland_layer_surface_is_on_logical_monitor;
+    surface_role_class->apply_state = meta_wayland_layer_surface_apply_state;
+    surface_role_class->post_apply_state = meta_wayland_layer_surface_post_apply_state;
+    surface_role_class->get_toplevel = meta_wayland_layer_surface_get_toplevel;
+    surface_role_class->is_on_logical_monitor = meta_wayland_layer_surface_is_on_logical_monitor;
 
-  shell_surface_class->configure = meta_wayland_layer_surface_configure;
-  shell_surface_class->managed = meta_wayland_layer_surface_managed;
-  shell_surface_class->ping = meta_wayland_layer_surface_ping;
-  shell_surface_class->close = meta_wayland_layer_surface_close;
+    shell_surface_class->configure = meta_wayland_layer_surface_configure;
+    shell_surface_class->managed = meta_wayland_layer_surface_managed;
+    shell_surface_class->ping = meta_wayland_layer_surface_ping;
+    shell_surface_class->close = meta_wayland_layer_surface_close;
 }
 
 /* ---- zwlr_layer_shell_v1 requests ------------------------------- */
 
-static void
-layer_shell_get_layer_surface (struct wl_client   *client,
-                               struct wl_resource *resource,
-                               uint32_t            id,
-                               struct wl_resource *surface_resource,
-                               struct wl_resource *output_resource,
-                               uint32_t            layer,
-                               const char         *namespace)
-{
-  MetaWaylandSurface *surface = wl_resource_get_user_data (surface_resource);
-  MetaWaylandLayerSurface *layer_surface;
-  MetaWindow *window;
-  MetaWaylandSurfaceState *pending;
+static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_resource* resource,
+                                          uint32_t id, struct wl_resource* surface_resource,
+                                          struct wl_resource* output_resource, uint32_t layer,
+                                          const char* namespace) {
+    MetaWaylandSurface* surface = wl_resource_get_user_data(surface_resource);
+    MetaWaylandLayerSurface* layer_surface;
+    MetaWindow* window;
+    MetaWaylandSurfaceState* pending;
 
-  if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY)
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SHELL_V1_ERROR_INVALID_LAYER,
-                              "invalid layer %u", layer);
-      return;
+    if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SHELL_V1_ERROR_INVALID_LAYER,
+                               "invalid layer %u", layer);
+        return;
     }
 
-  pending = meta_wayland_surface_get_pending_state (surface);
-  if ((pending->newly_attached && pending->buffer) ||
-      meta_wayland_surface_get_buffer (surface) ||
-      meta_wayland_surface_has_initial_commit (surface))
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
-                              "wl_surface@%d already has a buffer attached or committed",
-                              wl_resource_get_id (surface_resource));
-      return;
+    pending = meta_wayland_surface_get_pending_state(surface);
+    if ((pending->newly_attached && pending->buffer) || meta_wayland_surface_get_buffer(surface) ||
+        meta_wayland_surface_has_initial_commit(surface)) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
+                               "wl_surface@%d already has a buffer attached or committed",
+                               wl_resource_get_id(surface_resource));
+        return;
     }
 
-  if (!meta_wayland_surface_assign_role (surface,
-                                         META_TYPE_WAYLAND_LAYER_SURFACE,
-                                         NULL))
-    {
-      wl_resource_post_error (resource,
-                              ZWLR_LAYER_SHELL_V1_ERROR_ROLE,
-                              "wl_surface@%d already has a different role",
-                              wl_resource_get_id (surface_resource));
-      return;
+    if (!meta_wayland_surface_assign_role(surface, META_TYPE_WAYLAND_LAYER_SURFACE, NULL)) {
+        wl_resource_post_error(resource, ZWLR_LAYER_SHELL_V1_ERROR_ROLE,
+                               "wl_surface@%d already has a different role",
+                               wl_resource_get_id(surface_resource));
+        return;
     }
 
-  layer_surface = META_WAYLAND_LAYER_SURFACE (surface->role);
-  layer_surface->namespace = g_strdup (namespace);
-  layer_surface->output =
-    output_resource ? wl_resource_get_user_data (output_resource) : NULL;
-  layer_surface->initial_layer = layer;
-  layer_surface->pending.layer = layer;
-  layer_surface->current.layer = layer;
-  layer_surface->closed = FALSE;
-  layer_surface->output_destroyed_handler_id = 0;
-  layer_surface->destroy_window_idle_id = 0;
+    layer_surface = META_WAYLAND_LAYER_SURFACE(surface->role);
+    layer_surface->namespace = g_strdup(namespace);
+    layer_surface->output = output_resource ? wl_resource_get_user_data(output_resource) : NULL;
+    layer_surface->initial_layer = layer;
+    layer_surface->pending.layer = layer;
+    layer_surface->current.layer = layer;
+    layer_surface->closed = FALSE;
+    layer_surface->output_destroyed_handler_id = 0;
+    layer_surface->destroy_window_idle_id = 0;
 
-  if (layer_surface->output)
-    {
-      layer_surface->output_destroyed_handler_id =
-        g_signal_connect (layer_surface->output, "output-destroyed",
-                          G_CALLBACK (layer_surface_handle_output_destroyed),
-                          layer_surface);
+    if (layer_surface->output) {
+        layer_surface->output_destroyed_handler_id =
+            g_signal_connect(layer_surface->output, "output-destroyed",
+                             G_CALLBACK(layer_surface_handle_output_destroyed), layer_surface);
     }
 
-  layer_surface->resource =
-    wl_resource_create (client, &zwlr_layer_surface_v1_interface,
-                        wl_resource_get_version (resource), id);
-  wl_resource_set_implementation (layer_surface->resource,
-                                  &layer_surface_implementation,
-                                  layer_surface,
-                                  layer_surface_resource_destroy);
+    layer_surface->resource = wl_resource_create(client, &zwlr_layer_surface_v1_interface,
+                                                 wl_resource_get_version(resource), id);
+    wl_resource_set_implementation(layer_surface->resource, &layer_surface_implementation,
+                                   layer_surface, layer_surface_resource_destroy);
 
-  window = meta_window_wayland_new (display_from_surface (surface), surface);
-  if (layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
-    window->type = META_WINDOW_DESKTOP;
-  else
-    window->type = META_WINDOW_DOCK;
-  /* Stash the wlr-layer-shell namespace on the MetaWindow so gnoblin's window
-   * rules can target layer surfaces (a `layer=<namespace>` matcher) and apply
-   * compositor-managed rounding/border/blur to the shell's own panels. The
-   * namespace is otherwise private to the layer-surface object. */
-  if (layer_surface->namespace)
-    g_object_set_data_full (G_OBJECT (window), "gnoblin-layer-namespace",
-                            g_strdup (layer_surface->namespace), g_free);
-  g_object_set_data (G_OBJECT (window), "gnoblin-layer-surface", layer_surface);
-  g_object_set_data (G_OBJECT (window), "gnoblin-layer-dismiss",
-                     (gpointer) gnoblin_layer_dismiss_trampoline);
-  apply_window_type_and_layer (layer_surface, window);
-  meta_wayland_shell_surface_set_window (META_WAYLAND_SHELL_SURFACE (layer_surface),
-                                         window);
+    window = meta_window_wayland_new(display_from_surface(surface), surface);
+    if (layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
+        window->type = META_WINDOW_DESKTOP;
+    else
+        window->type = META_WINDOW_DOCK;
+    /* Stash the wlr-layer-shell namespace on the MetaWindow so gnoblin's window
+     * rules can target layer surfaces (a `layer=<namespace>` matcher) and apply
+     * compositor-managed rounding/border/blur to the shell's own panels. The
+     * namespace is otherwise private to the layer-surface object. */
+    if (layer_surface->namespace)
+        g_object_set_data_full(G_OBJECT(window), "gnoblin-layer-namespace",
+                               g_strdup(layer_surface->namespace), g_free);
+    g_object_set_data(G_OBJECT(window), "gnoblin-layer-surface", layer_surface);
+    g_object_set_data(G_OBJECT(window), "gnoblin-layer-dismiss",
+                      (gpointer)gnoblin_layer_dismiss_trampoline);
+    apply_window_type_and_layer(layer_surface, window);
+    meta_wayland_shell_surface_set_window(META_WAYLAND_SHELL_SURFACE(layer_surface), window);
 }
 
-static void
-layer_shell_destroy (struct wl_client   *client,
-                     struct wl_resource *resource)
-{
-  wl_resource_destroy (resource);
+static void layer_shell_destroy(struct wl_client* client, struct wl_resource* resource) {
+    wl_resource_destroy(resource);
 }
 
 static const struct zwlr_layer_shell_v1_interface layer_shell_implementation = {
-  .get_layer_surface = layer_shell_get_layer_surface,
-  .destroy = layer_shell_destroy,
+    .get_layer_surface = layer_shell_get_layer_surface,
+    .destroy = layer_shell_destroy,
 };
 
-static void
-bind_layer_shell (struct wl_client *client,
-                  void             *data,
-                  uint32_t          version,
-                  uint32_t          id)
-{
-  struct wl_resource *resource;
+static void bind_layer_shell(struct wl_client* client, void* data, uint32_t version, uint32_t id) {
+    struct wl_resource* resource;
 
-  resource = wl_resource_create (client, &zwlr_layer_shell_v1_interface,
-                                 version, id);
-  wl_resource_set_implementation (resource, &layer_shell_implementation,
-                                  data, NULL);
+    resource = wl_resource_create(client, &zwlr_layer_shell_v1_interface, version, id);
+    wl_resource_set_implementation(resource, &layer_shell_implementation, data, NULL);
 }
 
-void
-meta_wayland_init_layer_shell (MetaWaylandCompositor *compositor)
-{
-  if (!gnoblin_config_protocol_enabled ("wlr-layer-shell"))
-    {
-      g_message ("Gnoblin wlr-layer-shell protocol disabled by settings");
-      return;
+void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
+    if (!gnoblin_config_protocol_enabled("wlr-layer-shell")) {
+        g_message("Gnoblin wlr-layer-shell protocol disabled by settings");
+        return;
     }
 
-  if (wl_global_create (compositor->wayland_display,
-                        &zwlr_layer_shell_v1_interface,
-                        META_WLR_LAYER_SHELL_V1_VERSION,
-                        compositor, bind_layer_shell) == NULL)
-    g_error ("Failed to register a global zwlr_layer_shell_v1 object");
+    if (wl_global_create(compositor->wayland_display, &zwlr_layer_shell_v1_interface,
+                         META_WLR_LAYER_SHELL_V1_VERSION, compositor, bind_layer_shell) == NULL)
+        g_error("Failed to register a global zwlr_layer_shell_v1 object");
 }

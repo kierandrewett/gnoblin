@@ -33,13 +33,19 @@ DROPIN="$UNIT_DIR/gnome-session@gnoblin.target.d/gnoblin.conf"
 USER_DROPIN="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
 
 for f in "$TARGET" "$SERVICE" "$DESKTOP" "$SESSION" "$DROPIN"; do
-  [ -f "$f" ] || { echo "missing $f -- run ./scripts/install-session.sh $PREFIX first" >&2; exit 1; }
+    [ -f "$f" ] || {
+        echo "missing $f -- run ./scripts/install-session.sh $PREFIX first" >&2
+        exit 1
+    }
 done
 
-command -v systemctl >/dev/null 2>&1 || { echo "systemctl not found -- this needs a systemd user session" >&2; exit 1; }
+command -v systemctl >/dev/null 2>&1 || {
+    echo "systemctl not found -- this needs a systemd user session" >&2
+    exit 1
+}
 if [ -e "$USER_DROPIN" ] && [ ! -L "$USER_DROPIN" ]; then
-  echo "Existing custom drop-in at $USER_DROPIN; move it aside before registering Gnoblin." >&2
-  exit 1
+    echo "Existing custom drop-in at $USER_DROPIN; move it aside before registering Gnoblin." >&2
+    exit 1
 fi
 
 echo ">> linking gnoblin's systemd --user units (does not touch org.gnome.Shell*):"

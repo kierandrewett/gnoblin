@@ -22,7 +22,7 @@ gnoblin_env_validate_install_prefix() {
     local prefix
     prefix="$(realpath -m -- "${1:?prefix required}")" || return
     case "$prefix" in
-        /|/usr|/usr/local|/bin|/sbin|/lib|/lib64)
+        / | /usr | /usr/local | /bin | /sbin | /lib | /lib64)
             echo "Refusing shared system prefix $prefix; use a private directory such as ./install or /usr/lib/gnoblin." >&2
             return 2
             ;;
@@ -33,7 +33,7 @@ gnoblin_env_validate_libdir() {
     local libdir="${1-}"
 
     case "$libdir" in
-        ""|..|/*|../*|*/../*|*/..)
+        "" | .. | /* | ../* | */../* | */..)
             echo "invalid GNOBLIN_LIBDIR (must stay below the prefix): $libdir" >&2
             return 2
             ;;
@@ -45,7 +45,7 @@ gnoblin_env_apply() {
     local libdir="${2:-${GNOBLIN_LIBDIR:-}}"
 
     if [ -z "$libdir" ] && [ -r "$prefix/libexec/gnoblin-libdir" ]; then
-        IFS= read -r libdir < "$prefix/libexec/gnoblin-libdir"
+        IFS= read -r libdir <"$prefix/libexec/gnoblin-libdir"
     fi
     libdir="${libdir:-lib64}"
 

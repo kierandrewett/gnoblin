@@ -19,7 +19,10 @@ PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1280x800}"
 
-[ -x "$SHELL_BIN" ] || { echo "no gnome-shell in $PREFIX — build first" >&2; exit 1; }
+[ -x "$SHELL_BIN" ] || {
+    echo "no gnome-shell in $PREFIX — build first" >&2
+    exit 1
+}
 
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
@@ -34,7 +37,7 @@ SCREEN_GRANT_ID="$(printf '%064x' 1).grant"
 REMOTE_GRANT_ID="$(printf '%064x' 2).grant"
 export SCREEN_GRANT_ID REMOTE_GRANT_ID
 mkdir -p "$DK/data/gnoblin/portal-grants"/{screen-cast,remote-desktop}
-cat > "$DK/data/gnoblin/portal-grants/screen-cast/$SCREEN_GRANT_ID" <<'EOF'
+cat >"$DK/data/gnoblin/portal-grants/screen-cast/$SCREEN_GRANT_ID" <<'EOF'
 [Grant]
 version=1
 portal=screen-cast
@@ -43,7 +46,7 @@ device-types=0
 clipboard-enabled=false
 streams=[(uint32 0, uint32 1, <'monitor-A'>)]
 EOF
-cat > "$DK/data/gnoblin/portal-grants/remote-desktop/$REMOTE_GRANT_ID" <<'EOF'
+cat >"$DK/data/gnoblin/portal-grants/remote-desktop/$REMOTE_GRANT_ID" <<'EOF'
 [Grant]
 version=1
 portal=remote-desktop
@@ -56,12 +59,12 @@ export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=dconf GTK_A11Y=no
 export DISP="gnoblin-dbus-$$" SHELL_LOG="$DK/shell.log"
 
 cleanup() {
-  for proc in /proc/[0-9]*; do
-    e="$({ tr '\0' '\n' < "$proc/environ"; } 2>/dev/null || true)"
-    case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
-  done
-  [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" dbus-last.log 2>/dev/null || true
-  rm -rf "$DK"
+    for proc in /proc/[0-9]*; do
+        e="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
+        case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
+    done
+    [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" dbus-last.log 2>/dev/null || true
+    rm -rf "$DK"
 }
 trap cleanup EXIT INT TERM HUP
 

@@ -59,7 +59,7 @@ read_wrap_git_value() {
         value="${value%"${value##*[![:space:]]}"}"
         printf '%s\n' "$value"
         return
-    done < "$wrap"
+    done <"$wrap"
 }
 
 list_required_subproject() {
@@ -71,7 +71,6 @@ list_required_subproject() {
         echo "missing required Meson wrap: $wrap" >&2
         exit 1
     fi
-
 
     directory="$(read_wrap_git_value "$wrap" directory || true)"
     revision="$(read_wrap_git_value "$wrap" revision || true)"
@@ -98,7 +97,6 @@ list_required_subproject() {
     elif [ "$PREPARE" = true ]; then
         meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2
     fi
-
 
     repository_root="$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)"
     if [ "$repository_root" != "$dependency_root" ]; then

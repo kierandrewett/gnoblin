@@ -40,615 +40,506 @@
 
 #define META_WLR_FOREIGN_TOPLEVEL_MANAGEMENT_VERSION 3
 
-typedef struct _MetaWaylandForeignToplevelManager
-{
-  struct wl_resource *resource;
-  MetaDisplay *display;
-  gulong window_created_id;
-  gboolean stopped;
-  GHashTable *handles; /* MetaWindow* -> MetaWaylandForeignToplevelHandle* */
+typedef struct _MetaWaylandForeignToplevelManager {
+    struct wl_resource* resource;
+    MetaDisplay* display;
+    gulong window_created_id;
+    gboolean stopped;
+    GHashTable* handles; /* MetaWindow* -> MetaWaylandForeignToplevelHandle* */
 } MetaWaylandForeignToplevelManager;
 
-typedef struct _MetaWaylandForeignToplevelHandle
-{
-  struct wl_resource *resource;
-  MetaWaylandForeignToplevelManager *manager; /* NULL once manager gone */
-  MetaWindow *window;                         /* NULL once unmanaged */
-  gulong unmanaged_id;
-  gulong notify_title_id;
-  gulong notify_wm_class_id;
-  gulong notify_gtk_app_id_id;
-  gulong notify_minimized_id;
-  gulong notify_maximized_h_id;
-  gulong notify_maximized_v_id;
-  gulong notify_fullscreen_id;
-  gulong notify_focus_id;
-  char *last_title;
-  char *last_app_id;
-  uint32_t last_state;
-  gboolean title_sent;
-  gboolean app_id_sent;
-  gboolean state_sent;
-  MetaWaylandSurface *target_surface;
-  MetaWindow *target_window;
-  MtkRectangle target_rect;
-  gulong target_destroy_id;
-  gulong target_position_id;
-  gulong target_size_id;
-  gulong target_window_id;
-  ClutterActor *target_actor;
-  gulong target_allocation_id;
+typedef struct _MetaWaylandForeignToplevelHandle {
+    struct wl_resource* resource;
+    MetaWaylandForeignToplevelManager* manager; /* NULL once manager gone */
+    MetaWindow* window;                         /* NULL once unmanaged */
+    gulong unmanaged_id;
+    gulong notify_title_id;
+    gulong notify_wm_class_id;
+    gulong notify_gtk_app_id_id;
+    gulong notify_minimized_id;
+    gulong notify_maximized_h_id;
+    gulong notify_maximized_v_id;
+    gulong notify_fullscreen_id;
+    gulong notify_focus_id;
+    char* last_title;
+    char* last_app_id;
+    uint32_t last_state;
+    gboolean title_sent;
+    gboolean app_id_sent;
+    gboolean state_sent;
+    MetaWaylandSurface* target_surface;
+    MetaWindow* target_window;
+    MtkRectangle target_rect;
+    gulong target_destroy_id;
+    gulong target_position_id;
+    gulong target_size_id;
+    gulong target_window_id;
+    ClutterActor* target_actor;
+    gulong target_allocation_id;
 } MetaWaylandForeignToplevelHandle;
 
+static guint32 current_time(MetaWaylandForeignToplevelHandle* handle) {
+    MetaDisplay* display = handle->manager->display;
 
-static guint32
-current_time (MetaWaylandForeignToplevelHandle *handle)
-{
-  MetaDisplay *display = handle->manager->display;
-
-  return meta_display_get_current_time_roundtrip (display);
+    return meta_display_get_current_time_roundtrip(display);
 }
 
-static gboolean
-handle_send_title (MetaWaylandForeignToplevelHandle *handle)
-{
-  const char *title = meta_window_get_title (handle->window);
+static gboolean handle_send_title(MetaWaylandForeignToplevelHandle* handle) {
+    const char* title = meta_window_get_title(handle->window);
 
-  title = title ? title : "";
-  if (handle->title_sent && g_strcmp0 (handle->last_title, title) == 0)
-    return FALSE;
+    title = title ? title : "";
+    if (handle->title_sent && g_strcmp0(handle->last_title, title) == 0)
+        return FALSE;
 
-  g_free (handle->last_title);
-  handle->last_title = g_strdup (title);
-  handle->title_sent = TRUE;
-  zwlr_foreign_toplevel_handle_v1_send_title (handle->resource,
-                                              title);
-  return TRUE;
+    g_free(handle->last_title);
+    handle->last_title = g_strdup(title);
+    handle->title_sent = TRUE;
+    zwlr_foreign_toplevel_handle_v1_send_title(handle->resource, title);
+    return TRUE;
 }
 
-static gboolean
-handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
-{
-  const char *app_id =
-    meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
+static gboolean handle_send_app_id(MetaWaylandForeignToplevelHandle* handle) {
+    const char* app_id = meta_gnoblin_foreign_toplevel_window_app_id(handle->window);
 
-  if (handle->app_id_sent && g_strcmp0 (handle->last_app_id, app_id) == 0)
-    return FALSE;
+    if (handle->app_id_sent && g_strcmp0(handle->last_app_id, app_id) == 0)
+        return FALSE;
 
-  g_free (handle->last_app_id);
-  handle->last_app_id = g_strdup (app_id);
-  handle->app_id_sent = TRUE;
-  zwlr_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
-  return TRUE;
+    g_free(handle->last_app_id);
+    handle->last_app_id = g_strdup(app_id);
+    handle->app_id_sent = TRUE;
+    zwlr_foreign_toplevel_handle_v1_send_app_id(handle->resource, app_id);
+    return TRUE;
 }
 
-static gboolean
-handle_send_state (MetaWaylandForeignToplevelHandle *handle)
-{
-  struct wl_array states;
-  gboolean minimized = FALSE;
-  uint32_t *entry;
-  uint32_t state = 0;
+static gboolean handle_send_state(MetaWaylandForeignToplevelHandle* handle) {
+    struct wl_array states;
+    gboolean minimized = FALSE;
+    uint32_t* entry;
+    uint32_t state = 0;
 
-  g_object_get (handle->window, "minimized", &minimized, NULL);
+    g_object_get(handle->window, "minimized", &minimized, NULL);
 
-  if (meta_window_get_maximize_flags (handle->window) == META_MAXIMIZE_BOTH)
-    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
-  if (minimized)
-    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
-  if (meta_window_has_focus (handle->window))
-    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
-  if (meta_window_is_fullscreen (handle->window))
-    state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
+    if (meta_window_get_maximize_flags(handle->window) == META_MAXIMIZE_BOTH)
+        state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+    if (minimized)
+        state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
+    if (meta_window_has_focus(handle->window))
+        state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
+    if (meta_window_is_fullscreen(handle->window))
+        state |= 1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
 
-  if (handle->state_sent && handle->last_state == state)
-    return FALSE;
+    if (handle->state_sent && handle->last_state == state)
+        return FALSE;
 
-  handle->last_state = state;
-  handle->state_sent = TRUE;
+    handle->last_state = state;
+    handle->state_sent = TRUE;
 
-  wl_array_init (&states);
+    wl_array_init(&states);
 
-  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED))
-    {
-      entry = wl_array_add (&states, sizeof *entry);
-      *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+    if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)) {
+        entry = wl_array_add(&states, sizeof *entry);
+        *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
     }
-  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED))
-    {
-      entry = wl_array_add (&states, sizeof *entry);
-      *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
+    if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)) {
+        entry = wl_array_add(&states, sizeof *entry);
+        *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
     }
-  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED))
-    {
-      entry = wl_array_add (&states, sizeof *entry);
-      *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
+    if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)) {
+        entry = wl_array_add(&states, sizeof *entry);
+        *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
     }
-  if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN))
-    {
-      entry = wl_array_add (&states, sizeof *entry);
-      *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
+    if (state & (1u << ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)) {
+        entry = wl_array_add(&states, sizeof *entry);
+        *entry = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
     }
 
-  zwlr_foreign_toplevel_handle_v1_send_state (handle->resource, &states);
-  wl_array_release (&states);
-  return TRUE;
+    zwlr_foreign_toplevel_handle_v1_send_state(handle->resource, &states);
+    wl_array_release(&states);
+    return TRUE;
 }
 
-static void
-on_notify_title (GObject *o, GParamSpec *p, gpointer user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_notify_title(GObject* o, GParamSpec* p, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  if (!handle->window)
-    return;
-  if (handle_send_title (handle))
-    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+    if (!handle->window)
+        return;
+    if (handle_send_title(handle))
+        zwlr_foreign_toplevel_handle_v1_send_done(handle->resource);
 }
 
-static void
-on_notify_app_id (GObject *o, GParamSpec *p, gpointer user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_notify_app_id(GObject* o, GParamSpec* p, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  if (!handle->window)
-    return;
-  if (handle_send_app_id (handle))
-    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+    if (!handle->window)
+        return;
+    if (handle_send_app_id(handle))
+        zwlr_foreign_toplevel_handle_v1_send_done(handle->resource);
 }
 
-static void
-on_notify_state (GObject *o, GParamSpec *p, gpointer user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_notify_state(GObject* o, GParamSpec* p, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  if (!handle->window)
-    return;
-  if (handle_send_state (handle))
-    zwlr_foreign_toplevel_handle_v1_send_done (handle->resource);
+    if (!handle->window)
+        return;
+    if (handle_send_state(handle))
+        zwlr_foreign_toplevel_handle_v1_send_done(handle->resource);
 }
 
 #define TARGET_OWNER "gnoblin-minimize-target-owner"
 
-static void
-update_target (MetaWaylandForeignToplevelHandle *handle)
-{
-  MetaWindow *dock;
-  float x1, y1, x2, y2;
-  MtkRectangle rect;
-  if (!handle->window || !handle->target_surface ||
-      g_object_get_data (G_OBJECT (handle->window), TARGET_OWNER) != handle)
-    return;
-  dock = meta_wayland_surface_get_window (handle->target_surface);
-  if (!dock || !meta_window_get_compositor_private (dock) ||
-      !meta_wayland_surface_get_actor (handle->target_surface))
-    {
-      meta_window_set_icon_geometry (handle->window, NULL);
-      return;
+static void update_target(MetaWaylandForeignToplevelHandle* handle) {
+    MetaWindow* dock;
+    float x1, y1, x2, y2;
+    MtkRectangle rect;
+    if (!handle->window || !handle->target_surface ||
+        g_object_get_data(G_OBJECT(handle->window), TARGET_OWNER) != handle)
+        return;
+    dock = meta_wayland_surface_get_window(handle->target_surface);
+    if (!dock || !meta_window_get_compositor_private(dock) ||
+        !meta_wayland_surface_get_actor(handle->target_surface)) {
+        meta_window_set_icon_geometry(handle->window, NULL);
+        return;
     }
-  meta_wayland_surface_get_absolute_coordinates (handle->target_surface,
-      handle->target_rect.x, handle->target_rect.y, &x1, &y1);
-  meta_wayland_surface_get_absolute_coordinates (handle->target_surface,
-      (float) handle->target_rect.x + handle->target_rect.width,
-      (float) handle->target_rect.y + handle->target_rect.height, &x2, &y2);
-  if (!isfinite (x1) || !isfinite (y1) || !isfinite (x2) || !isfinite (y2) ||
-      fabs (x1) > G_MAXINT / 2 || fabs (y1) > G_MAXINT / 2 ||
-      fabs (x2) > G_MAXINT / 2 || fabs (y2) > G_MAXINT / 2)
-    return;
-  rect = (MtkRectangle) { (int) floorf (x1), (int) floorf (y1),
-                         (int) MAX (0, ceilf (x2) - floorf (x1)),
-                         (int) MAX (0, ceilf (y2) - floorf (y1)) };
-  meta_window_set_icon_geometry (handle->window, &rect);
+    meta_wayland_surface_get_absolute_coordinates(handle->target_surface, handle->target_rect.x,
+                                                  handle->target_rect.y, &x1, &y1);
+    meta_wayland_surface_get_absolute_coordinates(
+        handle->target_surface, (float)handle->target_rect.x + handle->target_rect.width,
+        (float)handle->target_rect.y + handle->target_rect.height, &x2, &y2);
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2) ||
+        fabs(x1) > G_MAXINT / 2 || fabs(y1) > G_MAXINT / 2 || fabs(x2) > G_MAXINT / 2 ||
+        fabs(y2) > G_MAXINT / 2)
+        return;
+    rect = (MtkRectangle){(int)floorf(x1), (int)floorf(y1), (int)MAX(0, ceilf(x2) - floorf(x1)),
+                          (int)MAX(0, ceilf(y2) - floorf(y1))};
+    meta_window_set_icon_geometry(handle->window, &rect);
 }
 
-static void
-clear_target (MetaWaylandForeignToplevelHandle *handle)
-{
-  if (handle->window &&
-      g_object_get_data (G_OBJECT (handle->window), TARGET_OWNER) == handle)
-    {
-      meta_window_set_icon_geometry (handle->window, NULL);
-      g_object_set_data (G_OBJECT (handle->window), TARGET_OWNER, NULL);
+static void clear_target(MetaWaylandForeignToplevelHandle* handle) {
+    if (handle->window && g_object_get_data(G_OBJECT(handle->window), TARGET_OWNER) == handle) {
+        meta_window_set_icon_geometry(handle->window, NULL);
+        g_object_set_data(G_OBJECT(handle->window), TARGET_OWNER, NULL);
     }
-  if (handle->target_surface)
-    {
-      g_clear_signal_handler (&handle->target_destroy_id, handle->target_surface);
-      g_clear_signal_handler (&handle->target_window_id, handle->target_surface);
+    if (handle->target_surface) {
+        g_clear_signal_handler(&handle->target_destroy_id, handle->target_surface);
+        g_clear_signal_handler(&handle->target_window_id, handle->target_surface);
     }
-  if (handle->target_window)
-    {
-      g_clear_signal_handler (&handle->target_position_id, handle->target_window);
-      g_clear_signal_handler (&handle->target_size_id, handle->target_window);
+    if (handle->target_window) {
+        g_clear_signal_handler(&handle->target_position_id, handle->target_window);
+        g_clear_signal_handler(&handle->target_size_id, handle->target_window);
     }
-  if (handle->target_actor)
-    g_clear_signal_handler (&handle->target_allocation_id, handle->target_actor);
-  g_clear_object (&handle->target_actor);
-  handle->target_surface = NULL;
-  g_clear_object (&handle->target_window);
+    if (handle->target_actor)
+        g_clear_signal_handler(&handle->target_allocation_id, handle->target_actor);
+    g_clear_object(&handle->target_actor);
+    handle->target_surface = NULL;
+    g_clear_object(&handle->target_window);
 }
 
-static void
-on_target_destroy (MetaWaylandSurface *surface, gpointer data)
-{
-  clear_target (data);
+static void on_target_destroy(MetaWaylandSurface* surface, gpointer data) {
+    clear_target(data);
 }
 
-static void
-on_target_geometry (MetaWindow *window, gpointer data)
-{
-  update_target (data);
+static void on_target_geometry(MetaWindow* window, gpointer data) {
+    update_target(data);
 }
 
-static void
-on_target_allocation (GObject *actor, GParamSpec *pspec, gpointer data)
-{
-  update_target (data);
+static void on_target_allocation(GObject* actor, GParamSpec* pspec, gpointer data) {
+    update_target(data);
 }
 
-static void
-on_target_window (GObject *surface, GParamSpec *pspec, gpointer data)
-{
-  MetaWaylandForeignToplevelHandle *handle = data;
-  if (handle->target_window)
-    {
-      g_clear_signal_handler (&handle->target_position_id, handle->target_window);
-      g_clear_signal_handler (&handle->target_size_id, handle->target_window);
+static void on_target_window(GObject* surface, GParamSpec* pspec, gpointer data) {
+    MetaWaylandForeignToplevelHandle* handle = data;
+    if (handle->target_window) {
+        g_clear_signal_handler(&handle->target_position_id, handle->target_window);
+        g_clear_signal_handler(&handle->target_size_id, handle->target_window);
     }
-  if (handle->target_actor)
-    g_clear_signal_handler (&handle->target_allocation_id, handle->target_actor);
-  g_clear_object (&handle->target_actor);
-  g_set_object (&handle->target_window,
-                meta_wayland_surface_get_window (handle->target_surface));
-  if (handle->target_window)
-    {
-      g_set_object (&handle->target_actor,
-                    CLUTTER_ACTOR (meta_window_get_compositor_private (handle->target_window)));
-      if (handle->target_actor)
-        handle->target_allocation_id = g_signal_connect (handle->target_actor,
-            "notify::allocation", G_CALLBACK (on_target_allocation), handle);
-      handle->target_position_id = g_signal_connect (handle->target_window,
-          "position-changed", G_CALLBACK (on_target_geometry), handle);
-      handle->target_size_id = g_signal_connect (handle->target_window,
-          "size-changed", G_CALLBACK (on_target_geometry), handle);
+    if (handle->target_actor)
+        g_clear_signal_handler(&handle->target_allocation_id, handle->target_actor);
+    g_clear_object(&handle->target_actor);
+    g_set_object(&handle->target_window, meta_wayland_surface_get_window(handle->target_surface));
+    if (handle->target_window) {
+        g_set_object(&handle->target_actor,
+                     CLUTTER_ACTOR(meta_window_get_compositor_private(handle->target_window)));
+        if (handle->target_actor)
+            handle->target_allocation_id =
+                g_signal_connect(handle->target_actor, "notify::allocation",
+                                 G_CALLBACK(on_target_allocation), handle);
+        handle->target_position_id = g_signal_connect(handle->target_window, "position-changed",
+                                                      G_CALLBACK(on_target_geometry), handle);
+        handle->target_size_id = g_signal_connect(handle->target_window, "size-changed",
+                                                  G_CALLBACK(on_target_geometry), handle);
     }
-  update_target (handle);
+    update_target(handle);
 }
 
-static void
-handle_disconnect_window (MetaWaylandForeignToplevelHandle *handle)
-{
-  clear_target (handle);
-  if (!handle->window)
-    return;
+static void handle_disconnect_window(MetaWaylandForeignToplevelHandle* handle) {
+    clear_target(handle);
+    if (!handle->window)
+        return;
 
-  g_clear_signal_handler (&handle->unmanaged_id, handle->window);
-  g_clear_signal_handler (&handle->notify_title_id, handle->window);
-  g_clear_signal_handler (&handle->notify_wm_class_id, handle->window);
-  g_clear_signal_handler (&handle->notify_gtk_app_id_id, handle->window);
-  g_clear_signal_handler (&handle->notify_minimized_id, handle->window);
-  g_clear_signal_handler (&handle->notify_maximized_h_id, handle->window);
-  g_clear_signal_handler (&handle->notify_maximized_v_id, handle->window);
-  g_clear_signal_handler (&handle->notify_fullscreen_id, handle->window);
-  g_clear_signal_handler (&handle->notify_focus_id, handle->window);
+    g_clear_signal_handler(&handle->unmanaged_id, handle->window);
+    g_clear_signal_handler(&handle->notify_title_id, handle->window);
+    g_clear_signal_handler(&handle->notify_wm_class_id, handle->window);
+    g_clear_signal_handler(&handle->notify_gtk_app_id_id, handle->window);
+    g_clear_signal_handler(&handle->notify_minimized_id, handle->window);
+    g_clear_signal_handler(&handle->notify_maximized_h_id, handle->window);
+    g_clear_signal_handler(&handle->notify_maximized_v_id, handle->window);
+    g_clear_signal_handler(&handle->notify_fullscreen_id, handle->window);
+    g_clear_signal_handler(&handle->notify_focus_id, handle->window);
 
-  if (handle->manager)
-    g_hash_table_remove (handle->manager->handles, handle->window);
-  handle->window = NULL;
+    if (handle->manager)
+        g_hash_table_remove(handle->manager->handles, handle->window);
+    handle->window = NULL;
 }
 
-static void
-on_window_unmanaged (MetaWindow *window, gpointer user_data)
-{
-  MetaWaylandForeignToplevelHandle *handle = user_data;
+static void on_window_unmanaged(MetaWindow* window, gpointer user_data) {
+    MetaWaylandForeignToplevelHandle* handle = user_data;
 
-  handle_disconnect_window (handle);
-  zwlr_foreign_toplevel_handle_v1_send_closed (handle->resource);
+    handle_disconnect_window(handle);
+    zwlr_foreign_toplevel_handle_v1_send_closed(handle->resource);
 }
 
 /* requests */
 
-static void
-handle_set_maximized (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_maximize (handle->window);
+static void handle_set_maximized(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_maximize(handle->window);
 }
 
-static void
-handle_unset_maximized (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_unmaximize (handle->window);
+static void handle_unset_maximized(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_unmaximize(handle->window);
 }
 
-static void
-handle_set_minimized (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_minimize (handle->window);
+static void handle_set_minimized(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_minimize(handle->window);
 }
 
-static void
-handle_unset_minimized (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_unminimize (handle->window);
+static void handle_unset_minimized(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_unminimize(handle->window);
 }
 
-static void
-handle_activate (struct wl_client   *c,
-                 struct wl_resource *resource,
-                 struct wl_resource *seat_resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_activate (handle->window, current_time (handle));
+static void handle_activate(struct wl_client* c, struct wl_resource* resource,
+                            struct wl_resource* seat_resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_activate(handle->window, current_time(handle));
 }
 
-static void
-handle_close (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_delete (handle->window, current_time (handle));
+static void handle_close(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_delete(handle->window, current_time(handle));
 }
 
-static void
-handle_set_rectangle (struct wl_client   *c,
-                      struct wl_resource *resource,
-                      struct wl_resource *surface,
-                      int32_t x, int32_t y, int32_t width, int32_t height)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (width < 0 || height < 0)
-    {
-      wl_resource_post_error (resource,
-          ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_ERROR_INVALID_RECTANGLE,
-          "rectangle dimensions must not be negative");
-      return;
+static void handle_set_rectangle(struct wl_client* c, struct wl_resource* resource,
+                                 struct wl_resource* surface, int32_t x, int32_t y, int32_t width,
+                                 int32_t height) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (width < 0 || height < 0) {
+        wl_resource_post_error(resource, ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_ERROR_INVALID_RECTANGLE,
+                               "rectangle dimensions must not be negative");
+        return;
     }
-  clear_target (handle);
-  if (!handle->window || (width == 0 && height == 0))
-    return;
-  handle->target_surface = wl_resource_get_user_data (surface);
-  handle->target_rect = (MtkRectangle) { x, y, width, height };
-  g_object_set_data (G_OBJECT (handle->window), TARGET_OWNER, handle);
-  handle->target_destroy_id = g_signal_connect (handle->target_surface,
-      "destroy", G_CALLBACK (on_target_destroy), handle);
-  handle->target_window_id = g_signal_connect (handle->target_surface,
-      "notify::window", G_CALLBACK (on_target_window), handle);
-  on_target_window (G_OBJECT (handle->target_surface), NULL, handle);
+    clear_target(handle);
+    if (!handle->window || (width == 0 && height == 0))
+        return;
+    handle->target_surface = wl_resource_get_user_data(surface);
+    handle->target_rect = (MtkRectangle){x, y, width, height};
+    g_object_set_data(G_OBJECT(handle->window), TARGET_OWNER, handle);
+    handle->target_destroy_id =
+        g_signal_connect(handle->target_surface, "destroy", G_CALLBACK(on_target_destroy), handle);
+    handle->target_window_id = g_signal_connect(handle->target_surface, "notify::window",
+                                                G_CALLBACK(on_target_window), handle);
+    on_target_window(G_OBJECT(handle->target_surface), NULL, handle);
 }
 
-static void
-handle_set_fullscreen (struct wl_client   *c,
-                       struct wl_resource *resource,
-                       struct wl_resource *output)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_make_fullscreen (handle->window);
+static void handle_set_fullscreen(struct wl_client* c, struct wl_resource* resource,
+                                  struct wl_resource* output) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_make_fullscreen(handle->window);
 }
 
-static void
-handle_unset_fullscreen (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
-  if (handle->window)
-    meta_window_unmake_fullscreen (handle->window);
+static void handle_unset_fullscreen(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
+    if (handle->window)
+        meta_window_unmake_fullscreen(handle->window);
 }
 
-static void
-handle_handle_destroy (struct wl_client *c, struct wl_resource *resource)
-{
-  wl_resource_destroy (resource);
+static void handle_handle_destroy(struct wl_client* c, struct wl_resource* resource) {
+    wl_resource_destroy(resource);
 }
 
 static const struct zwlr_foreign_toplevel_handle_v1_interface handle_interface = {
-  handle_set_maximized,
-  handle_unset_maximized,
-  handle_set_minimized,
-  handle_unset_minimized,
-  handle_activate,
-  handle_close,
-  handle_set_rectangle,
-  handle_handle_destroy,
-  handle_set_fullscreen,
-  handle_unset_fullscreen,
+    handle_set_maximized,    handle_unset_maximized, handle_set_minimized,
+    handle_unset_minimized,  handle_activate,        handle_close,
+    handle_set_rectangle,    handle_handle_destroy,  handle_set_fullscreen,
+    handle_unset_fullscreen,
 };
 
-static void
-handle_destroy (struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelHandle *handle = wl_resource_get_user_data (resource);
+static void handle_destroy(struct wl_resource* resource) {
+    MetaWaylandForeignToplevelHandle* handle = wl_resource_get_user_data(resource);
 
-  handle_disconnect_window (handle);
-  g_free (handle->last_title);
-  g_free (handle->last_app_id);
-  g_free (handle);
+    handle_disconnect_window(handle);
+    g_free(handle->last_title);
+    g_free(handle->last_app_id);
+    g_free(handle);
 }
 
-static void
-toplevel_management_advertise (MetaWaylandForeignToplevelManager *manager,
-                               MetaWindow                        *window)
-{
-  struct wl_client *client = wl_resource_get_client (manager->resource);
-  MetaWaylandForeignToplevelHandle *handle;
-  struct wl_resource *resource;
-  MetaWindow *parent;
+static void toplevel_management_advertise(MetaWaylandForeignToplevelManager* manager,
+                                          MetaWindow* window) {
+    struct wl_client* client = wl_resource_get_client(manager->resource);
+    MetaWaylandForeignToplevelHandle* handle;
+    struct wl_resource* resource;
+    MetaWindow* parent;
 
-  resource = wl_resource_create (client,
-                                 &zwlr_foreign_toplevel_handle_v1_interface,
-                                 wl_resource_get_version (manager->resource), 0);
-  if (!resource)
-    {
-      wl_client_post_no_memory (client);
-      return;
+    resource = wl_resource_create(client, &zwlr_foreign_toplevel_handle_v1_interface,
+                                  wl_resource_get_version(manager->resource), 0);
+    if (!resource) {
+        wl_client_post_no_memory(client);
+        return;
     }
 
-  handle = g_new0 (MetaWaylandForeignToplevelHandle, 1);
-  handle->resource = resource;
-  handle->manager = manager;
-  handle->window = window;
-  wl_resource_set_implementation (resource, &handle_interface, handle,
-                                  handle_destroy);
+    handle = g_new0(MetaWaylandForeignToplevelHandle, 1);
+    handle->resource = resource;
+    handle->manager = manager;
+    handle->window = window;
+    wl_resource_set_implementation(resource, &handle_interface, handle, handle_destroy);
 
-  g_hash_table_insert (manager->handles, window, handle);
+    g_hash_table_insert(manager->handles, window, handle);
 
-  zwlr_foreign_toplevel_manager_v1_send_toplevel (manager->resource, resource);
+    zwlr_foreign_toplevel_manager_v1_send_toplevel(manager->resource, resource);
 
-  handle_send_title (handle);
-  handle_send_app_id (handle);
-  handle_send_state (handle);
+    handle_send_title(handle);
+    handle_send_app_id(handle);
+    handle_send_state(handle);
 
-  if (wl_resource_get_version (resource) >=
-      ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_PARENT_SINCE_VERSION)
-    {
-      MetaWaylandForeignToplevelHandle *parent_handle = NULL;
+    if (wl_resource_get_version(resource) >= ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_PARENT_SINCE_VERSION) {
+        MetaWaylandForeignToplevelHandle* parent_handle = NULL;
 
-      parent = meta_window_get_transient_for (window);
-      if (parent)
-        parent_handle = g_hash_table_lookup (manager->handles, parent);
+        parent = meta_window_get_transient_for(window);
+        if (parent)
+            parent_handle = g_hash_table_lookup(manager->handles, parent);
 
-      zwlr_foreign_toplevel_handle_v1_send_parent (
-        resource, parent_handle ? parent_handle->resource : NULL);
+        zwlr_foreign_toplevel_handle_v1_send_parent(resource,
+                                                    parent_handle ? parent_handle->resource : NULL);
     }
 
-  zwlr_foreign_toplevel_handle_v1_send_done (resource);
+    zwlr_foreign_toplevel_handle_v1_send_done(resource);
 
-  handle->unmanaged_id =
-    g_signal_connect (window, "unmanaged", G_CALLBACK (on_window_unmanaged), handle);
-  handle->notify_title_id =
-    g_signal_connect (window, "notify::title", G_CALLBACK (on_notify_title), handle);
-  handle->notify_wm_class_id =
-    g_signal_connect (window, "notify::wm-class", G_CALLBACK (on_notify_app_id), handle);
-  handle->notify_gtk_app_id_id =
-    g_signal_connect (window, "notify::gtk-application-id", G_CALLBACK (on_notify_app_id), handle);
-  handle->notify_minimized_id =
-    g_signal_connect (window, "notify::minimized", G_CALLBACK (on_notify_state), handle);
-  handle->notify_maximized_h_id =
-    g_signal_connect (window, "notify::maximized-horizontally", G_CALLBACK (on_notify_state), handle);
-  handle->notify_maximized_v_id =
-    g_signal_connect (window, "notify::maximized-vertically", G_CALLBACK (on_notify_state), handle);
-  handle->notify_fullscreen_id =
-    g_signal_connect (window, "notify::fullscreen", G_CALLBACK (on_notify_state), handle);
-  handle->notify_focus_id =
-    g_signal_connect (window, "notify::appears-focused", G_CALLBACK (on_notify_state), handle);
+    handle->unmanaged_id =
+        g_signal_connect(window, "unmanaged", G_CALLBACK(on_window_unmanaged), handle);
+    handle->notify_title_id =
+        g_signal_connect(window, "notify::title", G_CALLBACK(on_notify_title), handle);
+    handle->notify_wm_class_id =
+        g_signal_connect(window, "notify::wm-class", G_CALLBACK(on_notify_app_id), handle);
+    handle->notify_gtk_app_id_id = g_signal_connect(window, "notify::gtk-application-id",
+                                                    G_CALLBACK(on_notify_app_id), handle);
+    handle->notify_minimized_id =
+        g_signal_connect(window, "notify::minimized", G_CALLBACK(on_notify_state), handle);
+    handle->notify_maximized_h_id = g_signal_connect(window, "notify::maximized-horizontally",
+                                                     G_CALLBACK(on_notify_state), handle);
+    handle->notify_maximized_v_id = g_signal_connect(window, "notify::maximized-vertically",
+                                                     G_CALLBACK(on_notify_state), handle);
+    handle->notify_fullscreen_id =
+        g_signal_connect(window, "notify::fullscreen", G_CALLBACK(on_notify_state), handle);
+    handle->notify_focus_id =
+        g_signal_connect(window, "notify::appears-focused", G_CALLBACK(on_notify_state), handle);
 }
 
-static void
-on_window_created (MetaDisplay *display, MetaWindow *window, gpointer user_data)
-{
-  MetaWaylandForeignToplevelManager *manager = user_data;
+static void on_window_created(MetaDisplay* display, MetaWindow* window, gpointer user_data) {
+    MetaWaylandForeignToplevelManager* manager = user_data;
 
-  if (manager->stopped)
-    return;
-  if (!meta_gnoblin_foreign_toplevel_window_is_exposable (window))
-    return;
+    if (manager->stopped)
+        return;
+    if (!meta_gnoblin_foreign_toplevel_window_is_exposable(window))
+        return;
 
-  toplevel_management_advertise (manager, window);
+    toplevel_management_advertise(manager, window);
 }
 
-static void
-manager_handle_stop (struct wl_client *c, struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelManager *manager = wl_resource_get_user_data (resource);
+static void manager_handle_stop(struct wl_client* c, struct wl_resource* resource) {
+    MetaWaylandForeignToplevelManager* manager = wl_resource_get_user_data(resource);
 
-  if (manager->stopped)
-    return;
+    if (manager->stopped)
+        return;
 
-  manager->stopped = TRUE;
-  g_clear_signal_handler (&manager->window_created_id, manager->display);
-  zwlr_foreign_toplevel_manager_v1_send_finished (resource);
-  wl_resource_destroy (resource);
+    manager->stopped = TRUE;
+    g_clear_signal_handler(&manager->window_created_id, manager->display);
+    zwlr_foreign_toplevel_manager_v1_send_finished(resource);
+    wl_resource_destroy(resource);
 }
 
 static const struct zwlr_foreign_toplevel_manager_v1_interface manager_interface = {
-  manager_handle_stop,
+    manager_handle_stop,
 };
 
-static void
-manager_destroy (struct wl_resource *resource)
-{
-  MetaWaylandForeignToplevelManager *manager = wl_resource_get_user_data (resource);
-  GList *handles, *l;
+static void manager_destroy(struct wl_resource* resource) {
+    MetaWaylandForeignToplevelManager* manager = wl_resource_get_user_data(resource);
+    GList *handles, *l;
 
-  g_clear_signal_handler (&manager->window_created_id, manager->display);
+    g_clear_signal_handler(&manager->window_created_id, manager->display);
 
-  /* Detach surviving handles so their destructors do not touch freed state. */
-  handles = g_hash_table_get_values (manager->handles);
-  for (l = handles; l; l = l->next)
-    {
-      MetaWaylandForeignToplevelHandle *handle = l->data;
-      handle->manager = NULL;
+    /* Detach surviving handles so their destructors do not touch freed state. */
+    handles = g_hash_table_get_values(manager->handles);
+    for (l = handles; l; l = l->next) {
+        MetaWaylandForeignToplevelHandle* handle = l->data;
+        handle->manager = NULL;
     }
-  g_list_free (handles);
-  g_hash_table_destroy (manager->handles);
+    g_list_free(handles);
+    g_hash_table_destroy(manager->handles);
 
-  g_free (manager);
+    g_free(manager);
 }
 
-static void
-bind_foreign_toplevel_manager (struct wl_client *client,
-                               void             *data,
-                               uint32_t          version,
-                               uint32_t          id)
-{
-  MetaWaylandCompositor *compositor = data;
-  MetaContext *context = meta_wayland_compositor_get_context (compositor);
-  MetaDisplay *display = meta_context_get_display (context);
-  MetaWaylandForeignToplevelManager *manager;
-  struct wl_resource *resource;
-  GList *windows, *l;
+static void bind_foreign_toplevel_manager(struct wl_client* client, void* data, uint32_t version,
+                                          uint32_t id) {
+    MetaWaylandCompositor* compositor = data;
+    MetaContext* context = meta_wayland_compositor_get_context(compositor);
+    MetaDisplay* display = meta_context_get_display(context);
+    MetaWaylandForeignToplevelManager* manager;
+    struct wl_resource* resource;
+    GList *windows, *l;
 
-  resource = wl_resource_create (client,
-                                 &zwlr_foreign_toplevel_manager_v1_interface,
-                                 version, id);
-  if (!resource)
-    {
-      wl_client_post_no_memory (client);
-      return;
+    resource = wl_resource_create(client, &zwlr_foreign_toplevel_manager_v1_interface, version, id);
+    if (!resource) {
+        wl_client_post_no_memory(client);
+        return;
     }
 
-  manager = g_new0 (MetaWaylandForeignToplevelManager, 1);
-  manager->resource = resource;
-  manager->display = display;
-  manager->handles = g_hash_table_new (NULL, NULL);
-  wl_resource_set_implementation (resource, &manager_interface, manager,
-                                  manager_destroy);
+    manager = g_new0(MetaWaylandForeignToplevelManager, 1);
+    manager->resource = resource;
+    manager->display = display;
+    manager->handles = g_hash_table_new(NULL, NULL);
+    wl_resource_set_implementation(resource, &manager_interface, manager, manager_destroy);
 
-  manager->window_created_id =
-    g_signal_connect (display, "window-created",
-                      G_CALLBACK (on_window_created), manager);
+    manager->window_created_id =
+        g_signal_connect(display, "window-created", G_CALLBACK(on_window_created), manager);
 
-  windows = meta_display_list_all_windows (display);
-  for (l = windows; l; l = l->next)
-    {
-      MetaWindow *window = l->data;
+    windows = meta_display_list_all_windows(display);
+    for (l = windows; l; l = l->next) {
+        MetaWindow* window = l->data;
 
-      if (meta_gnoblin_foreign_toplevel_window_is_exposable (window))
-        toplevel_management_advertise (manager, window);
+        if (meta_gnoblin_foreign_toplevel_window_is_exposable(window))
+            toplevel_management_advertise(manager, window);
     }
-  g_list_free (windows);
+    g_list_free(windows);
 }
 
-void
-meta_wayland_init_foreign_toplevel_management (MetaWaylandCompositor *compositor)
-{
-  if (!gnoblin_config_protocol_enabled ("wlr-foreign-toplevel-management"))
-    {
-      g_message ("Gnoblin wlr-foreign-toplevel-management protocol disabled by settings");
-      return;
+void meta_wayland_init_foreign_toplevel_management(MetaWaylandCompositor* compositor) {
+    if (!gnoblin_config_protocol_enabled("wlr-foreign-toplevel-management")) {
+        g_message("Gnoblin wlr-foreign-toplevel-management protocol disabled by settings");
+        return;
     }
 
-  if (!wl_global_create (compositor->wayland_display,
-                         &zwlr_foreign_toplevel_manager_v1_interface,
-                         META_WLR_FOREIGN_TOPLEVEL_MANAGEMENT_VERSION,
-                         compositor,
-                         bind_foreign_toplevel_manager))
-    g_error ("Failed to register wlr-foreign-toplevel-management global");
+    if (!wl_global_create(compositor->wayland_display, &zwlr_foreign_toplevel_manager_v1_interface,
+                          META_WLR_FOREIGN_TOPLEVEL_MANAGEMENT_VERSION, compositor,
+                          bind_foreign_toplevel_manager))
+        g_error("Failed to register wlr-foreign-toplevel-management global");
 }

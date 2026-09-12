@@ -9,6 +9,7 @@ The probe uses the Gnoblin user-script host. It does not need the unsafe Shell
 Eval interface, so it also proves the normal control path can inspect the
 session after native chrome has been removed.
 """
+
 import ast
 import json
 import os
@@ -17,18 +18,31 @@ import subprocess
 import time
 
 
-assert os.environ.get('WAYLAND_DISPLAY', '').startswith('gnoblin-gs-')
+assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin' / 'scripts'
+SCRIPTS = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "scripts"
 SCRIPTS.mkdir(parents=True, exist_ok=True)
 
 
 def gdbus(service, path, interface, method, *arguments, ok=True, timeout=5):
-    result = subprocess.run([
-        'gdbus', 'call', '--session', '--dest', service, '--object-path', path,
-        '--method', f'{interface}.{method}', *map(str, arguments),
-    ], capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            service,
+            "--object-path",
+            path,
+            "--method",
+            f"{interface}.{method}",
+            *map(str, arguments),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
     assert (result.returncode == 0) == ok, result.stdout + result.stderr
     return result
 
@@ -36,7 +50,7 @@ def gdbus(service, path, interface, method, *arguments, ok=True, timeout=5):
 # The script exposes a small D-Bus test interface. This lets the Python half
 # force a real workspace transition and check the final Shell state without
 # relying on the development-only org.gnome.Shell.Eval method.
-(SCRIPTS / 'native-chrome.js').write_text(r'''
+(SCRIPTS / "native-chrome.js").write_text(r"""
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -204,85 +218,98 @@ export default function (api) {
         Gio.bus_unown_name(owner);
     });
 }
-''')
+""")
 
-gdbus('org.gnoblin.Shell', '/org/gnoblin/Shell', 'org.gnoblin.Shell', 'ReloadScripts')
+gdbus("org.gnoblin.Shell", "/org/gnoblin/Shell", "org.gnoblin.Shell", "ReloadScripts")
 
 
 def state():
     result = gdbus(
-        'org.gnoblin.NativeChromeTest', '/org/gnoblin/NativeChromeTest',
-        'org.gnoblin.NativeChromeTest', 'Inspect')
+        "org.gnoblin.NativeChromeTest", "/org/gnoblin/NativeChromeTest", "org.gnoblin.NativeChromeTest", "Inspect"
+    )
     return json.loads(ast.literal_eval(result.stdout)[0])
 
 
 before = state()
-assert before['runDialog'] and before['welcomeDialog'], before
-assert before['screenshotUI'], before
-assert before['extensionManager'], before
-assert before['osdWindows'] == 0 and before['osdMonitorLabels'] == 0, before
-assert before['workspacePopup'], before
-assert before['backgrounds'], before
-assert all(row['menu'] and row['menuManager'] and row['reactive']
-           for row in before['backgrounds']), before
+assert before["runDialog"] and before["welcomeDialog"], before
+assert before["screenshotUI"], before
+assert before["extensionManager"], before
+assert before["osdWindows"] == 0 and before["osdMonitorLabels"] == 0, before
+assert before["workspacePopup"], before
+assert before["backgrounds"], before
+assert all(row["menu"] and row["menuManager"] and row["reactive"] for row in before["backgrounds"]), before
 
 # Workspaces remain compositor state. Switch through the real workspace API,
 # wait for the signal-driven state to settle, then restore the starting one.
 switched = gdbus(
-    'org.gnoblin.NativeChromeTest', '/org/gnoblin/NativeChromeTest',
-    'org.gnoblin.NativeChromeTest', 'SwitchWorkspace')
+    "org.gnoblin.NativeChromeTest", "/org/gnoblin/NativeChromeTest", "org.gnoblin.NativeChromeTest", "SwitchWorkspace"
+)
 original = ast.literal_eval(switched.stdout)[0]
 target = 1 if original == 0 else 0
 deadline = time.monotonic() + 3
 while time.monotonic() < deadline:
     after_switch = state()
-    if after_switch['activeWorkspace'] == target:
+    if after_switch["activeWorkspace"] == target:
         break
-    time.sleep(.05)
+    time.sleep(0.05)
 else:
     raise AssertionError(after_switch)
-assert after_switch['workspacePopup'], after_switch
+assert after_switch["workspacePopup"], after_switch
 gdbus(
-    'org.gnoblin.NativeChromeTest', '/org/gnoblin/NativeChromeTest',
-    'org.gnoblin.NativeChromeTest', 'RestoreWorkspace', original)
+    "org.gnoblin.NativeChromeTest",
+    "/org/gnoblin/NativeChromeTest",
+    "org.gnoblin.NativeChromeTest",
+    "RestoreWorkspace",
+    original,
+)
 deadline = time.monotonic() + 3
 while time.monotonic() < deadline:
     restored = state()
-    if restored['activeWorkspace'] == original:
+    if restored["activeWorkspace"] == original:
         break
-    time.sleep(.05)
+    time.sleep(0.05)
 else:
     raise AssertionError(restored)
-assert restored['workspacePopup'], restored
+assert restored["workspacePopup"], restored
 
 # Locking temporarily changes the session component list. The completion file
 # survives the script-host unload/reload which this transition can trigger.
-lifecycle = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin' / 'native-chrome-lifecycle.json'
+lifecycle = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "native-chrome-lifecycle.json"
 if lifecycle.exists():
     lifecycle.unlink()
 gdbus(
-    'org.gnoblin.NativeChromeTest', '/org/gnoblin/NativeChromeTest',
-    'org.gnoblin.NativeChromeTest', 'StartUnlockLifecycle')
+    "org.gnoblin.NativeChromeTest",
+    "/org/gnoblin/NativeChromeTest",
+    "org.gnoblin.NativeChromeTest",
+    "StartUnlockLifecycle",
+)
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
     if lifecycle.exists():
         break
-    time.sleep(.05)
+    time.sleep(0.05)
 else:
-    raise AssertionError('unlock-dialog lifecycle did not finish')
+    raise AssertionError("unlock-dialog lifecycle did not finish")
 lifecycle_result = json.loads(lifecycle.read_text())
-assert lifecycle_result == {'ok': True, 'osdTransportDuringLock': False}, lifecycle_result
+assert lifecycle_result == {"ok": True, "osdTransportDuringLock": False}, lifecycle_result
 
 # The compatibility endpoint must fail promptly after ScreenshotUI removal. A
 # direct caller is deliberately untrusted, but this also catches a null object
 # path which waits forever instead of returning an error.
 result = gdbus(
-    'org.gnome.Shell.Screenshot', '/org/gnome/Shell/Screenshot',
-    'org.gnome.Shell.Screenshot', 'InteractiveScreenshot', ok=False, timeout=3)
+    "org.gnome.Shell.Screenshot",
+    "/org/gnome/Shell/Screenshot",
+    "org.gnome.Shell.Screenshot",
+    "InteractiveScreenshot",
+    ok=False,
+    timeout=3,
+)
 assert result.returncode != 0
-assert 'Gnoblin delegates interactive screenshots to the external shell' in result.stderr, result.stderr
+assert "Gnoblin delegates interactive screenshots to the external shell" in result.stderr, result.stderr
 
-print('PASS: no native run, welcome, screenshot, OSD, monitor-label or workspace-popup chrome; desktop recovery menu retained')
-print('PASS: workspace state switches and restores without a popup; unlock lifecycle keeps extension/capture UI absent')
-print('NOTE: OSD forwarding is intentionally absent while the stock unlock-dialog disables gnoblinControl')
-print('PASS: interactive screenshot rejects promptly')
+print(
+    "PASS: no native run, welcome, screenshot, OSD, monitor-label or workspace-popup chrome; desktop recovery menu retained"
+)
+print("PASS: workspace state switches and restores without a popup; unlock lifecycle keeps extension/capture UI absent")
+print("NOTE: OSD forwarding is intentionally absent while the stock unlock-dialog disables gnoblinControl")
+print("PASS: interactive screenshot rejects promptly")

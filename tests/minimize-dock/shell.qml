@@ -26,9 +26,15 @@ PanelWindow {
             app.setRectangle(dock, Qt.rect(x, y, 32, 40));
             return "ready";
         }
-        function moveDock(): void { dock.margins.bottom = 50; }
-        function clearTarget(): void { dock.application().setRectangle(dock, Qt.rect(0, 0, 0, 0)); }
-        function minimize(): void { dock.application().minimized = true; }
+        function moveDock(): void {
+            dock.margins.bottom = 50;
+        }
+        function clearTarget(): void {
+            dock.application().setRectangle(dock, Qt.rect(0, 0, 0, 0));
+        }
+        function minimize(): void {
+            dock.application().minimized = true;
+        }
         function restore(): void {
             dock.application().minimized = false;
             dock.application().activate();

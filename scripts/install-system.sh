@@ -10,14 +10,20 @@ VERB=install
 DNF_OPTIONS=()
 for arg in "$@"; do
     case "$arg" in
-        --yes|-y) DNF_OPTIONS+=(-y) ;;
-        --dry-run|-n) DRY_RUN=1 ;;
+        --yes | -y) DNF_OPTIONS+=(-y) ;;
+        --dry-run | -n) DRY_RUN=1 ;;
         --reinstall) VERB=reinstall ;;
-        *) echo "Usage: $0 [--yes] [--dry-run] [--reinstall]" >&2; exit 2 ;;
+        *)
+            echo "Usage: $0 [--yes] [--dry-run] [--reinstall]" >&2
+            exit 2
+            ;;
     esac
 done
 
-command -v dnf >/dev/null || { echo "This installer requires Fedora and DNF." >&2; exit 1; }
+command -v dnf >/dev/null || {
+    echo "This installer requires Fedora and DNF." >&2
+    exit 1
+}
 MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
 SHELL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnome-shell.spec")"
 packages=("gnoblin-mutter:$MUTTER_VERSION" "gnoblin-shell:$SHELL_VERSION" "gnoblin-session:$SHELL_VERSION")
