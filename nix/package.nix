@@ -5,6 +5,7 @@
     glib,
     unzip,
     hyprcursor,
+    lua5_4,
     libepoxy,
     python3,
     gtk3,
@@ -49,7 +50,7 @@ let
         patches = (old.patches or [ ]) ++ patchesFor "mutter";
         prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
         postPatch = old.postPatch or "";
-        buildInputs = (old.buildInputs or [ ]) ++ [ hyprcursor ];
+        buildInputs = (old.buildInputs or [ ]) ++ [ hyprcursor lua5_4 ];
         mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dhyprcursor=enabled" ];
     });
 

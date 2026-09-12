@@ -1,5 +1,5 @@
 /*
- * gnoblin: a tiny, dependency-free sectioned config file.
+ * gnoblin: shared Lua, TOML and legacy configuration loading.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -10,6 +10,7 @@
 #include "gnoblin-config.h"
 
 #include <errno.h>
+#include <glib/gstdio.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,203 +40,84 @@ typedef struct {
 /* section name -> GPtrArray<ConfigEntry*> (in file order, repeats allowed) */
 static GHashTable* loaded_sections;
 
-static gboolean is_table (GVariant *value)
+static gboolean validate_document (GVariant *document, GError **error)
 {
-    return value && g_variant_is_of_type (value, G_VARIANT_TYPE_VARDICT);
-}
-
-static gboolean append_array_key (const char *key)
-{
-    return g_str_equal (key, "autostart") || g_str_equal (key, "window-rules") ||
-           g_str_equal (key, "shortcuts") || g_str_equal (key, "rules");
-}
-
-static GVariant *merge_documents (GVariant *base, GVariant *overlay, const char *key);
-
-static GVariant *merge_arrays (GVariant *base, GVariant *overlay)
-{
-    GVariantBuilder builder;
-    GVariantIter iter;
-    GVariant *value;
-
-    g_variant_builder_init (&builder, G_VARIANT_TYPE ("av"));
-    g_variant_iter_init (&iter, base);
-    while (g_variant_iter_next (&iter, "v", &value)) {
-        g_variant_builder_add (&builder, "v", value);
-        g_variant_unref (value);
-    }
-    g_variant_iter_init (&iter, overlay);
-    while (g_variant_iter_next (&iter, "v", &value)) {
-        g_variant_builder_add (&builder, "v", value);
-        g_variant_unref (value);
-    }
-    return g_variant_builder_end (&builder);
-}
-
-static GVariant *merge_documents (GVariant *base, GVariant *overlay, const char *key)
-{
-    if (is_table (base) && is_table (overlay)) {
-        GVariantDict dictionary;
-        GVariantIter iter;
-        const char *name;
-        GVariant *value;
-
-        g_variant_dict_init (&dictionary, base);
-        g_variant_iter_init (&iter, overlay);
-        while (g_variant_iter_next (&iter, "{&sv}", &name, &value)) {
-            g_autoptr(GVariant) previous = g_variant_dict_lookup_value (&dictionary, name, NULL);
-            g_autoptr(GVariant) merged = previous ?
-                merge_documents (previous, value, name) : g_variant_ref (value);
-            g_variant_dict_insert_value (&dictionary, name, merged);
-            g_variant_unref (value);
+    const char *sections[] = {"protocols", "layer-shell", "window-management"};
+    const char *keys[] = {NULL, "preserve-active-window", "constrain-drag-to-work-area"};
+    for (guint i = 0; i < G_N_ELEMENTS (sections); i++) {
+        g_autoptr(GVariant) section = g_variant_lookup_value (document, sections[i], NULL);
+        if (!section)
+            continue;
+        gboolean valid = g_variant_is_of_type (section, G_VARIANT_TYPE_VARDICT);
+        if (valid) {
+            GVariantIter iter;
+            const char *name;
+            GVariant *value;
+            g_variant_iter_init (&iter, section);
+            while (g_variant_iter_next (&iter, "{&sv}", &name, &value)) {
+                valid = g_variant_is_of_type (value, G_VARIANT_TYPE_BOOLEAN) &&
+                        (!keys[i] || g_str_equal (name, keys[i]));
+                g_variant_unref (value);
+                if (!valid)
+                    break;
+            }
         }
-        return g_variant_ref_sink (g_variant_dict_end (&dictionary));
-    }
-    if (base && overlay && g_variant_is_of_type (base, G_VARIANT_TYPE ("av")) &&
-        g_variant_is_of_type (overlay, G_VARIANT_TYPE ("av")) && append_array_key (key))
-        return merge_arrays (base, overlay);
-    return g_variant_ref (overlay);
-}
-
-static gboolean include_value (GVariant *value, GPtrArray *paths, GError **error)
-{
-    GVariantIter iter;
-    GVariant *entry;
-
-    if (g_variant_is_of_type (value, G_VARIANT_TYPE_STRING)) {
-        g_ptr_array_add (paths, g_variant_dup_string (value, NULL));
-        return TRUE;
-    }
-    if (!g_variant_is_of_type (value, G_VARIANT_TYPE ("av"))) {
-        g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                             "include/source must be a path or an array of paths");
-        return FALSE;
-    }
-    g_variant_iter_init (&iter, value);
-    while (g_variant_iter_next (&iter, "v", &entry)) {
-        if (!g_variant_is_of_type (entry, G_VARIANT_TYPE_STRING)) {
-            g_variant_unref (entry);
-            g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                 "include/source must contain only paths");
+        if (!valid) {
+            g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                         "%s must be a table of supported boolean settings", sections[i]);
             return FALSE;
         }
-        g_ptr_array_add (paths, g_variant_dup_string (entry, NULL));
-        g_variant_unref (entry);
-    }
-    if (paths->len == 0) {
-        g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                             "include/source must contain at least one path");
-        return FALSE;
     }
     return TRUE;
 }
 
-static char *resolve_include (const char *including, const char *value)
+GVariant *gnoblin_config_load_document (const char *path, GPtrArray **paths,
+                                       GPtrArray **directories, GError **error)
 {
-    g_autofree char *expanded = NULL;
-
-    if (g_str_has_prefix (value, "~/"))
-        expanded = g_build_filename (g_get_home_dir (), value + 2, NULL);
-    else if (g_path_is_absolute (value))
-        expanded = g_strdup (value);
-    else
-        expanded = g_build_filename (g_path_get_dirname (including), value, NULL);
-    return g_canonicalize_filename (expanded, NULL);
-}
-
-static GVariant *load_toml_file (const char *path, GHashTable *stack, GError **error)
-{
-    g_autofree char *canonical = g_canonicalize_filename (path, NULL);
-    g_autofree char *contents = NULL;
+    g_autoptr(GPtrArray) loaded_paths = g_ptr_array_new_with_free_func (g_free);
+    g_autoptr(GPtrArray) watched_dirs = g_ptr_array_new_with_free_func (g_free);
     g_autoptr(GVariant) document = NULL;
-    g_autoptr(GVariant) merged = NULL;
-    g_autoptr(GVariant) includes = NULL;
-    g_autoptr(GVariant) source = NULL;
-    g_autoptr(GPtrArray) paths = NULL;
-    g_autoptr(GError) parse_error = NULL;
-
-    if (g_hash_table_contains (stack, canonical)) {
-        g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                     "%s: include cycle", canonical);
-        return NULL;
-    }
-    if (g_hash_table_size (stack) >= 32) {
-        g_set_error (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                     "%s: include nesting exceeds 32 files", canonical);
-        return NULL;
-    }
-    if (!g_file_get_contents (canonical, &contents, NULL, error)) {
-        g_prefix_error (error, "%s: cannot read included config: ", canonical);
-        return NULL;
-    }
-    document = gnoblin_config_parse_toml (contents, &parse_error);
-    if (!document) {
-        g_propagate_prefixed_error (error, g_steal_pointer (&parse_error),
-                                    "%s: invalid TOML: ", canonical);
-        return NULL;
-    }
-    includes = g_variant_lookup_value (document, "include", NULL);
-    source = g_variant_lookup_value (document, "source", NULL);
-    if (includes && source) {
-        g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                             "use either include or source, not both");
-        return NULL;
-    }
-    paths = g_ptr_array_new_with_free_func (g_free);
-    if (includes && !include_value (includes, paths, error))
-        return NULL;
-    if (source && !include_value (source, paths, error))
-        return NULL;
-
-    g_hash_table_add (stack, g_strdup (canonical));
-    GVariantBuilder empty;
-    g_variant_builder_init (&empty, G_VARIANT_TYPE_VARDICT);
-    merged = g_variant_ref_sink (g_variant_builder_end (&empty));
-    for (guint i = 0; i < paths->len; i++) {
-        g_autofree char *child = resolve_include (canonical, g_ptr_array_index (paths, i));
-        g_autoptr(GVariant) included = load_toml_file (child, stack, error);
-        g_autoptr(GVariant) next = NULL;
-        if (!included) {
-            g_hash_table_remove (stack, canonical);
-            return NULL;
+    g_autofree char *canonical = g_canonicalize_filename (path, NULL);
+    g_ptr_array_add (loaded_paths, g_strdup (canonical));
+    // Only an absent root uses defaults. Missing explicitly loaded files fail.
+    struct stat info;
+    if (g_stat (canonical, &info) < 0 && (errno == ENOENT || errno == ENOTDIR) &&
+        !g_file_test (canonical, G_FILE_TEST_IS_SYMLINK)) {
+        GVariantBuilder empty;
+        g_variant_builder_init (&empty, G_VARIANT_TYPE_VARDICT);
+        document = g_variant_ref_sink (g_variant_builder_end (&empty));
+    } else {
+        document = gnoblin_config_evaluate_file (canonical, loaded_paths, watched_dirs, error);
+        if (document && !g_variant_is_of_type (document, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                 "configuration must be a table of settings");
+            g_clear_pointer (&document, g_variant_unref);
         }
-        next = merge_documents (merged, included, NULL);
-        g_clear_pointer (&merged, g_variant_unref);
-        merged = g_steal_pointer (&next);
+        if (document && !validate_document (document, error))
+            g_clear_pointer (&document, g_variant_unref);
     }
-    g_hash_table_remove (stack, canonical);
-
-    GVariantDict local;
-    g_variant_dict_init (&local, document);
-    g_variant_dict_remove (&local, "include");
-    g_variant_dict_remove (&local, "source");
-    g_autoptr(GVariant) local_document = g_variant_ref_sink (g_variant_dict_end (&local));
-    g_autoptr(GVariant) result = merge_documents (merged, local_document, NULL);
-    return g_steal_pointer (&result);
+    if (paths)
+        *paths = g_steal_pointer (&loaded_paths);
+    if (directories)
+        *directories = g_steal_pointer (&watched_dirs);
+    return g_steal_pointer (&document);
 }
 
-const char* gnoblin_config_path(void) {
-    static char* path;
-
-    if (!path) {
-        const char* override = g_getenv("GNOBLIN_CONFIG");
-
-        if (override && override[0])
-            path = g_strdup(override);
-        else {
-            path = g_build_filename(g_get_user_config_dir(), "gnoblin", "gnoblin.toml", NULL);
-            if (!g_file_test(path, G_FILE_TEST_EXISTS)) {
-                char *legacy = g_build_filename(g_get_user_config_dir(), "gnoblin", "gnoblin.conf", NULL);
-                if (g_file_test(legacy, G_FILE_TEST_EXISTS)) {
-                    g_free(path);
-                    path = legacy;
-                } else {
-                    g_free(legacy);
-                }
-            }
-        }
+char* gnoblin_config_path(void) {
+    char *path;
+    const char *override = g_getenv ("GNOBLIN_CONFIG");
+    if (override && override[0]) {
+        path = g_canonicalize_filename (override, NULL);
+        return path;
     }
-
+    const char *names[] = {"init.lua", "gnoblin.toml", "gnoblin.conf"};
+    for (guint i = 0; i < G_N_ELEMENTS (names); i++) {
+        path = g_build_filename (g_get_user_config_dir (), "gnoblin", names[i], NULL);
+        if (g_file_test (path, G_FILE_TEST_EXISTS))
+            return path;
+        g_clear_pointer (&path, g_free);
+    }
+    path = g_build_filename (g_get_user_config_dir (), "gnoblin", "init.lua", NULL);
     return path;
 }
 
@@ -383,51 +265,53 @@ static void parse_into(GHashTable* table, const char* contents) {
 }
 
 void gnoblin_config_reload(void) {
-    g_autofree char* contents = NULL;
-    GHashTable* table;
+    g_autofree char *path = gnoblin_config_path ();
+    g_autoptr(GError) error = NULL;
+    GHashTable *table = section_table_new ();
 
-    table = section_table_new();
-
-    if (g_file_get_contents(gnoblin_config_path(), &contents, NULL, NULL)) {
-        if (!g_str_has_suffix(gnoblin_config_path(), ".conf")) {
-            g_autoptr(GError) error = NULL;
-            g_autoptr(GHashTable) stack = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-            g_autoptr(GVariant) document = load_toml_file(gnoblin_config_path(), stack, &error);
-            if (!document) {
-                g_warning("gnoblin-config: %s", error->message);
-                g_hash_table_unref(table);
-                return;
-            }
-            GVariantIter sections;
-            const char *section;
-            GVariant *values;
-            g_variant_iter_init(&sections, document);
-            while (g_variant_iter_next(&sections, "{&sv}", &section, &values)) {
-                if (g_variant_is_of_type(values, G_VARIANT_TYPE_VARDICT)) {
-                    GVariantIter entries;
-                    const char *key;
-                    GVariant *value;
-                    g_variant_iter_init(&entries, values);
-                    while (g_variant_iter_next(&entries, "{&sv}", &key, &value)) {
-                        ConfigEntry *entry = g_new0(ConfigEntry, 1);
-                        entry->key = g_strdup(key);
-                        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
-                            entry->value = g_variant_dup_string(value, NULL);
-                        else
-                            entry->value = g_variant_print(value, FALSE);
-                        g_ptr_array_add(ensure_section(table, section), entry);
-                        g_variant_unref(value);
-                    }
+    if (!g_str_has_suffix (path, ".conf")) {
+        g_autoptr(GVariant) document = gnoblin_config_load_document (path, NULL, NULL, &error);
+        if (!document) {
+            g_warning ("gnoblin-config: %s", error ? error->message : "invalid configuration");
+            g_hash_table_unref (table);
+            return;
+        }
+        GVariantIter sections;
+        const char *section;
+        GVariant *values;
+        g_variant_iter_init(&sections, document);
+        while (g_variant_iter_next(&sections, "{&sv}", &section, &values)) {
+            if (g_variant_is_of_type(values, G_VARIANT_TYPE_VARDICT)) {
+                GVariantIter entries;
+                const char *key;
+                GVariant *value;
+                g_variant_iter_init(&entries, values);
+                while (g_variant_iter_next(&entries, "{&sv}", &key, &value)) {
+                    ConfigEntry *entry = g_new0(ConfigEntry, 1);
+                    entry->key = g_strdup(key);
+                    if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+                        entry->value = g_variant_dup_string(value, NULL);
+                    else
+                        entry->value = g_variant_print(value, FALSE);
+                    g_ptr_array_add(ensure_section(table, section), entry);
+                    g_variant_unref(value);
                 }
-                g_variant_unref(values);
             }
-        } else {
-            parse_into(table, contents);
+            g_variant_unref(values);
+        }
+    } else {
+        g_autofree char *contents = NULL;
+        if (g_file_get_contents (path, &contents, NULL, &error)) {
+            parse_into (table, contents);
+        } else if (!g_error_matches (error, G_FILE_ERROR, G_FILE_ERROR_NOENT)) {
+            g_warning ("gnoblin-config: %s", error->message);
+            g_hash_table_unref (table);
+            return;
         }
     }
 
     if (loaded_sections)
-        g_hash_table_unref(loaded_sections);
+        g_hash_table_unref (loaded_sections);
     loaded_sections = table;
 }
 

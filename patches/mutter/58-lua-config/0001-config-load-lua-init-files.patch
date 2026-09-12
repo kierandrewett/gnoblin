@@ -1,0 +1,105 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] config: share Lua init and include loading with Shell
+
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -116,6 +116,7 @@
+ subproject('gvdb')
+ 
+ m_dep = cc.find_library('m', required: true)
++lua_dep = dependency('lua', version: '>= 5.4')
+ graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
+ glycin_dep = dependency('glycin-2', version: glycin_req)
+ cairo_dep = dependency('cairo', version: cairo_req)
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -10,6 +10,7 @@
+ 
+ mutter_lib_deps = [
+   m_dep,
++  lua_dep,
+ ]
+ if have_hyprcursor
+   mutter_lib_deps += hyprcursor_dep
+@@ -704,6 +705,8 @@
+     # at build time; registered via meta_gnoblin_init_protocols)
+     'wayland/gnoblin-config.c',
+     'wayland/gnoblin-toml.c',
++    'wayland/gnoblin-lua.c',
++    'wayland/gnoblin-glob.c',
+     'wayland/tomlc99/toml.c',
+     'wayland/gnoblin-config.h',
+     'wayland/meta-gnoblin-protocols.c',
+@@ -1364,7 +1367,7 @@
+ if have_introspection
+   mutter_introspected_sources = []
+   foreach source : mutter_sources
+-    if source.endswith('.c') and not source.endswith('tomlc99/toml.c')
++    if source.endswith('.c') and not source.endswith('tomlc99/toml.c') and not source.endswith('gnoblin-lua.c')
+       mutter_introspected_sources += source
+     endif
+   endforeach
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -119,6 +119,9 @@
+ META_EXPORT
+ GVariant *meta_gnoblin_parse_toml (const char *contents, GError **error);
+ 
++META_EXPORT
++GVariant *meta_gnoblin_load_config (const char *path);
++
+ #include "meta/types.h"
+ 
+ META_EXPORT
+diff --git a/src/core/util.c b/src/core/util.c
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -649,6 +649,45 @@
+ }
+ 
+ /**
++ * meta_gnoblin_load_config:
++ * @path: root configuration filename
++ *
++ * Errors are returned with dependency paths so the shell can keep watching
++ * files and glob directories while the user corrects a configuration error.
++ *
++ * Returns: (transfer full): document, paths, directories, and optional error
++ */
++GVariant *
++meta_gnoblin_load_config (const char *path)
++{
++  GVariantBuilder result;
++  g_autoptr (GPtrArray) paths = NULL;
++  g_autoptr (GPtrArray) directories = NULL;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) document = NULL;
++
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++#ifdef HAVE_WAYLAND
++  document = gnoblin_config_load_document (path, &paths, &directories, &error);
++  if (document)
++    g_variant_builder_add (&result, "{sv}", "document", document);
++#else
++  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
++                       "Gnoblin config requires Wayland support");
++#endif
++  g_variant_builder_add (&result, "{sv}", "paths",
++                         g_variant_new_strv (paths ? (const char * const *) paths->pdata : NULL,
++                                             paths ? paths->len : 0));
++  g_variant_builder_add (&result, "{sv}", "directories",
++                         g_variant_new_strv (directories ? (const char * const *) directories->pdata : NULL,
++                                             directories ? directories->len : 0));
++  if (error)
++    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
++
++
++/**
+  * meta_gnoblin_layer_anchor:
+  * @window: window to inspect
+  *

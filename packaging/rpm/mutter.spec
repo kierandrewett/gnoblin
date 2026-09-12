@@ -60,6 +60,7 @@ BuildRequires: pkgconfig(hyprcursor) >= 0.1.13
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
+BuildRequires: pkgconfig(lua)
 BuildRequires: pkgconfig(libadwaita-1)
 BuildRequires: pkgconfig(libwacom)
 BuildRequires: pkgconfig(xkbcommon)

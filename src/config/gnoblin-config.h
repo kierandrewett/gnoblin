@@ -1,8 +1,8 @@
 /*
- * gnoblin: a tiny, dependency-free config file (instead of GSettings/dconf).
+ * gnoblin: shared configuration loading for Mutter and Shell.
  *
- * Read from $GNOBLIN_CONFIG, else $XDG_CONFIG_HOME/gnoblin/gnoblin.toml. The
- * format is TOML. Existing gnoblin.conf files retain legacy INI parsing.
+ * Read from $GNOBLIN_CONFIG, else init.lua under $XDG_CONFIG_HOME/gnoblin.
+ * Existing gnoblin.toml and gnoblin.conf files remain supported.
  * Example:
  *
  *     [protocols]
@@ -25,8 +25,25 @@
 
 G_BEGIN_DECLS
 
-const char* gnoblin_config_path(void);
+/* Current root filename. Free the result with g_free(). */
+char* gnoblin_config_path(void);
 GVariant *gnoblin_config_parse_toml(const char *contents, GError **error);
+
+/* Evaluate one config with a fresh Lua state and record every dependency. */
+GVariant *gnoblin_config_evaluate_file(const char *path, GPtrArray *paths,
+                                      GPtrArray *directories, GError **error);
+
+/* Read the selected root. An absent root uses defaults. Errors retain paths
+ * and directories so file monitors can retry when a dependency is repaired. */
+GVariant *gnoblin_config_load_document(const char *path, GPtrArray **paths,
+                                      GPtrArray **directories, GError **error);
+
+/* Expand a config-relative path or glob in deterministic order. `watched_dirs`
+ * receives canonical directories that must be monitored for later matches. */
+GPtrArray *gnoblin_config_expand_paths(const char *including_file,
+                                       const char *pattern,
+                                       GPtrArray *watched_dirs,
+                                       GError **error);
 
 /* (Re)load from disk. Safe to call repeatedly. */
 void gnoblin_config_reload(void);
