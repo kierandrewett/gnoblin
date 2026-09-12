@@ -13,12 +13,15 @@ startup wiring.
   `output-power-management/`, `foreign-toplevel-list/`, and
   `foreign-toplevel-management/` share the entry point in `aggregator/` and
   the generated `40-gnoblin-protocols` wiring patch.
+- `background-effect/` implements `ext-background-effect-v1`. Its build and
+  surface-transaction wiring is in `patches/mutter/62-background-effect/`.
+  See [background effects](../../docs/background-effects.md) for semantics and tests.
 - `foreign-toplevel-common/` contains helpers shared by the two foreign
   toplevel protocols; it does not advertise a global itself.
 
 All implemented globals are available only in the Gnoblin session. Each
-defaults on within that session and can be disabled through its `[protocols]`
-key in `gnoblin.conf`.
+defaults on within that session and can be disabled through its `protocols`
+key in `init.lua`.
 
 `session-lock/` and `output-management/` are deferred implementation plans
 with vendored protocol XML. They are not compiled, registered, configurable,

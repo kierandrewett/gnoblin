@@ -12,6 +12,7 @@ own chrome when you are ready. Start with the [README](../README.md).
 - [Distribution](distribution.md): package boundaries and repository publication.
 - [Devkit](devkit.md): test in a nested session without logging out.
 - [Configuration](configuration.md): `init.lua` and `gnoblinctl`.
+- [Background effects](background-effects.md): standard Wayland blur regions and compatibility.
 - [Developer console](developer-console.md): the `Alt+F2` compositor JavaScript console.
 - [Native UI removal](native-ui-removal.md): the external-shell ownership boundary.
 - [Testing](testing.md): automated checks and release requirements.

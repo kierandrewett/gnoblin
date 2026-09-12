@@ -59,6 +59,7 @@ Added to Mutter's existing Wayland support, enabled by default:
 | Protocol | Used for |
 | --- | --- |
 | `wlr-layer-shell` | Bars, docks, wallpapers and overlays |
+| `ext-background-effect-v1` | [Client-requested background blur](docs/background-effects.md) |
 | `wlr-screencopy` | Screen and region capture |
 | `ext-foreign-toplevel-list` | Window lists, titles and app IDs |
 | `wlr-foreign-toplevel-management` | Dock and taskbar window controls |
