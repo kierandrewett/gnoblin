@@ -8,14 +8,15 @@ Implementation checklist:
 - [x] Verify keyboard focus, lock behaviour, stacking and rendered output.
 - [x] Commit and push each completed part.
 
-`Alt+F2` opens the console in the primary unlocked Gnoblin session. It is a
+`Alt+F2` opens or closes the console in the primary unlocked Gnoblin session. It is a
 top-edge modal above the Shell chrome, with a multiline input, retained
 bindings, top-level `await`, result history (`r(id)` and `$_`), completion,
 syntax highlighting, inline object expansion and selectable stack traces.
 The initial view contains only a prompt. Suggestions appear while typing;
 Up/Down selects a suggestion and Tab or Enter accepts it. Enter otherwise
 evaluates, Shift+Enter inserts a newline, and Ctrl+L clears the transcript. `Escape` closes
-it, and a lock transition closes it before the stock unlock UI takes over.
+it even when a completion or inspector control has focus. A lock transition closes
+it before the stock unlock UI takes over.
 
 The JavaScript context is intentionally compositor-local: it exposes `global`,
 `Main`, GNOME Shell libraries and `windows()`, while the remote D-Bus control

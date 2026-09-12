@@ -60,6 +60,7 @@ class DeveloperConsole extends St.Widget {
     _init() {
         super._init({name: 'gnoblin-developer-console', visible: false, reactive: true});
         this._open = false;
+        this.connect('captured-event', (_actor, event) => this._capturedEvent(event));
         this._destroyed = false;
         this._expanded = false;
         this._pending = 0;
@@ -268,15 +269,18 @@ class DeveloperConsole extends St.Widget {
         this._panel.set_size(monitor.width, height);
     }
 
-    vfunc_key_press_event(event) {
-        if (event.get_key_symbol() === Clutter.KEY_Escape) {
-            if (this._completions.visible)
-                this._hideCompletions();
-            else
-                this.close();
+    _capturedEvent(event) {
+        if (event.type() !== Clutter.EventType.KEY_PRESS)
+            return Clutter.EVENT_PROPAGATE;
+        const key = event.get_key_symbol();
+        const altF2 = key === Clutter.KEY_F2 &&
+            (event.get_state() & Clutter.ModifierType.MOD1_MASK);
+        // Dismiss before the entry, completion buttons or inspector consume it.
+        if (key === Clutter.KEY_Escape || altF2) {
+            this.close();
             return Clutter.EVENT_STOP;
         }
-        return super.vfunc_key_press_event(event);
+        return Clutter.EVENT_PROPAGATE;
     }
 
     _inputKey(event) {

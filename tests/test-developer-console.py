@@ -134,6 +134,7 @@ export default function (api) {
       <method name="Language"><arg type="s" direction="in"/></method>
       <method name="Type"><arg type="s" direction="in"/></method>
       <method name="Complete"><arg type="s" direction="out"/></method>
+      <method name="FocusCompletion"/>
       <method name="Escape"><arg type="s" direction="out"/></method>
       <method name="StartLock"><arg type="s" direction="out"/></method>
     </interface></node>`;
@@ -146,7 +147,6 @@ export default function (api) {
             return JSON.stringify({opened, ...consoleState()});
         },
         RunBinding() {
-            Main.devConsole?.close(true);
             keyboard ??= keyboardDevice();
             const timestamp = GLib.get_monotonic_time();
             keyboard.notify_keyval(timestamp, Clutter.KEY_Alt_L, Clutter.KeyState.PRESSED);
@@ -222,6 +222,9 @@ export default function (api) {
                 String(child.label ?? child.get_child?.()?.text ?? ''));
             const result = {...consoleState(), labels, completionVisible: console._completions.visible};
             return JSON.stringify(result);
+        },
+        FocusCompletion() {
+            Main.devConsole._completions.get_first_child().grab_key_focus();
         },
         Escape() {
             keyboard ??= keyboardDevice();
@@ -332,6 +335,17 @@ if shutil.which('grim'):
         print(f'NOTE: could not capture console frame: {error}')
 print('PASS: Alt+F2 replacement opens a focused top-edge modal above the Shell chrome')
 
+# Exercise an untouched prompt and the shortcut while its modal grab is active.
+value(call('Escape'))
+wait_for(lambda current: not current['open'] and not current['visible'])
+value(call('RunBinding'))
+wait_for(lambda current: current['open'] and current['focusEntry'])
+value(call('RunBinding'))
+wait_for(lambda current: not current['open'] and not current['visible'])
+value(call('RunBinding'))
+wait_for(lambda current: current['open'] and current['focusEntry'])
+print('PASS: Escape closes a fresh prompt and repeated Alt+F2 toggles the modal safely')
+
 
 def evaluate(source):
     if MARKER.exists():
@@ -436,9 +450,17 @@ time.sleep(.1)
 assert 'foreground' in state()['attributes'], state()
 if shutil.which('grim'):
     subprocess.run(['grim', '/tmp/gnoblin-console-highlight.png'], check=True)
+call('Type', 'global.g')
+time.sleep(.1)
+assert json.loads(value(call('Complete')))['completionVisible']
+call('FocusCompletion')
+value(call('Escape'))
+wait_for(lambda current: not current['open'] and not current['visible'])
+value(call('RunBinding'))
+wait_for(lambda current: current['open'] and current['focusEntry'])
 call('Type', '')
 time.sleep(.1)
-
+print('PASS: Escape closes the console with a completion button focused')
 
 value(call('Escape'))
 closed = wait_for(lambda current: not current['open'] and not current['visible'])
