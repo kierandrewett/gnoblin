@@ -235,7 +235,10 @@ export default function (api) {
             const console = Main.createDevConsole();
             const labels = console._completions.get_children().map(child =>
                 String(child.label ?? child.get_child?.()?.text ?? ''));
-            const result = {...consoleState(), labels, completionVisible: console._completions.visible};
+            const last = console._completions.get_last_child();
+            const [x, y] = last ? last.get_transformed_position() : [0, 0];
+            const result = {...consoleState(), labels, completionVisible: console._completions.visible,
+                completionInView: Boolean(last && y >= console.y && y + last.height <= console.y + console.height)};
             return JSON.stringify(result);
         },
         FocusCompletion() {
@@ -418,8 +421,9 @@ call("Type", "gnoblin.se")
 time.sleep(0.1)
 api_completion = json.loads(value(call("Complete")))
 assert any("set(path, value)" in label for label in api_completion["labels"]), api_completion
+assert api_completion["completionInView"], api_completion
 if shutil.which("grim"):
-    time.sleep(.2)
+    time.sleep(0.2)
     subprocess.run(["grim", "/tmp/gnoblin-console-api-completion.png"], check=True)
 call("Type", 'gnoblin.set("shell.la')
 time.sleep(0.1)

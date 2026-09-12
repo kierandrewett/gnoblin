@@ -149,6 +149,9 @@ export const DeveloperConsole = GObject.registerClass(
                 hscrollbar_policy: St.PolicyType.NEVER,
                 vscrollbar_policy: St.PolicyType.AUTOMATIC,
             });
+            // Layout updates the scroll range after text/completion allocation.
+            // Follow that range so newly shown suggestions remain in view.
+            this._scroll.vadjustment.connectObject("notify::upper", () => this._scrollBottom(), this);
             this._body.add_child(this._scroll);
             this._panel.add_child(this._body);
             this._flow = new St.BoxLayout({ orientation: VERTICAL, x_expand: true });
