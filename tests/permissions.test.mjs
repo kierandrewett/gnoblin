@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {validate, evaluate, replacePolicy, serialise} from '../src/gnome-shell-overlay/js/ui/components/gnoblinPermissions.js';
+import {validate, evaluate} from '../src/gnome-shell-overlay/js/ui/components/gnoblinPermissions.js';
 const rule = {name: 'rustdesk', match: '^host-exe:/usr/bin/rustdesk$',
     capabilities: ['screen-cast', 'remote-desktop'], level: 'allow', monitors: ['primary'], devices: ['keyboard', 'pointer']};
 const identity = 'host-exe:/usr/bin/rustdesk';
@@ -23,10 +23,4 @@ for (const invalid of [null, [], {default: 'allow'}, {default: 'oops'}, {unknown
     {rules: [{...rule, capabilities: ['access']}]}, {rules: Array(257).fill(rule)}])
     assert.throws(() => validate(invalid));
 assert.throws(() => evaluate(policy, 'unknown', identity));
-const text = '# keep\n[shell]\nosd = true\n[permissions]\ndefault = "ask"\n[[permissions.rules]]\nname = "old"\n[protocols]\nx = true\n';
-const updated = replacePolicy(text, {rules: [rule]});
-assert(updated.startsWith('# keep\n[shell]\nosd = true\n[protocols]\nx = true'));
-assert(!updated.includes('"old"'));
-assert(updated.includes('[[permissions.rules]]'));
-assert(serialise({rules: [rule]}).includes('match = "^host-exe:/usr/bin/rustdesk$"'));
-console.log('permission policy: precedence, identity, scope, validation and editing passed');
+console.log('permission policy: precedence, identity, scope and validation passed');

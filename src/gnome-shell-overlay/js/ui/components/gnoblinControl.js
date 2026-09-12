@@ -510,10 +510,6 @@ const IFACE = `
     <method name="GetPermissions">
       <arg type="s" direction="out" name="policy"/>
     </method>
-    <method name="SetPermissions">
-      <arg type="s" direction="in" name="policy"/>
-      <arg type="s" direction="in" name="expected"/>
-    </method>
     <method name="CheckPermission">
       <arg type="s" direction="in" name="capability"/>
       <arg type="s" direction="in" name="identity"/>
@@ -1079,15 +1075,6 @@ export class Component {
         return JSON.stringify({policy: this._permissionPolicy ?? Permissions.DEFAULT_POLICY,
             capabilities: Permissions.CAPABILITIES, levels: Permissions.LEVELS,
             path: this._config.path});
-    }
-
-    SetPermissionsAsync([policy, expected], invocation) {
-        try {
-            this._config.setPermissions(Permissions.validate(JSON.parse(policy)), JSON.parse(expected));
-            invocation.return_value(null);
-        } catch (error) {
-            invocation.return_dbus_error(`${BUS_NAME}.Error.PermissionPolicy`, error.message);
-        }
     }
 
     CheckPermissionAsync([capability, identity], invocation) {

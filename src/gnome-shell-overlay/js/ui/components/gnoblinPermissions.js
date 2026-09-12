@@ -12,7 +12,7 @@ function table(value) {
 export function validate(policy = DEFAULT_POLICY) {
     if (!table(policy) || Object.keys(policy).some(key => !['default', 'rules'].includes(key)) ||
         !LEVELS.includes(policy.default ?? 'default') || !Array.isArray(policy.rules ?? []))
-        throw new Error('permissions requires default and [[permissions.rules]] tables');
+        throw new Error('permissions requires a default decision and an array of rules');
     // Global allow would authorise callers for which identity verification failed.
     if (policy.default === 'allow')
         throw new Error('permissions.default cannot allow; use an explicit app rule');
@@ -60,28 +60,4 @@ export function evaluate(policy, capability, identity) {
         if (rule.level === 'deny') break;
     }
     return result;
-}
-
-export function serialise(policy) {
-    policy = validate(policy);
-    const lines = ['[permissions]', `default = ${JSON.stringify(policy.default)}`];
-    for (const rule of policy.rules) {
-        lines.push('', '[[permissions.rules]]');
-        for (const [key, value] of Object.entries(rule))
-            lines.push(`${key} = ${JSON.stringify(value)}`);
-    }
-    return `${lines.join('\n')}\n`;
-}
-
-// The caller verifies semantic equality of all other tables before writing.
-// Unusual TOML layouts are rejected by that check instead of rewritten.
-export function replacePolicy(text, policy) {
-    let removing = false;
-    const kept = [];
-    for (const line of text.split('\n')) {
-        const header = line.match(/^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/);
-        if (header) removing = /^permissions(?:\.|$)/.test(header[1]);
-        if (!removing) kept.push(line);
-    }
-    return `${kept.join('\n').trimEnd()}\n\n${serialise(policy)}`;
 }
