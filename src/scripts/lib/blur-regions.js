@@ -20,19 +20,31 @@ export class BlurRegions {
             this.clients.set(client, state);
         }
         const key = JSON.stringify([record.namespace, record.screen]);
+        const previous = state.regions.get(key);
+        if (record.region === null ? !previous :
+            previous && record.region.every((value, index) => value === previous[index]))
+            return;
         if (!state.regions.has(key) && state.regions.size >= 64)
             throw new Error('Too many blur regions');
         if (record.region === null) state.regions.delete(key);
         else state.regions.set(key, record.region);
-        for (const actor of global.get_window_actors()) this.apply(actor);
+        this._refresh(state.pid, new Set([key]));
     }
 
-    apply(actor) {
+    _refresh(pid, keys) {
+        if (keys.size === 0) return;
+        for (const actor of global.get_window_actors()) {
+            if (actor.meta_window.get_pid() === pid) this.apply(actor, keys);
+        }
+    }
+
+    apply(actor, changedKeys = null) {
         const window = actor.meta_window;
         const namespace = Meta.gnoblin_layer_namespace(window);
         if (namespace === null || window.get_monitor() < 0) return;
         const screen = global.display.get_monitor_geometry(window.get_monitor());
         const key = JSON.stringify([namespace, [screen.x, screen.y]]);
+        if (changedKeys && !changedKeys.has(key)) return;
         let region = null;
         for (const state of this.clients.values()) {
             if (state.pid === window.get_pid() && state.regions.has(key)) {
@@ -48,7 +60,9 @@ export class BlurRegions {
     }
 
     close(client) {
-        if (!this.clients.delete(client)) return;
-        for (const actor of global.get_window_actors()) this.apply(actor);
+        const state = this.clients.get(client);
+        if (!state) return;
+        this.clients.delete(client);
+        this._refresh(state.pid, state.regions);
     }
 }
