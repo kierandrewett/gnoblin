@@ -22,6 +22,7 @@ Gio._promisify(Shell.Screenshot, 'composite_to_stream');
 class CompositorBridge {
     constructor() {
         this.clients = new Set();
+        this.encoder = new TextEncoder();
         this.layerCompanions = new LayerCompanions();
         this.uiSessions = new UiSessions((client, record) => this.send(client, record), this.layerCompanions);
         this.blurRegions = new BlurRegions();
@@ -90,8 +91,21 @@ class CompositorBridge {
 
     send(client, record) {
         if (client.fallback || client.closed) return;
-        if (client.queue.length > 64) { this.close(client); return; }
-        const bytes = new TextEncoder().encode(JSON.stringify(record) + '\n');
+        this.enqueue(client, this.encoder.encode(JSON.stringify(record) + '\n'));
+    }
+
+    sendToSubscribers(record, subscribed) {
+        let bytes = null;
+        for (const client of this.clients) {
+            if (client.fallback || client.closed || !subscribed(client)) continue;
+            if (!bytes) bytes = this.encoder.encode(JSON.stringify(record) + '\n');
+            this.enqueue(client, bytes);
+        }
+    }
+
+    enqueue(client, bytes) {
+        if (client.fallback || client.closed) return;
+        if (client.queue.length >= 64) { this.close(client); return; }
         if (client.queuedBytes + bytes.length > 4 * 1024 * 1024) { this.close(client); return; }
         client.queuedBytes += bytes.length;
         client.queue.push(bytes);
@@ -124,13 +138,15 @@ class CompositorBridge {
                 buffer.set(client.buffer);
                 buffer.set(bytes, client.buffer.length);
                 client.buffer = buffer;
+                let offset = 0;
                 let newline;
-                while ((newline = client.buffer.indexOf(10)) >= 0) {
-                    const record = JSON.parse(client.decoder.decode(client.buffer.subarray(0, newline)));
-                    client.buffer = client.buffer.slice(newline + 1);
+                while ((newline = client.buffer.indexOf(10, offset)) >= 0) {
+                    const record = JSON.parse(client.decoder.decode(client.buffer.subarray(offset, newline)));
+                    offset = newline + 1;
                     try { this.command(client, record); }
                     catch (error) { this.send(client, {event: 'error', id: record.id, message: error.message}); }
                 }
+                if (offset) client.buffer = client.buffer.slice(offset);
                 if (!client.closed) this.read(client);
             } catch (error) {
                 if (!client.closed) console.warn(`gnoblin-compositor read: ${error.message}`);
@@ -488,8 +504,8 @@ class CompositorBridge {
             recording: recordings.length > 0, recordingCount: recordings.length,
             recordingElapsed: started ? Math.floor((GLib.get_monotonic_time() - started) / 1000000) : 0,
             cameraInUse: Boolean(this.cameraMonitor?.cameras_in_use)};
-        const clients = client ? [client] : [...this.clients].filter(peer => peer.trackPrivacy);
-        for (const peer of clients) this.send(peer, record);
+        if (client) this.send(client, record);
+        else this.sendToSubscribers(record, peer => peer.trackPrivacy);
     }
 
     async preview(client, request) {
@@ -682,10 +698,16 @@ class CompositorBridge {
     }
 
     publishWindows(client = null) {
-        const clients = client ? [client] : [...this.clients].filter(peer => peer.trackWindows);
-        if (!clients.length) return;
-        const windows = this.windowRecords();
-        for (const peer of clients) this.send(peer, {event: 'windows', windows});
+        if (client) {
+            this.send(client, {event: 'windows', windows: this.windowRecords()});
+            return;
+        }
+        for (const peer of this.clients)
+            if (peer.trackWindows) {
+                const windows = this.windowRecords();
+                this.sendToSubscribers({event: 'windows', windows}, subscriber => subscriber.trackWindows);
+                return;
+            }
     }
 
     close(client) {
