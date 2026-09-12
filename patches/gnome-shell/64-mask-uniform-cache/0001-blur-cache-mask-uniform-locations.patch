@@ -1,0 +1,173 @@
+From b8dc1f57fd67f18a04f10127e7dcbd1bd9b3ff13 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Sat, 12 Sep 2026 04:45:02 +0100
+Subject: [PATCH] blur: cache masked backdrop uniform locations
+
+---
+ src/shell-blur-effect.c | 71 ++++++++++++++++++++++++++++++++++++-----
+ src/shell-blur-effect.h |  1 +
+ 2 files changed, 64 insertions(+), 8 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 5d996fd..ac9a9eb 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -92,6 +92,15 @@ struct _ShellBlurEffect
+   FramebufferData brightness_fb;
+   int brightness_uniform;
+   gboolean mask_pipeline_ready;
++  int surface_fade_uniform;
++  int fade_count_uniform;
++  int fade_rects_uniform;
++  int fade_opacities_uniform;
++  int mask_bounds_uniform;
++  int mask_pixel_uniform;
++  int mask_opacity_uniform;
++  int ignore_shadow_pixels_uniform;
++  unsigned int mask_uniform_setup_count;
+   float mask_opacity;
+   gboolean ignore_shadow_pixels;
+ 
+@@ -115,6 +124,43 @@ enum {
+ 
+ static GParamSpec *properties [N_PROPS] = { NULL, };
+ 
++static void
++invalidate_mask_uniform_locations (ShellBlurEffect *self)
++{
++  self->surface_fade_uniform = -1;
++  self->fade_count_uniform = -1;
++  self->fade_rects_uniform = -1;
++  self->fade_opacities_uniform = -1;
++  self->mask_bounds_uniform = -1;
++  self->mask_pixel_uniform = -1;
++  self->mask_opacity_uniform = -1;
++  self->ignore_shadow_pixels_uniform = -1;
++}
++
++static void
++cache_mask_uniform_locations (ShellBlurEffect *self)
++{
++  CoglPipeline *pipeline = self->brightness_fb.pipeline;
++
++  self->surface_fade_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "surface_fade");
++  self->fade_count_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "fade_count");
++  self->fade_rects_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "fade_rects");
++  self->fade_opacities_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "fade_opacities");
++  self->mask_bounds_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "mask_bounds");
++  self->mask_pixel_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "mask_pixel");
++  self->mask_opacity_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "mask_opacity");
++  self->ignore_shadow_pixels_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "ignore_shadow_pixels");
++  self->mask_uniform_setup_count++;
++}
++
+ /* Blur dependencies are evaluated once before each view is painted. Expanding
+  * the queued scene damage preserves backdrop pixels without forcing a full
+  * monitor redraw. Buffer-age repair does not invalidate an unchanged cache. */
+@@ -282,7 +328,7 @@ update_brightness (ShellBlurEffect *self,
+     {
+       if (self->mask_pipeline_ready)
+         cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+-          cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "surface_fade"),
++          self->surface_fade_uniform,
+           paint_opacity / 255.f);
+       paint_opacity = 255;
+     }
+@@ -812,6 +858,7 @@ paint_actor_mask (ShellBlurEffect *self,
+                          "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+       self->mask_pipeline_ready = TRUE;
++      cache_mask_uniform_locations (self);
+     }
+   GBytes *fades = NULL;
+   if (META_IS_WINDOW_ACTOR (self->actor))
+@@ -827,30 +874,30 @@ paint_actor_mask (ShellBlurEffect *self,
+       opacities[i] = values[i * 5 + 4] / 256.f;
+     }
+   cogl_pipeline_set_uniform_1i (self->brightness_fb.pipeline,
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_count"), fade_count);
++    self->fade_count_uniform, fade_count);
+   if (fade_count)
+     {
+       cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-        cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_rects"), 4, fade_count, rects);
++        self->fade_rects_uniform, 4, fade_count, rects);
+       cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-        cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "fade_opacities"), 1, fade_count, opacities);
++        self->fade_opacities_uniform, 1, fade_count, opacities);
+     }
+   const float mask_bounds[] = {self->paint_box.x1, self->paint_box.y1,
+     self->paint_box.x2 - self->paint_box.x1, self->paint_box.y2 - self->paint_box.y1};
+   cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_bounds"), 4, 1, mask_bounds);
++    self->mask_bounds_uniform, 4, 1, mask_bounds);
+   const float mask_pixel[] = {
+     1.f / cogl_texture_get_width (self->actor_fb.texture),
+     1.f / cogl_texture_get_height (self->actor_fb.texture),
+   };
+   cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_pixel"),
++    self->mask_pixel_uniform,
+     2, 1, mask_pixel);
+   cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
++    self->mask_opacity_uniform,
+     self->mask_opacity);
+   cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "ignore_shadow_pixels"),
++    self->ignore_shadow_pixels_uniform,
+     self->ignore_shadow_pixels ? 1.f : 0.f);
+ }
+ 
+@@ -943,6 +990,7 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
+             {
+               cogl_pipeline_remove_layer (self->brightness_fb.pipeline, 1);
+               self->mask_pipeline_ready = FALSE;
++              invalidate_mask_uniform_locations (self);
+             }
+ 
+           blur_node = create_blur_nodes (self, output, paint_opacity);
+@@ -1151,6 +1199,7 @@ shell_blur_effect_init (ShellBlurEffect *self)
+   self->brightness_fb.pipeline = create_brightness_pipeline ();
+   self->brightness_uniform =
+     cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "brightness");
++  invalidate_mask_uniform_locations (self);
+ }
+ 
+ ShellBlurEffect *
+@@ -1256,6 +1305,12 @@ shell_blur_effect_get_cache_build_count (ShellBlurEffect *self)
+   return self->blur_cache ? clutter_blur_cache_get_build_count (self->blur_cache) : 0;
+ }
+ 
++unsigned int
++shell_blur_effect_get_mask_uniform_setup_count (ShellBlurEffect *self)
++{
++  return self->mask_uniform_setup_count;
++}
++
+ void
+ shell_blur_effect_set_region (ShellBlurEffect *self,
+                               float x, float y, float width, float height)
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+index 0281f8f..c7e3e19 100644
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -57,6 +57,7 @@ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+                                  ShellBlurMode    mode);
+ 
+ unsigned int shell_blur_effect_get_cache_build_count (ShellBlurEffect *self);
++unsigned int shell_blur_effect_get_mask_uniform_setup_count (ShellBlurEffect *self);
+ 
+ void shell_blur_effect_set_region (ShellBlurEffect *self,
+                                     float x, float y, float width, float height);
+-- 
+2.55.0
+
