@@ -29,6 +29,7 @@ try {
     native.get_effect = () => ({uses_damage_tracking: () => true});
     policy.set(native, true);
     assert(!enabled(), 'native damage tracking keeps partial redraw enabled');
+    assert(native.signals.size === 0, 'native damage tracking needs no fallback signal handlers');
     policy.set(first, true);
     assert(enabled(), 'mixed native and legacy effects retain the fallback');
     policy.set(first, false);
