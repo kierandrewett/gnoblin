@@ -39,8 +39,8 @@ the session is ready:
 waybar
 ```
 
-The external shell owns OSDs, capture controls, desktop menus and workspace
-feedback. Gnoblin creates no native widgets for those functions and forwards
+The external shell owns OSDs, capture controls and workspace feedback.
+Gnoblin retains the desktop right-click menu for recovery and forwards
 OSD events through `org.gnoblin.Shell.OsdRequested` automatically. GNOME
 extensions cannot load in this session.
 
@@ -64,6 +64,24 @@ gnoblinctl version
 gnoblinctl feature list
 ```
 
-If the session appears blank, that is the expected state until a layer-shell
-client starts. Check the client from a terminal first, then add it to the user
-session once it is stable.
+If no visible layer surface appears for eight seconds, Gnoblin shows a native
+Desktop recovery panel with Open Terminal, Settings and Dismiss. The panel
+also appears if all visible layer surfaces disappear. It closes automatically
+when a layer surface appears. Dismiss keeps it hidden until a layer surface
+has appeared and subsequently disappeared, the session unlocks, or a new
+session begins.
+
+Right-click the desktop for Open Terminal and Settings at any time. These
+recovery tools do not depend on Bingux or another external shell. They are
+disabled while the session is locked. The panel detects absent surfaces; it
+cannot detect a frozen client that still has a mapped surface.
+
+For a separate text console, the standard shortcut is Ctrl+Alt+F3. If TTY
+shortcuts were disabled in user settings, restore one with:
+
+```sh
+gsettings reset org.gnome.mutter.wayland.keybindings switch-to-session-3
+```
+
+From the terminal, inspect the external shell's service log and start it again
+once the startup failure is fixed.

@@ -8,7 +8,7 @@ QuickShell replacements are tracked in
 [Bingux #12](https://github.com/kierandrewett/bingux/issues/12). Standard OSDs,
 notifications and capture controls already exist in Bingux. The open issues
 cover lock-mode OSD transport, tablet controls, interactive capture portal routing, monitor labels,
-desktop and window menus, workspace feedback, the command launcher, welcome
+window menus, workspace feedback, the command launcher, welcome
 guidance and wellbeing UI. Add an issue for each additional GUI or OSD removed;
 first check the existing Bingux implementation to avoid duplicate work.
 
@@ -21,11 +21,17 @@ developer console for JavaScript inspection and live compositor changes;
 [Bingux #4](https://github.com/kierandrewett/bingux/issues/4) remains open for
 the separate external command launcher.
 
+Gnoblin retains a native desktop right-click menu with Open Terminal. An
+independent session component shows a recovery panel after eight seconds
+without a visible layer surface. These tools remain available when the external
+shell cannot start. They are disabled on the lock screen. See
+[desktop recovery](bring-your-own-shell.md).
+
 Implementation checklist:
 
 - [x] Remove extension loading, installation and reload entry points.
 - [x] Remove native OSD actors and keep external OSD events.
-- [x] Remove screenshot controls, Run dialog, desktop menu, monitor labels and
+- [x] Remove screenshot controls, Run dialog, monitor labels and
   workspace popup. Keep workspace operations and non-interactive capture.
 - [x] Stop building the extension app, preferences service and command-line tool.
 - [x] Verify the private Gnoblin session and stock session isolation.

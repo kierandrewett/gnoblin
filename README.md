@@ -38,10 +38,13 @@ regular GNOME session stays available.
 - **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,
   monitors, input sources, feature toggles, reloads and a user-private
   compositor bridge for desktop shells.
-- **External desktop controls.** The external shell owns OSDs, capture controls,
-  desktop menus and workspace feedback. Gnoblin forwards OSD requests without
+- **External desktop controls.** The external shell owns OSDs, capture controls
+  and workspace feedback. Gnoblin forwards OSD requests without
   creating GNOME widgets. Native notifications and the keyboard-layout popup
   are disabled by default.
+- **Desktop recovery.** Right-click the desktop to open a terminal or Settings.
+  If no layer surface is visible for eight seconds, a native recovery panel
+  appears. These tools work independently of the external shell.
 - **Portal permissions.** The [optional portal backend](docs/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.

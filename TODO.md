@@ -6,6 +6,9 @@ history or the relevant guide.
 
 ## Release checks
 
+- [ ] Verify the repaired Fedora runtime and desktop recovery panel through a
+  real GDM login. Private-session terminal, layer-client and lock tests pass.
+
 - [ ] Log in through GDM with a real layer-shell client, then complete logout,
   lock and unlock.
 - [ ] Install the generated RPMs on a clean Fedora host. Verify Gnoblin, stock
