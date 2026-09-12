@@ -51,14 +51,16 @@ export class WindowRules {
         this._backdropRedraw = new BackdropRedraw();
         this._cornerToolkits = new ToolkitCache();
         this._sources = new Map();
+        this._pending = new Set();
+        this._pendingSpare = new Set();
+        this._pendingId = 0;
+        this._updateRuleDependencies(this._config);
         this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
         this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
-        this._pending = new Set();
-        this._pendingId = 0;
         this._focus = global.display.connect('notify::focus-window', () => {
             const previous = this._focusedActor;
             this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
-            if (!this._config['window-rules'].some(rule => 'focused' in rule.match)) return;
+            if (!this._hasFocusedRules) return;
             if (previous) this._schedule(previous);
             if (this._focusedActor) this._schedule(this._focusedActor);
         });
@@ -71,19 +73,37 @@ export class WindowRules {
         this._pendingId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._pendingId = 0;
             const pending = this._pending;
-            this._pending = new Set();
+            this._pending = this._pendingSpare;
+            this._pendingSpare = pending;
             for (const value of pending) if (this._actors.has(value)) this._apply(value);
+            pending.clear();
             return GLib.SOURCE_REMOVE;
         });
     }
 
+    _updateRuleDependencies(config) {
+        this._hasFocusedRules = false;
+        this._hasTitleRules = false;
+        this._shaderPaths = new Map();
+        this._shaderSourcePaths = new Set();
+        for (const rule of config['window-rules']) {
+            this._hasFocusedRules ||= Object.hasOwn(rule.match, 'focused');
+            this._hasTitleRules ||= Object.hasOwn(rule.match, 'title');
+            if (rule.shader) {
+                const path = this._shaderPath(rule.shader);
+                this._shaderPaths.set(rule.shader, path);
+                this._shaderSourcePaths.add(path);
+            }
+        }
+    }
+
     refresh(config = this._config) {
         this._config = config;
+        this._updateRuleDependencies(config);
         for (const actor of global.get_window_actors())
             this._apply(actor);
-        const paths = new Set(config['window-rules'].filter(rule => rule.shader).map(rule => this._shaderPath(rule.shader)));
         for (const [path, entry] of this._sources) {
-            if (paths.has(path)) continue;
+            if (this._shaderSourcePaths.has(path)) continue;
             entry.monitor?.cancel();
             if (entry.timer) GLib.source_remove(entry.timer);
             this._sources.delete(path);
@@ -143,7 +163,7 @@ export class WindowRules {
         if (!surface || !actor.meta_window) return;
         if (!entry) {
             const title = actor.meta_window.connect('notify::title', () => {
-                if (this._config['window-rules'].some(rule => 'title' in rule.match)) this._schedule(actor);
+                if (this._hasTitleRules) this._schedule(actor);
             });
             const destroy = actor.connect('destroy', () => {
                 actor.meta_window?.disconnect(title);
@@ -180,7 +200,7 @@ export class WindowRules {
             entry.blur = null;
         }
         this._backdropRedraw.set(actor, !!entry.blur);
-        const source = effects.shader ? this._shader(this._shaderPath(effects.shader)) : null;
+        const source = effects.shader ? this._shader(this._shaderPaths.get(effects.shader) ?? this._shaderPath(effects.shader)) : null;
         const key = source ? JSON.stringify([source, effects['shader-uniforms']]) : null;
         if ((!effects.shader || source) && entry.shaderKey !== key) {
             const shader = source ? new WindowShader(source, effects['shader-uniforms']) : null;
@@ -211,6 +231,7 @@ export class WindowRules {
         if (this._pendingId) GLib.source_remove(this._pendingId);
         this._pendingId = 0;
         this._pending.clear();
+        this._pendingSpare.clear();
         this._backdropRedraw.destroy();
         global.window_manager.disconnect(this._map);
         global.display.disconnect(this._focus);
