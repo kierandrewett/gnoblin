@@ -65,3 +65,30 @@ assert(cleared === 1 && evaluator.lastValue === undefined && (await evaluator.ev
 const syntax = await evaluator.evaluate('let = ;');
 assert(syntax.error instanceof SyntaxError, 'syntax errors are returned');
 print('PASS: compositor console evaluator');
+
+const proto = {get inherited() { return this.own + 1; }};
+const object = Object.create(proto);
+object.own = 4;
+const symbol = Symbol('secret');
+object[symbol] = 8;
+Object.defineProperty(object, 'hidden', {value: 12});
+Object.defineProperty(object, 'throws', {get() { throw new Error('getter probe'); }});
+const ownRows = evaluator.properties(object);
+assert(ownRows.some(row => row.name === '[Symbol(secret)]'), 'symbol keys are inspectable');
+assert(ownRows.find(row => row.name === 'hidden').flags.includes('non-enumerable'), 'descriptor flags');
+assert(!ownRows.some(row => row.name === 'inherited'), 'prototype properties are separate');
+const prototype = ownRows.find(row => row.name === '[[Prototype]]');
+assert(evaluator.properties(prototype.value, 0, 100, prototype.receiver).find(row => row.name === 'inherited').read() === 5,
+    'inherited getters use the original receiver');
+try { ownRows.find(row => row.name === 'throws').read(); throw new Error('getter did not throw'); }
+catch (error) { assert(error.message === 'getter probe', 'getter errors are preserved'); }
+const sparse = new Array(1000);
+Object.defineProperty(sparse, '0', {get() { getterCalls++; return 1; }});
+assert(preview(sparse).includes('[Getter]') && getterCalls === 0, 'array preview never reads accessors');
+assert(evaluator.properties(Array.from({length: 250}, (_, i) => i)).some(row => row.more === 100), 'large arrays paginate');
+assert(evaluator.properties(Array.from({length: 250}, (_, i) => i), 200).some(row => row.name === '249'), 'last array page is reachable');
+assert(evaluator.properties(new Map([['key', {a: 1}]])).some(row => row.value?.key === 'key'), 'map entries');
+assert(evaluator.properties(new Set([4])).some(row => row.value === 4), 'set entries');
+assert(preview({answer: 42}).includes('answer: 42'), 'object preview includes values');
+assert(preview(cycle).includes('[Circular]'), 'circular object preview');
+print('PASS: rich JavaScript inspection, getter safety, prototypes, symbols, collections and pagination');

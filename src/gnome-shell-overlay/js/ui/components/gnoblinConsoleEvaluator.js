@@ -90,6 +90,8 @@ function propertyDescriptor(object, key) {
 
 export function preview(value, seen = new Set()) {
     try {
+        if (value instanceof LuaValue)
+            return value.preview;
         if (value === null)
             return 'null';
         switch (typeof value) {
@@ -97,30 +99,51 @@ export function preview(value, seen = new Set()) {
         case 'string': return JSON.stringify(value.length > MAX_PREVIEW ? `${value.slice(0, MAX_PREVIEW - 3)}...` : value);
         case 'number': case 'bigint': case 'boolean': return String(value);
         case 'symbol': return String(value);
-        case 'function': return `[Function${value.name ? `: ${value.name}` : ''}]`;
+        case 'function': {
+            const name = propertyDescriptor(value, 'name')?.value;
+            return `[Function${typeof name === 'string' && name ? `: ${name}` : ''}]`;
+        }
         }
         if (seen.has(value))
             return '[Circular]';
         seen.add(value);
-        if (Array.isArray(value))
-            return `[${value.slice(0, 8).map(item => preview(item, seen)).join(', ')}${value.length > 8 ? ', ...' : ''}]`;
+        const summarize = item => seen.size > 3 && isInspectable(item) ? '…' : preview(item, new Set(seen));
+        if (Array.isArray(value)) {
+            const count = Object.getOwnPropertyDescriptor(value, 'length').value;
+            const parts = [];
+            for (let i = 0; i < Math.min(count, 6); i++) {
+                const d = Object.getOwnPropertyDescriptor(value, String(i));
+                parts.push(!d ? '<empty>' : 'value' in d ? summarize(d.value) : '[Getter]');
+            }
+            return `Array(${count}) [${parts.join(', ')}${count > 6 ? ', …' : ''}]`;
+        }
         const constructor = propertyDescriptor(value, 'constructor');
         const name = constructor && 'value' in constructor && typeof constructor.value === 'function'
             ? constructor.value.name || 'Object' : 'Object';
+        if (value instanceof Map) {
+            const size = Object.getOwnPropertyDescriptor(Map.prototype, 'size').get.call(value);
+            return `Map(${size})`;
+        }
+        if (value instanceof Set) {
+            const size = Object.getOwnPropertyDescriptor(Set.prototype, 'size').get.call(value);
+            return `Set(${size})`;
+        }
         const message = propertyDescriptor(value, 'message');
         if (name.endsWith('Error') && message && 'value' in message)
             return `${name}: ${String(message.value).slice(0, MAX_PREVIEW)}`;
-        const keys = Object.getOwnPropertyNames(value);
-        if (name === 'Object')
-            return `{${keys.slice(0, 8).join(', ')}${keys.length > 8 ? ', ...' : ''}}`;
-        return `[${name}${keys.length ? `: ${keys.slice(0, 8).join(', ')}${keys.length > 8 ? ', ...' : ''}` : ''}]`;
+        const keys = Reflect.ownKeys(value);
+        const parts = keys.slice(0, 5).map(key => {
+            const d = Object.getOwnPropertyDescriptor(value, key);
+            return `${String(key)}: ${d && 'value' in d ? summarize(d.value) : '[Getter]'}`;
+        });
+        return `${name} {${parts.join(', ')}${keys.length > 5 ? ', …' : ''}}`.slice(0, MAX_PREVIEW);
     } catch (error) {
         return `[Unpreviewable: ${error.message}]`;
     }
 }
 
 export function isInspectable(value) {
-    return value !== null && (typeof value === 'object' || typeof value === 'function');
+    return value instanceof LuaValue ? value.handle > 0 : value !== null && (typeof value === 'object' || typeof value === 'function');
 }
 
 export class ConsoleEvaluator {
@@ -278,26 +301,65 @@ export class ConsoleEvaluator {
         return {start: cursor - prefix.length, end: cursor, items};
     }
 
-    properties(value) {
+    properties(value, offset = 0, limit = 100, receiver = value) {
         if (!isInspectable(value))
             return [];
-        const rows = [];
-        const names = new Set();
-        let object = value;
-        while (object && rows.length < 200) {
-            for (const name of Object.getOwnPropertyNames(object)) {
-                if (names.has(name))
-                    continue;
-                names.add(name);
-                const descriptor = Object.getOwnPropertyDescriptor(object, name);
-                const accessor = !('value' in descriptor);
-                rows.push({name, value: accessor ? undefined : descriptor.value,
-                    preview: accessor ? '[Accessor]' : preview(descriptor.value), accessor,
-                    expandable: !accessor && isInspectable(descriptor.value)});
+        try {
+            const rows = [];
+            if (value instanceof Map || value instanceof Set) {
+                const map = value instanceof Map;
+                const entries = map ? Map.prototype.entries.call(value) : Set.prototype.values.call(value);
+                const size = Object.getOwnPropertyDescriptor(map ? Map.prototype : Set.prototype, 'size').get.call(value);
+                let i = 0;
+                for (const entry of entries) {
+                    if (i >= offset + limit)
+                        break;
+                    if (i >= offset)
+                        rows.push({name: `[${i}]`, value: map ? {key: entry[0], value: entry[1]} : entry});
+                    i++;
+                }
+                if (offset + limit < size)
+                    rows.push({more: offset + limit, name: `Show next ${Math.min(limit, size - offset - limit)} entries`});
+                if (!offset) {
+                    rows.unshift({name: 'size', value: size});
+                    rows.push({name: '[[Prototype]]', value: Object.getPrototypeOf(value), receiver});
+                }
+                return rows;
             }
-            object = Object.getPrototypeOf(object);
+            const keys = Reflect.ownKeys(value);
+            for (const key of keys.slice(offset, offset + limit)) {
+                const descriptor = Object.getOwnPropertyDescriptor(value, key);
+                if (!descriptor)
+                    continue;
+                const accessor = !('value' in descriptor);
+                rows.push({name: typeof key === 'symbol' ? `[${String(key)}]` : key,
+                    value: descriptor.value, accessor, enumerable: descriptor.enumerable,
+                    preview: descriptor.get ? '[Getter]' : '[Setter]',
+                    read: descriptor.get ? () => descriptor.get.call(receiver) : null,
+                    flags: [descriptor.enumerable ? '' : 'non-enumerable',
+                        descriptor.writable === false ? 'read-only' : '',
+                        descriptor.configurable ? '' : 'non-configurable'].filter(Boolean).join(', ')});
+            }
+            if (offset + limit < keys.length)
+                rows.push({more: offset + limit, name: `Show next ${Math.min(limit, keys.length - offset - limit)} properties`});
+            if (!offset) {
+                const prototype = Object.getPrototypeOf(value);
+                if (prototype !== null)
+                    rows.push({name: '[[Prototype]]', value: prototype, receiver, enumerable: false});
+            }
+            return rows;
+        } catch (error) {
+            return [{name: '[[Inspection error]]', value: error.message}];
         }
-        return rows;
+    }
+
+}
+
+export class LuaValue {
+    constructor(detail, owner) {
+        Object.assign(this, detail);
+        this.owner = owner;
+        this.generation = owner._generation;
     }
 }
 
@@ -306,6 +368,8 @@ export class ConsoleEvaluator {
 export class LuaConsoleEvaluator {
     constructor(invoke, onLog) {
         this._invoke = invoke;
+        this._objects = new Map();
+        this._generation = 0;
         this._onLog = onLog;
         this._results = [];
         this._nextId = 1;
@@ -322,7 +386,9 @@ export class LuaConsoleEvaluator {
             error.stack = reply.error;
         }
         const row = {id: this._nextId++, source, value: (reply.values ?? []).join('\t'),
-            error, durationMs: Date.now() - started, lua: true};
+            error, durationMs: Date.now() - started, lua: true,
+            items: reply.details ? reply.details.map(detail => this._wrap(detail))
+                : [reply.inspectionError ? `Inspection unavailable: ${reply.inspectionError}` : (reply.values ?? []).join('\t')]};
         this._results.push(row);
         if (this._results.length > 200)
             this._results.shift();
@@ -341,7 +407,26 @@ export class LuaConsoleEvaluator {
 
     get lastValue() { return this._results.at(-1)?.value; }
     result(id) { return this._results.find(row => row.id === id)?.value; }
-    properties() { return []; }
+    _wrap(detail) {
+        if (detail.handle && this._objects.has(detail.handle))
+            return this._objects.get(detail.handle);
+        const value = new LuaValue(detail, this);
+        if (detail.handle)
+            this._objects.set(detail.handle, value);
+        return value;
+    }
+
+    properties(value, offset = 0) {
+        if (value.generation !== this._generation)
+            return [{name: '[[Expired]]', value: 'Lua context was reset'}];
+        const reply = this._invoke('inspect', `${value.handle}:${offset}`);
+        if (reply.error)
+            return [{name: '[[Inspection error]]', value: reply.error}];
+        return (reply.details ?? []).map(row => row.more !== undefined ? row : ({
+            ...row, value: this._wrap(row.value),
+            key: row.key?.handle ? this._wrap(row.key) : undefined,
+        }));
+    }
     clear() { this._results = []; }
-    reset() { this._invoke('reset', ''); this.clear(); }
+    reset() { this._invoke('reset', ''); this._generation++; this._objects.clear(); this.clear(); }
 }

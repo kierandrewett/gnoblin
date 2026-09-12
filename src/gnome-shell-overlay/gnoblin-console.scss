@@ -37,6 +37,16 @@
   .gnoblin-console-error-text { color: #ffb4ab; text-align: left; padding: 0; }
   .gnoblin-console-stack { color: #ffb4ab; padding: 2px 24px; }
   .gnoblin-console-object { text-align: left; padding: 0; color: #dddddd; }
+  .gnoblin-console-value.string { color: #8bd5ef; }
+  .gnoblin-console-value.number, .gnoblin-console-value.boolean { color: #c5a5e8; }
+  .gnoblin-console-value.undefined, .gnoblin-console-value.nil { color: #aaaaaa; }
+  .gnoblin-console-property-name { color: #9ac3f5; }
+  .gnoblin-console-property-name.non-enumerable { color: #adb6c3; }
+  .gnoblin-console-getter, .gnoblin-console-more {
+    color: #9ac3f5;
+    padding: 0;
+    &:hover, &:focus { background-color: #365880; }
+  }
   .gnoblin-console-properties { padding-left: 16px; }
   .gnoblin-console-property { padding: 2px 0; }
   .gnoblin-console-completions {

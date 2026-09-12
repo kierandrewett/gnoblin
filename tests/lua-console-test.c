@@ -40,6 +40,31 @@ int main(void) {
     g_auto(GStrv) choices = NULL;
     g_variant_lookup(completion, "lines", "^as", &choices);
     g_assert_cmpstr(choices[0], ==, "sqrt");
+    g_autoptr(GVariant) rich = run("tree = {a = 42, nested = {true, false}}; tree.self = tree; setmetatable(tree, {__index = function() error('must not execute') end}); return tree");
+    g_autoptr(GVariant) details = g_variant_lookup_value(rich, "details", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(details);
+    g_autoptr(GVariant) root = g_variant_get_child_value(details, 0);
+    int handle = 0;
+    g_assert_true(g_variant_lookup(root, "handle", "i", &handle));
+    g_autofree char *request = g_strdup_printf("%d:0", handle);
+    g_autoptr(GVariant) inspection = gnoblin_console_lua("inspect", request);
+    g_autoptr(GVariant) properties = g_variant_lookup_value(inspection, "details", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(properties);
+    gboolean metatable = FALSE, cycle = FALSE;
+    for (gsize i = 0; i < g_variant_n_children(properties); i++) {
+        g_autoptr(GVariant) row = g_variant_get_child_value(properties, i);
+        const char *name;
+        g_variant_lookup(row, "name", "&s", &name);
+        if (!strcmp(name, "[[Metatable]]")) metatable = TRUE;
+        if (!strcmp(name, "\"self\"")) {
+            g_autoptr(GVariant) value = g_variant_lookup_value(row, "value", G_VARIANT_TYPE_VARDICT);
+            int child = 0;
+            g_variant_lookup(value, "handle", "i", &child);
+            cycle = child == handle;
+        }
+    }
+    g_assert_true(metatable);
+    g_assert_true(cycle);
     g_variant_unref(gnoblin_console_lua("reset", ""));
     expect("counter", "nil");
     g_variant_unref(gnoblin_console_lua("reset", ""));

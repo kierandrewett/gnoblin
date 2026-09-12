@@ -127,6 +127,8 @@ export default function (api) {
       <method name="Open"><arg type="s" direction="out"/></method>
       <method name="RunBinding"><arg type="s" direction="out"/></method>
       <method name="Evaluate"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
+      <method name="ExpandLua"><arg type="s" direction="out"/></method>
+      <method name="InspectRich"><arg type="s" direction="out"/></method>
       <method name="Inspect"><arg type="s" direction="out"/></method>
       <method name="Key"><arg type="u" direction="in"/></method>
       <method name="Language"><arg type="s" direction="in"/></method>
@@ -161,6 +163,40 @@ export default function (api) {
                 writeMarker({phase: 'failed', error: String(error), state: consoleState()});
             });
             return JSON.stringify({scheduled: true});
+        },
+        ExpandLua() {
+            const console = Main.devConsole;
+            const group = console._transcript.get_last_child().get_last_child().get_first_child();
+            group.get_first_child().emit('clicked', 1);
+            const names = group.get_last_child().get_children().map(row => row.get_first_child()?.text ?? '');
+            return JSON.stringify({names});
+        },
+        InspectRich() {
+            const console = Main.devConsole;
+            console.clear();
+            let calls = 0;
+            const prototype = {inherited: 9};
+            const object = Object.assign(Object.create(prototype), {
+                title: 'Inspector', nested: {ready: true}, items: [1, 2, {name: 'third'}],
+                collection: new Map([['key', {value: 42}]]),
+            });
+            object.self = object;
+            object[Symbol('token')] = 'symbol value';
+            Object.defineProperty(object, 'computed', {get() { calls++; return {answer: 42}; }});
+            Object.defineProperty(object, 'broken', {get() { throw new Error('getter failure'); }});
+            console.inspectObject(object);
+            const group = console._transcript.get_last_child().get_first_child();
+            const properties = group.get_last_child();
+            const before = calls;
+            const rows = properties.get_children();
+            const computed = rows.find(row => row.get_first_child()?.text === 'computed: ');
+            computed.get_last_child().emit('clicked', 1);
+            const after = calls;
+            const broken = rows.find(row => row.get_first_child()?.text === 'broken: ');
+            broken.get_last_child().emit('clicked', 1);
+            const failure = broken.get_last_child().text;
+            const names = rows.map(row => row.get_first_child()?.text ?? '');
+            return JSON.stringify({before, after, failure, names});
         },
         Inspect() {
             const console = Main.createDevConsole();
@@ -362,6 +398,24 @@ print('PASS: Lua persists state, shares config helpers, prints, completes and re
 inspected = json.loads(value(call('Inspect')))
 assert inspected['inspectorVisible'] and inspected['inspectorRows'] > 0, inspected
 print('PASS: object inspection exposes descriptor rows without leaving the console')
+rich = json.loads(value(call('InspectRich')))
+assert rich['before'] == 0 and rich['after'] == 1, rich
+assert 'getter failure' in rich['failure'], rich
+assert '[[Prototype]]: ' in rich['names'] and '[Symbol(token)]: ' in rich['names'], rich
+if shutil.which('grim'):
+    time.sleep(.15)
+    subprocess.run(['grim', '/tmp/gnoblin-js-inspector.png'], check=True)
+print('PASS: getters run only on click, thrown getters stay inline, symbols and prototypes render')
+call('Language', 'lua')
+lua_tree = evaluate('tree = {title = "Lua inspector", items = {1, 2, 3}}; tree.self = tree; setmetatable(tree, {kind = "sample"}); return tree')
+lua_expanded = json.loads(value(call('ExpandLua')))
+assert '[[Metatable]]: ' in lua_expanded['names'] and '"self": ' in lua_expanded['names'], lua_expanded
+if shutil.which('grim'):
+    time.sleep(.15)
+    subprocess.run(['grim', '/tmp/gnoblin-lua-inspector.png'], check=True)
+call('Language', 'js')
+print('PASS: Lua tables render expandable keys, cycles and metatables')
+
 
 
 evaluate('console.clear(); 42')

@@ -9,7 +9,7 @@ import St from 'gi://St';
 import System from 'system';
 
 import * as Main from '../main.js';
-import {ConsoleEvaluator, LuaConsoleEvaluator, isInspectable, preview} from './gnoblinConsoleEvaluator.js';
+import {ConsoleEvaluator, LuaConsoleEvaluator, LuaValue, isInspectable, preview} from './gnoblinConsoleEvaluator.js';
 
 const HISTORY_KEY = 'looking-glass-history';
 const MAX_ROWS = 200;
@@ -371,36 +371,83 @@ class DeveloperConsole extends St.Widget {
             row.add_child(output);
             row.add_child(detail);
         } else {
-            output.add_child(result.lua ? textLabel(result.value || 'nil', 'gnoblin-console-value', true) : this._valueActor(result.value));
+            if (result.lua) {
+                for (const value of result.items ?? [])
+                    output.add_child(this._valueActor(value, false, new Set(), model));
+            } else {
+                output.add_child(this._valueActor(result.value, false, new Set(), model));
+            }
             row.add_child(output);
         }
         this._scrollBottom();
         return result;
     }
 
-    _valueActor(value, error = false, depth = 0) {
-        const label = textLabel(preview(value), error ? 'gnoblin-console-error-text' : 'gnoblin-console-value', true);
-        if (!isInspectable(value) || depth >= 5)
+    _valueActor(value, error = false, ancestors = new Set(), model = this._evaluator, receiver = value) {
+        const summary = preview(value);
+        const kind = value instanceof LuaValue ? value.kind : typeof value;
+        const label = textLabel(summary, error ? 'gnoblin-console-error-text' : `gnoblin-console-value ${kind}`, true);
+        if (!isInspectable(value))
             return label;
+        if (ancestors.has(value)) {
+            label.text = `↩ ${summary}`;
+            return label;
+        }
+        const path = new Set(ancestors).add(value);
         const group = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
         let properties = null;
-        const toggle = button(`▸ ${preview(value)}`, () => {
+        const appendPage = offset => {
+            for (const property of model.properties(value, offset, 100, receiver)) {
+                if (property.more !== undefined) {
+                    const more = button(property.name, () => {
+                        more.destroy();
+                        appendPage(property.more);
+                    }, 'gnoblin-console-more');
+                    properties.add_child(more);
+                    continue;
+                }
+                const row = new St.BoxLayout({style_class: 'gnoblin-console-property'});
+                const name = new St.Label({text: `${property.name}: `,
+                    style_class: property.enumerable === false ? 'gnoblin-console-property-name non-enumerable' : 'gnoblin-console-property-name',
+                    accessible_name: `${property.name}${property.flags ? ` (${property.flags})` : ''}`});
+                if (property.key)
+                    row.add_child(this._valueActor(property.key, false, path, model));
+                else
+                    row.add_child(name);
+                if (property.accessor) {
+                    if (property.read) {
+                        const getter = button(property.preview, () => {
+                            getter.destroy();
+                            try {
+                                row.add_child(this._valueActor(property.read(), false, path, model));
+                            } catch (failure) {
+                                row.add_child(textLabel(`${failure.name}: ${failure.message}`, 'gnoblin-console-error-text', true));
+                            }
+                        }, 'gnoblin-console-getter');
+                        getter.accessible_name = `Evaluate getter ${property.name}`;
+                        row.add_child(getter);
+                    } else {
+                        row.add_child(textLabel(property.preview, 'gnoblin-console-hint'));
+                    }
+                } else {
+                    row.add_child(this._valueActor(property.value, false, path, model, property.receiver ?? property.value));
+                }
+                properties.add_child(row);
+            }
+            if (!properties.get_n_children())
+                properties.add_child(textLabel('(no own properties)', 'gnoblin-console-hint'));
+        };
+        const toggle = button(`▸ ${summary}`, () => {
             if (!properties) {
                 properties = new St.BoxLayout({orientation: VERTICAL, style_class: 'gnoblin-console-properties'});
-                for (const property of this._evaluator.properties(value).slice(0, 100)) {
-                    const row = new St.BoxLayout({style_class: 'gnoblin-console-property'});
-                    row.add_child(new St.Label({text: `${property.name}: `}));
-                    row.add_child(property.accessor
-                        ? textLabel('[Accessor]', 'gnoblin-console-hint')
-                        : this._valueActor(property.value, false, depth + 1));
-                    properties.add_child(row);
-                }
                 group.add_child(properties);
+                appendPage(0);
             } else {
                 properties.visible = !properties.visible;
             }
-            toggle.label = `${properties.visible ? '▾' : '▸'} ${preview(value)}`;
+            toggle.label = `${properties.visible ? '▾' : '▸'} ${summary}`;
         }, 'gnoblin-console-object');
+        toggle.accessible_name = `Expand ${summary}`;
         group.add_child(toggle);
         return group;
     }
