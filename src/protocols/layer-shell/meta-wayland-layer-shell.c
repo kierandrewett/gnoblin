@@ -59,6 +59,9 @@
  * hot-unplug has settled. */
 #define CLOSED_LAYER_WINDOW_DESTROY_DELAY_MS 250
 
+#define META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY \
+  "gnoblin-layer-shell-properties-applied"
+
 #define META_LAYER_SURFACE_ANCHOR_MASK \
   (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | \
    ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM | \
@@ -561,12 +564,37 @@ apply_window_type_and_layer (MetaWaylandLayerSurface *layer_surface,
 {
   MetaStackLayer stack_layer =
     stack_layer_for_wlr_layer (layer_surface->current.layer);
+  MetaWindowType window_type;
+  gboolean keyboard_focusable;
+
+  if (layer_surface->current.layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
+    window_type = META_WINDOW_DESKTOP;
+  else
+    window_type = META_WINDOW_DOCK;
+
+  keyboard_focusable =
+    !is_shell_menu (layer_surface) &&
+    layer_surface->current.keyboard_interactivity !=
+      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+
+  /* Buffer commits are frequent. Window properties change only when layer or
+   * keyboard state changes, so avoid expensive compositor work for a frame
+   * with the same effective state. */
+  if (GPOINTER_TO_INT (g_object_get_data (
+        G_OBJECT (window),
+        META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY)) &&
+      window->type == window_type &&
+      GPOINTER_TO_INT (g_object_get_data (
+        G_OBJECT (window),
+        META_WAYLAND_LAYER_SHELL_STACK_LAYER_KEY)) == (int) stack_layer + 1 &&
+      !!GPOINTER_TO_INT (g_object_get_data (
+        G_OBJECT (window),
+        META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY)) ==
+        keyboard_focusable)
+    return;
 
   /* Window type drives general dock-like behaviour (skip taskbar, etc.). */
-  if (layer_surface->current.layer <= ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)
-    window->type = META_WINDOW_DESKTOP;
-  else
-    window->type = META_WINDOW_DOCK;
+  window->type = window_type;
 
   meta_window_recalc_features (window);
 
@@ -577,10 +605,10 @@ apply_window_type_and_layer (MetaWaylandLayerSurface *layer_surface,
                      GINT_TO_POINTER ((int) stack_layer + 1));
   g_object_set_data (G_OBJECT (window),
                      META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY,
-                     GINT_TO_POINTER (
-                       !is_shell_menu (layer_surface) &&
-                       layer_surface->current.keyboard_interactivity !=
-                       ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE));
+                     GINT_TO_POINTER (keyboard_focusable));
+  g_object_set_data (G_OBJECT (window),
+                     META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY,
+                     GINT_TO_POINTER (1));
 
   meta_window_update_layer (window);
 
@@ -625,12 +653,11 @@ update_exclusive_zone_struts (MetaWaylandLayerSurface *layer_surface,
                               MtkRectangle             mon)
 {
   MetaWaylandLayerSurfaceState *state = &layer_surface->current;
+  MetaStrut new_strut = { 0 };
+  gboolean has_new_strut = FALSE;
   gint64 extent = 0;
   uint32_t edge;
   MetaSide side = META_SIDE_TOP;
-
-  /* Drop any strut we previously reserved before recomputing. */
-  g_clear_slist (&window->struts, g_free);
 
   if (state->exclusive_zone > 0 &&
       mon.width > 0 &&
@@ -665,35 +692,45 @@ update_exclusive_zone_struts (MetaWaylandLayerSurface *layer_surface,
 
       if (extent > 0)
         {
-          MetaStrut *strut = g_new0 (MetaStrut, 1);
-
-          strut->side = side;
+          new_strut.side = side;
           if (side == META_SIDE_TOP)
-            strut->rect = (MtkRectangle) {
+            new_strut.rect = (MtkRectangle) {
               mon.x, mon.y, mon.width, (int) extent
             };
           else if (side == META_SIDE_BOTTOM)
-            strut->rect = (MtkRectangle) {
+            new_strut.rect = (MtkRectangle) {
               mon.x,
               clamp_geometry_coordinate ((gint64) mon.y + mon.height - extent),
               mon.width,
               (int) extent
             };
           else if (side == META_SIDE_LEFT)
-            strut->rect = (MtkRectangle) {
+            new_strut.rect = (MtkRectangle) {
               mon.x, mon.y, (int) extent, mon.height
             };
           else
-            strut->rect = (MtkRectangle) {
+            new_strut.rect = (MtkRectangle) {
               clamp_geometry_coordinate ((gint64) mon.x + mon.width - extent),
               mon.y,
               (int) extent,
               mon.height
             };
-
-          window->struts = g_slist_prepend (NULL, strut);
+          has_new_strut = TRUE;
         }
     }
+
+  if ((!has_new_strut && !window->struts) ||
+      (has_new_strut && window->struts && !window->struts->next &&
+       ((MetaStrut *) window->struts->data)->side == new_strut.side &&
+       mtk_rectangle_equal (&((MetaStrut *) window->struts->data)->rect,
+                            &new_strut.rect)))
+    return;
+
+  g_clear_slist (&window->struts, g_free);
+  if (has_new_strut)
+    window->struts = g_slist_prepend (NULL,
+                                      g_memdup2 (&new_strut,
+                                                 sizeof (new_strut)));
 
   invalidate_work_areas_for_window (window);
 }
