@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native snapping input test.
 
-Run via GNOBLIN_TEST_DBUS_CLIENT=$PWD/scripts/test-window-snapping.py
+Run via GNOBLIN_TEST_DBUS_CLIENT=$PWD/tests/test-window-snapping.py
 with scripts/run-gnome-shell.sh. Set GNOBLIN_QS to a matching Quickshell
 wrapper, BINGUX_SOURCE to its checkout, and SNAP_TEST_BACKEND=x11 to test X11.
 The harness monitor must be its default 1280x800.

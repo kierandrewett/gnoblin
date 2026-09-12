@@ -2,7 +2,7 @@
 """Verify that a private Gnoblin session does not create native GNOME chrome.
 
 Run with:
-  GNOBLIN_TEST_DBUS_CLIENT=$PWD/scripts/test-native-chrome.py \\
+  GNOBLIN_TEST_DBUS_CLIENT=$PWD/tests/test-native-chrome.py \\
     scripts/run-gnome-shell.sh
 
 The probe uses the Gnoblin user-script host. It does not need the unsafe Shell

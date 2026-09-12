@@ -14,7 +14,7 @@
  *   frame      our first frame callback fired (first pixel is up)
  *
  * Machine-readable last line: "LAYER_SHELL_LATENCY <connect> <globals>
- * <configure> <frame>" in integer microseconds, for scripts/test-layer-latency.sh.
+ * <configure> <frame>" in integer microseconds, for tests/test-layer-latency.sh.
  *
  * Deliberately allocates its own shm buffer rather than using a toolkit: the
  * point is to measure the compositor path, not GTK or EGL startup. A real

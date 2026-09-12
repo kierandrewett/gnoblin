@@ -42,7 +42,7 @@ gnoblinctl launch end example
 Run the isolated integration check with:
 
 ```sh
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-launch-feedback.py" scripts/run-gnome-shell.sh
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-launch-feedback.py" scripts/run-gnome-shell.sh
 ```
 
 It checks a virtual pointer, overlapping requests, timeout, script reload, and

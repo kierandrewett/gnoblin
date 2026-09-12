@@ -130,7 +130,7 @@ meson compile -C build/xdg-desktop-portal-gnome
 GNOBLIN_PREFIX="$PWD/install" \
 G_RESOURCE_OVERLAYS="/org/gnome/shell=$PWD/src/gnome-shell-overlay/js" \
 GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-permissions-live.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-permissions-live.py" \
 bash scripts/run-gnome-shell.sh
 ```
 

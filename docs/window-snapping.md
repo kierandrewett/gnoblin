@@ -48,7 +48,7 @@ Run from Gnoblin (set `GNOBLIN_QS` to the matching Quickshell wrapper if needed)
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" GNOBLIN_CONFIG='' \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-window-snapping.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-window-snapping.py" \
 bash scripts/run-gnome-shell.sh
 ```
 

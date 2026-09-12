@@ -34,16 +34,16 @@ the active desktop can still use the previous native libraries until login.
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-fade-protocol.sh" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-fade-protocol.sh" \
 bash scripts/run-gnome-shell.sh
 
 GNOBLIN_PREFIX="$PWD/install" GNOBLIN_TEST_MODE=user \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-fade-protocol.sh" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-fade-protocol.sh" \
 bash scripts/run-gnome-shell.sh
 
 GNOBLIN_PREFIX="$PWD/install" GNOBLIN_TEST_CLIENT_FADE=1 \
 QS_TEST_BIN=/path/to/qt-matched-quickshell \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-fade.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-fade.py" \
 bash scripts/run-gnome-shell.sh
 ```
 
@@ -76,7 +76,7 @@ GNOBLIN_PREFIX="$PWD/install" \
 QS_TEST_BIN=/home/kieran/.local/bin/gnoblin-quickshell \
 STEAM_ICON=/usr/share/icons/hicolor/48x48/apps/steam.png \
 LOCALSEND_ICON=/var/lib/flatpak/app/org.localsend.localsend_app/current/active/files/share/icons/hicolor/512x512/apps/org.localsend.localsend_app.png \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-detail-coverage.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-detail-coverage.py" \
 bash scripts/run-gnome-shell.sh
 ```
 

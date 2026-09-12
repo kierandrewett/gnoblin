@@ -14,4 +14,4 @@ empty document. A missing file named by `g.load()` is an error.
 
 There is no TOML or INI configuration path.
 
-Run `./scripts/test-config.sh` for the native Lua and glob tests.
+Run `./tests/test-config.sh` for the native Lua and glob tests.

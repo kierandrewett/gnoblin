@@ -188,13 +188,13 @@ GNOBLIN_PREFIX="$PWD/install" \
 GNOBLIN_CONFIG="$PWD/tests/performance-effects.lua" \
 GNOBLIN_BENCH_REQUIRE_OCCLUSION=1 \
 GNOBLIN_BENCH_REPORT=/tmp/gnoblin-desktop-performance.json \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/benchmark-desktop.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/benchmark-desktop.py" \
 bash scripts/run-gnome-shell.sh
 ```
 
 ## Reload and window-churn smoke check
 
-The measured build passed `scripts/perf-smoke.sh`: private dirty memory after
+The measured build passed `tests/perf-smoke.sh`: private dirty memory after
 settling was 100,360 KiB, changed by -5,372 KiB over the following minute, then
 grew by 120 KiB across ten soft reloads. RSS grew by 44 KiB across fifteen
 window open/close cycles. These are bounded regression checks, not a proof that

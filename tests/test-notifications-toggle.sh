@@ -37,7 +37,7 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 export DK
 
 dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
-  source "$ROOT/scripts/gnoblin-test-lib.sh"
+  source "$ROOT/tests/gnoblin-test-lib.sh"
   "$GS" --headless --wayland --no-x11 --mode=gnoblin --virtual-monitor 1280x800 \
     --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
   gdbus wait --session --timeout 30 org.gnoblin.Shell || { echo "FAIL: shell never up"; exit 1; }

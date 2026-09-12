@@ -208,72 +208,72 @@ gnome-devkit *TERMINAL:
 # Headless regression test for the devkit: boot a nested gnoblin and confirm the
 # spawned-terminal env (isolated bus + gnoblinctl) can drive org.gnoblin.Shell.
 gnome-devkit-verify:
-    ./scripts/test-gnome-devkit.sh
+    ./tests/test-gnome-devkit.sh
 
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts, advertises wlr-layer-shell, applies Gnoblin-only panel and extension
 # policy, and keeps privileged Shell APIs restricted.
 gnome-verify:
-    GNOBLIN_EXPECT_EXTENSION_SCOPE=1 GNOBLIN_TEST_EXTENSION_ROOT="{{justfile_directory()}}/tests/shell-extensions" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_EXPECT_EXTENSION_SCOPE=1 GNOBLIN_TEST_EXTENSION_ROOT="{{justfile_directory()}}/tests/shell-extensions" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
 
 # Headless: boot stock GNOME mode from the patched packages and prove Gnoblin's
 # protocols and control API remain unavailable while the native panel,
 # extension validation, and notification ownership keep upstream behaviour.
 gnome-stock-protocol-isolation-verify:
-    ./scripts/test-stock-protocol-isolation.sh
+    ./tests/test-stock-protocol-isolation.sh
 
 # Headless: exercise the org.gnoblin.* control protocol end-to-end over D-Bus
 # (Ping / GetVersion / Reload → soft in-process reload).
 gnome-dbus-verify:
-    ./scripts/test-gnome-dbus.sh
+    ./tests/test-gnome-dbus.sh
 
 # Headless: performance smoke test — idle memory budget + growth, soft-reload
 # leak bound and window-churn leak bound. Real-session follow-up is tracked in
 # TODO.md and the real-hardware verification guide.
 perf-smoke:
-    ./scripts/perf-smoke.sh
+    ./tests/perf-smoke.sh
 
 # Headless: verify external chrome owns the removed native desktop UI.
 gnome-native-chrome-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-native-chrome.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-native-chrome.py" ./scripts/run-gnome-shell.sh
 
 # Headless: verify the Gnoblin developer console replacement, evaluator and
 # lock/unlock lifecycle against the installed patched Shell.
 gnome-developer-console-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-developer-console.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-developer-console.py" ./scripts/run-gnome-shell.sh
 
 # Headless: real recovery-menu/panel clicks, terminal launch and layer-client
 # failure. Requires foot and a Quickshell build matching the host Qt.
 gnome-desktop-recovery-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_UNSAFE_MODE=1 QS_TEST_BIN="${QS_TEST_BIN:-qs}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-desktop-recovery.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_UNSAFE_MODE=1 QS_TEST_BIN="${QS_TEST_BIN:-qs}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-desktop-recovery.py" ./scripts/run-gnome-shell.sh
 
 # Headless: prove Lua configuration watching, named autostart and live window behaviour.
 gnome-config-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
 
 # Optional real Quickshell dock test; requires qs and Python GTK 4 bindings.
 gnome-minimize-target-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-minimize-target.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-minimize-target.py" ./scripts/run-gnome-shell.sh
 
 # Headless: prove the GJS user-scripting layer — drop a script, edit it, reload
 # via org.gnoblin.*, confirm the new code ran.
 gnome-scripting-verify:
-    ./scripts/test-scripting.sh
+    ./tests/test-scripting.sh
 
 # Headless: prove the `notifications` toggle — gnoblin releases org.freedesktop.
 # Notifications when disabled (so an external daemon can own it) and reclaims it.
 gnome-notifications-verify:
-    ./scripts/test-notifications-toggle.sh
+    ./tests/test-notifications-toggle.sh
 
 # Headless: compile black-box clients from the owned protocol XML and exercise
 # registry binding plus clean disconnect against the running compositor.
 gnome-protocol-boundaries-verify:
-    ./scripts/test-protocol-boundaries.sh
+    ./tests/test-protocol-boundaries.sh
 
 # Headless: prove Lua protocol gating — disabling wlr-layer-shell in the config
 # stops zwlr_layer_shell_v1 being advertised.
 gnome-protocol-gating-verify:
-    ./scripts/test-protocol-gating.sh
+    ./tests/test-protocol-gating.sh
 
 # Produce a patched release tarball in ~/rpmbuild/SOURCES.
 tarball PROJ:
@@ -319,14 +319,14 @@ arch PROJ:
 
 # Tier 1: logic test for the shared C config parser (src/config), no display.
 test-config:
-    ./scripts/test-config.sh
+    ./tests/test-config.sh
 
 # Best of 3, fails past BOOT_BUDGET_MS (default 1350). This catches startup
 # regressions in the patched shell; the script documents the headless test
 # boundary and the real-hardware follow-up.
 # Boot-time budget: headless boot, compositor start -> "GNOME Shell started".
 test-boot-time:
-    ./scripts/test-boot-time.sh
+    ./tests/test-boot-time.sh
 
 # Builds a minimal shm layer-shell client and times process start -> first
 # frame inside a headless session. gnoblin's chrome is all layer-shell, so this
@@ -334,7 +334,7 @@ test-boot-time:
 # by default; set LAYER_BUDGET_MS to make it a gate.
 # Layer-shell chrome latency: how fast a bar gets its first pixel up.
 test-layer-latency:
-    ./scripts/test-layer-latency.sh
+    ./tests/test-layer-latency.sh
 
 # Tier 2: mutter in-tree headless functional tests. Run serially: these tests
 # each boot a headless compositor with virtual input/monitors, and parallel Meson
@@ -356,11 +356,11 @@ test-mutter: (patch "mutter")
 # Fast deterministic checks: syntax, parser behaviour, secure state publication,
 # and RPM sidecar-source completeness. Does not boot a compositor.
 verify-fast:
-    bash -n scripts/*.sh src/tools/*
-    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py
-    ./scripts/test-log-diagnostics.sh
-    ./scripts/test-secure-state.sh
-    ./scripts/test-rpm-sources.sh
+    for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin-session src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py tests/*.py src/tools/gnoblinctl
+    ./tests/test-log-diagnostics.sh
+    ./tests/test-secure-state.sh
+    ./tests/test-rpm-sources.sh
     python3 tests/package-isolation.test.py
     just test-config
 
@@ -406,12 +406,12 @@ clean:
 
 # Isolated layer-shell animation and alpha-masked blur regression tests.
 gnome-layer-animation-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-resize.py" ./scripts/run-gnome-shell.sh
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-animation.py" ./scripts/run-gnome-shell.sh
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-layer-lifecycle.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-resize.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-animation.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-lifecycle.py" ./scripts/run-gnome-shell.sh
 
 gnome-window-effects-verify:
-    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-window-effects.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-window-effects.py" ./scripts/run-gnome-shell.sh
 
 # Build a source RPM from an already prepared release source directory.
 srpm PROJECT SOURCES OUTPUT:

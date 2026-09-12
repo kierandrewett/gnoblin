@@ -43,7 +43,7 @@ trap cleanup EXIT INT TERM HUP
 CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 
 dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
-  source "$ROOT/scripts/gnoblin-test-lib.sh"
+  source "$ROOT/tests/gnoblin-test-lib.sh"
   "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
     --virtual-monitor 1280x800 --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
   SHELL_PID=$!

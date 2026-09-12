@@ -23,8 +23,8 @@ presenting its window. The sender can subsequently select a more specific window
 After building and installing the local prefix:
 
 ```sh
-GNOBLIN_TEST_CLIENT="$PWD/scripts/test-focus-transfer.py" scripts/run-gnome-shell.sh
-EXPECT_FOCUS_TRANSFER=0 GNOBLIN_TEST_CLIENT="$PWD/scripts/test-focus-transfer.py" scripts/run-gnome-shell.sh
+GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
+EXPECT_FOCUS_TRANSFER=0 GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
 ```
 
 The private compositor test restores a minimised Foot window on another workspace

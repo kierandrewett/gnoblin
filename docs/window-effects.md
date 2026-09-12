@@ -62,10 +62,10 @@ Invalid Lua keeps the previous configuration.
 ## Validation
 
 `tests/window-shader-config-test.js` checks configuration and rule precedence.
-`scripts/test-window-shaders.py` runs in an isolated headless Gnoblin session
+`tests/test-window-shaders.py` runs in an isolated headless Gnoblin session
 through `scripts/run-gnome-shell.sh`. It checks rendered pixels, transparency,
 blur composition, atomic edits, invalid and deleted files, uniforms, and removal.
-`scripts/test-window-effects.py` checks background blur against a checkerboard.
+`tests/test-window-effects.py` checks background blur against a checkerboard.
 
 Blur uses the existing separable Gaussian filter, with its existing linear sampling
 and radius-dependent downsampling. The effect retains its GPU textures, framebuffers
@@ -90,7 +90,7 @@ Older native sessions retain the full-redraw fallback until the next login.
 Compositor opacity fades the masked blur and client as one composed surface.
 The mask compensates for drawing the foreground separately, so opacity is not
 applied twice. This needs no client protocol or namespace-specific animation.
-`scripts/test-blur-fade.py` compares eight fade and reversal samples against
+`tests/test-blur-fade.py` compares eight fade and reversal samples against
 an image of the completed surface blended over the unchanged background.
 
 Client-rendered fades are different: if a client changes its buffer alpha, the
@@ -104,8 +104,8 @@ needs a separate resolution. No alpha-modifier integration is installed.
 Run native checks with the repo installation, without restarting the desktop:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-regions.py" scripts/run-gnome-shell.sh
-GNOBLIN_PREFIX="$PWD/install" GNOBLIN_BLUR_REQUIRE_CACHE=1 GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-blur-performance.py" scripts/run-gnome-shell.sh
+GNOBLIN_PREFIX="$PWD/install" GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-regions.py" scripts/run-gnome-shell.sh
+GNOBLIN_PREFIX="$PWD/install" GNOBLIN_BLUR_REQUIRE_CACHE=1 GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-performance.py" scripts/run-gnome-shell.sh
 ```
 
 The region test compares cropped and full rendered pixels, moves a panel, changes
@@ -176,7 +176,7 @@ the client shadow unless a replacement shadow is configured.
 Keep radius, smoothing and padding equal for clipping and borders. Force mode
 clips the client even when it already draws corners; automatic mode preserves
 native corners and can leave a different curve underneath a configured border.
-`scripts/test-window-shadow-clipping.py` verifies both shadow policies with
+`tests/test-window-shadow-clipping.py` verifies both shadow policies with
 rendered pixels in a private compositor.
 
 A rebuilt shell must be started once to load the native renderer. Subsequent

@@ -49,7 +49,7 @@ Run the protocol tests in an isolated compositor:
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-background-effect.sh" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-background-effect.sh" \
 bash scripts/run-gnome-shell.sh
 ```
 
@@ -58,7 +58,7 @@ semantics, empty regions, holes, disjoint rectangles, surface-size clipping,
 buffer scale, destruction/recreation and synchronised subsurfaces through actual
 rendered pixels. The same script checks that the global is absent in stock mode.
 
-`scripts/test-blur-detail-coverage.py` checks the legacy path by default. Set
+`tests/test-blur-detail-coverage.py` checks the legacy path by default. Set
 `GNOBLIN_TEST_STANDARD_BLUR=1` for the standard path. Both use the same seven icon,
 separator and border samples. Set `STEAM_ICON` and `LOCALSEND_ICON` to installed
 icons to include those exact images.

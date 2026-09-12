@@ -25,7 +25,7 @@ ulimit -c 0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/gnoblin-state.sh"
-source "$ROOT/scripts/gnoblin-test-lib.sh"
+source "$ROOT/tests/gnoblin-test-lib.sh"
 GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
 export GNOBLIN_STATE_DIR
 LAST_LOG="$GNOBLIN_STATE_DIR/gnome-shell-last.log"
@@ -207,7 +207,7 @@ fi
 
 # --- probe advertised globals ----------------------------------------------
 probe="$DK/wl-globals"
-cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
+cc "$ROOT/tests/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
 globals="$(WAYLAND_DISPLAY="$DISP" "$probe")"
 echo "== wlr_/ext_ protocols advertised by gnome-shell =="
 printf '%s\n' "$globals" | grep -iE "wlr_|ext_" | sort | sed 's/^/   /'

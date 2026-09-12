@@ -179,5 +179,5 @@ Keep new commands within this design:
   they do not maintain a second configuration store or rewrite executable Lua.
 
 The local CLI tests exercise command names, help, output, validation, and
-transport failures. `scripts/test-gnoblinctl.py` checks the installed command
+transport failures. `tests/test-gnoblinctl.py` checks the installed command
 against a private compositor session.

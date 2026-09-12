@@ -168,7 +168,7 @@ GNOBLIN_PREFIX="$PWD/install" \
 GNOBLIN_CONFIG="$PWD/tests/performance-effects.lua" \
 GNOBLIN_BENCH_REQUIRE_OCCLUSION=1 \
 GNOBLIN_BENCH_REPORT=/tmp/gnoblin-performance.json \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/benchmark-desktop.py" \
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/benchmark-desktop.py" \
 bash scripts/run-gnome-shell.sh
 ```
 

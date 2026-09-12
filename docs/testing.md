@@ -59,9 +59,16 @@ regression: the unit tests (no backend needed) still pass, and the
 ref-image tests log "Image matched" before bailing on the same missing
 monitor. Run this tier on real hardware, or wherever inotify actually works.
 
+## Test layout
+
+Test entry points, benchmarks, protocol probes and shared test helpers live in
+`tests/`. Build, install, packaging and private-session launch helpers live in
+`scripts/`. Test scripts find the repository root from their own location.
+`just verify-fast` checks shell and Python syntax in both directories.
+
 ## Writing a new verify script
 
-Follow the existing `scripts/test-*.sh` pattern: boot what you need with
+Follow the existing `tests/test-*.sh` pattern: boot what you need with
 `scripts/run-gnome-shell.sh`'s approach (throwaway `HOME`/`XDG_*_HOME`, real
 isolation) or `scripts/run-gnome-devkit.sh`'s (real `HOME`/`XDG_RUNTIME_DIR`,
 isolated D-Bus session bus only — see [Devkit § Isolation](devkit.md#isolation)

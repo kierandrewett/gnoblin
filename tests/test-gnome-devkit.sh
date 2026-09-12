@@ -7,7 +7,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-probe="$ROOT/scripts/test-shell-security-policy.py"
+probe="$ROOT/tests/test-shell-security-policy.py"
 command='echo "PING:$(gnoblinctl ping)"; echo "VER:$(gnoblinctl version)"'
 command="$command; \"$probe\""
 

@@ -21,7 +21,7 @@ Before distributing binary packages, run:
 
 ```sh
 python3 scripts/check-rpm-isolation.py PATH_TO_RPM...
-bash scripts/test-rpm-coexistence.sh MUTTER_RPM SHELL_RPM SESSION_RPM
+bash tests/test-rpm-coexistence.sh MUTTER_RPM SHELL_RPM SESSION_RPM
 ```
 
 The coexistence test uses disposable copies of installed GNOME files and

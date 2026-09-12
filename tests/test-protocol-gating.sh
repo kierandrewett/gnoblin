@@ -27,7 +27,7 @@ printf 'return {protocols = {["wlr-layer-shell"] = false}}\n' > "$CONF_FILE"
 export GNOBLIN_CONFIG="$CONF_FILE"
 
 probe="$DK/wl-globals"
-cc "$ROOT/scripts/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
+cc "$ROOT/tests/wl-globals.c" $(pkg-config --cflags --libs wayland-client) -o "$probe" || exit 1
 
 cleanup() {
   for proc in /proc/[0-9]*; do
@@ -42,7 +42,7 @@ DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 export DK probe
 
 dbus-run-session --config-file="$DBUS_CONF" -- bash -uo pipefail -c '
-  source "$ROOT/scripts/gnoblin-test-lib.sh"
+  source "$ROOT/tests/gnoblin-test-lib.sh"
   "$GS" --headless --wayland --no-x11 --mode=gnoblin --virtual-monitor 1280x800 \
     --wayland-display "$DISP" >"$DK/shell.log" 2>&1 &
   SHELL_PID=$!

@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d /tmp/gnoblin-log-test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-source "$ROOT/scripts/gnoblin-test-lib.sh"
+source "$ROOT/tests/gnoblin-test-lib.sh"
 
 cat > "$TMP/benign.log" <<'EOF'
 portal is not running: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown

@@ -35,7 +35,7 @@ or claimed as supported.
 4. Regenerate and reapply the Mutter wiring patch.
 5. Add a `[protocols]` gate and update `src/data/gnoblin.conf.example`.
 6. Add a focused protocol client under `tests/` and include it in
-   `scripts/test-protocol-boundaries.sh`.
+   `tests/test-protocol-boundaries.sh`.
 
 Run `just gnome-protocol-boundaries-verify` for protocol contracts,
 `just gnome-stock-protocol-isolation-verify` for session scoping, and

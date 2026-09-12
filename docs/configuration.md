@@ -356,13 +356,13 @@ immediately and reports validation errors. `gnoblinctl reload` also rereads it,
 alongside the theme and user-script reload.
 
 ```sh
-./scripts/test-config.sh
+./tests/test-config.sh
 GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
-  GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-live-shell-config.py" \
+  GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-live-shell-config.py" \
   ./scripts/run-gnome-shell.sh
 # Requires Quickshell and GTK 4:
 GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
-  GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-minimize-target.py" \
+  GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-minimize-target.py" \
   ./scripts/run-gnome-shell.sh
 ```
 

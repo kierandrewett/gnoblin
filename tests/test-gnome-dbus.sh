@@ -69,7 +69,7 @@ CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
 
 # Everything below shares the one dbus-run-session bus.
 dbus-run-session --config-file="$CONF" -- bash -euo pipefail -c '
-  source "$ROOT/scripts/gnoblin-test-lib.sh"
+  source "$ROOT/tests/gnoblin-test-lib.sh"
   gsettings set org.gnome.desktop.input-sources sources "[('\''xkb'\'', '\''us'\''), ('\''xkb'\'', '\''gb'\'')]"
   # The private test session enables Eval only to emit MetaDisplay::overlay-key.
   # Headless Mutter has no synthetic Super input path. The production shell

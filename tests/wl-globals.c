@@ -5,7 +5,7 @@
  * "interface version". Used by the devkit to verify which protocols gnoblin's
  * compositor exposes, without depending on wayland-info being installed.
  *
- * Build: cc scripts/wl-globals.c $(pkg-config --cflags --libs wayland-client) -o wl-globals
+ * Build: cc tests/wl-globals.c $(pkg-config --cflags --libs wayland-client) -o wl-globals
  */
 
 #include <stdio.h>

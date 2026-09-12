@@ -28,11 +28,11 @@ Adwaita bitmap fallback. To return to the system theme, select `Adwaita` again.
 Validation (Pillow and `rsvg-convert` are also required):
 
 ```sh
-scripts/test-adwaita-artwork.py
-scripts/test-adwaita-hyprcursor.py
+tests/test-adwaita-artwork.py
+tests/test-adwaita-hyprcursor.py
 ADWAITA_HYPRCURSOR_PATH="$HOME/.local/share/icons/Adwaita-Hyprcursor" \
   GNOBLIN_PREFIX="$PWD/install" \
-  GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-adwaita-hyprcursor.py" \
+  GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-adwaita-hyprcursor.py" \
   scripts/run-gnome-shell.sh
 ```
 
@@ -77,8 +77,8 @@ private sessions:
 
 ```sh
 scripts/build-hyprcursor-test.sh
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-hyprcursor.py" scripts/run-gnome-shell.sh
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/scripts/test-launch-feedback.py" scripts/run-gnome-shell.sh
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-hyprcursor.py" scripts/run-gnome-shell.sh
+GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-launch-feedback.py" scripts/run-gnome-shell.sh
 ```
 
 The vector check generates a two-frame SVG theme and verifies rendered pixels,

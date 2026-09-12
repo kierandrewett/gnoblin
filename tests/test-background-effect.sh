@@ -17,5 +17,5 @@ if [[ "${GNOBLIN_ACTIVE_MODE:-gnoblin}" != gnoblin ]]; then
 else
     "$testdir/client" duplicate
     "$testdir/client" dead
-    python3 "$root/scripts/test-background-effect.py" "$testdir/client"
+    python3 "$root/tests/test-background-effect.py" "$testdir/client"
 fi
