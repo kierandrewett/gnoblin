@@ -1,0 +1,63 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Wire ext-background-effect-v1 into surface transactions
+
+Build the standard background effect protocol and carry its state through
+synchronised subsurface transactions. Expose committed regions to the shell.
+
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -713,6 +713,8 @@
+     'wayland/meta-gnoblin-protocols.h',
+     'wayland/meta-gnoblin-window-frame.c',
+     'wayland/meta-gnoblin-window-frame.h',
++    'wayland/meta-wayland-background-effect.c',
++    'wayland/meta-wayland-background-effect.h',
+     'wayland/meta-wayland-blur-fade.c',
+     'wayland/meta-wayland-blur-fade.h',
+     'wayland/meta-wayland-idle-notify.c',
+@@ -1247,6 +1249,7 @@
+     ['wlr-output-power-management-unstable-v1', 'private', ],
+     ['ext-data-control-v1', 'private', ],
+     ['gnoblin-blur-fade-v1', 'private', ],
++    ['ext-background-effect-v1', 'private', ],
+     ['xwayland-keyboard-grab', 'unstable', 1, ],
+   ]
+   if have_xwayland
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -138,3 +138,6 @@
+ META_EXPORT
+ void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
+                                                 gboolean     armed);
++
++META_EXPORT
++MtkRegion *meta_gnoblin_background_effect_get_region (ClutterActor *actor);
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -41,6 +41,7 @@
+ #include "wayland/meta-wayland-color-representation.h"
+ #include "wayland/meta-gnoblin-protocols.h"
+ #include "wayland/meta-wayland-blur-fade.h"
++#include "wayland/meta-wayland-background-effect.h"
+ #include "wayland/meta-wayland-fractional-scale.h"
+ #include "wayland/meta-wayland-gtk-shell.h"
+ #include "wayland/meta-wayland-layer-shell.h"
+@@ -533,6 +534,7 @@
+                                        MetaWaylandSurfaceState *to)
+ {
+   meta_wayland_blur_fade_merge_state (from, to);
++  meta_wayland_background_effect_merge_state (from, to);
+   if (from->newly_attached)
+     {
+       if (to->buffer)
+@@ -1084,6 +1086,7 @@
+     g_clear_object (&state->buffer);
+ 
+   meta_wayland_blur_fade_apply_state (surface, state);
++  meta_wayland_background_effect_apply_state (surface, state);
+ 
+   g_signal_emit (state,
+                  surface_state_signals[SURFACE_STATE_SIGNAL_APPLIED],

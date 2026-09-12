@@ -1,0 +1,3 @@
+mutter meta-wayland-background-effect.c src/wayland/meta-wayland-background-effect.c
+mutter meta-wayland-background-effect.h src/wayland/meta-wayland-background-effect.h
+mutter ext-background-effect-v1.xml src/wayland/protocol/ext-background-effect-v1.xml

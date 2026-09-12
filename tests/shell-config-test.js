@@ -30,6 +30,10 @@ const rules = parseDocument({'window-rules': [{match: {type: 'layer'}, blur: 24,
 const matched = windowEffects({type: 'layer', layer: 'dock', focused: false}, rules);
 assert(matched.blur === 12 && matched.opacity === 0.9 && matched.animation === 'none', 'later Lua rules override individual effects');
 assert(windowEffects({type: 'window', layer: null}, rules).blur === 0, 'layer rules do not match applications');
+assert(windowEffects({type: 'window'}, rules, 24).blur === 24, 'standard client blur has a compositor default');
+assert(windowEffects({type: 'layer', layer: 'dock'}, rules, 24).blur === 12, 'explicit rules override standard blur strength');
+const disabledBlur = parseDocument({'window-rules': [{match: {type: 'window'}, blur: 0}]});
+assert(windowEffects({type: 'window'}, disabledBlur, 24).blur === 0, 'explicit zero disables standard client blur');
 for (const document of [{'window-rules': [{match: {type: 'layer'}, blur: 101}]}, {'window-rules': [{match: {type: 'layer'}, opacity: 2}]}, {'window-rules': [{match: {title: '['}}]}, {'window-rules': [{match: {unknown: 'x'}}]}]) {
     let rejected = false;
     try { parseDocument(document); } catch { rejected = true; }

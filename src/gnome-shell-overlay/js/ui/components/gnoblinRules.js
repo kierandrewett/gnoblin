@@ -6,6 +6,7 @@ import GObject from 'gi://GObject';
 import * as Config from './gnoblinConfig.js';
 import {WindowCorners, WindowBorders, ToolkitCache} from './gnoblinCorners.js';
 import {BackdropRedraw} from './gnoblinBackdropRedraw.js';
+import {BackgroundEffects} from './gnoblinBackgroundEffects.js';
 
 const supportsShadowMask = Shell.BlurEffect.list_properties().some(p => p.name === 'ignore-shadow-pixels');
 
@@ -54,6 +55,7 @@ export class WindowRules {
         this._pending = new Set();
         this._pendingSpare = new Set();
         this._pendingId = 0;
+        this._backgroundEffects = new BackgroundEffects(actor => this._apply(actor));
         this._updateRuleDependencies(this._config);
         this._map = global.window_manager.connect('map', (_wm, actor) => this._apply(actor));
         this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
@@ -64,6 +66,7 @@ export class WindowRules {
             if (previous) this._schedule(previous);
             if (this._focusedActor) this._schedule(this._focusedActor);
         });
+        this._backgroundEffects.refresh();
     }
 
     _schedule(actor) {
@@ -180,7 +183,12 @@ export class WindowRules {
         }
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
         surface.opacity = Math.round(entry.opacity * effects.opacity);
-        if (effects.blur > 0) {
+        const standardBlur = this._backgroundEffects.owns(actor);
+        if (standardBlur) {
+            const policy = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config, 24);
+            this._backgroundEffects.setRadius(actor, policy.blur);
+        }
+        if (effects.blur > 0 && !standardBlur) {
             if (!entry.blur) {
                 entry.blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND_MASKED, brightness: 1});
                 // Keep backdrop capture outside the surface shader. Blur paints
@@ -232,6 +240,7 @@ export class WindowRules {
         this._pendingId = 0;
         this._pending.clear();
         this._pendingSpare.clear();
+        this._backgroundEffects.destroy();
         this._backdropRedraw.destroy();
         global.window_manager.disconnect(this._map);
         global.display.disconnect(this._focus);

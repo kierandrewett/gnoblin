@@ -45,7 +45,7 @@ ShellRoot {
   WlrLayershell.layer: WlrLayer.Top
   WlrLayershell.namespace: "blur-details"
   color: "transparent"
-  Rectangle { x: 32; y: 32; width: 576; height: 336; radius: 20; color: "#80303030"
+  Rectangle { id: panel; x: 32; y: 32; width: 576; height: 336; radius: 20; color: "#80303030"
    Rectangle { x: 30; y: 40; width: 500; height: 1; color: "white" }
    Rectangle { x: 30; y: 80; width: 500; height: 1; color: "#60ffffff" }
    Rectangle { x: 30; y: 100; width: 500; height: 2; color: "#b0303030" }
@@ -62,6 +62,10 @@ ShellRoot {
 }
 """.replace('STEAM_ICON', icons['STEAM_ICON'])
      .replace('LOCALSEND_ICON', icons['LOCALSEND_ICON']))
+if os.environ.get('GNOBLIN_TEST_STANDARD_BLUR') == '1':
+    qml.write_text(qml.read_text().replace('import QtQuick', 'import QtQuick\nimport Bingux.Effects 1.0 as Native', 1)
+                   .replace('id: panel;', 'id: panel; Native.BackgroundEffect { id: standardEffect; target: panel; radius: panel.radius }')
+                   .replace('target: "test";', 'target: "test"; function standard(): bool { return standardEffect.available; }'))
 qs = os.environ.get('QS_TEST_BIN', 'qs')
 log = (root / 'details.log').open('w')
 proc = subprocess.Popen([qs, '-p', str(qml)], stdout=log, stderr=log)
@@ -74,6 +78,9 @@ def capture(name):
 try:
     time.sleep(2)
     assert proc.poll() is None, (root / 'details.log').read_text()
+    if os.environ.get('GNOBLIN_TEST_STANDARD_BLUR') == '1':
+        available = subprocess.check_output([qs, 'ipc', '-p', str(qml), 'call', 'test', 'standard'], text=True).strip()
+        assert available == 'true', 'Standard blur protocol was not negotiated'
     actual = capture('checker')
     subprocess.run([qs, 'ipc', '-p', str(qml), 'call', 'test', 'reference', 'true'], check=True)
     # A successful IPC reply does not mean that the new frame is on screen.

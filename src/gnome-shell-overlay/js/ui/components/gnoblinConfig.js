@@ -614,8 +614,8 @@ export function layerOffset(anchor, rect, monitor) {
 }
 
 // Later matching rules override individual effects, leaving others intact.
-export function windowEffects(properties, config = settings) {
-    const effects = {borders: {...Corners.borderDefaults}, corners: {...Corners.defaults}, blur: 0, 'blur-ignore-shadows': false, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
+export function windowEffects(properties, config = settings, defaultBlur = 0) {
+    const effects = {borders: {...Corners.borderDefaults}, corners: {...Corners.defaults}, blur: defaultBlur, 'blur-ignore-shadows': false, opacity: 1, animation: config['layer-animation'], shader: '', 'shader-uniforms': {}};
     for (const rule of config['window-rules']) {
         let matches = true;
         for (const [key, matcher] of windowRuleMatchers(rule)) {

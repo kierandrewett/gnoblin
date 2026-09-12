@@ -94,6 +94,10 @@ meta_wayland_blur_fade_apply_state (MetaWaylandSurface *surface,
     g_object_set_data_full (G_OBJECT (surface), FADE_KEY,
                             g_bytes_ref (fades), (GDestroyNotify) g_bytes_unref);
   fades = g_object_get_data (G_OBJECT (surface), FADE_KEY);
+  actor = CLUTTER_ACTOR (meta_wayland_surface_get_actor (surface));
+  if (actor && fades)
+    g_object_set_data_full (G_OBJECT (actor), FADE_KEY,
+                            g_bytes_ref (fades), (GDestroyNotify) g_bytes_unref);
   window = meta_wayland_surface_get_window (surface);
   if (!window || !fades || g_object_get_data (G_OBJECT (window), FADE_KEY) == fades)
     return;

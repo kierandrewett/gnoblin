@@ -20,3 +20,5 @@ gnome-shell  js/ui/components/gnoblinCorners.js  js/ui/components/gnoblinCorners
 
 gnome-shell js/ui/components/gnoblinPermissions.js js/ui/components/gnoblinPermissions.js
 gnome-shell gnoblin-console.scss data/theme/gnome-shell-sass/widgets/_dev-console.scss
+
+gnome-shell js/ui/components/gnoblinBackgroundEffects.js js/ui/components/gnoblinBackgroundEffects.js

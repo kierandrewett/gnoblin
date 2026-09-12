@@ -1,0 +1,221 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Render explicit standard background regions
+
+Render the full region, including holes, disjoint rectangles and fully
+transparent client pixels. Keep fade composition and the legacy alpha mask.
+Use matching texture coordinates for the backdrop and foreground mask in
+every region rectangle; default per-rectangle coordinates corrupt detail.
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -104,6 +104,8 @@
+   int ignore_shadow_pixels_uniform;
+   unsigned int mask_uniform_setup_count;
+   float mask_opacity;
++  MtkRegion *clip_region;
++  int explicit_region_uniform;
+   gboolean ignore_shadow_pixels;
+ 
+   ShellBlurMode mode;
+@@ -136,6 +138,7 @@
+   self->mask_bounds_uniform = -1;
+   self->mask_pixel_uniform = -1;
+   self->mask_opacity_uniform = -1;
++  self->explicit_region_uniform = -1;
+   self->ignore_shadow_pixels_uniform = -1;
+ }
+ 
+@@ -160,6 +163,8 @@
+     cogl_pipeline_get_uniform_location (pipeline, "mask_opacity");
+   self->ignore_shadow_pixels_uniform =
+     cogl_pipeline_get_uniform_location (pipeline, "ignore_shadow_pixels");
++  self->explicit_region_uniform =
++    cogl_pipeline_get_uniform_location (pipeline, "explicit_region");
+   self->mask_uniform_setup_count++;
+ }
+ 
+@@ -582,6 +587,43 @@
+   clutter_actor_box_clamp_to_pixel (source_actor_box);
+ }
+ 
++/* Draw the complete wl_region, including holes and disjoint rectangles.
++ * Clipping the capture to its bounding box is only a cache optimisation. */
++static void
++add_output_rectangles (ShellBlurEffect *self, ClutterPaintNode *node)
++{
++  float width, height;
++  clutter_actor_get_size (self->actor, &width, &height);
++  if (!self->clip_region || self->mode == SHELL_BLUR_MODE_ACTOR)
++    {
++      ClutterActorBox box = self->mode == SHELL_BLUR_MODE_ACTOR
++        ? (ClutterActorBox) {0, 0, width, height} : self->paint_box;
++      clutter_paint_node_add_rectangle (node, &box);
++      return;
++    }
++  float texture_width = self->paint_box.x2 - self->paint_box.x1;
++  float texture_height = self->paint_box.y2 - self->paint_box.y1;
++  if (texture_width <= 0 || texture_height <= 0)
++    return;
++  int count = mtk_region_num_rectangles (self->clip_region);
++  for (int i = 0; i < count; i++)
++    {
++      MtkRectangle rect = mtk_region_get_rectangle (self->clip_region, i);
++      ClutterActorBox box = {MAX (0, rect.x), MAX (0, rect.y),
++        MIN (width, (double) rect.x + rect.width),
++        MIN (height, (double) rect.y + rect.height)};
++      if (box.x2 <= box.x1 || box.y2 <= box.y1)
++        continue;
++      float x1 = (box.x1 - self->paint_box.x1) / texture_width;
++      float y1 = (box.y1 - self->paint_box.y1) / texture_height;
++      float x2 = (box.x2 - self->paint_box.x1) / texture_width;
++      float y2 = (box.y2 - self->paint_box.y1) / texture_height;
++      const float coordinates[] = {x1, y1, x2, y2, x1, y1, x2, y2};
++      clutter_paint_node_add_multitexture_rectangle (node, &box,
++                                                    coordinates, G_N_ELEMENTS (coordinates));
++    }
++}
++
+ static void
+ add_blurred_pipeline (ShellBlurEffect  *self,
+                       ClutterPaintNode *node,
+@@ -601,13 +643,7 @@
+   clutter_paint_node_set_static_name (pipeline_node, "ShellBlurEffect (final)");
+   clutter_paint_node_add_child (node, pipeline_node);
+ 
+-  clutter_paint_node_add_rectangle (pipeline_node,
+-                                    &(ClutterActorBox) {
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.x1,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.y1,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? width : self->paint_box.x2,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? height : self->paint_box.y2,
+-                                    });
++  add_output_rectangles (self, pipeline_node);
+ }
+ 
+ static ClutterPaintNode *
+@@ -627,13 +663,7 @@
+                                                            self->brightness_fb.pipeline);
+   clutter_paint_node_set_static_name (brightness_node, "ShellBlurEffect (brightness)");
+   clutter_paint_node_add_child (node, brightness_node);
+-  clutter_paint_node_add_rectangle (brightness_node,
+-                                    &(ClutterActorBox) {
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.x1,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? 0 : self->paint_box.y1,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? width : self->paint_box.x2,
+-                                      self->mode == SHELL_BLUR_MODE_ACTOR ? height : self->paint_box.y2,
+-                                    });
++  add_output_rectangles (self, brightness_node);
+ 
+   if (!self->blur_cache)
+     self->blur_cache = clutter_blur_cache_new ();
+@@ -837,7 +867,7 @@
+     {
+       g_autoptr (CoglSnippet) snippet =
+         cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
+-                         "uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels; uniform vec2 mask_pixel;"
++                         "uniform int explicit_region; uniform float mask_opacity; uniform float surface_fade; uniform float ignore_shadow_pixels; uniform vec2 mask_pixel;"
+                          "uniform int fade_count; uniform vec4 fade_rects[32]; uniform float fade_opacities[32]; uniform vec4 mask_bounds;",
+                          "float material_alpha = cogl_texel.a;"
+                          "vec2 point = mask_bounds.xy + cogl_tex_coord.st * mask_bounds.zw;"
+@@ -857,7 +887,7 @@
+                           * so an icon or border cannot supply the material opacity. */
+                          "float local_alpha = material_alpha;"
+                          "bool silhouette_edge = false;"
+-                         "if (material_alpha > 0.0 && material_alpha < 1.0) {"
++                         "if (explicit_region == 0 && material_alpha > 0.0 && material_alpha < 1.0) {"
+                          "for (int y = -1; y <= 1; y++) {"
+                          "  for (int x = -1; x <= 1; x++) {"
+                          "    vec4 neighbour = texture2D(cogl_sampler,"
+@@ -882,14 +912,18 @@
+                          "float peak = max(cogl_texel.r, max(cogl_texel.g, cogl_texel.b));"
+                          "float shadow = (1.0-step(0.002*material_alpha, peak)) * (1.0-step(0.999, material_alpha));"
+                          "coverage *= 1.0-ignore_shadow_pixels*shadow;"
++                         "if (explicit_region != 0) {"
++                         "  coverage = 1.0;"
++                         "  tint_alpha = min(material_alpha / max(buffer_fade, 0.00001), 1.0);"
++                         "}"
+                          "cogl_texel.a = coverage * buffer_fade * surface_fade * (1.0 - tint_alpha) / "
+                          "max (1.0 - material_alpha * surface_fade, 0.00001);");
+       cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
+       self->mask_pipeline_ready = TRUE;
+       cache_mask_uniform_locations (self);
+     }
+-  GBytes *fades = NULL;
+-  if (META_IS_WINDOW_ACTOR (self->actor))
++  GBytes *fades = g_object_get_data (G_OBJECT (self->actor), "gnoblin-buffer-fades");
++  if (!fades && META_IS_WINDOW_ACTOR (self->actor))
+     fades = g_object_get_data (G_OBJECT (meta_window_actor_get_meta_window (META_WINDOW_ACTOR (self->actor))),
+                               "gnoblin-buffer-fades");
+   gsize fade_size = 0;
+@@ -910,6 +944,8 @@
+       cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+         self->fade_opacities_uniform, 1, fade_count, opacities);
+     }
++  cogl_pipeline_set_uniform_1i (self->brightness_fb.pipeline,
++    self->explicit_region_uniform, self->clip_region != NULL);
+   const float mask_bounds[] = {self->paint_box.x1, self->paint_box.y1,
+     self->paint_box.x2 - self->paint_box.x1, self->paint_box.y2 - self->paint_box.y1};
+   cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+@@ -1088,6 +1124,7 @@
+   g_clear_object (&self->background_fb.pipeline);
+   g_clear_object (&self->brightness_fb.pipeline);
+ 
++  g_clear_pointer (&self->clip_region, mtk_region_unref);
+   G_OBJECT_CLASS (shell_blur_effect_parent_class)->finalize (object);
+ }
+ 
+@@ -1395,3 +1432,32 @@
+ {
+   return TRUE;
+ }
++
++/**
++ * shell_blur_effect_set_clip_region:
++ * @self: the blur effect
++ * @region: (nullable): explicit surface-local background region
++ *
++ * An explicit region includes fully transparent pixels. NULL restores inferred
++ * alpha coverage. Region ownership remains with the caller.
++ */
++void
++shell_blur_effect_set_clip_region (ShellBlurEffect *self, MtkRegion *region)
++{
++  if ((!region && !self->clip_region) ||
++      (region && self->clip_region && mtk_region_equal (region, self->clip_region)))
++    return;
++  g_clear_pointer (&self->clip_region, mtk_region_unref);
++  self->clip_region = region ? mtk_region_copy (region) : NULL;
++  if (region)
++    {
++      MtkRectangle bounds = mtk_region_get_extents (region);
++      shell_blur_effect_set_region (self, bounds.x, bounds.y, bounds.width, bounds.height);
++    }
++  else
++    shell_blur_effect_clear_region (self);
++  self->cache_flags = 0;
++  self->background_dirty = TRUE;
++  if (self->actor)
++    clutter_actor_queue_redraw (self->actor);
++}
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -67,4 +67,6 @@
+ unsigned int shell_blur_effect_get_repaint_count (ShellBlurEffect *self);
+ gboolean shell_blur_effect_uses_surface_fade (ShellBlurEffect *self);
+ 
++void shell_blur_effect_set_clip_region (ShellBlurEffect *self, MtkRegion *region);
++
+ G_END_DECLS
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -138,6 +138,7 @@
+     <file>ui/components/gnoblinPermissions.js</file>
+     <file>ui/components/gnoblinLayerAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
++    <file>ui/components/gnoblinBackgroundEffects.js</file>
+     <file>ui/components/gnoblinBackdropRedraw.js</file>
+     <file>ui/components/gnoblinCornerGeometry.js</file>
+     <file>ui/components/gnoblinCorners.js</file>
