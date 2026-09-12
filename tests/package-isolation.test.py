@@ -92,9 +92,14 @@ class IsolationTests(unittest.TestCase):
                 "share/gnome-shell/org.gnome.Extensions",
                 "share/gnome-shell/org.gnome.Extensions.data.gresource",
                 "share/gnome-shell/org.gnome.Extensions.src.gresource",
+                "share/gnome-shell/org.gnome.Shell.Extensions",
+                "share/gnome-shell/org.gnome.Shell.Extensions.src.gresource",
                 "share/bash-completion/completions/gnome-extensions",
+                "share/applications/org.gnome.Shell.Extensions.desktop",
+                "share/dbus-1/services/org.gnome.Shell.Extensions.service",
                 "lib/systemd/user/org.gnome.Shell-disable-extensions.service",
                 "share/icons/hicolor/64x64/apps/org.gnome.Extensions.png",
+                "share/icons/hicolor/64x64/apps/org.gnome.Shell.Extensions.png",
             )
             for relative_path in legacy_paths:
                 path = prefix / relative_path

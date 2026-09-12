@@ -40,10 +40,14 @@ rm -f \
   "$PREFIX/share/gnome-shell/org.gnome.Extensions" \
   "$PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
   "$PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
+  "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions" \
+  "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource" \
   "$PREFIX/share/bash-completion/completions/gnome-extensions" \
+  "$PREFIX/share/applications/org.gnome.Shell.Extensions.desktop" \
+  "$PREFIX/share/dbus-1/services/org.gnome.Shell.Extensions.service" \
   "$PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
 if [ -d "$PREFIX/share/icons/hicolor" ]; then
-  find "$PREFIX/share/icons/hicolor" -type f -name 'org.gnome.Extensions*' -delete
+  find "$PREFIX/share/icons/hicolor" -type f \( -name 'org.gnome.Extensions*' -o -name 'org.gnome.Shell.Extensions*' \) -delete
 fi
 
 

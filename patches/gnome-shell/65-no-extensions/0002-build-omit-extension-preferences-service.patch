@@ -1,0 +1,73 @@
+From 9638471cbe49059c47c05786e3e802b14671a44c Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@example.invalid>
+Date: Fri, 12 Sep 2026 12:30:00 +0100
+Subject: [PATCH] build: omit extension preferences service with extension app
+
+The Extensions application option must remove all of its public entry points
+from a Gnoblin build. The D-Bus preference service has its own launcher,
+resource bundle, service activation file, hidden desktop entry, and icons.
+
+Build those files only when `extensions_app` is enabled. The option remains
+enabled by default for stock GNOME builds. Gnoblin sets it false in every
+build route.
+---
+ data/icons/meson.build      | 6 ++++++
+ data/meson.build            | 7 ++++---
+ js/dbusServices/meson.build | 6 +++++-
+ 3 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/data/icons/meson.build b/data/icons/meson.build
+index 277df01..b3929cb 100644
+--- a/data/icons/meson.build
++++ b/data/icons/meson.build
+@@ -1,4 +1,10 @@
+ excluded_icons=[]
++if not get_option('extensions_app')
++  excluded_icons += [
++    'scalable/apps/org.gnome.Shell.Extensions.svg',
++    'symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg',
++  ]
++endif
+ if not have_portal_helper
+   excluded_icons += [
+     'scalable/apps/org.gnome.Shell.CaptivePortal.svg',
+diff --git a/data/meson.build b/data/meson.build
+index 85fa318..55e113c 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -1,8 +1,9 @@
+ data_builddir = meson.current_build_dir()
+ 
+-desktop_files = [
+-  'org.gnome.Shell.Extensions.desktop',
+-]
++desktop_files = []
++if get_option('extensions_app')
++  desktop_files += 'org.gnome.Shell.Extensions.desktop'
++endif
+ service_files = []
+ 
+ if have_portal_helper
+diff --git a/js/dbusServices/meson.build b/js/dbusServices/meson.build
+index 48b7f89..4bda8da 100644
+--- a/js/dbusServices/meson.build
++++ b/js/dbusServices/meson.build
+@@ -4,11 +4,15 @@ launcherconf.set('prefix', prefix)
+ launcherconf.set('libdir', libdir)
+ 
+ dbus_services = {
+-  'org.gnome.Shell.Extensions': 'extensions',
+   'org.gnome.Shell.Notifications': 'notifications',
+   'org.gnome.Shell.Screencast': 'screencast',
+   'org.gnome.ScreenSaver': 'screensaver',
+ }
++if get_option('extensions_app')
++  dbus_services += {
++    'org.gnome.Shell.Extensions': 'extensions',
++  }
++endif
+ 
+ config_dir = '@0@/..'.format(meson.current_build_dir())
+ 
+-- 
+2.53.0
