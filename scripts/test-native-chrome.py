@@ -91,8 +91,8 @@ export default function (api) {
     if (Main.wm._workspaceSwitcherPopup !== null)
         throw new Error('workspace switcher popup exists before a workspace switch');
     for (const background of nativeChromeState().backgrounds) {
-        if (background.menu || background.menuManager || background.reactive)
-            throw new Error('background menu remains installed');
+        if (!background.menu || !background.menuManager || !background.reactive)
+            throw new Error('desktop recovery menu is missing');
     }
 
     const iface = `<node><interface name="org.gnoblin.NativeChromeTest">
@@ -223,7 +223,7 @@ assert before['extensionManager'], before
 assert before['osdWindows'] == 0 and before['osdMonitorLabels'] == 0, before
 assert before['workspacePopup'], before
 assert before['backgrounds'], before
-assert all(not row['menu'] and not row['menuManager'] and not row['reactive']
+assert all(row['menu'] and row['menuManager'] and row['reactive']
            for row in before['backgrounds']), before
 
 # Workspaces remain compositor state. Switch through the real workspace API,
@@ -282,7 +282,7 @@ result = gdbus(
 assert result.returncode != 0
 assert 'Gnoblin delegates interactive screenshots to the external shell' in result.stderr, result.stderr
 
-print('PASS: no native run, welcome, screenshot, OSD, monitor-label, background-menu or workspace-popup chrome')
+print('PASS: no native run, welcome, screenshot, OSD, monitor-label or workspace-popup chrome; desktop recovery menu retained')
 print('PASS: workspace state switches and restores without a popup; unlock lifecycle keeps extension/capture UI absent')
 print('NOTE: OSD forwarding is intentionally absent while the stock unlock-dialog disables gnoblinControl')
 print('PASS: interactive screenshot rejects promptly')

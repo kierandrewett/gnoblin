@@ -1,23 +1,10 @@
 From: Kieran Drewett <kieran@drewett.dev>
 Subject: [PATCH] shell: remove native desktop popups from Gnoblin
 
-Keep window and capture services while external chrome owns desktop controls.
+Keep window, capture and desktop recovery services while external chrome owns desktop controls.
 OSD requests use the existing transport without allocating native widgets.
 Stock GNOME retains its UI.
 
-diff --git a/js/ui/layout.js b/js/ui/layout.js
---- a/js/ui/layout.js
-+++ b/js/ui/layout.js
-@@ -489,6 +489,9 @@
-     }
- 
-     _addBackgroundMenu(bgManager) {
-+        if (global.session_mode === 'gnoblin')
-+            return;
-+
-         BackgroundMenu.addBackgroundMenu(bgManager.backgroundActor, this);
-     }
- 
 diff --git a/js/ui/main.js b/js/ui/main.js
 --- a/js/ui/main.js
 +++ b/js/ui/main.js
