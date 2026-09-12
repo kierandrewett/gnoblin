@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] shell: load scoped menu backdrop redraw policy
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml

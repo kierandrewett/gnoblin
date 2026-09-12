@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] shell: include built-in window corner rules
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml

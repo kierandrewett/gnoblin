@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] shell: mask background blur independently of window opacity
 
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c

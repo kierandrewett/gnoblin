@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] Commit client blur fade metadata with surface state
 
 Wire the optional blur fade protocol into the build and carry its state

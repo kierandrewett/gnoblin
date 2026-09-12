@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] Retain Gaussian blur resources and expose scene damage
 
 diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c

@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] Optionally exclude translucent black shadows from backdrop coverage
 
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c

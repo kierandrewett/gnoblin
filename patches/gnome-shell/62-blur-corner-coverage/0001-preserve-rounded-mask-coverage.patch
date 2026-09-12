@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] Preserve full-resolution rounded backdrop coverage
 
 Keep the coverage mask at output resolution while downsampling the Gaussian

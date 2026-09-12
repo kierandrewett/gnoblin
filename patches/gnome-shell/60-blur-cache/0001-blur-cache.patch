@@ -1,4 +1,4 @@
-From: Gnoblin
+From: Gnoblin <gnoblin@localhost>
 Subject: [PATCH] Cache Gaussian backdrops and track bounded scene damage
 
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
