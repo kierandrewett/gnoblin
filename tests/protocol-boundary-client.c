@@ -9,11 +9,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 
@@ -254,6 +256,63 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
   .closed = layer_closed,
 };
 
+struct frame_callback_state
+{
+  unsigned int done_count;
+};
+
+static void
+frame_callback_done (void               *data,
+                     struct wl_callback *callback,
+                     uint32_t            time)
+{
+  struct frame_callback_state *state = data;
+
+  (void) time;
+  state->done_count++;
+  wl_callback_destroy (callback);
+}
+
+static const struct wl_callback_listener frame_callback_listener = {
+  .done = frame_callback_done,
+};
+
+static bool
+wait_for_frame_callbacks (struct wl_display           *display,
+                          struct frame_callback_state *state,
+                          unsigned int                 expected)
+{
+  struct timespec now;
+  int64_t deadline_ns;
+
+  if (clock_gettime (CLOCK_MONOTONIC, &now) != 0)
+    return false;
+  deadline_ns = (int64_t) now.tv_sec * 1000000000 + now.tv_nsec + 5000000000;
+
+  while (state->done_count < expected)
+    {
+      struct pollfd poll_fd = { .fd = wl_display_get_fd (display), .events = POLLIN };
+      int64_t now_ns;
+      int timeout_ms;
+
+      if (wl_display_dispatch_pending (display) < 0 ||
+          state->done_count == expected)
+        break;
+      if (wl_display_flush (display) < 0 && errno != EAGAIN)
+        return false;
+      if (clock_gettime (CLOCK_MONOTONIC, &now) != 0)
+        return false;
+      now_ns = (int64_t) now.tv_sec * 1000000000 + now.tv_nsec;
+      if (now_ns >= deadline_ns)
+        return false;
+      timeout_ms = (int) ((deadline_ns - now_ns + 999999) / 1000000);
+      if (poll (&poll_fd, 1, timeout_ms) <= 0 ||
+          wl_display_dispatch (display) < 0)
+        return false;
+    }
+
+  return state->done_count == expected;
+}
 
 struct screencopy_frame
 {
@@ -533,6 +592,119 @@ test_foreign_toplevel_stop (struct wl_display          *display,
 
   protocols->foreign_toplevel = NULL;
   return true;
+}
+
+static bool
+test_layer_frame_callback_queue (struct wl_display *display,
+                                 struct protocols  *protocols)
+{
+  enum { N_SURFACES = 16, CALLBACKS_PER_SURFACE = 3 };
+  struct layer_surface_state states[N_SURFACES] = { 0 };
+  struct layer_surface_state destroy_state = { 0 };
+  struct wl_surface *surfaces[N_SURFACES] = { 0 };
+  struct zwlr_layer_surface_v1 *layer_surfaces[N_SURFACES] = { 0 };
+  struct frame_callback_state frame_state = { 0 };
+  struct wl_surface *destroy_surface;
+  struct zwlr_layer_surface_v1 *destroy_layer_surface;
+  struct wl_shm_pool *pool;
+  struct wl_buffer *buffer;
+  char path[] = "/tmp/gnoblin-frame-callback-XXXXXX";
+  int fd;
+  int i, j;
+
+  fd = mkstemp (path);
+  if (fd < 0 || unlink (path) != 0 || ftruncate (fd, 4) != 0)
+    {
+      fprintf (stderr, "FAIL: could not create frame callback SHM buffer\n");
+      if (fd >= 0)
+        close (fd);
+      return false;
+    }
+  pool = wl_shm_create_pool (protocols->shm, fd, 4);
+  buffer = wl_shm_pool_create_buffer (pool, 0, 1, 1, 4,
+                                      WL_SHM_FORMAT_ARGB8888);
+  wl_shm_pool_destroy (pool);
+
+  for (i = 0; i < N_SURFACES; i++)
+    {
+      surfaces[i] = wl_compositor_create_surface (protocols->compositor);
+      layer_surfaces[i] = zwlr_layer_shell_v1_get_layer_surface (
+        protocols->layer_shell, surfaces[i], protocols->output,
+        ZWLR_LAYER_SHELL_V1_LAYER_TOP, "gnoblin-frame-callback-test");
+      zwlr_layer_surface_v1_add_listener (layer_surfaces[i], &layer_listener,
+                                          &states[i]);
+      zwlr_layer_surface_v1_set_anchor (
+        layer_surfaces[i], ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+      zwlr_layer_surface_v1_set_size (layer_surfaces[i], 1, 1);
+      zwlr_layer_surface_v1_set_margin (layer_surfaces[i], 0, 0, i * 2, 0);
+      wl_surface_commit (surfaces[i]);
+    }
+
+  if (wl_display_roundtrip (display) < 0)
+    goto fail;
+
+  for (i = 0; i < N_SURFACES; i++)
+    {
+      if (!states[i].configured)
+        goto fail;
+      zwlr_layer_surface_v1_ack_configure (layer_surfaces[i], states[i].serial);
+      wl_surface_attach (surfaces[i], buffer, 0, 0);
+      wl_surface_damage_buffer (surfaces[i], 0, 0, 1, 1);
+      for (j = 0; j < CALLBACKS_PER_SURFACE; j++)
+        {
+          struct wl_callback *callback = wl_surface_frame (surfaces[i]);
+
+          wl_callback_add_listener (callback, &frame_callback_listener,
+                                    &frame_state);
+          wl_surface_commit (surfaces[i]);
+        }
+    }
+
+  /* Destroy a queued callback surface before the 16 ms layer callback source
+   * can run. This exercises removal of a live list link. */
+  destroy_surface = wl_compositor_create_surface (protocols->compositor);
+  destroy_layer_surface = zwlr_layer_shell_v1_get_layer_surface (
+    protocols->layer_shell, destroy_surface, protocols->output,
+    ZWLR_LAYER_SHELL_V1_LAYER_TOP, "gnoblin-frame-callback-destroy-test");
+  zwlr_layer_surface_v1_add_listener (destroy_layer_surface, &layer_listener,
+                                      &destroy_state);
+  zwlr_layer_surface_v1_set_anchor (
+    destroy_layer_surface, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+    ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+  zwlr_layer_surface_v1_set_size (destroy_layer_surface, 1, 1);
+  wl_surface_commit (destroy_surface);
+  if (wl_display_roundtrip (display) < 0 || !destroy_state.configured)
+    goto fail;
+  zwlr_layer_surface_v1_ack_configure (destroy_layer_surface,
+                                       destroy_state.serial);
+  wl_surface_attach (destroy_surface, buffer, 0, 0);
+  (void) wl_surface_frame (destroy_surface);
+  wl_surface_commit (destroy_surface);
+  zwlr_layer_surface_v1_destroy (destroy_layer_surface);
+  wl_surface_destroy (destroy_surface);
+
+  if (!wait_for_frame_callbacks (display, &frame_state,
+                                 N_SURFACES * CALLBACKS_PER_SURFACE))
+    goto fail;
+  if (wl_display_dispatch_pending (display) < 0 ||
+      frame_state.done_count != N_SURFACES * CALLBACKS_PER_SURFACE)
+    goto fail;
+
+  for (i = 0; i < N_SURFACES; i++)
+    {
+      zwlr_layer_surface_v1_destroy (layer_surfaces[i]);
+      wl_surface_destroy (surfaces[i]);
+    }
+  wl_buffer_destroy (buffer);
+  close (fd);
+  return true;
+
+fail:
+  fprintf (stderr, "FAIL: frame callbacks were not delivered exactly once (%u/%u)\n",
+           frame_state.done_count, N_SURFACES * CALLBACKS_PER_SURFACE);
+  close (fd);
+  return false;
 }
 
 static bool
@@ -841,6 +1013,9 @@ main (void)
     }
 
   if (!test_layer_surface_boundaries ())
+    return 1;
+
+  if (!test_layer_frame_callback_queue (display, &protocols))
     return 1;
 
   {

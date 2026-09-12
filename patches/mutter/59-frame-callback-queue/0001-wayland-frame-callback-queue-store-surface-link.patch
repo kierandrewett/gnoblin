@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@example.invalid>
+Date: Fri, 12 Sep 2026 05:00:00 +0100
+Subject: [PATCH] wayland: remove frame callback surfaces in constant time
+
+Each wl_surface.frame request adds its surface to the compositor callback
+queue. A surface can have many callbacks, but it needs one queue entry.
+
+Keep that entry on MetaWaylandSurface. This removes the linear list search
+when a callback is queued and the linear removal when a surface is destroyed.
+The callback delivery order and timing do not change.
+
+---
+ src/wayland/meta-wayland-surface-private.h |  1 +
+ src/wayland/meta-wayland.c                 | 17 +++++++++++++----
+ 2 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-surface-private.h b/src/wayland/meta-wayland-surface-private.h
+index 85332dd..de9e837 100644
+--- a/src/wayland/meta-wayland-surface-private.h
++++ b/src/wayland/meta-wayland-surface-private.h
+@@ -183,6 +183,7 @@ struct _MetaWaylandSurface
+   MetaWaylandClient *client;
+   MetaWaylandCompositor *compositor;
+   MetaWaylandSurfaceRole *role;
++  GList *frame_callback_surface_link;
+   MtkRegion *input_region;
+   MtkRegion *opaque_region;
+   int32_t offset_x, offset_y;
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index 20a8b46..9f26607 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -234,6 +234,7 @@ emit_frame_callbacks_for_stage_view (MetaWaylandCompositor *compositor,
+ 
+       compositor->frame_callback_surfaces =
+         g_list_delete_link (compositor->frame_callback_surfaces, l_cur);
++      surface->frame_callback_surface_link = NULL;
+     }
+ }
+ 
+@@ -267,6 +268,7 @@ emit_layer_shell_frame_callbacks (gpointer user_data)
+ 
+       compositor->frame_callback_surfaces =
+         g_list_delete_link (compositor->frame_callback_surfaces, l_cur);
++      surface->frame_callback_surface_link = NULL;
+     }
+ 
+   return G_SOURCE_REMOVE;
+@@ -683,11 +685,12 @@ void
+ meta_wayland_compositor_add_frame_callback_surface (MetaWaylandCompositor *compositor,
+                                                     MetaWaylandSurface    *surface)
+ {
+-  if (g_list_find (compositor->frame_callback_surfaces, surface))
++  if (surface->frame_callback_surface_link)
+     return;
+ 
+-  compositor->frame_callback_surfaces =
++  surface->frame_callback_surface_link =
+     g_list_prepend (compositor->frame_callback_surfaces, surface);
++  compositor->frame_callback_surfaces = surface->frame_callback_surface_link;
+ 
+   if (meta_wayland_surface_is_layer_shell (surface))
+     schedule_layer_shell_frame_callbacks (compositor);
+@@ -697,8 +700,13 @@ void
+ meta_wayland_compositor_remove_frame_callback_surface (MetaWaylandCompositor *compositor,
+                                                        MetaWaylandSurface    *surface)
+ {
++  if (!surface->frame_callback_surface_link)
++    return;
++
+   compositor->frame_callback_surfaces =
+-    g_list_remove (compositor->frame_callback_surfaces, surface);
++    g_list_delete_link (compositor->frame_callback_surfaces,
++                        surface->frame_callback_surface_link);
++  surface->frame_callback_surface_link = NULL;
+ }
+ 
+ void
