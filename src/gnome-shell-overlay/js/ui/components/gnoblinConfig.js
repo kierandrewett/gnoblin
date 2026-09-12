@@ -602,6 +602,19 @@ export class Autostart {
     }
 }
 
+function cloneDocument(document) {
+    return JSON.parse(
+        JSON.stringify(document, (_key, value) => {
+            if (
+                ["undefined", "function", "symbol", "bigint"].includes(typeof value) ||
+                (typeof value === "number" && !Number.isFinite(value))
+            )
+                throw new TypeError("Configuration values must be finite numbers, strings, booleans, arrays or tables");
+            return value;
+        }),
+    );
+}
+
 export class ConfigFile {
     constructor(path = null, apply = () => {}) {
         this._override = path || GLib.getenv("GNOBLIN_CONFIG") || null;
@@ -635,6 +648,51 @@ export class ConfigFile {
         }
         this._apply(next);
         settings = next;
+        this._document = cloneDocument(loaded.document);
+        this._liveUndo = [];
+    }
+
+    document() {
+        return cloneDocument(this._document ?? {});
+    }
+
+    applyLive(document) {
+        document = cloneDocument(document);
+        const next = parseDocument(document);
+        const previous = this.document();
+        const stable = (value) =>
+            JSON.stringify(value, function (_key, item) {
+                return item && !Array.isArray(item) && typeof item === "object"
+                    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)))
+                    : item;
+            });
+        const live = new Set(["shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
+        for (const key of new Set([...Object.keys(previous), ...Object.keys(document)])) {
+            if (!live.has(key) && stable(previous[key]) !== stable(document[key]))
+                throw new Error(`${key}: edit the config file and reload; protocol changes need a new session`);
+        }
+        for (const key of FEATURE_KEYS) {
+            if (next[key] !== settings[key])
+                throw new Error(`${key}: this feature uses saved desktop preferences; edit the config file and reload`);
+        }
+        this._apply(next);
+        this._liveUndo ??= [];
+        this._liveUndo.push(previous);
+        if (this._liveUndo.length > 50) this._liveUndo.shift();
+        this._document = document;
+        settings = next;
+        return this.document();
+    }
+
+    undoLive() {
+        const previous = this._liveUndo?.at(-1);
+        if (!previous) throw new Error("No live configuration change to undo");
+        const next = parseDocument(previous);
+        this._apply(next);
+        this._liveUndo.pop();
+        this._document = previous;
+        settings = next;
+        return this.document();
     }
 
     start() {

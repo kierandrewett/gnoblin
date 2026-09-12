@@ -9,7 +9,43 @@ import St from "gi://St";
 import System from "system";
 
 import * as Main from "../main.js";
+import { consoleConfig } from "./gnoblinControl.js";
+import { DEFAULTS, FEATURE_KEYS } from "./gnoblinConfig.js";
 import { ConsoleEvaluator, LuaConsoleEvaluator, LuaValue, isInspectable, preview } from "./gnoblinConsoleEvaluator.js";
+
+const API_HELP = {
+    get: ["gnoblin.get()", "Read a copy of the current configuration document."],
+    set: ["gnoblin.set(path, value)", 'Apply one setting live. Example: gnoblin.set("shell.layer-duration", 350)'],
+    apply: [
+        "gnoblin.apply(document)",
+        "Validate and apply a complete configuration document. Use :apply for the Lua configuration copy.",
+    ],
+    undo: ["gnoblin.undo()", "Undo the last live configuration change (up to 50 changes)."],
+    reload: [
+        "gnoblin.reload()",
+        "Reload the configuration file and discard live changes. :reload also resets the Lua context.",
+    ],
+    help: ['gnoblin.help(topic = "")', "Show API signatures, examples and live configuration limits."],
+};
+
+function consoleHelp(topic = "") {
+    const key = String(topic).replace(/^gnoblin\./, "");
+    if (key) {
+        if (!API_HELP[key]) throw new Error(`Unknown help topic: ${topic}. Use help() to list the API.`);
+        return API_HELP[key].join("\n");
+    }
+    return [
+        "Live configuration",
+        ...Object.values(API_HELP).map((parts) => parts.join(" — ")),
+        "",
+        'Lua: gnoblin.set({shell = {["layer-duration"] = 350}}), then :apply',
+        ":help  :apply (Lua)  :undo  :reload  :reset (variables only)",
+        "Live: animations, window rules, shortcuts, keybindings and permissions.",
+        "Live edits do not write config files; file reload replaces them.",
+        "Saved feature preferences, autostart and frame services require file edits. Protocol changes need a new session.",
+        "Escape dismisses suggestions first, then closes. Alt+F2 closes immediately.",
+    ].join("\n");
+}
 
 const HISTORY_KEY = "looking-glass-history";
 const MAX_ROWS = 200;
@@ -94,6 +130,16 @@ export const DeveloperConsole = GObject.registerClass(
                 this._languageTabs.set(language, tab);
                 this._tabs.add_child(tab);
             }
+            this._tabs.add_child(
+                button(
+                    "Help",
+                    () => {
+                        this._appendRow(textLabel(consoleHelp(), "gnoblin-console-hint", true));
+                        this._entry.grab_key_focus();
+                    },
+                    "gnoblin-console-tab",
+                ),
+            );
             this._panel.add_child(this._tabs);
             this._body = new St.BoxLayout({ y_expand: true, style_class: "gnoblin-console-body" });
             this._transcript = new St.BoxLayout({ orientation: VERTICAL, x_expand: true });
@@ -137,6 +183,9 @@ export const DeveloperConsole = GObject.registerClass(
                 visible: false,
                 x_align: Clutter.ActorAlign.START,
             });
+            this._signature = textLabel("", "gnoblin-console-hint");
+            this._signature.hide();
+            this._flow.add_child(this._signature);
             this._flow.add_child(this._completions);
             this._scroll.set_child(this._flow);
 
@@ -172,8 +221,35 @@ export const DeveloperConsole = GObject.registerClass(
         }
 
         _newEvaluator() {
+            const gnoblin = {
+                get: () => consoleConfig().document(),
+                apply: (document) => consoleConfig().applyLive(document),
+                set: (path, value) => {
+                    if (typeof path !== "string" || !path.includes("."))
+                        throw new Error("Use a section and setting, for example shell.layer-duration");
+                    const parts = path.split(".");
+                    if (parts.some((part) => !part || ["__proto__", "constructor", "prototype"].includes(part)))
+                        throw new Error("Invalid configuration path");
+                    const document = consoleConfig().document();
+                    let section = document;
+                    for (const key of parts.slice(0, -1)) {
+                        section[key] ??= {};
+                        section = section[key];
+                    }
+                    section[parts.at(-1)] = value;
+                    return consoleConfig().applyLive(document);
+                },
+                undo: () => consoleConfig().undoLive(),
+                reload: () => {
+                    consoleConfig().reload();
+                    return consoleConfig().document();
+                },
+                help: (topic = "") => consoleHelp(topic),
+            };
             const evaluator = new ConsoleEvaluator(
                 {
+                    gnoblin,
+                    help: gnoblin.help,
                     global,
                     Main,
                     stage: global.stage,
@@ -189,6 +265,17 @@ export const DeveloperConsole = GObject.registerClass(
                     windows: () => global.get_window_actors().map((actor) => actor.meta_window),
                 },
                 {
+                    configurationKeys: Object.keys(DEFAULTS)
+                        .filter(
+                            (key) =>
+                                !FEATURE_KEYS.includes(key) &&
+                                !["autostart", "window-rules", "shortcuts", "keybindings", "permissions"].includes(key),
+                        )
+                        .map((key) => `shell.${key}`)
+                        .sort(),
+                    documentation: Object.fromEntries(
+                        Object.entries(API_HELP).map(([key, parts]) => [`gnoblin.${key}`, parts.join(" — ")]),
+                    ),
                     onLog: (level, values) => {
                         if (!this._destroyed && this._evaluator === evaluator) this._appendValues(level, values);
                     },
@@ -312,7 +399,16 @@ export const DeveloperConsole = GObject.registerClass(
             if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
             const key = event.get_key_symbol();
             const altF2 = key === Clutter.KEY_F2 && event.get_state() & Clutter.ModifierType.MOD1_MASK;
-            // Dismiss before the entry, completion buttons or inspector consume it.
+            // Capture also covers focused suggestion and inspector buttons.
+            if (key === Clutter.KEY_Escape && this._completions.visible) {
+                if (this._completionIdle) {
+                    GLib.source_remove(this._completionIdle);
+                    this._completionIdle = 0;
+                }
+                this._hideCompletions();
+                this._entry.grab_key_focus();
+                return Clutter.EVENT_STOP;
+            }
             if (key === Clutter.KEY_Escape || altF2) {
                 this.close();
                 return Clutter.EVENT_STOP;
@@ -401,7 +497,31 @@ export const DeveloperConsole = GObject.registerClass(
             row.add_child(pending);
             this._appendRow(row);
             this._pending++;
-            const result = await model.evaluate(source);
+            let result;
+            if ([":help", ":apply", ":undo", ":reload"].includes(source)) {
+                try {
+                    let value;
+                    if (source === ":help") value = consoleHelp();
+                    else if (source === ":undo") value = consoleConfig().undoLive();
+                    else if (source === ":reload") {
+                        consoleConfig().reload();
+                        this._luaEvaluator.reset();
+                        value = "Configuration reloaded from disk; Lua context reset";
+                    } else {
+                        if (language !== "lua")
+                            throw new Error("Use gnoblin.apply(document) in JavaScript, or :apply in Lua");
+                        const reply = Meta.gnoblin_console_lua("document", "").recursiveUnpack();
+                        if (reply.error) throw new Error(reply.error);
+                        consoleConfig().applyLive(reply.document);
+                        value = "Live configuration applied. :undo restores the previous configuration.";
+                    }
+                    result = { source, value, error: null, id: 0 };
+                } catch (error) {
+                    result = { source, error, id: 0 };
+                }
+            } else {
+                result = await model.evaluate(source);
+            }
             this._pending--;
             if (this._destroyed || model !== this._evaluator) return result;
             if (!this._rows.has(row)) return result;
@@ -424,11 +544,13 @@ export const DeveloperConsole = GObject.registerClass(
                 row.add_child(output);
                 row.add_child(detail);
             } else {
-                if (result.lua) {
+                if (source === ":help" || /^(?:gnoblin\.)?help\(/.test(source)) {
+                    output.add_child(textLabel(String(result.value), "gnoblin-console-hint", true));
+                } else if (result.lua) {
                     for (const value of result.items ?? [])
                         output.add_child(this._valueActor(value, false, new Set(), model));
                 } else {
-                    output.add_child(this._valueActor(result.value, false, new Set(), model));
+                    output.add_child(this._valueActor(result.value, false, new Set(), this._jsEvaluator));
                 }
                 row.add_child(output);
             }
@@ -604,12 +726,16 @@ export const DeveloperConsole = GObject.registerClass(
             const text = this._entry.get_text();
             const position = this._entry.clutter_text.get_cursor_position();
             const cursor = position < 0 ? text.length : [...text].slice(0, position).join("").length;
+            const call = text.slice(0, cursor).match(/gnoblin\.(\w+)\([^()]*$/);
+            const signature = call && API_HELP[call[1]];
+            this._signature.text = signature ? signature.join(" — ") : "";
+            this._signature.visible = Boolean(signature && this._language === "js");
             const completion = this._evaluator.complete(text, cursor);
             if (!completion.items.length || !this._open) return;
             this._completion = { ...completion, text };
             for (const [index, item] of completion.items.slice(0, 12).entries()) {
                 const choice = button(
-                    item.label,
+                    item.detail ? `${item.label}  —  ${item.detail}` : item.label,
                     () => {
                         this._completionIndex = index;
                         this._acceptCompletion();

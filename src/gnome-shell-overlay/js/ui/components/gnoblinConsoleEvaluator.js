@@ -19,7 +19,21 @@ function offsetFor(source, loc) {
 }
 
 function span(source, node) {
-    return [offsetFor(source, node.loc.start), offsetFor(source, node.loc.end)];
+    // SpiderMonkey omits the closing parenthesis from dynamic import locations,
+    // including parent expressions that end at that import.
+    function importEnd(child) {
+        if (!child || typeof child !== "object") return 0;
+        let end = 0;
+        if (child.type === "CallImport") {
+            end = offsetFor(source, child.loc.end);
+            end += source.slice(end).match(/^\s*\)/)?.[0].length ?? 0;
+        }
+        for (const [key, value] of Object.entries(child)) {
+            if (key !== "loc" && value && typeof value === "object") end = Math.max(end, importEnd(value));
+        }
+        return end;
+    }
+    return [offsetFor(source, node.loc.start), Math.max(offsetFor(source, node.loc.end), importEnd(node))];
 }
 
 function patternNames(pattern, names = []) {
@@ -145,7 +159,12 @@ export function isInspectable(value) {
 }
 
 export class ConsoleEvaluator {
-    constructor(bindings = {}, { onLog = () => {}, onInspect = () => {}, onClear = () => {} } = {}) {
+    constructor(
+        bindings = {},
+        { onLog = () => {}, onInspect = () => {}, onClear = () => {}, documentation = {}, configurationKeys = [] } = {},
+    ) {
+        this._documentation = documentation;
+        this._configurationKeys = configurationKeys;
         this._values = Object.create(null);
         this._kinds = new Map();
         this._results = [];
@@ -188,14 +207,14 @@ export class ConsoleEvaluator {
         });
     }
 
-    _declare(kind, names, factory) {
+    async _declare(kind, names, factory) {
         for (const name of names) {
             if ((kind === "let" || kind === "const") && own(this._values, name))
                 throw new SyntaxError(`Identifier '${name}' has already been declared`);
             if (kind === "var" && this._kinds.get(name) === "const")
                 throw new SyntaxError(`Identifier '${name}' has already been declared`);
         }
-        const values = factory();
+        const values = await factory();
         names.forEach((name, index) => {
             this._values[name] = values[index];
             if (kind !== "var") this._kinds.set(name, kind);
@@ -229,7 +248,7 @@ export class ConsoleEvaluator {
                             const initializer = declaration.init
                                 ? source.slice(...span(source, declaration.init))
                                 : "undefined";
-                            return `__gnoblin._declare(${JSON.stringify(statement.kind)}, ${JSON.stringify(names)}, () => { let ${pattern} = (${initializer}); return [${names.join(", ")}]; })`;
+                            return `await __gnoblin._declare(${JSON.stringify(statement.kind)}, ${JSON.stringify(names)}, async () => { let ${pattern} = (${initializer}); return [${names.join(", ")}]; })`;
                         })
                         .join(";")};`,
                 });
@@ -251,8 +270,13 @@ export class ConsoleEvaluator {
         }
         const last = body.at(-1);
         if (last?.type === "ExpressionStatement") {
-            const [start, end] = span(source, last.expression);
-            replacements.push({ start, end, text: `return (${source.slice(start, end)})` });
+            let [start, end] = span(source, last);
+            // Expression locations omit opening grouping parentheses. Keep the
+            // complete statement so an IIFE cannot become `(return ...)`.
+            let opening;
+            while ((opening = source.slice(0, start).match(/\(\s*$/))) start -= opening[0].length;
+            const expression = source.slice(start, end).replace(/;\s*$/, "");
+            replacements.push({ start, end, text: `return (${expression})` });
         }
         return replace(source, replacements);
     }
@@ -302,6 +326,17 @@ export class ConsoleEvaluator {
 
     complete(text, cursor = text.length) {
         const before = text.slice(0, cursor);
+        const setting = before.match(/gnoblin\.set\(\s*["']([^"']*)$/);
+        if (setting) {
+            const prefix = setting[1];
+            return {
+                start: cursor - prefix.length,
+                end: cursor,
+                items: this._configurationKeys
+                    .filter((key) => key.startsWith(prefix))
+                    .map((key) => ({ label: key, value: key, detail: "configuration path" })),
+            };
+        }
         const match = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\.?)$/);
         if (!match) return { start: cursor, end: cursor, items: [] };
         const path = match[1].split(".");
@@ -314,6 +349,7 @@ export class ConsoleEvaluator {
             object = descriptor.value;
             if (!isInspectable(object)) return { start: cursor - prefix.length, end: cursor, items: [] };
         }
+        const target = object;
         const names = new Set();
         while (object && names.size < 500) {
             Object.getOwnPropertyNames(object).forEach((name) => names.add(name));
@@ -322,7 +358,13 @@ export class ConsoleEvaluator {
         const items = [...names]
             .filter((name) => name.startsWith(prefix))
             .sort()
-            .map((name) => ({ label: name, value: name }));
+            .map((name) => {
+                const descriptor = propertyDescriptor(target, name);
+                const detail =
+                    this._documentation[[...path, name].join(".")] ??
+                    (descriptor && "value" in descriptor ? typeof descriptor.value : "accessor");
+                return { label: name, value: name, detail };
+            });
         return { start: cursor - prefix.length, end: cursor, items };
     }
 
@@ -449,7 +491,16 @@ export class LuaConsoleEvaluator {
         return {
             start: cursor - prefix.length,
             end: cursor,
-            items: (reply.lines ?? []).sort().map((name) => ({ label: name, value: name })),
+            items: (reply.lines ?? []).sort().map((name) => ({
+                label: name,
+                value: name,
+                detail:
+                    {
+                        set: "set(table) — merge into the working config; :apply makes it live",
+                        load: "load(path_or_glob) — load relative to the config directory",
+                        config: "table — working config; :apply validates and applies it",
+                    }[match[0].startsWith("gnoblin.") ? name : ""] ?? "",
+            })),
         };
     }
 

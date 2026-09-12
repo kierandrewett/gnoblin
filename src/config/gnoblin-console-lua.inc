@@ -1,10 +1,11 @@
-/* Persistent console state. Shares the config API, but never applies settings. */
+/* Persistent console state. Shell explicitly applies exported documents. */
 #include "gnoblin-console-lua.h"
 
 static lua_State *console_lua;
 static LuaConfig console_config;
 static GPtrArray *console_lines;
 static const char *console_source;
+static GVariant *console_document;
 
 static int console_print(lua_State *state) {
     if (console_lines->len >= 200)
@@ -61,6 +62,24 @@ static int console_execute(lua_State *state) {
     lua_call(state, 0, LUA_MULTRET);
     /* Source and attempted expression occupy the first two stack slots. */
     return lua_gettop(state) - 2;
+}
+
+/* Export the working copy with the same conversion and limits as config files. */
+static int console_export_document(lua_State *state) {
+    GError *error = NULL;
+    lua_getglobal(state, "gnoblin");
+    if (!lua_istable(state, -1))
+        return luaL_error(state, "gnoblin was replaced; reset the Lua context before applying configuration");
+    lua_pushliteral(state, "config");
+    lua_rawget(state, -2);
+    console_document = variant_from_lua(state, -1, 0, FALSE, 0, &error);
+    if (!console_document) {
+        lua_pushstring(state, error->message);
+        g_clear_error(&error);
+        return lua_error(state);
+    }
+    g_variant_ref_sink(console_document);
+    return 0;
 }
 
 static int console_complete(lua_State *state) {
@@ -264,7 +283,7 @@ GVariant *gnoblin_console_lua(const char *operation, const char *source) {
         status = lua_pcall(console_lua, 0, 0, 1);
     }
     if (status == LUA_OK) {
-        lua_pushcfunction(console_lua, !strcmp(operation, "inspect") ? console_inspect : !strcmp(operation, "complete") ? console_complete : console_execute);
+        lua_pushcfunction(console_lua, !strcmp(operation, "document") ? console_export_document : !strcmp(operation, "inspect") ? console_inspect : !strcmp(operation, "complete") ? console_complete : console_execute);
         console_source = source;
         status = lua_pcall(console_lua, 0, LUA_MULTRET, 1);
         console_source = NULL;
@@ -295,6 +314,10 @@ GVariant *gnoblin_console_lua(const char *operation, const char *source) {
             g_autofree char *error = g_utf8_make_valid(lua_error_text(console_lua), -1);
             g_variant_builder_add(&result, "{sv}", "inspectionError", g_variant_new_string(error));
         }
+    }
+    if (console_document) {
+        g_variant_builder_add(&result, "{sv}", "document", console_document);
+        g_clear_pointer(&console_document, g_variant_unref);
     }
     if (console_details) {
         g_variant_builder_add(&result, "{sv}", "details", console_details);

@@ -192,6 +192,12 @@ const FEATURES = {
     "input-source-switcher": { summary: "Native GNOME keyboard-layout switcher", apply() {} },
 };
 
+// Console edits share the config owner and validation used by file reloads.
+export function consoleConfig() {
+    if (!activeConfig) throw new Error("Gnoblin configuration is not active");
+    return activeConfig;
+}
+
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
 // logging out". mutter/Wayland is NEVER torn down, so windows and the external
 // chrome survive. We reload only the mutable JS layer: the shell theme/CSS and

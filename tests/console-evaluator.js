@@ -164,3 +164,29 @@ assert(
 assert(preview({ answer: 42 }).includes("answer: 42"), "object preview includes values");
 assert(preview(cycle).includes("[Circular]"), "circular object preview");
 print("PASS: rich JavaScript inspection, getter safety, prototypes, symbols, collections and pagination");
+
+await value(evaluator, "let loaded = await Promise.resolve(42); loaded", 42);
+await value(evaluator, "let {value: extracted} = await Promise.resolve({value: 43}); extracted", 43);
+const apiEvaluator = new ConsoleEvaluator(
+    { gnoblin: { set() {} } },
+    {
+        documentation: { "gnoblin.set": "set(path, value)" },
+        configurationKeys: ["shell.layer-duration"],
+    },
+);
+assert(apiEvaluator.complete("gnoblin.se").items[0].detail === "set(path, value)", "API completion includes signature");
+assert(
+    apiEvaluator.complete('gnoblin.set("shell.la').items[0].value === "shell.layer-duration",
+    "setting names complete inside the path string",
+);
+print("PASS: awaited declarations, API signatures and config path completion");
+
+await value(
+    evaluator,
+    'let imported = await import("gi://GLib"); typeof imported.default.get_monotonic_time',
+    "function",
+);
+print("PASS: dynamic import declarations retain complete source spans");
+
+await value(evaluator, "(() => { return 42; })()", 42);
+await value(evaluator, "(42);", 42);

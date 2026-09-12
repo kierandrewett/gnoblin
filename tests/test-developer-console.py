@@ -100,6 +100,7 @@ function consoleState() {
         inspectorVisible: Boolean(console?._transcript?.get_last_child()?.get_first_child()?.get_n_children() > 1),
         inspectorRows: console?._transcript?.get_last_child()?.get_first_child()?.get_last_child()?.get_n_children() ?? 0,
         transcriptRows: console?._transcript?.get_n_children() ?? 0,
+        completionVisible: Boolean(console?._completions.visible),
         runDialogAbsent: Main.runDialog === null,
         lookingGlassAbsent: Main.lookingGlass === null,
         lookingGlassAlias: Boolean(console && Main.createLookingGlass() === console),
@@ -388,6 +389,45 @@ failed = wait_marker("evaluated")["result"]
 assert failed["error"]["name"] == "Error" and "console probe" in failed["error"]["message"], failed
 print("PASS: compositor JavaScript retains bindings, supports await, and reports errors")
 
+# The public API changes the same settings read by animations/rules, not a copy.
+evaluate(
+    'let configModule = await import("resource:///org/gnome/shell/ui/components/gnoblinConfig.js"); let originalDuration = configModule.settings["layer-duration"];'
+)
+assert evaluate('gnoblin.set("shell.layer-duration", 351); configModule.settings["layer-duration"]')["value"] == 351
+assert (
+    evaluate(
+        '(() => { try { gnoblin.set("shell.layer-duration", -1); } catch (error) { return error.message.includes("0 to 5000") && configModule.settings["layer-duration"] === 351; } })()'
+    )["value"]
+    is True
+)
+assert evaluate('gnoblin.undo(); configModule.settings["layer-duration"] === originalDuration')["value"] is True
+assert (
+    evaluate(
+        'let copy = gnoblin.get(); copy.shell = {"layer-duration": 499}; configModule.settings["layer-duration"] === originalDuration'
+    )["value"]
+    is True
+)
+assert (
+    evaluate(
+        '(() => { try { gnoblin.set("protocols.ext-background-effect", false); } catch (error) { return error.message.includes("new session"); } })()'
+    )["value"]
+    is True
+)
+assert "gnoblin.set(path, value)" in evaluate('help("set")')["value"]
+call("Type", "gnoblin.se")
+time.sleep(0.1)
+api_completion = json.loads(value(call("Complete")))
+assert any("set(path, value)" in label for label in api_completion["labels"]), api_completion
+if shutil.which("grim"):
+    time.sleep(.2)
+    subprocess.run(["grim", "/tmp/gnoblin-console-api-completion.png"], check=True)
+call("Type", 'gnoblin.set("shell.la')
+time.sleep(0.1)
+key_completion = json.loads(value(call("Complete")))
+assert any("shell.layer-duration" in label for label in key_completion["labels"]), key_completion
+call("Type", "")
+print("PASS: live API changes effective settings, validates, undoes and completes configuration paths")
+
 # Exercise the language switch through the same console evaluator entrypoint.
 call("Type", "unfinishedJavaScript")
 call("Language", "lua")
@@ -397,6 +437,17 @@ assert state()["input"] == "unfinishedJavaScript", state()
 call("Type", "")
 call("Language", "lua")
 assert evaluate("21 * 2")["value"] == "42"
+evaluate('gnoblin.set {shell = {["layer-duration"] = 352}}')
+assert "Live configuration applied" in evaluate(":apply")["value"]
+call("Language", "js")
+assert evaluate('configModule.settings["layer-duration"]')["value"] == 352
+evaluate(":undo")
+assert evaluate('configModule.settings["layer-duration"] === originalDuration')["value"] is True
+evaluate('gnoblin.set("shell.layer-duration", 353)')
+evaluate(":reload")
+assert evaluate('configModule.settings["layer-duration"] === originalDuration')["value"] is True
+call("Language", "lua")
+print("PASS: Lua working config explicitly applies live; undo and file reload restore effective settings")
 evaluate("counter = 40")
 assert evaluate("counter + 2")["value"] == "42"
 assert (
@@ -466,7 +517,7 @@ if shutil.which("grim"):
     subprocess.run(["grim", "/tmp/gnoblin-console-completion.png"], check=True)
 call("Key", 0xFF09)  # Tab accepts the selected suggestion.
 time.sleep(0.1)
-assert state()["input"] == "global." + completion["labels"][0], state()
+assert state()["input"] == "global." + completion["labels"][0].split("  —  ")[0], state()
 call("Type", "const color = 42;")
 time.sleep(0.1)
 assert "foreground" in state()["attributes"], state()
@@ -477,12 +528,16 @@ time.sleep(0.1)
 assert json.loads(value(call("Complete")))["completionVisible"]
 call("FocusCompletion")
 value(call("Escape"))
+wait_for(lambda current: current["open"] and current["focusEntry"] and not current["completionVisible"])
+time.sleep(0.15)
+assert not state()["completionVisible"], state()
+value(call("Escape"))
 wait_for(lambda current: not current["open"] and not current["visible"])
 value(call("RunBinding"))
 wait_for(lambda current: current["open"] and current["focusEntry"])
 call("Type", "")
 time.sleep(0.1)
-print("PASS: Escape closes the console with a completion button focused")
+print("PASS: Escape dismisses suggestions first, then closes the console")
 
 value(call("Escape"))
 closed = wait_for(lambda current: not current["open"] and not current["visible"])

@@ -22,6 +22,22 @@ int main(void) {
     expect("counter + 1", "10");
     expect("require('gnoblin').set { shell = { test = 7 } }; return gnoblin.config.shell.test",
            "7");
+    g_autoptr(GVariant) exported = gnoblin_console_lua("document", "");
+    g_autoptr(GVariant) document =
+        g_variant_lookup_value(exported, "document", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", G_VARIANT_TYPE_VARDICT);
+    gint64 setting = 0;
+    g_assert_true(g_variant_lookup(shell, "test", "x", &setting));
+    g_assert_cmpint(setting, ==, 7);
+    g_variant_unref(run("gnoblin.config.bad = function() end"));
+    g_autoptr(GVariant) invalid_document = gnoblin_console_lua("document", "");
+    g_assert_nonnull(g_variant_lookup_value(invalid_document, "error", NULL));
+    g_variant_unref(run("gnoblin.config.bad = nil"));
+    g_variant_unref(run("saved_gnoblin = gnoblin; gnoblin = 42"));
+    g_autoptr(GVariant) replaced_api = gnoblin_console_lua("document", "");
+    g_assert_nonnull(g_variant_lookup_value(replaced_api, "error", NULL));
+    g_variant_unref(run("gnoblin = saved_gnoblin; saved_gnoblin = nil"));
     g_autoptr(GVariant) printed = run("print('hello', 42)");
     g_auto(GStrv) lines = NULL;
     g_variant_lookup(printed, "lines", "^as", &lines);
