@@ -8,7 +8,7 @@ import time
 
 root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
 root.mkdir(parents=True, exist_ok=True)
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 scripts = root / 'scripts'
 scripts.mkdir(exist_ok=True)
 probe = scripts / 'config-test.js'
@@ -74,29 +74,29 @@ export default function () {
 
 
 check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 200})
-config.write_text('[shell]\nwindow-switcher = true\nminimize-animation = "none"\n')
+config.write_text("return {shell = {['window-switcher'] = true, ['minimize-animation'] = 'none'}}\n")
 time.sleep(0.5)
 check({'window-switcher': True, 'minimize-animation': 'none', 'minimize-duration': 200})
 temporary = config.with_suffix('.tmp')
-temporary.write_text('[shell]\nminimize-duration = 80\n')
+temporary.write_text("return {shell = {['minimize-duration'] = 80}}\n")
 temporary.replace(config)
 time.sleep(0.5)
 check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 80})
-config.write_text('[shell]\nminimize-duration = invalid\n')
+config.write_text("return {shell = {['minimize-duration'] = }}\n")
 call('ReloadConfig', success=False)
 check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 80})
-config.write_text('[shell]\nminimize-duration = 50\n')
+config.write_text("return {shell = {['minimize-duration'] = 50}}\n")
 call('ReloadConfig')
 check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 50})
 config.unlink()
 time.sleep(0.5)
 check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 200})
-config.write_text('[shell]\nosd = false\nscreenshot = false\n')
+config.write_text("return {shell = {osd = false, screenshot = false}}\n")
 call('ReloadConfig')
 for feature in ['osd', 'screenshot']:
     result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell', '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', feature], text=True)
     assert result.strip() == '(false,)', result
-config.write_text('[shell]\nosd = true\nscreenshot = true\n')
+config.write_text("return {shell = {osd = true, screenshot = true}}\n")
 time.sleep(0.5)
 for feature in ['osd', 'screenshot']:
     result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell', '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', feature], text=True)
@@ -104,15 +104,63 @@ for feature in ['osd', 'screenshot']:
 # Named commands run once, including after they exit and the file reloads.
 started = root / 'autostart-count'
 command = ['sh', '-c', 'echo started >> "$1"', 'autostart-test', str(started)]
-config.write_text('[[autostart]]\nname = "probe"\ncommand = ' + json.dumps(command) + '\n')
+config.write_text("return {autostart = {{name = 'probe', command = " + json.dumps(command) + "}}}\n")
 call('ReloadConfig')
 time.sleep(0.3)
 call('ReloadConfig')
 time.sleep(0.3)
 assert started.read_text().splitlines() == ['started']
-config.write_text(config.read_text() + '\n[[autostart]]\nname = "second"\ncommand = ' + json.dumps(command) + '\n')
+config.write_text("return {autostart = {{name = 'probe', command = " + json.dumps(command) + "}, {name = 'second', command = " + json.dumps(command) + "}}}\n")
 time.sleep(0.5)
 assert started.read_text().splitlines() == ['started', 'started']
 print('PASS: autostart runs once per name and accepts newly added entries')
 print('PASS: live feature configuration')
 print('PASS: live shell watcher, manual reload, invalid-file recovery, minimise/restore, switcher gate')
+
+init = config
+module = root / 'appearance.lua'
+module.write_text("return {shell = {['minimize-animation'] = 'none'}}\n")
+init.write_text("""local g = require('gnoblin')
+g.load('appearance.lua')
+g.set({shell = {['minimize-duration'] = 3 * 40}})
+""")
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'none', 'minimize-duration': 120})
+module.with_suffix('.tmp').write_text("return {shell = {['minimize-animation'] = 'zoom'}}\n")
+module.with_suffix('.tmp').replace(module)
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 120})
+module.write_text('this is not valid Lua')
+call('ReloadConfig', success=False)
+check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 120})
+module.write_text("return {shell = {['minimize-animation'] = 'none'}}\n")
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'none', 'minimize-duration': 120})
+# A normal Lua module can also load a packaged component and override its defaults.
+bingux = Path(__file__).resolve().parents[2] / 'bingux/packaging/gnoblin/bingux.lua'
+if bingux.is_file():
+    init.write_text("local g = require('gnoblin')\ng.load(" + json.dumps(str(bingux)) + ")\n"
+                    "g.set({shell = {['minimize-animation'] = 'none', ['minimize-duration'] = 65}})\n")
+    call('ReloadConfig')
+    check({'window-switcher': False, 'minimize-animation': 'none', 'minimize-duration': 65})
+    result = subprocess.check_output(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.Shell',
+        '--object-path', '/org/gnoblin/Shell', '--method', 'org.gnoblin.Shell.GetFeature', 'osd'], text=True)
+    assert result.strip() == '(false,)', result
+    print('PASS: packaged Bingux Lua settings apply through live Shell')
+# A wildcard initially has no matches. Adding a nested file must reload it.
+init.write_text("require('gnoblin').load('conf.d/**/*.lua')\n")
+call('ReloadConfig')
+check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 200})
+fragment = root / 'conf.d/local/50-motion.lua'
+fragment.parent.mkdir(parents=True)
+fragment.write_text("return {shell = {['minimize-animation'] = 'none', ['minimize-duration'] = 95}}\n")
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'none', 'minimize-duration': 95})
+fragment.unlink()
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 200})
+print('PASS: live recursive glob detects new and removed user config files')
+init.unlink()
+time.sleep(0.6)
+check({'window-switcher': False, 'minimize-animation': 'zoom', 'minimize-duration': 200})
+print('PASS: live Lua module reload, invalid-edit recovery, and user overrides')

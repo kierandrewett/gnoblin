@@ -30,157 +30,6 @@ export const DEFAULTS = Object.freeze({
 
 export let settings = {...DEFAULTS};
 
-function cleanValue(value) {
-    value = value.trim();
-    if (value[0] === "'" || value[0] === '"') {
-        const end = value.indexOf(value[0], 1);
-        if (end >= 0)
-            return value.slice(1, end);
-    }
-    return value.replace(/\s+#.*$/, '').trim();
-}
-
-export function parseLegacy(text) {
-    const next = {...DEFAULTS};
-    let section = '';
-    for (const raw of text.split('\n')) {
-        const line = raw.trim();
-        if (!line || line.startsWith('#') || line.startsWith(';'))
-            continue;
-        if (line.startsWith('[')) {
-            const end = line.indexOf(']');
-            if (end < 0)
-                throw new Error(`invalid section: ${line}`);
-            section = line.slice(1, end).trim();
-            if (section.startsWith('permissions'))
-                throw new Error('Permission rules require gnoblin.toml');
-            continue;
-        }
-        if (section !== 'shell')
-            continue;
-        const separator = line.indexOf('=');
-        const key = line.slice(0, separator).trim();
-        const value = cleanValue(line.slice(separator + 1));
-        if (separator < 0 || !Object.hasOwn(DEFAULTS, key) || ['shortcuts', 'keybindings', 'permissions'].includes(key))
-            throw new Error(`unknown shell setting: ${line}`);
-        if (key === 'window-switcher' || FEATURE_KEYS.includes(key)) {
-            if (!/^(true|false|on|off|yes|no|1|0)$/i.test(value))
-                throw new Error(`${key}: expected a boolean`);
-            next[key] = /^(true|on|yes|1)$/i.test(value);
-            continue;
-        }
-        switch (key) {
-        case 'minimize-animation':
-            if (!['zoom', 'fade', 'none', 'gnome'].includes(value))
-                throw new Error(`${key}: expected zoom, fade, none, or gnome`);
-            next[key] = value;
-            break;
-        case 'layer-animation':
-            if (!['slide', 'fade', 'none'].includes(value))
-                throw new Error(`${key}: expected slide, fade, or none`);
-            next[key] = value;
-            break;
-        case 'layer-easing':
-            if (!['ease-out-cubic', 'ease-out-quad', 'ease-in-out-cubic', 'linear'].includes(value))
-                throw new Error(`${key}: unsupported easing`);
-            next[key] = value;
-            break;
-        case 'layer-duration':
-        case 'minimize-duration':
-            if (!/^\d+$/.test(value) || Number(value) > 5000)
-                throw new Error(`${key}: expected 0 to 5000 milliseconds`);
-            next[key] = Number(value);
-            break;
-        }
-    }
-    return next;
-}
-
-export function parse(text) {
-    return parseDocument(Meta.gnoblin_parse_toml(text).recursiveUnpack());
-}
-
-const CONCATENATED_ARRAY_KEYS = new Set(['autostart', 'window-rules', 'shortcuts', 'rules']);
-
-function isTable(value) {
-    return value && typeof value === 'object' && !Array.isArray(value);
-}
-
-// Includes are merged in declaration order. Tables merge recursively, while
-// rule-like arrays append so a package fragment can add rules without
-// replacing the user's own rules. Scalar settings and ordinary arrays in the
-// user's file win over included values.
-function mergeDocuments(previous, next, key = null) {
-    if (isTable(previous) && isTable(next)) {
-        const merged = {...previous};
-        for (const [name, value] of Object.entries(next))
-            merged[name] = Object.hasOwn(merged, name)
-                ? mergeDocuments(merged[name], value, name) : value;
-        return merged;
-    }
-    if (Array.isArray(previous) && Array.isArray(next) && CONCATENATED_ARRAY_KEYS.has(key))
-        return [...previous, ...next];
-    return next;
-}
-
-function includePaths(document, path) {
-    if (document.include !== undefined && document.source !== undefined)
-        throw new Error(`${path}: use either include or source, not both`);
-    const value = document.include ?? document.source;
-    if (value === undefined)
-        return [];
-    const values = Array.isArray(value) ? value : [value];
-    if (!values.length || values.some(entry => typeof entry !== 'string' || !entry.trim()))
-        throw new Error(`${path}: include/source must be a nonempty path or array of paths`);
-    return values.map(entry => {
-        let included = entry;
-        if (included.startsWith('~/'))
-            included = GLib.build_filenamev([GLib.get_home_dir(), included.slice(2)]);
-        if (!GLib.path_is_absolute(included))
-            included = GLib.build_filenamev([GLib.path_get_dirname(path), included]);
-        return GLib.canonicalize_filename(included, null);
-    });
-}
-
-function loadTomlDocument(path, stack = [], watched = null) {
-    const canonical = GLib.canonicalize_filename(path, null);
-    watched?.add(canonical);
-    if (stack.length >= 32)
-        throw new Error(`${canonical}: include nesting exceeds 32 files`);
-    if (stack.includes(canonical))
-        throw new Error(`${canonical}: include cycle (${[...stack, canonical].join(' -> ')})`);
-    let bytes;
-    try {
-        [, bytes] = Gio.File.new_for_path(canonical).load_contents(null);
-    } catch (error) {
-        throw new Error(`${canonical}: cannot read included config: ${error.message}`);
-    }
-    let document;
-    try {
-        document = Meta.gnoblin_parse_toml(new TextDecoder('utf-8', {fatal: true}).decode(bytes)).recursiveUnpack();
-    } catch (error) {
-        throw new Error(`${canonical}: invalid TOML: ${error.message}`);
-    }
-    let merged = {};
-    const paths = [canonical];
-    for (const included of includePaths(document, canonical)) {
-        const loaded = loadTomlDocument(included, [...stack, canonical], watched);
-        merged = mergeDocuments(merged, loaded.document);
-        paths.push(...loaded.paths);
-    }
-    const local = {...document};
-    delete local.include;
-    delete local.source;
-    try {
-        // Validate fragments at their own boundary so an error names the file
-        // that contains the bad setting, not only the root configuration.
-        parseDocument(local);
-    } catch (error) {
-        throw new Error(`${canonical}: ${error.message}`);
-    }
-    return {document: mergeDocuments(merged, local), paths};
-}
-
 const WINDOW_RULE_EFFECT_KEYS = Object.freeze(['blur', 'blur-ignore-shadows', 'opacity', 'animation', 'shader', 'shader-uniforms']);
 const STRING_MATCH_KEYS = new Set(['app-id', 'title', 'layer']);
 const WINDOW_RULE_MATCHERS = new WeakMap();
@@ -627,83 +476,38 @@ export class Autostart {
 }
 
 export class ConfigFile {
-    constructor(path = null, apply = () => {}, parseToml = parse) {
+    constructor(path = null, apply = () => {}) {
         this._override = path || GLib.getenv('GNOBLIN_CONFIG') || null;
         this._directory = this._override ? GLib.path_get_dirname(this._override) :
             GLib.build_filenamev([GLib.get_user_config_dir(), 'gnoblin']);
         this._apply = apply;
-        this._parseToml = parseToml;
         this._started = false;
         this._monitors = new Map();
         this._watchedFiles = new Set();
+        this._watchedDirectories = new Set();
         this._timeout = 0;
     }
 
     get path() {
-        if (this._override)
-            return this._override;
-        const toml = GLib.build_filenamev([this._directory, 'gnoblin.toml']);
-        const legacy = GLib.build_filenamev([this._directory, 'gnoblin.conf']);
-        return GLib.file_test(toml, GLib.FileTest.EXISTS) ||
-            !GLib.file_test(legacy, GLib.FileTest.EXISTS) ? toml : legacy;
+        return this._override ?? GLib.build_filenamev([this._directory, 'init.lua']);
     }
 
     reload() {
-        let text = '';
         const path = this.path;
-        let loaded = {document: {}, paths: [path]};
-        const watched = new Set([path]);
-        try {
-            const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
-            text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
-            if (path.endsWith('.conf'))
-                loaded = null;
-            else
-                loaded = loadTomlDocument(path, [], watched);
-        } catch (e) {
-            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
-                this._setWatchedFiles([...watched]);
-                throw e;
-            }
-        }
-        // Parse the complete file and every included fragment before replacing
-        // the last valid settings. A missing main file means defaults.
         let next;
+        // Mutter and Shell evaluate the same Lua files, in the same order.
+        // Keep failed dependencies watched so fixing a module retries it.
+        const loaded = Meta.gnoblin_load_config(path).recursiveUnpack();
+        this._setWatchedFiles(loaded.paths ?? [path], loaded.directories ?? []);
+        if (loaded.error)
+            throw new Error(loaded.error);
         try {
-            next = loaded ? parseDocument(loaded.document) : parseLegacy(text);
-        } catch (e) {
-            throw new Error(`${path}: ${e.message}`);
+            next = parseDocument(loaded.document);
+        } catch (error) {
+            throw new Error(`${path}: ${error.message}`);
         }
         this._apply(next);
         settings = next;
-        this._setWatchedFiles(loaded?.paths ?? [path]);
-    }
-
-    setPermissions(policy, expected) {
-        if (this.path.endsWith('.conf'))
-            throw new Error('Permission rules require gnoblin.toml; migrate the legacy configuration first');
-        const file = Gio.File.new_for_path(this.path);
-        let text = '', etag = null;
-        try {
-            const [, bytes, loadedEtag] = file.load_contents(null);
-            text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
-            etag = loadedEtag;
-        } catch (e) {
-            if (!e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) throw e;
-        }
-        const decode = contents => Meta.gnoblin_parse_toml(contents).recursiveUnpack();
-        const before = decode(text);
-        if (JSON.stringify(Permissions.validate(before.permissions)) !== JSON.stringify(expected))
-            throw new Error("Permission policy changed; inspect it and retry");
-        const replacement = Permissions.replacePolicy(text, policy);
-        const after = decode(replacement);
-        delete before.permissions;
-        delete after.permissions;
-        if (JSON.stringify(before) !== JSON.stringify(after))
-            throw new Error('Cannot safely edit this TOML layout; edit the permissions table manually');
-        this._parseToml(replacement);
-        file.replace_contents(replacement, etag, false, Gio.FileCreateFlags.PRIVATE, null);
-        this.reload();
     }
 
     start() {
@@ -716,14 +520,22 @@ export class ConfigFile {
         this._tryReload();
     }
 
-    _setWatchedFiles(paths) {
+    _setWatchedFiles(paths, watchedDirectories = []) {
         const wanted = new Set(paths.map(path => GLib.canonicalize_filename(path, null)));
-        const directories = new Map();
-        for (const path of wanted) {
-            const directory = GLib.path_get_dirname(path);
-            if (!directories.has(directory))
-                directories.set(directory, new Set());
-            directories.get(directory).add(path);
+        this._watchedDirectories = new Set(watchedDirectories.map(path =>
+            GLib.canonicalize_filename(path, null)));
+        const directories = new Set();
+        const parents = [...wanted].map(path => GLib.path_get_dirname(path));
+        const targets = [...parents, ...this._watchedDirectories];
+        // Parents survive an atomic replacement of a watched directory.
+        for (let directory of [...targets, ...targets.map(path => GLib.path_get_dirname(path))]) {
+            while (!GLib.file_test(directory, GLib.FileTest.IS_DIR)) {
+                const parent = GLib.path_get_dirname(directory);
+                if (parent === directory)
+                    break;
+                directory = parent;
+            }
+            directories.add(directory);
         }
         for (const [directory, monitor] of this._monitors) {
             if (directories.has(directory))
@@ -731,7 +543,7 @@ export class ConfigFile {
             monitor.cancel();
             this._monitors.delete(directory);
         }
-        for (const [directory, files] of directories) {
+        for (const directory of directories) {
             if (this._monitors.has(directory))
                 continue;
             const monitor = Gio.File.new_for_path(directory).monitor_directory(
@@ -739,8 +551,19 @@ export class ConfigFile {
             monitor.connect('changed', (_monitor, file, otherFile) => {
                 const changed = [file, otherFile].filter(Boolean).map(item =>
                     GLib.canonicalize_filename(item.get_path(), null));
-                if (!changed.some(path => this._watchedFiles.has(path)))
+                if (!changed.some(path => [...this._watchedFiles].some(watched =>
+                    watched === path || watched.startsWith(`${path}/`)) ||
+                    [...this._watchedDirectories].some(directory =>
+                        directory === path || path.startsWith(`${directory}/`) || directory.startsWith(`${path}/`))))
                     return;
+                for (const path of changed) {
+                    for (const [watched, oldMonitor] of this._monitors) {
+                        if (watched === path || watched.startsWith(`${path}/`)) {
+                            oldMonitor.cancel();
+                            this._monitors.delete(watched);
+                        }
+                    }
+                }
                 if (this._timeout)
                     GLib.source_remove(this._timeout);
                 this._timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
@@ -771,6 +594,7 @@ export class ConfigFile {
             monitor.cancel();
         this._monitors.clear();
         this._watchedFiles.clear();
+        this._watchedDirectories.clear();
         this._started = false;
     }
 }
