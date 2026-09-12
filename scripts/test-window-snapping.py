@@ -20,7 +20,7 @@ for source in (repo / 'src/scripts/lib').glob('*'):
     if source.is_file():
         shutil.copy(source, scripts / 'lib')
 shutil.copy(repo / 'tests/window-snapping-input.js', scripts / 'snap-input.js')
-subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'reload-scripts'], check=True)
+subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
 root = Path(os.environ.get('BINGUX_SOURCE', str(repo.parent / 'bingux'))) / 'shell/bingux'
 qs_command = os.environ.get('GNOBLIN_QS', 'qs')
 fixture = config / 'snap-fixture'
@@ -70,6 +70,23 @@ try:
     print('BEFORE', before, flush=True)
     command(dict(command='window', action='focus', window=wid))
     time.sleep(0.2)
+    binding_config = config / 'gnoblin' / 'init.lua'
+    binding_config.write_text('''local g = require("gnoblin")
+g.set({keybindings = {wm = {
+    maximize = {"<Super>Up"},
+    minimize = {},
+    unmaximize = {},
+}}})
+''')
+    subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'config', 'reload'], check=True)
+    command = ', '.join(json.dumps(part) for part in [str(repo / 'src/tools/gnoblinctl'), 'window', 'restore-or-minimize', 'active'])
+    with binding_config.open('a') as output:
+        output.write(f'''g.set({{shortcuts = {{{{
+    name = "restore-or-minimize",
+    binding = "<Super>Down",
+    command = {{{command}}},
+}}}}}})\n''')
+    subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'config', 'reload'], check=True)
     pointer('move', x=before['x'] + before['width'] // 2, y=before['y'] + 15)
     pointer('move', x=before['x'] + before['width'] // 2, y=before['y'] + 15)
     pointer('button', down=True)

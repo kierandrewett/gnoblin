@@ -12,7 +12,7 @@ root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
 report = root / 'layer-report.json'
 motion = root / 'motion.txt'
 motion.write_text('on')
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 (root / 'scripts/layer-probe.js').write_text('''
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
@@ -62,7 +62,7 @@ export default function enable(api) {
     });
 }
 '''.replace('REPORT', json.dumps(str(report))).replace('MOTION', json.dumps(str(motion))))
-subprocess.run(['gnoblinctl', 'reload-scripts'], check=True)
+subprocess.run(['gnoblinctl', 'script', 'reload'], check=True)
 
 cases = [(13, 'slide', 240), (14, 'slide', 180), (7, 'slide', 240),
          (11, 'slide', 240), (5, 'slide', 240), (15, 'slide', 240),
@@ -72,7 +72,13 @@ for index, (anchor, animation, duration) in enumerate(cases):
     reduced_motion = index == 9
     interrupted = index == 10
     motion.write_text('off' if reduced_motion else 'on')
-    config.write_text(f'[shell]\nlayer-animation="{animation}"\nlayer-duration={duration}\nlayer-easing="ease-out-cubic"\n')
+    config.write_text(f'''local g = require("gnoblin")
+g.set({{shell = {{
+    ["layer-animation"] = "{animation}",
+    ["layer-duration"] = {duration},
+    ["layer-easing"] = "ease-out-cubic",
+}}}})
+''')
     time.sleep(.35)
     name = f'animation-test-{index}'
     qml = root / f'layer-{index}.qml'

@@ -118,7 +118,7 @@ export default function enable(api) {
     api._disposers.push(() => { tracker.set_gnoblin_launch_cursor(false); device.run_dispose(); });
 }
 '''.replace('THEME', json.dumps(THEME)).replace('REPORT', json.dumps(str(report))))
-    subprocess.run([str(ROOT / 'src/tools/gnoblinctl'), 'reload-scripts'], check=True)
+    subprocess.run([str(ROOT / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
     deadline = time.monotonic() + 4
     while not report.exists() and time.monotonic() < deadline:
         time.sleep(.05)

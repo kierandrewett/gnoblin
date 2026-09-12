@@ -41,24 +41,24 @@ def until(query, predicate):
         result = query()
         if predicate(result): return result
         time.sleep(.05)
-    raise AssertionError({"last": result, "windows": call("windows")})
+    raise AssertionError({"last": result, "windows": call("window", "list")})
 
 
-call("reload-scripts")
+call("script", "reload")
 for _ in range(40):
     if path.exists(): break
     time.sleep(.05)
 assert call("ping") == "pong"
-assert call("monitors")["monitors"]
-assert call("features")["features"]
-call("launch-begin", "cli-private-test", "cli-test", 1000)
-assert call("launch-state")["busy"]
-call("launch-end", "cli-private-test")
+assert call("monitor", "list")["monitors"]
+assert call("feature", "list")["features"]
+call("launch", "begin", "cli-private-test", "cli-test", 1000)
+assert call("launch", "status")["busy"]
+call("launch", "end", "cli-private-test")
 window = subprocess.Popen(["foot", "--app-id", "gnoblin-cli-test", "--title", "CLI 'quoted' window", "sleep", "60"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
-    rows = until(lambda: call("windows", "--app-id", "gnoblin-cli-test")["windows"], bool)
+    rows = until(lambda: call("window", "list", "--app-id", "gnoblin-cli-test")["windows"], bool)
     identity = rows[0]["id"]
-    def state(): return next(row for row in call("windows")["windows"] if row["id"] == identity)
+    def state(): return next(row for row in call("window", "list")["windows"] if row["id"] == identity)
     call("window", "focus", identity)
     until(state, lambda row: row["focused"])
     call("window", "minimize", identity)
@@ -78,18 +78,18 @@ try:
     until(state, lambda row: row["geometry"]["x"] == 80 and row["geometry"]["y"] == 100)
     call("window", "resize", identity, 600, 400)
     until(state, lambda row: abs(row["geometry"]["width"] - 600) < 20 and abs(row["geometry"]["height"] - 400) < 30)
-    workspaces = call("workspaces")["workspaces"]
+    workspaces = call("workspace", "list")["workspaces"]
     destination = workspaces[-1]["id"]
     call("window", "workspace", identity, destination)
     until(state, lambda row: row["workspace"] == destination)
-    call("workspaces", "switch", destination)
-    until(lambda: call("workspaces")["workspaces"], lambda rows: any(row["id"] == destination and row["active"] for row in rows))
+    call("workspace", "switch", destination)
+    until(lambda: call("workspace", "list")["workspaces"], lambda rows: any(row["id"] == destination and row["active"] for row in rows))
     call("window", "monitor", identity, 0)
     assert state()["monitorIndex"] == 0
     invalid = subprocess.run([ctl, "--socket", str(path), "window", "focus", "invalid"], capture_output=True, text=True)
     assert invalid.returncode == 1 and "no longer available" in invalid.stderr
     call("window", "close", identity)
-    until(lambda: call("windows")["windows"], lambda rows: all(row["id"] != identity for row in rows))
+    until(lambda: call("window", "list")["windows"], lambda rows: all(row["id"] != identity for row in rows))
     print("PASS: CLI lists, focus, minimise, restore, maximise, fullscreen, geometry, workspace, monitor, stale IDs and close")
 finally:
     if window.poll() is None: window.terminate()

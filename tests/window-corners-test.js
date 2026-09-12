@@ -1,6 +1,6 @@
 // gjs -m tests/window-corners-test.js
 import {defaults, validate, merge, geometry, enabled} from '../src/gnome-shell-overlay/js/ui/components/gnoblinCornerGeometry.js';
-import {parse, parseDocument, windowEffects} from '../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js';
+import {parseDocument, windowEffects} from '../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js';
 function assert(ok, message) { if (!ok) throw new Error(message); }
 for (const value of [{radius:-1}, {radius:Infinity}, {smoothing:1.1}, {mode:'guess'}, {padding:[0,0]}, {'border-color':'red'}, {shadow:{blur:101}}, {shadow:{typo:1}}, {typo:1}, {toString:true}, {'keep-tiled':1}, {shadow:true}, {shadow:{opacity:-1}}]) {
     let rejected=false; try {validate(value);} catch (_) {rejected=true;} assert(rejected, JSON.stringify(value));
@@ -28,14 +28,21 @@ assert(enabled({...settings,'keep-fullscreen':true},{normal:true,fullscreen:true
 assert(!enabled({...settings,mode:'off'},{normal:true}), 'explicit disable');
 print('PASS: corner schema, cascades, state policy, frame offsets and scaling');
 
-const toml = parse(`[[window-rules]]
-match.type = "window"
-corners = { radius = 14, smoothing = 0.6, padding = [1, 2, 3, 4], shadow = { blur = 24, opacity = 0.5 } }
-[[window-rules]]
-match.focused = true
-corners.shadow.opacity = 0.8
-corners.border-color = "#12345678"
-`);
-const parsed = windowEffects({type:'window',focused:true},toml).corners;
-assert(parsed.radius === 14 && parsed.shadow.blur === 24 && parsed.shadow.opacity === .8 && parsed['border-color'] === '#12345678', 'native TOML nested inline and dotted tables');
-print('PASS: native TOML corner settings');
+const luaConfig = parseDocument({'window-rules': [
+    {match: {type: 'window'}, corners: {radius: 14, smoothing: .6, padding: [1, 2, 3, 4], shadow: {blur: 24, opacity: .5}}},
+    {match: {focused: true}, corners: {shadow: {opacity: .8}, 'border-color': '#12345678'}},
+]});
+const parsed = windowEffects({type:'window',focused:true},luaConfig).corners;
+assert(parsed.radius === 14 && parsed.shadow.blur === 24 && parsed.shadow.opacity === .8 && parsed['border-color'] === '#12345678', 'Lua nested tables merge');
+const inherited = parseDocument({'window-rules': [
+    {match: {type: 'window'}, corners: {radius: 48, smoothing: 1, padding: [2, 3, 4, 5]}, borders: {'inner-width': 1}},
+]});
+const inheritedBorders = windowEffects({type: 'window'}, inherited).borders;
+assert(inheritedBorders.radius === 48 && inheritedBorders.smoothing === 1 &&
+    JSON.stringify(inheritedBorders.padding) === '[2,3,4,5]', 'borders inherit corner geometry');
+const overridden = parseDocument({'window-rules': [
+    {match: {type: 'window'}, corners: {radius: 48, smoothing: 1}, borders: {radius: 12, smoothing: 0}},
+]});
+const overriddenBorders = windowEffects({type: 'window'}, overridden).borders;
+assert(overriddenBorders.radius === 12 && overriddenBorders.smoothing === 0, 'explicit border geometry wins');
+print('PASS: Lua corner settings');

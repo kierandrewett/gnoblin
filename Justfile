@@ -237,7 +237,7 @@ perf-smoke:
 gnome-native-chrome-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-native-chrome.py" ./scripts/run-gnome-shell.sh
 
-# Headless: prove TOML/config watching, named autostart and live window behaviour.
+# Headless: prove Lua configuration watching, named autostart and live window behaviour.
 gnome-config-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
 
@@ -260,8 +260,8 @@ gnome-notifications-verify:
 gnome-protocol-boundaries-verify:
     ./scripts/test-protocol-boundaries.sh
 
-# Headless: prove gnoblin.conf [protocols] gating — disabling wlr-layer-shell in
-# the config stops zwlr_layer_shell_v1 being advertised.
+# Headless: prove Lua protocol gating — disabling wlr-layer-shell in the config
+# stops zwlr_layer_shell_v1 being advertised.
 gnome-protocol-gating-verify:
     ./scripts/test-protocol-gating.sh
 

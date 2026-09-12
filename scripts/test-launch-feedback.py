@@ -26,7 +26,7 @@ export default function enable(api) {
 
 
 def reload():
-    subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload-scripts"], check=True)
+    subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 
 
 def call(method, *args):

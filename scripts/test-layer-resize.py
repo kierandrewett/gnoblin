@@ -12,7 +12,9 @@ assert os.environ.get('WAYLAND_DISPLAY', '').startswith('gnoblin-gs-'), 'Use the
 repo = Path(__file__).resolve().parents[1]
 config = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
 config.mkdir(parents=True, exist_ok=True)
-(config / 'gnoblin.toml').write_text('[shell]\nlayer-animation="none"\n')
+(config / 'init.lua').write_text('''local g = require("gnoblin")
+g.set({shell = {["layer-animation"] = "none"}})
+''')
 time.sleep(.4)
 with tempfile.TemporaryDirectory(prefix='gnoblin-layer-resize-') as directory:
     build = Path(directory)

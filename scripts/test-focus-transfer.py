@@ -47,7 +47,7 @@ export default function(api) {
  api._disposers.push(() => { impl.unexport(); Gio.bus_unown_name(name); keyboard.run_dispose(); });
 }
 ''')
-subprocess.run([str(root / 'src/tools/gnoblinctl'), 'reload-scripts'], check=True)
+subprocess.run([str(root / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
 def call(method, *args):
     result = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.gnoblin.FocusTransferTest',
         '--object-path', '/org/gnoblin/FocusTransferTest', '--method', 'org.gnoblin.FocusTransferTest.' + method,

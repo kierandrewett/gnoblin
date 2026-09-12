@@ -43,9 +43,15 @@ ShellRoot {
  }
 }
 '''.replace('implicitWidth: 320; implicitHeight: 220', 'implicitWidth: 1280; implicitHeight: 800' if test_corners else 'implicitWidth: 320; implicitHeight: 220').replace('color: "#80303030"', 'color: Theme.popupSurface' if use_theme else 'color: "#80303030"').replace('// SHADOW_FIXTURE', 'Rectangle { x: 48; y: 48; width: 224; height: 128; color: "#40000000" }\n  Rectangle { x: 276; y: 64; width: 40; height: 96; color: "#20303030" }' if test_shadows else ''))
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 def configure(blur, opacity=1):
-    config.write_text(f'[shell]\nlayer-animation="none"\n[[window-rules]]\nmatch.layer="^effect-mask$"\nblur={blur}\nopacity={opacity}\n' + ('blur-ignore-shadows=true\n' if test_shadows and os.environ.get('GNOBLIN_BLUR_SHADOW_BASELINE') != '1' else ''))
+    ignore_shadows = ', ["blur-ignore-shadows"] = true' if test_shadows and os.environ.get('GNOBLIN_BLUR_SHADOW_BASELINE') != '1' else ''
+    config.write_text(f'''local g = require("gnoblin")
+g.set({{
+    shell = {{["layer-animation"] = "none"}},
+    ["window-rules"] = {{{{match = {{layer = "^effect-mask$"}}, blur = {blur}, opacity = {opacity}{ignore_shadows}}}}},
+}})
+''')
     time.sleep(.5)
 def capture(name):
     path = root / name

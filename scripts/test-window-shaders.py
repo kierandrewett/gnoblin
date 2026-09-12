@@ -10,7 +10,7 @@ assert os.environ.get('WAYLAND_DISPLAY', '').startswith('gnoblin-gs-')
 root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
 root.mkdir(parents=True, exist_ok=True)
 shader = root / 'test.frag'
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 qml = root / 'shader.qml'
 qml.write_text('''import QtQuick
 import Quickshell
@@ -43,9 +43,13 @@ def write_shader(colour):
 
 
 def configure(enabled=True, strength=1, blur=0, path='test.frag'):
-    config.write_text('[shell]\nlayer-animation="none"\n[[window-rules]]\n'
-        f'match.layer="^shader-card$"\nblur={blur}\n' +
-        (f'shader="{path}"\nshader-uniforms.strength={strength}.0\n' if enabled else ''))
+    shader = f', shader = {path!r}, ["shader-uniforms"] = {{strength = {strength}.0}}' if enabled else ''
+    config.write_text(f'''local g = require("gnoblin")
+g.set({{
+    shell = {{["layer-animation"] = "none"}},
+    ["window-rules"] = {{{{match = {{layer = "^shader-card$"}}, blur = {blur}{shader}}}}},
+}})
+''')
     time.sleep(.5)
 
 

@@ -31,7 +31,7 @@ export default function(api) {
 ''')
 repo = Path(__file__).resolve().parents[1]
 qs = os.environ.get('QS_TEST_BIN', 'qs')
-subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'reload-scripts'], check=True)
+subprocess.run([str(repo / 'src/tools/gnoblinctl'), 'script', 'reload'], check=True)
 
 qml = root / 'effect.qml'
 qml.write_text('''import QtQuick
@@ -68,9 +68,14 @@ ShellRoot {
 if os.environ.get('GNOBLIN_TEST_CLIENT_FADE') == '1':
     qml.write_text(qml.read_text().replace('import QtQuick', 'import QtQuick\nimport Bingux.Effects 1.0 as Native', 1)
                    .replace('id: panel;', 'id: panel; Native.SurfaceFade { target: panel }'))
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 def configure(blur, opacity=1):
-    config.write_text(f'[shell]\nlayer-animation="none"\n[[window-rules]]\nmatch.layer="^effect-mask$"\nblur={blur}\nopacity={opacity}\n')
+    config.write_text(f'''local g = require("gnoblin")
+g.set({{
+    shell = {{["layer-animation"] = "none"}},
+    ["window-rules"] = {{{{match = {{layer = "^effect-mask$"}}, blur = {blur}, opacity = {opacity}}}}},
+}})
+''')
     time.sleep(.5)
 def capture(name):
     path = root / name

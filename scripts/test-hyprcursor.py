@@ -54,7 +54,7 @@ export default function enable(api) {
     });
 }
 '''.replace("REPORT", json.dumps(str(report))))
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload-scripts"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 deadline = time.monotonic() + 4
 while not report.exists() and time.monotonic() < deadline:
     time.sleep(0.05)

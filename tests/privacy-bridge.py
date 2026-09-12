@@ -18,7 +18,7 @@ repo = Path(__file__).resolve().parents[1]
 scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
 scripts.mkdir(parents=True, exist_ok=True)
 shutil.copy2(repo / "src/scripts/compositor-bridge.js", scripts)
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload-scripts"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 name = "org.gnome.Mutter.ScreenCast"
 
@@ -73,7 +73,7 @@ try:
     before = client.wait(lambda state: state["recordingElapsed"] >= 1)
     sessions.append(start(False))
     client.wait(lambda state: state["recording"] and state["screenSharing"])
-    subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload-scripts"], check=True)
+    subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
     client.close()
     client = Subscriber()
     after = client.wait(lambda state: state["recording"] and state["screenSharing"])

@@ -158,7 +158,7 @@ gnoblin session ('"$DISP"'). Launch your chrome, e.g.:
     qs -p ~/dev/kobel-shell        # Quickshell (kobel-shell)
     # or: waybar / your own layer-shell client
 
-Drive gnoblin:  gnoblinctl ping | version | reload | features
+Drive gnoblin:  gnoblinctl ping | version | reload | feature list
 Close this terminal to end the devkit.
 ────────────────────────────────────────────────────────────────
 EOF'

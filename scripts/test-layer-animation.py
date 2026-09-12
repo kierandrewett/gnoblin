@@ -9,7 +9,7 @@ import time
 root = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin'
 (root / 'scripts').mkdir(parents=True, exist_ok=True)
 report = root / 'layer-report.json'
-config = root / 'gnoblin.toml'
+config = root / 'init.lua'
 probe = root / 'scripts/layer-probe.js'
 probe.write_text('''
 import Meta from 'gi://Meta';
@@ -36,7 +36,7 @@ export default function () {
     };
 }
 '''.replace('REPORT', json.dumps(str(report))))
-subprocess.run(['gnoblinctl', 'reload-scripts'], check=True)
+subprocess.run(['gnoblinctl', 'script', 'reload'], check=True)
 qml = root / 'layer.qml'
 qml.write_text('''import Quickshell
 import Quickshell.Wayland
@@ -48,7 +48,13 @@ PanelWindow {
 }
 ''')
 for duration in [180, 70]:
-    config.write_text(f'[shell]\nlayer-animation = "slide"\nlayer-duration = {duration}\nlayer-easing = "ease-out-cubic"\n')
+    config.write_text(f'''local g = require("gnoblin")
+g.set({{shell = {{
+    ["layer-animation"] = "slide",
+    ["layer-duration"] = {duration},
+    ["layer-easing"] = "ease-out-cubic",
+}}}})
+''')
     time.sleep(.4)
     report.unlink(missing_ok=True)
     proc = subprocess.Popen(['qs', '-p', str(qml)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

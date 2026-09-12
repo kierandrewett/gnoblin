@@ -14,34 +14,55 @@ def ctl(*args, ok=True):
     assert (result.returncode == 0) == ok, result.stdout + result.stderr
     return json.loads(result.stdout) if ok else result.stderr
 
-state = ctl('permissions', 'list')
-config = Path(state['path'])
-config.write_text('# preserve this comment\n[shell]\nosd = false\n')
-ctl('reload-config')
-ctl('permissions', 'default', 'ask')
-ctl('permissions', 'set', 'rustdesk', 'allow', '--match', '^host-exe:/usr/bin/rustdesk$',
-    '--capability', 'screen-cast', '--capability', 'remote-desktop', '--monitor', 'primary',
-    '--device', 'keyboard', '--device', 'pointer')
-assert config.read_text().startswith('# preserve this comment\n[shell]\nosd = false')
+config = Path(os.environ['XDG_CONFIG_HOME']) / 'gnoblin' / 'init.lua'
+config.parent.mkdir(parents=True, exist_ok=True)
+
+def lua(value):
+    if value is None:
+        return 'nil'
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, list):
+        return '{' + ', '.join(lua(entry) for entry in value) + '}'
+    if isinstance(value, dict):
+        entries = []
+        for key, entry in value.items():
+            name = key if key.isidentifier() else '[' + lua(key) + ']'
+            entries.append(f'{name} = {lua(entry)}')
+        return '{' + ', '.join(entries) + '}'
+    raise TypeError(value)
+
+def apply_policy(default, rules, ok=True):
+    settings = {'shell': {'osd': False}, 'permissions': {'default': default, 'rules': rules}}
+    config.write_text('local g = require("gnoblin")\ng.set(' + lua(settings) + ')\n')
+    return ctl('config', 'reload', ok=ok)
+
+rustdesk = {'name': 'rustdesk', 'level': 'allow', 'match': '^host-exe:/usr/bin/rustdesk$',
+            'capabilities': ['screen-cast', 'remote-desktop'], 'monitors': ['primary'],
+            'devices': ['keyboard', 'pointer']}
+apply_policy('ask', [rustdesk])
 identity = 'host-exe:/usr/bin/rustdesk'
 assert ctl('permissions', 'check', 'remote-desktop', identity)['devices'] == 3
 assert ctl('permissions', 'check', 'screen-cast', identity)['level'] == 'allow'
 assert ctl('permissions', 'check', 'screen-cast', 'host-exe:/tmp/rustdesk')['level'] == 'ask'
-ctl('permissions', 'set', 'blocked', 'deny', '--match', 'rustdesk', '--capability', 'screen-cast')
+blocked = {'name': 'blocked', 'level': 'deny', 'match': 'rustdesk', 'capabilities': ['screen-cast']}
+apply_policy('ask', [rustdesk, blocked])
 assert ctl('permissions', 'check', 'screen-cast', identity)['rule'] == 'blocked'
-ctl('permissions', 'remove', 'blocked')
+apply_policy('ask', [rustdesk])
 assert ctl('permissions', 'check', 'screen-cast', identity)['level'] == 'allow'
 saved = config.read_text()
-ctl('permissions', 'set', 'invalid', 'allow', '--match', '[', '--capability', 'screen-cast', ok=False)
-assert config.read_text() == saved
-config.write_text(saved + '\n[permissions.invalid]\noops = true\n')
-ctl('reload-config', ok=False)
+config.write_text('local g = require("gnoblin")\ng.set({permissions = {rules = {{match = "["}}}})\n')
+ctl('config', 'reload', ok=False)
 assert ctl('permissions', 'check', 'screen-cast', identity)['level'] == 'allow'
 config.write_text(saved)
-ctl('reload-config')
-ctl('permissions', 'remove', 'rustdesk')
+ctl('config', 'reload')
+apply_policy('ask', [])
 assert ctl('permissions', 'check', 'screen-cast', identity)['level'] == 'ask'
-print('PASS: live permission policy, CLI writes, preserved config, reload and invalid-edit retention')
+print('PASS: live Lua permission policy, read-only CLI checks, reload and invalid-edit retention')
 
 # Act as the trusted portal frontend on this private bus. No host portal state is used.
 import gi
@@ -120,18 +141,21 @@ try:
             if backend.poll() is not None: raise RuntimeError('Portal backend exited')
             time.sleep(0.1)
     else: raise RuntimeError('Portal backend did not initialise ScreenCast')
-    ctl('permissions', 'default', 'deny')
+    policy_rules = []
     for capability in ('screen-cast', 'remote-desktop', 'input-capture', 'screenshot', 'access'):
-        ctl('permissions', 'set', capability, 'allow', '--match', app_identity,
-            '--capability', capability, *(['--monitor', 'primary'] if capability == 'screen-cast' else []),
-            *(['--device', 'keyboard', '--device', 'pointer'] if capability == 'remote-desktop' else []))
+        rule = {'name': capability, 'level': 'allow', 'match': app_identity, 'capabilities': [capability]}
+        if capability == 'screen-cast': rule['monitors'] = ['primary']
+        if capability == 'remote-desktop': rule['devices'] = ['keyboard', 'pointer']
+        policy_rules.append(rule)
+    apply_policy('deny', policy_rules)
     result = capture()
     assert result.unpack()[0] == 0 and result.unpack()[1]['streams'], result
     restore = result.get_child_value(1).lookup_value('restore_data', None)
     assert restore is not None, result
-    ctl('permissions', 'set', 'block-capture', 'deny', '--match', app_match, '--capability', 'screen-cast')
+    apply_policy('deny', policy_rules + [{'name': 'block-capture', 'level': 'deny', 'match': app_match,
+                                          'capabilities': ['screen-cast']}])
     assert capture({'restore_data': restore}).unpack()[0] == 2
-    ctl('permissions', 'remove', 'block-capture')
+    apply_policy('deny', policy_rules)
     request, session = handles()
     assert portal('RemoteDesktop', 'CreateSession', '(oosa{sv})', (request, session, app, {})).unpack()[0] == 0
     assert portal('RemoteDesktop', 'SelectDevices', '(oosa{sv})', (request, session, app,
@@ -162,15 +186,17 @@ try:
         ('screenshot', 'Screenshot', 'Screenshot', '(ossa{sv})'),
         ('access', 'Access', 'AccessDialog', '(osssssa{sv})'),
         ('input-capture', 'InputCapture', 'CreateSession', '(oossa{sv})')]:
-        ctl('permissions', 'set', 'block', 'deny', '--match', app_match, '--capability', capability)
+        apply_policy('deny', policy_rules + [{'name': 'block', 'level': 'deny', 'match': app_match,
+                                              'capabilities': [capability]}])
         request, session = handles()
         values = (request, app, '', {})
         if capability == 'access': values = (request, app, '', 'Test', 'Test', 'Test', {})
         if capability == 'input-capture': values = (request, session, app, '', {'capabilities': GLib.Variant('u', 3)})
         assert portal(interface, method, signature, values).unpack()[0] != 0
-        ctl('permissions', 'remove', 'block')
+        apply_policy('deny', policy_rules)
     # A forced prompt must ignore otherwise valid restore data and remain cancellable.
-    ctl('permissions', 'set', 'prompt', 'ask', '--match', app_match, '--capability', 'screen-cast')
+    apply_policy('deny', policy_rules + [{'name': 'prompt', 'level': 'ask', 'match': app_match,
+                                          'capabilities': ['screen-cast']}])
     request, session = handles()
     assert portal('ScreenCast', 'CreateSession', '(oosa{sv})', (request, session, app, {})).unpack()[0] == 0
     assert portal('ScreenCast', 'SelectSources', '(oosa{sv})', (request, session, app,
@@ -205,19 +231,12 @@ try:
     direct.close_sync(None)
     # Native applications with an empty app ID use the actual caller executable.
     executable = os.readlink('/proc/self/exe')
-    ctl('permissions', 'set', 'native', 'allow', '--match', '^host-exe:' + re.escape(executable) + '$',
-        '--capability', 'access')
+    policy_rules.append({'name': 'native', 'level': 'allow', 'match': '^host-exe:' + re.escape(executable) + '$',
+                         'capabilities': ['access']})
+    apply_policy('deny', policy_rules)
     request, _ = handles()
     assert portal('Access', 'AccessDialog', '(osssssa{sv})', (request, '', '', 'Test', 'Test', 'Test', {})).unpack()[0] == 0
-    # A stale control client must not replace newer policy.
-    old = ctl('permissions', 'list')['policy']
-    ctl('permissions', 'default', 'ask')
-    try:
-        bus.call_sync('org.gnoblin.Shell', '/org/gnoblin/Shell', 'org.gnoblin.Shell', 'SetPermissions',
-            GLib.Variant('(ss)', (json.dumps(old), json.dumps(old))), None, Gio.DBusCallFlags.NONE, 2000, None)
-        raise AssertionError('stale write accepted')
-    except GLib.Error as error:
-        assert 'changed' in str(error), error
+    apply_policy('ask', policy_rules)
     assert ctl('permissions', 'list')['policy']['default'] == 'ask'
     print('PASS: real portal unattended ScreenCast, RemoteDesktop, InputCapture, Screenshot, Access; deny overrides restore data')
 finally:
