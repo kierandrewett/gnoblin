@@ -1,0 +1,24 @@
+{
+  "red": {
+    "frames": 300,
+    "paintMs": 143.823,
+    "cpuTicks": 27,
+    "cacheBuilds": 1,
+    "maskUniformSetups": 413,
+    "maskPaints": 413,
+    "maskPaintsDuringSample": 300,
+    "maskUniformSetupsDuringSample": 300,
+    "stageViewRegionCopies": 420
+  },
+  "green": {
+    "frames": 300,
+    "paintMs": 142.683,
+    "cpuTicks": 28,
+    "cacheBuilds": 1,
+    "maskUniformSetups": 1,
+    "maskPaints": 1,
+    "maskPaintsDuringSample": 0,
+    "maskUniformSetupsDuringSample": 0,
+    "stageViewRegionCopies": 0
+  }
+}
