@@ -46,29 +46,49 @@ typedef struct _MetaWaylandForeignToplevelHandle
   struct wl_resource *resource;
   MetaWaylandForeignToplevelList *list; /* NULL once the manager is gone */
   MetaWindow *window;                   /* NULL once unmanaged */
+  GList *link;
   gulong unmanaged_id;
   gulong notify_title_id;
   gulong notify_wm_class_id;
   gulong notify_gtk_app_id_id;
+  char *last_title;
+  char *last_app_id;
+  gboolean title_sent;
+  gboolean app_id_sent;
 } MetaWaylandForeignToplevelHandle;
 
 
-static void
+static gboolean
 handle_send_title (MetaWaylandForeignToplevelHandle *handle)
 {
   const char *title = meta_window_get_title (handle->window);
 
+  title = title ? title : "";
+  if (handle->title_sent && g_strcmp0 (handle->last_title, title) == 0)
+    return FALSE;
+
+  g_free (handle->last_title);
+  handle->last_title = g_strdup (title);
+  handle->title_sent = TRUE;
   ext_foreign_toplevel_handle_v1_send_title (handle->resource,
-                                             title ? title : "");
+                                             title);
+  return TRUE;
 }
 
-static void
+static gboolean
 handle_send_app_id (MetaWaylandForeignToplevelHandle *handle)
 {
   const char *app_id =
     meta_gnoblin_foreign_toplevel_window_app_id (handle->window);
 
+  if (handle->app_id_sent && g_strcmp0 (handle->last_app_id, app_id) == 0)
+    return FALSE;
+
+  g_free (handle->last_app_id);
+  handle->last_app_id = g_strdup (app_id);
+  handle->app_id_sent = TRUE;
   ext_foreign_toplevel_handle_v1_send_app_id (handle->resource, app_id);
+  return TRUE;
 }
 
 static void
@@ -81,8 +101,8 @@ on_window_notify_title (GObject    *object,
   if (!handle->window)
     return;
 
-  handle_send_title (handle);
-  ext_foreign_toplevel_handle_v1_send_done (handle->resource);
+  if (handle_send_title (handle))
+    ext_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
 static void
@@ -95,8 +115,8 @@ on_window_notify_app_id (GObject    *object,
   if (!handle->window)
     return;
 
-  handle_send_app_id (handle);
-  ext_foreign_toplevel_handle_v1_send_done (handle->resource);
+  if (handle_send_app_id (handle))
+    ext_foreign_toplevel_handle_v1_send_done (handle->resource);
 }
 
 static void
@@ -130,8 +150,12 @@ handle_destroy (struct wl_resource *resource)
 
   handle_disconnect_window (handle);
   if (handle->list)
-    handle->list->handles = g_list_remove (handle->list->handles, handle);
+    handle->list->handles = g_list_delete_link (handle->list->handles,
+                                                handle->link);
 
+  handle->link = NULL;
+  g_free (handle->last_title);
+  g_free (handle->last_app_id);
   g_free (handle);
 }
 
@@ -173,7 +197,8 @@ foreign_toplevel_list_advertise (MetaWaylandForeignToplevelList *list,
   wl_resource_set_implementation (resource, &handle_interface, handle,
                                   handle_destroy);
 
-  list->handles = g_list_prepend (list->handles, handle);
+  handle->link = g_list_prepend (list->handles, handle);
+  list->handles = handle->link;
 
   ext_foreign_toplevel_list_v1_send_toplevel (list->resource, resource);
 
@@ -230,6 +255,7 @@ foreign_toplevel_list_destroy (struct wl_resource *resource)
     {
       MetaWaylandForeignToplevelHandle *handle = l->data;
       handle->list = NULL;
+      handle->link = NULL;
     }
   g_clear_pointer (&list->handles, g_list_free);
 
