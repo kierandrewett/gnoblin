@@ -106,6 +106,23 @@ def extension_scope_matches(connection: Gio.DBusConnection) -> bool:
         print(f"FAIL: invalid GNOBLIN_ACTIVE_MODE value: {mode}", file=sys.stderr)
         return False
 
+    if mode == "gnoblin":
+        try:
+            enable_extension(connection, COMPATIBLE_EXTENSION)
+        except GLib.Error as error:
+            unavailable = (
+                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_INTERFACE) or
+                error.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD)
+            )
+            if unavailable:
+                print("PASS: Gnoblin mode does not export the GNOME Extensions API")
+                return True
+            print(f"FAIL: Gnoblin mode returned the wrong extension error: {error.message}", file=sys.stderr)
+            return False
+
+        print("FAIL: Gnoblin mode exported the GNOME Extensions API", file=sys.stderr)
+        return False
+
     compatible_enabled = enable_extension(connection, COMPATIBLE_EXTENSION)
     compatible = wait_extension_state(connection, COMPATIBLE_EXTENSION, 1)
     if not compatible_enabled or int(compatible.get("state", 0)) != 1:
@@ -115,19 +132,15 @@ def extension_scope_matches(connection: Gio.DBusConnection) -> bool:
         )
         return False
 
-    outdated_enabled = enable_extension(connection, OUTDATED_EXTENSION)
-    expected_state = 1 if mode == "gnoblin" else 4
-    outdated = wait_extension_state(connection, OUTDATED_EXTENSION, expected_state)
+    enable_extension(connection, OUTDATED_EXTENSION)
+    outdated = wait_extension_state(connection, OUTDATED_EXTENSION, 4)
     outdated_state = int(outdated.get("state", 0))
-    if mode == "gnoblin" and outdated_enabled and outdated_state == 1:
-        print("PASS: Gnoblin mode accepted an extension with incompatible metadata")
-        return True
-    if mode == "user" and outdated_state == 4:
+    if outdated_state == 4:
         print("PASS: stock mode retained extension version validation")
         return True
 
     print(
-        f"FAIL: extension validation leaked across {mode} mode: {outdated}",
+        f"FAIL: stock mode did not reject an incompatible extension: {outdated}",
         file=sys.stderr,
     )
     return False

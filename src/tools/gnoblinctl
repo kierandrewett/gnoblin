@@ -47,14 +47,14 @@ def parser():
     for name, description in [("ping", "Check the shell connection"), ("version", "Show shell and protocol version"),
             ("status", "Show compositor and shell status"), ("reload", "Soft-reload the shell, keeping open windows"),
             ("reload-config", "Reload gnoblin.toml"), ("features", "List shell feature switches"),
-            ("extensions", "List GNOME extensions"), ("scripts", "List loaded user scripts"),
+            ("scripts", "List loaded user scripts"),
             ("reload-scripts", "Reload user scripts"), ("input-sources", "List configured keyboard sources"),
             ("input-source", "Show the active keyboard source"), ("privacy", "Show privacy indicators"),
             ("portal-grants", "List persistent portal permissions"), ("launch-state", "Show pending app launches"),
             ("monitors", "List logical monitors and geometry")]:
         add(commands, name, description)
     for name, description, arg in [("feature", "Show one feature switch", "id"), ("enable", "Enable a shell feature", "id"),
-            ("disable", "Disable a shell feature", "id"), ("reload-ext", "Reload one GNOME extension", "uuid"),
+            ("disable", "Disable a shell feature", "id"),
             ("launch-end", "End a busy-cursor request", "token")]:
         add(commands, name, description).add_argument(arg)
     source = add(commands, "set-input-source", "Select a configured keyboard source")
@@ -348,7 +348,6 @@ def dispatch(args, cli):
     if cmd in ("enable", "disable"):
         call("SetFeature", "sb", [args.id, str(cmd == "enable").lower()])
         return {"ok": True, "id": args.id, "enabled": cmd == "enable"}
-    if cmd == "extensions": return {"extensions": keyed(call("ListExtensions")[0], ["id", "state"])}
     if cmd == "scripts": return {"scripts": call("ListScripts")[0]}
     if cmd in ("input-sources", "input-source", "set-input-source"):
         fields = ["type", "id", "shortName", "name"]
@@ -391,7 +390,7 @@ def dispatch(args, cli):
         else: call("End", "s", [args.token], service)
         return {"ok": True, "token": args.token}
     operations = {"reload": ("Reload", "", []), "reload-config": ("ReloadConfig", "", []),
-        "reload-scripts": ("ReloadScripts", "", []), "reload-ext": ("ReloadExtension", "s", [getattr(args, "uuid", "")]),
+        "reload-scripts": ("ReloadScripts", "", []),
         "revoke-grant": ("RevokePortalGrant", "ss", [getattr(args, "kind", ""), getattr(args, "id", "")])}
     method, signature, values = operations[cmd]
     call(method, signature, values)

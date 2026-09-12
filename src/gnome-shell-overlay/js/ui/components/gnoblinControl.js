@@ -24,7 +24,6 @@ import St from 'gi://St';
 import * as Keyboard from '../status/keyboard.js';
 import * as Location from '../status/location.js';
 import * as Main from '../main.js';
-import {ExtensionState} from '../../misc/extensionUtils.js';
 import * as Volume from '../status/volume.js';
 import * as Config from '../../misc/config.js';
 
@@ -245,15 +244,15 @@ const FEATURES = {
 };
 
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
-// logging out". mutter/Wayland is NEVER torn down, so windows and the (external)
-// chrome survive. We reload only the mutable JS layer: the shell theme/CSS and any
-// enabled extensions (re-running their enable() so they pick up new settings/CSS).
+// logging out". mutter/Wayland is NEVER torn down, so windows and the external
+// chrome survive. We reload only the mutable JS layer: the shell theme/CSS and
+// the configured user scripts.
 // gnoblin keeps almost nothing else in-process — the chrome lives in a separate
 // layer-shell client — so this covers the practical need. A true process re-exec
 // on Wayland cannot preserve clients (no handoff protocol), which is exactly why
 // this is a soft reload and not global.reexec_self().
 export async function softReload(reason = 'manual') {
-    console.log(`gnoblin: soft-reload (${reason}) — reloading theme + extensions in-process`);
+    console.log(`gnoblin: soft-reload (${reason}) — reloading theme and user scripts in-process`);
     const failures = [];
     try {
         activeConfig?.reload();
@@ -275,25 +274,6 @@ export async function softReload(reason = 'manual') {
         } catch (e) {
             failures.push('theme');
             logError(e, 'gnoblin: soft-reload loadTheme failed');
-        }
-    }
-
-    const em = Main.extensionManager;
-    if (em) {
-        // reloadExtension() re-imports the extension's code (cache-busted by the
-        // 34-extension-hot-reload patch), so soft-reload picks up code edits live.
-        // Serialize: reloadExtension() mutates _extensionOrder and disables/re-enables
-        // dependent extensions, so running them in parallel would race.
-        const active = em.getUuids().filter(
-            uuid => em.lookup(uuid)?.state === ExtensionState.ACTIVE);
-        for (const uuid of active) {
-            try {
-                await em.reloadExtension(em.lookup(uuid));
-                assertExtensionReloaded(em, uuid, ExtensionState.ACTIVE);
-            } catch (e) {
-                failures.push(`extension ${uuid}`);
-                logError(e, `gnoblin: soft-reload of ${uuid} failed`);
-            }
         }
     }
 
@@ -491,30 +471,6 @@ class ScriptHost {
     }
 }
 
-// Human-readable name for an ExtensionState value.
-const STATE_NAMES = Object.fromEntries(
-    Object.entries(ExtensionState).map(([k, v]) => [v, k.toLowerCase()]));
-
-function assertExtensionReloaded(extensionManager, uuid, expectedState = null) {
-    const extension = extensionManager.lookup(uuid);
-    if (!extension)
-        throw new Error(`extension disappeared while reloading: ${uuid}`);
-
-    const state = extension.state;
-    const settled = [
-        ExtensionState.ACTIVE,
-        ExtensionState.INACTIVE,
-        ExtensionState.INITIALIZED,
-    ];
-    if (expectedState !== null && state !== expectedState) {
-        throw new Error(
-            `extension ${uuid} reloaded as ${STATE_NAMES[state] ?? 'unknown'}, ` +
-            `expected ${STATE_NAMES[expectedState]}`);
-    }
-    if (!settled.includes(state))
-        throw new Error(`extension ${uuid} reloaded as ${STATE_NAMES[state] ?? 'unknown'}`);
-}
-
 // The wire contract. Deliberately small for now; grows with Phases 2.5/3.
 const IFACE = `
 <node>
@@ -547,17 +503,9 @@ const IFACE = `
       <arg type="d" name="maxLevel"/>
       <arg type="as" name="outputNames"/>
     </signal>
-    <!-- Soft in-process reload (theme + extensions). Wayland-safe: keeps windows. -->
+    <!-- Soft in-process reload (theme + user scripts). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
     <method name="ReloadConfig"/>
-    <!-- Extensions: [uuid, state] for every known extension. -->
-    <method name="ListExtensions">
-      <arg type="a(ss)" direction="out" name="extensions"/>
-    </method>
-    <!-- Hot-reload one extension's code in-place (re-imports fresh source). -->
-    <method name="ReloadExtension">
-      <arg type="s" direction="in" name="uuid"/>
-    </method>
     <!-- Keyboard source state comes from GNOME Shell's InputSourceManager. -->
     <!-- Sources are [type, id, short label, full display name]. -->
     <method name="ListInputSources">
@@ -1107,29 +1055,6 @@ export class Component {
             invocation,
             () => softReload('org.gnoblin.Shell.Reload'),
             'soft reload');
-    }
-
-    ListExtensions() {
-        const em = Main.extensionManager;
-        if (!em)
-            return [];
-        return em.getUuids().map(uuid => {
-            const ext = em.lookup(uuid);
-            return [uuid, STATE_NAMES[ext?.state] ?? 'unknown'];
-        });
-    }
-
-    ReloadExtensionAsync([uuid], invocation) {
-        return this._runReload(invocation, async () => {
-            const em = Main.extensionManager;
-            const ext = em?.lookup(uuid);
-            if (!ext)
-                throw new Error(`unknown extension: ${uuid}`);
-
-            console.log(`gnoblin-control: hot-reloading extension '${uuid}'`);
-            await em.reloadExtension(ext);
-            assertExtensionReloaded(em, uuid);
-        }, `extension reload (${uuid})`);
     }
 
     ListScripts() {

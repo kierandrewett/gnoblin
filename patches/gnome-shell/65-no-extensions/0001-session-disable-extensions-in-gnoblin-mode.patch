@@ -1,0 +1,98 @@
+From 9638471cbe49059c47c05786e3e802b14671a44c Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 12 Sep 2026 12:00:00 +0100
+Subject: [PATCH] session: disable GNOME extensions in Gnoblin mode
+
+Gnoblin owns its shell chrome through its session component and external
+clients. Do not create the GNOME Shell extension manager or initialise its
+downloader in that mode, and do not export the GNOME Extensions D-Bus API.
+This prevents installation, removal, enable, disable, preference, update, and
+reload operations from entering the extension subsystem.
+
+The mode check uses the immutable process session mode. Regular GNOME sessions
+keep the existing extension manager and D-Bus API.
+---
+ js/ui/extensionSystem.js | 12 ++++++++++++
+ js/ui/main.js            | 8 +++++---
+ js/ui/shellDBus.js       | 3 ++-
+ 3 files changed, 19 insertions(+), 4 deletions(-)
+
+diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
+index 585174d..cdd6823 100644
+--- a/js/ui/extensionSystem.js
++++ b/js/ui/extensionSystem.js
+@@ -42,6 +42,9 @@ export class ExtensionManager extends Signals.EventEmitter {
+         this._extensionOrder = [];
+         this._checkVersion = false;
+ 
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         St.Settings.get().connect('notify::color-scheme',
+             () => this._reloadExtensionStylesheets());
+ 
+@@ -51,6 +54,9 @@ export class ExtensionManager extends Signals.EventEmitter {
+     }
+ 
+     init() {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         // The following file should exist for a period of time when extensions
+         // are enabled after start. If it exists, then the systemd unit will
+         // disable extensions should gnome-shell crash.
+@@ -788,6 +794,9 @@ export class ExtensionManager extends Signals.EventEmitter {
+     }
+ 
+     async _enableAllExtensions() {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         if (!this._initializationPromise)
+             this._initializationPromise = this._loadExtensions();
+ 
+@@ -822,6 +831,9 @@ export class ExtensionManager extends Signals.EventEmitter {
+     }
+ 
+     async _sessionUpdated() {
++        if (global.session_mode === 'gnoblin')
++            return;
++
+         // Take care of added or removed sessionMode extensions
+         await this._onEnabledExtensionsChanged();
+         await this._enableAllExtensions();
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 4be8cea..f8be92a 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -331,9 +334,11 @@ async function _initializeUI() {
+ 
+     _startDate = new Date();
+ 
+-    ExtensionDownloader.init();
+-    extensionManager = new ExtensionSystem.ExtensionManager();
+-    extensionManager.init();
++    if (global.session_mode !== 'gnoblin') {
++        ExtensionDownloader.init();
++        extensionManager = new ExtensionSystem.ExtensionManager();
++        extensionManager.init();
++    }
+ 
+     if (sessionMode.isGreeter && screenShield) {
+         layoutManager.connect('startup-prepared', () => {
+diff --git a/js/ui/shellDBus.js b/js/ui/shellDBus.js
+index 9b2ff24..9791216 100644
+--- a/js/ui/shellDBus.js
++++ b/js/ui/shellDBus.js
+@@ -30,7 +30,8 @@ export class GnomeShell {
+             'org.freedesktop.impl.portal.desktop.gnome',
+         ]);
+ 
+-        this._extensionsService = new GnomeShellExtensions();
++        if (global.session_mode !== 'gnoblin')
++            this._extensionsService = new GnomeShellExtensions();
+         this._screenshotService = new Screenshot.ScreenshotService();
+ 
+         this._grabbedAccelerators = new Map();
+-- 
+2.53.0
