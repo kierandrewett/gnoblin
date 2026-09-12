@@ -170,10 +170,6 @@ Custom commands and built-in bindings can be configured in TOML, without using
 GNOME Settings. Once the updated shell is installed, changes reload on save.
 
 ```toml
-# Release the built-in screenshot shortcut before assigning it to Bingux.
-[keybindings.shell]
-show-screenshot-ui = []
-
 [[shortcuts]]
 name = "capture"
 binding = "<Alt>s"
@@ -263,15 +259,12 @@ launches are logged and can be retried on a later reload.
 
 ## Runtime feature controls
 
-The `[shell]` table also accepts booleans for `osd`, `osd-volume`,
-`osd-microphone`, `osd-brightness`, `osd-keyboard-brightness`, `osd-pad`,
-`screenshot`, `notifications`, and `input-source-switcher`:
+The `[shell]` table accepts booleans for `notifications` and
+`input-source-switcher`:
 
 ```toml
 [shell]
-osd = false
-screenshot = true
-notifications = false
+notifications = true
 input-source-switcher = false
 ```
 
@@ -280,6 +273,11 @@ entries retain their current state. Removing an entry stops managing it from
 the file; it does not reset its persistent value. CLI changes remain possible,
 but the next reload reapplies explicit file entries. Validation completes
 before feature settings or autostart commands are applied.
+
+Gnoblin never shows GNOME OSD popups or the GNOME screenshot UI. Legacy
+`osd`, `osd-*`, and `screenshot` entries with `false` remain accepted for
+configuration compatibility. A `true` value is stale configuration and is
+ignored. `gnoblinctl enable` rejects these removed features.
 
 ## Protocol settings
 
@@ -315,8 +313,8 @@ by the current GNOME-based shell and are deliberately not activated during
 migration. Add the desired commands as named `[[autostart]]` entries.
 
 Saves apply after a 150 ms debounce. `gnoblinctl reload-config` reads the file
-immediately and reports validation errors. `gnoblinctl reload` and `Alt+F2`,
-`r` also reread it, alongside the existing theme/extensions/scripts reload.
+immediately and reports validation errors. `gnoblinctl reload` also rereads it,
+alongside the theme and user-script reload.
 
 ```sh
 ./scripts/test-config.sh
@@ -331,8 +329,11 @@ GNOBLIN_CONFIG='' GNOBLIN_PREFIX="$PWD/install" \
 
 ## `org.gnoblin.shell` GSettings
 
-One key: `disabled-features` (`as`, default `['input-source-switcher']`). A
-feature is enabled unless its id is in this list. Read/write it directly with `gsettings`, or
+One key: `disabled-features` (`as`). Its default disables `notifications`,
+`input-source-switcher`, and the removed `osd*` and `screenshot` features.
+The two remaining controls are enabled when their ids are absent from this
+list. Removed UI stays unavailable regardless of stored preferences.
+Read/write it directly with `gsettings`, or
 — the normal path — through `org.gnoblin.Shell`'s
 `ListFeatures`/`GetFeature`/`SetFeature` (which also emits
 `FeatureChanged`), via `gnoblinctl`.
@@ -341,16 +342,10 @@ feature is enabled unless its id is in this list. Read/write it directly with `g
 
 | id | Gates |
 |---|---|
-| `osd` | On-screen display popups — master switch for all OSD types below |
-| `osd-volume` | Volume OSD popup |
-| `osd-microphone` | Microphone OSD popup |
-| `osd-brightness` | Screen-brightness OSD popup |
-| `osd-keyboard-brightness` | Keyboard-brightness OSD popup |
-| `screenshot` | The built-in screenshot/screencast UI |
-| `notifications` | Owning `org.freedesktop.Notifications` (in Gnoblin mode, disable to let an external daemon own it; stock modes always retain the GNOME service) |
+| `notifications` | Own `org.freedesktop.Notifications`; disabled by default so an external daemon can own it |
 | `input-source-switcher` | GNOME's native keyboard-layout popup; source state and switching remain available when disabled |
 
-Source of truth: the `FEATURES`/`OSD_TYPES` constants in
+Source of truth: the `FEATURES` constant in
 `src/gnome-shell-overlay/js/ui/components/gnoblinControl.js`.
 
 ## `gnoblinctl`
@@ -362,7 +357,7 @@ A thin `gdbus` wrapper over `org.gnoblin.Shell`, installed to
 ```
 gnoblinctl ping                     health check (-> pong)
 gnoblinctl version                  shell + protocol version
-gnoblinctl reload                   Wayland soft-reload (config + theme + extensions + scripts)
+gnoblinctl reload                   Wayland soft-reload (config + theme + user scripts)
 
 gnoblinctl reload-config            read gnoblin.toml immediately
 gnoblinctl load-config /path/file    add an idempotent include and reload it
@@ -373,9 +368,6 @@ gnoblinctl feature <id>             show one feature's state
 gnoblinctl enable  <id>             turn a subsystem ON  (SetFeature true)
 gnoblinctl disable <id>             turn a subsystem OFF (SetFeature false)
 
-gnoblinctl extensions               list extensions + state
-gnoblinctl reload-ext <uuid>        hot-reload one extension's code
-
 gnoblinctl scripts                  list loaded user scripts
 gnoblinctl reload-scripts           reload ~/.config/gnoblin/scripts/*.js
 
@@ -383,8 +375,7 @@ gnoblinctl portal-grants            list persistent Screen Cast and Remote Deskt
 gnoblinctl revoke-grant <kind> <id> revoke one portal-scoped grant
 ```
 
-`reload` is also bound to `Alt+F2` `r`: a Wayland-safe soft reload that
-re-applies the shell theme/CSS and re-enables extensions in-process, without
+`gnoblinctl reload` re-applies the shell theme/CSS and reloads user scripts in-process, without
 tearing down Mutter — your windows and your chrome survive.
 
 ## Portal permissions

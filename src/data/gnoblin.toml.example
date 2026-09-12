@@ -18,14 +18,10 @@ layer-duration = 220
 layer-easing = "ease-out-cubic"
 # Optional fallback in logical desktop coordinates:
 # minimize-target = [960, 1040]
-# Optional persistent feature settings. Omitted entries keep their current state.
-# osd = false
-# osd-volume = true
-# osd-microphone = true
-# osd-brightness = true
-# osd-keyboard-brightness = true
-# osd-pad = true
-# screenshot = true
+# Native OSDs and screenshot controls have been removed. The external shell
+# receives OSD requests automatically. Legacy osd*/screenshot keys cannot
+# restore native widgets.
+# Optional persistent settings. Both are disabled by default.
 # notifications = false
 # Keep GNOME's own layout popup off when Bingux owns the keyboard-layout UI.
 # input-source-switcher = false

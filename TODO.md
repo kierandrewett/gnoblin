@@ -18,8 +18,8 @@ history or the relevant guide.
 
 ## Product work
 
-- [ ] Add a safe extension sideload workflow so users do not need to copy files
-  into `~/.local/share/gnome-shell/extensions/` by hand.
+- [ ] Replace remaining native authentication, lock and portal interfaces with
+  external-shell services. See `docs/native-ui-removal.md` for the boundary.
 - [ ] Validate Bingux as the reference external shell in a real login session.
 - [ ] Add the remaining `polkit` feature toggle without changing stock GNOME's
   authentication-agent ownership.

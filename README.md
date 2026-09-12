@@ -38,16 +38,16 @@ regular GNOME session stays available.
 - **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,
   monitors, input sources, feature toggles, reloads and a user-private
   compositor bridge for desktop shells.
-- **External-shell handoff.** Disable native notifications, OSDs, screenshot
-  UI or the keyboard-layout popup when another client owns that part of the
-  desktop. GNOME's normal components remain available when enabled.
+- **External desktop controls.** The external shell owns OSDs, capture controls,
+  desktop menus and workspace feedback. Gnoblin forwards OSD requests without
+  creating GNOME widgets. Native notifications and the keyboard-layout popup
+  are disabled by default.
 - **Portal permissions.** The [optional portal backend](docs/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.
-- **Reloadable extensions.** GNOME Shell extensions still work for compositor
-  and session integrations, with cache-busted hot reload. [Top-bar, dock and
-  overview chrome](docs/real-hardware-verification.md#5-extensions--scripting)
-  belongs in the external shell instead.
+- **Scriptable session.** Reload Gnoblin user scripts without replacing the
+  compositor or disconnecting applications. GNOME Shell extensions and their
+  management tools are removed from the Gnoblin session.
 
 ## Supported protocols
 

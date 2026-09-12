@@ -39,19 +39,15 @@ the session is ready:
 waybar
 ```
 
-The shell owns its own visual surfaces. Use `gnoblinctl features` to see which
-GNOME subsystems are still enabled, then disable a subsystem before your shell
-claims the same desktop function:
+The external shell owns OSDs, capture controls, desktop menus and workspace
+feedback. Gnoblin creates no native widgets for those functions and forwards
+OSD events through `org.gnoblin.Shell.OsdRequested` automatically. GNOME
+extensions cannot load in this session.
 
-```sh
-gnoblinctl disable notifications
-gnoblinctl disable osd
-gnoblinctl disable screenshot
-```
-
-For a shell that needs keyboard-layout state, leave
-`input-source-switcher` enabled and consume `ListInputSources` and
-`InputSourceChanged` from `org.gnoblin.Shell`.
+Notifications and the native keyboard-layout popup are disabled by default.
+Use `gnoblinctl features` to inspect the remaining controls. Keyboard-layout
+state and switching remain available through `ListInputSources` and
+`InputSourceChanged` while the native popup is disabled.
 
 ## A custom shell
 

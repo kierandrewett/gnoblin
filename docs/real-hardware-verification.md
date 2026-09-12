@@ -44,7 +44,7 @@ Sanity from a terminal in the session:
 ```sh
 gnoblinctl ping          # -> pong
 gnoblinctl version       # -> 49.6-gnoblin
-gnoblinctl features      # osd, screenshot, ...
+gnoblinctl features      # notifications, input-source-switcher
 ```
 
 ## 2. Bring-your-own shell (Bingux / Quickshell / Waybar / …)
@@ -61,42 +61,31 @@ qs -p ~/path/to/shell.qml        # Quickshell
 - A client's surface should appear at the anchored edge. Drive gnoblin from QML/JS via
   the `org.gnoblin.Shell` D-Bus interface (see the control protocol in the README).
 
-## 3. Feature toggles (let your chrome own subsystems)
+## 3. Feature toggles
 
 ```sh
-gnoblinctl disable osd            # your bar's OSD owns all volume/brightness popups
-gnoblinctl disable osd-volume     # ...or just the volume OSD (per-type: osd-microphone,
-                                  #    osd-brightness, osd-keyboard-brightness)
-gnoblinctl disable screenshot     # your own screenshot UI owns it
-gnoblinctl disable notifications  # gnome releases org.freedesktop.Notifications; start
-                                  #    your external notification daemon to own it
-gnoblinctl enable osd             # hand any of them back to gnome-shell
+gnoblinctl enable notifications   # let GNOME Shell own org.freedesktop.Notifications
+gnoblinctl disable notifications  # release it for your notification daemon
+gnoblinctl enable input-source-switcher
 ```
 
-Change the volume with the media keys: with `osd` (or `osd-volume`) disabled, gnome-shell
-shows no popup. With `notifications` disabled, run e.g. a quickshell notification service
-and confirm it claims `org.freedesktop.Notifications` (`gdbus call ... NameHasOwner`).
+GNOME OSD popups and the GNOME screenshot UI are permanently absent in Gnoblin.
+With `notifications` disabled, run a notification service and confirm it claims
+`org.freedesktop.Notifications` (`gdbus call ... NameHasOwner`).
 
 ## 4. Wayland soft-reload (windows survive)
 
-Edit an extension or a `~/.config/gnoblin/scripts/*.js`, then:
+Edit a `~/.config/gnoblin/scripts/*.js` file, then:
 
 ```sh
-gnoblinctl reload      # or Alt+F2, r
+gnoblinctl reload
 ```
 
 Your windows and your chrome stay up (mutter is never torn down); the JS layer reloads.
 
-## 5. Extensions + scripting
+## 5. User scripting
 
 ```sh
-# Sideload: drop an extension in ~/.local/share/gnome-shell/extensions/<uuid>/ and enable it
-gnoblinctl extensions
-gnoblinctl reload-ext <uuid>      # hot-reload its code after an edit
-
-# Mutter-hooking extensions (e.g. Rounded Window Corners Reborn, Blur-my-Shell) work;
-# top-bar/dock/overview extensions do not (that chrome is gone).
-
 gnoblinctl scripts
 gnoblinctl reload-scripts
 ```

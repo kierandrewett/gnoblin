@@ -4,8 +4,8 @@
 menus remain the responsibility of `binguxctl`.
 
 Use `gnoblinctl --help`, `gnoblinctl help window`, or any command's `--help`.
-Existing commands such as `enable`, `disable`, `reload-config`, `reload-ext`
-and `set-input-source` remain available.
+Existing commands such as `enable`, `disable`, `reload-config`,
+`reload-scripts` and `set-input-source` remain available.
 
 ## Configuration fragments
 
@@ -50,7 +50,7 @@ gnoblinctl privacy
 
 JSON now contains named fields rather than textual GVariant tuples. Scripts
 that parsed the old tuple output must migrate to the JSON fields. For example,
-`features` returns `{"features":[{"id":"osd","description":"...","enabled":false}]}`.
+`features` returns `{"features":[{"id":"notifications","description":"...","enabled":false}]}`.
 Read commands write results to stdout. Errors go to stderr with exit code 1;
 invalid arguments use exit code 2. `--timeout SECONDS` accepts 1-60 seconds
 and defaults to 5. An uncertain action is never retried automatically.
