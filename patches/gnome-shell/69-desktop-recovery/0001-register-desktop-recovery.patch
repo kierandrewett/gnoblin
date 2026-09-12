@@ -1,0 +1,14 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] shell: register independent desktop recovery component
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -142,6 +142,7 @@
+     <file>ui/components/gnoblinCornerGeometry.js</file>
+     <file>ui/components/gnoblinCorners.js</file>
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinRecovery.js</file>
+     <file>ui/components/gnoblinConsole.js</file>
+     <file>ui/components/gnoblinConsoleEvaluator.js</file>
+     <file>ui/components/keyring.js</file>

@@ -16,6 +16,7 @@
     "autorunManager",
     "automountManager",
     "networkAgent",
-    "gnoblinControl"
+    "gnoblinControl",
+    "gnoblinRecovery"
   ]
 }

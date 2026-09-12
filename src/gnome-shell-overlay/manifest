@@ -6,6 +6,7 @@
 # patches). The patch series only adds the resource/import seams needed to
 # bundle these files; enabling remains controlled by the `gnoblin` session mode.
 gnome-shell  js/ui/components/gnoblinControl.js  js/ui/components/gnoblinControl.js
+gnome-shell  js/ui/components/gnoblinRecovery.js  js/ui/components/gnoblinRecovery.js
 gnome-shell  js/ui/components/gnoblinConsole.js  js/ui/components/gnoblinConsole.js
 gnome-shell  js/ui/components/gnoblinConsoleEvaluator.js  js/ui/components/gnoblinConsoleEvaluator.js
 gnome-shell  js/ui/components/gnoblinConfig.js  js/ui/components/gnoblinConfig.js

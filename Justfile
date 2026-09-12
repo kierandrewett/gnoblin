@@ -242,6 +242,11 @@ gnome-native-chrome-verify:
 gnome-developer-console-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-developer-console.py" ./scripts/run-gnome-shell.sh
 
+# Headless: real recovery-menu/panel clicks, terminal launch and layer-client
+# failure. Requires foot and a Quickshell build matching the host Qt.
+gnome-desktop-recovery-verify:
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_UNSAFE_MODE=1 QS_TEST_BIN="${QS_TEST_BIN:-qs}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-desktop-recovery.py" ./scripts/run-gnome-shell.sh
+
 # Headless: prove Lua configuration watching, named autostart and live window behaviour.
 gnome-config-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/scripts/test-live-shell-config.py" ./scripts/run-gnome-shell.sh

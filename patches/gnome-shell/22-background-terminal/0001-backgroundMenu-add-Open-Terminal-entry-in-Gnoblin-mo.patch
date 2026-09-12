@@ -45,7 +45,7 @@ index 26fd41e..37fd75c 100644
 +    'Alacritty.desktop',
 +];
 +
-+function openTerminal() {
++export function openTerminal() {
 +    const settings = new Gio.Settings({schema_id: TERMINAL_SCHEMA});
 +    const exec = settings.get_string(TERMINAL_EXEC_KEY);
 +    if (exec && GLib.find_program_in_path(exec.split(' ')[0])) {
