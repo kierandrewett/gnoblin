@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@example.invalid>
+Date: Sat, 12 Sep 2026 05:30:00 +0100
+Subject: [PATCH] shell: add Gnoblin developer console entrypoint
+
+Use the existing panel-run-dialog keybinding as the Gnoblin developer-console
+entrypoint while keeping the stock Run dialog and Looking Glass unchanged.
+Create the console lazily, close it on a mode or lock transition, and expose
+its module through the Shell JavaScript resource bundle.
+---
+ data/theme/gnome-shell-sass/_widgets.scss | 1 +
+ js/js-resources.gresource.xml             | 2 ++
+ js/ui/main.js                             | 38 ++++++++++++++++++++++++++++++
+ 3 files changed, 41 insertions(+)
+
+diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-sass/_widgets.scss
+--- a/data/theme/gnome-shell-sass/_widgets.scss
++++ b/data/theme/gnome-shell-sass/_widgets.scss
+@@ -45,5 +45,6 @@
+ @import 'widgets/misc';
+ @import 'widgets/keyboard';
+ @import 'widgets/looking-glass';
++@import 'widgets/dev-console';
+ // Lock / login screen
+ @import 'widgets/login-lock';
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -142,6 +142,8 @@
+     <file>ui/components/gnoblinCornerGeometry.js</file>
+     <file>ui/components/gnoblinCorners.js</file>
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinConsole.js</file>
++    <file>ui/components/gnoblinConsoleEvaluator.js</file>
+     <file>ui/components/keyring.js</file>
+     <file>ui/components/networkAgent.js</file>
+     <file>ui/components/polkitAgent.js</file>
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -32,6 +32,7 @@ import * as WelcomeDialog from './welcomeDialog.js';
+ import * as Layout from './layout.js';
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
++import * as DevConsole from './components/gnoblinConsole.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -63,6 +64,7 @@ export let panel = null;
+ export let overview = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
++export let devConsole = null;
+ export let welcomeDialog = null;
+ export let wm = null;
+ export let messageTray = null;
+@@ -126,7 +128,7 @@ function _sessionUpdated() {
+ 
+     wm.setCustomKeybindingHandler('panel-run-dialog',
+         Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+-        sessionMode.hasRunDialog ? openRunDialog : null);
++        _devConsoleAllowed() ? openDevConsole : (sessionMode.hasRunDialog ? openRunDialog : null));
+ 
+     if (!sessionMode.hasRunDialog) {
+         if (runDialog)
+@@ -136,6 +138,8 @@ function _sessionUpdated() {
+         if (welcomeDialog)
+             welcomeDialog.close();
+     }
++    if (!_devConsoleAllowed() && devConsole)
++        devConsole.close(true);
+ 
+     let remoteAccessController = global.backend.get_remote_access_controller();
+     if (remoteAccessController && !global.backend.is_headless()) {
+@@ -824,16 +828,45 @@ export function popModal(grab) {
+  * @returns {LookingGlass.LookingGlass}
+  */
+ export function createLookingGlass() {
++    if (global.session_mode === 'gnoblin')
++        return createDevConsole();
++
+     if (lookingGlass == null)
+         lookingGlass = new LookingGlass.LookingGlass();
+ 
+     return lookingGlass;
+ }
+ 
++function _devConsoleAllowed() {
++    return global.session_mode === 'gnoblin' && sessionMode?.isPrimary && !sessionMode?.isLocked;
++}
++
++/**
++ * Creates the Gnoblin developer console.
++ *
++ * The console is only available in the primary, unlocked Gnoblin session.
++ */
++export function createDevConsole() {
++    if (devConsole == null)
++        devConsole = new DevConsole.DeveloperConsole();
++
++    return devConsole;
++}
++
++export function openDevConsole() {
++    if (!_devConsoleAllowed())
++        return false;
++
++    return createDevConsole().open();
++}
++
+ /**
+  * Opens the run dialog
+  */
+ export function openRunDialog() {
++    if (global.session_mode === 'gnoblin')
++        return openDevConsole();
++
+     if (!sessionMode.hasRunDialog)
+         return;
+ 
+-- 
+2.53.0

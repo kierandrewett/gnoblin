@@ -7,6 +7,8 @@
 # (patches/gnome-shell/30-gnoblin-control) so gnome-shell bundles + can import it;
 # enabling is done purely via the `gnoblin` session mode's components list.
 gnome-shell  js/ui/components/gnoblinControl.js  js/ui/components/gnoblinControl.js
+gnome-shell  js/ui/components/gnoblinConsole.js  js/ui/components/gnoblinConsole.js
+gnome-shell  js/ui/components/gnoblinConsoleEvaluator.js  js/ui/components/gnoblinConsoleEvaluator.js
 gnome-shell  js/ui/components/gnoblinConfig.js  js/ui/components/gnoblinConfig.js
 gnome-shell  js/ui/components/gnoblinRules.js  js/ui/components/gnoblinRules.js
 gnome-shell  js/ui/components/gnoblinLayerAnimation.js  js/ui/components/gnoblinLayerAnimation.js
@@ -17,3 +19,4 @@ gnome-shell  js/ui/components/gnoblinCornerGeometry.js  js/ui/components/gnoblin
 gnome-shell  js/ui/components/gnoblinCorners.js  js/ui/components/gnoblinCorners.js
 
 gnome-shell js/ui/components/gnoblinPermissions.js js/ui/components/gnoblinPermissions.js
+gnome-shell gnoblin-console.scss data/theme/gnome-shell-sass/widgets/_dev-console.scss
