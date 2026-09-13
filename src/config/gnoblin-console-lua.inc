@@ -86,7 +86,9 @@ static int console_complete(lua_State *state) {
     const char *source = console_source;
     g_auto(GStrv) parts = g_strsplit(source, ".", -1);
     lua_pushglobaltable(state);
-    guint last = g_strv_length(parts) - 1;
+    guint count = g_strv_length(parts);
+    guint last = count ? count - 1 : 0;
+    const char *prefix = count ? parts[last] : "";
     for (guint i = 0; i < last; i++) {
         if (!lua_istable(state, -1))
             return 0;
@@ -100,7 +102,7 @@ static int console_complete(lua_State *state) {
     while (lua_next(state, -2)) {
         if (lua_type(state, -2) == LUA_TSTRING) {
             const char *key = lua_tostring(state, -2);
-            if (g_str_has_prefix(key, parts[last]) && console_lines->len < 200)
+            if (g_str_has_prefix(key, prefix) && console_lines->len < 200)
                 g_ptr_array_add(console_lines, g_utf8_make_valid(key, -1));
         }
         lua_pop(state, 1);

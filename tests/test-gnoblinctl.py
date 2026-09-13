@@ -52,7 +52,7 @@ def until(query, predicate):
     raise AssertionError({"last": result, "windows": call("window", "list")})
 
 
-call("script", "reload")
+call("reload")
 for _ in range(40):
     if path.exists():
         break

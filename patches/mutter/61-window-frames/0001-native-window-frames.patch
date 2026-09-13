@@ -1,0 +1,202 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Commit native crop and SSD geometry with client configures
+
+diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
+index 540975a..310c953 100644
+--- a/src/compositor/meta-window-actor-wayland.c
++++ b/src/compositor/meta-window-actor-wayland.c
+@@ -30,6 +30,7 @@
+ #include "wayland/meta-wayland-single-pixel-buffer.h"
+ #include "wayland/meta-wayland-surface-private.h"
+ #include "wayland/meta-window-wayland.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ 
+ struct _MetaSurfaceContainerActorWayland
+ {
+@@ -593,6 +594,7 @@ maybe_configure_black_background (MetaWindowActorWayland *self,
+   return TRUE;
+ }
+ 
++
+ static gboolean
+ do_sync_geometry (MetaWindowActorWayland *self)
+ {
+@@ -608,6 +610,8 @@ do_sync_geometry (MetaWindowActorWayland *self)
+   if (!clutter_actor_is_mapped (CLUTTER_ACTOR (actor)))
+     return FALSE;
+ 
++  meta_gnoblin_window_frame_sync_actor (window, surface_container);
++
+   if (maybe_configure_black_background (self,
+                                         &surfaces_width, &surfaces_height,
+                                         &background_width, &background_height))
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index f3f7db7..d965d5d 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -20,6 +20,10 @@
+ 
+ #include "config.h"
+ 
++#ifdef HAVE_WAYLAND
++#include "wayland/meta-gnoblin-window-frame.h"
++#endif
++
+ #include <math.h>
+ #include <string.h>
+ 
+@@ -1739,6 +1743,7 @@ meta_window_actor_get_image (MetaWindowActor *self,
+   cairo_surface_t *surface = NULL;
+   CoglFramebuffer *framebuffer;
+   MtkRectangle framebuffer_clip;
++  gboolean has_gnoblin_frame = FALSE;
+   float resource_scale;
+   float x, y, width, height;
+ 
+@@ -1748,7 +1753,10 @@ meta_window_actor_get_image (MetaWindowActor *self,
+   clutter_actor_inhibit_culling (actor);
+ 
+   stex = meta_surface_actor_get_texture (priv->surface);
+-  if (!meta_shaped_texture_should_get_via_offscreen (stex) &&
++#ifdef HAVE_WAYLAND
++  has_gnoblin_frame = meta_gnoblin_window_frame_is_active (priv->window);
++#endif
++  if (!has_gnoblin_frame && !meta_shaped_texture_should_get_via_offscreen (stex) &&
+       meta_window_actor_is_single_surface_actor (self))
+     {
+       MtkRectangle *surface_clip = NULL;
+@@ -1784,6 +1792,9 @@ meta_window_actor_get_image (MetaWindowActor *self,
+     .height = (int) ceilf (height),
+   };
+ 
++  if (has_gnoblin_frame)
++    meta_window_get_frame_rect (priv->window, &framebuffer_clip);
++
+   if (clip)
+     {
+       MtkRectangle tmp_clip;
+diff --git a/src/wayland/meta-wayland-window-configuration.c b/src/wayland/meta-wayland-window-configuration.c
+index da1266f..fe9e615 100644
+--- a/src/wayland/meta-wayland-window-configuration.c
++++ b/src/wayland/meta-wayland-window-configuration.c
+@@ -154,6 +154,7 @@ meta_wayland_window_configuration_new_from_other (MetaWaylandWindowConfiguration
+     .bounds_height = other->bounds_height,
+     .config = meta_window_config_new_from (other->config),
+     .is_suspended = other->is_suspended,
++    .gnoblin_frame = other->gnoblin_frame,
+   };
+ 
+   return configuration;
+diff --git a/src/wayland/meta-wayland-window-configuration.h b/src/wayland/meta-wayland-window-configuration.h
+index 59434ef..e65b6c2 100644
+--- a/src/wayland/meta-wayland-window-configuration.h
++++ b/src/wayland/meta-wayland-window-configuration.h
+@@ -25,6 +25,7 @@
+ #include "core/window-private.h"
+ #include "meta/meta-window-config.h"
+ #include "wayland/meta-wayland-types.h"
++#include "wayland/meta-gnoblin-window-frame.h"
+ 
+ struct _MetaWaylandWindowConfiguration
+ {
+@@ -56,6 +57,7 @@ struct _MetaWaylandWindowConfiguration
+ 
+   MetaWindowConfig *config;
+   gboolean is_suspended;
++  MetaGnoblinFrameLayout gnoblin_frame;
+ };
+ 
+ MetaWaylandWindowConfiguration * meta_wayland_window_configuration_new (MetaWindow          *window,
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index 1fdb638..9c7179a 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -908,8 +908,12 @@ meta_wayland_xdg_toplevel_send_configure (MetaWaylandXdgToplevel         *xdg_to
+     }
+ 
+   xdg_toplevel_send_configure (xdg_toplevel->resource,
+-                               configuration->width / configuration->scale,
+-                               configuration->height / configuration->scale,
++                               configuration->width == 0 ? 0 : MAX (1, configuration->width / configuration->scale -
++                                 configuration->gnoblin_frame.border[1] - configuration->gnoblin_frame.border[3] +
++                                 configuration->gnoblin_frame.crop[1] + configuration->gnoblin_frame.crop[3]),
++                               configuration->height == 0 ? 0 : MAX (1, configuration->height / configuration->scale -
++                                 configuration->gnoblin_frame.border[0] - configuration->gnoblin_frame.border[2] +
++                                 configuration->gnoblin_frame.crop[0] + configuration->gnoblin_frame.crop[2]),
+                                &states);
+   wl_array_release (&states);
+ 
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 82d6ce9..68f3d6d 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -210,6 +210,7 @@ void
+ meta_window_wayland_configure (MetaWindowWayland              *wl_window,
+                                MetaWaylandWindowConfiguration *configuration)
+ {
++  meta_gnoblin_window_frame_configure (META_WINDOW (wl_window), configuration);
+   meta_wayland_surface_configure_notify (wl_window->surface, configuration);
+ 
+   wl_window->pending_configurations =
+@@ -1624,6 +1625,10 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+ 
+   g_return_if_fail (!mtk_rectangle_is_empty (&new_geom));
+ 
++  acked_configuration = acquire_acked_configuration (wl_window, pending,
++                                                     &is_client_resize);
++  meta_gnoblin_window_frame_commit (window, acked_configuration, &new_geom);
++
+   /* new_geom is in the logical pixel coordinate space, but MetaWindow wants its
+    * rects to represent what in turn will end up on the stage, i.e. we need to
+    * scale new_geom to physical pixels given what buffer scale and texture scale
+@@ -1659,9 +1664,6 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+ 
+   flags = META_MOVE_RESIZE_WAYLAND_FINISH_MOVE_RESIZE;
+ 
+-  acked_configuration = acquire_acked_configuration (wl_window, pending,
+-                                                     &is_client_resize);
+-
+   if (meta_is_topic_enabled (META_DEBUG_WAYLAND))
+     {
+       g_autoptr (GString) string = NULL;
+@@ -1824,6 +1826,7 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+ 
+   if (window->hidden && meta_wayland_surface_get_buffer (surface))
+     meta_window_update_visibility (window);
++  meta_gnoblin_window_frame_emit_changed (window);
+ }
+ 
+ void
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -129,6 +129,11 @@
+ 
+ META_EXPORT
+ const char *meta_gnoblin_layer_namespace (MetaWindow *window);
++
++META_EXPORT
++gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
++META_EXPORT
++GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
+ 
+ META_EXPORT
+ void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -708,6 +708,8 @@
+     'wayland/gnoblin-toml.c',
+     'wayland/tomlc99/toml.c',
+     'wayland/gnoblin-glob.c',
++    'wayland/meta-gnoblin-window-frame.c',
++    'wayland/meta-gnoblin-window-frame.h',
+     'wayland/gnoblin-config.h',
+     'wayland/meta-gnoblin-protocols.c',
+     'wayland/meta-gnoblin-protocols.h',
+@@ -1229,4 +1231,5 @@
+     ['viewporter', 'stable', ],
+     ['xdg-activation', 'staging', 1, ],
+     ['xdg-dialog', 'staging', 1, ],
++    ['xdg-decoration', 'unstable', 1, ],
+     ['xdg-foreign', 'unstable', 1, ],

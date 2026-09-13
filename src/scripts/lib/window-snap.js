@@ -81,6 +81,7 @@ export class WindowSnap {
             active: true,
             serial: this.drag.serial,
             window: String(this.drag.window.get_stable_sequence()),
+            maximized: Boolean(this.drag.window.get_maximize_flags()),
             x,
             y,
             modifiers,

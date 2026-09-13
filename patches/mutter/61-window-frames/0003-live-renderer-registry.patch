@@ -1,0 +1,14 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Expose live frame renderer reconciliation to Shell
+
+diff --git a/src/meta/util.h b/src/meta/util.h
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -137,5 +137,7 @@
+ META_EXPORT
+ void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
++META_EXPORT
++gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean restart, GError **error);
+ 
+ META_EXPORT
+ void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,

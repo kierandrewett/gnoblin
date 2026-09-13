@@ -1,8 +1,9 @@
 /*
  * gnoblin: shared configuration loading for Mutter and Shell.
  *
- * Read from $GNOBLIN_CONFIG, else init.lua under $XDG_CONFIG_HOME/gnoblin.
- * Configuration is Lua only. `GNOBLIN_CONFIG` can select any Lua filename.
+ * Read from $GNOBLIN_CONFIG, else the first existing init.lua, gnoblin.toml,
+ * or gnoblin.conf under $XDG_CONFIG_HOME/gnoblin. A fresh installation uses
+ * init.lua. `GNOBLIN_CONFIG` can select any supported configuration filename.
  *
  * Missing files and keys use the caller's default. Invalid reloads retain
  * the last valid configuration. Mutter uses these accessors to gate Wayland
@@ -22,6 +23,7 @@ G_BEGIN_DECLS
 
 /* Current root filename. Free the result with g_free(). */
 char* gnoblin_config_path(void);
+GVariant* gnoblin_config_parse_toml(const char* contents, GError** error);
 /* Evaluate one config with a fresh Lua state and record every dependency. */
 GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrArray* directories,
                                        GError** error);

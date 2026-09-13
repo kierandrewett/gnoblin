@@ -38,6 +38,7 @@ class CliTests(unittest.TestCase):
             ["feature", "enable"],
             ["ping", "extra"],
             ["window", "move", "1", "nan", "2"],
+            ["script", "reload"],
         ):
             with self.subTest(words=words), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 ctl.parser().parse_args(words)
@@ -137,8 +138,8 @@ class CliTests(unittest.TestCase):
     def test_canonical_commands_keep_transport_arguments(self):
         cli = ctl.parser()
         cases = [
+            (["reload"], ("Reload", "", [])),
             (["config", "reload"], ("ReloadConfig", "", [])),
-            (["script", "reload"], ("ReloadScripts", "", [])),
             (["feature", "enable", "osd"], ("SetFeature", "sb", ["osd", "true"])),
             (["grant", "revoke", "screen-cast", "grant-1"], ("RevokePortalGrant", "ss", ["screen-cast", "grant-1"])),
         ]

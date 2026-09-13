@@ -1,0 +1,89 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] shell: sample backdrop beyond client surface bounds
+
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -182,13 +182,14 @@
+   clutter_actor_get_size (self->actor, &width, &height);
+   *box = (ClutterActorBox) {0, 0, width, height};
+   if (self->has_region)
+-    {
+-      float margin = ceilf (self->radius * 2.f);
+-      box->x1 = MAX (0, self->region.x1 - margin);
+-      box->y1 = MAX (0, self->region.y1 - margin);
+-      box->x2 = MIN (width, self->region.x2 + margin);
+-      box->y2 = MIN (height, self->region.y2 + margin);
+-    }
++    *box = self->region;
++  /* The kernel samples the scene beyond the client buffer. Cropping here
++   * makes small layer surfaces use edge-clamped pixels at their joins. */
++  float margin = ceilf (self->radius * 2.f);
++  box->x1 -= margin;
++  box->y1 -= margin;
++  box->x2 += margin;
++  box->y2 += margin;
+ }
+ 
+ static MtkRectangle
+@@ -548,7 +549,7 @@
+       clutter_actor_get_transformed_position (self->actor, &origin_x, &origin_y);
+       clutter_actor_get_transformed_size (self->actor, &width, &height);
+       get_blur_box (self, &self->paint_box);
+-      if (self->has_region)
++      if (self->mode != SHELL_BLUR_MODE_ACTOR)
+         {
+           float actor_width, actor_height;
+           clutter_actor_get_size (self->actor, &actor_width, &actor_height);
+@@ -569,6 +570,28 @@
+ 
+           origin_x -= stage_view_layout.x;
+           origin_y -= stage_view_layout.y;
++          /* Keep framebuffer reads inside this view, retaining the matching
++           * actor-local texture origin for masks and output coordinates. */
++          float actor_width, actor_height, transformed_width, transformed_height;
++          clutter_actor_get_size (self->actor, &actor_width, &actor_height);
++          clutter_actor_get_transformed_size (self->actor, &transformed_width, &transformed_height);
++          float sx = actor_width > 0 ? transformed_width / actor_width : 1;
++          float sy = actor_height > 0 ? transformed_height / actor_height : 1;
++          float left = MAX (0, origin_x);
++          float top = MAX (0, origin_y);
++          float right = MIN (stage_view_layout.width, origin_x + width);
++          float bottom = MIN (stage_view_layout.height, origin_y + height);
++          if (sx > 0 && sy > 0)
++            {
++              self->paint_box.x1 += (left - origin_x) / sx;
++              self->paint_box.y1 += (top - origin_y) / sy;
++              self->paint_box.x2 -= (origin_x + width - right) / sx;
++              self->paint_box.y2 -= (origin_y + height - bottom) / sy;
++            }
++          origin_x = left;
++          origin_y = top;
++          width = MAX (0, right - left);
++          height = MAX (0, bottom - top);
+         }
+       else
+         {
+@@ -594,7 +617,7 @@
+ {
+   float width, height;
+   clutter_actor_get_size (self->actor, &width, &height);
+-  if (!self->clip_region || self->mode == SHELL_BLUR_MODE_ACTOR)
++  if (self->mode == SHELL_BLUR_MODE_ACTOR)
+     {
+       ClutterActorBox box = self->mode == SHELL_BLUR_MODE_ACTOR
+         ? (ClutterActorBox) {0, 0, width, height} : self->paint_box;
+@@ -605,10 +628,12 @@
+   float texture_height = self->paint_box.y2 - self->paint_box.y1;
+   if (texture_width <= 0 || texture_height <= 0)
+     return;
+-  int count = mtk_region_num_rectangles (self->clip_region);
++  int count = self->clip_region ? mtk_region_num_rectangles (self->clip_region) : 1;
+   for (int i = 0; i < count; i++)
+     {
+-      MtkRectangle rect = mtk_region_get_rectangle (self->clip_region, i);
++      MtkRectangle rect = self->clip_region
++        ? mtk_region_get_rectangle (self->clip_region, i)
++        : (MtkRectangle) {0, 0, width, height};
+       ClutterActorBox box = {MAX (0, rect.x), MAX (0, rect.y),
+         MIN (width, (double) rect.x + rect.width),
+         MIN (height, (double) rect.y + rect.height)};

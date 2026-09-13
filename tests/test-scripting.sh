@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove the GJS user-scripting layer: drop a script in ~/.config/gnoblin/scripts/,
-# confirm it loads and runs, then edit it and ReloadScripts over org.gnoblin.Shell
+# confirm it loads and runs, then edit it and reload through org.gnoblin.Shell
 # and confirm the NEW code ran — no compositor restart.
 set -uo pipefail
 
@@ -62,16 +62,16 @@ dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
   case "$(gnoblin ListScripts)" in *hello.js*) echo "  ok: ListScripts shows hello.js";; *) echo "  FAIL: not listed"; rc=1;; esac
 
   printf "export default (api) => { api.log(\"SCRIPT version=B\"); };\n" > "$SCRIPTDIR/hello.js"
-  reload="$(gnoblin ReloadScripts)"
-  echo "ReloadScripts -> $reload"
+  reload="$(gnoblin Reload)"
+  echo "Reload -> $reload"
   if grep -q "SCRIPT version=B" "$SHELL_LOG"; then
-    echo "  ok: ReloadScripts waited for version=B to load"
+    echo "  ok: Reload waited for version=B to load"
   else
-    echo "  FAIL: ReloadScripts replied before script load completed"; grep "SCRIPT version" "$SHELL_LOG"; rc=1
+    echo "  FAIL: Reload replied before script load completed"; grep "SCRIPT version" "$SHELL_LOG"; rc=1
   fi
 
   printf "this is not valid JavaScript\n" > "$SCRIPTDIR/hello.js"
-  if reload_error="$(gnoblin ReloadScripts)"; then
+  if reload_error="$(gnoblin Reload)"; then
     echo "  FAIL: invalid script reload reported success"; rc=1
   else
     case "$reload_error" in

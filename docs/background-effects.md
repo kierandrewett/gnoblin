@@ -26,7 +26,9 @@ does not carry per-item animation opacity. Bingux retains `gnoblin-blur-fade-v1`
 for item fades within a shared buffer. This metadata is applied in the same
 surface transaction as the standard region.
 
-Bingux requests standard regions for the dock and shared `ShellPopup` component.
+Bingux requests standard regions for the dock, shared `ShellPopup` component,
+search panel, search preview and window switcher. Regions cover each material
+rectangle and exclude its sibling shadow.
 The Qt client combines all requested items in each window into one region and
 sends it during scene synchronisation, before the matching buffer commit. Rounded
 corners and item transforms are included. When the compositor does not advertise
@@ -43,7 +45,21 @@ return { protocols = { ['ext-background-effect-v1'] = false } }
 Native changes require a new compositor session. Rebuilding and installing does
 not replace libraries already loaded by the current desktop.
 
+Layer surfaces in the same compositor stack layer share a backdrop captured
+before that layer is painted. This prevents neighbouring panels from sampling
+each other's tint. Capture bounds extend beyond the client buffer by the blur
+kernel margin; material masks still limit the visible result. Snapshot textures
+are reused until output size changes. When a layer backdrop changes, the blur
+sampling areas are repainted together, including dependent window blurs.
+Offscreen captures use the same grouping so screenshots match the desktop.
+
 ## Validation
+
+`tests/test-blur-surface-joins.py` compares a single panel with three adjoining
+layer surfaces, including a 20-pixel-wide piece. Both joins must match within
+five channel levels. Run through `GNOBLIN_TEST_DBUS_CLIENT` in the private
+compositor harness; set `GNOBLIN_TEST_STANDARD_BLUR=1` to test explicit regions
+and supply the Bingux effects module through `QML_IMPORT_PATH`.
 
 Run the protocol tests in an isolated compositor:
 
@@ -70,3 +86,10 @@ For fallback coverage, set `EXPECT_STANDARD=0` and start the compositor with a
 `GNOBLIN_CONFIG` file that disables this protocol and retains the dock/popup rules.
 `tests/shared-buffer-fades.py` and `tests/panel-blur-fade.py` cover item and native
 window fades with the migrated popup component.
+
+`tests/popup-shadow-blur.py` in Bingux verifies search, emoji and switcher shadows
+against a checkerboard. It disables alpha-based shadow exclusion deliberately:
+standard regions must keep shadows outside backdrop blur without colour guesses.
+The test requires visible shadows and blurred panel interiors, so removing either
+effect cannot make it pass. Search and preview item fades remain covered by
+`FADE_TEST_ITEMS='search preview' tests/shared-buffer-fades.py` in the same harness.

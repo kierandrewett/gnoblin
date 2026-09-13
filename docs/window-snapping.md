@@ -8,6 +8,8 @@ minimum sizes still apply. Fullscreen and fixed-size windows are excluded.
 ## Interaction
 
 - Drag a title bar towards the top centre of its monitor to reveal the layout picker.
+- Release at the top edge to fill the work area with the configured outer gap. The picker remains available below the edge.
+- Drag to either side edge for a half-screen position, or to a corner for a quarter-screen position. Corner guides appear during the drag and the destination is highlighted before release. These fixed targets do not change the selected custom layout.
 - Move over a miniature region and release to snap. Move away to cancel the target.
 - Hold Ctrl during a drag to select regions directly in the active layout.
 - Press Super+Z to choose a region for the focused window. Use arrows or Tab,
@@ -24,8 +26,8 @@ coordinates and the current workspace work area, including exclusive zones.
 The existing user-private compositor socket accepts:
 
 - `window-drag`: subscribe to `window-drag` state changes. An active record has a
-  drag serial, stable window ID, pointer coordinates, modifier mask, monitor,
-  and work area. Inactive records end the drag UI.
+  drag serial, stable window ID, maximized state, pointer coordinates, modifier
+  mask, monitor, and work area. Inactive records end the drag UI.
 - `snap-offer`: supply hit rectangles and target rectangles for the current serial.
   Each region marks whether Ctrl must be held. Only one client can own a drag.
 - `snap-context`: return the focused window, monitor, and work area for keyboard selection.
@@ -37,6 +39,10 @@ area. Escape, disconnect, script reload, and drag completion clear pending offer
 `snap-completed` reports the committed layout so hovering or cancelling does not change the active layout.
 Pointer sampling runs only during a move grab and emits only changed state.
 The UI has no pointer or keyboard grab during a mouse drag.
+While a move grab is active, Mutter clamps the frame top to the selected
+monitor's work-area top when the `window-management` table enables
+`constrain-drag-to-work-area`. That keeps windows below any layer-shell
+exclusive zone without relying on Bingux or another shell's picker.
 
 ## Verification
 

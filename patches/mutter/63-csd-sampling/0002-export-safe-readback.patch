@@ -1,0 +1,47 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Expose catchable pixel readback and safe empty actor snapshots
+
+diff --git a/src/meta/meta-shaped-texture.h b/src/meta/meta-shaped-texture.h
+--- a/src/meta/meta-shaped-texture.h
++++ b/src/meta/meta-shaped-texture.h
+@@ -58,4 +58,10 @@
+ cairo_surface_t * meta_shaped_texture_get_image (MetaShapedTexture *stex,
+                                                  MtkRectangle      *clip);
+ 
++META_EXPORT
++GBytes * meta_shaped_texture_get_pixels (MetaShapedTexture *stex,
++                                       int               *width,
++                                       int               *height,
++                                       GError           **error);
++
+ G_END_DECLS
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -1747,12 +1747,14 @@
+   float resource_scale;
+   float x, y, width, height;
+ 
+   if (!priv->surface)
+-    return NULL;
++    return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
+ 
+   clutter_actor_inhibit_culling (actor);
+ 
+   stex = meta_surface_actor_get_texture (priv->surface);
++  if (!stex || !meta_shaped_texture_get_texture (stex))
++    goto out;
+ #ifdef HAVE_WAYLAND
+   has_gnoblin_frame = meta_gnoblin_window_frame_is_active (priv->window);
+ #endif
+@@ -1836,7 +1836,9 @@
+ 
+ out:
+   clutter_actor_uninhibit_culling (actor);
+-  return surface;
++  /* GJS cannot marshal a NULL Cairo foreign struct even when annotated
++   * nullable. An empty valid image is safe for unmapped/destroyed clients. */
++  return surface ? surface : cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
+ }
+ 
+ /**

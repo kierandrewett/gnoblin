@@ -1,0 +1,12 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Delegate configured window menus to the desktop adapter
+
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1671,3 +1671,5 @@
+     _showWindowMenu(shellwm, window, menu, rect) {
++        if (GnoblinConfig.settings['window-menu']?.length)
++            return;
+         this._windowMenuManager.showWindowMenuForWindow(window, menu, rect);
+     }

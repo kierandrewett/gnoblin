@@ -196,7 +196,14 @@ diff --git a/clutter/clutter/clutter-paint-nodes.h b/clutter/clutter/clutter-pai
 diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stage-view.c
 --- a/clutter/clutter/clutter-stage-view.c
 +++ b/clutter/clutter/clutter-stage-view.c
-@@ -1567,3 +1567,27 @@
+@@ -84,4 +84,6 @@
+   gboolean has_redraw_clip;
+   MtkRegion *redraw_clip;
+   gboolean has_accumulated_redraw_clip;
+   MtkRegion *accumulated_redraw_clip;
++  gboolean painting;
++  const MtkRegion *paint_redraw_clip;
+@@ -1567,3 +1567,54 @@
  
    return priv->name;
  }
@@ -215,6 +222,13 @@ diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stag
 +  ClutterStageViewPrivate *priv = clutter_stage_view_get_instance_private (view);
 +  MtkRegion *region;
 +
++  if (priv->painting)
++    {
++      if (priv->paint_redraw_clip)
++        return mtk_region_copy ((MtkRegion *) priv->paint_redraw_clip);
++      return mtk_region_create_rectangle (&priv->layout);
++    }
++
 +  if ((priv->has_redraw_clip && !priv->redraw_clip) ||
 +      (priv->has_accumulated_redraw_clip && !priv->accumulated_redraw_clip))
 +    return mtk_region_create_rectangle (&priv->layout);
@@ -224,10 +238,30 @@ diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stag
 +    mtk_region_union (region, priv->accumulated_redraw_clip);
 +  return region;
 +}
++
++void
++clutter_stage_view_set_paint_redraw_clip (ClutterStageView *view,
++                                          const MtkRegion   *redraw_clip)
++{
++  ClutterStageViewPrivate *priv = clutter_stage_view_get_instance_private (view);
++
++  priv->painting = TRUE;
++  priv->paint_redraw_clip = redraw_clip;
++}
++
++void
++clutter_stage_view_clear_paint_redraw_clip (ClutterStageView *view)
++{
++  ClutterStageViewPrivate *priv = clutter_stage_view_get_instance_private (view);
++
++  priv->paint_redraw_clip = NULL;
++  priv->painting = FALSE;
++}
++
 diff --git a/clutter/clutter/clutter-stage-view.h b/clutter/clutter/clutter-stage-view.h
 --- a/clutter/clutter/clutter-stage-view.h
 +++ b/clutter/clutter/clutter-stage-view.h
-@@ -94,3 +94,11 @@
+@@ -94,3 +94,18 @@
  
  CLUTTER_EXPORT
  int clutter_stage_view_get_priority (ClutterStageView *view);
@@ -235,6 +269,13 @@ diff --git a/clutter/clutter/clutter-stage-view.h b/clutter/clutter/clutter-stag
 +/* Effect dependencies use stage coordinates, before buffer-age repair. */
 +CLUTTER_EXPORT
 +MtkRegion * clutter_stage_view_copy_redraw_clip (ClutterStageView *view);
++
++CLUTTER_EXPORT
++void clutter_stage_view_set_paint_redraw_clip (ClutterStageView *view,
++                                               const MtkRegion   *redraw_clip);
++
++CLUTTER_EXPORT
++void clutter_stage_view_clear_paint_redraw_clip (ClutterStageView *view);
 +
 +CLUTTER_EXPORT
 +void clutter_stage_view_add_redraw_clip (ClutterStageView *view,
@@ -253,3 +294,16 @@ diff --git a/clutter/clutter/clutter-stage-view-private.h b/clutter/clutter/clut
  gboolean clutter_stage_view_has_full_redraw_clip (ClutterStageView *view);
  
  gboolean clutter_stage_view_has_redraw_clip (ClutterStageView *view);
+
+diff --git a/src/backends/meta-stage-impl.c b/src/backends/meta-stage-impl.c
+--- a/src/backends/meta-stage-impl.c
++++ b/src/backends/meta-stage-impl.c
+@@ -410,4 +410,6 @@ paint_stage (MetaStageImpl    *stage_impl,
+   ClutterStage *stage = stage_impl->wrapper;
+
+   _clutter_stage_maybe_setup_viewport (stage, stage_view);
++  clutter_stage_view_set_paint_redraw_clip (stage_view, redraw_clip);
+   clutter_stage_paint_view (stage, stage_view, redraw_clip, frame);
++  clutter_stage_view_clear_paint_redraw_clip (stage_view);
+
+   clutter_stage_view_after_paint (stage_view, redraw_clip);

@@ -8,9 +8,9 @@ diff --git a/src/meson.build b/src/meson.build
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -713,6 +713,8 @@
+     'wayland/gnoblin-config.h',
+     'wayland/meta-gnoblin-protocols.c',
      'wayland/meta-gnoblin-protocols.h',
-     'wayland/meta-gnoblin-window-frame.c',
-     'wayland/meta-gnoblin-window-frame.h',
 +    'wayland/meta-wayland-background-effect.c',
 +    'wayland/meta-wayland-background-effect.h',
      'wayland/meta-wayland-blur-fade.c',

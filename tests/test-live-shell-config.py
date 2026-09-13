@@ -83,7 +83,7 @@ export default function () {
 }
 """.replace("EXPECTED", json.dumps(expected))
     )
-    call("ReloadScripts")
+    call("Reload")
 
 
 check({"window-switcher": False, "minimize-animation": "zoom", "minimize-duration": 200})

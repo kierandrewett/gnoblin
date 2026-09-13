@@ -87,7 +87,7 @@ Your windows and your chrome stay up (mutter is never torn down); the JS layer r
 
 ```sh
 gnoblinctl script list
-gnoblinctl script reload
+gnoblinctl reload
 ```
 
 ## 6. Mutter's own test suite

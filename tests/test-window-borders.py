@@ -43,7 +43,7 @@ subprocess.run(
         "--object-path",
         "/org/gnoblin/Shell",
         "--method",
-        "org.gnoblin.Shell.ReloadScripts",
+        "org.gnoblin.Shell.Reload",
     ],
     check=True,
 )
@@ -106,6 +106,13 @@ try:
     )
     assert sum(after.getpixel((x + 1, y + 1))) < sum(before.getpixel((x + 1, y + 1))) - 100, "client corner not clipped"
     assert after.getpixel((x + w // 2, y + h // 2)) == before.getpixel((x + w // 2, y + h // 2)), "interior changed"
+    configure({**rule, "radius": 80, "smoothing": 1})
+    crazier = capture()
+    assert sum(abs(a - b) for a, b in zip(after.getpixel((x + 5, y + 5)), crazier.getpixel((x + 5, y + 5)))) > 100, (
+        "border roundness did not update live",
+        after.getpixel((x + 5, y + 5)),
+        crazier.getpixel((x + 5, y + 5)),
+    )
     broad = {"x": 0, "y": 10, "blur": 36, "spread": 0, "opacity": 0.22}
     contact = {"x": 0, "y": 2, "blur": 5, "spread": 0, "opacity": 0.28}
     point = (x + w // 2, y + h + 1)
@@ -135,8 +142,15 @@ try:
     )
     print("PASS: shadow fade has intermediate opacity and reaches its target")
     for action, keep in [("maximize", "keep-maximized"), ("fullscreen", "keep-fullscreen")]:
+        configure({**rule, keep: False, "_action": action})
+        assert not json.loads(frames.read_text())[0]["effect"], action + " opt-out"
         configure({**rule, "_action": action})
-        assert not json.loads(frames.read_text())[0]["effect"], action
+        frame = json.loads(frames.read_text())[0]["frame"]
+        assert json.loads(frames.read_text())[0]["effect"], action + " default"
+        edge = capture().getpixel((frame["x"] + frame["width"] // 2, frame["y"]))
+        # With no panels, every maximised edge touches the physical monitor.
+        expected_edge = (255, 255, 255) if action == "maximize" else (80, 80, 80)
+        assert max(abs(value - expected) for value, expected in zip(edge, expected_edge)) < 18, (action, edge)
         configure({**rule, keep: True})
         assert json.loads(frames.read_text())[0]["effect"], keep
         configure({**rule, "_action": "un" + action})

@@ -17,6 +17,7 @@ export default function (api) {
                 return {
                     frame: { x: f.x, y: f.y, width: f.width, height: f.height },
                     effect: !!rules._actors.get(a)?.corners?.effect,
+                    uniforms: [...(rules._actors.get(a)?.corners?.effect?.values ?? [])],
                 };
             });
         Gio.File.new_for_path(GLib.get_user_config_dir() + "/gnoblin/corner-frames.json").replace_contents(
@@ -39,11 +40,14 @@ export default function (api) {
         const [, bytes] = file.load_contents(null);
         const { _action, ...corners } = JSON.parse(new TextDecoder().decode(bytes));
         const win = global.get_window_actors().find((a) => a.meta_window.title === "Corner fixture")?.meta_window;
+        if (_action === "reprobe") win?.get_compositor_private().emit("first-frame");
         if (_action === "maximize") win.maximize(Meta.MaximizeFlags.BOTH);
         if (_action === "unmaximize") win.unmaximize(Meta.MaximizeFlags.BOTH);
         if (_action === "fullscreen") win.make_fullscreen();
         if (_action === "unfullscreen") win.unmake_fullscreen();
-        rules.refresh(parseDocument({ "window-rules": [{ match: { type: "window" }, corners }] }));
+        rules.refresh(
+            parseDocument({ "window-rules": [{ match: { type: "window" }, frame: { mode: "off" }, corners }] }),
+        );
         later();
     };
     const monitor = file.get_parent().monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);

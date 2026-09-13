@@ -8,7 +8,7 @@ overlay, with Adwaita as a fallback. Window focus and input remain with the
 application under the pointer.
 
 Install or link `src/scripts/launch-feedback.js` into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl script reload`. The script is
+`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload`. The script is
 also loaded at login. Reloading it releases the native override or fallback
 visibility inhibitor.
 

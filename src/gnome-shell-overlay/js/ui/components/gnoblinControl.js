@@ -273,7 +273,10 @@ class EventBus {
     emit(event, ...args) {
         for (const cb of this._subs.get(event) ?? []) {
             try {
-                cb(...args);
+                const result = cb(...args);
+                if (result && typeof result.then === "function")
+                    Promise.resolve(result).catch((e) =>
+                        logError(e, `gnoblin-script: async handler for '${event}' threw`));
             } catch (e) {
                 logError(e, `gnoblin-script: handler for '${event}' threw`);
             }
@@ -305,6 +308,43 @@ class ScriptHost {
         this._loaded = [];
         this._generation = 0; // bumped on every load/unload to drop stale in-flight imports
         this._destroyed = false;
+    }
+
+    _armRecovery() {
+        if (this._recoveryChecked) return;
+        this._recoveryChecked = true;
+        const key = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA256, this._dir, -1);
+        const dir = GLib.build_filenamev([GLib.get_user_state_dir(), "gnoblin", "script-sessions", key]);
+        GLib.mkdir_with_parents(dir, 0o700);
+        const pid = GLib.file_read_link("/proc/self");
+        const directory = Gio.File.new_for_path(dir);
+        this._quarantine = directory.get_child("quarantined");
+        this._safeMode = this._quarantine.query_exists(null);
+        const entries = directory.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
+        let entry;
+        while ((entry = entries.next_file(null)) !== null) {
+            const name = entry.get_name();
+            if (!/^\d+\.running$/.test(name)) continue;
+            const previousPid = name.slice(0, -8);
+            if (previousPid !== pid && !GLib.file_test(`/proc/${previousPid}`, GLib.FileTest.EXISTS)) {
+                this._safeMode = true;
+                this._quarantine.replace_contents("Unclean script session; explicit retry required", null,
+                    false, Gio.FileCreateFlags.PRIVATE, null);
+                directory.get_child(name).delete(null);
+            }
+        }
+        entries.close(null);
+        this._recoveryMarker = directory.get_child(`${pid}.running`);
+        this._recoveryMarker.replace_contents("User scripts active", null, false, Gio.FileCreateFlags.PRIVATE, null);
+        this._recoveryShutdown = global.connect("shutdown", () => this._clearRecovery());
+    }
+
+    _clearRecovery() {
+        try {
+            if (this._recoveryMarker?.query_exists(null)) this._recoveryMarker.delete(null);
+        } catch (error) {
+            console.warn(`gnoblin-script: cannot clear recovery marker: ${error.message}`);
+        }
     }
 
     _api(name) {
@@ -343,7 +383,9 @@ class ScriptHost {
     }
 
     _disposeApi(api) {
-        for (const d of api._disposers ?? []) {
+        // Undo stacked wrappers in reverse installation order. Drain first so
+        // a failed/async load and a concurrent unload cannot dispose twice.
+        for (const d of (api._disposers ?? []).splice(0).reverse()) {
             try {
                 d();
             } catch {
@@ -354,6 +396,11 @@ class ScriptHost {
 
     async load() {
         if (this._destroyed) return;
+        this._armRecovery();
+        if (this._safeMode) {
+            console.warn("gnoblin-script: previous session ended uncleanly; user scripts paused for recovery. Use gnoblinctl reload to retry explicitly.");
+            return;
+        }
 
         const gen = ++this._generation;
         const failures = [];
@@ -385,7 +432,11 @@ class ScriptHost {
 
             const api = this._api(name);
             try {
-                mod.default(api);
+                await mod.default(api);
+                if (this._destroyed || gen !== this._generation) {
+                    this._disposeApi(api);
+                    return;
+                }
                 this._loaded.push({ name, api });
                 console.log(`gnoblin-script: loaded ${name}`);
             } catch (e) {
@@ -403,18 +454,22 @@ class ScriptHost {
     unload() {
         // Invalidate any in-flight imports from the current generation.
         this._generation++;
-        for (const { api } of this._loaded) this._disposeApi(api);
+        for (const { api } of this._loaded.splice(0).reverse()) this._disposeApi(api);
         this._loaded = [];
     }
 
     async reload() {
         this.unload();
+        if (this._quarantine?.query_exists(null)) this._quarantine.delete(null);
+        this._safeMode = false;
         await this.load();
     }
 
     destroy() {
         this._destroyed = true;
         this.unload();
+        this._clearRecovery();
+        if (this._recoveryShutdown) global.disconnect(this._recoveryShutdown);
     }
 
     list() {
@@ -496,8 +551,6 @@ const IFACE = `
     <method name="ListScripts">
       <arg type="as" direction="out" name="scripts"/>
     </method>
-    <!-- Reload all user scripts in-place (re-imports fresh source). -->
-    <method name="ReloadScripts"/>
     <!-- Typed ScreenCast/RemoteDesktop grants. Each tuple is:
          [opaque id, portal kind, namespaced requester identity,
           remote device mask, clipboard enabled, screen streams enabled]. -->
@@ -647,6 +700,12 @@ export class Component {
     }
 
     disable() {
+        // Script disposers can still use window rules, config and the event bus.
+        if (this._scripts) {
+            this._scripts.destroy();
+            this._scripts = null;
+            activeScriptHost = null;
+        }
         this._shortcutInput?.destroy();
         this._shortcutInput = null;
         this._shortcuts?.destroy();
@@ -674,11 +733,6 @@ export class Component {
         this._removeOsdGate();
         for (const id of Object.keys(FEATURES)) FEATURES[id].apply(true);
 
-        if (this._scripts) {
-            this._scripts.destroy();
-            this._scripts = null;
-            activeScriptHost = null;
-        }
         if (this._bus) {
             this._bus.destroy();
             this._bus = null;
@@ -975,17 +1029,6 @@ export class Component {
 
     ListScripts() {
         return this._scripts?.list() ?? [];
-    }
-
-    ReloadScriptsAsync(_params, invocation) {
-        return this._runReload(
-            invocation,
-            async () => {
-                console.log("gnoblin-control: reloading user scripts");
-                await this._scripts?.reload();
-            },
-            "user script reload",
-        );
     }
 
     async _runReload(invocation, operation, description) {

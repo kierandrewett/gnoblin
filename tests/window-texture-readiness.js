@@ -24,7 +24,7 @@ for (const [Effect, config] of [
             get_tile_match: () => null,
         },
         get_resource_scale: () => 1,
-        get_texture: () => ({ get_texture: () => texture }),
+        get_texture: () => ({ get_texture: () => texture, is_opaque: () => false }),
         get_effects: () => [],
         get_children: () => [],
         get_image: () => {

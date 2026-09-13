@@ -1,0 +1,173 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Read CSD pixels independently of actor effects and nullable Cairo
+
+diff --git a/src/compositor/meta-shaped-texture.c b/src/compositor/meta-shaped-texture.c
+index a80818e..9414730 100644
+--- a/src/compositor/meta-shaped-texture.c
++++ b/src/compositor/meta-shaped-texture.c
+@@ -1635,24 +1635,55 @@ meta_shaped_texture_get_image (MetaShapedTexture *stex,
+ {
+   MtkRectangle *image_clip = NULL;
+   CoglTexture *texture;
+-  ClutterBackend *clutter_backend =
+-    clutter_context_get_backend (stex->clutter_context);
+-  CoglContext *cogl_context =
+-    clutter_backend_get_cogl_context (clutter_backend);
++  ClutterBackend *clutter_backend;
++  CoglContext *cogl_context;
+   cairo_surface_t *surface;
+ 
+   g_return_val_if_fail (META_IS_SHAPED_TEXTURE (stex), NULL);
+ 
+   if (stex->texture == NULL)
+-    return NULL;
++    return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
++
++  clutter_backend = clutter_context_get_backend (stex->clutter_context);
++  cogl_context = clutter_backend_get_cogl_context (clutter_backend);
+ 
+   if (meta_shaped_texture_should_get_via_offscreen (stex))
+-    return NULL;
++    {
++      g_autoptr (GError) error = NULL;
++      g_autoptr (GBytes) bytes = NULL;
++      const uint8_t *rgba;
++      int width, height;
++      MtkRectangle bounds;
++      uint8_t *data;
++      int stride;
++
++      bytes = meta_shaped_texture_get_pixels (stex, &width, &height, &error);
++      if (!bytes)
++        return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
++      bounds = (MtkRectangle) { 0, 0, width, height };
++      if (clip && !mtk_rectangle_intersect (&bounds, clip, &bounds))
++        return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
++      surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
++                                            bounds.width, bounds.height);
++      data = cairo_image_surface_get_data (surface);
++      stride = cairo_image_surface_get_stride (surface);
++      rgba = g_bytes_get_data (bytes, NULL);
++      for (int y = 0; y < bounds.height; y++)
++        for (int x = 0; x < bounds.width; x++)
++          {
++            const uint8_t *p = rgba + ((y + bounds.y) * width + x + bounds.x) * 4;
++            ((uint32_t *) (data + y * stride))[x] =
++              (uint32_t) p[3] << 24 | (uint32_t) p[0] << 16 |
++              (uint32_t) p[1] << 8 | p[2];
++          }
++      cairo_surface_mark_dirty (surface);
++      return surface;
++    }
+ 
+   meta_shaped_texture_ensure_size_valid (stex);
+ 
+   if (stex->dst_width == 0 || stex->dst_height == 0)
+-    return NULL;
++    return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
+ 
+   if (clip != NULL)
+     {
+@@ -1666,7 +1697,7 @@ meta_shaped_texture_get_image (MetaShapedTexture *stex,
+ 
+       if (!mtk_rectangle_intersect (&dst_rect, clip,
+                                     image_clip))
+-        return NULL;
++        return cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 0, 0);
+ 
+       *image_clip = (MtkRectangle) {
+         .x = image_clip->x * stex->buffer_scale,
+@@ -1703,6 +1734,92 @@ meta_shaped_texture_get_image (MetaShapedTexture *stex,
+   return surface;
+ }
+ 
++/**
++ * meta_shaped_texture_get_pixels:
++ * @stex: a #MetaShapedTexture
++ * @width: (out): output width in pixels
++ * @height: (out): output height in pixels
++ * @error: return location for an error
++ *
++ * Read client content without painting its actor or running actor effects.
++ * Unlike get_image(), this supports GPU-only buffers and reports unavailable
++ * content as a catchable error, not a nullable foreign Cairo pointer.
++ *
++ * Returns: (transfer full): tightly packed premultiplied RGBA bytes
++ */
++GBytes *
++meta_shaped_texture_get_pixels (MetaShapedTexture *stex,
++                               int               *width,
++                               int               *height,
++                               GError           **error)
++{
++  ClutterBackend *backend;
++  CoglContext *context;
++  g_autoptr (CoglTexture) texture = NULL;
++  g_autoptr (CoglOffscreen) offscreen = NULL;
++  g_autoptr (ClutterPaintNode) root = NULL;
++  ClutterPaintContext *paint_context;
++  CoglFramebuffer *framebuffer;
++  CoglColor clear;
++  ClutterActorBox alloc;
++  MtkRegion *saved_clip;
++  g_autofree uint8_t *pixels = NULL;
++  gsize size;
++
++  *width = *height = 0;
++  if (!stex->texture)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_INITIALIZED,
++                           "Client has no buffer yet");
++      return NULL;
++    }
++  meta_shaped_texture_ensure_size_valid (stex);
++  if (stex->dst_width <= 0 || stex->dst_height <= 0 ||
++      (gint64) stex->dst_width * stex->dst_height > 16000000)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "Client dimensions are empty or exceed sampling limit");
++      return NULL;
++    }
++
++  backend = clutter_context_get_backend (stex->clutter_context);
++  context = clutter_backend_get_cogl_context (backend);
++  texture = cogl_texture_2d_new_with_size (context, stex->dst_width, stex->dst_height);
++  offscreen = cogl_offscreen_new_with_texture (texture);
++  framebuffer = COGL_FRAMEBUFFER (offscreen);
++  if (!cogl_framebuffer_allocate (framebuffer, error))
++    return NULL;
++  cogl_framebuffer_orthographic (framebuffer, 0, 0,
++                                 stex->dst_width, stex->dst_height, 0, 1);
++  cogl_color_init_from_4f (&clear, 0, 0, 0, 0);
++  root = clutter_root_node_new (framebuffer, stex->color_state,
++                                &clear, COGL_BUFFER_BIT_COLOR);
++  paint_context = clutter_paint_context_new_for_framebuffer (
++    framebuffer, NULL, CLUTTER_PAINT_FLAG_NONE, stex->color_state);
++  alloc = (ClutterActorBox) { 0, 0, stex->dst_width, stex->dst_height };
++  /* Stage culling from the previous frame must not clip an independent read. */
++  saved_clip = stex->clip_region;
++  stex->clip_region = NULL;
++  do_paint_content (stex, root, paint_context, &alloc, 255);
++  clutter_paint_node_paint (root, paint_context);
++  stex->clip_region = saved_clip;
++  clutter_paint_context_destroy (paint_context);
++
++  size = (gsize) stex->dst_width * stex->dst_height * 4;
++  pixels = g_malloc (size);
++  if (!cogl_framebuffer_read_pixels (framebuffer, 0, 0,
++                                     stex->dst_width, stex->dst_height,
++                                     COGL_PIXEL_FORMAT_RGBA_8888_PRE, pixels))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Client pixel readback failed");
++      return NULL;
++    }
++  *width = stex->dst_width;
++  *height = stex->dst_height;
++  return g_bytes_new_take (g_steal_pointer (&pixels), size);
++}
++
+ void
+ meta_shaped_texture_set_fallback_size (MetaShapedTexture *stex,
+                                        int                fallback_width,
+

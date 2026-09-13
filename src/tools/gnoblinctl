@@ -93,6 +93,7 @@ def parser():
     actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
     for name in (
+        "menu", "interactive-move", "interactive-resize", "above", "unabove", "stick", "unstick",
         "focus",
         "close",
         "minimize",
@@ -144,7 +145,7 @@ def parser():
         ("monitor", "List monitors"),
         ("input", "Inspect and select input sources"),
         ("feature", "Inspect and change shell features"),
-        ("script", "List and reload user scripts"),
+        ("script", "List loaded user scripts"),
         ("grant", "List and revoke portal grants"),
         ("launch", "Inspect launch feedback"),
     ):
@@ -180,7 +181,6 @@ def parser():
     script_group = commands.choices["script"]
     script_actions = script_group.add_subparsers(dest="action")
     add(script_actions, "list", "List loaded user scripts")
-    add(script_actions, "reload", "Reload user scripts")
 
     grant = commands.choices["grant"]
     grant_actions = grant.add_subparsers(dest="action")
@@ -247,6 +247,10 @@ def user_config_path():
     if override:
         return Path(override).expanduser()
     directory = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "gnoblin"
+    for name in ("init.lua", "gnoblin.toml", "gnoblin.conf"):
+        candidate = directory / name
+        if candidate.exists():
+            return candidate
     return directory / "init.lua"
 
 
@@ -353,10 +357,7 @@ def dispatch(args, cli):
         call("SetFeature", "sb", [args.id, str(args.action == "enable").lower()])
         return {"ok": True, "id": args.id, "enabled": args.action == "enable"}
     if cmd == "script":
-        if args.action == "list":
-            return {"scripts": call("ListScripts")[0]}
-        call("ReloadScripts")
-        return {"ok": True, "action": "script reload"}
+        return {"scripts": call("ListScripts")[0]}
     if cmd == "input":
         fields = ["type", "id", "shortName", "name"]
         if args.action == "list":
@@ -563,7 +564,18 @@ def main(argv=None):
         return 0
     if (
         args.command
-        in ("config", "window", "workspace", "monitor", "input", "feature", "script", "grant", "launch", "permissions")
+        in (
+            "config",
+            "window",
+            "workspace",
+            "monitor",
+            "input",
+            "feature",
+            "script",
+            "grant",
+            "launch",
+            "permissions",
+        )
         and args.action is None
     ):
         subcommands(cli)[args.command].print_help()

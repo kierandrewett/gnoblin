@@ -92,7 +92,15 @@ char* gnoblin_config_path(void) {
     const char* override = g_getenv("GNOBLIN_CONFIG");
     if (override && override[0])
         return g_canonicalize_filename(override, NULL);
-    return g_build_filename(g_get_user_config_dir(), "gnoblin", "init.lua", NULL);
+    g_autofree char* directory = g_build_filename(g_get_user_config_dir(), "gnoblin", NULL);
+    /* Keep existing installations working after the Lua-root migration. */
+    const char* names[] = {"init.lua", "gnoblin.toml", "gnoblin.conf"};
+    for (guint i = 0; i < G_N_ELEMENTS(names); i++) {
+        g_autofree char* candidate = g_build_filename(directory, names[i], NULL);
+        if (g_file_test(candidate, G_FILE_TEST_EXISTS))
+            return g_steal_pointer(&candidate);
+    }
+    return g_build_filename(directory, "init.lua", NULL);
 }
 
 void gnoblin_config_reload(void) {

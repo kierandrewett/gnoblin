@@ -73,7 +73,7 @@ def snapshot():
             "--object-path",
             "/org/gnoblin/Shell",
             "--method",
-            "org.gnoblin.Shell.ReloadScripts",
+            "org.gnoblin.Shell.Reload",
         ],
         check=True,
         capture_output=True,

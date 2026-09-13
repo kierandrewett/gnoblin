@@ -10,6 +10,7 @@ import { LayerCompanions } from "./lib/layer-companions.js";
 import { WindowSnap } from "./lib/window-snap.js";
 import { ClipboardPaste } from "./lib/clipboard-paste.js";
 import { BlurRegions } from "./lib/blur-regions.js";
+import { FullscreenReturnGuard } from "./lib/fullscreen-return-guard.js";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
@@ -24,7 +25,27 @@ class CompositorBridge {
         this.clients = new Set();
         this.encoder = new TextEncoder();
         this.layerCompanions = new LayerCompanions();
-        this.uiSessions = new UiSessions((client, record) => this.send(client, record), this.layerCompanions);
+        this.fullscreenReturnGuard = new FullscreenReturnGuard({
+            buttonPress: Clutter.EventType.BUTTON_PRESS,
+            buttonRelease: Clutter.EventType.BUTTON_RELEASE,
+            pick: (event) => this.windowAtPointer(event),
+            dismiss: () => this.dismissSearchForOutsideClick(),
+            set: (armed) => Meta.gnoblin_fullscreen_return_guard_set(global.display, armed),
+        });
+        this.uiSessions = new UiSessions((client, record) => this.send(client, record), {
+            update: (requests) => {
+                this.layerCompanions.update(requests);
+                const search = this.uiSessions.owners.get("search")?.state;
+                const searchOpen =
+                    search?.visible === true &&
+                    search.revealCompanions === true &&
+                    search.surface === "bingux-search" &&
+                    requests.some((request) => request.surface === "bingux-search");
+                if (searchOpen) this.fullscreenReturnGuard.arm();
+                else this.fullscreenReturnGuard.disarm();
+            },
+            cancelDismiss: () => this.layerCompanions.cancelDismiss(),
+        });
         this.blurRegions = new BlurRegions();
         this.clipboardPaste = new ClipboardPaste(global.stage.context.get_backend().get_default_seat());
         this.actions = new Map();
@@ -57,6 +78,9 @@ class CompositorBridge {
         this.accelerator = global.display.connect("accelerator-activated", (_display, action) => this.activate(action));
         this.overlayKey = global.display.connect("overlay-key", () => this.activate("overlay-key"));
         this.capture = global.stage.connect("event", (_stage, event) => this.event(event));
+        this.returnClickCapture = global.stage.connect("captured-event", (_stage, event) =>
+            this.fullscreenReturnGuard.handle(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE,
+        );
         this.session = Main.sessionMode.connect("updated", () => {
             if (Main.sessionMode.isLocked) {
                 this.caret = null;
@@ -65,6 +89,10 @@ class CompositorBridge {
             }
         });
         this.map = global.window_manager.connect("map", (_manager, actor) => this.track(actor.meta_window));
+        this.windowMenu = global.window_manager.connect("show-window-menu", (_manager, window, type, rect) => {
+            if (type === Meta.WindowMenuType.WM && Config.settings["window-menu"].length)
+                this.showWindowMenu(window, rect.x, rect.y);
+        });
         this.caret = null;
         this.focus = global.display.connect("notify::focus-window", () => {
             this.caret = null;
@@ -220,6 +248,8 @@ class CompositorBridge {
                 namespace: record.namespace,
                 enter: Config.layerAnimation(properties, true),
                 exit: Config.layerAnimation(properties, false),
+                windowShadow: Config.windowEffects({ type: "window", title: "", "app-id": "", focused: true }).corners
+                    .shadow,
             });
             return;
         }
@@ -784,6 +814,21 @@ class CompositorBridge {
         });
     }
 
+    dismissSearchForOutsideClick() {
+        const search = this.uiSessions.owners.get("search")?.state;
+        if (!search?.visible || !search.revealCompanions) return;
+        this.layerCompanions.dismiss(search.surface, () => {
+            this.uiSessions.command(null, { action: "command", name: "search", command: { action: "hide" } });
+        });
+    }
+
+    windowAtPointer(event) {
+        const [x, y] = event.get_coords();
+        let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+        while (actor && !actor.meta_window) actor = actor.get_parent();
+        return actor?.meta_window || null;
+    }
+
     track(window) {
         if (!window) return;
         const actor = window.get_compositor_private();
@@ -919,6 +964,7 @@ class CompositorBridge {
         }
         if (record.command !== "window") throw new Error("unknown compositor command");
         const actions = [
+            "menu", "interactive-move", "interactive-resize", "above", "unabove", "stick", "unstick",
             "focus",
             "close",
             "minimize",
@@ -941,6 +987,26 @@ class CompositorBridge {
             if (!allowed) throw new Error(message);
         };
         switch (record.action) {
+            case "menu": {
+                const [x, y] = global.get_pointer();
+                this.showWindowMenu(window, x, y);
+                break;
+            }
+            case "above": window.make_above(); break;
+            case "unabove": window.unmake_above(); break;
+            case "stick": window.stick(); break;
+            case "unstick": window.unstick(); break;
+            case "interactive-move":
+            case "interactive-resize": {
+                const move = record.action === "interactive-move";
+                requireCapability((move ? window.allows_move() : window.allows_resize()) &&
+                    !window.is_fullscreen() && !window.get_maximize_flags(), "window cannot move or resize in this state");
+                Main.activateWindow(window, global.get_current_time());
+                const sprite = global.stage.context.get_backend().get_pointer_sprite(global.stage);
+                requireCapability(window.begin_grab_op(move ? Meta.GrabOp.KEYBOARD_MOVING : Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
+                    sprite, global.get_current_time(), null), "could not begin window grab");
+                break;
+            }
             case "focus":
                 Main.activateWindow(window, global.get_current_time());
                 break;
@@ -1010,6 +1076,32 @@ class CompositorBridge {
         return { ok: true, pending: true, window: String(window.get_stable_sequence()), action: record.action };
     }
 
+    showWindowMenu(window, x, y) {
+        if (Main.sessionMode.isLocked || !window || !this.eligible(window)) return;
+        const command = Config.settings["window-menu"];
+        if (!command.length) throw new Error("No shell.window-menu command configured");
+        const maximized = !!window.get_maximize_flags();
+        const fullscreen = window.is_fullscreen();
+        const actions = [
+            {id: "minimize", text: "Minimize", enabled: window.can_minimize()},
+            {id: maximized ? "unmaximize" : "maximize", text: maximized ? "Restore" : "Maximize", enabled: window.can_maximize() && !fullscreen},
+            {id: "interactive-move", text: "Move", enabled: window.allows_move() && !maximized && !fullscreen},
+            {id: "interactive-resize", text: "Resize", enabled: window.allows_resize() && !maximized && !fullscreen},
+            {isSeparator: true},
+            {id: window.is_above() ? "unabove" : "above", text: "Always on Top", checked: window.is_above(), enabled: !fullscreen},
+            {id: window.is_on_all_workspaces() ? "unstick" : "stick", text: "Always on Visible Workspace", checked: window.is_on_all_workspaces(), enabled: true},
+            {isSeparator: true},
+            {id: "close", text: "Close", enabled: window.can_close()},
+        ];
+        const record = {version: 1, window: String(window.get_stable_sequence()), title: window.title,
+            x: Math.round(x), y: Math.round(y), actions};
+        const child = Gio.Subprocess.new([...command, JSON.stringify(record)], Gio.SubprocessFlags.NONE);
+        child.wait_check_async(null, (process, result) => {
+            try { process.wait_check_finish(result); }
+            catch (error) { console.warn(`gnoblin window menu: ${error.message}`); }
+        });
+    }
+
     publishWindows(client = null) {
         if (client) {
             this.send(client, { event: "windows", windows: this.windowRecords() });
@@ -1042,6 +1134,7 @@ class CompositorBridge {
     }
 
     destroy() {
+        global.window_manager.disconnect(this.windowMenu);
         this.windowSnap.destroy();
         this.clipboardPaste.destroy();
         this.end("cancelled");
@@ -1050,11 +1143,13 @@ class CompositorBridge {
         this.cameraMonitor.disconnect(this.cameraSignal);
         if (this.ownsCameraMonitor) this.cameraMonitor.run_dispose();
         for (const client of this.clients) this.close(client);
+        this.fullscreenReturnGuard.disarm();
         this.layerCompanions.destroy();
         this.switcherFallback.destroy();
         global.display.disconnect(this.accelerator);
         global.display.disconnect(this.overlayKey);
         global.stage.disconnect(this.capture);
+        global.stage.disconnect(this.returnClickCapture);
         Main.sessionMode.disconnect(this.session);
         global.window_manager.disconnect(this.map);
         global.display.disconnect(this.focus);

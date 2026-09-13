@@ -1,0 +1,143 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
+
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -20,6 +20,8 @@
+ 
+ #include <mtk/mtk.h>
+ #include <meta/meta-window-actor.h>
++#include <meta/window.h>
++#include <meta/util.h>
+ 
+ #include "shell-blur-effect.h"
+ #include "shell-global.h"
+@@ -173,6 +175,48 @@
+  * monitor redraw. Buffer-age repair does not invalidate an unchanged cache. */
+ static GSList *backdrop_effects;
+ static gulong backdrop_handler;
++
++typedef struct {
++  CoglTexture *texture;
++  CoglFramebuffer *framebuffer;
++  gboolean captured;
++} LayerBackdrop;
++
++static void
++layer_backdrop_free (gpointer data)
++{
++  LayerBackdrop *backdrop = data;
++  g_clear_object (&backdrop->framebuffer);
++  g_clear_object (&backdrop->texture);
++  g_free (backdrop);
++}
++
++static int
++backdrop_layer (ShellBlurEffect *self)
++{
++  for (ClutterActor *actor = self->actor; actor; actor = clutter_actor_get_parent (actor))
++    if (META_IS_WINDOW_ACTOR (actor))
++      {
++        MetaWindow *window = meta_window_actor_get_meta_window (META_WINDOW_ACTOR (actor));
++        if (meta_gnoblin_layer_namespace (window))
++          return meta_window_get_layer (window) + 1;
++        break;
++      }
++  return 0;
++}
++
++static GHashTable *
++layer_backdrops (gpointer view)
++{
++  GHashTable *table = g_object_get_data (G_OBJECT (view), "gnoblin-layer-backdrops");
++  if (!table)
++    {
++      table = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, layer_backdrop_free);
++      g_object_set_data_full (G_OBJECT (view), "gnoblin-layer-backdrops", table,
++                             (GDestroyNotify) g_hash_table_unref);
++    }
++  return table;
++}
+ 
+ static void
+ get_blur_box (ShellBlurEffect *self,
+@@ -254,6 +298,35 @@
+         }
+     }
+   while (changed);
++
++  /* Siblings in a shell layer sample the same pre-layer scene. Refresh all
++   * of that scene when any sibling changes; otherwise old foreground pixels
++   * in the repaired framebuffer would contaminate the shared snapshot. */
++  gboolean layer_dirty = FALSE;
++  for (GSList *l = backdrop_effects; l; l = l->next)
++    if (g_hash_table_contains (affected, l->data) && backdrop_layer (l->data))
++      layer_dirty = TRUE;
++  if (layer_dirty)
++    {
++      GHashTableIter iterator;
++      gpointer value;
++      g_hash_table_iter_init (&iterator, layer_backdrops (view));
++      while (g_hash_table_iter_next (&iterator, NULL, &value))
++        ((LayerBackdrop *) value)->captured = FALSE;
++      for (GSList *l = backdrop_effects; l; l = l->next)
++        {
++          ShellBlurEffect *self = l->data;
++          if (!self->actor || !clutter_actor_is_mapped (self->actor) ||
++              !clutter_actor_meta_get_enabled (CLUTTER_ACTOR_META (self)))
++            continue;
++          MtkRectangle box = get_stage_blur_box (self), clipped;
++          if (mtk_rectangle_intersect (&box, &layout, &clipped))
++            {
++              self->background_dirty = TRUE;
++              clutter_stage_view_add_redraw_clip (view, &clipped);
++            }
++        }
++    }
+ }
+ 
+ static void
+@@ -748,6 +821,43 @@
+ 
+   /* Blit node */
+   src = clutter_paint_context_get_framebuffer (paint_context);
++  ClutterStageView *view = clutter_paint_context_get_stage_view (paint_context);
++  int layer = backdrop_layer (self);
++  if (layer)
++    {
++      GHashTable *table = layer_backdrops (view ? (gpointer) view : src);
++      LayerBackdrop *backdrop = g_hash_table_lookup (table, GINT_TO_POINTER (layer));
++      if (backdrop && (cogl_framebuffer_get_width (backdrop->framebuffer) != cogl_framebuffer_get_width (src) ||
++                       cogl_framebuffer_get_height (backdrop->framebuffer) != cogl_framebuffer_get_height (src)))
++        {
++          g_hash_table_remove (table, GINT_TO_POINTER (layer));
++          backdrop = NULL;
++        }
++      if (!backdrop)
++        {
++          backdrop = g_new0 (LayerBackdrop, 1);
++          backdrop->texture = cogl_texture_2d_new_with_size (
++            cogl_framebuffer_get_context (src), cogl_framebuffer_get_width (src),
++            cogl_framebuffer_get_height (src));
++          backdrop->framebuffer = COGL_FRAMEBUFFER (
++            cogl_offscreen_new_with_texture (backdrop->texture));
++          g_hash_table_insert (table, GINT_TO_POINTER (layer), backdrop);
++        }
++      if (!backdrop->captured)
++        {
++          /* Insert the copy ahead of this effect's foreground paint. Later
++           * siblings read this immutable snapshot, never each other's tint. */
++          g_autoptr (ClutterPaintNode) capture = clutter_layer_node_new_to_framebuffer (
++            backdrop->framebuffer, self->background_fb.pipeline);
++          g_autoptr (ClutterPaintNode) copy = clutter_blit_node_new (src);
++          clutter_paint_node_add_child (background_node, capture);
++          clutter_paint_node_add_child (capture, copy);
++          clutter_blit_node_add_blit_rectangle (CLUTTER_BLIT_NODE (copy), 0, 0, 0, 0,
++            cogl_framebuffer_get_width (src), cogl_framebuffer_get_height (src));
++          backdrop->captured = TRUE;
++        }
++      src = backdrop->framebuffer;
++    }
+   blit_node = clutter_blit_node_new (src);
+   clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
+   clutter_paint_node_add_child (background_node, blit_node);

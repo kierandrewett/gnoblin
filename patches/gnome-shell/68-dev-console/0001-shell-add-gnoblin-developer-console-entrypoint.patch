@@ -26,12 +26,13 @@ diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -142,6 +142,8 @@
+@@ -142,6 +142,9 @@
      <file>ui/components/gnoblinCornerGeometry.js</file>
      <file>ui/components/gnoblinCorners.js</file>
      <file>ui/components/gnoblinControl.js</file>
 +    <file>ui/components/gnoblinConsole.js</file>
 +    <file>ui/components/gnoblinConsoleEvaluator.js</file>
++    <file>ui/components/gnoblinConsoleIntrospection.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
      <file>ui/components/polkitAgent.js</file>

@@ -28,6 +28,8 @@ export class Component {
                 this._missingSince = GLib.get_monotonic_time();
                 this._dismissed = false;
                 this._panel?.hide();
+            } else if (Main.devConsole?.isOpen) {
+                this._panel?.hide();
             } else if (
                 !this._dismissed &&
                 !Main.layoutManager._startingUp &&
@@ -45,28 +47,25 @@ export class Component {
                 name: "gnoblin-recovery",
                 orientation: Clutter.Orientation.VERTICAL,
                 reactive: true,
-                style: "background-color: #242424; color: #ffffff; border-radius: 16px; padding: 24px; spacing: 16px;",
+                style: "background-color: #242424; color: #ffffff; border-radius: 10px; padding: 16px; spacing: 12px;",
             });
             this._panel.add_child(
                 new St.Label({
-                    text: _("Desktop recovery"),
-                    style: "font-size: 20px; font-weight: bold;",
+                    text: _("Desktop unavailable"),
+                    style: "font-size: 18px; font-weight: bold;",
                 }),
             );
             this._message = new St.Label({
-                text: _("No desktop interface is visible. Open a terminal or Settings to repair it."),
+                text: "",
+                visible: false,
             });
             this._message.clutter_text.set_line_wrap(true);
             this._panel.add_child(this._message);
-            const hint = new St.Label({
-                text: _("These tools are also available when you right-click the desktop."),
-            });
-            hint.clutter_text.set_line_wrap(true);
-            this._panel.add_child(hint);
-            const actions = new St.BoxLayout({ style: "spacing: 12px;" });
-            for (const [label, action] of [
-                [_("Open Terminal"), openTerminal],
+            const actions = [
+                ["terminal", _("Terminal"), openTerminal],
+                ["console", _("Console"), () => Main.openDevConsole()],
                 [
+                    "settings",
                     _("Settings"),
                     () => {
                         const app = Gio.DesktopAppInfo.new("org.gnome.Settings.desktop");
@@ -75,29 +74,62 @@ export class Component {
                     },
                 ],
                 [
-                    _("Dismiss"),
+                    "config",
+                    _("Config folder"),
                     () => {
-                        this._dismissed = true;
-                        this._panel.hide();
+                        const config = GLib.getenv("GNOBLIN_CONFIG");
+                        const directory = config
+                            ? Gio.File.new_for_path(GLib.path_get_dirname(config))
+                            : Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin"]));
+                        if (!directory.query_exists(null)) directory.make_directory_with_parents(null);
+                        Gio.AppInfo.launch_default_for_uri(
+                            directory.get_uri(),
+                            global.create_app_launch_context(0, -1),
+                        );
                     },
                 ],
-            ]) {
-                const button = new St.Button({ label, can_focus: true, style_class: "button" });
+            ];
+            let row;
+            for (const [index, [id, label, action]] of actions.entries()) {
+                if (index % 2 === 0) {
+                    row = new St.BoxLayout({ style: "spacing: 8px;" });
+                    row.layout_manager.homogeneous = true;
+                    this._panel.add_child(row);
+                }
+                const button = new St.Button({
+                    name: `gnoblin-recovery-${id}`,
+                    label,
+                    can_focus: true,
+                    x_expand: true,
+                    style_class: "button",
+                });
                 button.connect("clicked", () => {
                     try {
+                        this._message.hide();
                         action();
                     } catch (error) {
                         this._message.text = error.message;
+                        this._message.show();
                     }
                 });
-                actions.add_child(button);
+                row.add_child(button);
             }
-            this._panel.add_child(actions);
+            const close = new St.Button({
+                name: "gnoblin-recovery-dismiss",
+                label: _("Close"),
+                can_focus: true,
+                style_class: "button",
+            });
+            close.connect("clicked", () => {
+                this._dismissed = true;
+                this._panel.hide();
+            });
+            this._panel.add_child(close);
             Main.layoutManager.addTopChrome(this._panel);
         }
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) return;
-        this._panel.width = Math.min(540, monitor.width - 32);
+        this._panel.width = Math.min(400, monitor.width - 32);
         this._panel.set_position(monitor.x + (monitor.width - this._panel.width) / 2, monitor.y + 48);
         this._panel.show();
     }

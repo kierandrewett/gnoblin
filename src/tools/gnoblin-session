@@ -28,6 +28,59 @@ PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PREFIX/libexec/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 
+# D-Bus activation and systemd --user keep their own environment snapshot.
+# Update both before gnome-session can cause any session services to activate;
+# otherwise a service can inherit the previous desktop's session identity and
+# display.  Keep this list limited to session-routing variables: the private
+# Gnoblin library paths must not leak into every user service.
+gnoblin_sync_activation_environment() {
+    local activation_vars=(
+        GNOME_SHELL_SESSION_MODE
+        XDG_CURRENT_DESKTOP
+        XDG_SESSION_DESKTOP
+        XDG_SESSION_TYPE
+        WAYLAND_DISPLAY
+        DISPLAY
+        XAUTHORITY
+    )
+
+    if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+        if ! dbus-update-activation-environment --systemd "${activation_vars[@]}"; then
+            echo "gnoblin-session: could not update D-Bus activation environment" >&2
+        fi
+    fi
+}
+
+# GOA is D-Bus activated as a transient user service, so it is not necessarily
+# stopped when the previous GNOME session ends.  A surviving GOA instance can
+# retain proxies for the previous Secret Service instance and report the
+# misleading "Failed to retrieve credentials from the keyring" error.  Stop
+# only GOA and its Identity helper; they will be reactivated on demand after
+# the environment above has been imported.  Leave Secret Service itself alone
+# so existing keyring state and connections are not disturbed.
+gnoblin_reset_online_accounts_services() {
+    local units unit
+
+    command -v systemctl >/dev/null 2>&1 || return 0
+
+    units="$(systemctl --user list-units --all --plain --no-legend \
+        'dbus-*-org.gnome.OnlineAccounts@*.service' \
+        'dbus-*-org.gnome.Identity@*.service' 2>/dev/null || true)"
+
+    while read -r unit _; do
+        case "$unit" in
+            dbus-*-org.gnome.OnlineAccounts@*.service|dbus-*-org.gnome.Identity@*.service)
+                if ! systemctl --user stop "$unit"; then
+                    echo "gnoblin-session: could not stop stale $unit" >&2
+                fi
+                ;;
+        esac
+    done <<< "$units"
+}
+
+gnoblin_sync_activation_environment
+gnoblin_reset_online_accounts_services
+
 # gnome-session normally re-executes through the user's login shell. NixOS
 # login profiles rebuild XDG_DATA_DIRS and remove this package's session file,
 # so keep the runtime environment established above for the session manager.

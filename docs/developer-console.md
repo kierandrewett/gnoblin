@@ -12,7 +12,7 @@ Implementation checklist:
 top-edge modal above the Shell chrome, with a multiline input, retained
 bindings, top-level `await`, result history (`r(id)` and `$_`), completion,
 syntax highlighting, inline object expansion and selectable stack traces.
-The initial view contains a prompt and a Help button. Suggestions appear while typing;
+The initial view contains a prompt and JavaScript/Lua language tabs. Suggestions appear while typing;
 Up/Down selects a suggestion and Tab or Enter accepts it. Enter otherwise
 evaluates, Shift+Enter inserts a newline, and Ctrl+L clears the transcript. `Escape` first dismisses suggestions and returns focus to the prompt. A second
 press closes the console. With no suggestions, it closes immediately, including
@@ -70,14 +70,20 @@ reflect changes since evaluation. Lua retains at most 4,096 inspection handles;
 
 ## Live configuration and API help
 
-Click Help or enter `:help` in either language. In JavaScript, `help("set")`
-shows a specific API signature and example. Suggestions show API signatures or
-runtime property types. Accessors are never evaluated to produce suggestions.
-Parameter help stays visible while entering a known `gnoblin` call.
+Enter `:help` in either language. In JavaScript, `help("set")`
+shows a specific API signature and example. Empty prompts list available globals.
+Suggestions show names and types; the selected item
+shows its signature beside the list. Accessors are never evaluated to produce suggestions.
+Parameter help shows types, emphasises the current argument and adds a short
+description below the signature. Parameter names, types and descriptions come from API metadata. Suggestions show
+the selected signature and documentation in an adjacent pane. Nested calls,
+strings and comments preserve argument tracking. F1 shows documentation below the
+prompt without adding transcript output. Syntax errors appear below the prompt.
 `gnoblin.set("shell.la` suggests supported configuration paths.
-This uses runtime completion and built-in API documentation; no language server
-is launched. Arbitrary GI methods have runtime names and types, but do not yet
-have generated parameter documentation or static type diagnostics.
+This uses an embedded language service; no external language server is launched.
+GNOME API signatures and parameter types come from installed GObject
+Introspection metadata for Gio, GLib, GObject, Meta, Shell, St, Clutter and Pango.
+This is runtime assistance and syntax checking, not static type checking.
 
 ```javascript
 gnoblin.get(); // Copy of the effective document

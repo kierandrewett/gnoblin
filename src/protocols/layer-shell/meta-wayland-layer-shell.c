@@ -117,10 +117,14 @@ G_DEFINE_TYPE(MetaWaylandLayerSurface, meta_wayland_layer_surface, META_TYPE_WAY
 
 /* ------------------------------------------------------------------ */
 
-/* Shell menus borrow keyboard input without changing the active application.
- * Normal exclusive panels (terminals, launchers) retain their focus semantics. */
-static gboolean is_shell_menu(MetaWaylandLayerSurface* layer_surface) {
-    return g_strcmp0(layer_surface->namespace, "gnoblin-shell-popup") == 0;
+/* Exclusive layers borrow keyboard input without activating a window.
+ * On-demand layers retain normal user-directed focus semantics. */
+static gboolean preserve_active_window = TRUE;
+
+static gboolean borrows_keyboard(MetaWaylandLayerSurface* layer_surface) {
+    return layer_surface->current.keyboard_interactivity !=
+               ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND &&
+           preserve_active_window;
 }
 
 static MetaWaylandSurface* menu_get_focus_surface(MetaWaylandEventHandler* handler,
@@ -458,8 +462,8 @@ static void apply_window_type_and_layer(MetaWaylandLayerSurface* layer_surface,
         window_type = META_WINDOW_DOCK;
 
     keyboard_focusable =
-        !is_shell_menu(layer_surface) && layer_surface->current.keyboard_interactivity !=
-                                             ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+        !borrows_keyboard(layer_surface) && layer_surface->current.keyboard_interactivity !=
+                                                ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
 
     /* Buffer commits are frequent. Window properties change only when layer or
      * keyboard state changes, so avoid expensive compositor work for a frame
@@ -891,7 +895,10 @@ static void layer_surface_resource_destroy(struct wl_resource* resource) {
 
 static void focus_exclusive_layer_surface(MetaWaylandLayerSurface* layer_surface,
                                           MetaWaylandSurface* surface, MetaWindow* window) {
-    if (is_shell_menu(layer_surface)) {
+    if (!borrows_keyboard(layer_surface))
+        release_menu_keyboard(layer_surface);
+
+    if (borrows_keyboard(layer_surface)) {
         if (layer_surface->current.keyboard_interactivity ==
                 ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE &&
             meta_wayland_surface_get_buffer(surface)) {
@@ -1227,6 +1234,8 @@ static void bind_layer_shell(struct wl_client* client, void* data, uint32_t vers
 }
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
+    preserve_active_window = gnoblin_config_get_bool("layer-shell", "preserve-active-window", TRUE);
+
     if (!gnoblin_config_protocol_enabled("wlr-layer-shell")) {
         g_message("Gnoblin wlr-layer-shell protocol disabled by settings");
         return;

@@ -13,6 +13,8 @@ function assert(condition, message) {
 }
 
 assert(JSON.stringify(parseDocument({})) === JSON.stringify(DEFAULTS), "missing Lua keys use defaults");
+assert(parseDocument({shell: {"window-menu": ["binguxctl", "ipc", "shell", "windowMenu"]}})["window-menu"].length === 4,
+    "window menu command is configurable");
 const typed = parseDocument({
     shell: { "minimize-animation": "zoom", "minimize-target": [500, 900] },
     autostart: [{ name: "dock", command: ["qs", "-p", "/a path/with spaces"] }],
@@ -23,6 +25,9 @@ assert(
 );
 for (const document of [
     { shell: { osd: "false" } },
+    { shell: { "window-menu": "sh -c unsafe" } },
+    { shell: { "window-menu": [""] } },
+    { shell: { "window-menu": ["command", "bad\0arg"] } },
     { shell: { "minimize-duration": 5001 } },
     { shell: { "minimize-target": [1] } },
     { autostart: [{ name: "dock", command: "qs" }] },

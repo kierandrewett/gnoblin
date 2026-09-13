@@ -1,5 +1,6 @@
 import * as Permissions from "./gnoblinPermissions.js";
 import * as Corners from "./gnoblinCornerGeometry.js";
+import * as Frames from "./gnoblinFramePolicy.js";
 // Live shell settings. Protocol registration remains a compositor-startup operation.
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -21,6 +22,7 @@ export const FEATURE_KEYS = Object.freeze([
 export const DEFAULTS = Object.freeze({
     ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, null])),
     "window-switcher": false,
+    "window-menu": [],
     "minimize-animation": "zoom",
     "minimize-duration": 200,
     "minimize-target": null,
@@ -44,6 +46,7 @@ const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
     "shader",
     "shader-uniforms",
 ]);
+const BORDER_GEOMETRY_KEYS = Object.freeze(["radius", "smoothing", "padding"]);
 const STRING_MATCH_KEYS = new Set(["app-id", "title", "layer"]);
 const WINDOW_RULE_MATCHERS = new WeakMap();
 
@@ -64,6 +67,7 @@ function compileWindowRuleMatchers(rules) {
 
 export function parseDocument(document) {
     const next = { ...DEFAULTS };
+    Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== "object") throw new Error("shell must be a table");
@@ -73,7 +77,12 @@ export function parseDocument(document) {
             ["autostart", "window-rules", "shortcuts", "keybindings", "permissions"].includes(key)
         )
             throw new Error(`unknown shell setting: ${key}`);
-        if (FEATURE_KEYS.includes(key) || key === "window-switcher") {
+        if (key === "window-menu") {
+            if (!Array.isArray(value) || value.length > 32 ||
+                !value.every(arg => typeof arg === "string" && !arg.includes("\0")) ||
+                (value.length && !value[0]))
+                throw new Error("window-menu: expected a command argv or an empty array");
+        } else if (FEATURE_KEYS.includes(key) || key === "window-switcher") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
         } else if (key === "minimize-animation") {
             if (!["zoom", "fade", "none", "gnome"].includes(value))
@@ -146,6 +155,7 @@ export function parseDocument(document) {
                         "shader-uniforms",
                         "corners",
                         "borders",
+                        "frame",
                     ].includes(key),
             )
         )
@@ -162,6 +172,7 @@ export function parseDocument(document) {
         }
         if (rule.corners !== undefined) Corners.validate(rule.corners);
         if (rule.borders !== undefined) Corners.validateBorders(rule.borders);
+        if (rule.frame !== undefined) Frames.validate(rule.frame);
         if (rule.blur !== undefined && (!Number.isInteger(rule.blur) || rule.blur < 0 || rule.blur > 100))
             throw new Error("blur must be an integer from 0 to 100");
         if (rule["blur-ignore-shadows"] !== undefined && typeof rule["blur-ignore-shadows"] !== "boolean")
@@ -221,7 +232,9 @@ export function parseDocument(document) {
                 );
         }
     }
-    // Compile validated patterns once for this configuration.
+    // Compile validated regular expressions once per installed configuration.
+    // The WeakMap also recompiles when a replacement configuration supplies
+    // new rule or match objects.
     compileWindowRuleMatchers(rules);
     next["window-rules"] = rules;
     Object.assign(next, validateShortcuts(document));
@@ -630,7 +643,12 @@ export class ConfigFile {
     }
 
     get path() {
-        return this._override ?? GLib.build_filenamev([this._directory, "init.lua"]);
+        if (this._override) return this._override;
+        for (const name of ["init.lua", "gnoblin.toml", "gnoblin.conf"]) {
+            const candidate = GLib.build_filenamev([this._directory, name]);
+            if (GLib.file_test(candidate, GLib.FileTest.EXISTS)) return candidate;
+        }
+        return GLib.build_filenamev([this._directory, "init.lua"]);
     }
 
     reload() {
@@ -646,6 +664,13 @@ export class ConfigFile {
         } catch (error) {
             throw new Error(`${path}: ${error.message}`);
         }
+        const services = Object.fromEntries(
+            Object.entries(loaded.document["frame-renderers"] ?? {}).map(([name, argv]) => [
+                name,
+                new GLib.Variant("as", argv),
+            ]),
+        );
+        Meta.gnoblin_frame_renderers_configure(new GLib.Variant("a{sv}", services), true);
         this._apply(next);
         settings = next;
         this._document = cloneDocument(loaded.document);
@@ -811,6 +836,8 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
         shader: "",
         "shader-uniforms": {},
     };
+    effects.frame = { ...Frames.defaults };
+    let borderGeometryOverrides = null;
     for (const rule of config["window-rules"]) {
         let matches = true;
         for (const [key, matcher] of windowRuleMatchers(rule)) {
@@ -824,11 +851,27 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
             }
         }
         if (matches) {
+            if (rule.frame !== undefined) effects.frame = { ...effects.frame, ...rule.frame };
             if (rule.corners !== undefined) effects.corners = Corners.merge(effects.corners, rule.corners);
-            if (rule.borders !== undefined) effects.borders = { ...effects.borders, ...rule.borders };
+            if (rule.borders !== undefined) {
+                effects.borders = { ...effects.borders, ...rule.borders };
+                for (const key of BORDER_GEOMETRY_KEYS) {
+                    if (Object.hasOwn(rule.borders, key)) {
+                        borderGeometryOverrides ??= new Set();
+                        borderGeometryOverrides.add(key);
+                    }
+                }
+            }
             for (const key of WINDOW_RULE_EFFECT_KEYS) if (rule[key] !== undefined) effects[key] = rule[key];
         }
     }
+    // Keep the common case visually aligned: a border follows the clip's
+    // geometry unless a border rule explicitly opts into its own shape.
+    for (const key of BORDER_GEOMETRY_KEYS)
+        if (!borderGeometryOverrides?.has(key))
+            effects.borders[key] = Array.isArray(effects.corners[key])
+                ? [...effects.corners[key]]
+                : effects.corners[key];
     return effects;
 }
 

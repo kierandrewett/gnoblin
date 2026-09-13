@@ -17,7 +17,7 @@ Running a group on its own shows its available actions.
 | `monitor`     | `list`                                                                                                                                                                   |
 | `input`       | `list`, `current`, `select`                                                                                                                                              |
 | `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                      |
-| `script`      | `list`, `reload`                                                                                                                                                         |
+| `script`      | `list`                                                                                                                                                                   |
 | `permissions` | `list`, `check`                                                                                                                                                          |
 | `grant`       | `list`, `revoke`                                                                                                                                                         |
 | `launch`      | `status`, `begin`, `end`                                                                                                                                                 |

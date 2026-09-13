@@ -94,12 +94,36 @@ print("PASS: desktop right-click launches a real terminal with external shell st
 
 panel = f"{main}.layoutManager.uiGroup.get_children().find(a => a.name === 'gnoblin-recovery')"
 wait_for(f"Boolean({panel}?.visible)")
+
+
+def recovery_button(name):
+    return f"(() => {{ const find = actor => actor.name === 'gnoblin-recovery-{name}' ? actor : actor.get_children().map(find).find(Boolean); return find({panel}); }})()"
+
+
 if screenshot := os.environ.get("GNOBLIN_RECOVERY_SCREENSHOT"):
     subprocess.run(["grim", screenshot], check=True)
-click_actor(f"{panel}.get_children().at(-1).get_children()[0]")
+click_actor(recovery_button("terminal"))
 wait_for(f"Boolean({terminal})")
 evaluate(f"(() => {{ {terminal}.meta_window.delete(global.get_current_time()); return true; }})()")
 print("PASS: automatic recovery panel launches a real terminal")
+click_actor(recovery_button("console"))
+wait_for(f"Boolean({main}.devConsole?.isOpen)")
+evaluate(f"(() => {{ {main}.devConsole.close(true); return true; }})()")
+print("PASS: recovery opens the developer console")
+# The private bus deliberately omits desktop application activation services.
+# Start Files on that bus so the click can use the real application interface.
+with open(Path(os.environ["XDG_CONFIG_HOME"]) / "files.log", "w") as log:
+    files_service = subprocess.Popen(["nautilus", "--gapplication-service"], stdout=log, stderr=log)
+    try:
+        subprocess.run(["gdbus", "wait", "--session", "--timeout", "8", "org.gnome.Nautilus"], check=True)
+        click_actor(recovery_button("config"))
+        files = "global.get_window_actors().find(a => a.meta_window?.get_gtk_application_id() === 'org.gnome.Nautilus')"
+        wait_for(f"Boolean({files})")
+        evaluate(f"(() => {{ {files}.meta_window.delete(global.get_current_time()); return true; }})()")
+    finally:
+        files_service.terminate()
+        files_service.wait(timeout=5)
+print("PASS: recovery opens the config folder in Files")
 
 # A real layer client must dismiss the panel; its exit must restore it.
 qml = Path(os.environ["XDG_CONFIG_HOME"]) / "recovery-layer.qml"
@@ -121,7 +145,7 @@ with open(qml.with_suffix(".log"), "w+") as log:
         process.terminate()
         process.wait(timeout=5)
     wait_for(f"Boolean({panel}?.visible)")
-    click_actor(f"{panel}.get_children().at(-1).get_children().at(-1)")
+    click_actor(recovery_button("dismiss"))
     wait_for(f"!({panel}?.visible)")
     time.sleep(4)
     assert evaluate(f"!({panel}?.visible)"), "dismissal did not persist"

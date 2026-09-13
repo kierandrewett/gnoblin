@@ -14,7 +14,7 @@ index ab3ef77..c5c8f97 100644
  #include "shell-glsl-effect.h"
  
  #include "shell-global.h"
-@@ -21,10 +23,85 @@ typedef struct _ShellGLSLEffectPrivate ShellGLSLEffectPrivate;
+@@ -21,10 +23,92 @@ typedef struct _ShellGLSLEffectPrivate ShellGLSLEffectPrivate;
  struct _ShellGLSLEffectPrivate
  {
    CoglPipeline  *pipeline;
@@ -72,25 +72,32 @@ index ab3ef77..c5c8f97 100644
 +  if (priv->geometry_uniforms)
 +    {
 +      ClutterActor *actor = clutter_actor_meta_get_actor (CLUTTER_ACTOR_META (effect));
-+      CoglTexture *texture = clutter_offscreen_effect_get_texture (effect);
++      graphene_rect_t target;
 +      float scale = MAX (1.f, ceilf (clutter_actor_get_resource_scale (actor)));
-+      float width = priv->width < 0 ? clutter_actor_get_width (actor) : priv->width;
-+      float height = priv->height < 0 ? clutter_actor_get_height (actor) : priv->height;
-+      float geometry[5] = {
-+        1.f / scale,
-+        cogl_texture_get_width (texture) / scale,
-+        cogl_texture_get_height (texture) / scale,
-+        ceilf (width + .75f) - floorf (width + .5f) - 3.f,
-+        ceilf (height + .75f) - floorf (height + .5f) - 3.f,
-+      };
++      float geometry[5];
 +
-+      if (!priv->geometry_valid || memcmp (priv->geometry, geometry, sizeof geometry) != 0)
++      /* The redirected texture can be larger than the actor because the
++       * paint volume includes effect extents.  Its origin also changes with
++       * XWayland scaling.  Reconstructing that origin from actor dimensions
++       * loses the padding and leaves a stale rectangular edge while a window
++       * moves.  Clutter already has the exact mapping used to put this texture
++       * back on stage; use the same rectangle here. */
++      if (clutter_offscreen_effect_get_target_rect (effect, &target))
 +        {
-+          cogl_pipeline_set_uniform_float (priv->pipeline, priv->pixel_location, 1, 1, geometry);
-+          cogl_pipeline_set_uniform_float (priv->pipeline, priv->dimensions_location, 2, 1, geometry + 1);
-+          cogl_pipeline_set_uniform_float (priv->pipeline, priv->origin_location, 2, 1, geometry + 3);
-+          memcpy (priv->geometry, geometry, sizeof geometry);
-+          priv->geometry_valid = TRUE;
++          geometry[0] = 1.f / scale;
++          geometry[1] = target.size.width;
++          geometry[2] = target.size.height;
++          geometry[3] = target.origin.x;
++          geometry[4] = target.origin.y;
++
++          if (!priv->geometry_valid || memcmp (priv->geometry, geometry, sizeof geometry) != 0)
++            {
++              cogl_pipeline_set_uniform_float (priv->pipeline, priv->pixel_location, 1, 1, geometry);
++              cogl_pipeline_set_uniform_float (priv->pipeline, priv->dimensions_location, 2, 1, geometry + 1);
++              cogl_pipeline_set_uniform_float (priv->pipeline, priv->origin_location, 2, 1, geometry + 3);
++              memcpy (priv->geometry, geometry, sizeof geometry);
++              priv->geometry_valid = TRUE;
++            }
 +        }
 +    }
 +
@@ -123,4 +130,3 @@ index ae39169..333a90e 100644
  void shell_glsl_effect_add_glsl_snippet (ShellGLSLEffect  *effect,
                                           CoglSnippetHook   hook,
                                           const char       *declarations,
-

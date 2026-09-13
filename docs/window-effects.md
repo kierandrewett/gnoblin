@@ -8,7 +8,13 @@ to load the native code. Subsequent rule and shader edits do not need a restart.
 For Bingux's dock, search and shared context menus:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "layer", layer = "^(bingux-dock|bingux-search|gnoblin-shell-popup)$"}, blur = 24, opacity = 1.0}}})
+g.set({["window-rules"] = {{
+    match = {type = "layer", layer = "^(bingux-dock|bingux-search|gnoblin-shell-popup)$"},
+    blur = 24, opacity = 1.0,
+    -- Optional custom effect, relative to this config file:
+    -- shader = "shaders/tint.frag",
+    -- ["shader-uniforms"] = {strength = 0.08},
+}}})
 ```
 
 Client backgrounds must have some transparency for background blur to show.
@@ -118,7 +124,12 @@ CPU usage with applications running.
 Rounding is built into Gnoblin's window rules; no extension is required. For example:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "window"}, corners = {radius = 14, smoothing = 0.6}}, {match = {["app-id"] = "^my-game$"}, corners = {mode = "off"}}, {match = {type = "window", focused = false}, corners = {shadow = {blur = 24, opacity = 0.25}}}, {match = {type = "window", focused = true}, corners = {shadow = {blur = 28, opacity = 0.5}}}}})
+g.set({["window-rules"] = {
+    {match = {type = "window"}, corners = {radius = 14, smoothing = 0.6}},
+    {match = {["app-id"] = "^my-game$"}, corners = {mode = "off"}},
+    {match = {type = "window", focused = false}, corners = {shadow = {blur = 24, opacity = 0.25}}},
+    {match = {type = "window", focused = true}, corners = {shadow = {blur = 28, opacity = 0.5}}},
+}})
 ```
 
 Later rules merge individual corner settings, including individual shadow fields.
@@ -126,20 +137,22 @@ Use existing app-ID/title matchers for exceptions and `focused` for active/inact
 borders and shadows. Desktop surfaces, menus and override-redirect windows are
 excluded. The setting has no effect until `radius` is greater than zero.
 
-| Setting                                           | Default                                       | Meaning                                                                                                                                                |
-| ------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `radius`                                          | `0`                                           | Corner radius in logical pixels, 0–200; zero disables rounding.                                                                                        |
-| `smoothing`                                       | `0`                                           | 0–1; circular through progressively smoother superellipse corners, using Reborn's parameterisation.                                                    |
-| `mode`                                            | `"auto"`                                      | `auto` preserves existing transparent/rounded corners; `force` applies the requested mask; `off` disables it.                                          |
-| `padding`                                         | `[0, 0, 0, 0]`                                | Top, right, bottom, left inset from the compositor's window frame, −128–128 logical pixels.                                                            |
-| `border-width`                                    | `0`                                           | −40–40 pixels. Positive draws inside, negative outside; zero disables. Outset borders need space within the surface buffer, or an inset via `padding`. |
-| `border-color`                                    | `"#808080ff"`                                 | `#RRGGBB` or `#RRGGBBAA`.                                                                                                                              |
-| `keep-maximized`, `keep-fullscreen`, `keep-tiled` | `false`                                       | Keep rounding in those window states.                                                                                                                  |
-| `skip-libadwaita`                                 | `true`                                        | Preserve libadwaita corners in automatic mode.                                                                                                         |
-| `skip-libhandy`                                   | `false`                                       | Skip libhandy applications in automatic mode.                                                                                                          |
-| `shadow`                                          | `false`                                       | Optional table: `x`, `y`, `blur`, `spread`, `opacity`, `color`.                                                                                        |
-| `shadow-animation`                                | `{ duration = 0, easing = "ease-out-cubic" }` | Fade between shadow styles. Duration: 0–2000 ms. Easing: `linear`, `ease-out-cubic`, `ease-out-quad`, `ease-in-out-cubic`. Respects reduced motion.    |
-| `keep-shadow`                                     | `false`                                       | Keep the replacement shadow in maximized, fullscreen or tiled states.                                                                                  |
+| Setting                         | Default                                       | Meaning                                                                                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `radius`                        | `0`                                           | Corner radius in logical pixels, 0–200; zero disables rounding. In a border rule, omitted means inherit `corners.radius`.                                                                                                     |
+| `smoothing`                     | `0`                                           | 0–1; circular through a progressively squarer, continuous-corner approximation. The requested radius stays fixed; omitted in a border rule means inherit `corners.smoothing`. This is not Apple's private `.continuous` path. |
+| `mode`                          | `"auto"`                                      | `auto` preserves existing transparent/rounded corners; `force` applies the requested mask; `off` disables it.                                                                                                                 |
+| `padding`                       | `[0, 0, 0, 0]`                                | Top, right, bottom, left inset from the compositor's window frame, −128–128 logical pixels; border rules inherit the corner padding when omitted.                                                                             |
+| `border-width`                  | `0`                                           | −40–40 pixels. Positive draws inside, negative outside; zero disables. Outset borders need space within the surface buffer, or an inset via `padding`.                                                                        |
+| `border-color`                  | `"#808080ff"`                                 | `#RRGGBB` or `#RRGGBBAA`.                                                                                                                                                                                                     |
+| `keep-maximized`                | `true`                                        | Keep rounding when a window is maximized.                                                                                                                                                                                     |
+| `keep-fullscreen`, `keep-tiled` | `false`                                       | Keep rounding in those window states when set to true.                                                                                                                                                                        |
+| `skip-libadwaita`               | `true`                                        | Preserve libadwaita corners in automatic mode.                                                                                                                                                                                |
+| `skip-libhandy`                 | `false`                                       | Skip libhandy applications in automatic mode.                                                                                                                                                                                 |
+| `remove-csd`                    | `false`                                       | Opt into conservative removal of client-rendered rounded corners.                                                                                                                                                             |
+| `shadow`                        | `false`                                       | Optional table: `x`, `y`, `blur`, `spread`, `opacity`, `color`.                                                                                                                                                               |
+| `shadow-animation`              | `{ duration = 0, easing = "ease-out-cubic" }` | Fade between shadow styles. Duration: 0–2000 ms. Easing: `linear`, `ease-out-cubic`, `ease-out-quad`, `ease-in-out-cubic`. Respects reduced motion.                                                                           |
+| `keep-shadow`                   | `false`                                       | Keep the replacement shadow in maximized, fullscreen or tiled states.                                                                                                                                                         |
 
 ## Inner and outer window borders
 
@@ -147,10 +160,15 @@ Gnoblin and Bingux leave compositor borders disabled by default. To opt into
 one 1px grey inner stroke, use this window rule:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "window"}, borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000", radius = 14, smoothing = 0.0}}}})
+g.set({["window-rules"] = {{
+    match = {type = "window"},
+    borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000"},
+}}})
 ```
 
 Edit `~/.config/gnoblin/init.lua`; valid changes reload automatically.
+Border rules inherit `radius`, `smoothing` and `padding` from the effective
+corner rule unless they set those fields explicitly.
 Colours use `#RRGGBB` or `#RRGGBBAA`, with alpha last (unlike QML).
 Widths accept 0 to 40 logical pixels. Set both widths to zero to disable them.
 Radius accepts 0 to 200, smoothing 0 to 1, and padding is
@@ -158,23 +176,39 @@ Radius accepts 0 to 200, smoothing 0 to 1, and padding is
 
 Borders do not clip the application, change its input region or reserve space.
 The outer stroke extends beyond the frame. Both strokes follow the window actor
-through animations. By default they disappear when maximized, fullscreen or
-tiled. Set `keep-maximized`, `keep-fullscreen` or `keep-tiled` to true to retain
-them. Later matching rules override only the border fields they specify.
+through animations and remain visible when a window fills its work area. Set
+`keep-maximized`, `keep-fullscreen` or `keep-tiled` to false to suppress a
+stroke in one of those states. Later matching rules override only the border
+fields they specify.
 
-Bingux requests real clipping with the same 14px circular shape as its borders:
+Bingux requests real clipping with the same shape as its borders:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "window"}, corners = {radius = 14, smoothing = 0.0, mode = "force", shadow = {blur = 24, spread = 0, opacity = 0.35}}, borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000", radius = 14, smoothing = 0.0}}}})
+g.set({["window-rules"] = {{
+    match = {type = "window"},
+    corners = {radius = 14, smoothing = 0.0, mode = "force", shadow = {blur = 24, spread = 0, opacity = 0.35}},
+    borders = {["inner-width"] = 1, ["inner-color"] = "#505050ff", ["outer-width"] = 0, ["outer-color"] = "#00000000"},
+}}})
 ```
 
 Force mode removes the original client shadow outside the frame, including
 when `shadow = false`. Disabling the replacement shadow does not restore the
 rectangular client shadow around the rounded border. Automatic mode preserves
 the client shadow unless a replacement shadow is configured.
-Keep radius, smoothing and padding equal for clipping and borders. Force mode
-clips the client even when it already draws corners; automatic mode preserves
-native corners and can leave a different curve underneath a configured border.
+Borders inherit radius, smoothing and padding from clipping unless explicitly
+overridden. Force mode clips the client even when it already draws corners;
+automatic mode preserves native corners and can leave a different curve
+underneath a configured border.
+Set `remove-csd = true` to opt into the intelligent CSD corner remover while
+retaining `mode = "auto"`. It detects a sharp, stable client alpha edge and
+samples nearby colour/alpha patches in the GPU shader on every painted client
+frame. Two patches must agree before their distance-weighted colour is used.
+The shader replaces the transparent gap, client shadow and narrow original
+curved outline before applying Gnoblin's shape. Opaque content away from that
+edge is retained. Colour is not cached between client frames and there is no
+per-frame CPU readback. Uncertain/noisy backgrounds are left native. Geometry
+discovery is cached until frame geometry/state changes. This is intended for GNOME
+Libadwaita-style CSD and is disabled by default.
 `tests/test-window-shadow-clipping.py` verifies both shadow policies with
 rendered pixels in a private compositor.
 
@@ -193,7 +227,13 @@ list; single-table rules retain their existing field-merge behaviour.
 Bingux uses a softer inactive shadow and this deeper focused-window treatment:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "window", focused = true}, corners = {shadow = {{x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22}, {x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28}}}}}})
+g.set({["window-rules"] = {{
+    match = {type = "window", focused = true},
+    corners = {shadow = {
+        {x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22},
+        {x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28},
+    }},
+}}})
 ```
 
 The broad layer provides depth; the smaller layer defines the edge. These are
@@ -203,7 +243,10 @@ The current inner border uses `#505050bf` (approximately 75% alpha).
 Shadow fades can be enabled independently of the shadow layers:
 
 ```lua
-g.set({["window-rules"] = {{match = {type = "window"}, corners = {["shadow-animation"] = {duration = 180, easing = "ease-out-cubic"}}}}})
+g.set({["window-rules"] = {{
+    match = {type = "window"},
+    corners = {["shadow-animation"] = {duration = 180, easing = "ease-out-cubic"}},
+}}})
 ```
 
 The compositor crossfades complete shadow styles, including changes to blur,

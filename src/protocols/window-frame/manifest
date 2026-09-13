@@ -1,0 +1,5 @@
+mutter meta-gnoblin-window-frame.c src/wayland/meta-gnoblin-window-frame.c
+mutter meta-gnoblin-window-frame.h src/wayland/meta-gnoblin-window-frame.h
+mutter meta-gnoblin-frame-renderer.c src/wayland/meta-gnoblin-frame-renderer.c
+mutter meta-gnoblin-frame-renderer.h src/wayland/meta-gnoblin-frame-renderer.h
+mutter gnoblin-window-frame-v1.xml src/wayland/protocol/gnoblin-window-frame-v1.xml

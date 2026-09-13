@@ -1,0 +1,59 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] Expose padded offscreen texture bounds for exact frame masks
+
+diff --git a/clutter/clutter/clutter-offscreen-effect.c b/clutter/clutter/clutter-offscreen-effect.c
+index 8a046e5..7feab16 100644
+--- a/clutter/clutter/clutter-offscreen-effect.c
++++ b/clutter/clutter/clutter-offscreen-effect.c
+@@ -735,6 +735,38 @@ clutter_offscreen_effect_create_texture (ClutterOffscreenEffect *effect,
+                                                                       height);
+ }
+ 
++/**
++ * clutter_offscreen_effect_get_target_rect:
++ * @effect: an offscreen effect
++ * @rect: (out): texture bounds in actor coordinates, including effect padding
++ *
++ * Query from paint_target when mapping texture coordinates back to the actor.
++ * Returns: whether a texture is available
++ */
++gboolean
++clutter_offscreen_effect_get_target_rect (ClutterOffscreenEffect *effect,
++                                          graphene_rect_t       *rect)
++{
++  ClutterOffscreenEffectPrivate *priv =
++    clutter_offscreen_effect_get_instance_private (effect);
++  graphene_matrix_t transform;
++  graphene_rect_t pixels;
++  float unscale;
++
++  if (!priv->texture || !priv->actor)
++    return FALSE;
++  unscale = 1.0f / clutter_actor_get_resource_scale (priv->actor);
++  graphene_matrix_init_scale (&transform, unscale, unscale, 1.0f);
++  graphene_matrix_translate (&transform,
++                            &GRAPHENE_POINT3D_INIT (priv->fbo_offset_x,
++                                                    priv->fbo_offset_y, 0));
++  graphene_rect_init (&pixels, 0, 0,
++                      cogl_texture_get_width (priv->texture),
++                      cogl_texture_get_height (priv->texture));
++  graphene_matrix_transform_bounds (&transform, &pixels, rect);
++  return TRUE;
++}
++
+ /**
+  * clutter_offscreen_effect_get_target_size:
+  * @effect: a #ClutterOffscreenEffect
+diff --git a/clutter/clutter/clutter-offscreen-effect.h b/clutter/clutter/clutter-offscreen-effect.h
+index b0d5d29..abd076f 100644
+--- a/clutter/clutter/clutter-offscreen-effect.h
++++ b/clutter/clutter/clutter-offscreen-effect.h
+@@ -87,4 +87,8 @@ gboolean        clutter_offscreen_effect_get_target_size        (ClutterOffscree
+                                                                  gfloat                 *width,
+                                                                  gfloat                 *height);
+ 
++CLUTTER_EXPORT
++gboolean clutter_offscreen_effect_get_target_rect (ClutterOffscreenEffect *effect,
++                                                    graphene_rect_t       *rect);
++
+ G_END_DECLS

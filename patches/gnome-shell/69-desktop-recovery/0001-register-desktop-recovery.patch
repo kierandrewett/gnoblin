@@ -11,4 +11,4 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 +    <file>ui/components/gnoblinRecovery.js</file>
      <file>ui/components/gnoblinConsole.js</file>
      <file>ui/components/gnoblinConsoleEvaluator.js</file>
-     <file>ui/components/keyring.js</file>
+     <file>ui/components/gnoblinConsoleIntrospection.js</file>

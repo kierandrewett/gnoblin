@@ -1,3 +1,5 @@
+import Gio from "gi://Gio";
+import { createGjsIntrospector } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConsoleIntrospection.js";
 import {
     ConsoleEvaluator,
     isInspectable,
@@ -190,3 +192,71 @@ print("PASS: dynamic import declarations retain complete source spans");
 
 await value(evaluator, "(() => { return 42; })()", 42);
 await value(evaluator, "(42);", 42);
+
+const giEvaluator = new ConsoleEvaluator({ Gio }, { introspector: createGjsIntrospector({ Gio }) });
+assert(
+    giEvaluator
+        .complete("Gio.File.new_for")
+        .items.some((item) => item.label === "new_for_path" && item.detail.includes("path: filename")),
+    "GI completions carry typelib signatures",
+);
+assert(giEvaluator.hover("Gio.File.new_for_path").contents.includes("Gio.File"), "GI hover includes return type");
+assert(
+    giEvaluator.signatureHelp("Gio.File.new_for_path(").signatures[0].parameters[0].label === "path: filename",
+    "GI signature help includes parameters",
+);
+assert(giEvaluator.diagnostics("let = ;")[0].code === "syntax", "syntax diagnostics do not evaluate input");
+print("PASS: GNOME introspection completion, hover, signature help and syntax diagnostics");
+
+const callEvaluator = new ConsoleEvaluator(
+    {},
+    {
+        signatures: {
+            call: {
+                label: "call(first, second, third)",
+                parameters: [{ label: "first" }, { label: "second" }, { label: "third" }],
+            },
+            inner: { label: "inner(value)", parameters: [{ label: "value" }] },
+        },
+    },
+);
+for (const source of [
+    "call(inner(1), ",
+    'call("a,b", ',
+    "call({a: 1, b: 2}, ",
+    "call([1, 2], ",
+    "call(`a,b`, ",
+    "call(1 /* , ignored */, ",
+])
+    assert(callEvaluator.signatureHelp(source).activeParameter === 1, `nested argument tracking: ${source}`);
+assert(
+    callEvaluator.signatureHelp("call(1, inner(").signatures[0].label === "inner(value)",
+    "innermost call owns parameter help",
+);
+assert(
+    callEvaluator.signatureHelp("call(1, 2, 3", 7).activeParameter === 1,
+    "caret position controls the active argument",
+);
+assert(callEvaluator.signatureHelp("call(1, 2)") === null, "closed calls dismiss parameter help");
+assert(callEvaluator.diagnostics("call(").length === 0, "incomplete call does not flash a syntax error");
+print("PASS: active arguments follow the caret, nested calls, strings, arrays, objects and comments");
+
+assert(
+    evaluator.complete("").items.some((item) => item.label === "answer"),
+    "empty prompt offers globals",
+);
+assert(!evaluator.complete("").items.some((item) => item.label === "__gnoblin"), "internal evaluator stays hidden");
+assert(evaluator.complete("  ").items.length > 0, "whitespace prompt offers globals");
+
+const rankedObject = Object.create({ inheritedMethod() {} });
+rankedObject.zApi = () => {};
+rankedObject.__internal = true;
+const ranked = new ConsoleEvaluator({ rankedObject }).complete("rankedObject.").items.map((item) => item.label);
+assert(ranked[0] === "zApi", "own API members precede inherited members");
+assert(ranked.indexOf("inheritedMethod") < ranked.indexOf("__internal"), "dunder members follow inherited members");
+assert(
+    new ConsoleEvaluator({ rankedObject })
+        .complete("rankedObject.__")
+        .items.some((item) => item.label === "__internal"),
+    "dunder members remain searchable",
+);

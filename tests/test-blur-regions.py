@@ -98,7 +98,7 @@ export default function(api) {
  api._disposers.push(() => GLib.source_remove(timer));
 }
 """)
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
 log = (fixture / "runtime.log").open("w")
 qs = os.environ.get("GNOBLIN_QS", "qs")
 proc = subprocess.Popen([qs, "-p", str(fixture)], stdout=log, stderr=log)

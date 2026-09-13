@@ -12,6 +12,7 @@
 #include "wayland/meta-gnoblin-protocols.h"
 
 #include "wayland/meta-wayland-data-control.h"
+#include "wayland/meta-gnoblin-window-frame.h"
 #include "wayland/meta-wayland-blur-fade.h"
 #include "wayland/meta-wayland-background-effect.h"
 #include "wayland/meta-wayland-foreign-toplevel-list.h"
@@ -21,6 +22,7 @@
 #include "wayland/meta-wayland-output-power-management.h"
 
 void meta_gnoblin_init_protocols(MetaWaylandCompositor* compositor) {
+    meta_gnoblin_window_frame_init(compositor);
     meta_wayland_init_idle_notify(compositor);
     meta_wayland_init_foreign_toplevel_list(compositor);
     meta_wayland_init_foreign_toplevel_management(compositor);

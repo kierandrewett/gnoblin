@@ -161,10 +161,20 @@ export function isInspectable(value) {
 export class ConsoleEvaluator {
     constructor(
         bindings = {},
-        { onLog = () => {}, onInspect = () => {}, onClear = () => {}, documentation = {}, configurationKeys = [] } = {},
+        {
+            onLog = () => {},
+            onInspect = () => {},
+            onClear = () => {},
+            documentation = {},
+            signatures = {},
+            configurationKeys = [],
+            introspector = null,
+        } = {},
     ) {
         this._documentation = documentation;
+        this._signatures = signatures;
         this._configurationKeys = configurationKeys;
+        this._introspector = introspector;
         this._values = Object.create(null);
         this._kinds = new Map();
         this._results = [];
@@ -338,8 +348,8 @@ export class ConsoleEvaluator {
             };
         }
         const match = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\.?)$/);
-        if (!match) return { start: cursor, end: cursor, items: [] };
-        const path = match[1].split(".");
+        if (!match && before.trim()) return { start: cursor, end: cursor, items: [] };
+        const path = (match?.[1] ?? "").split(".");
         const prefix = path.pop();
         let object = this._scope;
         for (const name of path) {
@@ -350,22 +360,177 @@ export class ConsoleEvaluator {
             if (!isInspectable(object)) return { start: cursor - prefix.length, end: cursor, items: [] };
         }
         const target = object;
+        const ownNames = new Set(Object.getOwnPropertyNames(target));
         const names = new Set();
         while (object && names.size < 500) {
             Object.getOwnPropertyNames(object).forEach((name) => names.add(name));
             object = Object.getPrototypeOf(object);
         }
         const items = [...names]
-            .filter((name) => name.startsWith(prefix))
-            .sort()
+            .filter((name) => name.startsWith(prefix) && name !== "__gnoblin")
+            .sort((left, right) => {
+                const rank = (name) => (name.startsWith("__") ? 2 : ownNames.has(name) ? 0 : 1);
+                return rank(left) - rank(right) || left.localeCompare(right);
+            })
             .map((name) => {
                 const descriptor = propertyDescriptor(target, name);
+                const fullPath = [...path, name].join(".");
+                const metadata = this._introspector?.describe(fullPath);
                 const detail =
-                    this._documentation[[...path, name].join(".")] ??
+                    this._documentation[fullPath]?.signature ??
+                    this._documentation[fullPath]?.label ??
+                    this._documentation[fullPath]?.detail ??
+                    metadata?.label ??
+                    metadata?.detail ??
+                    this._documentation[fullPath] ??
                     (descriptor && "value" in descriptor ? typeof descriptor.value : "accessor");
-                return { label: name, value: name, detail };
+                return {
+                    label: name,
+                    value: name,
+                    detail,
+                    kind:
+                        metadata?.kind ?? (descriptor && "value" in descriptor ? typeof descriptor.value : "property"),
+                    documentation: metadata?.documentation ?? this._documentation[fullPath]?.documentation,
+                };
             });
         return { start: cursor - prefix.length, end: cursor, items };
+    }
+
+    _documentationFor(path) {
+        const value = this._documentation[path];
+        if (!value) return null;
+        return typeof value === "string" ? { documentation: value } : value;
+    }
+
+    _resolve(path) {
+        let object = this._scope;
+        for (const name of String(path).split(".").filter(Boolean)) {
+            const descriptor = propertyDescriptor(object, name);
+            if (!descriptor || !("value" in descriptor)) return null;
+            object = descriptor.value;
+        }
+        return object;
+    }
+
+    _tokenAt(text, cursor = text.length) {
+        cursor = Math.max(0, Math.min(text.length, cursor));
+        const before = text.slice(0, cursor);
+        const after = text.slice(cursor);
+        const left = before.match(/[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/)?.[0] ?? "";
+        const right = after.match(/^[A-Za-z_$][\w$]*/)?.[0] ?? "";
+        if (!left && !right) return null;
+        return {
+            path: left + right,
+            start: cursor - left.length,
+            end: cursor + right.length,
+        };
+    }
+
+    hover(text, cursor = text.length) {
+        const token = this._tokenAt(text, cursor);
+        if (!token) return null;
+        const metadata = this._introspector?.describe(token.path);
+        const documentation = this._documentationFor(token.path);
+        const value = this._resolve(token.path);
+        if (!metadata && !documentation && value === null) return null;
+        const detail =
+            documentation?.signature ??
+            documentation?.label ??
+            documentation?.detail ??
+            metadata?.label ??
+            metadata?.detail;
+        const description = documentation?.documentation ?? metadata?.documentation;
+        const runtime = !detail && value !== null ? `${token.path}: ${typeof value}` : null;
+        return {
+            range: { start: token.start, end: token.end },
+            contents: [detail, description, runtime].filter(Boolean).join("\n"),
+        };
+    }
+
+    signatureHelp(text, cursor = text.length) {
+        const before = text.slice(0, cursor);
+        const stack = [];
+        let quote = null;
+        let comment = null;
+        for (let index = 0; index < before.length; index++) {
+            const character = before[index];
+            const next = before[index + 1];
+            if (comment === "line") {
+                if (character === "\n") comment = null;
+                continue;
+            }
+            if (comment === "block") {
+                if (character === "*" && next === "/") {
+                    comment = null;
+                    index++;
+                }
+                continue;
+            }
+            if (quote) {
+                if (character === "\\") index++;
+                else if (character === quote) quote = null;
+                continue;
+            }
+            if (character === "/" && next === "/") {
+                comment = "line";
+                index++;
+                continue;
+            }
+            if (character === "/" && next === "*") {
+                comment = "block";
+                index++;
+                continue;
+            }
+            if (['"', "'", "`"].includes(character)) {
+                quote = character;
+                continue;
+            }
+            if ("([{".includes(character)) {
+                const path =
+                    character === "("
+                        ? before.slice(0, index).match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*$/)?.[1]
+                        : null;
+                stack.push({ character, path, parameter: 0, start: index + 1 });
+            } else if (")]}".includes(character)) {
+                stack.pop();
+            } else if (character === "," && stack.at(-1)?.character === "(") {
+                stack.at(-1).parameter++;
+                stack.at(-1).start = index + 1;
+            }
+        }
+        const call = stack.findLast((frame) => frame.character === "(" && frame.path);
+        if (!call) return null;
+        const entry = this._signatures[call.path] ?? this._introspector?.signature(call.path);
+        if (!entry) return null;
+        const signature = typeof entry === "string" ? { label: entry, parameters: [] } : entry;
+        return {
+            signatures: [signature],
+            activeSignature: 0,
+            activeParameter: call.parameter,
+            argumentRange: { start: call.start, end: cursor },
+        };
+    }
+
+    diagnostics(text) {
+        if (!text.trim()) return [];
+        try {
+            parseProgram(text);
+            return [];
+        } catch (error) {
+            // Do not show a red error for a normal half-written call or
+            // declaration. The submitted evaluation still reports real errors.
+            if (/(?:[=({[.,:]|\b(?:const|let|var))\s*$/.test(text)) return [];
+            const position = Math.max(0, Math.min(text.length, Number(error.columnNumber) || text.length));
+            return [
+                {
+                    range: { start: position, end: position },
+                    severity: 1,
+                    source: "gnoblin-console",
+                    code: "syntax",
+                    message: error.message,
+                },
+            ];
+        }
     }
 
     properties(value, offset = 0, limit = 100, receiver = value) {
@@ -484,10 +649,12 @@ export class LuaConsoleEvaluator {
     }
 
     complete(text, cursor = text.length) {
-        const match = text.slice(0, cursor).match(/([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*\.?)$/);
-        if (!match) return { start: cursor, end: cursor, items: [] };
-        const prefix = match[0].split(".").at(-1);
-        const reply = this._invoke("complete", match[0]);
+        const before = text.slice(0, cursor);
+        const match = before.match(/([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*\.?)$/);
+        if (!match && before.trim()) return { start: cursor, end: cursor, items: [] };
+        const path = match?.[0] ?? "";
+        const prefix = path.split(".").at(-1);
+        const reply = this._invoke("complete", path);
         return {
             start: cursor - prefix.length,
             end: cursor,
@@ -499,7 +666,7 @@ export class LuaConsoleEvaluator {
                         set: "set(table) — merge into the working config; :apply makes it live",
                         load: "load(path_or_glob) — load relative to the config directory",
                         config: "table — working config; :apply validates and applies it",
-                    }[match[0].startsWith("gnoblin.") ? name : ""] ?? "",
+                    }[path.startsWith("gnoblin.") ? name : ""] ?? "",
             })),
         };
     }

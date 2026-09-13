@@ -80,6 +80,17 @@ function consoleState() {
     const focus = global.stage.get_key_focus();
     return {
         input: console?._entry.get_text() ?? '',
+        scrollPosition: console?._scroll.vadjustment.value ?? 0,
+        assist: console?._signature?.text ?? '',
+        signatureAttributes: console?._signature?.clutter_text.get_layout()?.get_attributes()?.to_string() ?? '',
+        argumentHint: console?._parameterHint?.text ?? '',
+        argumentHintVisible: Boolean(console?._parameterHint?.visible),
+        suggestionDetail: console?._completionDetail?.text ?? '',
+        suggestionDocumentation: console?._completionDocumentation?.text ?? '',
+        suggestionDocsX: console?._completionDocs?.get_transformed_position()[0] ?? 0,
+        suggestionListX: console?._completions?.get_transformed_position()[0] ?? 0,
+        tabs: console?._tabs?.get_children().map(child => child.label) ?? [],
+        diagnostic: console?._diagnostic?.text ?? '',
         attributes: console?._entry.clutter_text.get_attributes()?.to_string() ?? '',
         exists: Boolean(console),
         open: Boolean(console?.isOpen),
@@ -142,6 +153,7 @@ export default function (api) {
       <method name="Open"><arg type="s" direction="out"/></method>
       <method name="RunBinding"><arg type="s" direction="out"/></method>
       <method name="Evaluate"><arg type="s" direction="in"/><arg type="s" direction="out"/></method>
+      <method name="ScrollTop"/>
       <method name="ExpandLua"><arg type="s" direction="out"/></method>
       <method name="InspectRich"><arg type="s" direction="out"/></method>
       <method name="Inspect"><arg type="s" direction="out"/></method>
@@ -179,6 +191,7 @@ export default function (api) {
             });
             return JSON.stringify({scheduled: true});
         },
+        ScrollTop() { Main.devConsole._scroll.vadjustment.value = 0; },
         ExpandLua() {
             const console = Main.devConsole;
             const group = console._transcript.get_last_child().get_last_child().get_first_child();
@@ -234,7 +247,7 @@ export default function (api) {
         Complete() {
             const console = Main.createDevConsole();
             const labels = console._completions.get_children().map(child =>
-                String(child.label ?? child.get_child?.()?.text ?? ''));
+                String(child.accessible_name ?? child.label ?? ''));
             const last = console._completions.get_last_child();
             const [x, y] = last ? last.get_transformed_position() : [0, 0];
             const result = {...consoleState(), labels, completionVisible: console._completions.visible,
@@ -338,6 +351,7 @@ opened = json.loads(value(call("Open")))
 assert opened["opened"] and opened["open"] and opened["visible"], opened
 assert opened["parent"] == "uiGroup", opened
 assert opened["transcriptRows"] == 0, opened
+assert opened["tabs"] == ["JavaScript", "Lua"], opened
 assert opened["y"] == opened["monitorY"], opened
 assert opened["topIndex"] == opened["childCount"] - 1, opened
 focused = wait_for(lambda current: current["open"] and current["focusEntry"])
@@ -353,7 +367,12 @@ if shutil.which("grim"):
         print(f"NOTE: could not capture console frame: {error}")
 print("PASS: Alt+F2 replacement opens a focused top-edge modal above the Shell chrome")
 
-# Exercise an untouched prompt and the shortcut while its modal grab is active.
+# Empty prompts offer globals; Escape dismisses them before closing.
+wait_for(lambda current: current["completionVisible"])
+initial = json.loads(value(call("Complete")))
+assert initial["labels"] and initial["input"] == "", initial
+value(call("Escape"))
+wait_for(lambda current: current["open"] and not current["completionVisible"])
 value(call("Escape"))
 wait_for(lambda current: not current["open"] and not current["visible"])
 value(call("RunBinding"))
@@ -362,7 +381,7 @@ value(call("RunBinding"))
 wait_for(lambda current: not current["open"] and not current["visible"])
 value(call("RunBinding"))
 wait_for(lambda current: current["open"] and current["focusEntry"])
-print("PASS: Escape closes a fresh prompt and repeated Alt+F2 toggles the modal safely")
+print("PASS: empty prompt offers globals, Escape dismisses then closes, Alt+F2 toggles safely")
 
 
 def evaluate(source):
@@ -420,8 +439,13 @@ assert "gnoblin.set(path, value)" in evaluate('help("set")')["value"]
 call("Type", "gnoblin.se")
 time.sleep(0.1)
 api_completion = json.loads(value(call("Complete")))
-assert any("set(path, value)" in label for label in api_completion["labels"]), api_completion
+assert (
+    "set" in api_completion["labels"] and "set(path: string, value: unknown)" in api_completion["suggestionDetail"]
+), api_completion
 assert api_completion["completionInView"], api_completion
+assert "Apply one setting live" in api_completion["suggestionDocumentation"], api_completion
+if api_completion["monitorWidth"] >= 706:
+    assert api_completion["suggestionDocsX"] > api_completion["suggestionListX"], api_completion
 if shutil.which("grim"):
     time.sleep(0.2)
     subprocess.run(["grim", "/tmp/gnoblin-console-api-completion.png"], check=True)
@@ -432,10 +456,49 @@ assert any("shell.layer-duration" in label for label in key_completion["labels"]
 call("Type", "")
 print("PASS: live API changes effective settings, validates, undoes and completes configuration paths")
 
+call("Type", "Gio.File.new_for_path(")
+wait_for(lambda current: "path: filename" in current["assist"])
+call("Type", 'gnoblin.set("shell.layer-duration", 350')
+assistance = wait_for(lambda current: "value: unknown" in current["assist"])
+assert assistance["argumentHintVisible"] and assistance["argumentHint"] == "New setting value.", (
+    assistance
+)
+assert "weight" in assistance["signatureAttributes"] and "underline" in assistance["signatureAttributes"], assistance
+if shutil.which("grim"):
+    time.sleep(0.15)
+    subprocess.run(["grim", "/tmp/gnoblin-console-signature-ui.png"], check=True)
+call("Type", "gnoblin.set")
+time.sleep(0.1)
+rows_before_hover = state()["transcriptRows"]
+call("Key", 0xFFBE)  # F1 shows contextual help without adding transcript output.
+wait_for(lambda current: "Apply one setting live" in current["argumentHint"])
+assert state()["transcriptRows"] == rows_before_hover
+
+call("Type", "let = ;")
+wait_for(lambda current: "Syntax:" in current["diagnostic"])
+call("Type", "")
+print("PASS: GNOME signature assistance and syntax diagnostics")
+
+call("Type", "Gio.File.")
+time.sleep(0.1)
+first_page = json.loads(value(call("Complete")))["labels"]
+assert len(first_page) == 6, first_page
+for _ in range(6):
+    call("Key", 0xFF54)  # Down advances beyond the first six visible suggestions.
+time.sleep(0.1)
+next_page = json.loads(value(call("Complete")))["labels"]
+assert next_page and next_page[0] not in first_page, next_page
+call("Key", 0xFF09)
+time.sleep(0.1)
+assert state()["input"] == "Gio.File." + next_page[0], state()
+call("Type", "")
+print("PASS: compact suggestion list reaches and accepts matches beyond its first page")
+
 # Exercise the language switch through the same console evaluator entrypoint.
 call("Type", "unfinishedJavaScript")
 call("Language", "lua")
 assert state()["input"] == "", state()
+wait_for(lambda current: current["completionVisible"])
 call("Language", "js")
 assert state()["input"] == "unfinishedJavaScript", state()
 call("Type", "")
@@ -485,6 +548,15 @@ print(
 inspected = json.loads(value(call("Inspect")))
 assert inspected["inspectorVisible"] and inspected["inspectorRows"] > 0, inspected
 print("PASS: object inspection exposes descriptor rows without leaving the console")
+evaluate('Object.fromEntries(Array.from({length: 100}, (_, i) => ["item" + i, i]))')
+time.sleep(0.2)
+call("ScrollTop")
+position_before_expand = state()["scrollPosition"]
+call("ExpandLua")
+time.sleep(0.3)
+assert abs(state()["scrollPosition"] - position_before_expand) < 1, state()
+print("PASS: expanding a large object preserves scroll position")
+
 rich = json.loads(value(call("InspectRich")))
 assert rich["before"] == 0 and rich["after"] == 1, rich
 assert "getter failure" in rich["failure"], rich
@@ -543,6 +615,8 @@ call("Type", "")
 time.sleep(0.1)
 print("PASS: Escape dismisses suggestions first, then closes the console")
 
+value(call("Escape"))
+wait_for(lambda current: current["open"] and not current["completionVisible"])
 value(call("Escape"))
 closed = wait_for(lambda current: not current["open"] and not current["visible"])
 assert not closed["focusEntry"], closed

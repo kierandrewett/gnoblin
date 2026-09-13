@@ -3,6 +3,8 @@ import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import GObject from "gi://GObject";
+import Meta from "gi://Meta";
+import { WindowFrame } from "./gnoblinFrames.js";
 import * as Config from "./gnoblinConfig.js";
 import { WindowCorners, WindowBorders, ToolkitCache } from "./gnoblinCorners.js";
 import { BackdropRedraw } from "./gnoblinBackdropRedraw.js";
@@ -48,6 +50,7 @@ const WindowShader = GObject.registerClass(
 
 export class WindowRules {
     constructor() {
+        this._destroyed = false;
         this._config = Config.settings;
         this._actors = new Map();
         this._backdropRedraw = new BackdropRedraw();
@@ -71,6 +74,7 @@ export class WindowRules {
     }
 
     _schedule(actor) {
+        if (this._destroyed) return;
         if (!this._actors.has(actor)) return;
         this._pending.add(actor);
         if (this._pendingId) return;
@@ -86,8 +90,8 @@ export class WindowRules {
     }
 
     _updateRuleDependencies(config) {
-        this._hasFocusedRules = false;
-        this._hasTitleRules = false;
+        this._hasFocusedRules = Boolean(Meta.gnoblin_window_frame_get);
+        this._hasTitleRules = Boolean(Meta.gnoblin_window_frame_get);
         this._shaderPaths = new Map();
         this._shaderSourcePaths = new Set();
         for (const rule of config["window-rules"]) {
@@ -102,6 +106,7 @@ export class WindowRules {
     }
 
     refresh(config = this._config) {
+        if (this._destroyed) return;
         this._config = config;
         this._updateRuleDependencies(config);
         for (const actor of global.get_window_actors()) this._apply(actor);
@@ -160,10 +165,15 @@ export class WindowRules {
     }
 
     _apply(actor) {
+        if (this._destroyed) return;
         let entry = this._actors.get(actor);
         // Shadows are inserted before the client surface. A new rules owner
         // must never attach client effects or size listeners to that decoration.
-        const surface = entry?.surface || actor.get_children().find((child) => !child._gnoblinDecoration);
+        const surface =
+            entry?.surface ||
+            actor
+                .get_children()
+                .find((child) => !child._gnoblinDecoration && child.get_name() !== "gnoblin-native-frame");
         if (!surface || !actor.meta_window) return;
         if (!entry) {
             const title = actor.meta_window.connect("notify::title", () => {
@@ -173,6 +183,7 @@ export class WindowRules {
                 actor.meta_window?.disconnect(title);
                 entry.corners?.destroy();
                 entry.borders?.destroy();
+                entry.frame?.destroy();
                 this._actors.delete(actor);
                 this._pending.delete(actor);
             });
@@ -194,6 +205,10 @@ export class WindowRules {
             this._actors.set(actor, entry);
         }
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
+        if (Meta.gnoblin_window_frame_get?.(actor.meta_window).recursiveUnpack().supported) {
+            if (!entry.frame) entry.frame = new WindowFrame(actor, () => this._schedule(actor));
+            entry.frame.update(effects.frame, effects.corners);
+        }
         surface.opacity = Math.round(entry.opacity * effects.opacity);
         const standardBlur = this._backgroundEffects.owns(actor);
         if (standardBlur) {
@@ -252,6 +267,8 @@ export class WindowRules {
     }
 
     destroy() {
+        if (this._destroyed) return;
+        this._destroyed = true;
         if (this._pendingId) GLib.source_remove(this._pendingId);
         this._pendingId = 0;
         this._pending.clear();
@@ -275,6 +292,7 @@ export class WindowRules {
             if (entry.shader) entry.surface.remove_effect(entry.shader);
             entry.corners?.destroy();
             entry.borders?.destroy();
+            entry.frame?.destroy();
         }
         this._actors.clear();
         this._cornerToolkits.destroy();

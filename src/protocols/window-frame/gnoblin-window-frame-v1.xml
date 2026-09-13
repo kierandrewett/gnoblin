@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="gnoblin_window_frame_v1">
+  <copyright>Copyright 2026 Gnoblin contributors. MIT license.</copyright>
+  <interface name="gnoblin_window_frame_manager_v1" version="1">
+    <description summary="private compositor decoration renderer">
+      Advertised only on compositor-provisioned renderer connections. One
+      renderer handles many frames. It cannot choose or claim target windows.
+      This experimental v1 protocol is not yet a stable public ABI.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <event name="frame"><arg name="frame" type="new_id" interface="gnoblin_window_frame_v1"/></event>
+  </interface>
+  <interface name="gnoblin_window_frame_v1" version="1">
+    <description summary="one compositor-owned frame">
+      Attach an unroled wl_surface. Configure serials describe committed native
+      geometry; ack the latest serial before committing a matching-size buffer.
+      Stale generations are not displayed. App commits never wait for renderers.
+      Normal wl_surface damage, buffer release, transforms and scale apply.
+      Native code clips pixels and semantic input to the decoration area.
+      Input is handled natively; this surface never receives keyboard focus.
+      Metadata changes send a new configure. A null buffer selects fallback.
+      After closed, only destroy is meaningful. Destroy the frame before its
+      wl_surface. The surface cannot acquire a different role afterwards.
+    </description>
+    <enum name="error">
+      <entry name="role" value="0" summary="surface already has a role or frame already attached"/>
+      <entry name="invalid_state" value="1" summary="invalid configure, region or buffer"/>
+    </enum>
+    <enum name="action">
+      <entry name="drag" value="1"/><entry name="close" value="2"/>
+      <entry name="maximize" value="3"/><entry name="minimize" value="4"/>
+      <entry name="n" value="5"/><entry name="ne" value="6"/>
+      <entry name="e" value="7"/><entry name="se" value="8"/>
+      <entry name="s" value="9"/><entry name="sw" value="10"/>
+      <entry name="w" value="11"/><entry name="nw" value="12"/>
+    </enum>
+    <enum name="state" bitfield="true">
+      <entry name="focused" value="1"/><entry name="maximized" value="2"/>
+      <entry name="can_close" value="4"/><entry name="can_maximize" value="8"/>
+      <entry name="can_minimize" value="16"/><entry name="can_resize" value="32"/>
+    </enum>
+    <request name="destroy" type="destructor"/>
+    <request name="attach_surface"><arg name="surface" type="object" interface="wl_surface"/></request>
+    <request name="ack_configure"><arg name="serial" type="uint"/></request>
+    <request name="clear_regions"/>
+    <request name="region">
+      <description summary="register semantic input">
+        Double buffered with wl_surface.commit. At most 64 regions. Last
+        registered wins overlaps. Coordinates are logical frame coordinates;
+        regions cannot receive input in client content or outside the frame.
+        Native fallback controls are used until a valid renderer buffer arrives.
+      </description>
+      <arg name="action" type="uint" enum="action"/>
+      <arg name="x" type="int"/><arg name="y" type="int"/>
+      <arg name="width" type="int"/><arg name="height" type="int"/>
+    </request>
+    <event name="configure">
+      <arg name="serial" type="uint"/><arg name="width" type="int"/><arg name="height" type="int"/>
+      <arg name="top" type="int"/><arg name="right" type="int"/>
+      <arg name="bottom" type="int"/><arg name="left" type="int"/>
+      <arg name="state" type="uint" enum="state"/>
+      <arg name="title" type="string"/><arg name="app_id" type="string"/>
+      <arg name="style" type="string"/>
+    </event>
+    <event name="interaction"><arg name="action" type="uint"/><arg name="pressed" type="uint"/></event>
+    <event name="closed"/>
+  </interface>
+</protocol>

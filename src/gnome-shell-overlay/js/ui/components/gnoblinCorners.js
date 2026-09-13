@@ -1,16 +1,20 @@
 // Built-in window-rule effects. No extension hooks or polling.
-// Superellipse parameterisation follows Rounded Window Corners Reborn:
+// This is an implicit superellipse, a continuous-corner approximation rather
+// than Apple's private .continuous path. The parameterisation is inspired by
+// Rounded Window Corners Reborn:
 // https://github.com/flexagoon/rounded-window-corners (GPL-3.0-or-later).
 import Clutter from "gi://Clutter";
 import Cogl from "gi://Cogl";
 import Gio from "gi://Gio";
-import Gdk from "gi://Gdk?version=4.0";
 import GLib from "gi://GLib";
 import GObject from "gi://GObject";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import St from "gi://St";
 import * as Geometry from "./gnoblinCornerGeometry.js";
+
+export const CSD_FRAME_SAMPLING_VERSION = 2;
+export const SSD_BORDER_STACKING_VERSION = 1;
 
 // Keep one result for both rings and the clip. Position/focus changes reuse it.
 const visibleFrames = new WeakMap();
@@ -20,12 +24,33 @@ function windowGeometry(actor, surface, config) {
         buffer = win.get_buffer_rect();
     const width = surface.width || actor.width;
     const height = surface.height || actor.height;
+    if (actor._gnoblinFrameLayout?.border.some((n) => n > 0)) {
+        // The outer SSD rectangle may extend outside the client buffer.
+        // Never infer client shadows or clamp away its titlebar here.
+        const scale = actor._gnoblinFrameLayout.scale;
+        const bounds = [
+            (frame.x - buffer.x) / scale,
+            (frame.y - buffer.y) / scale,
+            (frame.x - buffer.x + frame.width) / scale,
+            (frame.y - buffer.y + frame.height) / scale,
+        ];
+        return {
+            bounds,
+            radius: Math.min(config.radius, frame.width / scale / 2, frame.height / scale / 2),
+            exponent: 2 + config.smoothing * 4,
+            scale: 1,
+            width,
+            height,
+        };
+    }
     let visible = frame;
     const key = [
         frame.x - buffer.x,
         frame.y - buffer.y,
-        frame.width - buffer.width,
-        frame.height - buffer.height,
+        frame.width,
+        frame.height,
+        buffer.width,
+        buffer.height,
         actor.get_resource_scale(),
         win.fullscreen,
         win.maximized_horizontally,
@@ -36,11 +61,11 @@ function windowGeometry(actor, surface, config) {
     // get_image() crashes in Mutter when the shaped texture has no buffer.
     const texture = actor.get_texture();
     const hasBuffer = Boolean(texture?.get_texture());
-    // Explicit client geometry is authoritative. Only inspect clients which
-    // include the entire buffer (including their shadow) in the frame.
+    // Explicit client geometry remains authoritative; CSD probing uses only
+    // its interior. Infer shadow margins for clients without explicit geometry.
+    const implicitFrame = frame.width === buffer.width && frame.height === buffer.height;
     if (
-        frame.width === buffer.width &&
-        frame.height === buffer.height &&
+        (implicitFrame || config["remove-csd"]) &&
         !config.padding.some(Boolean) &&
         actor.mapped &&
         actor.opacity === 255 &&
@@ -52,28 +77,32 @@ function windowGeometry(actor, surface, config) {
     ) {
         // The compositor already knows when the whole client texture is opaque.
         // Such a buffer cannot contain an alpha shadow, so no GPU download is needed.
-        if (cached?.key !== key && texture.is_opaque()) {
-            cached = { key, insets: [0, 0, 0, 0] };
+        let csdProbeNeeded = cached?.key !== key || (config["remove-csd"] && !cached?.csdProbedForRemoval);
+        if (csdProbeNeeded && texture.is_opaque() && !config["remove-csd"]) {
+            cached = { key, insets: [0, 0, 0, 0], csdInsets: null, csdProbedForRemoval: false };
             visibleFrames.set(actor, cached);
+            csdProbeNeeded = false;
         }
-        if (cached?.key !== key) {
-            const effects = [...actor.get_effects(), ...surface.get_effects()];
-            const enabled = effects.map((effect) => effect.enabled);
-            const decorations = actor.get_children().filter((child) => child._gnoblinDecoration && child.visible);
+        if (csdProbeNeeded) {
             try {
-                effects.forEach((effect) => {
-                    effect.enabled = false;
-                });
-                decorations.forEach((child) => child.hide());
-                const image = actor.get_image(null);
-                if (image) {
-                    const iw = image.getWidth(),
-                        ih = image.getHeight();
-                    const pixbuf = Gdk.pixbuf_get_from_surface(image, 0, 0, iw, ih);
-                    const pixels = pixbuf.get_pixels(),
-                        stride = pixbuf.rowstride,
-                        channels = pixbuf.n_channels;
-                    const alpha = (x, y) => (channels === 4 ? pixels[y * stride + x * channels + 3] : 255);
+                // Read the shaped client content, never our actor/effect cache.
+                // No visibility/effect toggles: sampling cannot disturb damage
+                // tracking or feed already-filled corners back into detection.
+                const [bytes, iw, ih] = texture.get_pixels();
+                if (bytes) {
+                    const pixels = bytes.get_data(),
+                        stride = iw * 4,
+                        channels = 4;
+                    const pixel = (x, y) => {
+                        const offset = y * stride + x * channels;
+                        return [
+                            pixels[offset],
+                            pixels[offset + 1],
+                            pixels[offset + 2],
+                            channels === 4 ? pixels[offset + 3] : 255,
+                        ];
+                    };
+                    const alpha = (x, y) => pixel(x, y)[3];
                     const edges = [[], [], [], []];
                     for (const fraction of [0.25, 0.5, 0.75]) {
                         const row = Array.from({ length: iw }, (_, x) => alpha(x, Math.floor(ih * fraction)));
@@ -82,48 +111,78 @@ function windowGeometry(actor, surface, config) {
                             edges[i].push(Geometry.detectEdge(line)),
                         );
                     }
-                    const insets = edges.map((samples) =>
+                    const detected = edges.map((samples) =>
                         samples.every((n) => n !== null && Math.abs(n - samples[0]) <= 1) ? Math.min(...samples) : null,
                     );
-                    if (insets.every((n) => n !== null)) {
-                        cached = {
-                            key,
-                            insets: [
-                                (insets[0] * buffer.height) / ih,
-                                (insets[1] * buffer.width) / iw,
-                                (insets[2] * buffer.height) / ih,
-                                (insets[3] * buffer.width) / iw,
-                            ],
-                        };
-                        visibleFrames.set(actor, cached);
-                    } else {
-                        // Cache uncertain frames too: never scan on every focus
-                        // change. A window state or scale change causes a fresh measurement.
-                        cached = { key, insets: [0, 0, 0, 0] };
-                        visibleFrames.set(actor, cached);
-                    }
+                    const insets = implicitFrame && detected.every((n) => n !== null) ? detected : [0, 0, 0, 0];
+                    // Inspect the visible frame, not the client's shadow margins.
+                    const x = Math.round(((frame.x - buffer.x) * iw) / buffer.width) + insets[3];
+                    const y = Math.round(((frame.y - buffer.y) * ih) / buffer.height) + insets[0];
+                    const cw = Math.round((frame.width * iw) / buffer.width) - insets[1] - insets[3];
+                    const ch = Math.round((frame.height * ih) / buffer.height) - insets[0] - insets[2];
+                    const sample = (sx, sy) => pixel(x + sx, y + sy);
+                    const csdInsets =
+                        config["remove-csd"] && x >= 0 && y >= 0 && x + cw <= iw && y + ch <= ih
+                            ? Geometry.detectCornerInsets((sx, sy) => sample(sx, sy)[3], cw, ch)
+                            : null;
+                    cached = {
+                        key,
+                        attempts: cached?.key === key ? (cached.attempts ?? 0) + 1 : 1,
+                        insets: [
+                            (insets[0] * buffer.height) / ih,
+                            (insets[1] * buffer.width) / iw,
+                            (insets[2] * buffer.height) / ih,
+                            (insets[3] * buffer.width) / iw,
+                        ],
+                        csdInsets: csdInsets
+                            ? [
+                                  (csdInsets[0] * buffer.height) / ih,
+                                  (csdInsets[1] * buffer.width) / iw,
+                                  (csdInsets[2] * buffer.height) / ih,
+                                  (csdInsets[3] * buffer.width) / iw,
+                              ]
+                            : null,
+                        csdProbedForRemoval: Boolean(config["remove-csd"] && csdInsets),
+                    };
+                    visibleFrames.set(actor, cached);
                 }
             } catch (error) {
                 console.warn(`gnoblin-corners: frame detection failed: ${error.message}`);
-                visibleFrames.set(actor, { key, insets: [0, 0, 0, 0] });
-            } finally {
-                effects.forEach((effect, i) => {
-                    effect.enabled = enabled[i];
-                });
-                decorations.forEach((child) => child.show());
+                // A transient readback failure must not permanently cache
+                // "no CSD". Retain a valid result or retry on the next update.
             }
         }
-        if (cached?.key === key) {
-            const [top, right, bottom, left] = cached.insets;
-            visible = {
-                x: frame.x + left,
-                y: frame.y + top,
-                width: frame.width - left - right,
-                height: frame.height - top - bottom,
-            };
-        }
     }
-    return Geometry.geometry(visible, buffer, width, height, config);
+    if (cached?.key === key) {
+        const [top, right, bottom, left] = cached.insets;
+        visible = {
+            x: frame.x + left,
+            y: frame.y + top,
+            width: frame.width - left - right,
+            height: frame.height - top - bottom,
+        };
+    }
+    const geometry = Geometry.geometry(visible, buffer, width, height, config);
+    if (geometry && cached?.key === key && config["remove-csd"] && cached?.csdInsets) {
+        const [top, right, bottom, left] = cached.csdInsets;
+        // Near-edge scans stop short of a curve's tangent. Cover the remaining
+        // antialiased tail too; the shader changes missing alpha only.
+        const extend = (n) => n + Math.ceil(Math.sqrt(2 * n) + 2);
+        geometry.csdInsets = [
+            (extend(top) * height) / buffer.height,
+            (extend(right) * width) / buffer.width,
+            (extend(bottom) * height) / buffer.height,
+            (extend(left) * width) / buffer.width,
+        ];
+        geometry.csdSampleInsets = [
+            (top * height) / buffer.height,
+            (right * width) / buffer.width,
+            (bottom * height) / buffer.height,
+            (left * width) / buffer.width,
+        ];
+        geometry.csdActive = true;
+    }
+    return geometry;
 }
 
 const declarations = `
@@ -138,6 +197,9 @@ uniform float automatic;
 uniform float borderWidth;
 uniform vec4 borderColor;
 uniform float replaceShadow;
+uniform float csdActive;
+uniform vec4 csdInsets;
+uniform vec4 csdSampleInsets;
 float coverage(vec2 p, vec4 box, float r) {
     if (p.x < box.x || p.y < box.y || p.x > box.z || p.y > box.w) return 0.0;
     r = min(r, min(box.z-box.x, box.w-box.y)*0.5);
@@ -150,6 +212,41 @@ float coverage(vec2 p, vec4 box, float r) {
     return clamp((r-distance)/pixelWidth+0.5, 0.0, 1.0);
 }
 float sourceAlpha(vec2 p) { return texture2D(cogl_sampler0, clamp((p-textureOrigin) / textureDimensions, vec2(0.0), vec2(1.0))).a; }
+vec4 sourcePixel(vec2 p) {
+    vec4 pixel = texture2D(cogl_sampler0, clamp((p-textureOrigin) / textureDimensions, vec2(0.0), vec2(1.0)));
+    return vec4(pixel.rgb / max(pixel.a, 0.00001), pixel.a);
+}
+vec4 flatPatch(vec2 p) {
+    vec4 a = sourcePixel(p+vec2(-1.0,-1.0));
+    vec4 b = sourcePixel(p+vec2(1.0,-1.0));
+    vec4 c = sourcePixel(p+vec2(-1.0,1.0));
+    vec4 d = sourcePixel(p+vec2(1.0,1.0));
+    vec4 spread = max(max(a,b),max(c,d))-min(min(a,b),min(c,d));
+    if (max(max(spread.r,spread.g),spread.b) > 0.08 || spread.a > 0.06) return vec4(0.0);
+    return (a+b+c+d)*0.25;
+}
+bool sameBackground(vec4 a, vec4 b) {
+    vec4 delta = abs(a-b);
+    return min(a.a,b.a) > 0.2 && max(max(delta.r,delta.g),delta.b) < 0.06 && delta.a < 0.06;
+}
+vec4 cornerBackground(vec2 p, bool right, bool bottom) {
+    vec2 direction = vec2(right ? -1.0 : 1.0, bottom ? -1.0 : 1.0);
+    vec2 origin = vec2(right ? bounds.z : bounds.x, bottom ? bounds.w : bounds.y);
+    vec2 inset = vec2(right ? csdSampleInsets.y : csdSampleInsets.w,
+                      bottom ? csdSampleInsets.z : csdSampleInsets.x);
+    vec2 pa = origin+direction*vec2(inset.x+4.0,4.0);
+    vec2 pb = origin+direction*vec2(4.0,inset.y+4.0);
+    vec2 pc = origin+direction*(inset+vec2(4.0));
+    vec4 a=flatPatch(pa), b=flatPatch(pb), c=flatPatch(pc);
+    // Require two agreeing patches so a nearby control cannot supply the fill.
+    if (!sameBackground(a,b)) {
+        if (sameBackground(a,c)) { b=c; pb=pc; }
+        else if (sameBackground(b,c)) { a=c; pa=pc; }
+        else return vec4(0.0);
+    }
+    float da=distance(p,pa), db=distance(p,pb);
+    return mix(a,b,da/max(da+db,0.001));
+}
 // Four samples only in the small corner regions. Compare with local body
 // alpha so translucent rectangles work without mistaking shadows for edges.
 bool squareCorner(vec2 p) {
@@ -167,6 +264,24 @@ bool squareCorner(vec2 p) {
 const code = `
 vec2 point = cogl_tex_coord0_in.xy * textureDimensions + textureOrigin;
 bool outside = point.x < bounds.x || point.y < bounds.y || point.x > bounds.z || point.y > bounds.w;
+if (csdActive > 0.5 && !outside) {
+    bool top = point.y < bounds.y + csdInsets.x;
+    bool right = point.x > bounds.z - csdInsets.y;
+    bool bottom = point.y > bounds.w - csdInsets.z;
+    bool left = point.x < bounds.x + csdInsets.w;
+    if ((top || bottom) && (left || right)) {
+        vec4 fill = cornerBackground(point,right,bottom);
+        // Replace the client shadow and its narrow curved outline as well as
+        // transparent pixels. Opaque content beyond the alpha edge is retained.
+        vec2 dx=vec2(1.5*pixelWidth,0.0), dy=dx.yx;
+        float edgeAlpha=min(min(sourceAlpha(point-dx),sourceAlpha(point+dx)),
+                            min(sourceAlpha(point-dy),sourceAlpha(point+dy)));
+        edgeAlpha=min(edgeAlpha,min(min(sourceAlpha(point-dx-dy),sourceAlpha(point+dx-dy)),
+                                   min(sourceAlpha(point-dx+dy),sourceAlpha(point+dx+dy))));
+        if (fill.a > 0.2 && edgeAlpha < fill.a*0.98)
+            cogl_color_out=vec4(fill.rgb*fill.a,fill.a)*cogl_color_in;
+    }
+}
 vec2 cornerDistance = min(point-bounds.xy, bounds.zw-point);
 bool corner = cornerDistance.x < radius && cornerDistance.y < radius;
 bool apply = automatic < 0.5 || !corner || squareCorner(point);
@@ -182,7 +297,8 @@ if (apply) {
         vec4 content = cogl_color_out * outer;
         cogl_color_out = content*(1.0-stroke) + vec4(borderColor.rgb*stroke, stroke);
     } else cogl_color_out *= outer;
-}`;
+}
+`;
 
 const GeometryEffect = GObject.registerClass(
     class GnoblinCornerGeometryEffect extends Shell.GLSLEffect {
@@ -215,15 +331,24 @@ const CornersEffect = GObject.registerClass(
             this.uniform("dimensions", [g.width, g.height]);
             this.uniform("radius", [g.radius]);
             this.uniform("exponent", [g.exponent]);
-            this.uniform("automatic", [config.mode === "auto" ? 1 : 0]);
+            // A successful CSD reconstruction makes the compositor shape the
+            // authoritative silhouette; otherwise auto mode preserves the client.
+            this.uniform("automatic", [config.mode === "auto" && !g.csdActive ? 1 : 0]);
             this.uniform("borderWidth", [config["border-width"] * g.scale]);
             this.uniform("borderColor", rgba(config["border-color"]));
+            this.uniform("csdActive", [g.csdActive ? 1 : 0]);
+            this.uniform("csdInsets", g.csdInsets ?? [0, 0, 0, 0]);
+            this.uniform("csdSampleInsets", g.csdSampleInsets ?? [0, 0, 0, 0]);
             // Forced clipping owns the complete frame silhouette, including the
             // client shadow outside it, even without a replacement shadow.
             this.uniform("replaceShadow", [config.shadow || config.mode === "force" ? 1 : 0]);
         }
     },
 );
+
+export function createFrameClip() {
+    return new CornersEffect();
+}
 
 function rgba(hex) {
     const digits = hex.slice(1).padEnd(8, "f");
@@ -391,6 +516,35 @@ export class ToolkitCache {
     }
 }
 
+// Moving the whole actor does not change its local clip, border or shadow.
+// Keep updates for client geometry, monitor/scale changes and flush maximized edges.
+function watchPosition(actor, changed) {
+    const win = actor.meta_window;
+    const geometry = () => {
+        const frame = win.get_frame_rect(),
+            buffer = win.get_buffer_rect();
+        const key = [
+            frame.x - buffer.x,
+            frame.y - buffer.y,
+            frame.width,
+            frame.height,
+            buffer.width,
+            buffer.height,
+            win.get_monitor(),
+            actor.get_resource_scale(),
+        ];
+        if (win.maximized_horizontally && win.maximized_vertically) key.push(frame.x, frame.y);
+        return key;
+    };
+    let previous = geometry();
+    return win.connect("position-changed", () => {
+        const next = geometry();
+        if (next.length === previous.length && next.every((value, i) => value === previous[i])) return;
+        previous = next;
+        changed();
+    });
+}
+
 export class WindowCorners {
     constructor(actor, surface, cache, changed) {
         this.actor = actor;
@@ -413,17 +567,29 @@ export class WindowCorners {
         // Geometry/state changes only. Coalesce resize bursts into one update.
         for (const name of [
             "size-changed",
-            "position-changed",
             "notify::fullscreen",
             "notify::maximized-horizontally",
             "notify::maximized-vertically",
         ])
             this.signals.push([win, win.connect(name, schedule)]);
+        this.signals.push([win, watchPosition(actor, schedule)]);
         this.signals.push([
             actor,
             actor.connect("first-frame", () => {
                 visibleFrames.delete(actor);
                 schedule();
+            }),
+        ]);
+        this.signals.push([
+            actor,
+            actor.connect("damaged", () => {
+                const cached = visibleFrames.get(actor);
+                // The first mapped buffer may precede GTK's final frame.
+                // Retry inconclusive alpha probes on real client damage, not
+                // on an idle redraw loop. Bound retries for translucent apps.
+                if (this.config?.["remove-csd"] && !cached?.csdProbedForRemoval &&
+                    (cached?.attempts ?? 0) < 8)
+                    schedule();
             }),
         ]);
         this.signals.push([
@@ -578,11 +744,11 @@ export class WindowBorders {
         const win = actor.meta_window;
         this.signals = [
             "size-changed",
-            "position-changed",
             "notify::fullscreen",
             "notify::maximized-horizontally",
             "notify::maximized-vertically",
         ].map((name) => [win, win.connect(name, schedule)]);
+        this.signals.push([win, watchPosition(actor, schedule)]);
         this.signals.push([
             actor,
             actor.connect("first-frame", () => {
@@ -625,6 +791,12 @@ export class WindowBorders {
             this.widget.add_effect(this.effect);
             this.actor.add_child(this.widget);
         }
+        // The native frame is a sibling decoration on the same MetaWindow
+        // actor. It can be created after this border widget, and its opaque
+        // titlebar/background would otherwise paint over the SSD border.
+        // Keep the border above the frame for both the built-in and external
+        // (Bingux) frame renderers on each committed layout update.
+        this.actor.set_child_above_sibling(this.widget, null);
         this.widget.set_position(this.surface.x + left - pad, this.surface.y + top - pad);
         this.widget.set_size(right - left + 2 * pad, bottom - top + 2 * pad);
         const bounds = [pad, pad, pad + right - left, pad + bottom - top];

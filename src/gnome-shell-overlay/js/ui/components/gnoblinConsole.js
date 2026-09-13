@@ -10,6 +10,7 @@ import System from "system";
 
 import * as Main from "../main.js";
 import { consoleConfig } from "./gnoblinControl.js";
+import { createGjsIntrospector } from "./gnoblinConsoleIntrospection.js";
 import { DEFAULTS, FEATURE_KEYS } from "./gnoblinConfig.js";
 import { ConsoleEvaluator, LuaConsoleEvaluator, LuaValue, isInspectable, preview } from "./gnoblinConsoleEvaluator.js";
 
@@ -47,6 +48,28 @@ function consoleHelp(topic = "") {
     ].join("\n");
 }
 
+const API_PARAMETERS = {
+    set: [
+        { label: "path: string", documentation: "Configuration key." },
+        { label: "value: unknown", documentation: "New setting value." },
+    ],
+    apply: [{ label: "document: object", documentation: "Configuration document." }],
+    help: [{ label: "topic?: string", documentation: "API name." }],
+};
+const API_SIGNATURES = Object.fromEntries(
+    Object.entries(API_HELP).map(([name, [, documentation]]) => {
+        const parameters = API_PARAMETERS[name] ?? [];
+        return [
+            `gnoblin.${name}`,
+            {
+                label: `gnoblin.${name}(${parameters.map((parameter) => parameter.label).join(", ")})`,
+                documentation,
+                parameters,
+            },
+        ];
+    }),
+);
+
 const HISTORY_KEY = "looking-glass-history";
 const MAX_ROWS = 200;
 const VERTICAL = Clutter.Orientation.VERTICAL;
@@ -61,7 +84,13 @@ function textLabel(text, styleClass = "", selectable = false) {
 }
 
 function button(label, action, styleClass = "gnoblin-console-button") {
-    const actor = new St.Button({ label, style_class: styleClass, can_focus: true, x_align: Clutter.ActorAlign.FILL });
+    const actor = new St.Button({
+        label,
+        style_class: styleClass,
+        can_focus: true,
+        track_hover: true,
+        x_align: Clutter.ActorAlign.FILL,
+    });
     actor.get_child().x_align = Clutter.ActorAlign.START;
     actor.get_child().x_expand = true;
     actor.connect_after("style-changed", () => actor.get_child().set_line_alignment(Pango.Alignment.LEFT));
@@ -130,16 +159,6 @@ export const DeveloperConsole = GObject.registerClass(
                 this._languageTabs.set(language, tab);
                 this._tabs.add_child(tab);
             }
-            this._tabs.add_child(
-                button(
-                    "Help",
-                    () => {
-                        this._appendRow(textLabel(consoleHelp(), "gnoblin-console-hint", true));
-                        this._entry.grab_key_focus();
-                    },
-                    "gnoblin-console-tab",
-                ),
-            );
             this._panel.add_child(this._tabs);
             this._body = new St.BoxLayout({ y_expand: true, style_class: "gnoblin-console-body" });
             this._transcript = new St.BoxLayout({ orientation: VERTICAL, x_expand: true });
@@ -149,9 +168,6 @@ export const DeveloperConsole = GObject.registerClass(
                 hscrollbar_policy: St.PolicyType.NEVER,
                 vscrollbar_policy: St.PolicyType.AUTOMATIC,
             });
-            // Layout updates the scroll range after text/completion allocation.
-            // Follow that range so newly shown suggestions remain in view.
-            this._scroll.vadjustment.connectObject("notify::upper", () => this._scrollBottom(), this);
             this._body.add_child(this._scroll);
             this._panel.add_child(this._body);
             this._flow = new St.BoxLayout({ orientation: VERTICAL, x_expand: true });
@@ -186,10 +202,35 @@ export const DeveloperConsole = GObject.registerClass(
                 visible: false,
                 x_align: Clutter.ActorAlign.START,
             });
-            this._signature = textLabel("", "gnoblin-console-hint");
+            this._signature = textLabel("", "gnoblin-console-signature");
+            this._signature.connect_after("style-changed", () =>
+                this._signature.clutter_text.set_markup(this._signatureMarkup ?? ""),
+            );
             this._signature.hide();
             this._flow.add_child(this._signature);
-            this._flow.add_child(this._completions);
+            this._parameterHint = textLabel("", "gnoblin-console-parameter-hint");
+            this._parameterHint.hide();
+            this._flow.add_child(this._parameterHint);
+            this._diagnostic = textLabel("", "gnoblin-console-diagnostic", true);
+            this._diagnostic.hide();
+            this._flow.add_child(this._diagnostic);
+            this._completionPanel = new St.BoxLayout({
+                style_class: "gnoblin-console-completion-panel",
+                visible: false,
+                x_align: Clutter.ActorAlign.START,
+            });
+            this._completionPanel.add_child(this._completions);
+            this._completionDocs = new St.BoxLayout({
+                orientation: VERTICAL,
+                style_class: "gnoblin-console-completion-docs",
+            });
+            this._completionPanel.add_child(this._completionDocs);
+            this._flow.add_child(this._completionPanel);
+            this._completionDetail = textLabel("", "gnoblin-console-completion-detail");
+            this._completionDetail.hide();
+            this._completionDocs.add_child(this._completionDetail);
+            this._completionDocumentation = textLabel("", "gnoblin-console-completion-documentation");
+            this._completionDocs.add_child(this._completionDocumentation);
             this._scroll.set_child(this._flow);
 
             this._newEvaluator();
@@ -217,6 +258,7 @@ export const DeveloperConsole = GObject.registerClass(
                 this.close(true);
                 if (this._scrollIdle) GLib.source_remove(this._scrollIdle);
                 if (this._completionIdle) GLib.source_remove(this._completionIdle);
+                if (this._diagnosticTimer) GLib.source_remove(this._diagnosticTimer);
                 this._rows.clear();
                 this._evaluator.clear();
                 this._luaEvaluator?.reset();
@@ -249,6 +291,7 @@ export const DeveloperConsole = GObject.registerClass(
                 },
                 help: (topic = "") => consoleHelp(topic),
             };
+            const documentation = API_SIGNATURES;
             const evaluator = new ConsoleEvaluator(
                 {
                     gnoblin,
@@ -276,9 +319,14 @@ export const DeveloperConsole = GObject.registerClass(
                         )
                         .map((key) => `shell.${key}`)
                         .sort(),
-                    documentation: Object.fromEntries(
-                        Object.entries(API_HELP).map(([key, parts]) => [`gnoblin.${key}`, parts.join(" — ")]),
+                    documentation,
+                    signatures: Object.fromEntries(
+                        Object.entries(documentation).map(([path, entry]) => [
+                            path,
+                            typeof entry === "string" ? entry : { ...entry, label: entry.label ?? entry.signature },
+                        ]),
                     ),
+                    introspector: createGjsIntrospector({ Clutter, Gio, GLib, GObject, Meta, Shell, St, Pango }),
                     onLog: (level, values) => {
                         if (!this._destroyed && this._evaluator === evaluator) this._appendValues(level, values);
                     },
@@ -311,7 +359,7 @@ export const DeveloperConsole = GObject.registerClass(
             this._entry.accessible_name = language === "lua" ? "Lua" : "JavaScript";
             this._entry.set_text(this._drafts[language]);
             highlight(this._entry.clutter_text, this._entry.get_text(), language);
-            this._hideCompletions();
+            this._complete();
             this._entry.grab_key_focus();
         }
 
@@ -352,6 +400,7 @@ export const DeveloperConsole = GObject.registerClass(
             // pushModal() focuses the modal actor itself. Set the text entry as the
             // final focus target so the first keystroke is ready for JavaScript.
             global.stage.set_key_focus(this._entry);
+            this._complete();
             this._panel.translation_y = -this.height;
             this._panel.ease({
                 translation_y: 0,
@@ -369,6 +418,8 @@ export const DeveloperConsole = GObject.registerClass(
             if (!this._open && !this.visible) return;
             this._open = false;
             this._hideCompletions();
+            if (this._diagnosticTimer) GLib.source_remove(this._diagnosticTimer);
+            this._diagnosticTimer = 0;
             this._panel.remove_all_transitions();
             if (this._grab) {
                 Main.popModal(this._grab);
@@ -396,6 +447,21 @@ export const DeveloperConsole = GObject.registerClass(
             this.set_size(monitor.width, height);
             this.set_clip(0, 0, monitor.width, height + 24);
             this._panel.set_size(monitor.width, height);
+            for (const actor of [this._signature, this._parameterHint]) {
+                actor.x_expand = false;
+                actor.x_align = Clutter.ActorAlign.START;
+                actor.width = Math.min(680, monitor.width - 56);
+            }
+            const width = Math.min(860, monitor.width - 56);
+            const narrow = width < 650;
+            this._completionPanel.orientation = narrow ? VERTICAL : Clutter.Orientation.HORIZONTAL;
+            this._completionPanelWidth = width;
+            this._completionPanel.width = width;
+            this._completions.width = narrow ? width - 2 : 340;
+            this._completionDocs.width = narrow ? width - 2 : width - 342;
+            this._completionDocs.set_style(
+                narrow ? "border-top: 1px solid #454545;" : "border-left: 1px solid #454545;",
+            );
         }
 
         _capturedEvent(event) {
@@ -451,6 +517,10 @@ export const DeveloperConsole = GObject.registerClass(
             }
             if (key === Clutter.KEY_Tab && !(state & Clutter.ModifierType.SHIFT_MASK)) {
                 this._complete();
+                return Clutter.EVENT_STOP;
+            }
+            if (key === Clutter.KEY_F1) {
+                this._showHover();
                 return Clutter.EVENT_STOP;
             }
             if (
@@ -729,34 +799,131 @@ export const DeveloperConsole = GObject.registerClass(
             const text = this._entry.get_text();
             const position = this._entry.clutter_text.get_cursor_position();
             const cursor = position < 0 ? text.length : [...text].slice(0, position).join("").length;
-            const call = text.slice(0, cursor).match(/gnoblin\.(\w+)\([^()]*$/);
-            const signature = call && API_HELP[call[1]];
-            this._signature.text = signature ? signature.join(" — ") : "";
-            this._signature.visible = Boolean(signature && this._language === "js");
+            this._updateAssist(text, cursor);
             const completion = this._evaluator.complete(text, cursor);
             if (!completion.items.length || !this._open) return;
             this._completion = { ...completion, text };
-            for (const [index, item] of completion.items.slice(0, 12).entries()) {
-                const choice = button(
-                    item.detail ? `${item.label}  —  ${item.detail}` : item.label,
-                    () => {
-                        this._completionIndex = index;
-                        this._acceptCompletion();
-                    },
-                    "gnoblin-console-completion",
-                );
-                this._completions.add_child(choice);
-            }
+            this._completionOffset = 0;
+            this._renderCompletionItems();
             this._completions.show();
+            this._completionPanel.show();
             this._selectCompletion(0);
             this._scrollBottom();
         }
 
+        _renderCompletionItems() {
+            const { text, start, end, items } = this._completion;
+            const prefix = text.slice(start, end);
+            this._completions.destroy_all_children();
+            for (const [index, item] of items.slice(this._completionOffset, this._completionOffset + 6).entries()) {
+                const choice = new St.Button({
+                    style_class: "gnoblin-console-completion",
+                    can_focus: true,
+                    x_expand: true,
+                    accessible_name: item.label,
+                });
+                const row = new St.BoxLayout({ x_expand: true });
+                const name = new St.Label({ text: item.label, x_expand: true });
+                const nameMarkup = `<b>${GLib.markup_escape_text(item.label.slice(0, prefix.length), -1)}</b>${GLib.markup_escape_text(item.label.slice(prefix.length), -1)}`;
+                name.clutter_text.set_markup(nameMarkup);
+                name.connect_after("style-changed", () => name.clutter_text.set_markup(nameMarkup));
+                row.add_child(name);
+                row.add_child(
+                    new St.Label({
+                        text: item.kind ?? (item.detail === "configuration path" ? "setting" : ""),
+                        style_class: "gnoblin-console-completion-kind",
+                    }),
+                );
+                choice.set_child(row);
+                choice.connect("clicked", () => {
+                    this._completionIndex = this._completionOffset + index;
+                    this._acceptCompletion();
+                });
+                this._completions.add_child(choice);
+            }
+        }
+
+        _updateAssist(text, cursor) {
+            this._signature.hide();
+            this._parameterHint.hide();
+            this._diagnostic.hide();
+            if (this._diagnosticTimer) GLib.source_remove(this._diagnosticTimer);
+            this._diagnosticTimer = 0;
+            if (this._language !== "js") return;
+            const help = this._evaluator.signatureHelp(text, cursor);
+            const signature = help?.signatures[help.activeSignature];
+            if (signature) {
+                const parameters = signature.parameters ?? [];
+                const active = parameters[help.activeParameter];
+                let start = signature.label.indexOf("(") + 1;
+                for (let index = 0; index < help.activeParameter && index < parameters.length; index++) {
+                    const found = signature.label.indexOf(parameters[index].label, start);
+                    if (found >= 0) start = found + parameters[index].label.length;
+                }
+                start = active ? signature.label.indexOf(active.label, start) : -1;
+                const escape = (value) => GLib.markup_escape_text(value, -1);
+                this._signatureMarkup =
+                    start >= 0
+                        ? `${escape(signature.label.slice(0, start))}<b><u>${escape(active.label)}</u></b>${escape(signature.label.slice(start + active.label.length))}`
+                        : escape(signature.label);
+                this._signature.clutter_text.set_markup(this._signatureMarkup);
+                this._signature.show();
+                this._parameterHint.text = active?.documentation ?? "";
+                this._parameterHint.visible = Boolean(this._parameterHint.text);
+            }
+            this._diagnosticTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
+                this._diagnosticTimer = 0;
+                if (!this._open) return GLib.SOURCE_REMOVE;
+                const diagnostic = this._evaluator.diagnostics(text)[0];
+                this._diagnostic.text = diagnostic ? `Syntax: ${diagnostic.message}` : "";
+                this._diagnostic.visible = Boolean(diagnostic);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+
+        _showHover() {
+            const text = this._entry.get_text();
+            const position = this._entry.clutter_text.get_cursor_position();
+            const cursor = position < 0 ? text.length : [...text].slice(0, position).join("").length;
+            const hover = this._evaluator.hover?.(text, cursor);
+            if (!hover) return;
+            const [title, ...description] = hover.contents.split("\n");
+            this._signatureMarkup = `<b>${GLib.markup_escape_text(title, -1)}</b>`;
+            this._signature.clutter_text.set_markup(this._signatureMarkup);
+            this._signature.show();
+            this._parameterHint.text = description
+                .filter((line) => !line.startsWith("GObject Introspection"))
+                .join("\n");
+            this._parameterHint.visible = Boolean(this._parameterHint.text);
+            this._scrollBottom();
+        }
+
         _selectCompletion(index) {
+            const count = this._completion.items.length;
+            this._completionIndex = (index + count) % count;
+            const offset = Math.floor(this._completionIndex / 6) * 6;
+            if (offset !== this._completionOffset) {
+                this._completionOffset = offset;
+                this._renderCompletionItems();
+            }
             const children = this._completions.get_children();
-            this._completionIndex = (index + children.length) % children.length;
+            const item = this._completion.items[this._completionIndex];
+            this._completionDetail.text =
+                item.detail && !["function", "object", "string", "number", "accessor"].includes(item.detail)
+                    ? item.detail
+                    : "";
+            this._completionDetail.visible = Boolean(this._completionDetail.text);
+            this._completionDocumentation.text = (item.documentation ?? "")
+                .split("\n")
+                .filter((line) => !line.startsWith("GObject Introspection"))
+                .join("\n");
+            this._completionDocumentation.visible = Boolean(this._completionDocumentation.text);
+            this._completionDocs.visible = this._completionDetail.visible || this._completionDocumentation.visible;
+            this._completionPanel.width = this._completionDocs.visible
+                ? this._completionPanelWidth
+                : this._completions.width + 2;
             children.forEach((child, i) => {
-                if (i === this._completionIndex) child.add_style_pseudo_class("selected");
+                if (i + this._completionOffset === this._completionIndex) child.add_style_pseudo_class("selected");
                 else child.remove_style_pseudo_class("selected");
             });
         }
@@ -768,11 +935,14 @@ export const DeveloperConsole = GObject.registerClass(
             this._entry.set_text(text.slice(0, start) + value + text.slice(end));
             this._entry.clutter_text.set_cursor_position([...(text.slice(0, start) + value)].length);
             this._hideCompletions();
+            this._updateAssist(this._entry.get_text(), (text.slice(0, start) + value).length);
             this._entry.grab_key_focus();
         }
 
         _hideCompletions() {
             this._completions.hide();
+            this._completionPanel.hide();
+            this._completionDetail?.hide();
             this._completions.destroy_all_children();
         }
     },

@@ -220,7 +220,7 @@ export default function (api) {
 }
 """)
 
-gdbus("org.gnoblin.Shell", "/org/gnoblin/Shell", "org.gnoblin.Shell", "ReloadScripts")
+gdbus("org.gnoblin.Shell", "/org/gnoblin/Shell", "org.gnoblin.Shell", "Reload")
 
 
 def state():

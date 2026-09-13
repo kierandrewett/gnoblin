@@ -65,9 +65,9 @@ gnoblinctl feature list
 ```
 
 If no visible layer surface appears for eight seconds, Gnoblin shows a native
-Desktop recovery panel with Open Terminal, Settings and Dismiss. The panel
+Desktop unavailable panel with Terminal, Console, Settings, Config folder and Close. The panel
 also appears if all visible layer surfaces disappear. It closes automatically
-when a layer surface appears. Dismiss keeps it hidden until a layer surface
+when a layer surface appears. Close keeps it hidden until a layer surface
 has appeared and subsequently disappeared, the session unlocks, or a new
 session begins.
 

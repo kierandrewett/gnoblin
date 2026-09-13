@@ -2,6 +2,7 @@
 #include "gnoblin-config.h"
 #include "tomlc99/toml.h"
 #include <stdlib.h>
+#include <string.h>
 
 static GVariant* table_value(toml_table_t* table);
 
@@ -87,6 +88,19 @@ GVariant* gnoblin_config_parse_toml(const char* contents, GError** error) {
         if (!valid) {
             g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                 "protocols must be a table of booleans");
+            toml_free(table);
+            return NULL;
+        }
+    }
+    if (toml_key_exists(table, "layer-shell")) {
+        toml_table_t* layer = toml_table_in(table, "layer-shell");
+        const char* key;
+        gboolean valid = layer != NULL;
+        for (int i = 0; valid && (key = toml_key_in(layer, i)); i++)
+            valid = strcmp(key, "preserve-active-window") == 0 && toml_bool_in(layer, key).ok;
+        if (!valid) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "layer-shell accepts only preserve-active-window = true or false");
             toml_free(table);
             return NULL;
         }

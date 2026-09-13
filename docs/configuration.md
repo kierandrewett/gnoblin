@@ -407,7 +407,7 @@ gnoblinctl feature enable <id>      turn a subsystem ON
 gnoblinctl feature disable <id>     turn a subsystem OFF
 
 gnoblinctl script list              list loaded user scripts
-gnoblinctl script reload            reload ~/.config/gnoblin/scripts/*.js
+gnoblinctl reload                   reload config, theme and ~/.config/gnoblin/scripts/*.js
 
 gnoblinctl grant list               list persistent Screen Cast and Remote Desktop grants
 gnoblinctl grant revoke <kind> <id> revoke one portal-scoped grant

@@ -192,6 +192,44 @@ static GVariant* variant_from_lua(lua_State* state, int index, int depth, gboole
     return g_variant_builder_end(&out);
 }
 
+static void push_variant(lua_State* state, GVariant* value) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
+        g_autoptr(GVariant) child = g_variant_get_variant(value);
+        push_variant(state, child);
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN))
+        lua_pushboolean(state, g_variant_get_boolean(value));
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+        lua_pushinteger(state, g_variant_get_int64(value));
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        lua_pushnumber(state, g_variant_get_double(value));
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+        lua_pushstring(state, g_variant_get_string(value, NULL));
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
+        lua_newtable(state);
+        GVariantIter iter;
+        GVariant* child;
+        guint i = 1;
+        g_variant_iter_init(&iter, value);
+        while (g_variant_iter_next(&iter, "v", &child)) {
+            push_variant(state, child);
+            lua_rawseti(state, -2, i++);
+            g_variant_unref(child);
+        }
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
+        lua_newtable(state);
+        GVariantIter iter;
+        const char* key;
+        GVariant* child;
+        g_variant_iter_init(&iter, value);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &child)) {
+            push_variant(state, child);
+            lua_setfield(state, -2, key);
+            g_variant_unref(child);
+        }
+    } else
+        lua_pushnil(state);
+}
+
 static gboolean is_array(lua_State* state, int index) {
     return marked_array(state, index) || lua_rawlen(state, index) > 0;
 }
@@ -345,6 +383,31 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setglobal(state, "require");
 }
 
+static gboolean merge_variant(lua_State* state, GVariant* document, GError** error) {
+    if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "loaded config must be a table");
+        return FALSE;
+    }
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "config");
+    push_variant(state, document);
+    merge_table(state, -2, -1, NULL);
+    lua_pop(state, 3);
+    return TRUE;
+}
+
+static gboolean evaluate_toml(lua_State* state, LuaConfig* config, const char* path,
+                              GError** error) {
+    g_autofree char* contents = NULL;
+    if (!g_file_get_contents(path, &contents, NULL, error))
+        return FALSE;
+    g_autoptr(GVariant) document = gnoblin_config_parse_toml(contents, error);
+    if (!document)
+        return FALSE;
+    return merge_variant(state, document, error);
+}
+
 static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                               GError** error) {
     g_autofree char* path = g_canonicalize_filename(given, NULL);
@@ -369,7 +432,9 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
     g_autofree char* old = g_steal_pointer(&config->current_path);
     config->current_path = g_strdup(path);
     gboolean ok;
-    {
+    if (!g_str_has_suffix(path, ".lua")) {
+        ok = evaluate_toml(state, config, path, error);
+    } else {
         int status = luaL_loadfilex(state, path, "t");
         if (status == LUA_OK)
             status = lua_pcall(state, 0, 1, 0);

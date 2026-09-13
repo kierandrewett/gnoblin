@@ -39,12 +39,12 @@ class ConfigFragmentTests(unittest.TestCase):
         self.assertEqual(GNOBLINCTL.user_config_path(), config)
         self.assertFalse(config.exists())
 
-    def test_default_configuration_ignores_legacy_files(self):
+    def test_default_configuration_uses_existing_legacy_file(self):
         directory = self.config_home / "gnoblin"
         directory.mkdir(parents=True)
         (directory / "gnoblin.conf").touch()
         (directory / "gnoblin.toml").touch()
-        self.assertEqual(GNOBLINCTL.user_config_path(), directory / "init.lua")
+        self.assertEqual(GNOBLINCTL.user_config_path(), directory / "gnoblin.toml")
 
     def test_config_commands_show_the_path_and_reload(self):
         config = Path(self.directory.name) / "custom.lua"
@@ -59,6 +59,11 @@ class ConfigFragmentTests(unittest.TestCase):
             result = GNOBLINCTL.dispatch(reload_args, cli)
         self.assertEqual(result, {"ok": True, "action": "config reload"})
         call.assert_called_once_with("ReloadConfig", "", [], "org.gnoblin.Shell", 5)
+
+    def test_separate_frame_reload_is_not_a_command(self):
+        cli = GNOBLINCTL.parser()
+        with patch("sys.stderr"), self.assertRaises(SystemExit):
+            cli.parse_args(["frame", "reload"])
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ function paint(frame, maximized) {
     );
     const border = Object.create(context.Border.prototype);
     border.actor = {
+        set_child_above_sibling() {},
         meta_window: {
             maximized_horizontally: maximized,
             maximized_vertically: maximized,

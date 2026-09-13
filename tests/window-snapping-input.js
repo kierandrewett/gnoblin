@@ -28,6 +28,10 @@ export default function enable(api) {
                 cmd.down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED,
             );
         if (cmd.op === "move") device.notify_absolute_motion(GLib.get_monotonic_time(), cmd.x, cmd.y);
+        if (cmd.op === "drop") {
+            device.notify_absolute_motion(GLib.get_monotonic_time(), cmd.x, cmd.y);
+            device.notify_button(GLib.get_monotonic_time(), 1, Clutter.ButtonState.RELEASED);
+        }
         if (cmd.op === "button")
             device.notify_button(
                 GLib.get_monotonic_time(),
