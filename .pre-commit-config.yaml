@@ -1,7 +1,7 @@
 # Keep identical in Gnoblin and Bingux. Checks never rewrite source files.
 minimum_pre_commit_version: "4.6.2"
 default_stages: [pre-commit]
-exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|banks)/|\.patch$|\.lock$'
+exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|tomlc99|banks)/|\.patch$|\.lock$'
 repos:
   - repo: local
     hooks:
