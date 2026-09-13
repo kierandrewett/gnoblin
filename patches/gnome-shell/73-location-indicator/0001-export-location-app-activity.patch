@@ -1,0 +1,68 @@
+From d2d25e2d02b83b6810e3bc8c6a6150a199731ec5 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 13 Sep 2026 02:48:22 +0100
+Subject: [PATCH] location: track active requesting applications
+
+---
+ js/ui/status/location.js | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/status/location.js b/js/ui/status/location.js
+index 23b8b15..9f64167 100644
+--- a/js/ui/status/location.js
++++ b/js/ui/status/location.js
+@@ -74,6 +74,7 @@ const GeoclueAgent = GObject.registerClass({
+         super._init();
+ 
+         this._settings = new Gio.Settings({schema_id: LOCATION_SCHEMA});
++        this._locationApps = new Set();
+         this._settings.connectObject(
+             `changed::${ENABLED}`, () => this.notify('enabled'),
+             `changed::${MAX_ACCURACY_LEVEL}`, () => this._onMaxAccuracyLevelChanged(),
+@@ -106,6 +107,10 @@ const GeoclueAgent = GObject.registerClass({
+         return this._managerProxy?.InUse ?? false;
+     }
+ 
++    get activeApps() {
++        return this.inUse ? [...this._locationApps] : [];
++    }
++
+     get maxAccuracyLevel() {
+         if (this.enabled) {
+             let level = this._settings.get_string(MAX_ACCURACY_LEVEL);
+@@ -125,6 +130,10 @@ const GeoclueAgent = GObject.registerClass({
+ 
+         const accuracyLevel = await authorizer.authorize();
+         const ret = accuracyLevel !== GeoclueAccuracyLevel.NONE;
++        if (ret) {
++            this._locationApps.add(desktopId);
++            global.__gnoblinPublishPrivacy?.();
++        }
+         invocation.return_value(GLib.Variant.new('(bu)', [ret, accuracyLevel]));
+     }
+ 
+@@ -169,6 +178,7 @@ const GeoclueAgent = GObject.registerClass({
+     _onGeoclueVanished() {
+         this._managerProxy?.disconnectObject(this);
+         this._managerProxy = null;
++        this._locationApps.clear();
+ 
+         this.notify('in-use');
+     }
+@@ -189,8 +199,12 @@ const GeoclueAgent = GObject.registerClass({
+ 
+     _onGeocluePropsChanged(proxy, properties) {
+         const inUseChanged = !!properties.lookup_value('InUse', null);
+-        if (inUseChanged)
++        if (inUseChanged) {
++            if (!this.inUse)
++                this._locationApps.clear();
+             this.notify('in-use');
++            global.__gnoblinPublishPrivacy?.();
++        }
+     }
+ 
+     _connectToPermissionStore() {
+-- 
+2.55.0
+

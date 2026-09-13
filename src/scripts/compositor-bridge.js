@@ -689,6 +689,7 @@ class CompositorBridge {
             recordingCount: recordings.length,
             recordingElapsed: started ? Math.floor((GLib.get_monotonic_time() - started) / 1000000) : 0,
             cameraInUse: Boolean(this.cameraMonitor?.cameras_in_use),
+            locationCaptures: global.__gnoblinLocationCaptures?.() ?? [],
         };
         if (client) this.send(client, record);
         else this.sendToSubscribers(record, (peer) => peer.trackPrivacy);

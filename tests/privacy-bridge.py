@@ -76,7 +76,8 @@ def start(recording):
 client = Subscriber()
 sessions = []
 try:
-    client.wait(lambda state: not state["recording"] and not state["screenSharing"])
+    initial = client.wait(lambda state: not state["recording"] and not state["screenSharing"])
+    assert isinstance(initial.get("locationCaptures"), list), "Privacy snapshots include location captures"
     sessions.append(start(True))
     client.wait(lambda state: state["recording"] and state["recordingCount"] == 1)
     time.sleep(1.1)

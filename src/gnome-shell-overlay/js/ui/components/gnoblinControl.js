@@ -731,6 +731,8 @@ export class Component {
         try {
             this._locationAgent = Location.getGeoclueAgent();
             this._locationAgent.connectObject("notify::in-use", () => this._emitPrivacyState(), this);
+            global.__gnoblinLocationCaptures = () =>
+                (this._locationAgent?.activeApps ?? []).map((appId) => ({appId, app: appId, device: "Location"}));
         } catch (e) {
             logError(e, "gnoblin-control: location state monitoring failed");
         }
@@ -750,6 +752,7 @@ export class Component {
         this._screenShareController = null;
         this._screenShareHandles.clear();
         this._locationAgent = null;
+        global.__gnoblinLocationCaptures = null;
         this._privacyState = null;
     }
 

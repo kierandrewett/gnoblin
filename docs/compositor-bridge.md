@@ -115,10 +115,12 @@ to 4 MiB per connection, including preview data.
 
 `{"op":"privacy"}` subscribes to activity snapshots. Responses contain
 `event: "privacy"`, `screenSharing`, `recording`, `recordingCount`,
-`recordingElapsed` (whole seconds), and `cameraInUse`. The bridge uses Mutter's
-remote-access handles and GNOME's `Shell.CameraMonitor`. Clients can advance
-elapsed time locally between activity changes. Start times and active handles
-survive script reloads, so reconnecting does not restart the timer.
+`recordingElapsed` (whole seconds), `cameraInUse`, and `locationCaptures`.
+`locationCaptures` contains the currently authorized GeoClue desktop IDs while
+location is in use. The bridge uses Mutter's remote-access handles and GNOME's
+`Shell.CameraMonitor`. Clients can advance elapsed time locally between activity
+changes. Start times and active handles survive script reloads, so reconnecting
+does not restart the timer.
 
 `{"op":"stop-sharing"}` stops non-recording remote-access sessions.
 `{"op":"stop-recording"}` stops recording sessions. A client that owns an encoder
