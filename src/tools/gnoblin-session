@@ -69,13 +69,13 @@ gnoblin_reset_online_accounts_services() {
 
     while read -r unit _; do
         case "$unit" in
-            dbus-*-org.gnome.OnlineAccounts@*.service|dbus-*-org.gnome.Identity@*.service)
+            dbus-*-org.gnome.OnlineAccounts@*.service | dbus-*-org.gnome.Identity@*.service)
                 if ! systemctl --user stop "$unit"; then
                     echo "gnoblin-session: could not stop stale $unit" >&2
                 fi
                 ;;
         esac
-    done <<< "$units"
+    done <<<"$units"
 }
 
 gnoblin_sync_activation_environment

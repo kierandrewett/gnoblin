@@ -93,7 +93,13 @@ def parser():
     actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
     for name in (
-        "menu", "interactive-move", "interactive-resize", "above", "unabove", "stick", "unstick",
+        "menu",
+        "interactive-move",
+        "interactive-resize",
+        "above",
+        "unabove",
+        "stick",
+        "unstick",
         "focus",
         "close",
         "minimize",

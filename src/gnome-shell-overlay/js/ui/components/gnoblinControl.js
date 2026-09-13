@@ -276,7 +276,8 @@ class EventBus {
                 const result = cb(...args);
                 if (result && typeof result.then === "function")
                     Promise.resolve(result).catch((e) =>
-                        logError(e, `gnoblin-script: async handler for '${event}' threw`));
+                        logError(e, `gnoblin-script: async handler for '${event}' threw`),
+                    );
             } catch (e) {
                 logError(e, `gnoblin-script: handler for '${event}' threw`);
             }
@@ -328,8 +329,13 @@ class ScriptHost {
             const previousPid = name.slice(0, -8);
             if (previousPid !== pid && !GLib.file_test(`/proc/${previousPid}`, GLib.FileTest.EXISTS)) {
                 this._safeMode = true;
-                this._quarantine.replace_contents("Unclean script session; explicit retry required", null,
-                    false, Gio.FileCreateFlags.PRIVATE, null);
+                this._quarantine.replace_contents(
+                    "Unclean script session; explicit retry required",
+                    null,
+                    false,
+                    Gio.FileCreateFlags.PRIVATE,
+                    null,
+                );
                 directory.get_child(name).delete(null);
             }
         }
@@ -398,7 +404,9 @@ class ScriptHost {
         if (this._destroyed) return;
         this._armRecovery();
         if (this._safeMode) {
-            console.warn("gnoblin-script: previous session ended uncleanly; user scripts paused for recovery. Use gnoblinctl reload to retry explicitly.");
+            console.warn(
+                "gnoblin-script: previous session ended uncleanly; user scripts paused for recovery. Use gnoblinctl reload to retry explicitly.",
+            );
             return;
         }
 
@@ -786,7 +794,7 @@ export class Component {
             this._locationAgent = Location.getGeoclueAgent();
             this._locationAgent.connectObject("notify::in-use", () => this._emitPrivacyState(), this);
             global.__gnoblinLocationCaptures = () =>
-                (this._locationAgent?.activeApps ?? []).map((appId) => ({appId, app: appId, device: "Location"}));
+                (this._locationAgent?.activeApps ?? []).map((appId) => ({ appId, app: appId, device: "Location" }));
         } catch (e) {
             logError(e, "gnoblin-control: location state monitoring failed");
         }

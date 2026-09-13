@@ -465,10 +465,8 @@ GVariant* meta_gnoblin_frame_renderer_status(MetaWindow* window) {
                                 ? meta_wayland_client_get_pid(frame->renderer->client)
                                 : 0));
     g_variant_builder_add(&b, "{sv}", "serial", g_variant_new_uint32(frame ? frame->serial : 0));
-    g_variant_builder_add(&b, "{sv}", "hover",
-                          g_variant_new_uint32(frame ? frame->hover : 0));
-    g_variant_builder_add(&b, "{sv}", "pressed",
-                          g_variant_new_uint32(frame ? frame->pressed : 0));
+    g_variant_builder_add(&b, "{sv}", "hover", g_variant_new_uint32(frame ? frame->hover : 0));
+    g_variant_builder_add(&b, "{sv}", "pressed", g_variant_new_uint32(frame ? frame->pressed : 0));
     GVariantBuilder regions;
     g_variant_builder_init(&regions, G_VARIANT_TYPE("a(uiiii)"));
     if (frame && frame->external && frame->role) {

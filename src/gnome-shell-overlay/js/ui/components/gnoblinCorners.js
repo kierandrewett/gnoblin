@@ -587,8 +587,7 @@ export class WindowCorners {
                 // The first mapped buffer may precede GTK's final frame.
                 // Retry inconclusive alpha probes on real client damage, not
                 // on an idle redraw loop. Bound retries for translucent apps.
-                if (this.config?.["remove-csd"] && !cached?.csdProbedForRemoval &&
-                    (cached?.attempts ?? 0) < 8)
+                if (this.config?.["remove-csd"] && !cached?.csdProbedForRemoval && (cached?.attempts ?? 0) < 8)
                     schedule();
             }),
         ]);

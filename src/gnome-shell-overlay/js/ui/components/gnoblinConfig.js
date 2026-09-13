@@ -78,9 +78,12 @@ export function parseDocument(document) {
         )
             throw new Error(`unknown shell setting: ${key}`);
         if (key === "window-menu") {
-            if (!Array.isArray(value) || value.length > 32 ||
-                !value.every(arg => typeof arg === "string" && !arg.includes("\0")) ||
-                (value.length && !value[0]))
+            if (
+                !Array.isArray(value) ||
+                value.length > 32 ||
+                !value.every((arg) => typeof arg === "string" && !arg.includes("\0")) ||
+                (value.length && !value[0])
+            )
                 throw new Error("window-menu: expected a command argv or an empty array");
         } else if (FEATURE_KEYS.includes(key) || key === "window-switcher") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);

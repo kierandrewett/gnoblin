@@ -964,7 +964,13 @@ class CompositorBridge {
         }
         if (record.command !== "window") throw new Error("unknown compositor command");
         const actions = [
-            "menu", "interactive-move", "interactive-resize", "above", "unabove", "stick", "unstick",
+            "menu",
+            "interactive-move",
+            "interactive-resize",
+            "above",
+            "unabove",
+            "stick",
+            "unstick",
             "focus",
             "close",
             "minimize",
@@ -992,19 +998,38 @@ class CompositorBridge {
                 this.showWindowMenu(window, x, y);
                 break;
             }
-            case "above": window.make_above(); break;
-            case "unabove": window.unmake_above(); break;
-            case "stick": window.stick(); break;
-            case "unstick": window.unstick(); break;
+            case "above":
+                window.make_above();
+                break;
+            case "unabove":
+                window.unmake_above();
+                break;
+            case "stick":
+                window.stick();
+                break;
+            case "unstick":
+                window.unstick();
+                break;
             case "interactive-move":
             case "interactive-resize": {
                 const move = record.action === "interactive-move";
-                requireCapability((move ? window.allows_move() : window.allows_resize()) &&
-                    !window.is_fullscreen() && !window.get_maximize_flags(), "window cannot move or resize in this state");
+                requireCapability(
+                    (move ? window.allows_move() : window.allows_resize()) &&
+                        !window.is_fullscreen() &&
+                        !window.get_maximize_flags(),
+                    "window cannot move or resize in this state",
+                );
                 Main.activateWindow(window, global.get_current_time());
                 const sprite = global.stage.context.get_backend().get_pointer_sprite(global.stage);
-                requireCapability(window.begin_grab_op(move ? Meta.GrabOp.KEYBOARD_MOVING : Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
-                    sprite, global.get_current_time(), null), "could not begin window grab");
+                requireCapability(
+                    window.begin_grab_op(
+                        move ? Meta.GrabOp.KEYBOARD_MOVING : Meta.GrabOp.KEYBOARD_RESIZING_UNKNOWN,
+                        sprite,
+                        global.get_current_time(),
+                        null,
+                    ),
+                    "could not begin window grab",
+                );
                 break;
             }
             case "focus":
@@ -1083,22 +1108,45 @@ class CompositorBridge {
         const maximized = !!window.get_maximize_flags();
         const fullscreen = window.is_fullscreen();
         const actions = [
-            {id: "minimize", text: "Minimize", enabled: window.can_minimize()},
-            {id: maximized ? "unmaximize" : "maximize", text: maximized ? "Restore" : "Maximize", enabled: window.can_maximize() && !fullscreen},
-            {id: "interactive-move", text: "Move", enabled: window.allows_move() && !maximized && !fullscreen},
-            {id: "interactive-resize", text: "Resize", enabled: window.allows_resize() && !maximized && !fullscreen},
-            {isSeparator: true},
-            {id: window.is_above() ? "unabove" : "above", text: "Always on Top", checked: window.is_above(), enabled: !fullscreen},
-            {id: window.is_on_all_workspaces() ? "unstick" : "stick", text: "Always on Visible Workspace", checked: window.is_on_all_workspaces(), enabled: true},
-            {isSeparator: true},
-            {id: "close", text: "Close", enabled: window.can_close()},
+            { id: "minimize", text: "Minimize", enabled: window.can_minimize() },
+            {
+                id: maximized ? "unmaximize" : "maximize",
+                text: maximized ? "Restore" : "Maximize",
+                enabled: window.can_maximize() && !fullscreen,
+            },
+            { id: "interactive-move", text: "Move", enabled: window.allows_move() && !maximized && !fullscreen },
+            { id: "interactive-resize", text: "Resize", enabled: window.allows_resize() && !maximized && !fullscreen },
+            { isSeparator: true },
+            {
+                id: window.is_above() ? "unabove" : "above",
+                text: "Always on Top",
+                checked: window.is_above(),
+                enabled: !fullscreen,
+            },
+            {
+                id: window.is_on_all_workspaces() ? "unstick" : "stick",
+                text: "Always on Visible Workspace",
+                checked: window.is_on_all_workspaces(),
+                enabled: true,
+            },
+            { isSeparator: true },
+            { id: "close", text: "Close", enabled: window.can_close() },
         ];
-        const record = {version: 1, window: String(window.get_stable_sequence()), title: window.title,
-            x: Math.round(x), y: Math.round(y), actions};
+        const record = {
+            version: 1,
+            window: String(window.get_stable_sequence()),
+            title: window.title,
+            x: Math.round(x),
+            y: Math.round(y),
+            actions,
+        };
         const child = Gio.Subprocess.new([...command, JSON.stringify(record)], Gio.SubprocessFlags.NONE);
         child.wait_check_async(null, (process, result) => {
-            try { process.wait_check_finish(result); }
-            catch (error) { console.warn(`gnoblin window menu: ${error.message}`); }
+            try {
+                process.wait_check_finish(result);
+            } catch (error) {
+                console.warn(`gnoblin window menu: ${error.message}`);
+            }
         });
     }
 
