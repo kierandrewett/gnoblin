@@ -112,6 +112,7 @@ index 5f466df518ae59a783d4dd545bca4a3e0939d7c4..0723d8fd41c895fed76fe98c5a76abfc
 +gboolean meta_gnoblin_consume_fullscreen_return_event (MetaDisplay *display,
 +                                                       MetaWindow  *window,
 +                                                       gboolean     press,
++                                                       guint        button);
 diff --git a/src/core/util.c b/src/core/util.c
 index 91d21f4b1aa7fe09b550009cd63507994159b762..9eeb868daa93f0dfd03d6e50539f8a374d8c5bc8 100644
 --- a/src/core/util.c
