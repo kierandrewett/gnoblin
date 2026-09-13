@@ -45,20 +45,20 @@ Persistent proof images: `~/.local/state/gnoblin/proofs/2026-09-13-ssd/`.
 
 ## Results
 
-| Check | Result |
-| --- | --- |
-| GTK startup and three script/config reload cycles | Four corner pixel checks passed every cycle |
-| Ghostty CSD sampling | Insets `[9,9,9,9]`, CSD retained |
-| RustDesk CSD sampling | Insets `[7,7,7,7]`, CSD retained |
-| Real Spotify | Negotiated SSD; both native and Bingux titlebars rendered |
-| Native right-click menu | Real pointer input opened Bingux menu; Minimize targeted the original window |
-| Bingux right-click menu | Same end-to-end input/action check passed |
-| Bingux focus transitions | 30 changes, zero native-fallback visibility transitions |
-| RustDesk real drag | Zero differing pixels versus a full repaint |
-| Ghostty real drag | 21 differing pixels, no stale window trail |
-| Native readback failure cases | Catchable empty-buffer error; valid empty Cairo image; valid real client image; empty out-of-bounds image |
-| Script native-crash recovery | After SIGABRT of only the disposable compositor, next process reported safe mode, zero loaded scripts, quarantine present, `ping = pong`, developer console open |
-| Targeted Node regressions | Nine checks passed across script lifecycle, window-rule lifecycle, border edges and frame policy |
+| Check                                             | Result                                                                                                                                                           |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GTK startup and three script/config reload cycles | Four corner pixel checks passed every cycle                                                                                                                      |
+| Ghostty CSD sampling                              | Insets `[9,9,9,9]`, CSD retained                                                                                                                                 |
+| RustDesk CSD sampling                             | Insets `[7,7,7,7]`, CSD retained                                                                                                                                 |
+| Real Spotify                                      | Negotiated SSD; both native and Bingux titlebars rendered                                                                                                        |
+| Native right-click menu                           | Real pointer input opened Bingux menu; Minimize targeted the original window                                                                                     |
+| Bingux right-click menu                           | Same end-to-end input/action check passed                                                                                                                        |
+| Bingux focus transitions                          | 30 changes, zero native-fallback visibility transitions                                                                                                          |
+| RustDesk real drag                                | Zero differing pixels versus a full repaint                                                                                                                      |
+| Ghostty real drag                                 | 21 differing pixels, no stale window trail                                                                                                                       |
+| Native readback failure cases                     | Catchable empty-buffer error; valid empty Cairo image; valid real client image; empty out-of-bounds image                                                        |
+| Script native-crash recovery                      | After SIGABRT of only the disposable compositor, next process reported safe mode, zero loaded scripts, quarantine present, `ping = pong`, developer console open |
+| Targeted Node regressions                         | Nine checks passed across script lifecycle, window-rule lifecycle, border edges and frame policy                                                                 |
 
 Drag verification captures the framebuffer **before swap**, using Mutter's
 test-exported stage watcher. Reading it from Clutter's later `after-paint`
