@@ -1,10 +1,22 @@
+From 13f535e25a95865c5372355c37f006d28260b8b8 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sun, 13 Sep 2026 02:58:17 +0100
 Subject: [PATCH] Retain Gaussian blur resources and expose scene damage
 
+---
+ clutter/clutter/clutter-paint-nodes.c        | 114 ++++++++++++++++++-
+ clutter/clutter/clutter-paint-nodes.h        |  18 +++
+ clutter/clutter/clutter-stage-view-private.h |   4 -
+ clutter/clutter/clutter-stage-view.c         |  53 +++++++++
+ clutter/clutter/clutter-stage-view.h         |  15 +++
+ src/backends/meta-stage-impl.c               |   2 +
+ 6 files changed, 198 insertions(+), 8 deletions(-)
+
 diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c
+index 74193a364a5ddabfcd457533dd1a0791ac4e6ae9..1c88d3f56e627f8a7d3eecdaac0323ee2794bc0b 100644
 --- a/clutter/clutter/clutter-paint-nodes.c
 +++ b/clutter/clutter/clutter-paint-nodes.c
-@@ -1364,11 +1364,62 @@
+@@ -1364,11 +1364,62 @@ clutter_blit_node_add_blit_rectangle (ClutterBlitNode *blit_node,
   * ClutterBlurNode:
   */
  
@@ -67,7 +79,7 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
  };
  
  G_DEFINE_TYPE (ClutterBlurNode, clutter_blur_node, CLUTTER_TYPE_LAYER_NODE)
-@@ -1391,7 +1442,7 @@
+@@ -1391,7 +1442,7 @@ clutter_blur_node_finalize (ClutterPaintNode *node)
  {
    ClutterBlurNode *blur_node = CLUTTER_BLUR_NODE (node);
  
@@ -76,7 +88,7 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
  
    CLUTTER_PAINT_NODE_CLASS (clutter_blur_node_parent_class)->finalize (node);
  }
-@@ -1430,6 +1481,32 @@
+@@ -1430,6 +1481,32 @@ clutter_blur_node_new (unsigned int width,
                         unsigned int height,
                         float        radius)
  {
@@ -109,11 +121,10 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
    g_autoptr (CoglOffscreen) offscreen = NULL;
    g_autoptr (CoglTexture) texture = NULL;
    g_autoptr (GError) error = NULL;
-@@ -1441,7 +1518,23 @@
+@@ -1441,7 +1518,23 @@ clutter_blur_node_new (unsigned int width,
    ClutterBlur *blur;
  
    g_return_val_if_fail (radius >= 0.0, NULL);
--
 +  g_return_val_if_fail (CLUTTER_IS_BLUR_CACHE (cache), NULL);
 +
 +  cache = owner->resources;
@@ -128,13 +139,13 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
 +      blur_node->cache = g_object_ref (cache);
 +      return (ClutterPaintNode *) blur_node;
 +    }
-+
+ 
 +  resources = clutter_blur_cache_new ();
 +  cache = resources;
    context = _clutter_context_get_default ();
    backend = clutter_context_get_backend (context);
    cogl_context = clutter_backend_get_cogl_context (backend);
-@@ -1459,8 +1552,6 @@
+@@ -1459,8 +1552,6 @@ clutter_blur_node_new (unsigned int width,
      }
  
    blur = clutter_blur_new (texture, radius);
@@ -143,10 +154,11 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
    if (!blur)
      {
        g_warning ("Failed to create blur pipeline");
-@@ -1482,6 +1573,21 @@
+@@ -1482,6 +1573,21 @@ clutter_blur_node_new (unsigned int width,
                                   width, height,
                                   0.0, 1.0);
  
+-out:
 +  g_clear_pointer (&cache->blur, clutter_blur_free);
 +  g_set_object (&cache->offscreen, layer_node->offscreen);
 +  g_set_object (&cache->pipeline, layer_node->pipeline);
@@ -159,18 +171,17 @@ diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-pai
 +  g_set_object (&owner->resources, cache);
 +  owner->builds++;
 +
-+  return (ClutterPaintNode *) blur_node;
+   return (ClutterPaintNode *) blur_node;
 +
- out:
--  return (ClutterPaintNode *) blur_node;
--}
++out:
 +  clutter_paint_node_unref ((ClutterPaintNode *) blur_node);
 +  return NULL;
-+}
+ }
 diff --git a/clutter/clutter/clutter-paint-nodes.h b/clutter/clutter/clutter-paint-nodes.h
+index 68d83ff2840231da2e4ad53a1c8e8679079006bd..433191ef7d81ab115fd3c2bd4c668c3896df84c9 100644
 --- a/clutter/clutter/clutter-paint-nodes.h
 +++ b/clutter/clutter/clutter-paint-nodes.h
-@@ -183,4 +183,22 @@
+@@ -183,4 +183,22 @@ ClutterPaintNode * clutter_blur_node_new (unsigned int width,
                                            unsigned int height,
                                            float        radius);
  
@@ -193,17 +204,35 @@ diff --git a/clutter/clutter/clutter-paint-nodes.h b/clutter/clutter/clutter-pai
 +                                                ClutterBlurCache *cache);
 +
  G_END_DECLS
+diff --git a/clutter/clutter/clutter-stage-view-private.h b/clutter/clutter/clutter-stage-view-private.h
+index 31ac7e144eadddebee386b0e380a46f12e2dacd7..27d4769c63579b55bd3477a3943a803faccb7909 100644
+--- a/clutter/clutter/clutter-stage-view-private.h
++++ b/clutter/clutter/clutter-stage-view-private.h
+@@ -46,10 +46,6 @@ void clutter_stage_view_invalidate_projection (ClutterStageView *view);
+ void clutter_stage_view_set_projection (ClutterStageView        *view,
+                                         const graphene_matrix_t *matrix);
+ 
+-CLUTTER_EXPORT
+-void clutter_stage_view_add_redraw_clip (ClutterStageView   *view,
+-                                         const MtkRectangle *clip);
+-
+ gboolean clutter_stage_view_has_full_redraw_clip (ClutterStageView *view);
+ 
+ gboolean clutter_stage_view_has_redraw_clip (ClutterStageView *view);
 diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stage-view.c
+index 823e9fb63e26200c084a56dce3f05311dab044d2..993d49ee8985aeb0118a776478dcdc02fd5304fc 100644
 --- a/clutter/clutter/clutter-stage-view.c
 +++ b/clutter/clutter/clutter-stage-view.c
-@@ -84,4 +84,6 @@
-   gboolean has_redraw_clip;
+@@ -89,6 +89,8 @@ typedef struct _ClutterStageViewPrivate
    MtkRegion *redraw_clip;
    gboolean has_accumulated_redraw_clip;
    MtkRegion *accumulated_redraw_clip;
 +  gboolean painting;
 +  const MtkRegion *paint_redraw_clip;
-@@ -1567,3 +1567,54 @@
+ 
+   float refresh_rate;
+   int64_t vblank_duration_us;
+@@ -1567,3 +1569,54 @@ clutter_stage_view_get_name (ClutterStageView *view)
  
    return priv->name;
  }
@@ -259,9 +288,10 @@ diff --git a/clutter/clutter/clutter-stage-view.c b/clutter/clutter/clutter-stag
 +}
 +
 diff --git a/clutter/clutter/clutter-stage-view.h b/clutter/clutter/clutter-stage-view.h
+index 9c52f5a7dac91ef5471baccea45a6ac01875a312..423158a31c06a61ec80dd927d82c6880bef10c9a 100644
 --- a/clutter/clutter/clutter-stage-view.h
 +++ b/clutter/clutter/clutter-stage-view.h
-@@ -94,3 +94,18 @@
+@@ -94,3 +94,18 @@ MtkMonitorTransform clutter_stage_view_get_transform (ClutterStageView *view);
  
  CLUTTER_EXPORT
  int clutter_stage_view_get_priority (ClutterStageView *view);
@@ -280,30 +310,17 @@ diff --git a/clutter/clutter/clutter-stage-view.h b/clutter/clutter/clutter-stag
 +CLUTTER_EXPORT
 +void clutter_stage_view_add_redraw_clip (ClutterStageView *view,
 +                                         const MtkRectangle *clip);
-diff --git a/clutter/clutter/clutter-stage-view-private.h b/clutter/clutter/clutter-stage-view-private.h
---- a/clutter/clutter/clutter-stage-view-private.h
-+++ b/clutter/clutter/clutter-stage-view-private.h
-@@ -46,10 +46,6 @@
- void clutter_stage_view_set_projection (ClutterStageView        *view,
-                                         const graphene_matrix_t *matrix);
- 
--CLUTTER_EXPORT
--void clutter_stage_view_add_redraw_clip (ClutterStageView   *view,
--                                         const MtkRectangle *clip);
--
- gboolean clutter_stage_view_has_full_redraw_clip (ClutterStageView *view);
- 
- gboolean clutter_stage_view_has_redraw_clip (ClutterStageView *view);
-
 diff --git a/src/backends/meta-stage-impl.c b/src/backends/meta-stage-impl.c
+index 7936f3af403adbafad57a37e759bed2fc6e0b5ef..f6d5530eeca8f9ea05ad5f4fd45357c1ab7e5aba 100644
 --- a/src/backends/meta-stage-impl.c
 +++ b/src/backends/meta-stage-impl.c
-@@ -410,4 +410,6 @@ paint_stage (MetaStageImpl    *stage_impl,
+@@ -410,7 +410,9 @@ paint_stage (MetaStageImpl    *stage_impl,
    ClutterStage *stage = stage_impl->wrapper;
-
+ 
    _clutter_stage_maybe_setup_viewport (stage, stage_view);
 +  clutter_stage_view_set_paint_redraw_clip (stage_view, redraw_clip);
    clutter_stage_paint_view (stage, stage_view, redraw_clip, frame);
 +  clutter_stage_view_clear_paint_redraw_clip (stage_view);
-
+ 
    clutter_stage_view_after_paint (stage_view, redraw_clip);
+ }

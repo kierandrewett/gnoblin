@@ -1,10 +1,18 @@
+From e6c8a443d41d80939b09ac82cbaf2d949c79a9c5 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sun, 13 Sep 2026 03:05:51 +0100
 Subject: [PATCH] Expose live frame renderer reconciliation to Shell
 
+---
+ src/meta/util.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
 diff --git a/src/meta/util.h b/src/meta/util.h
+index fd2639aa5361176ad1effbca4b222c81ebb642fb..9f0097d1072fbef54f62a95b24b84562a1a113ea 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -137,5 +137,7 @@
+@@ -136,6 +136,8 @@ META_EXPORT
+ GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
  META_EXPORT
  void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
 +META_EXPORT
