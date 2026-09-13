@@ -85,8 +85,12 @@ with (root / "frames-client.log").open("w") as log:
         image = Image.open(screenshot).convert("RGB")
         image.save("/tmp/gnoblin-native-frame-screen.png")
         x, y, width, height = first["frame"]
-        for point in [(x + width // 2, y), (x, y + height // 2),
-                      (x + width - 1, y + height // 2), (x + width // 2, y + height - 1)]:
+        for point in [
+            (x + width // 2, y),
+            (x, y + height // 2),
+            (x + width - 1, y + height // 2),
+            (x + width // 2, y + height - 1),
+        ]:
             assert image.getpixel(point) == (80, 80, 80), ("SSD outer border missing", point, image.getpixel(point))
         if negotiated:
             assert image.getpixel((x + width // 2, y + top)) == (255, 0, 0), "border crossed client/titlebar seam"
@@ -284,12 +288,15 @@ with (root / "frames-client.log").open("w") as log:
         if os.environ.get("GNOBLIN_TEST_WINDOW_MENU") == "1":
             if not custom:
                 reload_config = root / "native-menu.lua"
-                reload_config.write_text('local config = {["window-rules"] = {{match={title="SSD fixture"}, '
+                reload_config.write_text(
+                    'local config = {["window-rules"] = {{match={title="SSD fixture"}, '
                     'frame={mode="prefer-server", renderer="native", extents={36,2,2,2}}, '
-                    'borders={["inner-width"]=1,["inner-color"]="#505050ff",["outer-width"]=1}}}}\nreturn config\n')
+                    'borders={["inner-width"]=1,["inner-color"]="#505050ff",["outer-width"]=1}}}}\nreturn config\n'
+                )
                 send({"op": "config-path", "path": str(reload_config)})
                 subprocess.run([str(repo / "src/tools/gnoblinctl"), "config", "reload"], check=True)
             from window_menu_check import check
+
             check(send, inspect, root, reload_config, repo)
         # Move by the titlebar, using the compositor grab rather than client CSD.
         send({"op": "move", "x": x + 50, "y": y + 18})

@@ -23,7 +23,15 @@ const states = [],
     });
 
 guard.arm();
-assert.equal(guard.handle({type: () => "motion", get_button: () => { throw new Error("not a button event"); }}), false);
+assert.equal(
+    guard.handle({
+        type: () => "motion",
+        get_button: () => {
+            throw new Error("not a button event");
+        },
+    }),
+    false,
+);
 assert.equal(guard.armed, true);
 assert.deepEqual(states, [true]);
 assert.equal(guard.handle(event("press")), true, "the first fullscreen left press is consumed");

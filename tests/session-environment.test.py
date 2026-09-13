@@ -25,20 +25,20 @@ class SessionEnvironmentTests(unittest.TestCase):
             fake_dbus = prefix / "bin/dbus-update-activation-environment"
             fake_dbus.write_text(
                 "#!/bin/sh\n"
-                "printf 'dbus %s desktop=%s mode=%s\n' \"$*\" \"$XDG_CURRENT_DESKTOP\" "
-                "\"$GNOME_SHELL_SESSION_MODE\" >> \"$GNOBLIN_TEST_LOG\"\n"
+                'printf \'dbus %s desktop=%s mode=%s\n\' "$*" "$XDG_CURRENT_DESKTOP" '
+                '"$GNOME_SHELL_SESSION_MODE" >> "$GNOBLIN_TEST_LOG"\n'
             )
             fake_dbus.chmod(0o755)
 
             fake_systemctl = prefix / "bin/systemctl"
             fake_systemctl.write_text(
                 "#!/bin/sh\n"
-                "case \"$*\" in\n"
+                'case "$*" in\n'
                 "  *'list-units'*) printf '%s\\n' "
                 "'dbus-:1.2-org.gnome.OnlineAccounts@0.service' "
                 "'dbus-:1.2-org.gnome.Identity@0.service' ;;\n"
                 "  *'stop'*) printf 'stop %s\\n' \"$*\" >> \"$GNOBLIN_TEST_LOG\" ;;\n"
-                "  *) printf 'unexpected systemctl %s\\n' \"$*\" >> \"$GNOBLIN_TEST_LOG\"; exit 1 ;;\n"
+                '  *) printf \'unexpected systemctl %s\\n\' "$*" >> "$GNOBLIN_TEST_LOG"; exit 1 ;;\n'
                 "esac\n"
             )
             fake_systemctl.chmod(0o755)
@@ -47,7 +47,7 @@ class SessionEnvironmentTests(unittest.TestCase):
             fake_session.write_text(
                 "#!/bin/sh\n"
                 "printf 'session desktop=%s mode=%s args=%s\\n' \"$XDG_CURRENT_DESKTOP\" "
-                "\"$GNOME_SHELL_SESSION_MODE\" \"$*\" >> \"$GNOBLIN_TEST_LOG\"\n"
+                '"$GNOME_SHELL_SESSION_MODE" "$*" >> "$GNOBLIN_TEST_LOG"\n'
             )
             fake_session.chmod(0o755)
 
@@ -67,9 +67,12 @@ class SessionEnvironmentTests(unittest.TestCase):
             )
 
             events = log.read_text().splitlines()
-            self.assertEqual(events[0], "dbus --systemd GNOME_SHELL_SESSION_MODE XDG_CURRENT_DESKTOP "
-                             "XDG_SESSION_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY XAUTHORITY "
-                             "desktop=GNOME:Gnoblin mode=gnoblin")
+            self.assertEqual(
+                events[0],
+                "dbus --systemd GNOME_SHELL_SESSION_MODE XDG_CURRENT_DESKTOP "
+                "XDG_SESSION_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY XAUTHORITY "
+                "desktop=GNOME:Gnoblin mode=gnoblin",
+            )
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.OnlineAccounts@0.service", events[1])
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.Identity@0.service", events[2])
             self.assertEqual(

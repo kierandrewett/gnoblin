@@ -9,15 +9,21 @@ export default function (api) {
         .get_default_seat()
         .create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
     const command = Gio.File.new_for_path(GLib.get_user_config_dir() + "/snap-input.json");
-    const keyboard = global.stage.context.get_backend().get_default_seat()
+    const keyboard = global.stage.context
+        .get_backend()
+        .get_default_seat()
         .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
     const result = Gio.File.new_for_path(GLib.get_user_config_dir() + "/snap-result.json");
     const timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
         if (!command.query_exists(null)) return GLib.SOURCE_CONTINUE;
         const data = JSON.parse(new TextDecoder().decode(command.load_contents(null)[1]));
         command.delete(null);
-        if (data.op === "key") keyboard.notify_key(GLib.get_monotonic_time(), data.code,
-            data.down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
+        if (data.op === "key")
+            keyboard.notify_key(
+                GLib.get_monotonic_time(),
+                data.code,
+                data.down ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED,
+            );
         if (data.op === "config-path")
             Main.componentManager._allComponents.gnoblinControl._config._override = data.path;
         if (data.op === "renderers") {

@@ -1,7 +1,7 @@
 """End-to-end native SSD -> configured command -> Bingux window menu -> action."""
+
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import time
@@ -19,15 +19,31 @@ def check(send, inspect, root, config, repo):
     shutil.copy2(repo / "src/scripts/compositor-bridge.js", scripts)
     shutil.copytree(repo / "src/scripts/lib", scripts / "lib", dirs_exist_ok=True)
     (scripts / "frames.js").unlink()  # One-shot fixture setup must not run twice.
-    subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnoblin.Shell",
-        "--object-path", "/org/gnoblin/Shell", "--method", "org.gnoblin.Shell.Reload"], check=True)
+    subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnoblin.Shell",
+            "--object-path",
+            "/org/gnoblin/Shell",
+            "--method",
+            "org.gnoblin.Shell.Reload",
+        ],
+        check=True,
+    )
     env = os.environ | {"PATH": str(repo / "src/tools") + ":" + os.environ["PATH"]}
     with (root / "menu-ui.log").open("w") as log:
         ui = subprocess.Popen(["qs", "-p", str(fixture), "--no-color"], env=env, stdout=log, stderr=log)
         try:
             command = ["qs", "ipc", "-p", str(fixture), "call", "menu", "open"]
-            text = config.read_text().replace("return config", 'config.shell = {["window-menu"] = {' +
-                ",".join(json.dumps(arg) for arg in command) + '}}\nreturn config')
+            text = config.read_text().replace(
+                "return config",
+                'config.shell = {["window-menu"] = {'
+                + ",".join(json.dumps(arg) for arg in command)
+                + "}}\nreturn config",
+            )
             config.write_text(text)
             time.sleep(1)
             assert ui.poll() is None, (root / "menu-ui.log").read_text()
@@ -36,16 +52,23 @@ def check(send, inspect, root, config, repo):
             send({"op": "button", "button": 3, "down": True})
             send({"op": "button", "button": 3, "down": False})
             opened_at = time.monotonic()
+
             def status():
-                result = subprocess.run(["qs", "ipc", "-p", str(fixture), "call", "menu", "state"],
-                    capture_output=True, text=True, timeout=3)
+                result = subprocess.run(
+                    ["qs", "ipc", "-p", str(fixture), "call", "menu", "state"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
                 assert result.returncode == 0, result.stderr
                 return json.loads(result.stdout)
+
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 state = status()
-                if state["visible"]: break
-                time.sleep(.1)
+                if state["visible"]:
+                    break
+                time.sleep(0.1)
             assert state["visible"], (state, (root / "menu-ui.log").read_text())
             print(f"WINDOW_MENU_OPEN_MS: {(time.monotonic() - opened_at) * 1000:.1f}", flush=True)
             assert "Minimize" in state["actions"] and "Close" in state["actions"], state
@@ -56,7 +79,7 @@ def check(send, inspect, root, config, repo):
             # click: the stationary-pointer case is the regression.
             send({"op": "button", "down": True})
             send({"op": "button", "down": False})
-            time.sleep(.4)
+            time.sleep(0.4)
             closed_state = status()
             assert not closed_state["visible"], "left-clicking the titlebar edge did not dismiss the menu"
             assert closed_state["retained"], "window menu discarded its cached content after closing"
@@ -69,22 +92,22 @@ def check(send, inspect, root, config, repo):
                 state = status()
                 if state["visible"]:
                     break
-                time.sleep(.1)
+                time.sleep(0.1)
             assert state["visible"], "menu did not reopen after edge dismissal"
             print(f"WINDOW_MENU_REOPEN_MS: {(time.monotonic() - reopened_at) * 1000:.1f}", flush=True)
             assert state["origin"] == [0, 0], f"window menu reveal origin is not top-left: {state}"
-            time.sleep(.4)
+            time.sleep(0.4)
             subprocess.run(["grim", "/tmp/bingux-window-menu.png"], check=True)
             send({"op": "move", "x": state["x"] + 80, "y": state["y"] + 22})
             send({"op": "button", "down": True})
             send({"op": "button", "down": False})
-            time.sleep(.5)
+            time.sleep(0.5)
             assert inspect()["minimized"], (state, (root / "menu-ui.log").read_text())
             assert not status()["visible"], "menu did not dismiss after action"
             send({"op": "unminimize"})
-            time.sleep(.4)
+            time.sleep(0.4)
             subprocess.run([str(repo / "src/tools/gnoblinctl"), "window", "menu", state["window"]], check=True)
-            time.sleep(.4)
+            time.sleep(0.4)
             assert status()["visible"], "CLI window-menu trigger did not open popup"
             send({"op": "key", "code": 1, "down": True})
             send({"op": "key", "code": 1, "down": False})

@@ -460,9 +460,7 @@ call("Type", "Gio.File.new_for_path(")
 wait_for(lambda current: "path: filename" in current["assist"])
 call("Type", 'gnoblin.set("shell.layer-duration", 350')
 assistance = wait_for(lambda current: "value: unknown" in current["assist"])
-assert assistance["argumentHintVisible"] and assistance["argumentHint"] == "New setting value.", (
-    assistance
-)
+assert assistance["argumentHintVisible"] and assistance["argumentHint"] == "New setting value.", assistance
 assert "weight" in assistance["signatureAttributes"] and "underline" in assistance["signatureAttributes"], assistance
 if shutil.which("grim"):
     time.sleep(0.15)

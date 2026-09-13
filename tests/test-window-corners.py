@@ -36,7 +36,7 @@ subprocess.run(
         "--object-path",
         "/org/gnoblin/Shell",
         "--method",
-            "org.gnoblin.Shell.Reload",
+        "org.gnoblin.Shell.Reload",
     ],
     check=True,
 )
@@ -200,7 +200,8 @@ try:
         configure({"radius": 4, "mode": "force", "remove-csd": True, "_action": "reprobe"})
         reprobed = capture().crop(box)
         assert max(ImageStat.Stat(ImageChops.difference(filled, reprobed)).mean) < 0.2, (
-            "GTK corner fill changed after reprobe", repeat,
+            "GTK corner fill changed after reprobe",
+            repeat,
             json.loads((root / "corner-frames.json").read_text()),
         )
     for x in range(2, 11):

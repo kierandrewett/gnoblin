@@ -4,6 +4,7 @@
 Run only through run-gnome-devkit.sh, with a copied XDG_CONFIG_HOME and private
 XDG_RUNTIME_DIR. Does not install fixture rules or replace the user's settings.
 """
+
 import json
 import os
 from pathlib import Path
@@ -13,16 +14,40 @@ import time
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-devkit-")
 root = Path(os.environ["XDG_CONFIG_HOME"]).parent
 assert str(root).startswith("/tmp/gnoblin-user-config.")
-env = {key: value for key, value in os.environ.items() if key in (
-    "DBUS_SESSION_BUS_ADDRESS", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
-    "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "PATH",
-    "LD_LIBRARY_PATH", "GI_TYPELIB_PATH", "BINGUX_CONFIG_PATH",
-    "GNOBLIN_COMPOSITOR_SOCKET", "GDK_BACKEND", "QT_QPA_PLATFORM", "BINGUX_QUICKSHELL")}
+env = {
+    key: value
+    for key, value in os.environ.items()
+    if key
+    in (
+        "DBUS_SESSION_BUS_ADDRESS",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "GI_TYPELIB_PATH",
+        "BINGUX_CONFIG_PATH",
+        "GNOBLIN_COMPOSITOR_SOCKET",
+        "GDK_BACKEND",
+        "QT_QPA_PLATFORM",
+        "BINGUX_QUICKSHELL",
+    )
+}
 (root / "session.json").write_text(json.dumps(env))
 processes = []
 try:
     for name, command in (
-        ("bingux", [os.environ.get("BINGUX_QUICKSHELL", "gnoblin-quickshell"), "-p", os.environ["BINGUX_CONFIG_PATH"], "--no-color"]),
+        (
+            "bingux",
+            [
+                os.environ.get("BINGUX_QUICKSHELL", "gnoblin-quickshell"),
+                "-p",
+                os.environ["BINGUX_CONFIG_PATH"],
+                "--no-color",
+            ],
+        ),
         ("gtk", ["gjs", "-m", str(Path(__file__).with_name("window-corners-gtk.js"))]),
         ("ghostty", ["ghostty", "--title=Nested Ghostty", "-e", "bash", "--noprofile", "--norc"]),
     ):
