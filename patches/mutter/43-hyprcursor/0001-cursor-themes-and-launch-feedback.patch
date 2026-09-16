@@ -8,7 +8,7 @@ diff --git a/meson.build b/meson.build
  graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
  glycin_dep = dependency('glycin-2', version: glycin_req)
  cairo_dep = dependency('cairo', version: cairo_req)
-+hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.13', required: get_option('hyprcursor'))
++hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_option('hyprcursor'))
 +have_hyprcursor = hyprcursor_dep.found()
 +if have_hyprcursor
 +  add_languages('cpp')

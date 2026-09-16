@@ -38,6 +38,7 @@ class SessionEnvironmentTests(unittest.TestCase):
                 "'dbus-:1.2-org.gnome.OnlineAccounts@0.service' "
                 "'dbus-:1.2-org.gnome.Identity@0.service' ;;\n"
                 "  *'stop'*) printf 'stop %s\\n' \"$*\" >> \"$GNOBLIN_TEST_LOG\" ;;\n"
+                "  *'unset-environment'*) printf 'clear %s\\n' \"$*\" >> \"$GNOBLIN_TEST_LOG\" ;;\n"
                 '  *) printf \'unexpected systemctl %s\\n\' "$*" >> "$GNOBLIN_TEST_LOG"; exit 1 ;;\n'
                 "esac\n"
             )
@@ -48,6 +49,7 @@ class SessionEnvironmentTests(unittest.TestCase):
                 "#!/bin/sh\n"
                 "printf 'session desktop=%s mode=%s args=%s\\n' \"$XDG_CURRENT_DESKTOP\" "
                 '"$GNOME_SHELL_SESSION_MODE" "$*" >> "$GNOBLIN_TEST_LOG"\n'
+                "test -z \"$GNOBLIN_PREFIX$GSETTINGS_SCHEMA_DIR$LD_LIBRARY_PATH$GI_TYPELIB_PATH\"\n"
             )
             fake_session.chmod(0o755)
 
@@ -75,8 +77,9 @@ class SessionEnvironmentTests(unittest.TestCase):
             )
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.OnlineAccounts@0.service", events[1])
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.Identity@0.service", events[2])
+            self.assertIn("clear --user unset-environment GNOBLIN_PREFIX GNOBLIN_LIBDIR GSETTINGS_SCHEMA_DIR LD_LIBRARY_PATH GI_TYPELIB_PATH", events[3])
             self.assertEqual(
-                events[3],
+                events[4],
                 "session desktop=GNOME:Gnoblin mode=gnoblin args=--no-reexec --session=gnoblin --test-argument",
             )
 

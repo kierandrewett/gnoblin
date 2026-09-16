@@ -932,13 +932,25 @@ export class Component {
             return false;
         }
 
+        const normalizedLevel = serialiseOsdLevel(level);
+        // Brightness uses OsdWindowManager.show(), whose omitted maxLevel is
+        // represented as -1. External OSDs need the normalized 0..1 scale to
+        // render the brightness percentage and progress bar.
+        let suppliedMax;
+        try {
+            suppliedMax = Number(maxLevel);
+        } catch {
+            suppliedMax = Number.NaN;
+        }
+        const max = Number.isFinite(suppliedMax) ? suppliedMax : -1;
+        const normalizedMax = normalizedLevel >= 0 && max < 0 ? 1 : max;
         const fields = [
             OSD_REQUEST_PROTOCOL_VERSION,
             serialiseOsdMonitorIndex(monitorIndex),
             serialiseOsdIcon(icon),
             serialiseOsdString(label),
-            serialiseOsdLevel(level),
-            serialiseOsdLevel(maxLevel),
+            normalizedLevel,
+            normalizedMax,
             outputNames,
         ];
 

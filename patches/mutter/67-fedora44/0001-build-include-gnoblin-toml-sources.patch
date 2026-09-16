@@ -1,0 +1,16 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] build: include Gnoblin TOML sources
+
+diff --git a/src/meson.build b/src/meson.build
+index 874d5ef..1ef6ef7 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -711,6 +711,8 @@ if have_wayland
+     'wayland/meta-gnoblin-frame-renderer.c',
+     'wayland/meta-gnoblin-frame-renderer.h',
+     'wayland/gnoblin-config.h',
++    'wayland/gnoblin-toml.c',
++    'wayland/tomlc99/toml.c',
+     'wayland/meta-gnoblin-protocols.c',
+     'wayland/meta-gnoblin-protocols.h',
+     'wayland/meta-wayland-background-effect.c',

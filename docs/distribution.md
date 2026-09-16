@@ -40,7 +40,7 @@ user-systemd units; it is no longer a machine-configuration repository.
 
 The [Gnoblin COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin/)
 and [Bingux COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/bingux/)
-exist for Fedora 43 x86_64. Gnoblin's private Mutter and Shell packages are
+exist for Fedora 44 x86_64. Gnoblin's private Mutter and Shell packages are
 published; fresh-install, login and rollback checks on a clean host remain.
 Creating a repository does not establish release readiness.
 
@@ -71,12 +71,13 @@ scripts/build-srpm.sh gnome-shell ./dist/sources ./dist/srpms
 Source RPM creation uses the prepared archives. It never downloads the
 unpatched upstream archives named by the Fedora specs.
 
-Create a COPR project with a chroot that supplies GNOME 49. For example,
-`fedora-43-x86_64` matches the current source major version; confirm the
+Create a COPR project with a Fedora 44 chroot that supplies the GNOME 50
+runtime dependencies while building Gnoblin's private GNOME 49 stack. For
+example, use `fedora-44-x86_64`; confirm the
 chroot is still available in COPR before creating the project.
 
 ```sh
-copr-cli create --chroot fedora-43-x86_64 gnoblin
+copr-cli create --chroot fedora-44-x86_64 gnoblin
 scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM
 ```
 

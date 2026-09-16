@@ -1,0 +1,15 @@
+From: Kieran Drewett <kieran@drewett.dev>
+Subject: [PATCH] build: generate Gnoblin window frame protocol
+
+diff --git a/src/meson.build b/src/meson.build
+index 9e97b4d..874d5ef 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1214,6 +1214,7 @@ if have_wayland
+     ['gtk-shell', 'private', ],
+     # gnoblin: vendored wlr-layer-shell protocol (overlay src/wayland/protocol/)
+     ['wlr-layer-shell-unstable-v1', 'private', ],
++    ['gnoblin-window-frame-v1', 'private', ],
+     ['idle-inhibit', 'unstable', 1, ],
+     ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
+     ['linux-dmabuf', 'stable', 1, ],

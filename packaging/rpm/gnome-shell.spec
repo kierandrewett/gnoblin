@@ -21,8 +21,12 @@ Name:           gnoblin-shell
 Version:        49.6
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        2.gnoblin%{?dist}
+Release:        13.gnoblin%{?dist}
+%global debug_package %{nil}
+%global __requires_exclude ^/usr/sbin/python3$
 Summary:        Private GNOME Shell runtime for Gnoblin
+Provides:       libshell-17.so()(64bit)
+Provides:       libst-17.so()(64bit)
 
 License:        GPL-2.0-or-later
 URL:            https://wiki.gnome.org/Projects/GnomeShell
@@ -97,7 +101,7 @@ BuildRequires:  python3-docutils
 BuildRequires:  libXfixes-devel >= 5.0
 # used in unused BigThemeImage
 BuildRequires:  librsvg2-devel
-BuildRequires:  gnoblin-mutter-devel = 49.5
+BuildRequires:  gnoblin-mutter-devel >= 49.5
 BuildRequires:  pkgconfig(libpulse)
 %ifnarch s390 s390x ppc ppc64 ppc64p7
 BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
@@ -111,7 +115,7 @@ Requires:       libadwaita%{_isa} >= %{adwaita_version}
 Requires:       libnma-gtk4%{?_isa}
 # needed for loading SVG's via gdk-pixbuf
 Requires:       librsvg2%{?_isa}
-Requires:       gnoblin-mutter%{?_isa} = 49.5-%{release}
+Requires:       gnoblin-mutter%{?_isa} >= 49.5-16.gnoblin
 Requires:       upower%{?_isa}
 Requires:       polkit%{?_isa} >= %{polkit_version}
 Requires:       gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
@@ -172,9 +176,13 @@ Adds Gnoblin to the login screen without replacing the GNOME session.
 
 %build
 export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
+export LDFLAGS="${LDFLAGS} -fPIE"
+export CFLAGS="${CFLAGS} -fPIE"
 # Refuse an accidental build against Fedora's Mutter.
 test "$(pkg-config --variable=prefix libmutter-17)" = "%{_prefix}"
-%meson -Dextensions_app=false -Dextensions_tool=false -Dtests=false -Dman=false
+%meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
+  -Dextensions_app=false -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build
 
 %install
@@ -233,5 +241,17 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Mon Sep 14 2026 Gnoblin contributors - 49.6-6.gnoblin
+- Rebuild against Mutter without incompatible Fedora 44 introspection output.
+
+* Mon Sep 14 2026 Gnoblin contributors - 49.6-5.gnoblin
+- Disable Fedora 44 pack-relative-relocs for GObject Introspection links.
+
+* Mon Sep 14 2026 Gnoblin contributors - 49.6-4.gnoblin
+- Compile GNOME 49 C sources with GNU17 on Fedora 44 GCC 16.
+
+* Sun Sep 13 2026 Gnoblin contributors - 49.6-3.gnoblin
+- Rebuild for Fedora 44.
+
 * Thu Sep 10 2026 Gnoblin contributors - 49.6-2.gnoblin
 - Install alongside stock GNOME Shell under /usr/lib/gnoblin.

@@ -20,7 +20,7 @@ installed and selectable.
 
 ### Install from COPR
 
-The Fedora 43 COPR has signed builds. Enable it, then install the session:
+The Fedora 44 COPR has signed builds. Enable it, then install the session:
 
 ```sh
 sudo dnf copr enable kierandrewett/gnoblin

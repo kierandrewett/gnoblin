@@ -25,6 +25,12 @@ set -euo pipefail
 
 PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# gnome-session mirrors its environment into the user systemd/D-Bus activation
+# environment. Keep the user's ambient lookup paths for that process, but do
+# not let Gnoblin's private ABI/schema paths poison a later stock GNOME login.
+BASE_PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}"
+BASE_XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
 source "$PREFIX/libexec/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 
@@ -81,7 +87,24 @@ gnoblin_reset_online_accounts_services() {
 gnoblin_sync_activation_environment
 gnoblin_reset_online_accounts_services
 
+# The Gnoblin shell unit sources gnoblin-env.sh itself, so these private paths
+# are not needed by gnome-session or any user-manager service. Clear both the
+# manager snapshot and the direct process environment before starting the
+# session manager. This matters when switching from Gnoblin to stock GNOME
+# without ending the user's systemd --user instance.
+systemctl --user unset-environment \
+    GNOBLIN_PREFIX GNOBLIN_LIBDIR GSETTINGS_SCHEMA_DIR \
+    LD_LIBRARY_PATH GI_TYPELIB_PATH >/dev/null 2>&1 || true
+
 # gnome-session normally re-executes through the user's login shell. NixOS
 # login profiles rebuild XDG_DATA_DIRS and remove this package's session file,
 # so keep the runtime environment established above for the session manager.
-exec gnome-session --no-reexec --session=gnoblin "$@"
+exec env \
+    -u GNOBLIN_PREFIX \
+    -u GNOBLIN_LIBDIR \
+    -u GSETTINGS_SCHEMA_DIR \
+    -u LD_LIBRARY_PATH \
+    -u GI_TYPELIB_PATH \
+    PATH="$BASE_PATH" \
+    XDG_DATA_DIRS="$BASE_XDG_DATA_DIRS" \
+    gnome-session --no-reexec --session=gnoblin "$@"

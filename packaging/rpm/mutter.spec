@@ -31,8 +31,13 @@ Name:          gnoblin-mutter
 Version:       49.5
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       2.gnoblin%{?dist}
+Release:       17.gnoblin%{?dist}
+%global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
+Provides:      libmutter-17.so.0()(64bit)
+Provides:      libmutter-clutter-17.so.0()(64bit)
+Provides:      libmutter-cogl-17.so.0()(64bit)
+Provides:      libmutter-mtk-17.so.0()(64bit)
 
 # Automatically converted from old format: GPLv2+ - review is highly recommended.
 License:       GPL-2.0-or-later
@@ -56,7 +61,7 @@ BuildRequires: pam-devel
 BuildRequires: pkgconfig(bash-completion)
 BuildRequires: pkgconfig(colord) >= %{colord_version}
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
-BuildRequires: pkgconfig(hyprcursor) >= 0.1.13
+BuildRequires: pkgconfig(hyprcursor) >= 0.1.11
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
@@ -119,7 +124,10 @@ Private headers and pkg-config files for Gnoblin builds.
 %autosetup -S git -n mutter-%{tarball_version}
 
 %build
-%meson -Degl_device=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
+export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
+export LDFLAGS="${LDFLAGS} -fPIE"
+%meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
+  -Degl_device=true -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
   -Dudev_dir=%{_prefix}/lib/udev
 %meson_build
 
@@ -148,15 +156,25 @@ fi
 %exclude %{_includedir}/
 %exclude %{_libdir}/pkgconfig/
 %exclude %{_libdir}/lib*.so
-%exclude %{_libdir}/mutter-%{mutter_api_version}/*.gir
 /usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
 
 %files devel
 %{_includedir}/
 %{_libdir}/pkgconfig/
 %{_libdir}/lib*.so
-%{_libdir}/mutter-%{mutter_api_version}/*.gir
 
 %changelog
+* Mon Sep 14 2026 Gnoblin contributors - 49.5-6.gnoblin
+- Disable incompatible Fedora 44 GObject Introspection generation.
+
+* Mon Sep 14 2026 Gnoblin contributors - 49.5-5.gnoblin
+- Disable Fedora 44 pack-relative-relocs for GObject Introspection links.
+
+* Mon Sep 14 2026 Gnoblin contributors - 49.5-4.gnoblin
+- Compile GNOME 49 C sources with GNU17 on Fedora 44 GCC 16.
+
+* Sun Sep 13 2026 Gnoblin contributors - 49.5-3.gnoblin
+- Build against Fedora 44's hyprcursor 0.1.11 ABI.
+
 * Thu Sep 10 2026 Gnoblin contributors - 49.5-2.gnoblin
 - Install alongside stock Mutter under /usr/lib/gnoblin.

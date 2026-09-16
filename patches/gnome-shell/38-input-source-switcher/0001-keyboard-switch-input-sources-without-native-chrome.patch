@@ -8,14 +8,14 @@ native input-source popup, leaving external chrome free to provide its own
 selector. Switching still uses GNOME Shell's InputSourceManager. Re-enabling
 the feature restores the upstream popup without affecting stock sessions.
 ---
- js/ui/status/keyboard.js | 24 ++++++++++++++++++++++++
- 1 file changed, 24 insertions(+)
+ js/ui/status/keyboard.js | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
 
 diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
 index 3ddc675..0000000 100644
 --- a/js/ui/status/keyboard.js
 +++ b/js/ui/status/keyboard.js
-@@ -18,0 +19,17 @@ import * as SwitcherPopup from '../switcherPopup.js';
+@@ -18,0 +19,16 @@ import * as SwitcherPopup from '../switcherPopup.js';
 +// This schema is installed by Gnoblin's settings patch. Keep lookup lazy so
 +// stock GNOME modes continue to have no dependency on it.
 +let gnoblinSettings = null;
@@ -32,8 +32,12 @@ index 3ddc675..0000000 100644
 +        return false;
 +    }
 +}
-+
-@@ -434,0 +451,7 @@ export class InputSourceManager extends Signals.EventEmitter {
+@@ -439,6 +456,13 @@ export class InputSourceManager extends Signals.EventEmitter {
+         if (Main.actionMode === Shell.ActionMode.POPUP) {
+             this._modifiersSwitcher();
+             return;
+         }
+
 +        // External Gnoblin chrome owns the presentation. Keep the source
 +        // activation in this manager, which preserves layouts and IBus state.
 +        if (externalInputSourceSwitcher()) {
@@ -41,3 +45,4 @@ index 3ddc675..0000000 100644
 +            return;
 +        }
 +
+         this._switcherPopup = new InputSourcePopup(
