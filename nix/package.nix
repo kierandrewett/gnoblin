@@ -101,7 +101,12 @@ let
     pname = "gnoblin-shell";
     version = gnomeVersion;
     src = gnomeShellSrc;
-    buildInputs = (old.buildInputs or [ ]) ++ [ libepoxy ];
+    buildInputs =
+      map (
+        dependency:
+        if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
+      ) (old.buildInputs or [ ])
+      ++ [ libepoxy ];
     patches = patchesFor "gnome-shell";
     prePatch =
       (old.prePatch or "")
