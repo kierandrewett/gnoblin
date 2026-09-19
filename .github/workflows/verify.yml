@@ -1,9 +1,10 @@
-name: Verify Gnoblin checkout
+name: Verify installation guide
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   checkout-and-verify:
@@ -17,16 +18,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Set container checkout ownership and build identity
+        run: |
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global user.name 'Gnoblin CI'
+          git config --global user.email 'gnoblin-ci@users.noreply.github.com'
       - name: Initialise the source tree
         run: just init
       - name: Install source-build dependencies
-        run: dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
+        run: |
+          dnf -y copr enable kierandrewett/gnoblin
+          dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
       - name: Build the documented local installation
         run: GNOBLIN_PREFIX="$PWD/install" just build-local
       - name: Verify the documented installation output
         run: |
           test -x install/bin/gnoblin-session
           test -x install/bin/gnoblin-shell-service
+          test -x install/bin/gnome-shell
           test -f install/share/wayland-sessions/gnoblin.desktop
           test -f install/share/gnome-session/sessions/gnoblin.session
       - name: Verify installer and package isolation
@@ -34,3 +43,16 @@ jobs:
           bash -n scripts/install-system.sh
           python3 tests/package-isolation.test.py
           git diff --exit-code -- . ':!subprojects'
+  copr-install:
+    runs-on: ubuntu-latest
+    container: fedora:43
+    timeout-minutes: 20
+    steps:
+      - name: Install documented Fedora packages
+        run: |
+          dnf -y install dnf-plugins-core
+          dnf -y copr enable kierandrewett/gnoblin
+          dnf -y install --refresh gnoblin-mutter gnoblin-shell gnoblin-session
+          rpm -q gnoblin-mutter gnoblin-shell gnoblin-session
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
+          test -x /usr/lib/gnoblin/bin/gnoblin-session

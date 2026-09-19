@@ -28,11 +28,13 @@ just install-session dry     # validate the host's COPR packages
 just install-session          # enable COPR and install/update Gnoblin
 ```
 
-The same operation can be run without the checkout helper:
+No checkout, `just init`, source build, or session registration is required
+for the official Fedora installation:
 
 ```sh
+sudo dnf install dnf-plugins-core
 sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf install --refresh gnoblin-session
+sudo dnf install --refresh gnoblin-mutter gnoblin-shell gnoblin-session
 ```
 
 `gnoblin-session` pulls in the matching `gnoblin-shell` and `gnoblin-mutter`
@@ -58,8 +60,9 @@ sudo dnf builddep packaging/rpm/gnome-shell.spec
 just rpm gnome-shell
 ```
 
-Log out, select **Gnoblin** at the login screen and start your chosen shell.
-No manual session registration is needed.
+Install the resulting shell and session RPMs with `sudo dnf install` before
+logging out. Building RPMs alone does not install them. No manual session
+registration is needed for packaged installations.
 
 ### Go back to GNOME
 
@@ -115,13 +118,29 @@ Meson and Ninja.
 ## Build from source
 
 This installs into `./install` for local testing. It does not replace system
-packages. On Fedora, use the dependency commands in the [Fedora section](#fedora).
+packages. This is the source-development route; Fedora users who want to
+install Gnoblin should use [COPR](#fedora).
 
 ### Get the source
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
+```
+
+On Fedora 43, install the build tools and dependencies before initialization:
+
+```sh
+sudo dnf install dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
+sudo dnf copr enable kierandrewett/gnoblin
+sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
+```
+
+The COPR supplies the private Mutter development package and Hyprcursor
+dependencies. Configure your Git name and email before building: patch
+application creates local commits and requires a committer identity.
+
+```sh
 just init
 ```
 
@@ -137,7 +156,8 @@ terminal. Close it to end the test. See [Devkit](devkit.md) for options.
 
 ### Install the session for real
 
-After testing, register the local build:
+After `just build-local` succeeds and you have tested it, register the local
+build. Registration does not build Gnoblin or create a missing runtime:
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" just dev-session-register
