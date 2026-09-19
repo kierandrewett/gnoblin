@@ -5,23 +5,11 @@ let
     inherit minVersion;
     names = { inherit rpm deb arch; };
   };
-in
-{
-  formatVersion = 1;
-  release = {
-    gnomeMajor = versions.major;
-    mutterApi = (component "mutter").api;
-  };
-
-  sources = builtins.mapAttrs (_: value: {
-    inherit (value) version commit;
-  }) versions.components;
-
   requirements = {
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
     gjs = requirement "1.87.1" "gjs" "gjs" "gjs";
     gsettings-desktop-schemas =
-      requirement "51.rc" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
+      requirement "51.0" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
         "gsettings-desktop-schemas";
     gnome-session = requirement "51.0" "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
@@ -37,8 +25,27 @@ in
     libinput = requirement "1.31.0" "libinput" "libinput10" "libinput";
     pipewire = requirement "1.6.0" "pipewire" "pipewire" "pipewire";
   };
+in
+{
+  formatVersion = 1;
+  release = {
+    gnomeMajor = versions.major;
+    mutterApi = (component "mutter").api;
+  };
+
+  sources = builtins.mapAttrs (_: value: {
+    inherit (value) version commit;
+  }) versions.components;
+
+  inherit requirements;
 
   packages = {
+    gnoblin = {
+      version = (component "gnome-shell").version;
+      meta = true;
+      requiresSameMajor = [ "gnoblin-session" ];
+      requires = [ ];
+    };
     gnoblin-mutter = {
       version = (component "mutter").version;
       source = "mutter";
@@ -54,13 +61,13 @@ in
     gnoblin-mutter-devel = {
       version = (component "mutter").version;
       source = "mutter";
-      requiresExact = [ "gnoblin-mutter" ];
+      requiresSameMajor = [ "gnoblin-mutter" ];
       requires = [ "wayland-protocols" ];
     };
     gnoblin-shell = {
       version = (component "gnome-shell").version;
       source = "gnome-shell";
-      requiresExact = [ "gnoblin-mutter" ];
+      requiresSameMajor = [ "gnoblin-mutter" ];
       requires = [
         "glib"
         "gjs"
@@ -72,7 +79,7 @@ in
     gnoblin-session = {
       version = (component "gnome-shell").version;
       source = "gnome-shell";
-      requiresExact = [ "gnoblin-shell" ];
+      requiresSameMajor = [ "gnoblin-shell" ];
       requires = [ "gnome-session" ];
     };
   };

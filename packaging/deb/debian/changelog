@@ -1,0 +1,5 @@
+gnoblin (51.0-1) unstable; urgency=medium
+
+  * Generate native metapackage from the Nix package model.
+
+ -- Gnoblin Developers <gnoblin@example.invalid>  Thu, 01 Jan 1970 00:00:00 +0000

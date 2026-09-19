@@ -1,6 +1,12 @@
 {
   "formatVersion": 1,
   "packages": {
+    "gnoblin": {
+      "meta": true,
+      "requires": [],
+      "requiresSameMajor": ["gnoblin-session"],
+      "version": "51.0"
+    },
     "gnoblin-mutter": {
       "requires": ["glib", "gsettings-desktop-schemas", "gnome-settings-daemon", "wayland", "libinput", "pipewire"],
       "source": "mutter",
@@ -8,19 +14,19 @@
     },
     "gnoblin-mutter-devel": {
       "requires": ["wayland-protocols"],
-      "requiresExact": ["gnoblin-mutter"],
+      "requiresSameMajor": ["gnoblin-mutter"],
       "source": "mutter",
       "version": "51.0"
     },
     "gnoblin-session": {
       "requires": ["gnome-session"],
-      "requiresExact": ["gnoblin-shell"],
+      "requiresSameMajor": ["gnoblin-shell"],
       "source": "gnome-shell",
       "version": "51.0"
     },
     "gnoblin-shell": {
       "requires": ["glib", "gjs", "gsettings-desktop-schemas", "gnome-settings-daemon", "xdg-desktop-portal-gnome"],
-      "requiresExact": ["gnoblin-mutter"],
+      "requiresSameMajor": ["gnoblin-mutter"],
       "source": "gnome-shell",
       "version": "51.0"
     }
@@ -63,7 +69,7 @@
       }
     },
     "gsettings-desktop-schemas": {
-      "minVersion": "51.rc",
+      "minVersion": "51.0",
       "names": {
         "arch": "gsettings-desktop-schemas",
         "deb": "gsettings-desktop-schemas",
