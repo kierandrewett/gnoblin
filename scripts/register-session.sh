@@ -21,6 +21,11 @@
 set -euo pipefail
 
 PREFIX="${1:?usage: register-session.sh <prefix>}"
+if [ ! -d "$PREFIX" ]; then
+    echo "Gnoblin prefix does not exist: $PREFIX" >&2
+    echo "Build and install the development session first: GNOBLIN_PREFIX=\"$PREFIX\" just dev" >&2
+    exit 1
+fi
 PREFIX="$(cd "$PREFIX" && pwd)"
 source "$(dirname "$0")/../src/tools/gnoblin-env.sh"
 gnoblin_env_validate_install_prefix "$PREFIX" || exit

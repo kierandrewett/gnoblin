@@ -22,7 +22,9 @@ _default:
 
 # Initialise / update the pinned source checkouts and mandatory Meson wraps.
 init:
+    git submodule sync --recursive
     git submodule update --init --recursive
+    ./scripts/ensure-release-subprojects.sh
     just prepare-tarball-sources
     @echo "mutter               -> $(git -C subprojects/mutter               describe --tags --always)"
     @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags --always)"
