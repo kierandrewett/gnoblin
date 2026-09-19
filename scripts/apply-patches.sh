@@ -13,16 +13,7 @@ PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 
-case "$PROJ" in
-    mutter) TAG="49.5" ;;
-    gnome-shell) TAG="49.6" ;;
-    gnome-control-center) TAG="49.6" ;;
-    xdg-desktop-portal-gnome) TAG="49.0" ;;
-    *)
-        echo "unknown subproject: $PROJ" >&2
-        exit 1
-        ;;
-esac
+TAG="$("$ROOT/scripts/subproject-tag.sh" "$PROJ")"
 
 git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 ||
     {
@@ -30,6 +21,7 @@ git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 ||
         exit 1
     }
 
+"$ROOT/scripts/fetch-subproject-tag.sh" "$PROJ" "$TAG"
 "$ROOT/scripts/subproject-state.sh" check "$PROJ" "$TAG"
 "$ROOT/scripts/copy-overlay.sh" "$PROJ" "$SM" --remove-destinations
 

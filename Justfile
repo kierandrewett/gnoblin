@@ -6,6 +6,8 @@ set shell := ["bash", "-uc"]
 # Patched subprojects built by `just dev`.
 patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter gnome-shell"
+# Every pinned upstream submodule (pinned tags live in scripts/subproject-tag.sh).
+all_projects := "mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome"
 
 # Local development layout. Override both together for distro-style prefixes,
 # for example: GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just dev.
@@ -23,9 +25,15 @@ _default:
 # Initialise / update the pinned source checkouts and mandatory Meson wraps.
 init:
     git submodule update --init --recursive
+    just fetch-subproject-tags
     just prepare-tarball-sources
-    @echo "mutter               -> $(git -C subprojects/mutter               describe --tags --always)"
-    @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags --always)"
+    @echo "mutter               -> $(git -C subprojects/mutter               describe --tags)"
+    @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags)"
+
+# Fetch the pinned upstream tag into each shallow submodule (they clone with
+# no tags, but every reset/patch step resolves the pin by tag name).
+fetch-subproject-tags:
+    for p in {{all_projects}}; do ./scripts/fetch-subproject-tag.sh "$p" "$(./scripts/subproject-tag.sh "$p")" || exit; done
 
 # Materialise the pinned Meson subprojects required by no-download RPM builds.
 prepare-tarball-sources:
@@ -43,7 +51,8 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; gnome-control-center) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    t="$(./scripts/subproject-tag.sh "{{PROJ}}")"
+    ./scripts/fetch-subproject-tag.sh "{{PROJ}}" "$t"
     ./scripts/subproject-state.sh check "{{PROJ}}" "$t"
     ./scripts/copy-overlay.sh "{{PROJ}}" "subprojects/{{PROJ}}" --remove-destinations
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
