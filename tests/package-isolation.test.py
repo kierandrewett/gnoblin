@@ -173,6 +173,22 @@ class IsolationTests(unittest.TestCase):
                 self.assertNotIn("Requires:       gnome-control-center", expanded)
                 self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
 
+    def test_private_gnome_schemas_are_built_before_the_compositor(self):
+        schemas = subprocess.check_output(
+            ["rpmspec", "-P", str(ROOT / "packaging/rpm/gsettings-desktop-schemas.spec")], text=True
+        )
+        mutter = subprocess.check_output(
+            ["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True
+        )
+        publisher = (ROOT / "scripts/publish-copr.sh").read_text()
+        self.assertIn("Name:           gnoblin-gsettings-desktop-schemas", schemas)
+        self.assertIn("--prefix=/usr/lib/gnoblin", schemas)
+        self.assertIn("BuildRequires: gnoblin-gsettings-desktop-schemas >= 51.0", mutter)
+        self.assertLess(
+            publisher.index('copr-cli build "$project" "$schemas_srpm"'),
+            publisher.index('copr-cli build "$project" "$mutter_srpm"'),
+        )
+
     def test_build_routes_disable_extension_manager_tools(self):
         justfile = (ROOT / "Justfile").read_text()
         nix_package = (ROOT / "nix/package.nix").read_text()

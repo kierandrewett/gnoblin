@@ -102,6 +102,7 @@ BuildRequires:  libXfixes-devel >= 5.0
 # used in unused BigThemeImage
 BuildRequires:  librsvg2-devel
 BuildRequires:  gnoblin-mutter-devel >= 51.0
+BuildRequires:  gnoblin-gsettings-desktop-schemas >= 51.0
 BuildRequires:  pkgconfig(libpulse)
 %ifnarch s390 s390x ppc ppc64 ppc64p7
 BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
@@ -120,7 +121,7 @@ Requires:       upower%{?_isa}
 Requires:       polkit%{?_isa} >= %{polkit_version}
 Requires:       gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
 Requires:       glib2%{?_isa} >= %{glib2_version}
-Requires:       gsettings-desktop-schemas%{?_isa} >= %{gsettings_desktop_schemas_version}
+Requires:       gnoblin-gsettings-desktop-schemas >= 51.0
 Requires:       gnome-settings-daemon%{?_isa} >= %{gnome_settings_daemon_version}
 Requires:       gstreamer1%{?_isa} >= %{gstreamer_version}
 # needed for screen recorder
@@ -175,7 +176,7 @@ Adds Gnoblin to the login screen without replacing the GNOME session.
 %autosetup -S git -n gnome-shell-%{tarball_version}
 
 %build
-export PKG_CONFIG_PATH=%{_libdir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+export PKG_CONFIG_PATH=%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 export CFLAGS="${CFLAGS} -fPIE"

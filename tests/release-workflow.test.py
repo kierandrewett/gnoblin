@@ -12,7 +12,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('EXPECTED_TAG="v$VERSION"', script)
         self.assertIn('make-tarball.sh" mutter', script)
         self.assertIn('make-tarball.sh" gnome-shell', script)
-        for project in ("mutter", "gnome-shell", "gnoblin"):
+        self.assertIn('make-tarball.sh" gsettings-desktop-schemas', script)
+        for project in ("gsettings-desktop-schemas", "mutter", "gnome-shell", "gnoblin"):
             self.assertIn(f'build-srpm.sh" {project}', script)
         self.assertIn("gnoblin-$VERSION.PKGBUILD", script)
         self.assertIn("gnoblin-$VERSION-debian.tar.xz", script)

@@ -9,9 +9,11 @@ Rules-Requires-Root: no
 
 Package: gnoblin
 Architecture: all
-Depends: gnoblin-mutter (>= 51.0),
+Depends: gnoblin-gsettings-desktop-schemas (>= 51.0),
+         gnoblin-mutter (>= 51.0),
          gnoblin-session (>= 51.0),
          gnoblin-shell (>= 51.0),
+         gnoblin-gsettings-desktop-schemas (<< 52),
          gnoblin-mutter (<< 52),
          gnoblin-session (<< 52),
          gnoblin-shell (<< 52),
@@ -19,7 +21,6 @@ Depends: gnoblin-mutter (>= 51.0),
          libglib2.0-0t64 (>= 2.86.0),
          gnome-session,
          gnome-settings-daemon,
-         gsettings-desktop-schemas (>= 49.0),
          libinput10 (>= 1.31.0),
          pipewire (>= 1.6.0),
          libwayland-client0 (>= 1.26),

@@ -8,19 +8,44 @@
 # bytes, and publication happens only after sidecar staging succeeds.
 set -euo pipefail
 
-PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell> [outdir]}"
+PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell|gsettings-desktop-schemas> [outdir]}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
 
 # RPM Version field stays numeric; the gnoblin marker lives in Release/meson.
 case "$PROJ" in
-    mutter | gnome-shell) VER="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)" ;;
+    mutter | gnome-shell | gsettings-desktop-schemas) VER="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)" ;;
     *)
         echo "unknown subproject: $PROJ" >&2
         exit 1
         ;;
 esac
+
+if [[ "$PROJ" == gsettings-desktop-schemas ]]; then
+    COMMIT="$($ROOT/scripts/gnome-versions.py get "$PROJ" commit)"
+    WORK="$(mktemp -d)"
+    cleanup_work() {
+        rm -rf -- "$WORK"
+    }
+    trap cleanup_work EXIT
+    git -C "$WORK" init -q
+    git -C "$WORK" remote add origin https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git
+    git -C "$WORK" fetch -q --depth=1 origin "$COMMIT"
+    [[ "$(git -C "$WORK" rev-parse FETCH_HEAD)" == "$COMMIT" ]]
+    EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$WORK" show -s --format=%ct FETCH_HEAD)}"
+    mkdir -p "$OUTDIR"
+    OUT="$OUTDIR/${PROJ}-${VER}.tar.xz"
+    TEMP="$(mktemp --tmpdir="$OUTDIR" ".${PROJ}-${VER}.tar.xz.XXXXXX")"
+    git -C "$WORK" archive --format=tar --prefix="${PROJ}-${VER}/" FETCH_HEAD |
+        xz -T1 -9 >"$TEMP"
+    touch --date="@$EPOCH" "$TEMP"
+    chmod 0644 "$TEMP"
+    mv -f -- "$TEMP" "$OUT"
+    echo "$OUT"
+    exit 0
+fi
+
 EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$SM" log -1 --format=%ct "$VER")}"
 case "$EPOCH" in
     "" | *[!0-9]*)

@@ -8,9 +8,6 @@ let
   requirements = {
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
     gjs = requirement "1.85.90" "gjs" "gjs" "gjs";
-    gsettings-desktop-schemas =
-      requirement "49.0" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
-        "gsettings-desktop-schemas";
     gnome-session = requirement null "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
       requirement null "gnome-settings-daemon" "gnome-settings-daemon"
@@ -46,12 +43,17 @@ in
       requiresSameMajor = [ "gnoblin-session" ];
       requires = [ ];
     };
+    gnoblin-gsettings-desktop-schemas = {
+      version = (component "gsettings-desktop-schemas").version;
+      source = "gsettings-desktop-schemas";
+      requires = [ "glib" ];
+    };
     gnoblin-mutter = {
       version = (component "mutter").version;
       source = "mutter";
+      requiresSameMajor = [ "gnoblin-gsettings-desktop-schemas" ];
       requires = [
         "glib"
-        "gsettings-desktop-schemas"
         "gnome-settings-daemon"
         "wayland"
         "libinput"
@@ -67,11 +69,13 @@ in
     gnoblin-shell = {
       version = (component "gnome-shell").version;
       source = "gnome-shell";
-      requiresSameMajor = [ "gnoblin-mutter" ];
+      requiresSameMajor = [
+        "gnoblin-gsettings-desktop-schemas"
+        "gnoblin-mutter"
+      ];
       requires = [
         "glib"
         "gjs"
-        "gsettings-desktop-schemas"
         "gnome-settings-daemon"
         "xdg-desktop-portal-gnome"
       ];

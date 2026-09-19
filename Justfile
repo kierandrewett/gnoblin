@@ -430,8 +430,8 @@ release-assets OUTPUT="dist/release" TAG="":
     ./scripts/build-release-assets.sh "{{OUTPUT}}" "{{TAG}}"
 
 # Publish prepared source RPMs to an existing COPR project in dependency order.
-copr PROJECT MUTTER_SRPM SHELL_SRPM META_SRPM:
-    ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}" "{{META_SRPM}}"
+copr PROJECT SCHEMAS_SRPM MUTTER_SRPM SHELL_SRPM META_SRPM:
+    ./scripts/publish-copr.sh "{{PROJECT}}" "{{SCHEMAS_SRPM}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}" "{{META_SRPM}}"
 
 # Read-only checks across repository-owned source files.
 check-gnome-version:

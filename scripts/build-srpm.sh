@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build source RPMs from previously prepared Gnoblin release sources.
 set -euo pipefail
-if [[ $# != 3 || "$1" != mutter && "$1" != gnome-shell && "$1" != gnoblin ]]; then
-    echo "Usage: $0 <mutter|gnome-shell|gnoblin> <prepared-source-directory> <output-directory>" >&2
+if [[ $# != 3 || "$1" != mutter && "$1" != gnome-shell && "$1" != gsettings-desktop-schemas && "$1" != gnoblin ]]; then
+    echo "Usage: $0 <mutter|gnome-shell|gsettings-desktop-schemas|gnoblin> <prepared-source-directory> <output-directory>" >&2
     exit 2
 fi
 project="$1"

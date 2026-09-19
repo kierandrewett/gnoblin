@@ -7,8 +7,14 @@
       "requiresSameMajor": ["gnoblin-session"],
       "version": "51.0"
     },
+    "gnoblin-gsettings-desktop-schemas": {
+      "requires": ["glib"],
+      "source": "gsettings-desktop-schemas",
+      "version": "51.0"
+    },
     "gnoblin-mutter": {
-      "requires": ["glib", "gsettings-desktop-schemas", "gnome-settings-daemon", "wayland", "libinput", "pipewire"],
+      "requires": ["glib", "gnome-settings-daemon", "wayland", "libinput", "pipewire"],
+      "requiresSameMajor": ["gnoblin-gsettings-desktop-schemas"],
       "source": "mutter",
       "version": "51.0"
     },
@@ -25,8 +31,8 @@
       "version": "51.0"
     },
     "gnoblin-shell": {
-      "requires": ["glib", "gjs", "gsettings-desktop-schemas", "gnome-settings-daemon", "xdg-desktop-portal-gnome"],
-      "requiresSameMajor": ["gnoblin-mutter"],
+      "requires": ["glib", "gjs", "gnome-settings-daemon", "xdg-desktop-portal-gnome"],
+      "requiresSameMajor": ["gnoblin-gsettings-desktop-schemas", "gnoblin-mutter"],
       "source": "gnome-shell",
       "version": "51.0"
     }
@@ -66,14 +72,6 @@
         "arch": "gnome-settings-daemon",
         "deb": "gnome-settings-daemon",
         "rpm": "gnome-settings-daemon"
-      }
-    },
-    "gsettings-desktop-schemas": {
-      "minVersion": "49.0",
-      "names": {
-        "arch": "gsettings-desktop-schemas",
-        "deb": "gsettings-desktop-schemas",
-        "rpm": "gsettings-desktop-schemas"
       }
     },
     "libinput": {

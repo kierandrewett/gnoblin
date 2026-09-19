@@ -12,7 +12,7 @@
 %global gobject_introspection_version 1.41.4
 %global gtk3_version 3.19.8
 %global gtk4_version 4.14.0
-%global gsettings_desktop_schemas_version 47~beta
+%global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libinput_version 1.27.0
 %global pixman_version 0.42
@@ -82,7 +82,7 @@ BuildRequires: python3-docutils
 BuildRequires: gettext-devel git-core
 BuildRequires: gcc-c++
 BuildRequires: pkgconfig(libcanberra)
-BuildRequires: pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
+BuildRequires: gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires: pkgconfig(gnome-settings-daemon)
 BuildRequires: meson
@@ -104,7 +104,7 @@ BuildRequires: pkgconfig(xwayland)
 
 BuildRequires: python3-dbusmock
 
-Requires: gsettings-desktop-schemas
+Requires: gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 Requires: gnome-settings-daemon
 Requires: glib2
 Requires: polkit
@@ -124,6 +124,7 @@ Private headers and pkg-config files for Gnoblin builds.
 %autosetup -S git -n mutter-%{tarball_version}
 
 %build
+export PKG_CONFIG_PATH=%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
