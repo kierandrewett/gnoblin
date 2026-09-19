@@ -10,7 +10,7 @@ int main(void) {
     g_autofree char* dir = g_dir_make_tmp("gnoblin-lua-test-XXXXXX", &error);
     g_autofree char* conf = g_build_filename(dir, "conf.d", NULL);
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
-    g_autofree char* explicit_root = g_build_filename(dir, "personal.conf", NULL);
+    g_autofree char* explicit_root = g_build_filename(dir, "personal.lua", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
     g_autofree char* nested = g_build_filename(dir, "nested.lua", NULL);
     g_assert_no_error(error);
