@@ -268,7 +268,11 @@ static void fallback(Frame* frame) {
 static gboolean renderer_timeout(gpointer data) {
     Frame* frame = data;
     frame->timeout = 0;
-    fallback(frame);
+    /* A renderer that has never presented must not leave the window without
+     * chrome. Once it has presented, however, the old buffer is preferable to
+     * flashing an unrelated native frame while a replacement is delayed. */
+    if (!frame->external)
+        fallback(frame);
     return G_SOURCE_REMOVE;
 }
 
@@ -761,7 +765,7 @@ static void role_post_apply(MetaWaylandSurfaceRole* role, MetaWaylandSurfaceStat
         return;
     }
     /* An older focus/title repaint may arrive after another configure. Keep
-     * the presented frame until the latest repaint or the renderer timeout. */
+     * the presented frame until the latest matching repaint. */
     if (ack != frame->serial)
         return;
     if (meta_wayland_surface_get_width(surface) != frame->width ||

@@ -367,6 +367,7 @@ verify-fast:
     ./tests/test-log-diagnostics.sh
     ./tests/test-secure-state.sh
     ./tests/test-rpm-sources.sh
+    python3 tests/frame-renderer-policy.test.py
     python3 tests/session-environment.test.py
     python3 tests/package-isolation.test.py
     just test-config
