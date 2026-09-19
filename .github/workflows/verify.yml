@@ -56,3 +56,28 @@ jobs:
           rpm -q gnoblin-mutter gnoblin-shell gnoblin-session
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           test -x /usr/lib/gnoblin/bin/gnoblin-session
+  arch-source:
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    timeout-minutes: 90
+    steps:
+      - name: Install checkout tools
+        run: pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v4
+      - name: Set container checkout ownership and build identity
+        run: |
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global user.name 'Gnoblin CI'
+          git config --global user.email 'gnoblin-ci@users.noreply.github.com'
+      - name: Install documented Arch dependencies
+        run: bash scripts/install-arch-build-deps.sh --noconfirm
+      - name: Initialize and build the documented source installation
+        run: |
+          just init
+          GNOBLIN_PREFIX="$PWD/install" GNOBLIN_LIBDIR=lib just build-local
+      - name: Verify local runtime and session
+        run: |
+          test -x install/bin/gnome-shell
+          test -x install/bin/gnoblin-session
+          test -f install/share/wayland-sessions/gnoblin.desktop
+          test -f install/lib/libmutter-17.so

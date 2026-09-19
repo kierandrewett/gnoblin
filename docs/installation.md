@@ -110,10 +110,11 @@ builds remain in private Nix store paths.
 
 ## Arch, Debian and Ubuntu
 
-Packages aren't available yet. You can [build from source](#build-from-source),
-but dependency lists for these distributions are not maintained. You'll need
-the build dependencies for Mutter 49.5 and GNOME Shell 49.6, plus Git, Just,
-Meson and Ninja.
+Gnoblin binary packages aren't available for these distributions yet. Use
+the [source instructions](#build-from-source). Arch and CachyOS prerequisite
+installation is provided below. On other distributions, install the development
+packages for the versions listed below; older distribution releases may require
+newer dependencies before they can build GNOME 49.
 
 ## Build from source
 
@@ -123,12 +124,27 @@ install Gnoblin should use [COPR](#fedora).
 
 ### Get the source
 
+Install Git using your distribution's package manager first.
+
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
 ```
 
-On Fedora 43, install the build tools and dependencies before initialization:
+### Install build dependencies
+
+**Arch Linux / CachyOS:**
+
+```sh
+bash scripts/install-arch-build-deps.sh
+```
+
+This performs a full Arch package upgrade and installs the build dependencies.
+`glib2-devel` is required: GLib runtime libraries alone do not provide
+`glib-mkenums`. The stock GNOME packages supply runtime dependencies; the
+patched compositor is compiled into your private prefix.
+
+**Fedora 43:**
 
 ```sh
 sudo dnf install dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
@@ -136,8 +152,20 @@ sudo dnf copr enable kierandrewett/gnoblin
 sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
 ```
 
-The COPR supplies the private Mutter development package and Hyprcursor
-dependencies. Configure your Git name and email before building: patch
+On Fedora, COPR supplies the private Mutter development package and Hyprcursor
+dependencies. Arch source builds do not use COPR or RPM tools.
+
+**Other Linux distributions:** install a C/C++ toolchain, Git, Bash, Just,
+Meson, Ninja, pkg-config, Python, GLib development tools and GObject
+Introspection, plus the development dependencies of Mutter 49.5 and GNOME
+Shell 49.6. These include GTK 4, GJS, GNOME desktop libraries, Evolution Data
+Server, Wayland protocols, libei, libdisplay-info, PipeWire, Lua 5.4 and
+Hyprcursor. Meson checks the required versions and reports missing libraries.
+Package names vary by distribution; a runtime-only package is not sufficient
+where headers and tools are packaged separately. The same initialization and
+build commands below apply once those dependencies are present.
+
+Configure your Git name and email before building: patch
 application creates local commits and requires a committer identity.
 
 ```sh
@@ -147,7 +175,7 @@ just init
 ### Build and try it
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just build-local
+GNOBLIN_PREFIX="$PWD/install" GNOBLIN_LIBDIR=lib just build-local
 GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
