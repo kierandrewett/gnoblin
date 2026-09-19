@@ -111,8 +111,9 @@ builds remain in private Nix store paths.
 ## Arch, Debian and Ubuntu
 
 Gnoblin binary packages aren't available for these distributions yet. Use
-the [source instructions](#build-from-source) for Arch and CachyOS. Automated
-source builds on Debian and Ubuntu are not currently supported.
+the [source instructions](#build-from-source). Dependency installation is
+automated for Arch/CachyOS. Other distributions can use `./build.sh --no-deps`
+after installing compatible development dependencies.
 
 ## Build from source
 
@@ -140,6 +141,21 @@ Shell, Gnoblin Settings, the portal backend, and session files into `./install`.
 It supports Fedora 43 and Arch/CachyOS. Arch dependency installation performs a
 full package upgrade; Fedora enables the Gnoblin COPR for build dependencies.
 Use `./build.sh --yes` for unattended package installation.
+
+On other Linux distributions, install the development dependencies for Mutter
+49.5, GNOME Shell 49.6, GNOME Control Center 49.6 and xdg-desktop-portal-gnome
+49.0, then run `./build.sh --no-deps`. That option skips package management;
+it runs the same initialization and complete source build.
+
+You need a C/C++ toolchain, Git, Bash, Just, Meson, Ninja, pkg-config, Python,
+GLib development tools (including `glib-mkenums`), GObject Introspection,
+Blueprint Compiler, SassC and Docutils (`rst2man`). Library requirements include
+GLib 2.86+, GJS 1.85.90+, GTK 4, the Glycin 2 API, GNOME desktop libraries,
+Evolution Data Server, Wayland protocols, PipeWire, libei, libdisplay-info,
+Lua 5.4+ and Hyprcursor. Meson reports additional dependencies and required
+versions for each component. Install headers and tools as well as runtime
+libraries; package names vary by distribution. Older releases may require
+newer dependencies. Only Fedora and Arch are currently tested in CI.
 
 To try the resulting build:
 

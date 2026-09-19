@@ -5,15 +5,16 @@ cd -- "$(dirname -- "$(realpath -- "$0")")"
 
 case "${1:-}" in
     '') ;;
-    --yes) ;;
-    --help|-h) echo "Usage: ./build.sh [--yes]"; exit 0 ;;
-    *) echo "Usage: ./build.sh [--yes]" >&2; exit 2 ;;
+    --yes|--no-deps) ;;
+    --help|-h) echo "Usage: ./build.sh [--yes|--no-deps]"; exit 0 ;;
+    *) echo "Usage: ./build.sh [--yes|--no-deps]" >&2; exit 2 ;;
 esac
 [ "$#" -le 1 ] || { echo 'Too many arguments' >&2; exit 2; }
 privilege=()
 [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 confirm=()
 
+if [ "${1:-}" != --no-deps ]; then
 source /etc/os-release
 case " $ID ${ID_LIKE:-} " in
     *' arch '*)
@@ -34,8 +35,9 @@ case " $ID ${ID_LIKE:-} " in
             packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec \
             gnome-control-center xdg-desktop-portal-gnome
         ;;
-    *) echo "Automatic dependencies are supported on Fedora and Arch/CachyOS." >&2; exit 1 ;;
+    *) echo "Install your distribution's build prerequisites, then run ./build.sh --no-deps (see docs/installation.md)." >&2; exit 1 ;;
 esac
+fi
 
 # A running system session can export GNOBLIN_PREFIX=/usr. Source builds always
 # stay in this checkout; use the individual Just recipes for custom prefixes.
