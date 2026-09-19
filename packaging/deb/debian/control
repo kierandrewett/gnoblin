@@ -15,14 +15,14 @@ Depends: gnoblin-mutter (>= 51.0),
          gnoblin-mutter (<< 52),
          gnoblin-session (<< 52),
          gnoblin-shell (<< 52),
-         gjs (>= 1.87.1),
+         gjs (>= 1.85.90),
          libglib2.0-0t64 (>= 2.86.0),
-         gnome-session (>= 51.0),
-         gnome-settings-daemon (>= 51.0),
+         gnome-session,
+         gnome-settings-daemon,
          gsettings-desktop-schemas (>= 51.0),
          libinput10 (>= 1.31.0),
          pipewire (>= 1.6.0),
          libwayland-client0 (>= 1.26),
-         xdg-desktop-portal-gnome (>= 51.0)
+         xdg-desktop-portal-gnome
 Description: Gnoblin desktop session
  Installs the complete Gnoblin session while reusing compatible GNOME userspace.

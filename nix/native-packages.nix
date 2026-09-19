@@ -7,16 +7,16 @@ let
   };
   requirements = {
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
-    gjs = requirement "1.87.1" "gjs" "gjs" "gjs";
+    gjs = requirement "1.85.90" "gjs" "gjs" "gjs";
     gsettings-desktop-schemas =
       requirement "51.0" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
         "gsettings-desktop-schemas";
-    gnome-session = requirement "51.0" "gnome-session" "gnome-session" "gnome-session";
+    gnome-session = requirement null "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
-      requirement "51.0" "gnome-settings-daemon" "gnome-settings-daemon"
+      requirement null "gnome-settings-daemon" "gnome-settings-daemon"
         "gnome-settings-daemon";
     xdg-desktop-portal-gnome =
-      requirement "51.0" "xdg-desktop-portal-gnome" "xdg-desktop-portal-gnome"
+      requirement null "xdg-desktop-portal-gnome" "xdg-desktop-portal-gnome"
         "xdg-desktop-portal-gnome";
     wayland = requirement "1.26" "wayland" "libwayland-client0" "wayland";
     wayland-protocols =

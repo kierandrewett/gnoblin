@@ -37,7 +37,7 @@
   },
   "requirements": {
     "gjs": {
-      "minVersion": "1.87.1",
+      "minVersion": "1.85.90",
       "names": {
         "arch": "gjs",
         "deb": "gjs",
@@ -53,7 +53,7 @@
       }
     },
     "gnome-session": {
-      "minVersion": "51.0",
+      "minVersion": null,
       "names": {
         "arch": "gnome-session",
         "deb": "gnome-session",
@@ -61,7 +61,7 @@
       }
     },
     "gnome-settings-daemon": {
-      "minVersion": "51.0",
+      "minVersion": null,
       "names": {
         "arch": "gnome-settings-daemon",
         "deb": "gnome-settings-daemon",
@@ -109,7 +109,7 @@
       }
     },
     "xdg-desktop-portal-gnome": {
-      "minVersion": "51.0",
+      "minVersion": null,
       "names": {
         "arch": "xdg-desktop-portal-gnome",
         "deb": "xdg-desktop-portal-gnome",

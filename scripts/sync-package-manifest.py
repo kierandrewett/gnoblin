@@ -57,6 +57,11 @@ def dependency_closure(manifest: dict, package_name: str) -> tuple[list[str], li
     return sorted(package_names), sorted(requirements)
 
 
+def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, str | None]:
+    requirement = manifest["requirements"][name]
+    return requirement["names"][adapter], requirement["minVersion"]
+
+
 def render_rpm(manifest: dict) -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     next_major = manifest["release"]["gnomeMajor"] + 1
@@ -65,9 +70,10 @@ def render_rpm(manifest: dict) -> str:
         *(f"Requires:       {name} >= {version}" for name in packages),
         *(f"Requires:       {name} < {next_major}" for name in packages),
         *(
-            f"Requires:       {manifest['requirements'][name]['names']['rpm']} >= "
-            f"{manifest['requirements'][name]['minVersion']}"
+            f"Requires:       {package_name}"
+            + (f" >= {minimum}" if minimum is not None else "")
             for name in requirements
+            for package_name, minimum in [native_requirement(manifest, name, "rpm")]
         ),
     ]
     return (
@@ -94,9 +100,9 @@ def render_debian_control(manifest: dict) -> str:
         *(f"{name} (>= {version})" for name in packages),
         *(f"{name} (<< {next_major})" for name in packages),
         *(
-            f"{manifest['requirements'][name]['names']['deb']} "
-            f"(>= {manifest['requirements'][name]['minVersion']})"
+            package_name + (f" (>= {minimum})" if minimum is not None else "")
             for name in requirements
+            for package_name, minimum in [native_requirement(manifest, name, "deb")]
         ),
     ]
     wrapped = ",\n         ".join(dependencies)
@@ -125,9 +131,9 @@ def render_arch(manifest: dict) -> str:
         *(f"'{name}>={version}'" for name in packages),
         *(f"'{name}<{next_major}'" for name in packages),
         *(
-            f"'{manifest['requirements'][name]['names']['arch']}"
-            f">={manifest['requirements'][name]['minVersion']}'"
+            f"'{package_name}" + (f">={minimum}" if minimum is not None else "") + "'"
             for name in requirements
+            for package_name, minimum in [native_requirement(manifest, name, "arch")]
         ),
     ]
     return (
