@@ -1,0 +1,50 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] calendar: accept both libical property getter signatures
+
+diff --git a/src/calendar-server/gnome-shell-calendar-server.c b/src/calendar-server/gnome-shell-calendar-server.c
+--- a/src/calendar-server/gnome-shell-calendar-server.c
++++ b/src/calendar-server/gnome-shell-calendar-server.c
+@@ -115,3 +115,16 @@
++/* Keep the callback signature stable across libical's const API change. */
++static ICalTime *
++get_dtstart (ICalProperty *prop)
++{
++  return i_cal_property_get_dtstart (prop);
++}
++
++static ICalTime *
++get_dtend (ICalProperty *prop)
++{
++  return i_cal_property_get_dtend (prop);
++}
++
+ static gboolean
+ get_time_from_property (ECalClient            *cal,
+                         ICalComponent         *icomp,
+@@ -169,7 +182,7 @@
+   if (!get_time_from_property (cal,
+                                icomp,
+                                I_CAL_DTSTART_PROPERTY,
+-                               i_cal_property_get_dtstart,
++                               get_dtstart,
+                                default_zone,
+                                &itt,
+                                &timezone))
+@@ -196,7 +209,7 @@
+   if (!get_time_from_property (cal,
+                                icomp,
+                                I_CAL_DTEND_PROPERTY,
+-                               i_cal_property_get_dtend,
++                               get_dtend,
+                                default_zone,
+                                &itt,
+                                &timezone))
+@@ -204,7 +217,7 @@
+       if (!get_time_from_property (cal,
+                                    icomp,
+                                    I_CAL_DTSTART_PROPERTY,
+-                                   i_cal_property_get_dtstart,
++                                   get_dtstart,
+                                    default_zone,
+                                    &itt,
+                                    &timezone))

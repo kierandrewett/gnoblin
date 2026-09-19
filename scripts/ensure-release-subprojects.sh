@@ -20,7 +20,7 @@ for project in "${!tags[@]}"; do
         exit 1
     }
 
-    git -C "$subproject" fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"
+    git -C "$subproject" fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
     expected="$(git -C "$subproject" rev-parse "$tag^{commit}")"
     actual="$(git -C "$subproject" rev-parse HEAD)"
     if [ "$actual" = "$expected" ]; then

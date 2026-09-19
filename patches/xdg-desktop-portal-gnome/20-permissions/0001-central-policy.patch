@@ -1,3 +1,6 @@
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] portal: apply central permission policy
+
 diff --git a/src/access.c b/src/access.c
 index 05bd579..e28ea80 100644
 --- a/src/access.c

@@ -73,6 +73,8 @@ and `wlr-output-management` aren't implemented.
 
 ## Get started
 
+Build everything from source on Fedora or Arch/CachyOS with `./build.sh`.
+
 [Install](docs/installation.md) on Fedora, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.
 Every install method adds Gnoblin alongside GNOME. Your existing GNOME binaries

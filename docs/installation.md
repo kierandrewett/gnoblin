@@ -111,10 +111,8 @@ builds remain in private Nix store paths.
 ## Arch, Debian and Ubuntu
 
 Gnoblin binary packages aren't available for these distributions yet. Use
-the [source instructions](#build-from-source). Arch and CachyOS prerequisite
-installation is provided below. On other distributions, install the development
-packages for the versions listed below; older distribution releases may require
-newer dependencies before they can build GNOME 49.
+the [source instructions](#build-from-source) for Arch and CachyOS. Automated
+source builds on Debian and Ubuntu are not currently supported.
 
 ## Build from source
 
@@ -131,53 +129,21 @@ git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
 ```
 
-### Install build dependencies
-
-**Arch Linux / CachyOS:**
+### Build everything
 
 ```sh
-bash scripts/install-arch-build-deps.sh
+./build.sh
 ```
 
-This performs a full Arch package upgrade and installs the build dependencies.
-`glib2-devel` is required: GLib runtime libraries alone do not provide
-`glib-mkenums`. The stock GNOME packages supply runtime dependencies; the
-patched compositor is compiled into your private prefix.
+This installs dependencies, initializes the sources, and builds Mutter, GNOME
+Shell, Gnoblin Settings, the portal backend, and session files into `./install`.
+It supports Fedora 43 and Arch/CachyOS. Arch dependency installation performs a
+full package upgrade; Fedora enables the Gnoblin COPR for build dependencies.
+Use `./build.sh --yes` for unattended package installation.
 
-**Fedora 43:**
-
-```sh
-sudo dnf install dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
-sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
-```
-
-On Fedora, COPR supplies the private Mutter development package and Hyprcursor
-dependencies. Arch source builds do not use COPR or RPM tools.
-
-**Other Linux distributions:** install a C/C++ toolchain, Git, Bash, Just,
-Meson, Ninja, pkg-config, Python, GLib development tools and GObject
-Introspection, plus the development dependencies of Mutter 49.5 and GNOME
-Shell 49.6. These include GTK 4, GJS, GNOME desktop libraries, Evolution Data
-Server, Wayland protocols, libei, libdisplay-info, PipeWire, Lua 5.4 and
-Hyprcursor, plus Docutils (`rst2man`). The combined build requires GLib
-2.86 or newer, GJS 1.85.90 or newer, and the Glycin 2 API. Meson checks
-the remaining required versions and reports missing libraries.
-Package names vary by distribution; a runtime-only package is not sufficient
-where headers and tools are packaged separately. The same initialization and
-build commands below apply once those dependencies are present.
-
-Configure your Git name and email before building: patch
-application creates local commits and requires a committer identity.
+To try the resulting build:
 
 ```sh
-just init
-```
-
-### Build and try it
-
-```sh
-GNOBLIN_PREFIX="$PWD/install" just build-local
 GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
@@ -186,7 +152,7 @@ terminal. Close it to end the test. See [Devkit](devkit.md) for options.
 
 ### Install the session for real
 
-After `just build-local` succeeds and you have tested it, register the local
+After `./build.sh` succeeds and you have tested it, register the local
 build. Registration does not build Gnoblin or create a missing runtime:
 
 ```sh
@@ -211,10 +177,8 @@ You can then delete the checkout's `build` and `install` directories.
 
 ### Updating a source checkout
 
-For an existing source checkout, run `git pull --ff-only`, then `just init`
-before rebuilding. Initialization downloads release tags and pinned dependencies;
-it does not compile or install Gnoblin. If Git reports local changes, preserve
-them before updating; do not use forced resets to repair an installation.
+For an existing source checkout, run `git pull --ff-only`, then `./build.sh`.
+If Git reports local changes, preserve them before updating; do not use forced resets to repair an installation.
 
 The GitHub Actions installation workflow tests Fedora 43 package installation
 and source compilation on Fedora 43 and Arch Linux. Graphical devkit use, GDM login, and session removal
@@ -224,12 +188,12 @@ still require a graphical host; a successful build alone does not verify them.
 
 ## Optional components
 
-These require a source build and are not included in `just build-local`:
+These are included in `./build.sh`:
 
 - **Gnoblin Settings:** feature toggles and a reload button in GNOME Settings.
 - **Persistent screen-sharing permissions:** remember approved Screen Cast
   and Remote Desktop access.
 
-[Build optional components](source-development.md#optional-components)
+[Use these components](source-development.md#optional-components)
 
 [Development build options](source-development.md) · [Testing](testing.md) · [First-login checks](real-hardware-verification.md)

@@ -12,29 +12,23 @@ jobs:
     container: fedora:43
     timeout-minutes: 90
     steps:
-      - name: Install checkout and packaging tools
-        run: dnf -y install dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
+      - name: Install checkout tools
+        run: dnf -y install git
       - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Set container checkout ownership and build identity
+      - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-          git config --global user.name 'Gnoblin CI'
-          git config --global user.email 'gnoblin-ci@users.noreply.github.com'
-      - name: Initialise the source tree
-        run: just init
-      - name: Install source-build dependencies
-        run: |
-          dnf -y copr enable kierandrewett/gnoblin
-          dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
-      - name: Build the documented local installation
-        run: GNOBLIN_PREFIX="$PWD/install" just build-local
+      - name: Build everything
+        run: ./build.sh --yes
       - name: Verify the documented installation output
         run: |
           test -x install/bin/gnoblin-session
           test -x install/bin/gnoblin-shell-service
+          test -x install/bin/gnome-control-center
+          test -x install/libexec/xdg-desktop-portal-gnome
           test -x install/bin/gnome-shell
           test -f install/share/wayland-sessions/gnoblin.desktop
           test -f install/share/gnome-session/sessions/gnoblin.session
@@ -64,19 +58,15 @@ jobs:
       - name: Install checkout tools
         run: pacman -Syu --noconfirm --needed git
       - uses: actions/checkout@v4
-      - name: Set container checkout ownership and build identity
+      - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-          git config --global user.name 'Gnoblin CI'
-          git config --global user.email 'gnoblin-ci@users.noreply.github.com'
-      - name: Install documented Arch dependencies
-        run: bash scripts/install-arch-build-deps.sh --noconfirm
-      - name: Initialize and build the documented source installation
-        run: |
-          just init
-          GNOBLIN_PREFIX="$PWD/install" just build-local
+      - name: Build everything
+        run: ./build.sh --yes
       - name: Verify local runtime and session
         run: |
+          test -x install/bin/gnome-control-center
+          test -x install/libexec/xdg-desktop-portal-gnome
           test -x install/bin/gnome-shell
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop

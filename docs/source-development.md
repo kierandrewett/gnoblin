@@ -1,8 +1,8 @@
 # Source development
 
 For installation, see [Installation](installation.md). This page covers
-build options and optional components. Complete the guide's dependency setup
-and `just init` before running the build commands below.
+component rebuilds and build options. Run `./build.sh` first to install dependencies
+and build everything.
 
 ## Build options
 
@@ -25,17 +25,15 @@ nix build .#gnoblin              # build the Nix package
 
 ## Optional components
 
-Neither of these is part of `just build-local` — build them explicitly once you need
-them.
+Both components are built by `./build.sh`. The commands below rebuild them
+individually during development.
 
 ### Unattended screensharing (`xdg-desktop-portal-gnome`)
 
 The optional portal backend can remember exact, portal-scoped Screen Cast and
-Remote Desktop permissions for a verified requester. It needs one extra build
-dependency:
+Remote Desktop permissions for a verified requester. To rebuild it:
 
 ```sh
-sudo dnf install xdg-desktop-portal-devel
 just dev-portal
 ```
 
@@ -54,9 +52,6 @@ A `gnoblin` panel in GNOME Settings driving `org.gnoblin.Shell` (feature
 toggles, Screen Cast and Remote Desktop grants, and a reload button):
 
 ```sh
-sudo dnf install accountsservice-devel colord-gtk4-devel cups-devel gsound-devel \
-  ibus-devel libgtop2-devel libnma-gtk4-devel malcontent-devel \
-  ModemManager-glib-devel libpwquality-devel libsmbclient-devel libudisks2-devel
 just dev-settings
 ./install/bin/gnome-control-center gnoblin
 ```

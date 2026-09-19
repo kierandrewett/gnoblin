@@ -2,8 +2,7 @@
 
 Binary packaging is not implemented yet. Source builds are covered by the
 [installation guide](../../docs/installation.md#build-from-source) and Arch CI:
-run `bash scripts/install-arch-build-deps.sh`, `just init`, then
-`just build-local`. This installs into the checkout's private `install/`
+run `./build.sh`. This installs into the checkout's private `install/`
 directory. Packages must install alongside Arch's GNOME packages.
 
 - Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
