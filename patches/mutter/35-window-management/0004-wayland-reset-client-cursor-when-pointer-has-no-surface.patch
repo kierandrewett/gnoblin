@@ -18,8 +18,8 @@ Treat "no current surface and no button held" as a compositor/root cursor
 situation and unset the client cursor immediately. The button guard preserves
 normal implicit-grab behaviour while dragging or resizing.
 ---
- src/wayland/meta-wayland-pointer.c | 26 ++++++++++++++++++++++++++
- 1 file changed, 26 insertions(+)
+ src/wayland/meta-wayland-pointer.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
 
 diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
 index 93e3348dd..4e8584fa3 100644
@@ -35,7 +35,7 @@ index 93e3348dd..4e8584fa3 100644
  
    g_return_if_fail (meta_cursor_tracker_get_pointer_visible (cursor_tracker) ||
                      clutter_seat_is_unfocus_inhibited (clutter_seat) ||
-@@ -1134,6 +1137,26 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+@@ -1134,6 +1137,20 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
    if (pointer->focus_surface == surface)
      return;
  
@@ -47,22 +47,16 @@ index 93e3348dd..4e8584fa3 100644
 +
 +  if (client_changed && pointer->button_count == 0)
 +    {
-+      if (pointer->cursor_surface)
-+        {
-+          meta_wayland_surface_update_outputs (pointer->cursor_surface);
-+          g_clear_signal_handler (&pointer->cursor_surface_destroy_id,
-+                                  pointer->cursor_surface);
-+        }
-+
-+      pointer->cursor_surface = NULL;
-+      pointer->cursor_shape = META_CURSOR_INVALID;
-+      g_clear_object (&pointer->shape_sprite);
++      meta_wayland_pointer_set_cursor_surface (pointer, NULL);
++      pointer->cursor_shape = CLUTTER_CURSOR_INHERIT;
++      pointer->cursor_source = CURSOR_SOURCE_UNSET;
++      clutter_sprite_invalidate_cursor (pointer->sprite);
 +    }
 +
    pointer->last_rel_x = -FLT_MAX;
    pointer->last_rel_y = -FLT_MAX;
  
-@@ -1247,6 +1270,9 @@ meta_wayland_pointer_get_cursor (MetaWaylandPointer *pointer)
+@@ -1247,6 +1264,9 @@ meta_wayland_pointer_get_cursor (MetaWaylandPointer *pointer)
  
    surface = pointer->focus_surface;
  
@@ -74,4 +68,3 @@ index 93e3348dd..4e8584fa3 100644
        switch (pointer->cursor_source)
 -- 
 2.55.0
-
