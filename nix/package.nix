@@ -122,10 +122,7 @@ let
           --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
           --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
     '';
-    mesonFlags = (old.mesonFlags or [ ]) ++ [
-      "-Dextensions_app=false"
-      "-Dextensions_tool=false"
-    ];
+    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dextensions_tool=false" ];
   });
 
   session = stdenv.mkDerivation {
