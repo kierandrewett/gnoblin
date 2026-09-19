@@ -1757,7 +1757,7 @@ install Gnoblin should use <a href="#fedora">COPR</a>.</p>
 </code></pre></div>
 <p>This installs dependencies, initializes the sources, and builds Mutter, GNOME
 Shell, Gnoblin Settings, the portal backend, and session files into <code>./install</code>.
-It supports Fedora 43 and Arch/CachyOS. Arch dependency installation performs a
+It supports Fedora 44 and Arch/CachyOS. Arch dependency installation performs a
 full package upgrade; Fedora enables the Gnoblin COPR for build dependencies.
 Use <code>./build.sh --yes</code> for unattended package installation.</p>
 <p>On other Linux distributions, install the development dependencies for Mutter,
@@ -1797,8 +1797,8 @@ sudo<span class="w"> </span>rm<span class="w"> </span>/usr/share/gnome-session/s
 <h3 id="updating-a-source-checkout">Updating a source checkout<a class="headerlink" href="#updating-a-source-checkout" title="Permanent link">&para;</a></h3>
 <p>For an existing source checkout, run <code>git pull --ff-only</code>, then <code>./build.sh</code>.
 If Git reports local changes, preserve them before updating; do not use forced resets to repair an installation.</p>
-<p>The GitHub Actions installation workflow tests Fedora 43 package installation
-and source compilation on Fedora 43 and Arch Linux. Graphical devkit use, GDM login, and session removal
+<p>The GitHub Actions installation workflow tests Fedora 44 package installation
+and source compilation on Fedora 44 and Arch Linux. Graphical devkit use, GDM login, and session removal
 still require a graphical host; a successful build alone does not verify them.</p>
 <p><a id="unattended-screensharing-xdg-desktop-portal-gnome"></a></p>
 <h2 id="optional-components">Optional components<a class="headerlink" href="#optional-components" title="Permanent link">&para;</a></h2>

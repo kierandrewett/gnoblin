@@ -1982,13 +1982,10 @@ migrating an existing installation.</p>
 <span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="p">})</span>
-
-<span class="c1">-- Append without replacing shortcuts imported above. Choose a unique name.</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my-terminal"</span><span class="p">,</span><span class="w"> </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">},</span>
-<span class="p">})</span>
 </code></pre></div>
+<p>This preserves the component's shortcuts. To add or change one, use the
+<a href="../configuration-recipes/#add-a-shortcut-without-losing-the-others">shortcut recipe</a>
+and choose an unused accelerator.</p>
 <p>The model is a user init file and ordinary Lua modules. Variables, functions,
 conditions, and loops can build the settings. There is no package manager or
 second settings schema. Lua uses <code>{...}</code> for tables and arrays, and <code>["hyphenated-key"]</code>
