@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Subject: [PATCH] gnoblin: bundle the MessageTray notification bridge
+
+The bridge is enabled by the gnoblin session mode and forwards GNOME-created
+MessageTray notifications to the standard notification API consumed by the
+external shell.
+---
+ js/js-resources.gresource.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 0000000..0000000 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -145,6 +145,7 @@
+     <file>ui/components/gnoblinFrames.js</file>
+     <file>ui/components/gnoblinFramePolicy.js</file>
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinNotificationBridge.js</file>
+     <file>ui/components/gnoblinRecovery.js</file>
+     <file>ui/components/gnoblinConsole.js</file>
+     <file>ui/components/gnoblinConsoleEvaluator.js</file>
+--
+2.53.0

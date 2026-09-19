@@ -16,6 +16,7 @@
     "autorunManager",
     "automountManager",
     "networkAgent",
+    "gnoblinNotificationBridge",
     "gnoblinControl",
     "gnoblinRecovery"
   ]
