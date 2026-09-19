@@ -70,8 +70,7 @@ def render_rpm(manifest: dict) -> str:
         *(f"Requires:       {name} >= {version}" for name in packages),
         *(f"Requires:       {name} < {next_major}" for name in packages),
         *(
-            f"Requires:       {package_name}"
-            + (f" >= {minimum}" if minimum is not None else "")
+            f"Requires:       {package_name}" + (f" >= {minimum}" if minimum is not None else "")
             for name in requirements
             for package_name, minimum in [native_requirement(manifest, name, "rpm")]
         ),
@@ -84,9 +83,7 @@ def render_rpm(manifest: dict) -> str:
         "Summary:        Gnoblin desktop session\n"
         "License:        GPL-2.0-or-later\n"
         "URL:            https://github.com/kdrew7/gnoblin\n"
-        "BuildArch:      noarch\n"
-        + "\n".join(dependencies)
-        + "\n\n%description\n"
+        "BuildArch:      noarch\n" + "\n".join(dependencies) + "\n\n%description\n"
         "Installs the complete Gnoblin session while reusing compatible GNOME userspace.\n\n"
         "%files\n"
     )
@@ -138,6 +135,7 @@ def render_arch(manifest: dict) -> str:
     ]
     return (
         "# Generated from nix/native-packages.nix; do not edit.\n"
+        "# shellcheck shell=bash disable=SC2034,SC2154\n"
         "pkgname=gnoblin\n"
         f"pkgver={version}\n"
         "pkgrel=1\n"
@@ -147,7 +145,7 @@ def render_arch(manifest: dict) -> str:
         "license=('GPL-2.0-or-later')\n"
         f"depends=({' '.join(dependencies)})\n\n"
         "package() {\n"
-        "    install -dm755 \"$pkgdir/usr/share/gnoblin\"\n"
+        '    install -dm755 "$pkgdir/usr/share/gnoblin"\n'
         "}\n"
     )
 

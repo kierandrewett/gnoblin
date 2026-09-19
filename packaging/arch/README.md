@@ -1,9 +1,9 @@
-# Arch Linux packaging plan
+# Arch Linux packaging
 
-Binary packaging is not implemented yet. Source builds are covered by the
-[installation guide](../../docs/installation.md#build-from-source) and Arch CI:
-run `./build.sh`. This installs into the checkout's private `install/`
-directory. Packages must install alongside Arch's GNOME packages.
+`PKGBUILD` is the generated `gnoblin` metapackage. Its version, private-runtime
+major bounds, GNOME capability dependencies, and Arch package-name mappings
+come from `nix/native-packages.nix`. Refresh it with
+`just package-manifest write`.
 
 - Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
 - Install the runtime under `/usr/lib/gnoblin`; set its library directory to
@@ -13,6 +13,7 @@ directory. Packages must install alongside Arch's GNOME packages.
 - Export only Gnoblin's login entry, control command, user units and separately
   named backlight policy. Follow the [RPM layout](../rpm/README.md).
 
-Use `just tarball mutter` and `just tarball gnome-shell` for patched sources.
-Wire `just arch` to `makepkg` only after install, coexistence and removal tests
-pass with stock GNOME installed.
+The `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin-session` Arch runtime
+packages and pacman repository are not published yet. Until they are, use the
+[source build](../../docs/installation.md#build-from-source). Do not publish
+the metapackage by itself: all dependencies must resolve in the same repository.

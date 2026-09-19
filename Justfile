@@ -312,6 +312,7 @@ rpm PROJ:
 # to be installed first; see docs/installation.md for the initial build.
 rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
+    rpmbuild -bb packaging/rpm/gnoblin.spec
 
 # Debian / Arch packaging is planned; see packaging/{deb,arch}/README.md.
 deb PROJ:
@@ -424,8 +425,8 @@ srpm PROJECT SOURCES OUTPUT:
     ./scripts/build-srpm.sh "{{PROJECT}}" "{{SOURCES}}" "{{OUTPUT}}"
 
 # Publish prepared source RPMs to an existing COPR project in dependency order.
-copr PROJECT MUTTER_SRPM SHELL_SRPM:
-    ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}"
+copr PROJECT MUTTER_SRPM SHELL_SRPM META_SRPM:
+    ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}" "{{META_SRPM}}"
 
 # Read-only checks across repository-owned source files.
 check-gnome-version:

@@ -14,9 +14,10 @@ You'll also need a [desktop shell](bring-your-own-shell.md), such as Bingux.
 
 ## Fedora
 
-The packages are named `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session`.
-Their runtime lives in `/usr/lib/gnoblin`. Your existing GNOME packages remain
-installed and selectable.
+Install the `gnoblin` metapackage. It resolves `gnoblin-mutter`,
+`gnoblin-shell`, `gnoblin-session`, and their GNOME userspace requirements.
+The private runtime lives in `/usr/lib/gnoblin`; your existing GNOME packages
+remain installed and selectable.
 
 ### Install from COPR — the official path
 
@@ -34,12 +35,13 @@ for the official Fedora installation:
 ```sh
 sudo dnf install dnf-plugins-core
 sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf install --refresh gnoblin-mutter gnoblin-shell gnoblin-session
+sudo dnf install --refresh gnoblin
 ```
 
-`gnoblin-session` pulls in the matching `gnoblin-shell` and `gnoblin-mutter`
-packages. DNF reuses compatible installed GNOME userspace and installs missing
-requirements. No source build or manual file copying is part of this path.
+The generated package dependency graph keeps all private runtime packages on
+the same GNOME major. DNF reuses compatible installed GNOME userspace and
+installs only missing or outdated requirements. No source build or manual file
+copying is part of this path.
 
 The repository also enables the Hyprcursor dependency repository used by the
 Gnoblin Mutter build. Install your desktop shell separately, then log out and
@@ -69,7 +71,7 @@ registration is needed for packaged installations.
 Select **GNOME** at login. To remove Gnoblin:
 
 ```sh
-sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter
+sudo dnf remove gnoblin gnoblin-session gnoblin-shell gnoblin-mutter
 ```
 
 No GNOME reinstall or downgrade is needed. Older experimental builds that
@@ -110,11 +112,12 @@ builds remain in private Nix store paths.
 
 ## Arch, Debian and Ubuntu
 
-Native packages will be generated from the same Nix-owned package manifest as
-the Fedora RPMs. Until those repository pipelines are published, use the
-[source instructions](#build-from-source). Dependency installation is
-automated for Arch/CachyOS. Other distributions can use `./build.sh --no-deps`
-after installing compatible development dependencies.
+Native `gnoblin` metapackage recipes are generated from the same Nix-owned
+package model as the Fedora RPM. They are in `packaging/arch/PKGBUILD` and
+`packaging/deb/debian/`; their dependency solvers reuse compatible GNOME
+userspace. The APT and pacman repositories and native runtime packages are not
+published yet, so use the [source instructions](#build-from-source) until that
+release work is complete.
 
 ## Build from source
 

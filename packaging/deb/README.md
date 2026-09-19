@@ -1,6 +1,9 @@
-# Debian / Ubuntu packaging plan
+# Debian / Ubuntu packaging
 
-Not implemented yet. Packages must install alongside the distribution's GNOME.
+`debian/` is the generated `gnoblin` metapackage source. Its version,
+private-runtime major bounds, GNOME capability dependencies, and Debian
+package-name mappings come from `nix/native-packages.nix`. Refresh it with
+`just package-manifest write`.
 
 - Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
 - Install the runtime under `/usr/lib/gnoblin`, including private libraries,
@@ -12,6 +15,7 @@ Not implemented yet. Packages must install alongside the distribution's GNOME.
 - Record the private library directory in `libexec/gnoblin-libdir`, relative
   to `/usr/lib/gnoblin` (for example `lib/x86_64-linux-gnu`).
 
-Use `just tarball mutter` and `just tarball gnome-shell` for patched sources.
-Wire `just deb` to the build only after install, coexistence and removal tests
-pass with stock GNOME installed.
+The `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin-session` Debian runtime
+packages and APT repository are not published yet. Until they are, use the
+[source build](../../docs/installation.md#build-from-source). Do not publish
+the metapackage by itself: all dependencies must resolve in the same repository.

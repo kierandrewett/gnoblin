@@ -18,8 +18,9 @@ translations. Inspect the interface with:
 nix eval --json .#lib.nativePackages
 ```
 
-`packaging/generated/manifest.json` is the materialized input for native
-adapters and repository builders. Refresh or verify it with:
+The same command materializes the audit snapshot and concrete `gnoblin`
+metapackage recipes for RPM/COPR, Debian, and Arch. Refresh or verify every
+generated adapter with:
 
 ```sh
 just package-manifest write
@@ -55,7 +56,7 @@ libraries must not provide dependencies for stock GNOME packages.
 
 NixOS exposes the same limited set of entry points from a separate store
 output. Source builds use a private prefix and reject `/usr` and `/usr/local`.
-Future Debian and Arch packages must follow the same rule.
+Debian and Arch packages must follow the same rule.
 
 Bingux needs Quickshell, native QML plugins, its search and metrics daemons,
 and helper programs. Copying its QML directory alone is not a complete install.
@@ -92,6 +93,7 @@ scripts/make-tarball.sh mutter ./dist/sources
 scripts/make-tarball.sh gnome-shell ./dist/sources
 scripts/build-srpm.sh mutter ./dist/sources ./dist/srpms
 scripts/build-srpm.sh gnome-shell ./dist/sources ./dist/srpms
+scripts/build-srpm.sh gnoblin ./dist/sources ./dist/srpms
 ```
 
 Source RPM creation uses the prepared archives. It never downloads the
@@ -129,13 +131,14 @@ chroot is still available in COPR before creating the project.
 
 ```sh
 copr-cli create --chroot fedora-44-x86_64 gnoblin
-scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM
+scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM PATH_TO_META_SRPM
 ```
 
 Replace the owner and file paths with the actual account and generated files.
 The submission script waits for Mutter to build before submitting GNOME Shell.
 Do not use `--nowait`: Shell must build against the published Mutter headers.
-Confirm both builds succeed before testing a fresh installation.
+Confirm all three builds succeed before testing `dnf install gnoblin` on a
+fresh host.
 
 After installing the packages, select **Gnoblin** at GDM and enable the shell
 from [Bring your own shell](bring-your-own-shell.md). Keep the regular GNOME

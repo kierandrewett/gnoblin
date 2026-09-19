@@ -4,6 +4,7 @@ Gnoblin installs alongside Fedora's GNOME packages:
 
 | Package                | Contents                                              |
 | ---------------------- | ----------------------------------------------------- |
+| `gnoblin`              | Generated complete-session metapackage                |
 | `gnoblin-mutter`       | Private Mutter runtime and a Gnoblin backlight policy |
 | `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell            |
 | `gnoblin-shell`        | Private GNOME Shell runtime and session tools         |
@@ -14,8 +15,9 @@ Binaries, libraries, schemas and upstream service definitions stay under
 GNOME packages. No package replaces, conflicts with or obsoletes GNOME.
 
 [Build and install](../../docs/installation.md#fedora). Build Mutter first,
-install its private development package, then build Shell. COPR uses the same
-order; see [publication](../../docs/distribution.md).
+install its private development package, then build Shell and the generated
+metapackage. COPR uses the same order; see
+[publication](../../docs/distribution.md).
 
 Before distributing binary packages, run:
 

@@ -37,8 +37,8 @@ command -v dnf >/dev/null || {
 units=(org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service gnome-session@gnoblin.target.d/gnoblin.conf)
 for unit in "${units[@]}"; do
     if [ -e "$UNIT_DIR/$unit" ] && [ ! -L "$UNIT_DIR/$unit" ]; then
-        if [ "$unit" = gnome-session@gnoblin.target.d/gnoblin.conf ] \
-            && cmp -s "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" "$UNIT_DIR/$unit"; then
+        if [ "$unit" = gnome-session@gnoblin.target.d/gnoblin.conf ] &&
+            cmp -s "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" "$UNIT_DIR/$unit"; then
             echo "Recognized managed Gnoblin user drop-in: $UNIT_DIR/$unit"
         else
             echo "Move the custom Gnoblin override aside first: $UNIT_DIR/$unit" >&2
@@ -58,7 +58,7 @@ if [ "$SOURCE" = copr ]; then
             --repofrompath="gnoblin-copr,$repo_url" \
             --setopt=gnoblin-copr.gpgcheck=1 --refresh \
             repoquery --available --qf '%{name}-%{evr}.%{arch}' \
-            gnoblin-mutter gnoblin-shell gnoblin-session
+            gnoblin
         echo "Dry run: no repository, package, or session changes made."
         exit 0
     fi
@@ -68,14 +68,15 @@ if [ "$SOURCE" = copr ]; then
     mapfile -t copr_packages < <(
         dnf repoquery --available --latest-limit=1 --arch="$arch" \
             --qf $'%{name}-%{evr}.%{arch}\n' \
-            gnoblin-mutter gnoblin-shell gnoblin-session | sort -u
+            gnoblin | sort -u
     )
-    if [ "${#copr_packages[@]}" -ne 3 ]; then
-        echo "COPR did not expose the complete host package set; found:" >&2
+    if [ "${#copr_packages[@]}" -ne 1 ]; then
+        echo "COPR did not expose the Gnoblin metapackage; found:" >&2
         printf '  %s\n' "${copr_packages[@]}" >&2
         exit 1
     fi
-    printf 'Installing COPR packages:\n'; printf '  %s\n' "${copr_packages[@]}"
+    printf 'Installing COPR packages:\n'
+    printf '  %s\n' "${copr_packages[@]}"
     "${sudo_args[@]}" dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"
 else
     MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
@@ -117,6 +118,6 @@ for unit in "${units[@]}"; do
     fi
 done
 systemctl --user daemon-reload
-rpm -q gnoblin-mutter gnoblin-shell gnoblin-session
+rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
-    'Remove with: sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter'
+    'Remove with: sudo dnf remove gnoblin gnoblin-session gnoblin-shell gnoblin-mutter'
