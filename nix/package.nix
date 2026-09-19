@@ -1,6 +1,7 @@
 {
   lib,
   stdenv,
+  gcc16Stdenv,
   symlinkJoin,
   glib,
   unzip,
@@ -58,7 +59,10 @@ let
         patches = [ ];
       };
 
-  gnoblinMutter = mutter.overrideAttrs (old: {
+  # hyprcursor and its C++ dependencies use Nixpkgs' GCC 16 ABI. Build the
+  # consumer with the same toolchain so its final executable resolves the
+  # matching libstdc++ symbol versions.
+  gnoblinMutter = (mutter.override { stdenv = gcc16Stdenv; }).overrideAttrs (old: {
     pname = "gnoblin-mutter";
     version = versions.components.mutter.version;
     src = mutterSrc;
