@@ -105,6 +105,9 @@
         in
         {
           gnoblin-session = pkgs.runCommand "gnoblin-session-check" { } ''
+            set -euxo pipefail
+            export GSETTINGS_BACKEND=memory
+
             test "${toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)}" = "${gnoblin}"
             test "${toString (builtins.head moduleTest.config.systemd.packages)}" = "${gnoblin}"
             test ! -e "${gnoblin}/bin/gnome-shell"
@@ -135,8 +138,7 @@
             test -f "$schema_directory/org.gnoblin.shell.gschema.xml"
             test -f "$schema_directory/gschemas.compiled"
             test "$(
-                GSETTINGS_BACKEND=memory \
-                    GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
+                GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
                     get org.gnome.mutter overlay-key
             )" = "'Super'"
             GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
