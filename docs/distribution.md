@@ -74,7 +74,7 @@ unpatched upstream archives named by the Fedora specs.
 ## GNOME major upgrades
 
 `gnome-versions.json` is the single source of truth for the GNOME release train.
-The weekly `Check for a new GNOME release` workflow fails when all four pinned
+The weekly `Check for a new GNOME release` workflow fails when all five pinned
 upstream projects publish a newer stable major, making the new release visible
 in GitHub's workflow notifications.
 

@@ -17,6 +17,10 @@
     "xdg-desktop-portal-gnome": {
       "version": "51.0",
       "commit": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120"
+    },
+    "gsettings-desktop-schemas": {
+      "version": "51.0",
+      "commit": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c"
     }
   }
 }

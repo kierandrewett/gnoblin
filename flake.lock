@@ -17,6 +17,23 @@
         "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
       }
     },
+    "gsettings-desktop-schemas-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789332298,
+        "narHash": "sha256-J+THXdqfAT29eSLP0NHXZ5T8sieeP+01my1MV4nbyXY=",
+        "ref": "refs/heads/main",
+        "rev": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
+        "revCount": 2012,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git"
+      },
+      "original": {
+        "rev": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git"
+      }
+    },
     "gvc": {
       "flake": false,
       "locked": {
@@ -121,6 +138,7 @@
     "root": {
       "inputs": {
         "gnome-shell-src": "gnome-shell-src",
+        "gsettings-desktop-schemas-src": "gsettings-desktop-schemas-src",
         "gvc": "gvc",
         "gvdb": "gvdb",
         "jasmineGjs": "jasmineGjs",

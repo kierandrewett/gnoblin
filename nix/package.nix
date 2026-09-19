@@ -16,9 +16,11 @@
   mutter,
   gnomeShell,
   gnomeSession,
+  gsettings-desktop-schemas,
   gnoblinSrc,
   mutterSrc,
   gnomeShellSrc,
+  gsettingsDesktopSchemasSrc,
   gvdbSrc,
   gvcSrc,
   libshewSrc,
@@ -45,6 +47,17 @@ let
     cp -r --no-preserve=mode "${source}/." "subprojects/${directory}"
   '';
 
+  requiredSchemasVersion = versions.components.gsettings-desktop-schemas.version;
+  gnoblinSchemas =
+    if lib.versionAtLeast gsettings-desktop-schemas.version requiredSchemasVersion then
+      gsettings-desktop-schemas
+    else
+      gsettings-desktop-schemas.overrideAttrs {
+        version = requiredSchemasVersion;
+        src = gsettingsDesktopSchemasSrc;
+        patches = [ ];
+      };
+
   gnoblinMutter = mutter.overrideAttrs (old: {
     pname = "gnoblin-mutter";
     version = versions.components.mutter.version;
@@ -54,10 +67,19 @@ let
     patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
     postPatch = old.postPatch or "";
-    buildInputs = (old.buildInputs or [ ]) ++ [
-      hyprcursor
-      lua5_4
-    ];
+    preConfigure = ''
+      export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    ''
+    + (old.preConfigure or "");
+    buildInputs =
+      map (
+        dependency:
+        if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
+      ) (old.buildInputs or [ ])
+      ++ [
+        hyprcursor
+        lua5_4
+      ];
     mesonFlags =
       lib.filter (
         flag: !(lib.hasPrefix "-Degl_device=" flag || lib.hasPrefix "-Dwayland_eglstream=" flag)
@@ -158,6 +180,7 @@ let
     paths = [
       gnoblinMutter
       gnoblinShell
+      gnoblinSchemas
       session
     ];
     nativeBuildInputs = [
@@ -223,7 +246,12 @@ let
     '';
 
     passthru = {
-      inherit gnoblinMutter gnoblinShell session;
+      inherit
+        gnoblinMutter
+        gnoblinSchemas
+        gnoblinShell
+        session
+        ;
       providedSessions = [ "gnoblin" ];
     };
 
@@ -262,6 +290,7 @@ symlinkJoin {
     inherit
       runtime
       gnoblinMutter
+      gnoblinSchemas
       gnoblinShell
       session
       ;

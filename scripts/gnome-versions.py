@@ -13,13 +13,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "gnome-versions.json"
-PROJECTS = (
+PATCH_PROJECTS = (
     "mutter",
     "gnome-shell",
     "gnome-control-center",
     "xdg-desktop-portal-gnome",
 )
-UPSTREAM = {project: f"https://gitlab.gnome.org/GNOME/{project}.git" for project in PROJECTS}
+RELEASE_PROJECTS = PATCH_PROJECTS + ("gsettings-desktop-schemas",)
+UPSTREAM = {project: f"https://gitlab.gnome.org/GNOME/{project}.git" for project in RELEASE_PROJECTS}
 
 
 def load() -> dict:
@@ -61,6 +62,7 @@ def generated_values(data: dict) -> tuple[tuple[Path, str, str], ...]:
     components = data["components"]
     mutter = components["mutter"]
     shell = components["gnome-shell"]
+    schemas = components["gsettings-desktop-schemas"]
     return (
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^Version:\s+(\S+)$", mutter["version"]),
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^%global mutter_api_version\s+(\S+)$", mutter["api"]),
@@ -68,6 +70,11 @@ def generated_values(data: dict) -> tuple[tuple[Path, str, str], ...]:
         (ROOT / "packaging/rpm/gnome-shell.spec", r"(?m)^%define mutter_version\s+(\S+)$", mutter["version"]),
         (ROOT / "flake.nix", r"mutter\.git\?rev=([0-9a-f]{40})", mutter["commit"]),
         (ROOT / "flake.nix", r"gnome-shell\.git\?rev=([0-9a-f]{40})", shell["commit"]),
+        (
+            ROOT / "flake.nix",
+            r"gsettings-desktop-schemas\.git\?rev=([0-9a-f]{40})",
+            schemas["commit"],
+        ),
         (ROOT / "src/tools/gnoblin-env.sh", r"GNOBLIN_MUTTER_API:-([^}]+)", mutter["api"]),
         (ROOT / ".github/workflows/verify.yml", r"libmutter-(\d+)\.so", mutter["api"]),
     )
@@ -92,7 +99,7 @@ def validate(data: dict, *, upstream: bool) -> None:
     expected_tag = f"{major}.0"
     components = data["components"]
     errors = []
-    for project in PROJECTS:
+    for project in RELEASE_PROJECTS:
         component = components.get(project, {})
         if component.get("version") != expected_tag:
             errors.append(f"{project}: expected version {expected_tag}")
@@ -110,7 +117,7 @@ def validate(data: dict, *, upstream: bool) -> None:
         if not match or match.group(1) != expected:
             errors.append(f"{path.relative_to(ROOT)}: expected generated value {expected}")
     if upstream:
-        newest = min(latest_major(project) for project in PROJECTS)
+        newest = min(latest_major(project) for project in RELEASE_PROJECTS)
         if newest > major:
             errors.append(f"GNOME {newest}.0 is available; run scripts/gnome-versions.py update {newest}")
     if errors:
@@ -121,7 +128,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     get_parser = subparsers.add_parser("get")
-    get_parser.add_argument("project", choices=PROJECTS)
+    get_parser.add_argument("project", choices=RELEASE_PROJECTS)
     get_parser.add_argument("field", choices=("version", "api", "commit"))
     check_parser = subparsers.add_parser("check")
     check_parser.add_argument("--upstream", action="store_true")
@@ -143,7 +150,7 @@ def main() -> int:
 
     tag = f"{args.major}.0"
     components = {}
-    for project in PROJECTS:
+    for project in RELEASE_PROJECTS:
         commit = tag_commit(project, tag)
         if not commit:
             raise RuntimeError(f"{project} has no {tag} release tag")

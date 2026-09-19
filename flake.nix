@@ -16,6 +16,11 @@
       flake = false;
     };
 
+    gsettings-desktop-schemas-src = {
+      url = "git+https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git?rev=1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c";
+      flake = false;
+    };
+
     gvdb = {
       url = "git+https://gitlab.gnome.org/GNOME/gvdb.git?rev=b54bc5da25127ef416858a3ad92e57159ff565b3";
       flake = false;
@@ -59,6 +64,7 @@
             gnoblinSrc = self.outPath;
             mutterSrc = inputs.mutter-src.outPath;
             gnomeShellSrc = inputs.gnome-shell-src.outPath;
+            gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
             gvdbSrc = inputs.gvdb.outPath;
             gvcSrc = inputs.gvc.outPath;
             libshewSrc = inputs.libshew.outPath;
