@@ -41,6 +41,14 @@ static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size)
     return pointer;
 }
 
+static lua_State* new_config_state(LuaConfig* config) {
+#if LUA_VERSION_NUM >= 505
+    return lua_newstate(limited_alloc, config, g_random_int());
+#else
+    return lua_newstate(limited_alloc, config);
+#endif
+}
+
 static void limit_hook(lua_State* state, lua_Debug* debug) {
     int* remaining = (int*)lua_getextraspace(state);
     (void)debug;
@@ -502,7 +510,7 @@ GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrA
                         .active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL),
                         .modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL),
                         .current_path = g_canonicalize_filename(path, NULL)};
-    lua_State* state = lua_newstate(limited_alloc, &config);
+    lua_State* state = new_config_state(&config);
     EvalRun run = {.config = &config, .path = path};
     int steps = MAX_CONFIG_STEPS / 1000;
     if (!state) {

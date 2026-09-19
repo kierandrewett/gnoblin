@@ -1,0 +1,23 @@
+name: Lua compatibility
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ['fedora:43', 'archlinux:base']
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install test dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            pacman -Syu --needed --noconfirm git base-devel glib2-devel lua
+          else
+            dnf -y install git gcc pkgconf-pkg-config glib2-devel lua-devel
+          fi
+      - uses: actions/checkout@v4
+      - name: Test configuration and console behavior
+        run: bash tests/test-config.sh

@@ -269,7 +269,7 @@ GVariant *gnoblin_console_lua(const char *operation, const char *source) {
         console_config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
         console_config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
         console_config.current_path = gnoblin_config_path();
-        console_lua = lua_newstate(limited_alloc, &console_config);
+        console_lua = new_config_state(&console_config);
     }
     if (!console_lua) {
         g_variant_builder_add(&result, "{sv}", "error", g_variant_new_string("Lua memory limit exceeded"));
