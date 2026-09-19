@@ -191,7 +191,7 @@ class IsolationTests(unittest.TestCase):
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('MODE == "local"', justfile)
         self.assertIn('"--local-rpms"', justfile)
-        self.assertIn("cmp -s \"$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf\"", installer)
+        self.assertIn('cmp -s "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf"', installer)
 
 
 if __name__ == "__main__":

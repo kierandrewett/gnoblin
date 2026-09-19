@@ -304,14 +304,15 @@ static guint resize_action(Frame* frame, float x, float y) {
 
 static void frame_cursor(Frame* frame, guint action) {
     static const ClutterCursorType cursors[] = {
-        CLUTTER_CURSOR_N_RESIZE, CLUTTER_CURSOR_NE_RESIZE, CLUTTER_CURSOR_E_RESIZE,
-        CLUTTER_CURSOR_SE_RESIZE, CLUTTER_CURSOR_S_RESIZE, CLUTTER_CURSOR_SW_RESIZE,
-        CLUTTER_CURSOR_W_RESIZE, CLUTTER_CURSOR_NW_RESIZE,
+        CLUTTER_CURSOR_N_RESIZE,  CLUTTER_CURSOR_NE_RESIZE, CLUTTER_CURSOR_E_RESIZE,
+        CLUTTER_CURSOR_SE_RESIZE, CLUTTER_CURSOR_S_RESIZE,  CLUTTER_CURSOR_SW_RESIZE,
+        CLUTTER_CURSOR_W_RESIZE,  CLUTTER_CURSOR_NW_RESIZE,
     };
     MetaDisplay* display = meta_window_get_display(frame->window);
     if (!meta_display_is_grabbed(display))
-        clutter_actor_set_cursor_type(frame->root, action >= 5 && action <= 12 ? cursors[action - 5]
-                                                                               : CLUTTER_CURSOR_DEFAULT);
+        clutter_actor_set_cursor_type(frame->root, action >= 5 && action <= 12
+                                                       ? cursors[action - 5]
+                                                       : CLUTTER_CURSOR_DEFAULT);
 }
 
 static guint hit_action(Frame* frame, float x, float y) {
