@@ -75,6 +75,11 @@ let
       export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     ''
     + (old.preConfigure or "");
+    postInstall = (old.postInstall or "") + ''
+      # Mutter declares this split output even when gi-docgen has nothing to
+      # install for the selected feature set. Keep the derivation contract.
+      mkdir -p "$devdoc"
+    '';
     buildInputs =
       map (
         dependency:
