@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build or repair
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-packages:
+    runs-on: ubuntu-latest
+    container: fedora:43
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Install release tools
+        run: dnf -y install git meson patch rpm-build rpmdevtools tar xz
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          submodules: recursive
+      - name: Set checkout ownership
+        run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+      - name: Validate release tag
+        run: |
+          expected="v$(./scripts/gnome-versions.py get mutter version)"
+          test "$RELEASE_TAG" = "$expected" || {
+            echo "Expected release tag $expected, got $RELEASE_TAG" >&2
+            exit 1
+          }
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+      - name: Build release assets
+        run: ./scripts/build-release-assets.sh "$RUNNER_TEMP/gnoblin-release" "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-${{ env.RELEASE_TAG }}
+          path: ${{ runner.temp }}/gnoblin-release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  github-release:
+    needs: source-packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - name: Publish or repair GitHub release
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
+              --title "Gnoblin ${RELEASE_TAG#v}"
+          fi

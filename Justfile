@@ -424,6 +424,10 @@ gnome-window-effects-verify:
 srpm PROJECT SOURCES OUTPUT:
     ./scripts/build-srpm.sh "{{PROJECT}}" "{{SOURCES}}" "{{OUTPUT}}"
 
+# Build the complete GitHub release asset set from a clean checkout.
+release-assets OUTPUT="dist/release" TAG="":
+    ./scripts/build-release-assets.sh "{{OUTPUT}}" "{{TAG}}"
+
 # Publish prepared source RPMs to an existing COPR project in dependency order.
 copr PROJECT MUTTER_SRPM SHELL_SRPM META_SRPM:
     ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}" "{{META_SRPM}}"
