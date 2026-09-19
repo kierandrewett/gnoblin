@@ -152,7 +152,7 @@ static void copy_frame_to_buffer(struct wl_client* client, struct wl_resource* r
 
     if (!clutter_stage_paint_to_buffer(
             stage, &frame->rect, frame->scale, data, wl_shm_buffer_get_stride(shm_buffer),
-            COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT, paint_flags, &error)) {
+            COGL_PIXEL_FORMAT_ARGB32_NATIVE, NULL, paint_flags, &error)) {
         wl_shm_buffer_end_access(shm_buffer);
         g_warning("screencopy failed: %s", error->message);
         send_failed(frame);
