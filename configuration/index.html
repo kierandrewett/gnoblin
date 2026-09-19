@@ -1,0 +1,2773 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+      
+      
+      
+        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/configuration/">
+      
+      
+        <link rel="prev" href="../bring-your-own-shell/">
+      
+      
+        <link rel="next" href="../configuration-reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Configure your desktop - Gnoblin</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Gnoblin
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configure your desktop
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kierandrewett/gnoblin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kierandrewett/gnoblin
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Gnoblin
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kierandrewett/gnoblin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kierandrewett/gnoblin
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bring-your-own-shell/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose a shell
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure your desktop
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure your desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#start-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start here
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Start here">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#find-the-right-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find the right reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lua-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lua configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reload-and-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reload and persistence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-window-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing window rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-decorations-csd-and-ssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window decorations (CSD and SSD)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window behaviour
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Window behaviour">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layer-shell-keyboard-focus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer-shell keyboard focus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#window-drag-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window drag boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quickshell-dock-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickshell dock integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keyboard-shortcuts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keyboard shortcuts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autostart-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autostart commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-feature-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime feature controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-for-contributors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification for contributors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orggnoblinshell-gsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        org.gnoblin.shell GSettings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="org.gnoblin.shell GSettings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#feature-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature ids
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gnoblinctl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gnoblinctl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#portal-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Portal permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-mode-not-user-configurable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session mode (not user-configurable)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-animations-and-window-effects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer animations and window effects
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Option index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-effects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window effects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window frames (CSD and SSD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Portal permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-menu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor themes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-state-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-snapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window snapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gnoblinctl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build a shell
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build a shell
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compositor-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compositor bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../background-effects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Background effects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../focus-transfer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Focus transfer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../launch-feedback/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch feedback
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-frame-renderers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame renderers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frame-renderer-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Renderer API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer-console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribute
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contribute
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../source-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../devkit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../real-hardware-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware verification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../distribution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documentation-site/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation site
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#start-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start here
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Start here">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#find-the-right-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find the right reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lua-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lua configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reload-and-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reload and persistence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-window-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing window rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-decorations-csd-and-ssd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window decorations (CSD and SSD)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window behaviour
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Window behaviour">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layer-shell-keyboard-focus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer-shell keyboard focus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#window-drag-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window drag boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quickshell-dock-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quickshell dock integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keyboard-shortcuts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keyboard shortcuts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autostart-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autostart commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime-feature-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime feature controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#protocol-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Protocol settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verification-for-contributors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verification for contributors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#orggnoblinshell-gsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        org.gnoblin.shell GSettings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="org.gnoblin.shell GSettings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#feature-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature ids
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gnoblinctl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gnoblinctl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#portal-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Portal permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-mode-not-user-configurable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session mode (not user-configurable)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-animations-and-window-effects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer animations and window effects
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p>Configure Gnoblin in one <code>init.lua</code>, adding ordinary Lua modules when the file
+gets large. This controls the compositor: window behavior, shortcuts, effects,
+permissions and the protocols available to desktop clients. Configure your bar,
+dock and launcher in the external shell that provides them, such as Bingux.</p>
+<h2 id="start-here">Start here<a class="headerlink" href="#start-here" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Run <code>gnoblinctl config path</code> in your Gnoblin session. Edit the returned file;
+   do not assume a checkout example is the active configuration.</li>
+<li>For a new configuration, use the Lua example below. Keep existing component
+   includes when editing an established desktop.</li>
+<li>Save, then run <code>gnoblinctl config reload</code> to get an immediate result. Most
+   appearance and shortcut changes also reload automatically on save.</li>
+<li>Check the affected window or shortcut. A successful reload does not activate
+   settings that are read only when the compositor starts.</li>
+</ol>
+<p>The usual location is <code>${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin/init.lua</code>.
+The compositor's <code>GNOBLIN_CONFIG</code> environment variable overrides that selection.
+Setting it in a terminal does not change the already-running compositor's
+environment. A missing root file produces an empty configuration with defaults.</p>
+<p>New configurations should use a <code>.lua</code> filename. For compatibility, the current
+loader also checks <code>gnoblin.toml</code>, then <code>gnoblin.conf</code>, if <code>init.lua</code> is absent;
+non-<code>.lua</code> files are parsed as TOML. These are fallback roots, not additional
+files merged automatically into <code>init.lua</code>. Confirm the selected path before
+migrating an existing installation.</p>
+<h3 id="find-the-right-reference">Find the right reference<a class="headerlink" href="#find-the-right-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Look up names, types, units and defaults</td>
+<td><a href="../configuration-reference/">Option index</a></td>
+</tr>
+<tr>
+<td>Copy a small, explained change</td>
+<td><a href="../configuration-recipes/">Configuration recipes</a></td>
+</tr>
+<tr>
+<td>Split files, load packages, override defaults</td>
+<td><a href="#lua-configuration">Lua configuration</a></td>
+</tr>
+<tr>
+<td>Decide whether a change needs logout</td>
+<td><a href="#reload-and-persistence">Reload and persistence</a></td>
+</tr>
+<tr>
+<td>Launch commands or change keys</td>
+<td><a href="#keyboard-shortcuts">Keyboard shortcuts</a>, <a href="#autostart-commands">autostart</a></td>
+</tr>
+<tr>
+<td>Match windows and layer surfaces</td>
+<td><a href="#writing-window-rules">Writing window rules</a></td>
+</tr>
+<tr>
+<td>Blur, corners, borders and shaders</td>
+<td><a href="../window-effects/">Window effects</a></td>
+</tr>
+<tr>
+<td>Client/server titlebars</td>
+<td><a href="#window-decorations-csd-and-ssd">Window decorations</a></td>
+</tr>
+<tr>
+<td>Screen sharing and remote control</td>
+<td><a href="../permissions/">Portal permissions</a></td>
+</tr>
+<tr>
+<td>Inspect windows or control the session</td>
+<td><a href="../gnoblinctl/">gnoblinctl</a></td>
+</tr>
+<tr>
+<td>Find why an edit did nothing</td>
+<td><a href="#troubleshooting">Troubleshooting</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="lua-configuration">Lua configuration<a class="headerlink" href="#lua-configuration" title="Permanent link">&para;</a></h2>
+<p>Start with a small init file:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+
+<span class="c1">-- A component owns its defaults. Load it before your overrides.</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
+
+<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"zoom"</span><span class="p">,</span>
+<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">})</span>
+
+<span class="c1">-- Append without replacing shortcuts imported above. Choose a unique name.</span>
+<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
+<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my-terminal"</span><span class="p">,</span><span class="w"> </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p>The model is a user init file and ordinary Lua modules. Variables, functions,
+conditions, and loops can build the settings. There is no package manager or
+second settings schema. Lua uses <code>{...}</code> for tables and arrays, and <code>["hyphenated-key"]</code>
+for keys that contain a hyphen.</p>
+<p>The configuration API is small:</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>g.set(table)</code></td>
+<td>Merge a table into the configuration. Later scalar values win.</td>
+</tr>
+<tr>
+<td><code>g.config</code></td>
+<td>Read or change the current configuration table directly.</td>
+</tr>
+<tr>
+<td><code>g.array(table)</code></td>
+<td>Mark a table as an array, including an explicitly empty array.</td>
+</tr>
+<tr>
+<td><code>g.load(path)</code></td>
+<td>Load a Lua file, or matching Lua files from a glob, at this point.</td>
+</tr>
+<tr>
+<td><code>require("module")</code></td>
+<td>Run a Lua module once per reload and return its result.</td>
+</tr>
+</tbody>
+</table>
+<p><code>g.set</code> and <code>g.load</code> merge maps recursively; later scalar values win. In the
+current loader, a nonempty array replaces the earlier array, including
+<code>window-rules</code>, <code>shortcuts</code>, <code>autostart</code>, and permission <code>rules</code>. Do not rely on
+automatic appending to preserve package rules. An unmarked empty table can
+merge as an empty map rather than clear an existing value. Use direct assignment
+to clear a list, for example <code>g.config.shortcuts = {}</code>, or <code>g.array({})</code> when an
+explicit empty array is needed in a merge.</p>
+<p>To add a rule after loading component defaults, append explicitly:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
+<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
+<span class="p">})</span>
+</code></pre></div>
+<p>The same approach works for <code>shortcuts</code> and <code>autostart</code>. Shortcut and autostart
+names must remain unique. To change an imported named entry, edit that entry
+instead of appending another with the same name. Load component files first,
+then your overrides: a later component can replace an earlier override.</p>
+<p>A component file can return a plain table:</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- ~/.config/gnoblin/appearance.lua</span>
+<span class="kr">return</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">120</span><span class="p">},</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">},</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Load that file with <code>g.load("appearance.lua")</code>. Relative paths resolve from the
+file that calls <code>g.load</code>. Absolute paths and <code>~/</code> paths also work. Use
+<code>require("appearance")</code> for a module that calls <code>g.set</code> itself, or use
+<code>g.set(require("appearance"))</code> for a module that returns a settings table.
+<code>require</code> caches its result for the current reload. A new reload starts with a
+fresh Lua state, so previous rules do not accumulate.</p>
+<p><code>require("appearance")</code> searches <code>appearance.lua</code>, then <code>lua/appearance.lua</code>,
+relative to the calling file. It does not use system Lua packages or translate
+dots in a module name into directory separators. Use <code>g.load("parts/motion.lua")</code>
+for an explicit subdirectory path. Avoid loading the same file through both
+<code>require</code> and a glob: <code>g.load</code> evaluates each match when called, independently
+of the <code>require</code> cache.</p>
+<p>Use one main file to include the settings you need, as with nginx:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span><span class="w"> </span><span class="c1">-- installed component settings</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span><span class="w">              </span><span class="c1">-- your settings, including subdirectories</span>
+</code></pre></div>
+<p>A glob loads matching files in bytewise path order. Prefix names with numbers
+such as <code>10-appearance.lua</code> and <code>90-local.lua</code> when order matters. <code>*</code>, <code>?</code>, and
+<code>[abc]</code> match within a path segment; <code>**</code> includes subdirectories. Hidden files
+and hidden directories require an explicit dot in the pattern. Recursive <code>**</code>
+does not follow directory symlinks. An unmatched glob is allowed. A missing
+exact file is an error. All searched directories are watched, so adding or
+removing a matching file also reloads the configuration.</p>
+<p>Bingux installs <code>share/gnoblin/conf.d/bingux.lua</code> under its installation prefix.
+Its installer prints the corresponding include pattern. The main init file owns
+the include; each component owns its file. <code>/usr/share</code> in these examples is
+not universal: source installs may use <code>/usr/local/share</code> or a private prefix.
+An unmatched package glob succeeds without loading anything, so use the path
+reported by your component's installer. The CLI stays small:</p>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
+gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
+</code></pre></div>
+<p>All loaded files are watched. Syntax errors, missing modules, and invalid
+settings retain the last working configuration. The error reports through the
+shell log and <code>gnoblinctl config reload</code>. Correcting the file retries the load.
+Lua computes configuration data. The base, table, string, math, and UTF-8
+functions are available. External I/O, process execution, and native Lua modules
+are not exposed. Start processes through named <code>autostart</code> or <code>shortcuts</code> entries
+so repeated reloads retain their existing lifecycle rules. Evaluation has limits
+of 8 MiB of Lua memory, one million Lua instructions, and 32 nested files.</p>
+<p>Protocol advertisement remains a compositor-startup operation. The updated
+build requires installation and one new login. Supported settings reload on
+save after that login; protocol changes still require a new session.</p>
+<h2 id="reload-and-persistence">Reload and persistence<a class="headerlink" href="#reload-and-persistence" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Setting or action</th>
+<th>When it takes effect</th>
+<th>What removal does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Window rules, frame policy, animation settings</td>
+<td>Config reload; frame negotiation also needs a client commit</td>
+<td>Returns to remaining rules/defaults</td>
+</tr>
+<tr>
+<td>Command shortcuts</td>
+<td>Config reload</td>
+<td>Releases the binding; does not stop launched processes</td>
+</tr>
+<tr>
+<td>Built-in <code>keybindings</code> overrides</td>
+<td>Config reload, saved to GSettings</td>
+<td>Stops managing the value; does not restore the previous binding</td>
+</tr>
+<tr>
+<td>Explicit shell feature booleans</td>
+<td>Config reload, saved to GSettings</td>
+<td>Leaves the saved feature state in place</td>
+</tr>
+<tr>
+<td>Named <code>autostart</code> entries</td>
+<td>New names start on reload; changed commands for started names wait until next login</td>
+<td>Does not kill running processes</td>
+</tr>
+<tr>
+<td><code>frame-renderers</code> services</td>
+<td>Config reload reconciles/restarts renderer processes</td>
+<td>Removes the service; enabled frames have a native fallback</td>
+</tr>
+<tr>
+<td><code>protocols</code></td>
+<td>New compositor session</td>
+<td>Changes the next session's advertised protocols</td>
+</tr>
+<tr>
+<td><code>layer-shell.preserve-active-window</code></td>
+<td>New compositor session</td>
+<td>Uses its default on the next session</td>
+</tr>
+<tr>
+<td><code>window-management.constrain-drag-to-work-area</code></td>
+<td>Next drag after configuration is reloaded</td>
+<td>Uses the default, <code>true</code></td>
+</tr>
+<tr>
+<td>Rebuilt native Mutter/GNOME Shell code</td>
+<td>New compositor session</td>
+<td>Reload cannot replace a loaded native library</td>
+</tr>
+</tbody>
+</table>
+<p><code>gnoblinctl config reload</code> applies configuration. <code>gnoblinctl reload</code> also
+reloads the theme and user scripts; neither restarts the compositor. Saving Lua
+does not reload a separate shell's QML or replace its executable.</p>
+<h2 id="writing-window-rules">Writing window rules<a class="headerlink" href="#writing-window-rules" title="Permanent link">&para;</a></h2>
+<p>Rules are evaluated in list order. Every matcher in a rule must match. Matching
+does <strong>not</strong> stop at the first rule: later rules override individual properties,
+while properties they omit retain their earlier values. Put broad defaults first
+and narrower overrides last. Matching rules is separate from merging the Lua
+arrays that contain them; use the explicit append example above when extending
+package defaults.</p>
+<table>
+<thead>
+<tr>
+<th>Matcher</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type = "window"</code></td>
+<td>An ordinary window rather than a layer-shell surface</td>
+</tr>
+<tr>
+<td><code>type = "layer"</code></td>
+<td>A layer-shell surface, such as a bar or launcher</td>
+</tr>
+<tr>
+<td><code>focused = true</code> / <code>false</code></td>
+<td>Whether the window has focus</td>
+</tr>
+<tr>
+<td><code>app-id</code></td>
+<td>Regex against the GTK application ID, falling back to WM class</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>Regex against the window title</td>
+</tr>
+<tr>
+<td><code>layer</code></td>
+<td>Regex against the layer-shell namespace</td>
+</tr>
+</tbody>
+</table>
+<p>String matchers use JavaScript regular expressions, <strong>not Lua patterns or file
+globs</strong>. Use <code>^</code> and <code>$</code> for an exact match. In a quoted Lua string, a literal
+regex dot needs two backslashes: <code>"^org\\.example\\.Editor$"</code>. A Lua long string
+avoids that extra escaping: <code>[[^org\.example\.Editor$]]</code>.</p>
+<p>Prefer <code>type</code>, focus and protocol negotiation for behavior that should apply to
+all clients. Add identity rules only for intentional exceptions. Inspect open
+windows with <code>gnoblinctl window list --json</code>; the CLI's desktop-entry <code>appId</code>
+may differ from the raw GTK ID/WM class used by rule matching, so do not blindly
+copy a <code>.desktop</code> suffix. Layer namespaces are supplied by the layer-shell client.</p>
+<p>For example, in a configuration with no imported rules:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span><span class="w"> </span><span class="nv">animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fade"</span><span class="p">},</span>
+<span class="p">}})</span>
+</code></pre></div>
+<p>All ordinary windows start fully opaque; unfocused ones get the later opacity.
+The layer rule changes layer animations without affecting application opacity.
+See <a href="../window-effects/">Window effects</a> for effect values, units and defaults.</p>
+<h2 id="window-decorations-csd-and-ssd">Window decorations (CSD and SSD)<a class="headerlink" href="#window-decorations-csd-and-ssd" title="Permanent link">&para;</a></h2>
+<p>CSD means the application draws its decorations. SSD means Gnoblin supplies a
+frame. A renderer selects how an enabled SSD looks; it does not enable SSD on
+its own. Gnoblin defaults to <code>frame.mode = "off"</code>; an external shell's component
+configuration can opt in for all ordinary windows.</p>
+<p>The current <code>auto</code> policy supplies SSD only for an explicit server-side
+xdg-decoration request. <code>prefer-server</code> selects SSD when that protocol object
+exists; <code>replace</code> is an explicit crop-and-frame policy. Neither an app's name nor
+the presence of a titlebar is a reliable statement of its protocol preference.
+An unset preference is not proof that a client actually draws CSD. In particular,
+changing the default for unset preferences can affect clients that previously
+relied on the compositor choosing SSD; verify those clients before treating a
+policy change as universally compatible.</p>
+<p>Use <a href="../window-frames/">Window frames</a> for the mode reference, complete examples,
+geometry and limitations. Avoid generic titlebar cropping: client header bars
+can contain application controls. Decoration negotiation and visible results
+need testing together; a config-validation test alone cannot establish that
+an application has exactly one working titlebar.</p>
+<h2 id="window-behaviour">Window behaviour<a class="headerlink" href="#window-behaviour" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"window-switcher"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"minimize-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"zoom"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">    </span><span class="c1">-- Optional fallback, in logical desktop coordinates:</span>
+<span class="w">    </span><span class="c1">-- ["minimize-target"] = {960, 1040},</span>
+<span class="p">}})</span>
+</code></pre></div>
+<p><code>zoom</code> is the default. Minimise and restore use, in order:</p>
+<ol>
+<li>The window's dock icon rectangle, supplied by the dock.</li>
+<li><code>["minimize-target"] = {x, y}</code>, if configured.</li>
+<li>Bottom-centre of the window's monitor.</li>
+</ol>
+<p>Coordinates use the logical desktop space, including monitor offsets. They
+are not physical pixels. Each window can have a different dock icon target.
+The dock hint moves with its surface, and is cleared when the surface or its
+handle disappears. A zero-size rectangle clears the hint.</p>
+<p>Other animation values are <code>"fade"</code> (stay in place), <code>"none"</code>, and <code>"gnome"</code>
+(native icon-target animation with GNOME's top-corner fallback).
+<code>minimize-duration</code> accepts 0 to 5000 milliseconds. Reduced-motion settings
+still take precedence. Removing window-behaviour keys restores defaults.</p>
+<p><code>window-switcher</code> enables GNOME's application/window/group switchers and
+cyclers. It defaults off. Disabling it suppresses those actions but does not
+release their existing shortcut bindings. Display-mode and accessibility
+switchers are separate. Stock GNOME sessions retain their native behaviour.</p>
+<h3 id="layer-shell-keyboard-focus">Layer-shell keyboard focus<a class="headerlink" href="#layer-shell-keyboard-focus" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"layer-shell"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">[</span><span class="s2">"preserve-active-window"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}})</span>
+</code></pre></div>
+<p><code>preserve-active-window</code> is a boolean, defaults to <code>true</code>, and applies to every
+layer-shell client regardless of its namespace or toolkit. Omit it to use the
+default. Use literal <code>true</code> or <code>false</code>, not quoted strings; unknown keys in this
+section and values of another type are rejected.</p>
+<p>Layer-shell surfaces include desktop launchers, panels, and shell context menus.
+Keyboard input and application activation are separate: a search box needs your
+typing, but need not make the application underneath look inactive or change
+which application is selected.</p>
+<p>With <code>true</code>, a surface requesting <strong>exclusive</strong> keyboard input receives typing
+while the existing application remains active. The application does not receive
+a second copy of those keys. This is the default for Search, shell menus, and
+third-party launchers alike; no special surface name is required. When the layer
+releases its keyboard request, unmaps, or disconnects, its input handler is
+removed so normal keyboard routing can resume.</p>
+<p>With <code>false</code>, exclusive layers use normal layer-window activation instead:
+opening one can deactivate the application beneath it. Choose this for a client
+that depends on that activation behavior, or to restore the previous behavior
+of ordinary exclusive layers. This also disables the old popup-specific
+exception; the policy is uniform across clients.</p>
+<p>The client's keyboard request still matters:</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Effect of this setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>None</td>
+<td>No keyboard input; the surface cannot take keyboard focus.</td>
+</tr>
+<tr>
+<td>Exclusive</td>
+<td><code>true</code> preserves the active application; <code>false</code> activates the layer window.</td>
+</tr>
+<tr>
+<td>On demand</td>
+<td>Unchanged: normal user-directed focus, such as click-to-focus.</td>
+</tr>
+</tbody>
+</table>
+<p>This setting does not make passive bars interactive, prevent an on-demand panel
+from taking focus when clicked, or change native application menus that use
+<code>xdg-popup</code> rather than layer-shell. Session locking uses separate mechanisms.
+Multiple keyboard-interactive layers still need compositor arbitration; this
+option does not broadcast input to all of them.</p>
+<p><strong>Requires a new compositor session:</strong> save the file, then log out and back in.
+The value is read when layer-shell starts. <code>gnoblinctl config reload</code> and closing
+and reopening a menu do not change it for the running session.</p>
+<h3 id="window-drag-boundary">Window drag boundary<a class="headerlink" href="#window-drag-boundary" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-management"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">[</span><span class="s2">"constrain-drag-to-work-area"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}})</span>
+</code></pre></div>
+<p>When enabled, the compositor keeps a dragged window's frame below the current
+monitor work-area top. Layer-shell panels contribute their exclusive zones to
+that work area, so the setting applies to any Wayland panel and does not name
+or depend on Bingux. The default is <code>true</code>; set it to <code>false</code> when windows are
+intentionally allowed to overlap reserved panel space. The value is re-read at
+the start of each drag.</p>
+<p><code>input-source-switcher</code> controls GNOME's native keyboard-layout popup. It is
+off by default in Gnoblin so external chrome can present the active layout and
+its own selector; it does not disable input sources or programmatic layout
+selection. Set it to <code>true</code> to restore GNOME's modifier-based switcher.</p>
+<h3 id="quickshell-dock-integration">Quickshell dock integration<a class="headerlink" href="#quickshell-dock-integration" title="Permanent link">&para;</a></h3>
+<p>Quickshell's <a href="https://quickshell.org/docs/types/Quickshell.Wayland/Toplevel/">Toplevel.setRectangle</a>
+sends the <code>wlr-foreign-toplevel-management</code> rectangle hint. Inside a dock icon
+delegate, use the icon's rectangle relative to its PanelWindow content:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">function</span> <span class="nx">updateTarget</span><span class="p">(</span><span class="nx">toplevel</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kr">const</span> <span class="nx">point</span> <span class="o">=</span> <span class="nx">icon</span><span class="p">.</span><span class="nx">mapToItem</span><span class="p">(</span><span class="nx">dock</span><span class="p">.</span><span class="nx">contentItem</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+    <span class="nx">toplevel</span><span class="p">.</span><span class="nx">setRectangle</span><span class="p">(</span><span class="nx">dock</span><span class="p">,</span>
+        <span class="nx">Qt</span><span class="p">.</span><span class="nx">rect</span><span class="p">(</span><span class="nx">point</span><span class="p">.</span><span class="nx">x</span><span class="p">,</span> <span class="nx">point</span><span class="p">.</span><span class="nx">y</span><span class="p">,</span> <span class="nx">icon</span><span class="p">.</span><span class="nx">width</span><span class="p">,</span> <span class="nx">icon</span><span class="p">.</span><span class="nx">height</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Update the hint when the icon layout changes and when a window joins the app
+group. Send <code>toplevel.setRectangle(dock, Qt.rect(0, 0, 0, 0))</code> when its
+representation is removed.
+For grouped icons, set the same rectangle on each represented window. Send
+the hint before setting <code>toplevel.minimized = true</code>.</p>
+<p>The Bingux reference is <code>shell/bingux/Dock.qml</code> in the Bingux checkout. Its
+<code>dockButton.modelData.windows</code> array provides those grouped windows. The
+Bingux Nix module already manages Quickshell through systemd; do not also
+start that same instance through autostart.</p>
+<h2 id="keyboard-shortcuts">Keyboard shortcuts<a class="headerlink" href="#keyboard-shortcuts" title="Permanent link">&para;</a></h2>
+<p>Custom commands and built-in bindings can be configured in the file, without using
+GNOME Settings. Once the updated shell is installed, changes reload on save.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<span class="nv">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"capture"</span><span class="p">,</span><span class="w"> </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Alt&gt;s"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"qs"</span><span class="p">,</span><span class="w"> </span><span class="s2">"ipc"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--any-display"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-c"</span><span class="p">,</span><span class="w"> </span><span class="s2">"bingux"</span><span class="p">,</span><span class="w"> </span><span class="s2">"call"</span><span class="p">,</span><span class="w"> </span><span class="s2">"capture"</span><span class="p">,</span><span class="w"> </span><span class="s2">"open"</span><span class="p">}},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"terminal"</span><span class="p">,</span><span class="w"> </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">}},</span>
+<span class="p">},</span>
+<span class="nv">keybindings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">wm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">close</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"&lt;Super&gt;q"</span><span class="p">}}},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p>Each command shortcut needs a unique name (letters, numbers, <code>_</code>, <code>-</code>), a GTK-style
+accelerator, and a nonempty argument array. Arguments retain spaces, quotes and
+literal <code>$HOME</code>; no implicit shell expansion occurs. Use an explicit shell for
+pipes or substitutions. Adding, changing or removing an entry updates the
+shortcut registration; removing it does not stop a previously launched process.
+Identical saves do not re-register shortcuts. There is a limit of 256 commands.</p>
+<p>Built-in groups are <code>shell</code>, <code>wm</code>, <code>mutter</code>, <code>wayland</code>, and <code>media</code>, mapping to
+the corresponding GNOME keybinding schemas. Values are accelerator arrays;
+<code>{}</code> disables that action's binding. Unknown actions, invalid keys, malformed
+commands and duplicate configured accelerators reject the edit before any
+shortcut settings change. Policy-locked settings produce an error. Overrides
+are persistent, like explicit <code>shell</code> feature settings: omitting a built-in
+override stops managing it but does not restore its former value.</p>
+<p>Use <code>binding = "Super"</code> in a shortcut table for a bare Super press and release. This uses Mutter's
+modifier-only release event, so Super shortcuts and Super-drag do not trigger it.
+For example:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"Super"</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"capture-input"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"binguxctl"</span><span class="p">,</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="s2">"toggle"</span><span class="p">},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p><code>capture-input = true</code> buffers keyboard events in the compositor before the
+command starts. The popup sends <code>shortcut-input</code> messages over the compositor
+bridge: <code>prepared</code> releases the temporary grab once its surface is mapped, <code>ready</code>
+replays buffered events after its text input has keyboard focus, and <code>closed</code>
+clears the handoff. Events retain their native keycodes and modifiers. A failed
+handoff releases the grab after three seconds and discards queued input.
+Bare Super still activates on release so held Super shortcuts continue to work.</p>
+<p>Gnoblin registers command accelerators directly with Mutter and ignores keyboard
+auto-repeat: holding a shortcut does not repeatedly launch or toggle its command.
+Commands are enabled in the normal desktop, overview, shell menus and modal
+dialogs, not the lock/login screen.
+Removing a command releases its grab; invalid/conflicting edits retain the
+previous working command registrations. Old config-owned media-key entries are
+removed during migration; unrelated user shortcuts remain untouched. An existing shortcut outside the file
+can still claim an accelerator: disable/rebind that action explicitly rather than
+silently stealing it. Registration failures appear in the Gnoblin config log.</p>
+<p>Do not define the same command shortcut in both Lua and another settings manager.
+Test configuration ownership without touching real shortcuts with
+<code>GSETTINGS_BACKEND=memory gjs -m tests/shortcuts-test.js</code>.</p>
+<h2 id="autostart-commands">Autostart commands<a class="headerlink" href="#autostart-commands" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">autostart</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"bingux"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"qs"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-c"</span><span class="p">,</span><span class="w"> </span><span class="s2">"bingux"</span><span class="p">}},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"clipboard"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"wl-paste"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--watch"</span><span class="p">,</span><span class="w"> </span><span class="s2">"cliphist"</span><span class="p">,</span><span class="w"> </span><span class="s2">"store"</span><span class="p">}},</span>
+<span class="p">}})</span>
+</code></pre></div>
+<p>Each unique name starts once per login. Adding a new name on reload starts it.
+Saving again, reloading scripts, or unlocking does not launch another copy.
+A process that exits is not automatically restarted. Changing the command for
+an already-started name takes effect on the next login. Removing an entry
+prevents future starts; it does not kill a running process. Use systemd for
+process supervision and restart policies.</p>
+<p>Commands are argument arrays, not shell expressions. <code>$HOME</code>, <code>~</code>, pipes and
+redirection are not expanded. Use absolute paths, a command available through
+PATH, or explicitly invoke a shell if shell syntax is required. Failed
+launches are logged and can be retried on a later reload.</p>
+<h2 id="runtime-feature-controls">Runtime feature controls<a class="headerlink" href="#runtime-feature-controls" title="Permanent link">&para;</a></h2>
+<p>The <code>shell</code> table accepts booleans for <code>notifications</code> and
+<code>input-source-switcher</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">notifications</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"input-source-switcher"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">}})</span>
+</code></pre></div>
+<p>Explicit entries update the existing persistent GSettings state. Omitted
+entries retain their current state. Removing an entry stops managing it from
+the file; it does not reset its persistent value. CLI changes remain possible,
+but the next reload reapplies explicit file entries. Validation completes
+before feature settings or autostart commands are applied.</p>
+<p>Gnoblin never shows GNOME OSD popups or the GNOME screenshot UI. Legacy
+<code>osd</code>, <code>osd-*</code>, and <code>screenshot</code> entries with <code>false</code> remain accepted for
+configuration compatibility. A <code>true</code> value is stale configuration and is
+ignored. <code>gnoblinctl feature enable</code> rejects these removed features.</p>
+<h2 id="protocol-settings">Protocol settings<a class="headerlink" href="#protocol-settings" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"wlr-layer-shell"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"wlr-screencopy"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"ext-idle-notify"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"ext-foreign-toplevel-list"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"wlr-foreign-toplevel-management"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"wlr-gamma-control"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="p">[</span><span class="s2">"wlr-output-power-management"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"ext-data-control"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="p">}})</span>
+</code></pre></div>
+<p>These settings require a new compositor session. Reload does not change
+registered Wayland globals. All implemented protocols default on in Gnoblin;
+stock sessions do not expose these Gnoblin globals. See
+<code>src/data/init.lua.example</code> for the reference file.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Check and next step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Saving has no effect</td>
+<td>Run <code>gnoblinctl config path</code>; edit that exact file, then <code>gnoblinctl config reload</code>. Check the <a href="#reload-and-persistence">reload table</a> before restarting.</td>
+</tr>
+<tr>
+<td>Package defaults disappeared</td>
+<td>A later nonempty array replaces the earlier list. Append with <code>table.insert</code> or edit <code>g.config</code> after includes.</td>
+</tr>
+<tr>
+<td>An include silently does nothing</td>
+<td>Unmatched globs are allowed. Check the installation prefix and spelling; an exact missing filename produces an error.</td>
+</tr>
+<tr>
+<td>A module returns settings but nothing changes</td>
+<td>Use <code>g.set(require("module"))</code> or <code>g.load("module.lua")</code>; <code>require</code> alone does not merge a returned table.</td>
+</tr>
+<tr>
+<td>A rule misses a window</td>
+<td>Check type and all matchers; use JavaScript regex syntax, anchors and Lua escaping. A desktop-entry ID can differ from the raw ID used for matching.</td>
+</tr>
+<tr>
+<td>A shortcut fails</td>
+<td>Run its command in a terminal; check PATH and existing bindings. Command arrays do not expand <code>$HOME</code>, <code>~</code> or pipes.</td>
+</tr>
+<tr>
+<td>Removing a setting does not undo it</td>
+<td>Built-in keybindings and explicit feature booleans persist in GSettings. Set the desired value explicitly.</td>
+</tr>
+<tr>
+<td>Blur is invisible</td>
+<td>The client background needs transparency. Rule opacity fades the entire window, including text; it is not a substitute for translucent client backgrounds.</td>
+</tr>
+<tr>
+<td>Two titlebars, or no titlebar</td>
+<td>Check effective frame rules and the client's decoration negotiation. Renderer selection alone does not enable SSD. See <a href="../window-frames/">frames</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Keep a copy of the working file before experimenting. Restore it and run
+<code>gnoblinctl config reload</code> to recover configuration; that does not undo launched
+processes or persistent GSettings writes. To inspect recent errors:</p>
+<div class="highlight"><pre><span></span><code>journalctl<span class="w"> </span>-b<span class="w"> </span>--since<span class="w"> </span><span class="s1">'10 minutes ago'</span><span class="w"> </span>--no-pager<span class="w"> </span><span class="p">|</span><span class="w"> </span>rg<span class="w"> </span><span class="s1">'gnoblin-config|gnoblin-shader'</span>
+</code></pre></div>
+<p>Reload is an apply operation, not a dry run. A Lua syntax checker alone cannot
+validate setting names, ranges or runtime shortcut conflicts.</p>
+<h2 id="verification-for-contributors">Verification for contributors<a class="headerlink" href="#verification-for-contributors" title="Permanent link">&para;</a></h2>
+<p>Saves apply after a 150 ms debounce. <code>gnoblinctl config reload</code> reads the file
+immediately and reports validation errors. <code>gnoblinctl reload</code> also rereads it,
+alongside the theme and user-script reload.</p>
+<div class="highlight"><pre><span></span><code>./tests/test-config.sh
+<span class="nv">GNOBLIN_CONFIG</span><span class="o">=</span><span class="s1">''</span><span class="w"> </span><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-live-shell-config.py"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>./scripts/run-gnome-shell.sh
+<span class="c1"># Requires Quickshell and GTK 4:</span>
+<span class="nv">GNOBLIN_CONFIG</span><span class="o">=</span><span class="s1">''</span><span class="w"> </span><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-minimize-target.py"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>./scripts/run-gnome-shell.sh
+</code></pre></div>
+<h2 id="orggnoblinshell-gsettings"><code>org.gnoblin.shell</code> GSettings<a class="headerlink" href="#orggnoblinshell-gsettings" title="Permanent link">&para;</a></h2>
+<p>One key: <code>disabled-features</code> (<code>as</code>). Its default disables <code>notifications</code>,
+<code>input-source-switcher</code>, and the removed <code>osd*</code> and <code>screenshot</code> features.
+The two remaining controls are enabled when their ids are absent from this
+list. Removed UI stays unavailable regardless of stored preferences.
+Read/write it directly with <code>gsettings</code>, or
+— the normal path — through <code>org.gnoblin.Shell</code>'s
+<code>ListFeatures</code>/<code>GetFeature</code>/<code>SetFeature</code> (which also emits
+<code>FeatureChanged</code>), via <code>gnoblinctl</code>.</p>
+<h3 id="feature-ids">Feature ids<a class="headerlink" href="#feature-ids" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>Gates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notifications</code></td>
+<td>Own <code>org.freedesktop.Notifications</code>; disabled by default so an external daemon can own it</td>
+</tr>
+<tr>
+<td><code>input-source-switcher</code></td>
+<td>GNOME's native keyboard-layout popup; source state and switching remain available when disabled</td>
+</tr>
+</tbody>
+</table>
+<p>Source of truth: the <code>FEATURES</code> constant in
+<code>src/gnome-shell-overlay/js/ui/components/gnoblinControl.js</code>.</p>
+<h2 id="gnoblinctl"><code>gnoblinctl</code><a class="headerlink" href="#gnoblinctl" title="Permanent link">&para;</a></h2>
+<p>The session control CLI, installed to <code>$PREFIX/bin/gnoblinctl</code>.
+See the <a href="../gnoblinctl/">command reference</a> for transport details and examples.
+Source: <code>src/tools/gnoblinctl</code>.</p>
+<div class="highlight"><pre><span></span><code>gnoblinctl ping                     health check (-&gt; pong)
+gnoblinctl version                  shell + protocol version
+gnoblinctl reload                   Wayland soft-reload (config + theme + user scripts)
+
+gnoblinctl config path              show the active init file
+gnoblinctl config reload            reload the active configuration
+
+gnoblinctl feature list             list feature toggles + state
+gnoblinctl feature show &lt;id&gt;        show one feature's state
+gnoblinctl feature enable &lt;id&gt;      turn a subsystem ON
+gnoblinctl feature disable &lt;id&gt;     turn a subsystem OFF
+
+gnoblinctl script list              list loaded user scripts
+gnoblinctl reload                   reload config, theme and ~/.config/gnoblin/scripts/*.js
+
+gnoblinctl grant list               list persistent Screen Cast and Remote Desktop grants
+gnoblinctl grant revoke &lt;kind&gt; &lt;id&gt; revoke one portal-scoped grant
+</code></pre></div>
+<p><code>gnoblinctl reload</code> re-applies the shell theme/CSS and reloads user scripts in-process, without
+tearing down Mutter — your windows and your chrome survive.</p>
+<h2 id="portal-permissions">Portal permissions<a class="headerlink" href="#portal-permissions" title="Permanent link">&para;</a></h2>
+<p>Use <code>permissions</code> and <code>permissions.rules</code> tables in <code>init.lua</code> to set
+<code>default</code>, <code>ask</code>, <code>allow</code>, or <code>deny</code> decisions for apps matched by an identity
+regex. Edit the <code>permissions</code> table in the Lua file, then reload. <code>gnoblinctl
+permissions list</code> and <code>gnoblinctl permissions check</code> inspect the effective policy.
+See <a href="../permissions/">Portal permissions</a> for the RustDesk example, supported
+capabilities, rule precedence and migration from custom grant files.</p>
+<h2 id="session-mode-not-user-configurable">Session mode (not user-configurable)<a class="headerlink" href="#session-mode-not-user-configurable" title="Permanent link">&para;</a></h2>
+<p>The Gnoblin session mode at <code>src/data/session/modes/gnoblin.json</code> removes the
+overview, dash, app grid and panel contents. A small GNOME Shell patch makes the
+native panel non-interactive and non-strutting only when the immutable primary
+session mode is <code>gnoblin</code>; stock GNOME keeps its upstream panel. This is not a
+runtime setting. Changing the chrome policy means editing the session data or
+patch and rebuilding, not adding an <code>init.lua</code> key.</p>
+<p>The session configures Mutter's <code>overlay-key</code> as <code>Super</code>. Mutter emits its
+release event only when no other input is used. <code>gnoblinControl</code> forwards that
+event to external chrome, while <code>hasOverview: false</code> keeps the native overview
+disabled.</p>
+<h2 id="layer-animations-and-window-effects">Layer animations and window effects<a class="headerlink" href="#layer-animations-and-window-effects" title="Permanent link">&para;</a></h2>
+<p>These options require the rebuilt Mutter and GNOME Shell once. After the next
+login, edits reload automatically. Normal application animations are unchanged.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"layer-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slide"</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"layer-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">220</span><span class="p">,</span>
+<span class="w">         </span><span class="p">[</span><span class="s2">"layer-easing"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">},</span>
+<span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.96</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">layer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"^gnoblin-dock-tooltip$"</span><span class="p">},</span><span class="w"> </span><span class="nv">animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fade"</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"app-id"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"^org</span><span class="se">\\</span><span class="s2">.gnome</span><span class="se">\\</span><span class="s2">.Ptyxis$"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.92</span><span class="p">},</span>
+<span class="p">},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p>A rule can match <code>app-id</code>, <code>title</code>, <code>layer</code>, <code>type</code>, and <code>focused</code>. String
+matchers are regular expressions. <code>type</code> accepts <code>layer</code> or <code>window</code>.
+All matchers in a rule must match. Later rules override each named effect;
+unmentioned effects retain the earlier matching value. Removing a rule restores
+the previous client opacity and removes its blur effect. Invalid rules retain
+the entire last valid configuration.</p>
+<p>Layer surfaces slide from their committed anchor edges at full opacity, like a
+notification. A top-anchored surface slides down; bottom, left and right edges
+use the corresponding inward direction. A corner uses both axes. Opposing edges
+cancel translation on that axis. Full-screen input overlays fade. Surface
+destruction uses the reverse movement. GNOME's animation-disable setting also
+applies. Per-rule <code>animation</code> applies to layer surfaces only.</p>
+<p>Gnoblin applies these transforms to the compositor actor; Quickshell and other
+layer-shell clients need no animation code. Animations do not resize the client
+or interpolate its exclusive zone. A surface must map to trigger entry;
+changing content inside an already visible surface does not remap it. Clients
+that animate individual cards in a persistent surface can opt out by namespace
+with <code>animation = "none"</code>.</p>
+<p>For separate entry and exit behavior, use a table instead of a string:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
+<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="p">[</span><span class="s2">"in"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slide"</span><span class="p">,</span><span class="w"> </span><span class="nv">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fade"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span><span class="w"> </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p><code>in</code> needs brackets because it is a Lua keyword. Both directions accept <code>slide</code>,
+<code>fade</code> or <code>none</code>. Duration is an integer from 0 to 5000 milliseconds. Easing
+accepts <code>linear</code>, <code>ease-out-cubic</code>, <code>ease-out-quad</code> or <code>ease-in-out-cubic</code>.
+Omitted fields inherit the corresponding shell layer settings.</p>
+<p>Layer surfaces keep their assigned display while an entrance or exit animation
+crosses another display's stage view. The compositor reports that assigned
+output to Wayland clients throughout the animation. This prevents a panel's
+reported screen from changing briefly and moving related docks or popups to a
+neighbouring display.</p>
+<p>The Bingux companion repository supplies the native two-display editor check.
+It uses horizontal and vertical arrangements, different scale factors, and both
+primary and secondary outputs. Run it from the Gnoblin checkout:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="nv">MONITOR</span><span class="o">=</span>1920x1200<span class="w"> </span><span class="nv">EXTRA_MONITOR</span><span class="o">=</span>1920x1200<span class="w"> </span><span class="se">\</span>
+<span class="nv">GNOBLIN_TEST_DISABLE_NOTIFICATIONS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="nv">GNOBLIN_TEST_GSETTINGS_BACKEND</span><span class="o">=</span>keyfile<span class="w"> </span><span class="se">\</span>
+<span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/../bingux/tests/customise-monitors-live.py"</span><span class="w"> </span><span class="se">\</span>
+bash<span class="w"> </span>scripts/run-gnome-shell.sh
+</code></pre></div>
+<p>Set <code>QS_TEST_BIN</code> if Quickshell is not available as <code>qs</code> on <code>PATH</code>. Set
+<code>BINGUX_REDUCED_MOTION=1</code> to repeat the editor checks without client animations.
+The display configuration and editor changes stay inside the private session.</p>
+<p>Retained <code>gnoblin-shell-popup</code> surfaces rise above existing overlay panels when
+they request menu keyboard input again. This restores their visible and clickable
+area after the sidebar has been raised, without changing the active application.
+The Bingux <code>tests/desktop-layout-live.py --case control-connectivity</code> check covers
+this path with native clicks after moving Bluetooth into the dock, bar and sidebar.</p>
+<p>Background blur is rendered in the compositor and masked by client alpha. Fully
+transparent parts of a layer surface remain unchanged, including the area around
+floating docks and search panels. Applications must draw a translucent background
+to reveal the blur. Large blur regions cost more GPU time; use namespace rules to
+reduce the radius or disable it where unnecessary.</p>
+<p>Run <code>just --set prefix "$PWD/install" gnome-layer-animation-verify</code> to check
+configuration reload, all four edges, corners, fade, disabled motion, repeated
+mapping, intermediate compositor frames and animation cleanup.
+Run <code>just --set prefix "$PWD/install" gnome-window-effects-verify</code> for pixel checks of masked blur and live
+rule removal. Both use a private headless session and require Quickshell; the
+pixel test also requires <code>grim</code> and Python Pillow.</p>
+<p>Layer-shell resize requests keep the current buffer anchored until replacement
+content arrives. This prevents tooltip jumps while a client changes its size
+and centring margins. <code>just gnome-layer-animation-verify</code> includes pixel checks
+for bottom, right, and top-anchored resize handshakes.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../bring-your-own-shell/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Choose a shell">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Choose a shell
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../configuration-reference/" class="md-footer__link md-footer__link--next" aria-label="Next: Option index">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Option index
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

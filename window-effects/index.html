@@ -1,0 +1,1882 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+      
+      
+      
+        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/window-effects/">
+      
+      
+        <link rel="prev" href="../configuration-recipes/">
+      
+      
+        <link rel="next" href="../window-frames/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Window effects - Gnoblin</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#window-effects" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Gnoblin
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Window effects
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/kierandrewett/gnoblin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kierandrewett/gnoblin
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Gnoblin
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/kierandrewett/gnoblin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    kierandrewett/gnoblin
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bring-your-own-shell/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose a shell
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure your desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Option index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window effects
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window effects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#custom-fragment-shaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom fragment shaders
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rounded-window-corners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rounded window corners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inner-and-outer-window-borders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inner and outer window borders
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inner and outer window borders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layered-shadows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layered shadows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window frames (CSD and SSD)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Portal permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-menu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window menu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor themes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-state-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-snapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window snapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gnoblinctl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command line
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build a shell
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Build a shell
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compositor-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compositor bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../background-effects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Background effects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../focus-transfer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Focus transfer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../launch-feedback/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Launch feedback
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-frame-renderers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frame renderers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frame-renderer-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Renderer API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer-console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribute
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contribute
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../source-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../devkit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../real-hardware-verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware verification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../distribution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documentation-site/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation site
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#custom-fragment-shaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom fragment shaders
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rounded-window-corners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rounded window corners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inner-and-outer-window-borders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inner and outer window borders
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inner and outer window borders">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layered-shadows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layered shadows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/window-effects.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="window-effects">Window effects<a class="headerlink" href="#window-effects" title="Permanent link">&para;</a></h1>
+<p>Gnoblin applies effects in the compositor. Rules in
+<code>~/.config/gnoblin/init.lua</code> apply to existing windows when the file changes.
+This requires the Gnoblin native build. After an upgrade, log out and in once
+to load the native code. Subsequent rule and shader edits do not need a restart.</p>
+<p>For Bingux's dock, search and shared context menus:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">,</span><span class="w"> </span><span class="nv">layer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"^(bingux-dock|bingux-search|gnoblin-shell-popup)$"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">    </span><span class="c1">-- Optional custom effect, relative to this config file:</span>
+<span class="w">    </span><span class="c1">-- shader = "shaders/tint.frag",</span>
+<span class="w">    </span><span class="c1">-- ["shader-uniforms"] = {strength = 0.08},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p>Client backgrounds must have some transparency for background blur to show.
+The alpha silhouette masks the blur; client transparency does not weaken it.
+Rule opacity changes client pixels without mixing sharp background into the blur.
+Keep rule opacity at 1.0 to preserve the opacity of text and icons. Use the
+client's background colour alpha to control the amount of background visible.
+Fully transparent parts of a layer surface remain transparent, including
+outside rounded cards. The custom shader changes client pixels; the built-in
+blur processes the background separately.</p>
+<p>Rules can match <code>type</code> (<code>"layer"</code> or <code>"window"</code>), <code>layer</code> (layer namespace),
+<code>app-id</code>, <code>title</code>, and <code>focused</code> (boolean). String matchers other than <code>type</code>
+are regular expressions. Every matcher in a rule must match. Later rules
+override each effect they specify. Available effects are <code>blur</code> (integer
+0–100), <code>opacity</code> (0–1), <code>animation</code> (<code>"slide"</code>, <code>"fade"</code>, or <code>"none"</code>),
+<code>shader</code>, <code>shader-uniforms</code>, and <code>corners</code>. A later uniforms table replaces the earlier
+table. Set <code>shader = ""</code> to remove a shader.</p>
+<h2 id="custom-fragment-shaders">Custom fragment shaders<a class="headerlink" href="#custom-fragment-shaders" title="Permanent link">&para;</a></h2>
+<p>Create the shader directory, then copy <a href="https://github.com/kierandrewett/gnoblin/blob/main/src/data/shaders/tint.frag">the tint example</a>
+to <code>~/.config/gnoblin/shaders/tint.frag</code>. A shader supplies this function:</p>
+<div class="highlight"><pre><span></span><code><span class="k">uniform</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">strength</span><span class="p">;</span>
+
+<span class="kt">vec4</span><span class="w"> </span><span class="n">gnoblin_effect</span><span class="p">(</span><span class="kt">vec4</span><span class="w"> </span><span class="n">color</span><span class="p">,</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">mix</span><span class="p">(</span><span class="n">color</span><span class="p">.</span><span class="n">rgb</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="mf">0.24</span><span class="p">,</span><span class="w"> </span><span class="mf">0.30</span><span class="p">,</span><span class="w"> </span><span class="mf">0.40</span><span class="p">),</span><span class="w"> </span><span class="n">strength</span><span class="p">),</span><span class="w"> </span><span class="n">color</span><span class="p">.</span><span class="n">a</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>color</code> is straight RGBA, and <code>uv</code> is the surface texture coordinate from 0 to 1.
+Gnoblin manages premultiplied alpha and prevents the shader from filling
+transparent areas. <code>gnoblin_width</code> and <code>gnoblin_height</code> are float uniforms for
+the surface dimensions in logical pixels. Names beginning with <code>gnoblin_</code>
+are reserved. User uniforms are floats; declare them in GLSL and set their
+values in <code>shader-uniforms</code>. Unset uniforms default to zero.</p>
+<p>Use GLSL compatible with version 120 (desktop GL) or 100 (GLES). Do not supply
+<code>#version</code> or <code>main</code>; Gnoblin supplies these. Files must be UTF-8 and at most
+64 KiB. Absolute paths and <code>~/</code> paths also work. These are per-surface fragment
+effects, without a time loop, geometry changes or a multi-pass shader API.</p>
+<p>Gnoblin watches the shader's parent directory, including atomic file replacement.
+Edits settle for 100 ms before compilation. Create the directory before enabling
+the rule. Invalid or missing shader files keep the previous working effect and
+log a <code>gnoblin-shader</code> warning. Fixing the file restores normal hot reload.
+Invalid Lua keeps the previous configuration.</p>
+<h2 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h2>
+<p><code>tests/window-shader-config-test.js</code> checks configuration and rule precedence.
+<code>tests/test-window-shaders.py</code> runs in an isolated headless Gnoblin session
+through <code>scripts/run-gnome-shell.sh</code>. It checks rendered pixels, transparency,
+blur composition, atomic edits, invalid and deleted files, uniforms, and removal.
+<code>tests/test-window-effects.py</code> checks background blur against a checkerboard.</p>
+<p>Blur uses the existing separable Gaussian filter, with its existing linear sampling
+and radius-dependent downsampling. The effect retains its GPU textures, framebuffers
+and filter between frames. It rebuilds them when dimensions or radius change.</p>
+<p>Before each monitor paint, Gnoblin expands scene damage through overlapping blur
+source rectangles. An unchanged backdrop keeps its filtered image. Damage outside
+that rectangle does not recompute the blur. Damage inside it refreshes the complete
+sample area, including the filter margin, so partial updates cannot leave sharp
+patches. Changes to the foreground within the rectangle conservatively refresh it
+too. A surface spanning monitors refreshes when switching views; it does not reuse
+pixels captured from another monitor. There is no refresh timer.</p>
+<p>Bingux supplies bounds for its fullscreen sidebar and notification surfaces through
+the compositor bridge's <code>blur-regions</code> capability. Bounds use logical surface
+coordinates and include visible shadows. The compositor adds the sampling margin;
+client alpha still determines the visible silhouette. Hints apply only to layer
+surfaces owned by the socket peer's process, identified by namespace and monitor
+origin. Disconnecting removes the hints. Rules still decide whether blur is enabled.
+Older native sessions retain the full-redraw fallback until the next login.</p>
+<p>Compositor opacity fades the masked blur and client as one composed surface.
+The mask compensates for drawing the foreground separately, so opacity is not
+applied twice. This needs no client protocol or namespace-specific animation.
+<code>tests/test-blur-fade.py</code> compares eight fade and reversal samples against
+an image of the completed surface blended over the unchanged background.</p>
+<p>Client-rendered fades are different: if a client changes its buffer alpha, the
+compositor cannot distinguish that from changing material transparency in one
+frame. Such fades are not claimed to be fixed by the compositor-opacity change.
+Bingux currently animates some popup opacity inside its buffers. The live mask
+correction improves their settled blur, but their client-rendered fade still
+needs a separate resolution. No alpha-modifier integration is installed.</p>
+<p>Run native checks with the repo installation, without restarting the desktop:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-blur-regions.py"</span><span class="w"> </span>scripts/run-gnome-shell.sh
+<span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="nv">GNOBLIN_BLUR_REQUIRE_CACHE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-blur-performance.py"</span><span class="w"> </span>scripts/run-gnome-shell.sh
+</code></pre></div>
+<p>The region test compares cropped and full rendered pixels, moves a panel, changes
+pixels behind it, and checks that unrelated animation does not recompute its blur.
+The performance fixture reports paint time, process CPU ticks and resource builds
+for a fixed five-second animation. It measures the isolated fixture, not desktop
+CPU usage with applications running.</p>
+<h2 id="rounded-window-corners">Rounded window corners<a class="headerlink" href="#rounded-window-corners" title="Permanent link">&para;</a></h2>
+<p>Rounding is built into Gnoblin's window rules; no extension is required. For example:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span><span class="w"> </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.6</span><span class="p">}},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"app-id"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"^my-game$"</span><span class="p">},</span><span class="w"> </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"off"</span><span class="p">}},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span><span class="w"> </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.25</span><span class="p">}}},</span>
+<span class="w">    </span><span class="p">{</span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span><span class="w"> </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">28</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span><span class="p">}}},</span>
+<span class="p">}})</span>
+</code></pre></div>
+<p>Later rules merge individual corner settings, including individual shadow fields.
+Use existing app-ID/title matchers for exceptions and <code>focused</code> for active/inactive
+borders and shadows. Desktop surfaces, menus and override-redirect windows are
+excluded. The setting has no effect until <code>radius</code> is greater than zero.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>radius</code></td>
+<td><code>0</code></td>
+<td>Corner radius in logical pixels, 0–200; zero disables rounding. In a border rule, omitted means inherit <code>corners.radius</code>.</td>
+</tr>
+<tr>
+<td><code>smoothing</code></td>
+<td><code>0</code></td>
+<td>0–1; circular through a progressively squarer, continuous-corner approximation. The requested radius stays fixed; omitted in a border rule means inherit <code>corners.smoothing</code>. This is not Apple's private <code>.continuous</code> path.</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>"auto"</code></td>
+<td><code>auto</code> preserves existing transparent/rounded corners; <code>force</code> applies the requested mask; <code>off</code> disables it.</td>
+</tr>
+<tr>
+<td><code>padding</code></td>
+<td><code>[0, 0, 0, 0]</code></td>
+<td>Top, right, bottom, left inset from the compositor's window frame, −128–128 logical pixels; border rules inherit the corner padding when omitted.</td>
+</tr>
+<tr>
+<td><code>border-width</code></td>
+<td><code>0</code></td>
+<td>−40–40 pixels. Positive draws inside, negative outside; zero disables. Outset borders need space within the surface buffer, or an inset via <code>padding</code>.</td>
+</tr>
+<tr>
+<td><code>border-color</code></td>
+<td><code>"#808080ff"</code></td>
+<td><code>#RRGGBB</code> or <code>#RRGGBBAA</code>.</td>
+</tr>
+<tr>
+<td><code>keep-maximized</code></td>
+<td><code>true</code></td>
+<td>Keep rounding when a window is maximized.</td>
+</tr>
+<tr>
+<td><code>keep-fullscreen</code>, <code>keep-tiled</code></td>
+<td><code>false</code></td>
+<td>Keep rounding in those window states when set to true.</td>
+</tr>
+<tr>
+<td><code>skip-libadwaita</code></td>
+<td><code>true</code></td>
+<td>Preserve libadwaita corners in automatic mode.</td>
+</tr>
+<tr>
+<td><code>skip-libhandy</code></td>
+<td><code>false</code></td>
+<td>Skip libhandy applications in automatic mode.</td>
+</tr>
+<tr>
+<td><code>remove-csd</code></td>
+<td><code>false</code></td>
+<td>Opt into conservative removal of client-rendered rounded corners.</td>
+</tr>
+<tr>
+<td><code>shadow</code></td>
+<td><code>false</code></td>
+<td>Optional table: <code>x</code>, <code>y</code>, <code>blur</code>, <code>spread</code>, <code>opacity</code>, <code>color</code>.</td>
+</tr>
+<tr>
+<td><code>shadow-animation</code></td>
+<td><code>{ duration = 0, easing = "ease-out-cubic" }</code></td>
+<td>Fade between shadow styles. Duration: 0–2000 ms. Easing: <code>linear</code>, <code>ease-out-cubic</code>, <code>ease-out-quad</code>, <code>ease-in-out-cubic</code>. Respects reduced motion.</td>
+</tr>
+<tr>
+<td><code>keep-shadow</code></td>
+<td><code>false</code></td>
+<td>Keep the replacement shadow in maximized, fullscreen or tiled states.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="inner-and-outer-window-borders">Inner and outer window borders<a class="headerlink" href="#inner-and-outer-window-borders" title="Permanent link">&para;</a></h2>
+<p>Gnoblin and Bingux leave compositor borders disabled by default. To opt into
+one 1px grey inner stroke, use this window rule:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"inner-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"inner-color"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"outer-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"outer-color"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#00000000"</span><span class="p">},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p>Edit <code>~/.config/gnoblin/init.lua</code>; valid changes reload automatically.
+Border rules inherit <code>radius</code>, <code>smoothing</code> and <code>padding</code> from the effective
+corner rule unless they set those fields explicitly.
+Colours use <code>#RRGGBB</code> or <code>#RRGGBBAA</code>, with alpha last (unlike QML).
+Widths accept 0 to 40 logical pixels. Set both widths to zero to disable them.
+Radius accepts 0 to 200, smoothing 0 to 1, and padding is
+<code>[top, right, bottom, left]</code>, each from -128 to 128 logical pixels.</p>
+<p>Borders do not clip the application, change its input region or reserve space.
+The outer stroke extends beyond the frame. Both strokes follow the window actor
+through animations and remain visible when a window fills its work area. Set
+<code>keep-maximized</code>, <code>keep-fullscreen</code> or <code>keep-tiled</code> to false to suppress a
+stroke in one of those states. Later matching rules override only the border
+fields they specify.</p>
+<p>Bingux requests real clipping with the same shape as its borders:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"force"</span><span class="p">,</span><span class="w"> </span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.35</span><span class="p">}},</span>
+<span class="w">    </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"inner-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"inner-color"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"outer-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="s2">"outer-color"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#00000000"</span><span class="p">},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p>Force mode removes the original client shadow outside the frame, including
+when <code>shadow = false</code>. Disabling the replacement shadow does not restore the
+rectangular client shadow around the rounded border. Automatic mode preserves
+the client shadow unless a replacement shadow is configured.
+Borders inherit radius, smoothing and padding from clipping unless explicitly
+overridden. Force mode clips the client even when it already draws corners;
+automatic mode preserves native corners and can leave a different curve
+underneath a configured border.
+Set <code>remove-csd = true</code> to opt into the intelligent CSD corner remover while
+retaining <code>mode = "auto"</code>. It detects a sharp, stable client alpha edge and
+samples nearby colour/alpha patches in the GPU shader on every painted client
+frame. Two patches must agree before their distance-weighted colour is used.
+The shader replaces the transparent gap, client shadow and narrow original
+curved outline before applying Gnoblin's shape. Opaque content away from that
+edge is retained. Colour is not cached between client frames and there is no
+per-frame CPU readback. Uncertain/noisy backgrounds are left native. Geometry
+discovery is cached until frame geometry/state changes. This is intended for GNOME
+Libadwaita-style CSD and is disabled by default.
+<code>tests/test-window-shadow-clipping.py</code> verifies both shadow policies with
+rendered pixels in a private compositor.</p>
+<p>A rebuilt shell must be started once to load the native renderer. Subsequent
+style changes need no logout. The current development session uses a temporary
+user-script bridge until the native build is installed system-wide.</p>
+<h3 id="layered-shadows">Layered shadows<a class="headerlink" href="#layered-shadows" title="Permanent link">&para;</a></h3>
+<p><code>corners.shadow</code> accepts its original table or a list of one to four tables.
+Layers draw in list order, with each later layer over the earlier ones. Each
+layer has <code>x</code>, <code>y</code>, <code>blur</code>, <code>spread</code>, <code>opacity</code> and <code>color</code>. Rendering uses one
+actor and one shader pass for the whole stack. A later rule replaces an entire
+list; single-table rules retain their existing field-merge behaviour.</p>
+<p>Bingux uses a softer inactive shadow and this deeper focused-window treatment:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.22</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.28</span><span class="p">},</span>
+<span class="w">    </span><span class="p">}},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p>The broad layer provides depth; the smaller layer defines the edge. These are
+Bingux design values inspired by macOS, not Apple's private rendering values.
+The current inner border uses <code>#505050bf</code> (approximately 75% alpha).</p>
+<p>Shadow fades can be enabled independently of the shadow layers:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"shadow-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span><span class="w"> </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">}},</span>
+<span class="p">}}})</span>
+</code></pre></div>
+<p>The compositor crossfades complete shadow styles, including changes to blur,
+position, colour and layer count. It retains only the latest pending style during
+an active fade. Window close/minimise opacity also applies to the shadow.</p>
+<p>Client frame geometry excludes shadow margins when the client reports them.
+For clients that report the whole buffer as their frame, the compositor checks
+three alpha scan lines on each axis. All three must agree on a sharp transition
+to stable window content. It then uses that edge for clipping, both borders and
+the replacement shadow. Uncertain edges retain the reported frame. Explicit
+<code>padding</code> bypasses this detection. The result is shared and cached across focus,
+move and resize events; state and scale changes trigger a new measurement.
+Capture waits until the client has an image buffer. There is no per-frame scan.</p>
+<p><code>blur-ignore-shadows = true</code> excludes translucent black pixels from the backdrop
+mask. Their original colour and opacity remain in the foreground pass. Bingux
+uses black shadows and coloured panel tints, so this distinguishes its shadows
+from even faint coloured glass. It is opt-in: translucent black glass is also
+excluded, and coloured shadows are not detected. The default is <code>false</code>.
+Native blur-mask changes take effect after starting the rebuilt compositor.</p>
+<p>The backdrop can be downsampled for the Gaussian blur, but the client coverage
+mask stays at output resolution. At antialiased edges, neighbouring alpha
+samples estimate the material opacity separately from pixel coverage. This
+keeps the blur inside rounded edges and preserves their coverage during fades.
+No extra corner setting is needed for layer surfaces.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../configuration-recipes/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Recipes">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Recipes
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../window-frames/" class="md-footer__link md-footer__link--next" aria-label="Next: Window frames (CSD and SSD)">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Window frames (CSD and SSD)
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

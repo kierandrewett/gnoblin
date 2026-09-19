@@ -1,0 +1,61 @@
+{
+  "mode": "gnoblin",
+  "rows": [
+    {
+      "phase": "empty",
+      "cpuPercent": 1.0,
+      "clientDraws": 0,
+      "RssKiB": 250116,
+      "PssKiB": 181883,
+      "Private_DirtyKiB": 100372
+    },
+    {
+      "phase": "eight-static-windows",
+      "cpuPercent": 0.0,
+      "clientDraws": 0,
+      "RssKiB": 286656,
+      "PssKiB": 194065,
+      "Private_DirtyKiB": 135356
+    },
+    {
+      "phase": "visible-animation",
+      "cpuPercent": 7.75,
+      "clientDraws": 240,
+      "RssKiB": 286056,
+      "PssKiB": 192805,
+      "Private_DirtyKiB": 134756
+    },
+    {
+      "phase": "partially-covered-animation",
+      "cpuPercent": 7.25,
+      "clientDraws": 240,
+      "RssKiB": 290344,
+      "PssKiB": 197089,
+      "Private_DirtyKiB": 139044
+    },
+    {
+      "phase": "covered-animation",
+      "cpuPercent": 0.75,
+      "clientDraws": 0,
+      "RssKiB": 296680,
+      "PssKiB": 203115,
+      "Private_DirtyKiB": 144984
+    },
+    {
+      "phase": "revealed-animation",
+      "cpuPercent": 7.5,
+      "clientDraws": 241,
+      "RssKiB": 296788,
+      "PssKiB": 203031,
+      "Private_DirtyKiB": 145092
+    },
+    {
+      "phase": "after-close",
+      "cpuPercent": 0.25,
+      "clientDraws": 0,
+      "RssKiB": 295496,
+      "PssKiB": 201743,
+      "Private_DirtyKiB": 143800
+    }
+  ]
+}
