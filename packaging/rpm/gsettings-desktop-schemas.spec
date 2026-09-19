@@ -1,13 +1,9 @@
 %global _prefix /usr/lib/gnoblin
 %global _datadir %{_prefix}/share
 %global _includedir %{_prefix}/include
-# This package is a private build dependency and runtime. It must not satisfy
-# stock Fedora pkgconfig dependencies, whose default search path excludes it.
-%global __provides_exclude ^pkgconfig[(]gsettings-desktop-schemas[)]
-
 Name:           gnoblin-gsettings-desktop-schemas
 Version:        51.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Private GNOME desktop schemas for Gnoblin
 License:        LGPL-2.1-or-later
 URL:            https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas
@@ -50,5 +46,5 @@ fi
 %ghost %{_datadir}/glib-2.0/schemas/gschemas.compiled
 
 %changelog
-* Sun Sep 20 2026 Gnoblin contributors - 51.0-1
+* Sun Sep 20 2026 Gnoblin contributors - 51.0-2
 - Package GNOME 51 schemas privately for parallel installation.
