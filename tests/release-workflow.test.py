@@ -19,6 +19,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("gnoblin-$VERSION-debian.tar.xz", script)
         self.assertIn("SHA256SUMS", script)
 
+    def test_release_tarballs_preserve_relative_link_targets(self):
+        script = (ROOT / "scripts/make-tarball.sh").read_text()
+        self.assertIn('--transform="s,^,${PROJ}-${VER}/,SH"', script)
+
     def test_release_workflow_publishes_only_after_artifacts_build(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertIn('tags:\n      - "v*"', workflow)

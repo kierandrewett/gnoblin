@@ -80,7 +80,7 @@ echo ">> archiving $PROJ working tree -> $OUT" >&2
         --verbatim-files-from \
         --no-recursion \
         --files-from=- \
-        --transform="s,^,${PROJ}-${VER}/," \
+        --transform="s,^,${PROJ}-${VER}/,SH" \
         --use-compress-program='xz -T1 -9' \
         -cf "$TEMP"
 
