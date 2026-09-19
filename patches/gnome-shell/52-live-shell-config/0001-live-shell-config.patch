@@ -1,10 +1,30 @@
+From 108081b3496dc8deaf8df7393302facd98455151 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:51:03 +0100
 Subject: [PATCH] shell: use live Gnoblin window behaviour settings
 
+---
+ js/js-resources.gresource.xml |  1 +
+ js/ui/windowManager.js        | 43 +++++++++++++++++++++++++++--------
+ 2 files changed, 34 insertions(+), 10 deletions(-)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index cb00d3a..97e7c30 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -145,6 +145,7 @@
+     <file>ui/components.js</file>
+     <file>ui/components/automountManager.js</file>
+     <file>ui/components/autorunManager.js</file>
++    <file>ui/components/gnoblinConfig.js</file>
+     <file>ui/components/gnoblinControl.js</file>
+     <file>ui/components/keyring.js</file>
+     <file>ui/components/networkAgent.js</file>
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 018ae5c..1736aa9 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,7 @@ import Shell from 'gi://Shell';
  import St from 'gi://St';
  
  import * as AltTab from './altTab.js';
@@ -12,7 +32,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
  import * as AppFavorites from './appFavorites.js';
  import * as Dialog from './dialog.js';
  import * as WorkspaceSwitcherPopup from './workspaceSwitcherPopup.js';
-@@ -1134,12 +1135,16 @@
+@@ -1157,12 +1158,16 @@ export class WindowManager {
      }
  
      _minimizeWindow(shellwm, actor) {
@@ -30,12 +50,12 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
              shellwm.completed_minimize(actor);
              return;
          }
-@@ -1148,16 +1153,20 @@
+@@ -1174,16 +1179,20 @@ export class WindowManager {
+         const {reducedMotion} = St.Settings.get();
+         const useMotion = reducedMotion !== St.ReducedMotion.REDUCE;
  
-         this._minimizing.add(actor);
- 
--        if (actor.meta_window.is_monitor_sized()) {
-+        if (animation === 'fade' ||
+-        if (actor.meta_window.is_monitor_sized() || !useMotion) {
++        if (animation === 'fade' || !useMotion ||
 +            (animation === 'gnome' && actor.meta_window.is_monitor_sized())) {
              actor.ease({
                  opacity: 0,
@@ -46,15 +66,15 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
              });
          } else {
              let xDest, yDest, xScale, yScale;
--            let [success, geom] = actor.meta_window.get_icon_geometry();
-+            let [success, geom] = animation === 'zoom'
+-            const [success, geom] = actor.meta_window.get_icon_geometry();
++            const [success, geom] = animation === 'zoom'
 +                ? GnoblinConfig.minimizeTarget(actor.meta_window,
 +                    Main.layoutManager.monitors[actor.meta_window.get_monitor()])
 +                : actor.meta_window.get_icon_geometry();
              if (success) {
                  xDest = geom.x;
                  yDest = geom.y;
-@@ -1183,7 +1192,7 @@
+@@ -1209,7 +1218,7 @@ export class WindowManager {
                  scale_y: yScale,
                  x: xDest,
                  y: yDest,
@@ -63,7 +83,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._minimizeWindowDone(shellwm, actor),
              });
-@@ -1202,29 +1211,38 @@
+@@ -1228,12 +1237,16 @@ export class WindowManager {
      }
  
      _unminimizeWindow(shellwm, actor) {
@@ -81,11 +101,12 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
              shellwm.completed_unminimize(actor);
              return;
          }
+@@ -1243,17 +1256,22 @@ export class WindowManager {
+         const {reducedMotion} = St.Settings.get();
+         const useMotion = reducedMotion !== St.ReducedMotion.REDUCE;
  
-         this._unminimizing.add(actor);
- 
--        if (actor.meta_window.is_monitor_sized()) {
-+        if (animation === 'fade' ||
+-        if (actor.meta_window.is_monitor_sized() || !useMotion) {
++        if (animation === 'fade' || !useMotion ||
 +            (animation === 'gnome' && actor.meta_window.is_monitor_sized())) {
 +            actor.show();
              actor.opacity = 0;
@@ -98,15 +119,15 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  onStopped: () => this._unminimizeWindowDone(shellwm, actor),
              });
          } else {
--            let [success, geom] = actor.meta_window.get_icon_geometry();
-+            let [success, geom] = animation === 'zoom'
+-            const [success, geom] = actor.meta_window.get_icon_geometry();
++            const [success, geom] = animation === 'zoom'
 +                ? GnoblinConfig.minimizeTarget(actor.meta_window,
 +                    Main.layoutManager.monitors[actor.meta_window.get_monitor()])
 +                : actor.meta_window.get_icon_geometry();
              if (success) {
                  actor.set_position(geom.x, geom.y);
                  actor.set_scale(
-@@ -1252,7 +1270,7 @@
+@@ -1281,7 +1299,7 @@ export class WindowManager {
                  scale_y: 1,
                  x: xDest,
                  y: yDest,
@@ -115,7 +136,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
                  mode: MINIMIZE_WINDOW_ANIMATION_MODE,
                  onStopped: () => this._unminimizeWindowDone(shellwm, actor),
              });
-@@ -1648,6 +1666,11 @@
+@@ -1704,6 +1722,11 @@ export class WindowManager {
      }
  
      _startSwitcher(display, window, event, binding) {
@@ -127,14 +148,6 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
          let constructor = null;
          switch (binding.get_name()) {
          case 'switch-applications':
-diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
---- a/js/js-resources.gresource.xml
-+++ b/js/js-resources.gresource.xml
-@@ -134,6 +134,7 @@
-     <file>ui/components.js</file>
-     <file>ui/components/automountManager.js</file>
-     <file>ui/components/autorunManager.js</file>
-+    <file>ui/components/gnoblinConfig.js</file>
-     <file>ui/components/gnoblinControl.js</file>
-     <file>ui/components/keyring.js</file>
-     <file>ui/components/networkAgent.js</file>
+-- 
+2.55.0
+

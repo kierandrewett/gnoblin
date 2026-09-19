@@ -1,15 +1,21 @@
+From 4a00b9db9cc3c4d3d9551e647e55d0fe57916e95 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 22:05:00 +0100
 Subject: [PATCH] clutter: share the stage redraw clip during paint
 
 The private paint-context constructor has one caller. The stage owns its
 redraw clip until synchronous actor paint completes, and users receive it as a
 const region. Retain the region instead of copying its rectangle list once per
 painted stage view.
+---
+ clutter/clutter/clutter-paint-context.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/clutter/clutter/clutter-paint-context.c b/clutter/clutter/clutter-paint-context.c
+index f1e441f5c..ecd13f88c 100644
 --- a/clutter/clutter/clutter-paint-context.c
 +++ b/clutter/clutter/clutter-paint-context.c
-@@ -60,7 +60,9 @@ clutter_paint_context_new_for_view (ClutterStageView *view,
+@@ -62,7 +62,9 @@ clutter_paint_context_new_for_view (ClutterStageView *view,
    paint_context = g_new0 (ClutterPaintContext, 1);
    g_ref_count_init (&paint_context->ref_count);
    paint_context->view = view;
@@ -21,4 +27,5 @@ diff --git a/clutter/clutter/clutter-paint-context.c b/clutter/clutter/clutter-p
    paint_context->paint_flags = paint_flags;
    g_set_object (&paint_context->framebuffer_color_state,
 -- 
-2.53.0
+2.55.0
+

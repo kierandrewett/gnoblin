@@ -1,4 +1,4 @@
-From 2b09e0a55b8c90ad35e53139d159f371ce4cb77e Mon Sep 17 00:00:00 2001
+From a13730256720073c5f389161edbe4b722b29db17 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 13:28:18 +0100
 Subject: [PATCH] session: hide native top bar only in Gnoblin mode
@@ -12,10 +12,10 @@ GNOME and non-Gnoblin modes retain their upstream top bar behaviour.
  2 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/js/ui/layout.js b/js/ui/layout.js
-index 820f49f..51706de 100644
+index 47cf50c..53880b1 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -275,12 +275,14 @@ export const LayoutManager = GObject.registerClass({
+@@ -265,12 +265,14 @@ export const LayoutManager = GObject.registerClass({
          });
          this.addChrome(this.screenShieldGroup);
  
@@ -32,12 +32,12 @@ index 820f49f..51706de 100644
          });
          this.panelBox.connect('notify::allocation',
 diff --git a/js/ui/panel.js b/js/ui/panel.js
-index 46b0567..c7d3fd1 100644
+index 7e98d91..49eba5a 100644
 --- a/js/ui/panel.js
 +++ b/js/ui/panel.js
-@@ -430,9 +430,11 @@ const PANEL_ITEM_IMPLEMENTATIONS = {
- export const Panel = GObject.registerClass(
- class Panel extends St.Widget {
+@@ -458,9 +458,11 @@ export class Panel extends St.Widget {
+     }
+ 
      _init() {
 +        const isGnoblin = global.session_mode === 'gnoblin';
          super._init({
@@ -49,5 +49,5 @@ index 46b0567..c7d3fd1 100644
  
          this.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
 -- 
-2.53.0
+2.55.0
 

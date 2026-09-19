@@ -52,7 +52,8 @@ gnoblin_env_apply "$PREFIX"
     echo "no gnome-shell in $PREFIX — build/install first" >&2
     exit 1
 }
-[ -f "$PREFIX/$GNOBLIN_LIBDIR/libmutter-17.so.0" ] || {
+MUTTER_API="$($ROOT/scripts/gnome-versions.py get mutter api)"
+[ -f "$PREFIX/$GNOBLIN_LIBDIR/libmutter-$MUTTER_API.so.0" ] || {
     echo "no mutter in $PREFIX/$GNOBLIN_LIBDIR" >&2
     exit 1
 }

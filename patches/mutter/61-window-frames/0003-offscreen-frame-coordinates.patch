@@ -1,11 +1,18 @@
+From 4050a3046670a5e2b6c1aa56a8ed116cdf435641 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 22:05:46 +0100
 Subject: [PATCH] Expose padded offscreen texture bounds for exact frame masks
 
+---
+ clutter/clutter/clutter-offscreen-effect.c | 32 ++++++++++++++++++++++
+ clutter/clutter/clutter-offscreen-effect.h |  4 +++
+ 2 files changed, 36 insertions(+)
+
 diff --git a/clutter/clutter/clutter-offscreen-effect.c b/clutter/clutter/clutter-offscreen-effect.c
-index 8a046e5..7feab16 100644
+index 3ed0ac35d..c1cbadca5 100644
 --- a/clutter/clutter/clutter-offscreen-effect.c
 +++ b/clutter/clutter/clutter-offscreen-effect.c
-@@ -735,6 +735,38 @@ clutter_offscreen_effect_create_texture (ClutterOffscreenEffect *effect,
+@@ -730,6 +730,38 @@ clutter_offscreen_effect_create_texture (ClutterOffscreenEffect *effect,
                                                                        height);
  }
  
@@ -45,7 +52,7 @@ index 8a046e5..7feab16 100644
   * clutter_offscreen_effect_get_target_size:
   * @effect: a #ClutterOffscreenEffect
 diff --git a/clutter/clutter/clutter-offscreen-effect.h b/clutter/clutter/clutter-offscreen-effect.h
-index b0d5d29..abd076f 100644
+index b0d5d29ed..abd076f8f 100644
 --- a/clutter/clutter/clutter-offscreen-effect.h
 +++ b/clutter/clutter/clutter-offscreen-effect.h
 @@ -87,4 +87,8 @@ gboolean        clutter_offscreen_effect_get_target_size        (ClutterOffscree
@@ -57,3 +64,6 @@ index b0d5d29..abd076f 100644
 +                                                    graphene_rect_t       *rect);
 +
  G_END_DECLS
+-- 
+2.55.0
+

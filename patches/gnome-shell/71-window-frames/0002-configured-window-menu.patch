@@ -1,12 +1,25 @@
+From da6d0e29985bf4110d5cab493a9f15af28d8a7e9 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] Delegate configured window menus to the desktop adapter
 
+---
+ js/ui/windowManager.js | 2 ++
+ 1 file changed, 2 insertions(+)
+
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 6296da4..d6bca4d 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
-@@ -1671,3 +1671,5 @@
+@@ -1725,6 +1725,8 @@ export class WindowManager {
+     }
+ 
      _showWindowMenu(shellwm, window, menu, rect) {
 +        if (GnoblinConfig.settings['window-menu']?.length)
 +            return;
          this._windowMenuManager.showWindowMenuForWindow(window, menu, rect);
      }
+ 
+-- 
+2.55.0
+

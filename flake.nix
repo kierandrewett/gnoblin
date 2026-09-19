@@ -2,15 +2,17 @@
   description = "Gnoblin session package and NixOS module";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    # Track the release train that carries the current GNOME major. The source
+    # revisions below remain pinned by gnome-versions.json.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     mutter-src = {
-      url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=759d53b098df10a1c0b443c093f586e5b1b7de49";
+      url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
       flake = false;
     };
 
     gnome-shell-src = {
-      url = "git+https://gitlab.gnome.org/GNOME/gnome-shell.git?rev=21aa7264064b34f14bd6369215790d41853b2e12";
+      url = "git+https://gitlab.gnome.org/GNOME/gnome-shell.git?rev=2177bdf9624b2d285de7c1d34274073d3769d6b8";
       flake = false;
     };
 

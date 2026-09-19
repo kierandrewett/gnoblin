@@ -1,10 +1,17 @@
+From 6bccc47b1033cba280aab546a6812da313bf5750 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:51:03 +0100
 Subject: [PATCH] shell: load declarative window effect rules
 
+---
+ js/js-resources.gresource.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 97e7c30..7dcbbd9 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -135,6 +135,7 @@
+@@ -146,6 +146,7 @@
      <file>ui/components/automountManager.js</file>
      <file>ui/components/autorunManager.js</file>
      <file>ui/components/gnoblinConfig.js</file>
@@ -12,3 +19,6 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
+-- 
+2.55.0
+

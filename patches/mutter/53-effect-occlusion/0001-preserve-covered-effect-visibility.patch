@@ -1,12 +1,17 @@
+From 15739d55971caee4990b934442c44064f836a466 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:02:01 +0100
 Subject: [PATCH] compositor: preserve full occlusion through effect actors
 
 Keep an empty unobscured region when descending through effects. Dropping
 it makes fully covered clients continue to receive frame callbacks. Retain
 the existing redraw-clip policy so offscreen caches are always complete.
+---
+ src/compositor/meta-cullable.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
 diff --git a/src/compositor/meta-cullable.c b/src/compositor/meta-cullable.c
-index 6e55809..4582473 100644
+index 6e55809ec..458247380 100644
 --- a/src/compositor/meta-cullable.c
 +++ b/src/compositor/meta-cullable.c
 @@ -94,6 +94,18 @@ cull_out_children_common (MetaCullable    *cullable,
@@ -28,4 +33,6 @@ index 6e55809..4582473 100644
        needs_culling = (region != NULL);
  
        if (needs_culling && !clutter_actor_is_visible (child))
+-- 
+2.55.0
 

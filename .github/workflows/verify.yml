@@ -70,4 +70,4 @@ jobs:
           test -x install/bin/gnome-shell
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop
-          test -f install/lib64/libmutter-17.so
+          test -f install/lib64/libmutter-51.so

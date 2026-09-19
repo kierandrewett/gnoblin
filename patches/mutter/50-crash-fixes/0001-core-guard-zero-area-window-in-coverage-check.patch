@@ -1,4 +1,4 @@
-From 38ddfee6fa1f7b826215fbe47440c9fb270fb15b Mon Sep 17 00:00:00 2001
+From 925b633f20db6921883e53419c43824181e3ee06 Mon Sep 17 00:00:00 2001
 From: gnoblin <drewett.kieran@gmail.com>
 Date: Tue, 23 Jun 2026 22:03:23 +0100
 Subject: [PATCH] core: guard zero-area window in coverage check (SIGFPE on
@@ -14,10 +14,10 @@ window can't be mostly covered; return FALSE before the division.
  1 file changed, 6 insertions(+)
 
 diff --git a/src/core/window.c b/src/core/window.c
-index f5700be..be4cb30 100644
+index c84a3878f..4c45cb73a 100644
 --- a/src/core/window.c
 +++ b/src/core/window.c
-@@ -2214,6 +2214,12 @@ window_would_mostly_be_covered_by_always_above_window (MetaWindow *window)
+@@ -2242,6 +2242,12 @@ window_would_mostly_be_covered_by_always_above_window (MetaWindow *window)
    frame_rect = meta_window_config_get_rect (window->config);
    window_area = frame_rect.width * frame_rect.height;
  
@@ -31,5 +31,5 @@ index f5700be..be4cb30 100644
    intersection_area = calculate_region_area (region);
    visible_area = window_area - intersection_area;
 -- 
-2.53.0
+2.55.0
 

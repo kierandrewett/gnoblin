@@ -1,4 +1,4 @@
-From 234a36dc2fc5a3f8e67454df713223bed765e0e0 Mon Sep 17 00:00:00 2001
+From d2e7bde62a04f04a512b7b44a7065fd82790c64d Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 16 Jun 2026 23:00:47 +0100
 Subject: [PATCH] layer-shell: wire wlr-layer-shell into the build
@@ -11,36 +11,35 @@ The implementation, header and protocol XML are gnoblin overlay files
 (src/protocols/layer-shell/, copied into src/wayland/ at build time), not
 part of this patch.
 ---
- src/meson.build                    | 6 ++++++
+ src/meson.build                    | 5 +++++
  src/wayland/meta-wayland-surface.c | 2 ++
- 2 files changed, 8 insertions(+)
+ 2 files changed, 7 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index 508c341..a403ef1 100644
+index cc6de4e9a..4b67772fe 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -641,6 +641,10 @@ if have_wayland
-     'wayland/meta-wayland-fractional-scale.h',
-     'wayland/meta-wayland-gtk-shell.c',
-     'wayland/meta-wayland-gtk-shell.h',
-+    # gnoblin: wlr-layer-shell-unstable-v1 (sources copied from the gnoblin
-+    # overlay src/layer-shell/ at build time)
-+    'wayland/meta-wayland-layer-shell.c',
-+    'wayland/meta-wayland-layer-shell.h',
-     'wayland/meta-wayland.h',
-     'wayland/meta-wayland-idle-inhibit.c',
-     'wayland/meta-wayland-idle-inhibit.h',
-@@ -1166,6 +1170,8 @@ if have_wayland
-     ['fractional-scale', 'staging', 1, ],
-     ['fifo', 'staging', 1, ],
-     ['gtk-shell', 'private', ],
-+    # gnoblin: vendored wlr-layer-shell protocol (overlay src/wayland/protocol/)
-+    ['wlr-layer-shell-unstable-v1', 'private', ],
-     ['idle-inhibit', 'unstable', 1, ],
-     ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
-     ['linux-dmabuf', 'stable', 1, ],
+@@ -535,6 +535,9 @@ mutter_sources += [
+   'wayland/meta-wayland-fractional-scale.h',
+   'wayland/meta-wayland-gtk-shell.c',
+   'wayland/meta-wayland-gtk-shell.h',
++  # gnoblin: wlr-layer-shell implementation from the source overlay
++  'wayland/meta-wayland-layer-shell.c',
++  'wayland/meta-wayland-layer-shell.h',
+   'wayland/meta-wayland.h',
+   'wayland/meta-wayland-idle-inhibit.c',
+   'wayland/meta-wayland-idle-inhibit.h',
+@@ -1015,6 +1018,8 @@ wayland_protocols = [
+   ['fractional-scale', 'staging', 1, ],
+   ['fifo', 'staging', 1, ],
+   ['gtk-shell', 'private', ],
++  # gnoblin: vendored wlr-layer-shell protocol
++  ['wlr-layer-shell-unstable-v1', 'private', ],
+   ['idle-inhibit', 'unstable', 1, ],
+   ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
+   ['linux-dmabuf', 'stable', 1, ],
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
-index f01e65f..dac1683 100644
+index ea7020687..380904921 100644
 --- a/src/wayland/meta-wayland-surface.c
 +++ b/src/wayland/meta-wayland-surface.c
 @@ -41,6 +41,7 @@
@@ -51,7 +50,7 @@ index f01e65f..dac1683 100644
  #include "wayland/meta-wayland-outputs.h"
  #include "wayland/meta-wayland-presentation-time-private.h"
  #include "wayland/meta-wayland-private.h"
-@@ -1898,6 +1899,7 @@ meta_wayland_shell_init (MetaWaylandCompositor *compositor)
+@@ -1913,6 +1914,7 @@ meta_wayland_shell_init (MetaWaylandCompositor *compositor)
  {
    meta_wayland_xdg_shell_init (compositor);
    meta_wayland_init_gtk_shell (compositor);
@@ -60,5 +59,5 @@ index f01e65f..dac1683 100644
    meta_wayland_init_fractional_scale (compositor);
  }
 -- 
-2.53.0
+2.55.0
 

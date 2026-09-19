@@ -1,4 +1,4 @@
-From 598f934e926ffc4a8f5d8f9160a3bbc664a2fe4d Mon Sep 17 00:00:00 2001
+From cc35d0f8713f118330b4ee157a46b7797f8e69bf Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 12:11:31 +0100
 Subject: [PATCH] main: publish the effective session mode
@@ -9,10 +9,10 @@ Synchronise GNOME_SHELL_SESSION_MODE after option parsing and fallback selection
  1 file changed, 3 insertions(+)
 
 diff --git a/src/main.c b/src/main.c
-index 9abd09d..9b25698 100644
+index a2859d1..239921a 100644
 --- a/src/main.c
 +++ b/src/main.c
-@@ -647,6 +647,9 @@ main (int argc, char **argv)
+@@ -643,6 +643,9 @@ main (int argc, char **argv)
    if (session_mode == NULL)
      session_mode = is_gdm_mode ? (char *)"gdm" : (char *)"user";
  
@@ -23,5 +23,5 @@ index 9abd09d..9b25698 100644
      g_setenv ("GNOME_SHELL_DISABLE_EXTENSIONS", "1", TRUE);
  
 -- 
-2.53.0
+2.55.0
 

@@ -96,6 +96,18 @@ if len(sys.argv) > 2:
 
 assert state()["layout"]["border"] == [36, 0, 0, 0], "test requires normal zero-border SSD configuration"
 
+external_ssd = len(sys.argv) > 2 and sys.argv[2] != "native"
+
+if external_ssd:
+    evaluate(
+        "global.ssdResizeFallbackFlashes=0;"
+        "global.ssdResizeFallback=global.get_window_actors()"
+        '.find(a=>a.meta_window.title==="SSD fixture").get_children()'
+        '.find(c=>c.get_name()==="gnoblin-native-frame").get_children()[0];'
+        'global.ssdResizeFallbackSignal=global.ssdResizeFallback.connect("notify::visible",()=>{'
+        "if(global.ssdResizeFallback.visible)global.ssdResizeFallbackFlashes++;});true"
+    )
+
 failures = []
 for name, fx, fy, dx, dy, action in [
     ("N", 0.5, 0, 0, -24, 5),
@@ -111,6 +123,8 @@ for name, fx, fy, dx, dy, action in [
         "global.resizeWindow.activate(global.get_current_time());global.resizeWindow.move_resize_frame(false,400,250,402,340);true"
     )
     time.sleep(0.2)
+    if external_ssd:
+        evaluate("global.ssdResizeFallbackFlashes=0;true")
     before = state()
     x, y, w, h = before["rect"]
     outside = len(sys.argv) > 3 and sys.argv[3] == "outside"
@@ -123,6 +137,9 @@ for name, fx, fy, dx, dy, action in [
     button(True)
     move(px + dx, py + dy)
     button(False)
+    if external_ssd:
+        flashes = evaluate("global.ssdResizeFallbackFlashes")
+        assert flashes == 0, f"built-in SSD became visible during external resize ({flashes} flashes)"
     after = state()["rect"]
     expected = [x + min(dx, 0), y + min(dy, 0), w + abs(dx), h + abs(dy)]
     ok = hover == action and after == expected and cursor_ok

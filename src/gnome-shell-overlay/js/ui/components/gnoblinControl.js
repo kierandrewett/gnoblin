@@ -493,7 +493,7 @@ const IFACE = `
     <method name="Ping">
       <arg type="s" direction="out" name="pong"/>
     </method>
-    <!-- Shell + protocol version string, e.g. "49.6-gnoblin". -->
+    <!-- Shell + protocol version string, e.g. "51.0-gnoblin". -->
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
     </method>

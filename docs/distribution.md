@@ -71,8 +71,33 @@ scripts/build-srpm.sh gnome-shell ./dist/sources ./dist/srpms
 Source RPM creation uses the prepared archives. It never downloads the
 unpatched upstream archives named by the Fedora specs.
 
+## GNOME major upgrades
+
+`gnome-versions.json` is the single source of truth for the GNOME release train.
+The weekly `Check for a new GNOME release` workflow fails when all four pinned
+upstream projects publish a newer stable major, making the new release visible
+in GitHub's workflow notifications.
+
+Start an upgrade with:
+
+```sh
+./scripts/gnome-versions.py update 52
+```
+
+This verifies each upstream `52.0` tag, records its exact commit, and updates
+the generated RPM, Nix, runtime API, and CI fields. Then rebase every patch
+stack onto the recorded commits, update the submodule gitlinks, and run:
+
+```sh
+just check-gnome-version
+just verify
+```
+
+Patch rebasing remains deliberate because upstream API changes need review;
+release discovery and version propagation are automated.
+
 Create a COPR project with a Fedora 44 chroot that supplies the GNOME 50
-runtime dependencies while building Gnoblin's private GNOME 49 stack. For
+runtime dependencies while building Gnoblin's private GNOME 51 stack. For
 example, use `fedora-44-x86_64`; confirm the
 chroot is still available in COPR before creating the project.
 

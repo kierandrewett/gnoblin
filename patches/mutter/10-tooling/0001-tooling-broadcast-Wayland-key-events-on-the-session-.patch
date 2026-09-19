@@ -1,4 +1,4 @@
-From 9040c5de44de852a667835ea8f96cabde39b4f72 Mon Sep 17 00:00:00 2001
+From 40995f80a2266ab23c89e831fad0b1dfc041c628 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 16 Jun 2026 22:15:50 +0100
 Subject: [PATCH] tooling: broadcast Wayland key events on the session bus
@@ -10,11 +10,11 @@ without /dev/input access.
 The session-bus lookup is deliberately asynchronous: this is on the compositor
 input path, so key delivery must never wait for D-Bus connection setup.
 ---
- src/wayland/meta-wayland-keyboard.c | 77 +++++++++++++++++++++++++++++
- 1 file changed, 77 insertions(+)
+ src/wayland/meta-wayland-keyboard.c | 71 +++++++++++++++++++++++++++++
+ 1 file changed, 71 insertions(+)
 
 diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
-index 149eb0a..51d236b 100644
+index 0b50eb6e3..7bb85a095 100644
 --- a/src/wayland/meta-wayland-keyboard.c
 +++ b/src/wayland/meta-wayland-keyboard.c
 @@ -56,6 +56,68 @@
@@ -86,7 +86,7 @@ index 149eb0a..51d236b 100644
  typedef struct
  {
    struct xkb_keymap *keymap;
-@@ -623,6 +685,15 @@ meta_wayland_keyboard_handle_event (MetaWaylandKeyboard   *keyboard,
+@@ -627,6 +689,15 @@ meta_wayland_keyboard_handle_event (MetaWaylandKeyboard   *keyboard,
        !(flags & CLUTTER_EVENT_FLAG_INPUT_METHOD))
      return FALSE;
  
@@ -103,5 +103,5 @@ index 149eb0a..51d236b 100644
                "Handling key %s event code %d",
                is_press ? "press" : "release",
 -- 
-2.53.0
+2.55.0
 

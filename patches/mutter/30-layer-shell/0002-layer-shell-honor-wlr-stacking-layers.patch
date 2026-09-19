@@ -1,4 +1,4 @@
-From 7080f548052c6dcaedb7832da234fb02bc49a50d Mon Sep 17 00:00:00 2001
+From 4ba3fdd99ab24bdb6b00ca0eb6fe3e0cce8b4c3f Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 17 Jun 2026 01:55:36 +0100
 Subject: [PATCH] layer-shell: honor wlr stacking layers
@@ -24,22 +24,22 @@ fullscreen, so a fullscreen window is not obscured by the panels. `overlay`
 stays above by design.
 ---
  src/wayland/meta-wayland-pointer.c | 33 +++++++++++++++++++++++++
- src/wayland/meta-window-wayland.c | 39 +++++++++++++++++++++++++++++
+ src/wayland/meta-window-wayland.c  | 39 ++++++++++++++++++++++++++++++
  2 files changed, 72 insertions(+)
 
 diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
-index 9a310e6..cb3ae09 100644
+index 409d31157..93e3348dd 100644
 --- a/src/wayland/meta-wayland-pointer.c
 +++ b/src/wayland/meta-wayland-pointer.c
-@@ -54,6 +54,7 @@
- #include "wayland/meta-cursor-sprite-wayland.h"
+@@ -58,6 +58,7 @@
+ #include "wayland/meta-cursor-wayland.h"
  #include "wayland/meta-wayland-buffer.h"
  #include "wayland/meta-wayland-cursor-surface.h"
 +#include "wayland/meta-wayland-layer-shell.h"
  #include "wayland/meta-wayland-data-device.h"
  #include "wayland/meta-wayland-pointer.h"
  #include "wayland/meta-wayland-popup.h"
-@@ -334,6 +335,36 @@ surface_get_effective_window (MetaWaylandSurface *surface)
+@@ -341,6 +342,36 @@ surface_get_effective_window (MetaWaylandSurface *surface)
    return meta_wayland_surface_get_window (toplevel);
  }
  
@@ -76,9 +76,9 @@ index 9a310e6..cb3ae09 100644
  static void
  sync_focus_surface (MetaWaylandPointer *pointer)
  {
-@@ -748,6 +779,8 @@ handle_button_event (MetaWaylandPointer *pointer,
-       clutter_event_get_coords (event, &pointer->grab_x, &pointer->grab_y);
-     }
+@@ -756,6 +787,8 @@ handle_button_event (MetaWaylandPointer *pointer,
+   if (implicit_grab)
+     clutter_event_get_coords (event, &pointer->grab_x, &pointer->grab_y);
  
 +  maybe_focus_layer_shell_on_button_press (pointer, event);
 +
@@ -86,7 +86,7 @@ index 9a310e6..cb3ae09 100644
  
    if (implicit_grab)
 diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
-index 18fb8e7..7f4bb45 100644
+index daa7162f7..b7aa2061f 100644
 --- a/src/wayland/meta-window-wayland.c
 +++ b/src/wayland/meta-window-wayland.c
 @@ -38,6 +38,7 @@
@@ -97,8 +97,8 @@ index 18fb8e7..7f4bb45 100644
  #include "wayland/meta-wayland-private.h"
  #include "wayland/meta-wayland-surface-private.h"
  #include "wayland/meta-wayland-toplevel-drag.h"
-@@ -221,6 +222,13 @@ meta_window_wayland_configure (MetaWindowWayland              *wl_window,
-     meta_wayland_window_configuration_ref (configuration);
+@@ -227,6 +228,13 @@ meta_window_wayland_configure (MetaWindowWayland              *wl_window,
+   meta_wayland_surface_queue_flush_frame_callbacks (wl_window->surface);
  }
  
 +static gboolean
@@ -111,7 +111,7 @@ index 18fb8e7..7f4bb45 100644
  static gboolean
  is_drag_resizing_window (MetaWindowDrag *window_drag,
                           MetaWindow     *window)
-@@ -247,6 +255,9 @@ surface_state_changed (MetaWindow *window)
+@@ -253,6 +261,9 @@ surface_state_changed (MetaWindow *window)
    if (window->unmanaging)
      return;
  
@@ -121,7 +121,7 @@ index 18fb8e7..7f4bb45 100644
    g_return_if_fail (last_sent_configuration);
  
    configuration =
-@@ -956,12 +967,20 @@ meta_window_wayland_shortcuts_inhibited (MetaWindow         *window,
+@@ -965,12 +976,20 @@ meta_window_wayland_shortcuts_inhibited (MetaWindow         *window,
  static gboolean
  meta_window_wayland_is_focusable (MetaWindow *window)
  {
@@ -142,7 +142,7 @@ index 18fb8e7..7f4bb45 100644
    return TRUE;
  }
  
-@@ -1165,6 +1184,26 @@ meta_window_wayland_save_rect (MetaWindow *window)
+@@ -1174,6 +1193,26 @@ meta_window_wayland_save_rect (MetaWindow *window)
  static MetaStackLayer
  meta_window_wayland_calculate_layer (MetaWindow *window)
  {
@@ -170,4 +170,5 @@ index 18fb8e7..7f4bb45 100644
  }
  
 -- 
-2.53.0
+2.55.0
+

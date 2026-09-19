@@ -4,16 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-declare -A tags=(
-    [mutter]=49.5
-    [gnome-shell]=49.6
-    [gnome-control-center]=49.6
-    [xdg-desktop-portal-gnome]=49.0
-)
+projects=(mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome)
 
-for project in "${!tags[@]}"; do
+for project in "${projects[@]}"; do
     subproject="$ROOT/subprojects/$project"
-    tag="${tags[$project]}"
+    tag="$($ROOT/scripts/gnome-versions.py get "$project" version)"
 
     [ -d "$subproject" ] || {
         echo "subproject $project is not initialised; run 'git submodule update --init --recursive'" >&2

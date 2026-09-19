@@ -1,4 +1,6 @@
+From efffd255af2bece246d435efb2fe00ab4c65e1f5 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] Preserve backdrop blur beside foreground alpha changes
 
 The neighbourhood maximum treated opaque icon details and separators as
@@ -6,10 +8,15 @@ the material opacity of adjacent translucent pixels. That suppressed blur
 in a one-pixel ring around foreground content. Only recover antialiased
 coverage beside the surface silhouette, using neighbours with matching
 straight colour. Keep interior material alpha independent of neighbours.
+---
+ src/shell-blur-effect.c | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
 
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 2e54a91..f346068 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -850,17 +850,30 @@
+@@ -850,17 +850,30 @@ paint_actor_mask (ShellBlurEffect *self,
                           "  }"
                           "}"
                           "float buffer_fade = in_fade ? 1.0 - uncovered : 1.0;"
@@ -44,3 +51,6 @@ straight colour. Keep interior material alpha independent of neighbours.
                           "float tint_alpha = min(local_alpha / max(buffer_fade, 0.00001), 1.0);"
                           "float coverage = clamp(material_alpha / max(max(local_alpha, mask_opacity * buffer_fade), 0.00001), 0.0, 1.0);"
                           /* Bingux shadows are translucent black. Test straight colour,
+-- 
+2.55.0
+

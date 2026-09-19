@@ -43,7 +43,7 @@ Sanity from a terminal in the session:
 
 ```sh
 gnoblinctl ping          # -> pong
-gnoblinctl version       # -> 49.6-gnoblin
+gnoblinctl version       # -> 51.0-gnoblin
 gnoblinctl feature list  # notifications, input-source-switcher
 ```
 

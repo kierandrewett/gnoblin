@@ -1,13 +1,40 @@
+From 2003ec261ab70e80f28ee805becbdca00ffaef2c Mon Sep 17 00:00:00 2001
 From: Kieran <kieran@drewett.dev>
-Subject: [PATCH] cursor: load Hyprcursor themes and support global launch feedback
+Date: Sat, 19 Sep 2026 22:00:26 +0100
+Subject: [PATCH] cursor: load Hyprcursor themes and support global launch
+ feedback
 
+---
+ config.h.meson                     |  1 +
+ meson.build                        |  7 ++++++
+ meson.options                      |  6 +++++
+ src/backends/meta-cursor-theme.c   |  6 +++++
+ src/backends/meta-cursor-tracker.c | 40 ++++++++++++++++++++++++++++++
+ src/backends/meta-cursor-xcursor.c | 15 +++++++++++
+ src/meson.build                    |  7 ++++++
+ src/meta/meta-cursor-tracker.h     |  7 ++++++
+ 8 files changed, 89 insertions(+)
+
+diff --git a/config.h.meson b/config.h.meson
+index 5e7e09b10..420e749b1 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -27,6 +27,7 @@
+ 
+ /* Have GL for rendering */
+ #mesondefine HAVE_GL
++#mesondefine HAVE_HYPRCURSOR
+ 
+ /* Have GLES 2.0 for rendering */
+ #mesondefine HAVE_GLES2
 diff --git a/meson.build b/meson.build
+index cdd13b683..6359dbf40 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -119,6 +119,12 @@
+@@ -116,6 +116,12 @@ subproject('gvdb')
+ 
+ m_dep = cc.find_library('m', required: true)
  graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
- glycin_dep = dependency('glycin-2', version: glycin_req)
- cairo_dep = dependency('cairo', version: cairo_req)
 +hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_option('hyprcursor'))
 +have_hyprcursor = hyprcursor_dep.found()
 +if have_hyprcursor
@@ -17,7 +44,7 @@ diff --git a/meson.build b/meson.build
  pixman_dep = dependency('pixman-1', version: pixman_req)
  gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas',
                                             version: gsettings_desktop_schemas_req)
-@@ -588,6 +594,7 @@
+@@ -536,6 +542,7 @@ cc.compiles('void main (void) { __builtin_ffsl (0); __builtin_popcountl (0); }')
  have_eventfd = cc.has_header('sys/eventfd.h')
  
  cdata = configuration_data()
@@ -26,6 +53,7 @@ diff --git a/meson.build b/meson.build
  cdata.set_quoted('VERSION', meson.project_version())
  cdata.set_quoted('PACKAGE_NAME', meson.project_name())
 diff --git a/meson.options b/meson.options
+index 4f8c0c9ba..a9ba38738 100644
 --- a/meson.options
 +++ b/meson.options
 @@ -1,3 +1,9 @@
@@ -38,121 +66,60 @@ diff --git a/meson.options b/meson.options
  option('opengl',
    type: 'boolean',
    value: true,
-diff --git a/config.h.meson b/config.h.meson
---- a/config.h.meson
-+++ b/config.h.meson
-@@ -35,6 +35,7 @@
+diff --git a/src/backends/meta-cursor-theme.c b/src/backends/meta-cursor-theme.c
+index 36431184d..6c7f88872 100644
+--- a/src/backends/meta-cursor-theme.c
++++ b/src/backends/meta-cursor-theme.c
+@@ -23,6 +23,9 @@
  
- /* Have GL for rendering */
- #mesondefine HAVE_GL
-+#mesondefine HAVE_HYPRCURSOR
- 
- /* Have GLES 2.0 for rendering */
- #mesondefine HAVE_GLES2
-diff --git a/src/meson.build b/src/meson.build
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -11,6 +11,9 @@
- mutter_lib_deps = [
-   m_dep,
- ]
-+if have_hyprcursor
-+  mutter_lib_deps += hyprcursor_dep
-+endif
- 
- mutter_pkg_deps = [
-   cairo_dep,
-@@ -401,6 +404,10 @@
-   'core/workspace-private.h',
- ]
- 
-+if have_hyprcursor
-+  mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
-+endif
-+
- if have_x11
-   mutter_sources += [
-     'backends/x11/cm/meta-backend-x11-cm.c',
-diff --git a/src/backends/meta-cursor-sprite-xcursor.c b/src/backends/meta-cursor-sprite-xcursor.c
---- a/src/backends/meta-cursor-sprite-xcursor.c
-+++ b/src/backends/meta-cursor-sprite-xcursor.c
-@@ -19,6 +19,9 @@
- #include "config.h"
- 
- #include "backends/meta-cursor-sprite-xcursor.h"
+ #include "backends/meta-backend-private.h"
+ #include "backends/meta-cursor-xcursor.h"
 +#ifdef HAVE_HYPRCURSOR
 +#include "backends/gnoblin-hyprcursor.h"
 +#endif
  
- #include "backends/meta-backend-private.h"
- #include "backends/meta-cursor.h"
-@@ -107,6 +110,9 @@
-   GHashTable *cache = ensure_cache (sprite_xcursor);
- 
-   g_hash_table_remove_all (cache);
+ enum
+ {
+@@ -173,5 +176,8 @@ meta_cursor_theme_get_cursor (MetaCursorTheme   *cursor_theme,
+ void
+ meta_cursor_theme_reset (MetaCursorTheme *cursor_theme)
+ {
 +#ifdef HAVE_HYPRCURSOR
 +  gnoblin_hyprcursor_invalidate ();
 +#endif
+   g_hash_table_remove_all (cursor_theme->cursors);
  }
- 
- const char *
-@@ -316,6 +322,17 @@
-   cursor_names[0] = meta_cursor_get_name (cursor);
-   cursor_names[1] = meta_cursor_get_legacy_name (cursor);
- 
-+#ifdef HAVE_HYPRCURSOR
-+  for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
-+    {
-+      xcursor_images = gnoblin_hyprcursor_load (meta_prefs_get_cursor_theme (),
-+                                               cursor_names[i],
-+                                               meta_prefs_get_cursor_size () * scale);
-+      if (xcursor_images)
-+        return xcursor_images;
-+    }
-+#endif
-+
-   for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
-     {
-       xcursor_images =
 diff --git a/src/backends/meta-cursor-tracker.c b/src/backends/meta-cursor-tracker.c
+index 8d8432f36..bdc6aaf8d 100644
 --- a/src/backends/meta-cursor-tracker.c
 +++ b/src/backends/meta-cursor-tracker.c
-@@ -39,6 +39,7 @@
- #include "clutter/clutter.h"
- #include "meta/main.h"
- #include "meta/util.h"
-+#include "backends/meta-cursor-sprite-xcursor.h"
+@@ -58,6 +58,7 @@ typedef struct _MetaCursorTrackerPrivate
+   MetaBackend *backend;
  
- enum
- {
-@@ -76,6 +77,7 @@
-   MetaCursorSprite *window_cursor;
+   ClutterCursor *current_cursor;
++  ClutterCursor *gnoblin_launch_cursor;
  
-   MetaCursorSprite *root_cursor;
-+  MetaCursorSprite *gnoblin_launch_cursor;
- } MetaCursorTrackerPrivate;
+   int cursor_visibility_inhibitors;
  
- G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorTracker, meta_cursor_tracker,
-@@ -114,7 +116,9 @@
-   MetaDisplay *display = meta_context_get_display (context);
-   MetaCursorSprite *cursor = NULL;
+@@ -163,6 +164,9 @@ meta_cursor_tracker_real_get_sprite (MetaCursorTracker *tracker)
+     meta_backend_get_clutter_backend (backend);
+   ClutterSeat *seat = clutter_backend_get_default_seat (clutter_backend);
  
--  if (display && !meta_display_is_grabbed (display) && priv->has_window_cursor)
 +  if (priv->gnoblin_launch_cursor)
-+    cursor = priv->gnoblin_launch_cursor;
-+  else if (display && !meta_display_is_grabbed (display) && priv->has_window_cursor)
-     cursor = priv->window_cursor;
-   else
-     cursor = priv->root_cursor;
-@@ -289,6 +293,7 @@
-   g_clear_object (&priv->displayed_cursor);
-   g_clear_object (&priv->window_cursor);
-   g_clear_object (&priv->root_cursor);
-+  g_clear_object (&priv->gnoblin_launch_cursor);
++    return priv->gnoblin_launch_cursor;
++
+   if (!clutter_seat_is_unfocus_inhibited (seat))
+     return NULL;
  
-   G_OBJECT_CLASS (meta_cursor_tracker_parent_class)->dispose (object);
- }
-@@ -607,3 +612,38 @@
+@@ -242,6 +246,7 @@ meta_cursor_tracker_finalize (GObject *object)
+     meta_cursor_tracker_get_instance_private (tracker);
+ 
+   g_clear_object (&priv->current_cursor);
++  g_clear_object (&priv->gnoblin_launch_cursor);
+   meta_prefs_remove_listener (on_prefs_changed, tracker);
+ 
+   G_OBJECT_CLASS (meta_cursor_tracker_parent_class)->finalize (object);
+@@ -465,3 +470,38 @@ meta_cursor_tracker_get_backend (MetaCursorTracker *tracker)
  
    return priv->backend;
  }
@@ -175,12 +142,12 @@ diff --git a/src/backends/meta-cursor-tracker.c b/src/backends/meta-cursor-track
 +    return;
 +
 +  if (active && !priv->gnoblin_launch_cursor)
-+    priv->gnoblin_launch_cursor = META_CURSOR_SPRITE (
-+      meta_cursor_sprite_xcursor_new (META_CURSOR_WAIT, tracker));
++    priv->gnoblin_launch_cursor =
++      meta_backend_get_cursor (priv->backend, CLUTTER_CURSOR_WAIT);
 +  else if (!active)
 +    g_clear_object (&priv->gnoblin_launch_cursor);
 +
-+  sync_cursor (tracker);
++  meta_cursor_tracker_notify_cursor_changed (tracker);
 +}
 +
 +gboolean
@@ -191,10 +158,69 @@ diff --git a/src/backends/meta-cursor-tracker.c b/src/backends/meta-cursor-track
 +
 +  return priv->gnoblin_launch_cursor != NULL;
 +}
+diff --git a/src/backends/meta-cursor-xcursor.c b/src/backends/meta-cursor-xcursor.c
+index 2f0acfc69..70783fe3e 100644
+--- a/src/backends/meta-cursor-xcursor.c
++++ b/src/backends/meta-cursor-xcursor.c
+@@ -19,6 +19,9 @@
+ #include "config.h"
+ 
+ #include "backends/meta-cursor-xcursor.h"
++#ifdef HAVE_HYPRCURSOR
++#include "backends/gnoblin-hyprcursor.h"
++#endif
+ 
+ #include "backends/meta-backend-private.h"
+ #include "backends/meta-logical-monitor-private.h"
+@@ -179,6 +182,18 @@ load_cursor_on_client (MetaCursorXcursor *cursor_xcursor,
+   cursor_names[0] = clutter_cursor_type_to_name (cursor);
+   cursor_names[1] = meta_cursor_get_legacy_name (cursor);
+ 
++#ifdef HAVE_HYPRCURSOR
++  for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
++    {
++      xcursor_images =
++        gnoblin_hyprcursor_load (meta_cursor_get_theme_name (meta_cursor),
++                                 cursor_names[i],
++                                 meta_cursor_get_size (meta_cursor) * scale);
++      if (xcursor_images)
++        return xcursor_images;
++    }
++#endif
++
+   for (i = 0; i < G_N_ELEMENTS (cursor_names); i++)
+     {
+       xcursor_images =
+diff --git a/src/meson.build b/src/meson.build
+index 2960cc433..cfc4bebdb 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -11,6 +11,9 @@ mutter_includes = [
+ mutter_lib_deps = [
+   m_dep,
+ ]
++if have_hyprcursor
++  mutter_lib_deps += hyprcursor_dep
++endif
+ 
+ mutter_pkg_deps = [
+   gio_unix_dep,
+@@ -372,6 +375,10 @@ mutter_sources = [
+   'core/workspace-private.h',
+ ]
+ 
++if have_hyprcursor
++  mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
++endif
++
+ if have_xwayland
+   mutter_sources += [
+     'compositor/meta-window-actor-x11.c',
 diff --git a/src/meta/meta-cursor-tracker.h b/src/meta/meta-cursor-tracker.h
+index 60c16f5d6..bdd5b944f 100644
 --- a/src/meta/meta-cursor-tracker.h
 +++ b/src/meta/meta-cursor-tracker.h
-@@ -60,3 +60,10 @@
+@@ -60,3 +60,10 @@ void           meta_cursor_tracker_inhibit_cursor_visibility (MetaCursorTracker
  
  META_EXPORT
  void           meta_cursor_tracker_uninhibit_cursor_visibility (MetaCursorTracker *tracker);
@@ -205,3 +231,6 @@ diff --git a/src/meta/meta-cursor-tracker.h b/src/meta/meta-cursor-tracker.h
 +
 +META_EXPORT
 +gboolean meta_cursor_tracker_get_gnoblin_launch_cursor (MetaCursorTracker *tracker);
+-- 
+2.55.0
+

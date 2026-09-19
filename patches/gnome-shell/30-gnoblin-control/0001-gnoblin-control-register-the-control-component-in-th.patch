@@ -1,4 +1,4 @@
-From acb7ac4bbc4ebb40a644ba28fda805763f1944e9 Mon Sep 17 00:00:00 2001
+From a6c2ccff2ffc8394308bd7e2959e7d8b435ccc4a Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 3 Jul 2026 01:31:45 +0100
 Subject: [PATCH] gnoblin-control: register the control component in the JS
@@ -14,10 +14,10 @@ line is the only upstream edit.
  1 file changed, 1 insertion(+)
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
-index e5e6167..c3806c4 100644
+index 9b9253b..cb00d3a 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -134,6 +134,7 @@
+@@ -145,6 +145,7 @@
      <file>ui/components.js</file>
      <file>ui/components/automountManager.js</file>
      <file>ui/components/autorunManager.js</file>
@@ -26,5 +26,5 @@ index e5e6167..c3806c4 100644
      <file>ui/components/networkAgent.js</file>
      <file>ui/components/polkitAgent.js</file>
 -- 
-2.53.0
+2.55.0
 

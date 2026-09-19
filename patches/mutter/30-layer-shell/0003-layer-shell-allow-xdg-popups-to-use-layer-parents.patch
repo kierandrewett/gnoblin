@@ -1,4 +1,4 @@
-From 12a34bc801d3f50d69358b8ba4b3a5dd81c51789 Mon Sep 17 00:00:00 2001
+From 64816478ca434470737e4f119668d57e46c6bffe Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 16 Jun 2026 23:21:19 +0100
 Subject: [PATCH] layer-shell: allow xdg popups to use layer parents
@@ -10,10 +10,10 @@ Allow xdg_surface.get_popup(NULL) so protocols such as wlr-layer-shell can assig
  2 files changed, 44 insertions(+), 23 deletions(-)
 
 diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
-index 2427231..1fdb638 100644
+index f191021c9..88d28b8c7 100644
 --- a/src/wayland/meta-wayland-xdg-shell.c
 +++ b/src/wayland/meta-wayland-xdg-shell.c
-@@ -2300,37 +2300,35 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
+@@ -2321,37 +2321,35 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
    struct wl_resource *xdg_wm_base_resource = constructor->shell_client->resource;
    struct wl_resource *xdg_surface_resource = constructor->resource;
    MetaWaylandSurface *parent_surface;
@@ -72,7 +72,7 @@ index 2427231..1fdb638 100644
      }
  
    if (!meta_wayland_surface_assign_role (surface,
-@@ -2366,6 +2364,26 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
+@@ -2387,6 +2385,26 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
    meta_wayland_xdg_surface_reset (xdg_surface);
  }
  
@@ -100,7 +100,7 @@ index 2427231..1fdb638 100644
  xdg_surface_constructor_set_window_geometry (struct wl_client   *client,
                                               struct wl_resource *resource,
 diff --git a/src/wayland/meta-wayland-xdg-shell.h b/src/wayland/meta-wayland-xdg-shell.h
-index b06bbb2..9dcca67 100644
+index b06bbb209..9dcca678b 100644
 --- a/src/wayland/meta-wayland-xdg-shell.h
 +++ b/src/wayland/meta-wayland-xdg-shell.h
 @@ -53,3 +53,6 @@ void meta_wayland_xdg_toplevel_set_hint_restored (MetaWaylandXdgToplevel *xdg_to
@@ -111,5 +111,5 @@ index b06bbb2..9dcca67 100644
 +gboolean meta_wayland_xdg_popup_set_parent_surface (struct wl_resource  *popup_resource,
 +                                                    MetaWaylandSurface  *parent_surface);
 -- 
-2.53.0
+2.55.0
 

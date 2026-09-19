@@ -1,14 +1,27 @@
+From 8e9975d367d1f35a49d806cb7650ae169ade68fb Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:55:24 +0100
 Subject: [PATCH] shell: remove native desktop popups from Gnoblin
 
 Keep window, capture and desktop recovery services while external chrome owns desktop controls.
 OSD requests use the existing transport without allocating native widgets.
 Stock GNOME retains its UI.
+---
+ js/ui/main.js                | 15 ++++++++++++---
+ js/ui/osdMonitorLabeler.js   |  3 +++
+ js/ui/osdWindow.js           | 17 ++++++++++++++---
+ js/ui/padOsd.js              | 29 ++---------------------------
+ js/ui/screenshot.js          | 12 ++++++++++++
+ js/ui/status/remoteAccess.js |  9 ++++++---
+ js/ui/status/system.js       |  6 ++++--
+ js/ui/windowManager.js       |  2 +-
+ 8 files changed, 54 insertions(+), 39 deletions(-)
 
 diff --git a/js/ui/main.js b/js/ui/main.js
+index c7e2862..c44f75d 100644
 --- a/js/ui/main.js
 +++ b/js/ui/main.js
-@@ -244,7 +244,8 @@
+@@ -242,7 +242,8 @@ async function _initializeUI() {
      global.connect('shutdown',
          () => global.stage.context.get_backend().set_input_method(null));
  
@@ -16,9 +29,9 @@ diff --git a/js/ui/main.js b/js/ui/main.js
 +    if (global.session_mode !== 'gnoblin')
 +        screenshotUI = new Screenshot.ScreenshotUI();
  
-     messageTray = new MessageTray.MessageTray();
-     panel = new Panel.Panel();
-@@ -259,8 +260,10 @@
+     brightnessManager = new BrightnessManager.BrightnessManager();
+     brightnessDBus = new ShellDBus.BrightnessDBus(brightnessManager);
+@@ -260,8 +261,10 @@ async function _initializeUI() {
      breakManager = new BreakManager.BreakManager();
      timeLimitsManager = new TimeLimitsManager.TimeLimitsManager();
      screenTimeDBus = new ShellDBus.ScreenTimeDBus(breakManager);
@@ -29,9 +42,9 @@ diff --git a/js/ui/main.js b/js/ui/main.js
 +        timeLimitsDispatcher = new TimeLimitsManager.TimeLimitsDispatcher(timeLimitsManager);
 +    }
  
-     brightnessManager = new BrightnessManager.BrightnessManager();
-     brightnessDBus = new ShellDBus.BrightnessDBus(brightnessManager);
-@@ -829,6 +832,9 @@
+     global.connect('shutdown', () => {
+         // Block shutdown until the session history file has been written
+@@ -818,6 +821,9 @@ export function createLookingGlass() {
   * Opens the run dialog
   */
  export function openRunDialog() {
@@ -41,7 +54,7 @@ diff --git a/js/ui/main.js b/js/ui/main.js
      if (runDialog == null)
          runDialog = new RunDialog.RunDialog();
  
-@@ -836,6 +842,9 @@
+@@ -825,6 +831,9 @@ export function openRunDialog() {
  }
  
  export function openWelcomeDialog() {
@@ -52,9 +65,10 @@ diff --git a/js/ui/main.js b/js/ui/main.js
          welcomeDialog = new WelcomeDialog.WelcomeDialog();
  
 diff --git a/js/ui/osdMonitorLabeler.js b/js/ui/osdMonitorLabeler.js
+index f27d06c..89f51ac 100644
 --- a/js/ui/osdMonitorLabeler.js
 +++ b/js/ui/osdMonitorLabeler.js
-@@ -92,6 +92,9 @@
+@@ -92,6 +92,9 @@ export class OsdMonitorLabeler {
      }
  
      show(client, params) {
@@ -65,9 +79,10 @@ diff --git a/js/ui/osdMonitorLabeler.js b/js/ui/osdMonitorLabeler.js
              return;
  
 diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
+index 47c840a..dd9f8fd 100644
 --- a/js/ui/osdWindow.js
 +++ b/js/ui/osdWindow.js
-@@ -144,12 +144,19 @@
+@@ -143,12 +143,19 @@ class OsdWindow extends Clutter.Actor {
  export class OsdWindowManager {
      constructor() {
          this._osdWindows = [];
@@ -87,7 +102,7 @@ diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
          for (let i = 0; i < Main.layoutManager.monitors.length; i++) {
              if (this._osdWindows[i] === undefined)
                  this._osdWindows[i] = new OsdWindow(i);
-@@ -164,6 +171,10 @@
+@@ -163,6 +170,10 @@ export class OsdWindowManager {
      }
  
      _showOsdWindow(monitorIndex, icon, label, level, maxLevel) {
@@ -98,7 +113,7 @@ diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
          this._osdWindows[monitorIndex].setIcon(icon);
          this._osdWindows[monitorIndex].setLabel(label);
          this._osdWindows[monitorIndex].setMaxLevel(maxLevel);
-@@ -172,12 +183,12 @@
+@@ -171,12 +182,12 @@ export class OsdWindowManager {
      }
  
      show(icon, label, levels) {
@@ -113,7 +128,7 @@ diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
              }
          }
      }
-@@ -189,7 +200,7 @@
+@@ -188,7 +199,7 @@ export class OsdWindowManager {
      }
  
      showAll(icon, label, level, maxLevel) {
@@ -123,9 +138,10 @@ diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
      }
  
 diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
+index 6e9abbe..e9173d9 100644
 --- a/js/ui/padOsd.js
 +++ b/js/ui/padOsd.js
-@@ -19,34 +19,9 @@
+@@ -19,34 +19,9 @@ import {loadInterfaceXML} from '../misc/fileUtils.js';
  
  const ACTIVE_COLOR = 'st-lighten(-st-accent-color, 15%)';
  
@@ -163,9 +179,10 @@ diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
  
  const LTR = 0;
 diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
+index 02560b9..709316d 100644
 --- a/js/ui/screenshot.js
 +++ b/js/ui/screenshot.js
-@@ -2424,6 +2424,9 @@
+@@ -2825,6 +2825,9 @@ export async function captureScreenshot(texture, geometry, scale, cursor) {
   * Shows the screenshot UI.
   */
  export function showScreenshotUI() {
@@ -175,7 +192,7 @@ diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
      Main.screenshotUI.open().catch(err => {
          logError(err, 'Error opening the screenshot UI');
      });
-@@ -2433,6 +2436,9 @@
+@@ -2834,6 +2837,9 @@ export function showScreenshotUI() {
   * Shows the screen recording UI.
   */
  export function showScreenRecordingUI() {
@@ -185,7 +202,7 @@ diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
      Main.screenshotUI.open(UIMode.SCREENCAST).catch(err => {
          logError(err, 'Error opening the screenshot UI');
      });
-@@ -2685,6 +2691,12 @@
+@@ -3087,6 +3093,12 @@ export class ScreenshotService {
      }
  
      async InteractiveScreenshotAsync(params, invocation) {
@@ -199,9 +216,10 @@ diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
              await this._senderChecker.checkInvocation(invocation);
          } catch (e) {
 diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
+index 3bcdcbb..4b45257 100644
 --- a/js/ui/status/remoteAccess.js
 +++ b/js/ui/status/remoteAccess.js
-@@ -37,7 +37,7 @@
+@@ -36,7 +36,7 @@ class RemoteAccessApplet extends SystemIndicator {
      _isRecording() {
          // Screenshot UI screencasts have their own panel, so don't show this
          // indicator if there's only a screenshot UI screencast.
@@ -210,7 +228,7 @@ diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
              return this._handles.size > 1;
  
          return this._handles.size > 0;
-@@ -89,7 +89,7 @@
+@@ -88,14 +88,14 @@ export const ScreenRecordingIndicator = GObject.registerClass({
          this._box.add_child(this._icon);
  
          this.hide();
@@ -218,17 +236,16 @@ diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
 +        Main.screenshotUI?.connect(
              'notify::screencast-in-progress',
              this._onScreencastInProgressChanged.bind(this));
-     }
-@@ -97,7 +97,7 @@
-     vfunc_event(event) {
-         if (event.type() === Clutter.EventType.TOUCH_BEGIN ||
-             event.type() === Clutter.EventType.BUTTON_PRESS)
--            Main.screenshotUI.stopScreencast();
-+            Main.screenshotUI?.stopScreencast();
  
-         return Clutter.EVENT_PROPAGATE;
+         this._clickGesture = new Clutter.ClickGesture();
+         this._clickGesture.set_recognize_on_press(true);
+         this._clickGesture.connect(
+-            'recognize', () => Main.screenshotUI.stopScreencast());
++            'recognize', () => Main.screenshotUI?.stopScreencast());
+         this.add_action(this._clickGesture);
      }
-@@ -109,6 +109,9 @@
+ 
+@@ -106,6 +106,9 @@ export const ScreenRecordingIndicator = GObject.registerClass({
      }
  
      _onScreencastInProgressChanged() {
@@ -238,22 +255,11 @@ diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
          if (Main.screenshotUI.screencast_in_progress) {
              this.show();
  
-diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
---- a/js/ui/windowManager.js
-+++ b/js/ui/windowManager.js
-@@ -1843,7 +1843,7 @@
-         else
-             this.actionMoveWindow(window, newWs);
- 
--        if (!Main.overview.visible) {
-+        if (global.session_mode !== 'gnoblin' && !Main.overview.visible) {
-             if (this._workspaceSwitcherPopup == null) {
-                 this._workspaceTracker.blockUpdates();
-                 this._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
 diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+index 64d2a5e..cbd8848 100644
 --- a/js/ui/status/system.js
 +++ b/js/ui/status/system.js
-@@ -279,8 +279,10 @@
+@@ -278,8 +278,10 @@ class SystemItem extends QuickSettingsItem {
              GObject.BindingFlags.SYNC_CREATE);
          this.child.add_child(this._laptopSpacer);
  
@@ -266,3 +272,19 @@ diff --git a/js/ui/status/system.js b/js/ui/status/system.js
  
          const settingsItem = new SettingsItem();
          this.child.add_child(settingsItem);
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 3c8eb9e..6296da4 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1899,7 +1899,7 @@ export class WindowManager {
+         else
+             this.actionMoveWindow(window, newWs);
+ 
+-        if (!Main.overview.visible) {
++        if (global.session_mode !== 'gnoblin' && !Main.overview.visible) {
+             if (this._workspaceSwitcherPopup == null) {
+                 this.blockWorkspaceUpdates();
+                 this._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
+-- 
+2.55.0
+

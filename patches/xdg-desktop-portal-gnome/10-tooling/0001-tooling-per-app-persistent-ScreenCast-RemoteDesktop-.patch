@@ -1,8 +1,7 @@
-From b5186cad9f79425cda2f7c4d5ce7869548bd9c4a Mon Sep 17 00:00:00 2001
+From 2ccc7cd2e257e9d1c0fc41293481abe050320770 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 3 Jul 2026 09:28:51 +0100
-Subject: [PATCH 1/2] tooling: per-app persistent ScreenCast/RemoteDesktop
- grants
+Subject: [PATCH] tooling: per-app persistent ScreenCast/RemoteDesktop grants
 
 Replace the blanket GNOBLIN_PORTAL_AUTOGRANT bypass with a macOS-style,
 per-app persistent grant store that gnoblin owns.
@@ -46,7 +45,7 @@ Nothing is ever granted unconditionally.
  13 files changed, 393 insertions(+)
 
 diff --git a/src/remotedesktop.c b/src/remotedesktop.c
-index ad466a3..2a415c9 100644
+index e581abd..6b75731 100644
 --- a/src/remotedesktop.c
 +++ b/src/remotedesktop.c
 @@ -93,6 +93,10 @@ typedef struct _RemoteDesktopSession
@@ -60,7 +59,7 @@ index ad466a3..2a415c9 100644
  } RemoteDesktopSession;
  
  typedef struct _RemoteDesktopSessionClass
-@@ -258,6 +262,11 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+@@ -226,6 +230,11 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
      {
        g_autoptr(GError) error = NULL;
  
@@ -72,7 +71,7 @@ index ad466a3..2a415c9 100644
        if (!start_session (dialog_handle->session,
                            device_types,
                            streams,
-@@ -816,10 +825,65 @@ handle_start (XdpImplRemoteDesktop *object,
+@@ -779,10 +788,65 @@ handle_start (XdpImplRemoteDesktop *object,
  
    remote_desktop_session->start_invocation = invocation;
  
@@ -138,16 +137,16 @@ index ad466a3..2a415c9 100644
        dialog_handle = create_remote_desktop_dialog (remote_desktop_session,
                                                      invocation,
                                                      request,
-@@ -1316,6 +1380,7 @@ remote_desktop_session_finalize (GObject *object)
-   g_clear_pointer (&remote_desktop_session->streams_to_restore,
+@@ -1298,6 +1362,7 @@ remote_desktop_session_finalize (GObject *object)
                     g_ptr_array_unref);
    g_clear_pointer (&remote_desktop_session->restored.data, g_variant_unref);
+   g_clear_object (&remote_desktop_session->clipboard.clipboard_proxy);
 +  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
    g_free (remote_desktop_session->mutter_session_path);
  
    G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
 diff --git a/src/remotedesktopdialog.c b/src/remotedesktopdialog.c
-index 0466ae2..e757b97 100644
+index 9bb5e4b..6ca55c0 100644
 --- a/src/remotedesktopdialog.c
 +++ b/src/remotedesktopdialog.c
 @@ -33,6 +33,7 @@ struct _RemoteDesktopDialog
@@ -212,7 +211,7 @@ index d2051e1..6b2cb10 100644
                        <object class="GtkListBox">
                          <property name="valign">start</property>
 diff --git a/src/screencast.c b/src/screencast.c
-index 832a455..305cb82 100644
+index be9354f..050698d 100644
 --- a/src/screencast.c
 +++ b/src/screencast.c
 @@ -65,6 +65,10 @@ typedef struct _ScreenCastSession
@@ -226,7 +225,7 @@ index 832a455..305cb82 100644
  } ScreenCastSession;
  
  typedef struct _ScreenCastSessionClass
-@@ -339,6 +343,11 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
+@@ -341,6 +345,11 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
        ScreenCastSession *screen_cast_session = dialog_handle->session;
        g_autoptr(GError) error = NULL;
  
@@ -238,7 +237,7 @@ index 832a455..305cb82 100644
        screen_cast_session->persist_mode = MIN (screen_cast_session->persist_mode,
                                                 persist_mode);
  
-@@ -593,6 +602,47 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
+@@ -595,6 +604,47 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
    return streams->len > 0 ? g_steal_pointer (&streams) : NULL;
  }
  
@@ -286,7 +285,7 @@ index 832a455..305cb82 100644
  static gboolean
  restore_stream_from_data (ScreenCastSession *screen_cast_session)
  {
-@@ -664,10 +714,45 @@ handle_start (XdpImplScreenCast     *object,
+@@ -666,10 +716,45 @@ handle_start (XdpImplScreenCast     *object,
  
    screen_cast_session->start_invocation = invocation;
  
@@ -332,7 +331,7 @@ index 832a455..305cb82 100644
        dialog_handle = create_screen_cast_dialog (screen_cast_session,
                                                   invocation,
                                                   request,
-@@ -927,6 +1012,7 @@ screen_cast_session_finalize (GObject *object)
+@@ -929,6 +1014,7 @@ screen_cast_session_finalize (GObject *object)
  
    g_clear_pointer (&screen_cast_session->streams_to_restore, g_ptr_array_unref);
    g_clear_pointer (&screen_cast_session->restored.data, g_variant_unref);
@@ -356,7 +355,7 @@ index ae2beec..d0d8052 100644
 + * logical monitor is returned (matching the dialog's single-selection rule). */
 +GPtrArray * screen_cast_select_all_monitors (ScreenCastSelection *selection);
 diff --git a/src/screencastdialog.c b/src/screencastdialog.c
-index f523406..baddf38 100644
+index 2ffcc82..45fa9bf 100644
 --- a/src/screencastdialog.c
 +++ b/src/screencastdialog.c
 @@ -158,6 +158,17 @@ screen_cast_dialog_new (const char            *app_id,
@@ -389,7 +388,7 @@ index f349814..7ec4834 100644
 +/* gnoblin: TRUE if the user ticked "Always allow this app". */
 +gboolean screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog);
 diff --git a/src/screencastwidget.c b/src/screencastwidget.c
-index 46e20b7..e939bcf 100644
+index f3d18b8..56afae2 100644
 --- a/src/screencastwidget.c
 +++ b/src/screencastwidget.c
 @@ -56,6 +56,8 @@ struct _ScreenCastWidget
@@ -401,7 +400,7 @@ index 46e20b7..e939bcf 100644
    DisplayStateTracker   *display_state_tracker;
    ulong                  monitors_changed_handler_id;
  
-@@ -524,6 +526,7 @@ screen_cast_widget_class_init (ScreenCastWidgetClass *klass)
+@@ -520,6 +522,7 @@ screen_cast_widget_class_init (ScreenCastWidgetClass *klass)
  
    gtk_widget_class_set_template_from_resource (widget_class, "/org/freedesktop/portal/desktop/gnome/screencastwidget.ui");
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, persist_check);
@@ -409,7 +408,7 @@ index 46e20b7..e939bcf 100644
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type_switcher);
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type);
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, window_selection_page);
-@@ -761,3 +764,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
+@@ -757,3 +760,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
  
    return screen_cast_widget->persist_mode;
  }
@@ -653,5 +652,5 @@ index 3b73d68..64010e5 100644
 +/* Persist a grant for grant_id (creating the store dir). No-op on NULL/empty. */
 +void gnoblin_portal_store_grant (const char *grant_id);
 -- 
-2.53.0
+2.55.0
 

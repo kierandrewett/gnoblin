@@ -1,124 +1,94 @@
-From b76e652a22bc23b04148c364d897ec06a4fdcba2 Mon Sep 17 00:00:00 2001
+From 212f2c5f4a3e33afccc901928a1959d383bf622f Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
 Date: Sun, 13 Sep 2026 03:04:43 +0100
 Subject: [PATCH] Contain outside click while search is open
 
 ---
- src/core/events.c       | 27 +++++++++++++-----
- src/core/util-private.h |  4 +++
- src/core/util.c         | 61 +++++++++++++++++++++++++++++++++++++++++
+ src/core/events.c       | 18 ++++++++++++--
+ src/core/util-private.h |  5 ++++
+ src/core/util.c         | 55 +++++++++++++++++++++++++++++++++++++++++
  src/meta/util.h         |  4 +++
- 4 files changed, 89 insertions(+), 7 deletions(-)
+ 4 files changed, 80 insertions(+), 2 deletions(-)
 
 diff --git a/src/core/events.c b/src/core/events.c
-index 567abead3d91e89a376e5050675a21fdb8d9ce20..556fd72b3c69f001d820aa0c72d86b6ccf8b00f1 100644
+index f90f5ba51..2a512fe81 100644
 --- a/src/core/events.c
 +++ b/src/core/events.c
-@@ -32,6 +32,7 @@
+@@ -31,6 +31,7 @@
+ #include "compositor/compositor-private.h"
  #include "compositor/meta-window-actor-private.h"
  #include "core/display-private.h"
- #include "core/window-private.h"
 +#include "core/util-private.h"
+ #include "core/window-private.h"
  #include "meta/meta-backend.h"
- 
- #ifdef HAVE_NATIVE_BACKEND
-@@ -174,6 +175,7 @@ meta_display_handle_event (MetaDisplay        *display,
-   ClutterSeat *seat;
+ #include "wayland/meta-wayland-private.h"
+@@ -127,6 +128,7 @@ meta_display_handle_event (MetaDisplay        *display,
+   ClutterEventType event_type;
    gboolean has_grab;
    gboolean a11y_grabbed;
 +  gboolean fullscreen_return_guarded = FALSE;
    MetaTabletActionMapper *mapper;
-   MetaEventMode mode_hint;
- #ifdef HAVE_WAYLAND
-@@ -235,13 +237,21 @@ meta_display_handle_event (MetaDisplay        *display,
-         }
-     }
+   MetaWaylandCompositor *wayland_compositor;
+   MetaWaylandTextInput *wayland_text_input = NULL;
+@@ -174,7 +176,17 @@ meta_display_handle_event (MetaDisplay        *display,
+   source_device = clutter_event_get_source_device (event);
+   clutter_seat_a11y_update (seat, event);
  
 +  window = get_window_for_event (display, event, event_actor);
-+  if (event_type == CLUTTER_BUTTON_PRESS || event_type == CLUTTER_BUTTON_RELEASE)
++  if (event_type == CLUTTER_BUTTON_PRESS ||
++      event_type == CLUTTER_BUTTON_RELEASE)
 +    fullscreen_return_guarded =
-+      meta_gnoblin_consume_fullscreen_return_event (display, window,
-+                                                    event_type == CLUTTER_BUTTON_PRESS,
-+                                                    clutter_event_get_button (event));
++      meta_gnoblin_consume_fullscreen_return_event (
++        display, window,
++        event_type == CLUTTER_BUTTON_PRESS,
++        clutter_event_get_button (event));
 +
- #ifdef HAVE_WAYLAND
    if (wayland_text_input &&
 +      !fullscreen_return_guarded &&
        !meta_compositor_get_current_window_drag (compositor) &&
        meta_wayland_text_input_update (wayland_text_input, event))
      return CLUTTER_EVENT_STOP;
+@@ -183,7 +195,8 @@ meta_display_handle_event (MetaDisplay        *display,
+       !clutter_event_get_device_tool (event))
+     meta_display_handle_sticky_mouse_focus_event (display, event);
  
--  if (wayland_compositor)
-+  if (wayland_compositor && !fullscreen_return_guarded)
-     meta_wayland_compositor_update (wayland_compositor, event);
- #endif
+-  meta_wayland_compositor_update (wayland_compositor, event);
++  if (!fullscreen_return_guarded)
++    meta_wayland_compositor_update (wayland_compositor, event);
  
-@@ -306,9 +316,7 @@ meta_display_handle_event (MetaDisplay        *display,
-       meta_cursor_tracker_invalidate_position (cursor_tracker);
+   if (event_type == CLUTTER_PAD_BUTTON_PRESS ||
+       event_type == CLUTTER_PAD_BUTTON_RELEASE ||
+@@ -238,7 +251,8 @@ meta_display_handle_event (MetaDisplay        *display,
+       meta_tablet_action_mapper_handle_event (mapper, event);
      }
  
 -  window = get_window_for_event (display, event, event_actor);
--
--  if (window && !window->override_redirect &&
-+  if (window && !fullscreen_return_guarded && !window->override_redirect &&
-       (event_type == CLUTTER_KEY_PRESS ||
-        event_type == CLUTTER_BUTTON_PRESS ||
-        event_type == CLUTTER_TOUCH_BEGIN))
-@@ -332,7 +340,8 @@ meta_display_handle_event (MetaDisplay        *display,
- 
-   gesture_tracker = meta_display_get_gesture_tracker (display);
- 
--  if (meta_gesture_tracker_handle_event (gesture_tracker,
-+  if (!fullscreen_return_guarded &&
-+      meta_gesture_tracker_handle_event (gesture_tracker,
-                                          stage_from_display (display),
-                                          event))
-     return CLUTTER_EVENT_PROPAGATE;
-@@ -372,7 +381,7 @@ meta_display_handle_event (MetaDisplay        *display,
-   if (stage_has_grab (display))
-     return CLUTTER_EVENT_PROPAGATE;
- 
--  if (window)
-+  if (window && !fullscreen_return_guarded)
-     {
-       if (meta_window_handle_ungrabbed_event (window, event))
-         return CLUTTER_EVENT_STOP;
-@@ -406,11 +415,15 @@ meta_display_handle_event (MetaDisplay        *display,
-           time_ms != CLUTTER_CURRENT_TIME)
-         meta_window_check_alive_on_event (window, time_ms);
- 
--      if (meta_wayland_compositor_handle_event (wayland_compositor, event))
-+      if (!fullscreen_return_guarded &&
-+          meta_wayland_compositor_handle_event (wayland_compositor, event))
-         return CLUTTER_EVENT_STOP;
-     }
- #endif
- 
 +  if (fullscreen_return_guarded)
 +    return CLUTTER_EVENT_PROPAGATE;
-+
-   return meta_compositor_handle_event (compositor, event, window, mode_hint);
- }
  
+   if (window && !window->override_redirect &&
+       (event_type == CLUTTER_KEY_PRESS ||
 diff --git a/src/core/util-private.h b/src/core/util-private.h
-index 5f466df518ae59a783d4dd545bca4a3e0939d7c4..0723d8fd41c895fed76fe98c5a76abfc1455393e 100644
+index c32af71e3..96278e846 100644
 --- a/src/core/util-private.h
 +++ b/src/core/util-private.h
-@@ -52,3 +52,7 @@ meta_timeval_to_microseconds (const struct timeval *tv)
- 
+@@ -51,5 +51,10 @@ meta_timeval_to_microseconds (const struct timeval *tv)
  /* Gnoblin honours application focus requests instead of focus prevention. */
  gboolean meta_is_gnoblin_session (void);
-+
+ 
 +gboolean meta_gnoblin_consume_fullscreen_return_event (MetaDisplay *display,
 +                                                       MetaWindow  *window,
 +                                                       gboolean     press,
 +                                                       guint        button);
++
+ char * meta_encode_hex (gpointer data,
+                         size_t   size);
 diff --git a/src/core/util.c b/src/core/util.c
-index 91d21f4b1aa7fe09b550009cd63507994159b762..9eeb868daa93f0dfd03d6e50539f8a374d8c5bc8 100644
+index 226e7e94a..e8d3ae372 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -650,6 +650,67 @@ meta_gnoblin_layer_namespace (MetaWindow *window)
-   return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
+@@ -172,6 +172,61 @@ meta_is_gnoblin_session (void)
+   return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
  }
  
 +typedef struct
@@ -126,12 +96,6 @@ index 91d21f4b1aa7fe09b550009cd63507994159b762..9eeb868daa93f0dfd03d6e50539f8a37
 +  gboolean armed;
 +  guint blocked_button;
 +} GnoblinFullscreenReturnGuard;
-+
-+static void
-+free_fullscreen_return_guard (gpointer data)
-+{
-+  g_free (data);
-+}
 +
 +void
 +meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
@@ -146,7 +110,7 @@ index 91d21f4b1aa7fe09b550009cd63507994159b762..9eeb868daa93f0dfd03d6e50539f8a37
 +      guard = g_new0 (GnoblinFullscreenReturnGuard, 1);
 +      g_object_set_data_full (G_OBJECT (display),
 +                              "gnoblin-fullscreen-return-guard",
-+                              guard, free_fullscreen_return_guard);
++                              guard, g_free);
 +    }
 +
 +  guard->armed = armed;
@@ -183,13 +147,13 @@ index 91d21f4b1aa7fe09b550009cd63507994159b762..9eeb868daa93f0dfd03d6e50539f8a37
 +}
 +
  gboolean
- meta_is_gnoblin_session (void)
+ meta_is_verbose (void)
  {
 diff --git a/src/meta/util.h b/src/meta/util.h
-index 8535f9ea6cf204fb909ba0b69ae2c179c00bb447..aa5bb01c2b6f268b9f10ae1bdf2b5ea0ec87403d 100644
+index 09072adda..0acdcfd5b 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -123,3 +123,7 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
+@@ -114,3 +114,7 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
  
  META_EXPORT
  const char *meta_gnoblin_layer_namespace (MetaWindow *window);
@@ -197,3 +161,6 @@ index 8535f9ea6cf204fb909ba0b69ae2c179c00bb447..aa5bb01c2b6f268b9f10ae1bdf2b5ea0
 +META_EXPORT
 +void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
 +                                                gboolean     armed);
+-- 
+2.55.0
+

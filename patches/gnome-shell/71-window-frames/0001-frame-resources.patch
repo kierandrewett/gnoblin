@@ -1,10 +1,17 @@
+From ee38511af679e42878ba990948618a36a74fb870 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] Bundle native frame configuration adapter
 
+---
+ js/js-resources.gresource.xml | 2 ++
+ 1 file changed, 2 insertions(+)
+
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 1a0bd86..0d69c6e 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -141,6 +141,8 @@
+@@ -152,6 +152,8 @@
      <file>ui/components/gnoblinBackdropRedraw.js</file>
      <file>ui/components/gnoblinCornerGeometry.js</file>
      <file>ui/components/gnoblinCorners.js</file>
@@ -13,3 +20,6 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/gnoblinRecovery.js</file>
      <file>ui/components/gnoblinConsole.js</file>
+-- 
+2.55.0
+

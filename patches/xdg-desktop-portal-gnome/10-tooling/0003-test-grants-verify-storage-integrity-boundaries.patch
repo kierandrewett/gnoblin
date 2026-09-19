@@ -1,7 +1,7 @@
-From 51b27f4665a5f66c41a96559c27e93190fbd7c4f Mon Sep 17 00:00:00 2001
+From a55642fd031dbbce6a2876690c6073b3f0121b13 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 15:09:42 +0100
-Subject: [PATCH 3/4] test(grants): verify storage integrity boundaries
+Subject: [PATCH] test(grants): verify storage integrity boundaries
 
 Assert that namespaced identities produce distinct digest paths, grant directories and files use private modes, and a record substituted under another identity's digest is rejected during load. The focused gnoblin-portal-grants Meson test passes.
 ---
@@ -153,5 +153,5 @@ index 1b38fd7..f2f83ff 100644
    result = g_test_run ();
    remove_tree (data_home);
 -- 
-2.53.0
+2.55.0
 

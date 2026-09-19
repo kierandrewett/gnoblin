@@ -53,8 +53,9 @@ gnoblin_env_apply() {
 
     export GNOBLIN_PREFIX="$prefix"
     export GNOBLIN_LIBDIR="$libdir"
-    export LD_LIBRARY_PATH="$prefix/$libdir:$prefix/$libdir/mutter-17${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export GI_TYPELIB_PATH="$prefix/$libdir/mutter-17${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+    local mutter_api="${GNOBLIN_MUTTER_API:-51}"
+    export LD_LIBRARY_PATH="$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export GI_TYPELIB_PATH="$prefix/$libdir/mutter-$mutter_api${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
     export PATH="$prefix/bin:$PATH"
     export GSETTINGS_SCHEMA_DIR="$prefix/share/glib-2.0/schemas"
     export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"

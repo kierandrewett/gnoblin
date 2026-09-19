@@ -45,7 +45,7 @@ patch-all:
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
-    case {{PROJ}} in mutter) t=49.5;; gnome-shell) t=49.6;; gnome-control-center) t=49.6;; xdg-desktop-portal-gnome) t=49.0;; *) echo "unknown {{PROJ}}"; exit 1;; esac
+    t="$(./scripts/gnome-versions.py get "{{PROJ}}" version)"
     ./scripts/subproject-state.sh check "{{PROJ}}" "$t"
     ./scripts/copy-overlay.sh "{{PROJ}}" "subprojects/{{PROJ}}" --remove-destinations
     git -C subprojects/{{PROJ}} am --abort 2>/dev/null || true
@@ -129,7 +129,7 @@ dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
 # org.gnoblin.Shell control protocol (feature toggles + typed portal grants +
 # soft reload), and hides panels that make no sense under gnoblin.
 #
-# Two gnoblin changes on top of the pinned 49.6 tag:
+# Two gnoblin changes on top of the pinned GNOME release tag:
 #   - overlay:  src/control-center/panels/gnoblin/*  (the whole panel)
 #   - patch:    patches/gnome-control-center/10-gnoblin-panel  (2 one-line regs)
 # Hiding is done purely at install time below (delete the panel .desktop files),
@@ -301,7 +301,8 @@ rpm PROJ:
         echo >&2
         echo "They are gnoblin's own packages, so build and install them first:" >&2
         echo "     just rpm mutter" >&2
-        echo "     sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-49.5-*.rpm ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-49.5-*.rpm" >&2
+        version="$(./scripts/gnome-versions.py get mutter version)"; \
+        echo "     sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-$version-*.rpm ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-$version-*.rpm" >&2
         exit 1
     fi
     just tarball {{PROJ}}
@@ -359,6 +360,7 @@ test-mutter: (patch "mutter")
 # Fast deterministic checks: syntax, parser behaviour, secure state publication,
 # and RPM sidecar-source completeness. Does not boot a compositor.
 verify-fast:
+    ./scripts/gnome-versions.py check
     for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin-session src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py tests/*.py src/tools/gnoblinctl
     ./tests/test-log-diagnostics.sh
@@ -426,6 +428,9 @@ copr PROJECT MUTTER_SRPM SHELL_SRPM:
     ./scripts/publish-copr.sh "{{PROJECT}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}"
 
 # Read-only checks across repository-owned source files.
+check-gnome-version:
+    ./scripts/gnome-versions.py check --upstream
+
 lint *args:
     ./scripts/quality.sh lint {{args}}
 

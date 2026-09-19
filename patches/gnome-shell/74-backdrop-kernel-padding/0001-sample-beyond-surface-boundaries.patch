@@ -1,9 +1,17 @@
+From 952563ed9489f7a5c7140c67f92f768b18a63e8b Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:57 +0100
 Subject: [PATCH] shell: sample backdrop beyond client surface bounds
 
+---
+ src/shell-blur-effect.c | 47 +++++++++++++++++++++++++++++++----------
+ 1 file changed, 36 insertions(+), 11 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 21739aa..491f5c5 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -182,13 +182,14 @@
+@@ -182,13 +182,14 @@ get_blur_box (ShellBlurEffect *self,
    clutter_actor_get_size (self->actor, &width, &height);
    *box = (ClutterActorBox) {0, 0, width, height};
    if (self->has_region)
@@ -25,7 +33,7 @@ Subject: [PATCH] shell: sample backdrop beyond client surface bounds
  }
  
  static MtkRectangle
-@@ -548,7 +549,7 @@
+@@ -548,7 +549,7 @@ update_actor_box (ShellBlurEffect     *self,
        clutter_actor_get_transformed_position (self->actor, &origin_x, &origin_y);
        clutter_actor_get_transformed_size (self->actor, &width, &height);
        get_blur_box (self, &self->paint_box);
@@ -34,7 +42,7 @@ Subject: [PATCH] shell: sample backdrop beyond client surface bounds
          {
            float actor_width, actor_height;
            clutter_actor_get_size (self->actor, &actor_width, &actor_height);
-@@ -569,6 +570,28 @@
+@@ -569,6 +570,28 @@ update_actor_box (ShellBlurEffect     *self,
  
            origin_x -= stage_view_layout.x;
            origin_y -= stage_view_layout.y;
@@ -63,7 +71,7 @@ Subject: [PATCH] shell: sample backdrop beyond client surface bounds
          }
        else
          {
-@@ -594,7 +617,7 @@
+@@ -594,7 +617,7 @@ add_output_rectangles (ShellBlurEffect *self, ClutterPaintNode *node)
  {
    float width, height;
    clutter_actor_get_size (self->actor, &width, &height);
@@ -72,7 +80,7 @@ Subject: [PATCH] shell: sample backdrop beyond client surface bounds
      {
        ClutterActorBox box = self->mode == SHELL_BLUR_MODE_ACTOR
          ? (ClutterActorBox) {0, 0, width, height} : self->paint_box;
-@@ -605,10 +628,12 @@
+@@ -605,10 +628,12 @@ add_output_rectangles (ShellBlurEffect *self, ClutterPaintNode *node)
    float texture_height = self->paint_box.y2 - self->paint_box.y1;
    if (texture_width <= 0 || texture_height <= 0)
      return;
@@ -87,3 +95,6 @@ Subject: [PATCH] shell: sample backdrop beyond client surface bounds
        ClutterActorBox box = {MAX (0, rect.x), MAX (0, rect.y),
          MIN (width, (double) rect.x + rect.width),
          MIN (height, (double) rect.y + rect.height)};
+-- 
+2.55.0
+

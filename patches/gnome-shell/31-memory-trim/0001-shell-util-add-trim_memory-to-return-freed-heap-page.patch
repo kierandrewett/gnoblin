@@ -1,4 +1,4 @@
-From 8f29a9d3cc64ffd47572185cf97a6337825644d5 Mon Sep 17 00:00:00 2001
+From 4b72689663e729bdfff9f77275fe3c35c43da268 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 18 Jul 2026 23:58:01 +0100
 Subject: [PATCH] shell-util: add trim_memory to return freed heap pages
@@ -18,7 +18,7 @@ pages back to the kernel.
  2 files changed, 20 insertions(+)
 
 diff --git a/src/shell-util.c b/src/shell-util.c
-index 21fe7a7..0fd543f 100644
+index fbe2325..53b02d8 100644
 --- a/src/shell-util.c
 +++ b/src/shell-util.c
 @@ -3,6 +3,9 @@
@@ -31,7 +31,7 @@ index 21fe7a7..0fd543f 100644
  #include <math.h>
  #include <stdlib.h>
  #include <unistd.h>
-@@ -325,6 +328,21 @@ shell_util_wifexited (int  status,
+@@ -322,6 +325,21 @@ shell_util_wifexited (int  status,
    return ret;
  }
  
@@ -67,5 +67,5 @@ index 81dd6da..ba34165 100644
                                                 gsize              len,
                                                 GdkColorspace      colorspace,
 -- 
-2.53.0
+2.55.0
 

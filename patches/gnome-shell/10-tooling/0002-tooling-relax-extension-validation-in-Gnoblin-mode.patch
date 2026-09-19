@@ -1,4 +1,4 @@
-From 331aab5f3839c7bcb5ff032a51af9dad0d6e5f9d Mon Sep 17 00:00:00 2001
+From 866d7c6b751ecf673fae9afbf54aa834c7514ddc Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 13:29:07 +0100
 Subject: [PATCH] tooling: relax extension validation in Gnoblin mode
@@ -11,10 +11,10 @@ validation in stock, GDM, and all other session modes.
  1 file changed, 5 insertions(+)
 
 diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
-index 22121c4..90e9e54 100644
+index 5ae8f24..892efbd 100644
 --- a/js/ui/extensionSystem.js
 +++ b/js/ui/extensionSystem.js
-@@ -407,6 +407,11 @@ export class ExtensionManager extends Signals.EventEmitter {
+@@ -409,6 +409,11 @@ export class ExtensionManager extends Signals.EventEmitter {
      }
  
      _isOutOfDate(extension) {
@@ -27,5 +27,5 @@ index 22121c4..90e9e54 100644
          return !extension.metadata['shell-version'].some(v => v.startsWith(major));
      }
 -- 
-2.53.0
+2.55.0
 

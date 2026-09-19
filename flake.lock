@@ -3,16 +3,16 @@
     "gnome-shell-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1776178845,
-        "narHash": "sha256-mvsR1HZZvGucT9B6xu6zE4FwwYRZEKhzZnyTlYzTGH0=",
+        "lastModified": 1789401501,
+        "narHash": "sha256-mjC4IDakKmh/PZVRMw5u7nRop985ssqFL9Kq0d6s67k=",
         "ref": "refs/heads/main",
-        "rev": "21aa7264064b34f14bd6369215790d41853b2e12",
-        "revCount": 20118,
+        "rev": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
+        "revCount": 20861,
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
       },
       "original": {
-        "rev": "21aa7264064b34f14bd6369215790d41853b2e12",
+        "rev": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
       }
@@ -88,32 +88,32 @@
     "mutter-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1773606664,
-        "narHash": "sha256-mg0ZJwggrzHgH62uSofj59FXPCh3duD4XsKGdXokGXQ=",
+        "lastModified": 1789422496,
+        "narHash": "sha256-kwHVCnAtKnyal3+fMZtXqJ/Afn3UJFyHugg4xiGugo0=",
         "ref": "refs/heads/main",
-        "rev": "759d53b098df10a1c0b443c093f586e5b1b7de49",
-        "revCount": 34751,
+        "rev": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
+        "revCount": 36216,
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/mutter.git"
       },
       "original": {
-        "rev": "759d53b098df10a1c0b443c093f586e5b1b7de49",
+        "rev": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/mutter.git"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1782847189,
-        "narHash": "sha256-twXPFqFsrrY5r28Zh7Homgcp2gUMBgQ6WDS98Q/3xFI=",
+        "lastModified": 1789785513,
+        "narHash": "sha256-B44WL6h0XoLjJ41bUPJk0X5SDinLCII//6EcBLXKiJ0=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "b6018f87da91d19d0ab4cf979885689b469cdd41",
+        "rev": "20b1ddd1aa5ace70c9468305030aa4f9ef79671b",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixos-25.11",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }

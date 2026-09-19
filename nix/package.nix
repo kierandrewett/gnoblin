@@ -25,6 +25,8 @@
   jasmineGjsSrc,
 }:
 let
+  versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
+  gnomeVersion = versions.components.gnome-shell.version;
   clipboardPython = python3.withPackages (ps: [ ps.pygobject3 ]);
   patchesFor =
     project:
@@ -45,26 +47,30 @@ let
 
   gnoblinMutter = mutter.overrideAttrs (old: {
     pname = "gnoblin-mutter";
-    version = "49.5";
+    version = versions.components.mutter.version;
     src = mutterSrc;
-    patches = (old.patches or [ ]) ++ patchesFor "mutter";
+    # Nixpkgs patches target its own GNOME source revision. Gnoblin carries a
+    # complete patch stack rebased onto the release pinned in the manifest.
+    patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
     postPatch = old.postPatch or "";
     buildInputs = (old.buildInputs or [ ]) ++ [
       hyprcursor
       lua5_4
     ];
-    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dhyprcursor=enabled" ];
+    mesonFlags =
+      lib.filter (
+        flag: !(lib.hasPrefix "-Degl_device=" flag || lib.hasPrefix "-Dwayland_eglstream=" flag)
+      ) (old.mesonFlags or [ ])
+      ++ [ "-Dhyprcursor=enabled" ];
   });
 
   gnoblinShell = (gnomeShell.override { mutter = gnoblinMutter; }).overrideAttrs (old: {
     pname = "gnoblin-shell";
-    version = "49.6";
+    version = gnomeVersion;
     src = gnomeShellSrc;
     buildInputs = (old.buildInputs or [ ]) ++ [ libepoxy ];
-    patches =
-      lib.filter (patch: !(lib.hasSuffix "-fix-paths.patch" (toString patch))) (old.patches or [ ])
-      ++ patchesFor "gnome-shell";
+    patches = patchesFor "gnome-shell";
     prePatch =
       (old.prePatch or "")
       + copyOverlays "gnome-shell"
@@ -91,7 +97,7 @@ let
 
   session = stdenv.mkDerivation {
     pname = "gnoblin-session";
-    version = "49.6";
+    version = gnomeVersion;
     src = gnoblinSrc;
     dontBuild = true;
     nativeBuildInputs = [
@@ -128,10 +134,10 @@ let
       install -Dm644 src/scripts/lib/clipboard-paste.js "$out/share/gnoblin/scripts/lib/clipboard-paste.js"
       install -Dm644 src/scripts/lib/clipboard-paste.py "$out/share/gnoblin/scripts/lib/clipboard-paste.py"
       substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.js" \
-          --replace-fail "['python3', helper]" "['$out/libexec/gnoblin-clipboard-paste']"
+          --replace-fail '["python3", helper]' '["'$out'/libexec/gnoblin-clipboard-paste"]'
       substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.py" \
-          --replace-fail "'libgtk-3.so.0'" "'${gtk3}/lib/libgtk-3.so.0'" \
-          --replace-fail "'libgdk-3.so.0'" "'${gtk3}/lib/libgdk-3.so.0'"
+          --replace-fail '"libgtk-3.so.0"' '"${gtk3}/lib/libgtk-3.so.0"' \
+          --replace-fail '"libgdk-3.so.0"' '"${gtk3}/lib/libgdk-3.so.0"'
 
 
       install -Dm644 src/data/session/gnoblin.desktop \
@@ -148,7 +154,7 @@ let
     '';
   };
   runtime = symlinkJoin {
-    name = "gnoblin-runtime-49.6";
+    name = "gnoblin-runtime-${gnomeVersion}";
     paths = [
       gnoblinMutter
       gnoblinShell
@@ -230,7 +236,7 @@ let
   };
 in
 symlinkJoin {
-  name = "gnoblin-49.6";
+  name = "gnoblin-${gnomeVersion}";
   paths = [ ];
   nativeBuildInputs = [ makeWrapper ];
   postBuild = ''

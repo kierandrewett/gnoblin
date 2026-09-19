@@ -1,24 +1,30 @@
+From db18b26faf16c4a51719bde7125a00bb9be27a24 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:51:38 +0100
 Subject: [PATCH] Preserve full-resolution rounded backdrop coverage
 
 Keep the coverage mask at output resolution while downsampling the Gaussian
 backdrop. Estimate local material opacity separately from edge coverage,
 then fade the composed surface without expanding antialiased corners.
+---
+ src/shell-blur-effect.c | 31 +++++++++++++++++++++++++------
+ 1 file changed, 25 insertions(+), 6 deletions(-)
 
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index f90b3ee..64cf123 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -370,7 +370,8 @@
-
+@@ -370,7 +370,8 @@ update_actor_fbo (ShellBlurEffect *self,
+ 
    self->cache_flags &= ~ACTOR_PAINTED;
-
+ 
 -  return update_fbo (&self->actor_fb, width, height, downscale_factor);
 +  return update_fbo (&self->actor_fb, width, height,
 +                     self->mode == SHELL_BLUR_MODE_BACKGROUND_MASKED ? 1.f : downscale_factor);
  }
-
+ 
  static gboolean
-@@ -762,8 +763,7 @@
+@@ -762,8 +763,7 @@ paint_actor_mask (ShellBlurEffect *self,
    clutter_paint_node_add_child (node, layer_node);
    graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
      -self->paint_box.x1, -self->paint_box.y1, 0));
@@ -28,7 +34,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    transform_node = clutter_transform_node_new (&transform);
    clutter_paint_node_add_child (layer_node, transform_node);
    add_actor_node (self, transform_node, 255);
-@@ -775,20 +775,39 @@
+@@ -775,20 +775,39 @@ paint_actor_mask (ShellBlurEffect *self,
      {
        g_autoptr (CoglSnippet) snippet =
          cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
@@ -71,3 +77,6 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
      cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
      self->mask_opacity);
+-- 
+2.55.0
+

@@ -1,4 +1,4 @@
-From acef5858c5b0bedf8ba15497c2d95c45056bab92 Mon Sep 17 00:00:00 2001
+From ae1ddb0f3c66a181a52dc87e1c935e3ce7a3af5b Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 13 Jul 2026 14:48:03 +0100
 Subject: [PATCH] gnoblin-panel: pin gnoblin to the top of the sidebar with a
@@ -18,20 +18,20 @@ index 0, tying with "wifi" and getting no separator.
  1 file changed, 4 insertions(+)
 
 diff --git a/shell/cc-panel-list.c b/shell/cc-panel-list.c
-index 2b59587..6e1726a 100644
+index f2d1e26..7705209 100644
 --- a/shell/cc-panel-list.c
 +++ b/shell/cc-panel-list.c
-@@ -370,6 +370,10 @@ filter_func (GtkListBoxRow *row,
+@@ -335,6 +335,10 @@ filter_func (GtkListBoxRow *row, gpointer user_data)
  
- static const gchar * const panel_order[] = {
-   /* Main page */
-+  "gnoblin",
+ static const gchar *const panel_order[] = {
+     /* Main page */
++    "gnoblin",
 +
-+  "separator",
++    "separator",
 +
-   "wifi",
-   "network",
-   "wwan",
+     "wifi",
+     "network",
+     "wwan",
 -- 
-2.53.0
+2.55.0
 

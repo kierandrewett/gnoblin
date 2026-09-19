@@ -1,26 +1,41 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 06d2932945106331d61b817900e78252acf00416 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Fri, 12 Sep 2026 05:00:00 +0100
+Date: Sat, 12 Sep 2026 05:00:00 +0100
 Subject: [PATCH] shell: build native custom shader support
 
+---
+ src/meson.build | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 73817da..6ecf2aa 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -116,4 +116,5 @@
+@@ -114,6 +114,7 @@ libshell_public_headers = [
+   'shell-blur-effect.h',
+   'shell-camera-monitor.h',
    'shell-edge-drag-gesture.h',
-   'shell-glsl-effect.h',
 +  'shell-gnoblin-shader.h',
    'shell-global.h',
    'shell-invert-lightness-effect.h',
-@@ -168,4 +169,5 @@
-   'shell-global.c',
-   'shell-glsl-effect.c',
+   'shell-action-modes.h',
+@@ -164,6 +165,7 @@ libshell_sources = [
+   'shell-blur-effect.c',
+   'shell-camera-monitor.c',
+   'shell-edge-drag-gesture.c',
 +  'shell-gnoblin-shader.c',
+   'shell-global.c',
    'shell-invert-lightness-effect.c',
    'shell-keyring-prompt.c',
-@@ -239,5 +241,5 @@
+@@ -236,7 +238,7 @@ endif
+ 
  libshell = library('shell-' + mutter_api_version,
    sources: libshell_gir_sources + libshell_no_gir_sources,
--  dependencies: gnome_shell_deps + [libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep],
-+  dependencies: gnome_shell_deps + [dependency('epoxy'), libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep],
+-  dependencies: gnome_shell_deps + [libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep, cairo_dep],
++  dependencies: gnome_shell_deps + [dependency('epoxy'), libshell_menu_dep, libst_dep, mutter_dep, gnome_desktop_dep, m_dep, cairo_dep],
    include_directories: [conf_inc, include_directories('tray')],
    c_args: gnome_shell_cflags,
+   link_with: libshell_link_with,
+-- 
+2.55.0
+

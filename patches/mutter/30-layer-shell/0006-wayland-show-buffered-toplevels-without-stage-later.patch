@@ -1,4 +1,4 @@
-From 2f76a4ebf0b69cf1df48cb8faed83f233f95d5a7 Mon Sep 17 00:00:00 2001
+From a20694762bfa26a1db23e7552ced3604f413aec5 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 21 Jun 2026 10:27:00 +0100
 Subject: [PATCH] wayland: show buffered toplevels if calc-showing is starved
@@ -16,10 +16,10 @@ finishing a buffer-backed move/resize.
  1 file changed, 3 insertions(+)
 
 diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
-index 7f4bb45..82d6ce9 100644
+index b7aa2061f..3fc42675b 100644
 --- a/src/wayland/meta-window-wayland.c
 +++ b/src/wayland/meta-window-wayland.c
-@@ -1821,6 +1821,9 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+@@ -1828,6 +1828,9 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
  
    if (place_flags & META_PLACE_FLAG_CALCULATE)
      window->placed = TRUE;
@@ -30,4 +30,5 @@ index 7f4bb45..82d6ce9 100644
  
  void
 -- 
-2.53.0
+2.55.0
+

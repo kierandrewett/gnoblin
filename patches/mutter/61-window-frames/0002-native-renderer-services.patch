@@ -1,4 +1,4 @@
-From 995a55245c5d8d43134025d5dbf5ba618305e24f Mon Sep 17 00:00:00 2001
+From 538e00625701dc1d4f7314b98ab153fc55bd3951 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
 Date: Sun, 13 Sep 2026 03:05:31 +0100
 Subject: [PATCH] Attach native frames and isolated external renderer services
@@ -10,23 +10,23 @@ Subject: [PATCH] Attach native frames and isolated external renderer services
  3 files changed, 8 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index 87e6b8f234f14971b6c15524fae5fe3bffbda7f5..1ffef46ec45c9b61c25672e536ab0b05c0f260cd 100644
+index 2c70138d7..79a2e752f 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -708,6 +708,8 @@ if have_wayland
-     'wayland/gnoblin-glob.c',
-     'wayland/meta-gnoblin-window-frame.c',
-     'wayland/meta-gnoblin-window-frame.h',
-+    'wayland/meta-gnoblin-frame-renderer.c',
-+    'wayland/meta-gnoblin-frame-renderer.h',
-     'wayland/gnoblin-config.h',
-     'wayland/meta-gnoblin-protocols.c',
-     'wayland/meta-gnoblin-protocols.h',
+@@ -601,6 +601,8 @@ mutter_sources += [
+   'wayland/gnoblin-glob.c',
+   'wayland/meta-gnoblin-window-frame.c',
+   'wayland/meta-gnoblin-window-frame.h',
++  'wayland/meta-gnoblin-frame-renderer.c',
++  'wayland/meta-gnoblin-frame-renderer.h',
+   'wayland/gnoblin-config.h',
+   'wayland/meta-gnoblin-protocols.c',
+   'wayland/meta-gnoblin-protocols.h',
 diff --git a/src/meta/util.h b/src/meta/util.h
-index 7ca296fe1e68c1ed29e4b51bc0c9d130ff03c549..fd2639aa5361176ad1effbca4b222c81ebb642fb 100644
+index 758684b32..1efda07da 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -134,6 +134,8 @@ META_EXPORT
+@@ -125,6 +125,8 @@ META_EXPORT
  gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
  META_EXPORT
  GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
@@ -36,7 +36,7 @@ index 7ca296fe1e68c1ed29e4b51bc0c9d130ff03c549..fd2639aa5361176ad1effbca4b222c81
  META_EXPORT
  void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
-index b909fb885d1be0a8fe9768843f8d6da02b5ac614..e14271c39bdb0ca7872e6fd965da5ded34da9185 100644
+index 47a3de39c..98724cc5b 100644
 --- a/src/wayland/meta-wayland-surface.c
 +++ b/src/wayland/meta-wayland-surface.c
 @@ -19,6 +19,7 @@
@@ -47,7 +47,7 @@ index b909fb885d1be0a8fe9768843f8d6da02b5ac614..e14271c39bdb0ca7872e6fd965da5ded
  
  #include "wayland/meta-wayland-surface-private.h"
  
-@@ -490,6 +491,7 @@ meta_wayland_surface_state_clear (MetaWaylandSurfaceState *state)
+@@ -492,6 +493,7 @@ meta_wayland_surface_state_clear (MetaWaylandSurfaceState *state)
  {
    MetaWaylandFrameCallback *cb, *next;
  
@@ -55,7 +55,7 @@ index b909fb885d1be0a8fe9768843f8d6da02b5ac614..e14271c39bdb0ca7872e6fd965da5ded
    g_clear_object (&state->texture);
    g_clear_object (&state->drm_syncobj.acquire);
    g_clear_object (&state->drm_syncobj.release);
-@@ -690,6 +692,8 @@ meta_wayland_surface_state_merge_into (MetaWaylandSurfaceState *from,
+@@ -696,6 +698,8 @@ meta_wayland_surface_state_merge_into (MetaWaylandSurfaceState *from,
    g_set_object (&to->drm_syncobj.release, from->drm_syncobj.release);
    g_clear_object (&from->drm_syncobj.release);
  
@@ -64,3 +64,6 @@ index b909fb885d1be0a8fe9768843f8d6da02b5ac614..e14271c39bdb0ca7872e6fd965da5ded
    if (from->has_new_color_state)
      {
        g_set_object (&to->color_state, from->color_state);
+-- 
+2.55.0
+

@@ -1,0 +1,17 @@
+name: Check for a new GNOME release
+
+on:
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the pinned release and look for a new stable major
+        run: ./scripts/gnome-versions.py check --upstream

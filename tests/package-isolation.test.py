@@ -60,17 +60,17 @@ class IsolationTests(unittest.TestCase):
     def test_rejects_stock_files_and_capabilities(self):
         for path in (
             "/usr/bin/gnome-shell",
-            "/usr/lib64/libmutter-17.so.0",
+            "/usr/lib64/libmutter-51.so.0",
             "/usr/lib/systemd/user/org.gnome.Shell@wayland.service",
             "/usr/share/glib-2.0/schemas/org.gnome.shell.gschema.xml",
         ):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 isolation.validate("gnoblin-shell", path, "", "", "")
         for capability in (
-            "gnome-shell = 49.6",
-            "mutter = 49.5",
-            "libmutter-17.so.0()(64bit)",
-            "pkgconfig(libmutter-17) = 49.5",
+            "gnome-shell = 51.0",
+            "mutter = 51.0",
+            "libmutter-51.so.0()(64bit)",
+            "pkgconfig(libmutter-51) = 51.0",
         ):
             with self.subTest(capability=capability), self.assertRaises(ValueError):
                 isolation.validate("gnoblin-shell", "", capability, "", "")
@@ -84,7 +84,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_accepts_private_runtime_and_session_entries(self):
         paths = "\n".join(sorted(isolation.PUBLIC_FILES)) + "\n/usr/lib/gnoblin/bin/gnome-shell"
-        isolation.validate("gnoblin-shell", paths, "gnoblin-shell = 49.6", "", "")
+        isolation.validate("gnoblin-shell", paths, "gnoblin-shell = 51.0", "", "")
 
     def test_source_install_rejects_shared_prefixes_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:

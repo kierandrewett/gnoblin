@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b8bf3075c67fc2f76153a6c93312ec572bbede8c Mon Sep 17 00:00:00 2001
 From: Gnoblin Developers <gnoblin@example.invalid>
 Date: Wed, 17 Jun 2026 23:20:00 +0100
 Subject: [PATCH] devkit: allow host cursor for visible testing
@@ -15,10 +15,10 @@ with GNOBLIN_DEVKIT_SHOW_HOST_CURSOR=1.
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/mdk/mdk-monitor.c b/mdk/mdk-monitor.c
-index 6bd0838..4a4db23 100644
+index 8f5789cf4..afe5ca182 100644
 --- a/mdk/mdk-monitor.c
 +++ b/mdk/mdk-monitor.c
-@@ -67,8 +67,10 @@ update_cursor (MdkMonitor *monitor)
+@@ -115,8 +115,10 @@ update_cursor (MdkMonitor *monitor)
  
    if (mdk_context_get_emulate_touch (monitor->context))
      cursor = gdk_cursor_new_from_name ("pointer", NULL);
@@ -31,4 +31,5 @@ index 6bd0838..4a4db23 100644
    gtk_widget_set_cursor (GTK_WIDGET (monitor), cursor);
  }
 -- 
-2.50.0
+2.55.0
+

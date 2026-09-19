@@ -1,11 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 6a01c6bd491d62dec55310c3ffd1d583a1e76d60 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Fri, 12 Sep 2026 05:00:00 +0100
+Date: Sat, 12 Sep 2026 05:00:00 +0100
 Subject: [PATCH] shell: include permission policy resource
 
+---
+ js/js-resources.gresource.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index c5b5042..a360b91 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -135,6 +135,7 @@
+@@ -146,6 +146,7 @@
      <file>ui/components/automountManager.js</file>
      <file>ui/components/autorunManager.js</file>
      <file>ui/components/gnoblinConfig.js</file>
@@ -13,3 +19,6 @@ Subject: [PATCH] shell: include permission policy resource
      <file>ui/components/gnoblinLayerAnimation.js</file>
      <file>ui/components/gnoblinRules.js</file>
      <file>ui/components/gnoblinBackdropRedraw.js</file>
+-- 
+2.55.0
+

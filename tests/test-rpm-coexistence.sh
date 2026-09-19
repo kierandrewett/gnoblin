@@ -16,7 +16,7 @@ for package in "$@"; do
 done
 fakeroot_command="$(command -v fakeroot-sysv || command -v fakeroot)"
 TEST_WORK="$work" "$fakeroot_command" -- bash -euo pipefail -c '
-    stock=(/usr/bin/gnome-shell /usr/lib64/libmutter-17.so.0
+    stock=(/usr/bin/gnome-shell /usr/lib64/libmutter-51.so.0
            /usr/lib/systemd/user/org.gnome.Shell@wayland.service
            /usr/share/glib-2.0/schemas/org.gnome.shell.gschema.xml)
     for file in "${stock[@]}"; do

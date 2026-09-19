@@ -1,16 +1,25 @@
+From f244b0284335daed8ac48ed4975b03b04d1dba9b Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:10:33 +0100
 Subject: [PATCH] build: include Gnoblin TOML sources
 
+---
+ src/meson.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
 diff --git a/src/meson.build b/src/meson.build
-index 874d5ef..1ef6ef7 100644
+index 127860f3b..3ffc9f3bf 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -711,6 +711,8 @@ if have_wayland
-     'wayland/meta-gnoblin-frame-renderer.c',
-     'wayland/meta-gnoblin-frame-renderer.h',
-     'wayland/gnoblin-config.h',
-+    'wayland/gnoblin-toml.c',
-+    'wayland/tomlc99/toml.c',
-     'wayland/meta-gnoblin-protocols.c',
-     'wayland/meta-gnoblin-protocols.h',
-     'wayland/meta-wayland-background-effect.c',
+@@ -604,6 +604,8 @@ mutter_sources += [
+   'wayland/meta-gnoblin-frame-renderer.c',
+   'wayland/meta-gnoblin-frame-renderer.h',
+   'wayland/gnoblin-config.h',
++  'wayland/gnoblin-toml.c',
++  'wayland/tomlc99/toml.c',
+   'wayland/meta-gnoblin-protocols.c',
+   'wayland/meta-gnoblin-protocols.h',
+   'wayland/meta-wayland-blur-fade.c',
+-- 
+2.55.0
+

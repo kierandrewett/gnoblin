@@ -18,7 +18,7 @@
 %endif
 
 Name:           gnoblin-shell
-Version:        49.6
+Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
 Release:        13.gnoblin%{?dist}
@@ -60,7 +60,7 @@ Source12:       gnoblin-scripts.tar.gz
 %define gjs_version 1.85.90
 %define gtk4_version 4.0.0
 %define adwaita_version 1.5.0
-%define mutter_version 49.0
+%define mutter_version 51.0
 %define polkit_version 0.100
 %define gsettings_desktop_schemas_version 49~alpha
 %define ibus_version 1.5.2
@@ -101,7 +101,7 @@ BuildRequires:  python3-docutils
 BuildRequires:  libXfixes-devel >= 5.0
 # used in unused BigThemeImage
 BuildRequires:  librsvg2-devel
-BuildRequires:  gnoblin-mutter-devel >= 49.5
+BuildRequires:  gnoblin-mutter-devel >= 51.0
 BuildRequires:  pkgconfig(libpulse)
 %ifnarch s390 s390x ppc ppc64 ppc64p7
 BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
@@ -115,7 +115,7 @@ Requires:       libadwaita%{_isa} >= %{adwaita_version}
 Requires:       libnma-gtk4%{?_isa}
 # needed for loading SVG's via gdk-pixbuf
 Requires:       librsvg2%{?_isa}
-Requires:       gnoblin-mutter%{?_isa} >= 49.5-16.gnoblin
+Requires:       gnoblin-mutter%{?_isa} >= 51.0
 Requires:       upower%{?_isa}
 Requires:       polkit%{?_isa} >= %{polkit_version}
 Requires:       gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
@@ -180,7 +180,7 @@ export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 export CFLAGS="${CFLAGS} -fPIE"
 # Refuse an accidental build against Fedora's Mutter.
-test "$(pkg-config --variable=prefix libmutter-17)" = "%{_prefix}"
+test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
   -Dextensions_app=false -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build

@@ -1,4 +1,4 @@
-From 93272b8aa61c3e47cd7709381fda597e3315730f Mon Sep 17 00:00:00 2001
+From dd099964d1472a93aa17f4ab8c36ccd9845b9eb3 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 16 Jun 2026 23:39:24 +0100
 Subject: [PATCH] tooling: add disable-extensions runtime flag
@@ -9,10 +9,10 @@ Subject: [PATCH] tooling: add disable-extensions runtime flag
  2 files changed, 13 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
-index 17240de..8e7e283 100644
+index 892efbd..2ff8273 100644
 --- a/js/ui/extensionSystem.js
 +++ b/js/ui/extensionSystem.js
-@@ -19,6 +19,7 @@ const ENABLED_EXTENSIONS_KEY = 'enabled-extensions';
+@@ -20,6 +20,7 @@ const ENABLED_EXTENSIONS_KEY = 'enabled-extensions';
  const DISABLED_EXTENSIONS_KEY = 'disabled-extensions';
  const DISABLE_USER_EXTENSIONS_KEY = 'disable-user-extensions';
  const EXTENSION_DISABLE_VERSION_CHECK_KEY = 'disable-extension-version-validation';
@@ -20,7 +20,7 @@ index 17240de..8e7e283 100644
  
  const UPDATE_CHECK_TIMEOUT = 24 * 60 * 60; // 1 day in seconds
  
-@@ -549,7 +550,8 @@ export class ExtensionManager extends Signals.EventEmitter {
+@@ -553,7 +554,8 @@ export class ExtensionManager extends Signals.EventEmitter {
      _getEnabledExtensions() {
          let extensions = this._getModeExtensions();
  
@@ -31,7 +31,7 @@ index 17240de..8e7e283 100644
  
          extensions.sort((a, b) => this._compareExtensions(this.lookup(a), this.lookup(b)));
 diff --git a/src/main.c b/src/main.c
-index 56c9134..9abd09d 100644
+index f64b18d..a2859d1 100644
 --- a/src/main.c
 +++ b/src/main.c
 @@ -41,6 +41,7 @@ static gboolean is_gdm_mode = FALSE;
@@ -42,7 +42,7 @@ index 56c9134..9abd09d 100644
  static char *script_path = NULL;
  
  #define DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER 1
-@@ -543,6 +544,12 @@ GOptionEntry gnome_shell_options[] = {
+@@ -539,6 +540,12 @@ GOptionEntry gnome_shell_options[] = {
      N_("Force animations to be enabled"),
      NULL
    },
@@ -55,7 +55,7 @@ index 56c9134..9abd09d 100644
    {
      "automation-script", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_FILENAME,
      &script_path,
-@@ -640,6 +647,9 @@ main (int argc, char **argv)
+@@ -636,6 +643,9 @@ main (int argc, char **argv)
    if (session_mode == NULL)
      session_mode = is_gdm_mode ? (char *)"gdm" : (char *)"user";
  
@@ -66,5 +66,5 @@ index 56c9134..9abd09d 100644
    dump_gjs_stack_on_signal (SIGFPE);
    dump_gjs_stack_on_signal (SIGIOT);
 -- 
-2.53.0
+2.55.0
 

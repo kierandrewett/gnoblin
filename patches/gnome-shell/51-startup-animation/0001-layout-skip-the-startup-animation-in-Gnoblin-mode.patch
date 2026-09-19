@@ -1,4 +1,4 @@
-From e93d6d492806648e9e6c92355bc7c95875d6590c Mon Sep 17 00:00:00 2001
+From 8a7ab0982b4b64f52fb51ca95283e31efae540a1 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 27 Jul 2026 13:42:42 +0100
 Subject: [PATCH] layout: skip the startup animation in Gnoblin mode
@@ -18,12 +18,12 @@ put into the scaled-and-transparent state this animation exists to undo.
  1 file changed, 19 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/layout.js b/js/ui/layout.js
-index 51706de..7a9e14b 100644
+index 53880b1..108699c 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -741,7 +741,12 @@ export const LayoutManager = GObject.registerClass({
+@@ -763,7 +763,12 @@ export const LayoutManager = GObject.registerClass({
  
-             let monitor = this.primaryMonitor;
+             const monitor = this.primaryMonitor;
  
 -            if (!Main.sessionMode.hasOverview) {
 +            // Gnoblin skips the startup scale/fade entirely (see
@@ -35,7 +35,7 @@ index 51706de..7a9e14b 100644
                  const x = monitor.x + monitor.width / 2.0;
                  const y = monitor.y + monitor.height / 2.0;
  
-@@ -792,6 +797,19 @@ export const LayoutManager = GObject.registerClass({
+@@ -802,6 +807,19 @@ export const LayoutManager = GObject.registerClass({
      }
  
      async _startupAnimationSession() {
@@ -55,3 +55,6 @@ index 51706de..7a9e14b 100644
          if (Main.sessionMode.hasOverview) {
              await Main.overview.runStartupAnimation();
          } else {
+-- 
+2.55.0
+

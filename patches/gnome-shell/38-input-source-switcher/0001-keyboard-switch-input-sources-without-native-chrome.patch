@@ -1,4 +1,4 @@
-From 6547d0a7b11c4824386ec236372fb5e2be98be8f Mon Sep 17 00:00:00 2001
+From 2f86824ccd4a4e31feb672e22ac4f7f7c00f6630 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 24 Aug 2026 14:07:00 +0100
 Subject: [PATCH] keyboard: let external chrome own the input-source switcher
@@ -12,10 +12,27 @@ the feature restores the upstream popup without affecting stock sessions.
  1 file changed, 23 insertions(+)
 
 diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
-index 3ddc675..0000000 100644
+index d5c4167..2dcc634 100644
 --- a/js/ui/status/keyboard.js
 +++ b/js/ui/status/keyboard.js
-@@ -18,0 +19,16 @@ import * as SwitcherPopup from '../switcherPopup.js';
+@@ -440,6 +440,13 @@ export class InputSourceManager extends Signals.EventEmitter {
+             return;
+         }
+ 
++        // External Gnoblin chrome owns the presentation. Keep the source
++        // activation in this manager, which preserves layouts and IBus state.
++        if (externalInputSourceSwitcher()) {
++            this._modifiersSwitcher();
++            return;
++        }
++
+         this._switcherPopup = new InputSourcePopup(
+             this._mruSources, this._keybindingAction, this._keybindingActionBackward);
+         this._switcherPopup.connect('destroy', () => {
+@@ -1183,3 +1190,19 @@ class InputSourceIndicator extends PanelMenu.Button {
+         app?.activate();
+     }
+ });
 +// This schema is installed by Gnoblin's settings patch. Keep lookup lazy so
 +// stock GNOME modes continue to have no dependency on it.
 +let gnoblinSettings = null;
@@ -32,17 +49,6 @@ index 3ddc675..0000000 100644
 +        return false;
 +    }
 +}
-@@ -439,6 +456,13 @@ export class InputSourceManager extends Signals.EventEmitter {
-         if (Main.actionMode === Shell.ActionMode.POPUP) {
-             this._modifiersSwitcher();
-             return;
-         }
+-- 
+2.55.0
 
-+        // External Gnoblin chrome owns the presentation. Keep the source
-+        // activation in this manager, which preserves layouts and IBus state.
-+        if (externalInputSourceSwitcher()) {
-+            this._modifiersSwitcher();
-+            return;
-+        }
-+
-         this._switcherPopup = new InputSourcePopup(

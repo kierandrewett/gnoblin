@@ -1,6 +1,6 @@
-From 9638471cbe49059c47c05786e3e802b14671a44c Mon Sep 17 00:00:00 2001
+From c5209dcad7874f9534f92978bdf606c73abf3f0e Mon Sep 17 00:00:00 2001
 From: Gnoblin contributors <gnoblin@example.invalid>
-Date: Fri, 12 Sep 2026 12:30:00 +0100
+Date: Sat, 12 Sep 2026 12:30:00 +0100
 Subject: [PATCH] build: omit extension preferences service with extension app
 
 The Extensions application option must remove all of its public entry points
@@ -32,7 +32,7 @@ index 277df01..b3929cb 100644
    excluded_icons += [
      'scalable/apps/org.gnome.Shell.CaptivePortal.svg',
 diff --git a/data/meson.build b/data/meson.build
-index 85fa318..55e113c 100644
+index 61bb876..ab21357 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -1,8 +1,9 @@
@@ -70,4 +70,5 @@ index 48b7f89..4bda8da 100644
  config_dir = '@0@/..'.format(meson.current_build_dir())
  
 -- 
-2.53.0
+2.55.0
+

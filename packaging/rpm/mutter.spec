@@ -20,7 +20,7 @@
 %global lcms2_version 2.6
 %global colord_version 1.4.5
 %global libei_version 1.3.901
-%global mutter_api_version 17
+%global mutter_api_version 51
 %global wayland_protocols_version 1.45
 %global wayland_server_version 1.24
 
@@ -28,13 +28,13 @@
 %global tarball_version %%(echo %{version} | tr '~' '.')
 
 Name:          gnoblin-mutter
-Version:       49.5
+Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
 Release:       17.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
-Provides:      libmutter-17.so.0()(64bit)
+Provides:      libmutter-51.so.0()(64bit)
 Provides:      libmutter-clutter-17.so.0()(64bit)
 Provides:      libmutter-cogl-17.so.0()(64bit)
 Provides:      libmutter-mtk-17.so.0()(64bit)

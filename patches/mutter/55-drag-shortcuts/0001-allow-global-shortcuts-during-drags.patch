@@ -1,12 +1,18 @@
+From ae988cbc57697acf29fd937fd23657acddbe7e03 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
-
+Date: Sat, 19 Sep 2026 22:02:02 +0100
 Subject: [PATCH] Allow global shortcuts during window drags
 
+---
+ src/core/events.c      |  3 +--
+ src/core/keybindings.c | 56 +++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 56 insertions(+), 3 deletions(-)
+
 diff --git a/src/core/events.c b/src/core/events.c
-index 43c37e0..567abea 100644
+index b2e89dd49..f90f5ba51 100644
 --- a/src/core/events.c
 +++ b/src/core/events.c
-@@ -343,8 +343,7 @@ meta_display_handle_event (MetaDisplay        *display,
+@@ -268,8 +268,7 @@ meta_display_handle_event (MetaDisplay        *display,
     * in a keyboard-grabbed mode like moving a window, we don't
     * want to pass the key event to the compositor or Wayland at all.
     */
@@ -17,7 +23,7 @@ index 43c37e0..567abea 100644
  
    /* Do not pass keyboard events to Wayland if key focus is not on the
 diff --git a/src/core/keybindings.c b/src/core/keybindings.c
-index 8fbb534..8c2a093 100644
+index aa0ff5d65..3a4920d8a 100644
 --- a/src/core/keybindings.c
 +++ b/src/core/keybindings.c
 @@ -38,6 +38,7 @@
@@ -28,7 +34,7 @@ index 8fbb534..8c2a093 100644
  #include "core/workspace-private.h"
  #include "meta/compositor.h"
  #include "meta/prefs.h"
-@@ -1396,6 +1397,26 @@ meta_key_binding_has_handler_func (MetaKeyBinding *binding)
+@@ -1402,6 +1403,26 @@ meta_key_binding_has_handler_func (MetaKeyBinding *binding)
    return (!!binding->handler->func || !!binding->handler->default_func);
  }
  
@@ -55,7 +61,7 @@ index 8fbb534..8c2a093 100644
  static ClutterModifierType
  get_modifiers (ClutterEvent *event)
  {
-@@ -1426,7 +1447,10 @@ process_event (MetaDisplay          *display,
+@@ -1435,7 +1456,10 @@ process_event (MetaDisplay          *display,
    if (!binding)
      goto not_found;
  
@@ -67,7 +73,7 @@ index 8fbb534..8c2a093 100644
      goto not_found;
  
    if (binding->flags & META_KEY_BINDING_CUSTOM_TRIGGER)
-@@ -1489,6 +1513,19 @@ process_event (MetaDisplay          *display,
+@@ -1498,6 +1522,19 @@ process_event (MetaDisplay          *display,
                    "Running handler for %s",
                    binding->name);
  
@@ -87,7 +93,7 @@ index 8fbb534..8c2a093 100644
        invoke_handler (display, binding->handler, window, event, binding);
        if (!binding->release_pending &&
            ((binding->flags & META_KEY_BINDING_TRIGGER_RELEASE) != 0))
-@@ -1725,6 +1762,23 @@ meta_keybindings_process_event (MetaDisplay        *display,
+@@ -1706,6 +1743,23 @@ meta_keybindings_process_event (MetaDisplay        *display,
  
      case CLUTTER_KEY_PRESS:
      case CLUTTER_KEY_RELEASE:
@@ -111,3 +117,6 @@ index 8fbb534..8c2a093 100644
        return process_key_event (display, window, (ClutterEvent *) event);
  
      default:
+-- 
+2.55.0
+

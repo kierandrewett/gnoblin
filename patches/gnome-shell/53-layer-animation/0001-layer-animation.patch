@@ -1,10 +1,17 @@
+From fc139474d4e88ca457458e416eb17c461d5b430f Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:51:03 +0100
 Subject: [PATCH] shell: animate layer surfaces from their anchored edges
 
+---
+ js/ui/windowManager.js | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 1736aa9..dd9bf7e 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
-@@ -1483,6 +1483,43 @@
+@@ -1517,6 +1517,43 @@ export class WindowManager {
          if (actor.meta_window.is_attached_dialog())
              this._checkDimming(actor.get_meta_window().get_transient_for());
  
@@ -48,3 +55,6 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
          const types = [
              Meta.WindowType.NORMAL,
              Meta.WindowType.DIALOG,
+-- 
+2.55.0
+

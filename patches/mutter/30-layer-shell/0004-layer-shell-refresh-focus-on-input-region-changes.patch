@@ -1,4 +1,4 @@
-From 8dd3e0f219fbbe2994a657157b7de09fd54ddff1 Mon Sep 17 00:00:00 2001
+From 827f9c080d550e543f0939a4022e18078ee881e1 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 20 Jun 2026 20:41:00 +0100
 Subject: [PATCH] layer-shell: refresh focus on input-region changes
@@ -20,7 +20,7 @@ input shape, so stale focus is cleared without requiring pointer motion.
  2 files changed, 14 insertions(+)
 
 diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
-index 3eba2adf4..bc79840e1 100644
+index bb9141ccf..d4f62f033 100644
 --- a/clutter/clutter/clutter-stage-private.h
 +++ b/clutter/clutter/clutter-stage-private.h
 @@ -115,6 +115,7 @@ void clutter_stage_unlink_grab (ClutterStage *self,
@@ -32,18 +32,18 @@ index 3eba2adf4..bc79840e1 100644
                                             ClutterActor *actor);
  
 diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
-index e983cda5c..11aef291d 100644
+index 472be8596..14f9a7a8a 100644
 --- a/src/compositor/meta-surface-actor.c
 +++ b/src/compositor/meta-surface-actor.c
-@@ -21,6 +21,7 @@
+@@ -20,6 +20,7 @@
  #include "compositor/meta-surface-actor.h"
  
  #include "clutter/clutter.h"
 +#include "clutter/clutter-stage-private.h"
  #include "compositor/clutter-utils.h"
+ #include "compositor/meta-background-effect.h"
  #include "compositor/meta-cullable.h"
- #include "compositor/meta-shaped-texture-private.h"
-@@ -592,13 +593,25 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
+@@ -738,6 +739,9 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
  {
    MetaSurfaceActorPrivate *priv =
      meta_surface_actor_get_instance_private (self);
@@ -53,7 +53,7 @@ index e983cda5c..11aef291d 100644
  
    g_clear_pointer (&priv->input_region, mtk_region_unref);
  
-   if (region)
+@@ -745,6 +749,15 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
      priv->input_region = mtk_region_ref (region);
    else
      priv->input_region = NULL;
@@ -70,4 +70,5 @@ index e983cda5c..11aef291d 100644
  
  void
 -- 
-2.50.1
+2.55.0
+

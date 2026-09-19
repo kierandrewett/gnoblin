@@ -1,4 +1,4 @@
-From 08ddfd63bdaf8e2f414f4491e5ae158124edda0d Mon Sep 17 00:00:00 2001
+From 146d7a395cb88f713ea4cd5ff1885df61f4883fa Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
 Date: Sat, 12 Sep 2026 05:03:40 +0100
 Subject: [PATCH] blur: cache static masked actor coverage

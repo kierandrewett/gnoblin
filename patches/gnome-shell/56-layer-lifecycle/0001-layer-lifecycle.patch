@@ -1,10 +1,30 @@
+From 34b121daceb6e6db21baa16f38e7bd62da016c3a Mon Sep 17 00:00:00 2001
 From: Kieran <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:51:03 +0100
 Subject: [PATCH] shell: share layer entry and destruction animations
 
+---
+ js/js-resources.gresource.xml |  1 +
+ js/ui/windowManager.js        | 40 +++++------------------------------
+ 2 files changed, 6 insertions(+), 35 deletions(-)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 7dcbbd9..31256cd 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -146,6 +146,7 @@
+     <file>ui/components/automountManager.js</file>
+     <file>ui/components/autorunManager.js</file>
+     <file>ui/components/gnoblinConfig.js</file>
++    <file>ui/components/gnoblinLayerAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
+     <file>ui/components/gnoblinControl.js</file>
+     <file>ui/components/keyring.js</file>
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index dd9bf7e..3c8eb9e 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
-@@ -10,6 +10,7 @@
+@@ -10,6 +10,7 @@ import St from 'gi://St';
  
  import * as AltTab from './altTab.js';
  import * as GnoblinConfig from './components/gnoblinConfig.js';
@@ -12,7 +32,7 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
  import * as AppFavorites from './appFavorites.js';
  import * as Dialog from './dialog.js';
  import * as WorkspaceSwitcherPopup from './workspaceSwitcherPopup.js';
-@@ -1483,42 +1484,8 @@
+@@ -1517,42 +1518,8 @@ export class WindowManager {
          if (actor.meta_window.is_attached_dialog())
              this._checkDimming(actor.get_meta_window().get_transient_for());
  
@@ -50,31 +70,22 @@ diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
 -                mode: modes[GnoblinConfig.settings['layer-easing']],
 -                onStopped: () => this._mapWindowDone(shellwm, actor),
 -            });
--            return;
--        }
 +        if (GnoblinLayerAnimation.animate(this, shellwm, actor, true))
-+            return;
+             return;
+-        }
  
          const types = [
              Meta.WindowType.NORMAL,
-@@ -1591,6 +1558,9 @@
- 
+@@ -1633,6 +1600,9 @@ export class WindowManager {
          if (window.is_attached_dialog())
              this._checkDimming(window.get_transient_for());
-+
+ 
 +        if (GnoblinLayerAnimation.animate(this, shellwm, actor, false))
 +            return;
- 
++
          const types = [
              Meta.WindowType.NORMAL,
-diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
---- a/js/js-resources.gresource.xml
-+++ b/js/js-resources.gresource.xml
-@@ -135,6 +135,7 @@
-     <file>ui/components/automountManager.js</file>
-     <file>ui/components/autorunManager.js</file>
-     <file>ui/components/gnoblinConfig.js</file>
-+    <file>ui/components/gnoblinLayerAnimation.js</file>
-     <file>ui/components/gnoblinRules.js</file>
-     <file>ui/components/gnoblinControl.js</file>
-     <file>ui/components/keyring.js</file>
+             Meta.WindowType.DIALOG,
+-- 
+2.55.0
+

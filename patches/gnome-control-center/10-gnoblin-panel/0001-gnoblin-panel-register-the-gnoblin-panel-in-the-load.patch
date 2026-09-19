@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 9bde745ae627e281e3989939c2379f7abc42f8e6 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 3 Jul 2026 09:38:43 +0100
 Subject: [PATCH] gnoblin-panel: register the gnoblin panel in the loader +
@@ -31,7 +31,7 @@ index 07c7733..2c55535 100644
    'multitasking',
    'notifications',
 diff --git a/shell/cc-panel-loader.c b/shell/cc-panel-loader.c
-index 28a1671..019bce3 100644
+index d9cabff..0a61ff2 100644
 --- a/shell/cc-panel-loader.c
 +++ b/shell/cc-panel-loader.c
 @@ -39,6 +39,7 @@ extern GType cc_bluetooth_panel_get_type (void);
@@ -42,11 +42,14 @@ index 28a1671..019bce3 100644
  extern GType cc_keyboard_panel_get_type (void);
  extern GType cc_mouse_panel_get_type (void);
  extern GType cc_multitasking_panel_get_type (void);
-@@ -93,6 +94,7 @@ static CcPanelLoaderVtable default_panels[] =
+@@ -92,6 +93,7 @@ static CcPanelLoaderVtable default_panels[] = {
  #endif
-   PANEL_TYPE("color",            cc_color_panel_get_type,                NULL),
-   PANEL_TYPE("display",          cc_display_panel_get_type,              NULL),
-+  PANEL_TYPE("gnoblin",          cc_gnoblin_panel_get_type,              NULL),
-   PANEL_TYPE("keyboard",         cc_keyboard_panel_get_type,             NULL),
-   PANEL_TYPE("mouse",            cc_mouse_panel_get_type,                NULL),
-   PANEL_TYPE("multitasking",     cc_multitasking_panel_get_type,         NULL),
+     PANEL_TYPE ("color", cc_color_panel_get_type, NULL),
+     PANEL_TYPE ("display", cc_display_panel_get_type, NULL),
++    PANEL_TYPE ("gnoblin", cc_gnoblin_panel_get_type, NULL),
+     PANEL_TYPE ("keyboard", cc_keyboard_panel_get_type, NULL),
+     PANEL_TYPE ("mouse", cc_mouse_panel_get_type, NULL),
+     PANEL_TYPE ("multitasking", cc_multitasking_panel_get_type, NULL),
+-- 
+2.55.0
+

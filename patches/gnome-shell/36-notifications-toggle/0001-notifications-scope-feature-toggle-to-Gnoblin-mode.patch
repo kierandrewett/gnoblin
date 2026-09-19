@@ -1,4 +1,4 @@
-From 89b03b3b3925364755812757529945cc1632c15e Mon Sep 17 00:00:00 2001
+From deaefeba70ce17cb26ffbe32b46c90d6dd66fbb7 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 13:40:01 +0100
 Subject: [PATCH] notifications: scope feature toggle to Gnoblin mode
@@ -12,10 +12,10 @@ schema is unavailable.
  1 file changed, 63 insertions(+), 2 deletions(-)
 
 diff --git a/js/dbusServices/notifications/notificationDaemon.js b/js/dbusServices/notifications/notificationDaemon.js
-index dafc0c7..3a5435e 100644
+index 108372b..d8bb765 100644
 --- a/js/dbusServices/notifications/notificationDaemon.js
 +++ b/js/dbusServices/notifications/notificationDaemon.js
-@@ -7,6 +7,9 @@ import {loadInterfaceXML} from './misc/dbusUtils.js';
+@@ -7,6 +7,9 @@ import {emitSignalToDestination, loadInterfaceXML} from './misc/dbusUtils.js';
  
  const NotificationsIface = loadInterfaceXML('org.freedesktop.Notifications');
  const NotificationsProxy = Gio.DBusProxy.makeProxyWrapper(NotificationsIface);
@@ -25,7 +25,7 @@ index dafc0c7..3a5435e 100644
  
  Gio._promisify(Gio.DBusConnection.prototype, 'call');
  
-@@ -89,13 +92,71 @@ export const NotificationDaemon = class extends ServiceImplementation {
+@@ -84,13 +87,71 @@ export const NotificationDaemon = class extends ServiceImplementation {
          return false;
      }
  
@@ -100,5 +100,5 @@ index dafc0c7..3a5435e 100644
          const sender = invocation.get_sender();
          const pid = await this._getSenderPid(sender);
 -- 
-2.53.0
+2.55.0
 

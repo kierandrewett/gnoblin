@@ -1,23 +1,31 @@
+From edd74cec8b19413c1d53f8250c93542541d8ead6 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
-Subject: [PATCH] compositor: expose authoritative texture opacity to shell effects
+Date: Sat, 19 Sep 2026 22:02:02 +0100
+Subject: [PATCH] compositor: expose authoritative texture opacity to shell
+ effects
+
+---
+ src/compositor/meta-shaped-texture-private.h | 1 -
+ src/meta/meta-shaped-texture.h               | 3 +++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/src/compositor/meta-shaped-texture-private.h b/src/compositor/meta-shaped-texture-private.h
-index 4e07750..d598e3c 100644
+index 5cd10f5fe..8341ee066 100644
 --- a/src/compositor/meta-shaped-texture-private.h
 +++ b/src/compositor/meta-shaped-texture-private.h
-@@ -44,7 +44,6 @@ void meta_shaped_texture_set_fallback_size (MetaShapedTexture *stex,
-                                             int                fallback_width,
-                                             int                fallback_height);
+@@ -42,7 +42,6 @@ void meta_shaped_texture_set_color_state (MetaShapedTexture *stex,
+ void meta_shaped_texture_set_is_y_inverted (MetaShapedTexture *stex,
+                                             gboolean           is_y_inverted);
  MtkRegion * meta_shaped_texture_get_opaque_region (MetaShapedTexture *stex);
 -gboolean meta_shaped_texture_is_opaque (MetaShapedTexture *stex);
  gboolean meta_shaped_texture_has_alpha (MetaShapedTexture *stex);
  void meta_shaped_texture_set_transform (MetaShapedTexture    *stex,
                                          MtkMonitorTransform  transform);
 diff --git a/src/meta/meta-shaped-texture.h b/src/meta/meta-shaped-texture.h
-index 2a3f546..9c1143a 100644
+index 5bef66a6a..070ce8d5c 100644
 --- a/src/meta/meta-shaped-texture.h
 +++ b/src/meta/meta-shaped-texture.h
-@@ -47,6 +47,9 @@ void meta_shaped_texture_set_create_mipmaps (MetaShapedTexture *stex,
+@@ -46,6 +46,9 @@ void meta_shaped_texture_set_create_mipmaps (MetaShapedTexture *stex,
  META_EXPORT
  MetaMultiTexture * meta_shaped_texture_get_texture (MetaShapedTexture *stex);
  
@@ -27,4 +35,6 @@ index 2a3f546..9c1143a 100644
  META_EXPORT
  void meta_shaped_texture_set_mask_texture (MetaShapedTexture *stex,
                                             CoglTexture       *mask_texture);
+-- 
+2.55.0
 

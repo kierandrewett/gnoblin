@@ -1,7 +1,7 @@
-From 61fffdaac20f98499f8cc2540b063ef5baf41860 Mon Sep 17 00:00:00 2001
+From 8eb42d9f4236d2545f2cd16ec23d5e7688f328b9 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 14:34:13 +0100
-Subject: [PATCH 2/2] feat(grants): persist exact portal permissions
+Subject: [PATCH] feat(grants): persist exact portal permissions
 
 Replace basename marker grants with portal-scoped, namespaced identities derived from the trusted frontend request. Store typed ScreenCast and RemoteDesktop capabilities under XDG_DATA_HOME and replay only the exact approved monitor, device, and clipboard set.
 
@@ -12,7 +12,7 @@ Validated with the xdg-desktop-portal-gnome Meson build and the gnoblin-portal-g
  src/gnoblin-portal-grants.c      | 547 +++++++++++++++++++++++++++++++
  src/gnoblin-portal-grants.h      |  59 ++++
  src/meson.build                  |  15 +
- src/remotedesktop.c              | 329 +++++++++++++------
+ src/remotedesktop.c              | 229 +++++++++----
  src/remotedesktopdialog.c        |  12 +-
  src/remotedesktopdialog.h        |   5 +-
  src/remotedesktopdialog.ui       |   3 +-
@@ -25,7 +25,7 @@ Validated with the xdg-desktop-portal-gnome Meson build and the gnoblin-portal-g
  src/test-gnoblin-portal-grants.c | 335 +++++++++++++++++++
  src/utils.c                      | 135 --------
  src/utils.h                      |  27 --
- 16 files changed, 1385 insertions(+), 367 deletions(-)
+ 16 files changed, 1323 insertions(+), 329 deletions(-)
  create mode 100644 src/gnoblin-portal-grants.c
  create mode 100644 src/gnoblin-portal-grants.h
  create mode 100644 src/test-gnoblin-portal-grants.c
@@ -649,10 +649,10 @@ index 0000000..e625047
 +                                     GVariant                *streams,
 +                                     GError                 **error);
 diff --git a/src/meson.build b/src/meson.build
-index cbc60f6..b1a32fd 100644
+index ce934a9..d8e5231 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -107,6 +107,7 @@ sources = built_sources + files(
+@@ -108,6 +108,7 @@ sources = built_sources + files(
    'inputcapture.c',
    'inputcapturedialog.c',
    'globalshortcuts.c',
@@ -660,7 +660,7 @@ index cbc60f6..b1a32fd 100644
    'gnomeinputcapture.c',
    'gnomescreencast.c',
    'lockdown.c',
-@@ -145,6 +146,20 @@ executable(
+@@ -146,6 +147,20 @@ executable(
    install_dir: libexecdir,
  )
  
@@ -682,7 +682,7 @@ index cbc60f6..b1a32fd 100644
    'xdg-desktop-portal-gnome.gschema.xml',
    install_dir : datadir / 'glib-2.0' / 'schemas',
 diff --git a/src/remotedesktop.c b/src/remotedesktop.c
-index 2a415c9..22ae17b 100644
+index 6b75731..6cd9fdf 100644
 --- a/src/remotedesktop.c
 +++ b/src/remotedesktop.c
 @@ -31,6 +31,7 @@
@@ -711,7 +711,7 @@ index 2a415c9..22ae17b 100644
  } RemoteDesktopSession;
  
  typedef struct _RemoteDesktopSessionClass
-@@ -228,6 +234,38 @@ handle_close (XdpImplRequest *object,
+@@ -196,6 +202,38 @@ handle_close (XdpImplRequest *object,
    return FALSE;
  }
  
@@ -750,22 +750,23 @@ index 2a415c9..22ae17b 100644
  static void
  remote_desktop_dialog_done (GtkWidget                 *widget,
                              int                        dialog_response,
-@@ -260,20 +298,36 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+@@ -228,20 +266,36 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
  
    if (response == 0)
      {
 +      RemoteDesktopSession *session = dialog_handle->session;
        g_autoptr(GError) error = NULL;
 +      gboolean remember_permissions;
-+
-+      remember_permissions =
-+        remote_desktop_dialog_get_always_allow (
-+          REMOTE_DESKTOP_DIALOG (widget));
  
 -      /* gnoblin: the user approved; if they also ticked "Always allow this
 -       * app", persist a per-app grant so future sessions skip this dialog. */
 -      if (remote_desktop_dialog_get_always_allow (REMOTE_DESKTOP_DIALOG (widget)))
 -        gnoblin_portal_store_grant (dialog_handle->session->gnoblin_grant_id);
++      remember_permissions =
++        remote_desktop_dialog_get_always_allow (
++          REMOTE_DESKTOP_DIALOG (widget));
+ 
+-      if (!start_session (dialog_handle->session,
 +      clear_pending_grant (session);
 +      if (remember_permissions &&
 +          session->gnoblin_grant_identity &&
@@ -779,8 +780,7 @@ index 2a415c9..22ae17b 100644
 +            session->gnoblin_pending_grant.streams =
 +              serialize_screen_cast_streams (streams);
 +        }
- 
--      if (!start_session (dialog_handle->session,
++
 +      if (!start_session (session,
                            device_types,
                            streams,
@@ -792,7 +792,7 @@ index 2a415c9..22ae17b 100644
            g_warning ("Failed to start session: %s", error->message);
            response = 2;
          }
-@@ -295,6 +349,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -263,6 +317,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
    GdkSurface *surface;
    GtkWidget *fake_parent;
    GtkWindow *dialog;
@@ -801,7 +801,7 @@ index 2a415c9..22ae17b 100644
  
    if (parent_window)
      {
-@@ -308,6 +364,12 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -276,6 +332,12 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
        external_parent = NULL;
      }
  
@@ -814,7 +814,7 @@ index 2a415c9..22ae17b 100644
    fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
    g_object_ref_sink (fake_parent);
  
-@@ -317,7 +379,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -285,7 +347,8 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
                                             session->select.screen_cast_enable ?
                                               &session->select.screen_cast : NULL,
                                             session->clipboard.clipboard_requested,
@@ -824,113 +824,16 @@ index 2a415c9..22ae17b 100644
    gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
    gtk_window_set_modal (dialog, TRUE);
  
-@@ -561,6 +624,29 @@ serialize_session_as_restore_data (RemoteDesktopSession *remote_desktop_session,
-   return g_variant_builder_end (&restore_data_builder);
- }
+@@ -563,6 +626,8 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+           if (error)
+             g_warning ("Failed to create clipboard proxy: %s", error->message);
+           clipboard_enabled = FALSE;
++          remote_desktop_session->gnoblin_pending_grant.clipboard_enabled =
++            FALSE;
+         }
  
-+static void
-+disconnect_clipboard_handlers (RemoteDesktopSession *remote_desktop_session)
-+{
-+  OrgGnomeMutterRemoteDesktopSession *session_proxy =
-+    remote_desktop_session->mutter_session_proxy;
-+
-+  if (remote_desktop_session->clipboard.selection_owner_changed_handler_id)
-+    {
-+      g_signal_handler_disconnect (
-+        session_proxy,
-+        remote_desktop_session->clipboard.selection_owner_changed_handler_id);
-+      remote_desktop_session->clipboard.selection_owner_changed_handler_id = 0;
-+    }
-+
-+  if (remote_desktop_session->clipboard.selection_transfer_handler_id)
-+    {
-+      g_signal_handler_disconnect (
-+        session_proxy,
-+        remote_desktop_session->clipboard.selection_transfer_handler_id);
-+      remote_desktop_session->clipboard.selection_transfer_handler_id = 0;
-+    }
-+}
-+
- static void
- start_done (RemoteDesktopSession *remote_desktop_session)
- {
-@@ -577,35 +663,46 @@ start_done (RemoteDesktopSession *remote_desktop_session)
-                          "devices", g_variant_new_uint32 (shared_device_types));
- 
-   if (remote_desktop_session->clipboard.clipboard_requested)
--  {
--    g_autoptr (GError) error = NULL;
--    GVariantBuilder options_builder;
--    GVariant *options;
--
--    remote_desktop_session->clipboard.selection_owner_changed_handler_id =
--      g_signal_connect (remote_desktop_session->mutter_session_proxy,
--                        "selection-owner-changed",
--                        G_CALLBACK (on_selection_owner_changed),
--                        remote_desktop_session);
--    remote_desktop_session->clipboard.selection_transfer_handler_id =
--      g_signal_connect (remote_desktop_session->mutter_session_proxy,
--                        "selection-transfer",
--                        G_CALLBACK (on_selection_transfer),
--                        remote_desktop_session);
--
--    g_variant_builder_init (&options_builder, G_VARIANT_TYPE_VARDICT);
--    options = g_variant_builder_end (&options_builder);
--
--    if (!org_gnome_mutter_remote_desktop_session_call_enable_clipboard_sync (
--      remote_desktop_session->mutter_session_proxy, options, NULL, &error))
--      {
--        g_warning ("Failed to enable clipboard: %s", error->message);
--      }
--
--    clipboard_enabled = remote_desktop_session->clipboard.clipboard_enabled;
--    g_variant_builder_add (&results_builder, "{sv}", "clipboard_enabled",
--                           g_variant_new_boolean (clipboard_enabled));
--  }
-+    {
-+      if (remote_desktop_session->clipboard.clipboard_enabled)
-+        {
-+          g_autoptr(GError) error = NULL;
-+          GVariantBuilder options_builder;
-+          GVariant *options;
-+
-+          remote_desktop_session->clipboard.selection_owner_changed_handler_id =
-+            g_signal_connect (remote_desktop_session->mutter_session_proxy,
-+                              "selection-owner-changed",
-+                              G_CALLBACK (on_selection_owner_changed),
-+                              remote_desktop_session);
-+          remote_desktop_session->clipboard.selection_transfer_handler_id =
-+            g_signal_connect (remote_desktop_session->mutter_session_proxy,
-+                              "selection-transfer",
-+                              G_CALLBACK (on_selection_transfer),
-+                              remote_desktop_session);
-+
-+          g_variant_builder_init (&options_builder, G_VARIANT_TYPE_VARDICT);
-+          options = g_variant_builder_end (&options_builder);
-+
-+          if (!org_gnome_mutter_remote_desktop_session_call_enable_clipboard_sync (
-+                remote_desktop_session->mutter_session_proxy,
-+                options,
-+                NULL,
-+                &error))
-+            {
-+              g_warning ("Failed to enable clipboard: %s", error->message);
-+              remote_desktop_session->clipboard.clipboard_enabled = FALSE;
-+              remote_desktop_session->gnoblin_pending_grant.clipboard_enabled =
-+                FALSE;
-+              disconnect_clipboard_handlers (remote_desktop_session);
-+            }
-+        }
-+
-+      clipboard_enabled =
-+        remote_desktop_session->clipboard.clipboard_enabled;
-+      g_variant_builder_add (&results_builder, "{sv}", "clipboard_enabled",
-+                             g_variant_new_boolean (clipboard_enabled));
-+    }
- 
-   gnome_screen_cast_session = remote_desktop_session->gnome_screen_cast_session;
-   if (gnome_screen_cast_session)
-@@ -640,6 +737,8 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+       remote_desktop_session->clipboard.clipboard_enabled = clipboard_enabled;
+@@ -603,6 +668,8 @@ start_done (RemoteDesktopSession *remote_desktop_session)
          }
      }
  
@@ -939,7 +842,7 @@ index 2a415c9..22ae17b 100644
    xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
                                            remote_desktop_session->start_invocation,
                                            0,
-@@ -736,6 +835,7 @@ cancel_start_session (RemoteDesktopSession *remote_desktop_session,
+@@ -699,6 +766,7 @@ cancel_start_session (RemoteDesktopSession *remote_desktop_session,
  {
    GVariantBuilder results_builder;
  
@@ -947,7 +850,7 @@ index 2a415c9..22ae17b 100644
    g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
    xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
                                            remote_desktop_session->start_invocation,
-@@ -790,6 +890,84 @@ restore_from_data (RemoteDesktopSession *remote_desktop_session)
+@@ -753,6 +821,84 @@ restore_from_data (RemoteDesktopSession *remote_desktop_session)
    return TRUE;
  }
  
@@ -1032,7 +935,7 @@ index 2a415c9..22ae17b 100644
  static gboolean
  handle_start (XdpImplRemoteDesktop *object,
                GDBusMethodInvocation *invocation,
-@@ -825,60 +1003,24 @@ handle_start (XdpImplRemoteDesktop *object,
+@@ -788,60 +934,24 @@ handle_start (XdpImplRemoteDesktop *object,
  
    remote_desktop_session->start_invocation = invocation;
  
@@ -1105,7 +1008,7 @@ index 2a415c9..22ae17b 100644
            if (request->exported)
              request_unexport (request);
            return TRUE;
-@@ -1340,6 +1482,8 @@ remote_desktop_session_close (Session *session)
+@@ -1328,6 +1438,8 @@ remote_desktop_session_close (Session *session)
    OrgGnomeMutterRemoteDesktopSession *session_proxy;
    GnomeScreenCastSession *gnome_screen_cast_session;
    g_autoptr(GError) error = NULL;
@@ -1114,27 +1017,10 @@ index 2a415c9..22ae17b 100644
  
    gnome_screen_cast_session = remote_desktop_session->gnome_screen_cast_session;
    if (gnome_screen_cast_session)
-@@ -1353,15 +1497,7 @@ remote_desktop_session_close (Session *session)
-   g_signal_handler_disconnect (session_proxy,
-                                remote_desktop_session->closed_handler_id);
- 
--  if (remote_desktop_session->clipboard.clipboard_enabled)
--    {
--      g_signal_handler_disconnect (
--          session_proxy, remote_desktop_session->clipboard
--                             .selection_owner_changed_handler_id);
--      g_signal_handler_disconnect (
--          session_proxy, remote_desktop_session->clipboard
--                             .selection_transfer_handler_id);
--    }
-+  disconnect_clipboard_handlers (remote_desktop_session);
- 
-   if (!org_gnome_mutter_remote_desktop_session_call_stop_sync (session_proxy,
-                                                                NULL,
-@@ -1380,7 +1516,8 @@ remote_desktop_session_finalize (GObject *object)
-   g_clear_pointer (&remote_desktop_session->streams_to_restore,
+@@ -1362,7 +1474,8 @@ remote_desktop_session_finalize (GObject *object)
                     g_ptr_array_unref);
    g_clear_pointer (&remote_desktop_session->restored.data, g_variant_unref);
+   g_clear_object (&remote_desktop_session->clipboard.clipboard_proxy);
 -  g_clear_pointer (&remote_desktop_session->gnoblin_grant_id, g_free);
 +  g_clear_pointer (&remote_desktop_session->gnoblin_grant_identity, g_free);
 +  clear_pending_grant (remote_desktop_session);
@@ -1142,7 +1028,7 @@ index 2a415c9..22ae17b 100644
  
    G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
 diff --git a/src/remotedesktopdialog.c b/src/remotedesktopdialog.c
-index e757b97..344620c 100644
+index 6ca55c0..8a980ce 100644
 --- a/src/remotedesktopdialog.c
 +++ b/src/remotedesktopdialog.c
 @@ -159,9 +159,12 @@ remote_desktop_dialog_new (const char *app_id,
@@ -1205,7 +1091,7 @@ index 6b2cb10..0ea33e0 100644
                      </child>
  
 diff --git a/src/screencast.c b/src/screencast.c
-index 305cb82..12602cb 100644
+index 050698d..ab50d95 100644
 --- a/src/screencast.c
 +++ b/src/screencast.c
 @@ -29,6 +29,7 @@
@@ -1229,7 +1115,7 @@ index 305cb82..12602cb 100644
  } ScreenCastSession;
  
  typedef struct _ScreenCastSessionClass
-@@ -117,15 +118,11 @@ screen_cast_dialog_handle_close (ScreenCastDialogHandle *dialog_handle)
+@@ -119,15 +120,11 @@ screen_cast_dialog_handle_close (ScreenCastDialogHandle *dialog_handle)
    screen_cast_dialog_handle_free (dialog_handle);
  }
  
@@ -1249,7 +1135,7 @@ index 305cb82..12602cb 100644
      {
        ScreenCastStreamInfo *info = g_ptr_array_index (streams, i);
        GVariant *stream_variant;
-@@ -156,12 +153,31 @@ serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
+@@ -158,12 +155,31 @@ serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
            break;
          }
  
@@ -1282,7 +1168,7 @@ index 305cb82..12602cb 100644
    g_variant_builder_close (impl_builder);
  }
  
-@@ -197,12 +213,42 @@ serialize_session_as_restore_data (ScreenCastSession *screen_cast_session,
+@@ -199,12 +215,42 @@ serialize_session_as_restore_data (ScreenCastSession *screen_cast_session,
    return g_variant_builder_end (&restore_data_builder);
  }
  
@@ -1325,7 +1211,7 @@ index 305cb82..12602cb 100644
    g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
    xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
                                         screen_cast_session->start_invocation,
-@@ -259,6 +305,8 @@ on_gnome_screen_cast_session_ready (GnomeScreenCastSession *gnome_screen_cast_se
+@@ -261,6 +307,8 @@ on_gnome_screen_cast_session_ready (GnomeScreenCastSession *gnome_screen_cast_se
          }
      }
  
@@ -1334,7 +1220,7 @@ index 305cb82..12602cb 100644
    xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
                                         screen_cast_session->start_invocation, 0,
                                         g_variant_builder_end (&results_builder));
-@@ -269,6 +317,7 @@ static void
+@@ -271,6 +319,7 @@ static void
  on_gnome_screen_cast_session_closed (GnomeScreenCastSession *gnome_screen_cast_session,
                                       ScreenCastSession      *screen_cast_session)
  {
@@ -1342,7 +1228,7 @@ index 305cb82..12602cb 100644
    session_close ((Session *)screen_cast_session, TRUE);
  }
  
-@@ -343,16 +392,24 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
+@@ -345,16 +394,24 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
        ScreenCastSession *screen_cast_session = dialog_handle->session;
        g_autoptr(GError) error = NULL;
  
@@ -1371,7 +1257,7 @@ index 305cb82..12602cb 100644
            g_warning ("Failed to start session: %s", error->message);
            response = 2;
          }
-@@ -377,6 +434,7 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+@@ -379,6 +436,7 @@ create_screen_cast_dialog (ScreenCastSession     *session,
    GdkSurface *surface;
    GtkWidget *fake_parent;
    GtkWindow *dialog;
@@ -1379,7 +1265,7 @@ index 305cb82..12602cb 100644
  
    if (parent_window)
      {
-@@ -393,9 +451,15 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+@@ -395,9 +453,15 @@ create_screen_cast_dialog (ScreenCastSession     *session,
    fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
    g_object_ref_sink (fake_parent);
  
@@ -1396,7 +1282,7 @@ index 305cb82..12602cb 100644
    gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
    gtk_window_set_modal (dialog, TRUE);
  
-@@ -599,48 +663,18 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
+@@ -601,48 +665,18 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
          }
      }
  
@@ -1453,7 +1339,7 @@ index 305cb82..12602cb 100644
  }
  
  static gboolean
-@@ -679,6 +713,57 @@ restore_stream_from_data (ScreenCastSession *screen_cast_session)
+@@ -681,6 +715,57 @@ restore_stream_from_data (ScreenCastSession *screen_cast_session)
    return TRUE;
  }
  
@@ -1511,7 +1397,7 @@ index 305cb82..12602cb 100644
  static gboolean
  handle_start (XdpImplScreenCast     *object,
                GDBusMethodInvocation *invocation,
-@@ -714,45 +799,30 @@ handle_start (XdpImplScreenCast     *object,
+@@ -716,45 +801,30 @@ handle_start (XdpImplScreenCast     *object,
  
    screen_cast_session->start_invocation = invocation;
  
@@ -1570,7 +1456,7 @@ index 305cb82..12602cb 100644
        dialog_handle = create_screen_cast_dialog (screen_cast_session,
                                                   invocation,
                                                   request,
-@@ -1012,7 +1082,8 @@ screen_cast_session_finalize (GObject *object)
+@@ -1014,7 +1084,8 @@ screen_cast_session_finalize (GObject *object)
  
    g_clear_pointer (&screen_cast_session->streams_to_restore, g_ptr_array_unref);
    g_clear_pointer (&screen_cast_session->restored.data, g_variant_unref);
@@ -1604,7 +1490,7 @@ index d0d8052..b6ff60e 100644
 + * different current window. */
 +gboolean screen_cast_selection_can_persist (ScreenCastSelection *selection);
 diff --git a/src/screencastdialog.c b/src/screencastdialog.c
-index baddf38..a9b2574 100644
+index 45fa9bf..ef30916 100644
 --- a/src/screencastdialog.c
 +++ b/src/screencastdialog.c
 @@ -146,7 +146,8 @@ screen_cast_dialog_init (ScreenCastDialog *dialog)
@@ -1643,10 +1529,10 @@ index 7ec4834..6953c4e 100644
  /* gnoblin: TRUE if the user ticked "Always allow this app". */
  gboolean screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog);
 diff --git a/src/screencastwidget.c b/src/screencastwidget.c
-index e939bcf..242b155 100644
+index 56afae2..9182d4a 100644
 --- a/src/screencastwidget.c
 +++ b/src/screencastwidget.c
-@@ -765,16 +765,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
+@@ -761,16 +761,21 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
    return screen_cast_widget->persist_mode;
  }
  
@@ -2218,5 +2104,5 @@ index 64010e5..3b73d68 100644
 -/* Persist a grant for grant_id (creating the store dir). No-op on NULL/empty. */
 -void gnoblin_portal_store_grant (const char *grant_id);
 -- 
-2.53.0
+2.55.0
 

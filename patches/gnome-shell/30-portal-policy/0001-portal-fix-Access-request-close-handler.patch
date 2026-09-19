@@ -1,4 +1,4 @@
-From 24801943e604c6839d23ad374dc041658772f4c5 Mon Sep 17 00:00:00 2001
+From c1db93919552146216e210bddbf1cdb5a89f85f9 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 12:46:36 +0100
 Subject: [PATCH] portal: fix Access request close handler
@@ -9,7 +9,7 @@ GJS passes asynchronous D-Bus handlers the method parameters before the invocati
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/accessDialog.js b/js/ui/accessDialog.js
-index 259a7bb..470f329 100644
+index 8b189dd..1df5905 100644
 --- a/js/ui/accessDialog.js
 +++ b/js/ui/accessDialog.js
 @@ -100,7 +100,7 @@ class AccessDialog extends ModalDialog.ModalDialog {
@@ -30,5 +30,5 @@ index 259a7bb..470f329 100644
  
      _sendResponse(response) {
 -- 
-2.53.0
+2.55.0
 

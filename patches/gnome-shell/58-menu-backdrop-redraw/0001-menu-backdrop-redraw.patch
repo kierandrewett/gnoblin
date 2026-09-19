@@ -1,10 +1,17 @@
+From a47b8e42f07ba94e5eef77c13f4827e446b12c9c Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:51:37 +0100
 Subject: [PATCH] shell: load scoped menu backdrop redraw policy
 
+---
+ js/js-resources.gresource.xml | 1 +
+ 1 file changed, 1 insertion(+)
+
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 31256cd..696b400 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -137,6 +137,7 @@
+@@ -148,6 +148,7 @@
      <file>ui/components/gnoblinConfig.js</file>
      <file>ui/components/gnoblinLayerAnimation.js</file>
      <file>ui/components/gnoblinRules.js</file>
@@ -12,3 +19,6 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
+-- 
+2.55.0
+

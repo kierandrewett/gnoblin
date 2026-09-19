@@ -677,9 +677,11 @@ static void update_frame(Frame* frame) {
             g_free(frame->model_key);
             frame->model_key = g_steal_pointer(&key);
             frame->serial = wl_display_next_serial(frame_compositor->wayland_display);
-            /* A matching old-size buffer must not be stretched over a new
-             * layout. */
-            if (frame->width != previous_width || frame->height != previous_height)
+            /* Keep the last successfully presented external frame visible while
+             * the renderer produces the matching size. Falling back here makes
+             * every interactive resize flash the built-in titlebar. */
+            if ((frame->width != previous_width || frame->height != previous_height) &&
+                !frame->external)
                 fallback(frame);
             gnoblin_window_frame_v1_send_configure(frame->resource, frame->serial, frame->width,
                                                    frame->height, b[0], b[1], b[2], b[3],
@@ -752,7 +754,8 @@ static void role_post_apply(MetaWaylandSurfaceRole* role, MetaWaylandSurfaceStat
     if (snapshot)
         g_variant_get(snapshot, "(u@a(uiiii))", &ack, &regions);
     if (!meta_wayland_surface_get_buffer(surface)) {
-        fallback(frame);
+        if (!frame->external)
+            fallback(frame);
         return;
     }
     /* An older focus/title repaint may arrive after another configure. Keep
@@ -761,9 +764,14 @@ static void role_post_apply(MetaWaylandSurfaceRole* role, MetaWaylandSurfaceStat
         return;
     if (meta_wayland_surface_get_width(surface) != frame->width ||
         meta_wayland_surface_get_height(surface) != frame->height) {
-        fallback(frame);
-        wl_resource_post_error(frame->resource, 1,
-                               "Frame buffer dimensions do not match configure");
+        /* During interactive resize the previous frame is still valid for the
+         * current presentation. Do not replace it with the built-in titlebar
+         * or kill the renderer while its new-size buffer is in flight. */
+        if (!frame->external) {
+            fallback(frame);
+            wl_resource_post_error(frame->resource, 1,
+                                   "Frame buffer dimensions do not match configure");
+        }
         return;
     }
     g_array_set_size(self->committed, 0);

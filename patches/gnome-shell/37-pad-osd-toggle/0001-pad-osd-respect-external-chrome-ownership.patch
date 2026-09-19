@@ -1,4 +1,4 @@
-From 9e68963a14debb3580795c790afc04d08f37bf71 Mon Sep 17 00:00:00 2001
+From 83453da6350915a6206db73450131f1d43056dd5 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 24 Aug 2026 12:30:00 +0100
 Subject: [PATCH] pad-osd: respect external chrome ownership
@@ -10,10 +10,13 @@ The tablet-pad OSD bypasses OsdWindowManager, so the external OSD feature gate m
  2 files changed, 33 insertions(+)
 
 diff --git a/js/ui/padOsd.js b/js/ui/padOsd.js
-index 57a712c..b57bd27 100644
+index b833bd4..6e9abbe 100644
 --- a/js/ui/padOsd.js
 +++ b/js/ui/padOsd.js
-@@ -22,1 +22,31 @@ const LTR = 0;
+@@ -19,6 +19,36 @@ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 
+ const ACTIVE_COLOR = 'st-lighten(-st-accent-color, 15%)';
+ 
 +const GNOBLIN_SETTINGS_SCHEMA = 'org.gnoblin.shell';
 +const GNOBLIN_DISABLED_FEATURES_KEY = 'disabled-features';
 +
@@ -45,12 +48,22 @@ index 57a712c..b57bd27 100644
 +}
 +
  const LTR = 0;
+ const RTL = 1;
+ 
 diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
-index f3e6c4d..ecadb3e 100644
+index 0ce009c..018ae5c 100644
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
-@@ -981,1 +981,4 @@ export class WindowManager {
+@@ -974,6 +974,9 @@ export class WindowManager {
+     }
+ 
+     _showPadOsd(display, device, settings, imagePath, editionMode, monitorIndex) {
 +        if (!PadOsd.isPadOsdEnabled())
 +            return null;
 +
          this._currentPadOsd = new PadOsd.PadOsd(device, settings, imagePath, editionMode, monitorIndex);
+         this._currentPadOsd.connect('closed', () => (this._currentPadOsd = null));
+ 
+-- 
+2.55.0
+

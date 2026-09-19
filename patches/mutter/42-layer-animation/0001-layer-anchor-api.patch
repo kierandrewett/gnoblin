@@ -1,12 +1,20 @@
+From 5bcd5743a7f21b2064e5513d2ced56f52f76e358 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:58:54 +0100
 Subject: [PATCH] layer-shell: expose metadata for shell rules and animation
 
+---
+ src/core/util.c | 25 +++++++++++++++++++++++++
+ src/meta/util.h |  8 ++++++++
+ 2 files changed, 33 insertions(+)
+
 diff --git a/src/core/util.c b/src/core/util.c
+index 58f656ffe..12a90879e 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -624,3 +624,28 @@
-   g_logv (G_LOG_DOMAIN, mutter_log_level, format, args);
-   va_end (args);
+@@ -138,6 +138,31 @@ ensure_logfile (void)
+       g_free (filename);
+     }
  }
 +
 +/**
@@ -19,7 +27,7 @@ diff --git a/src/core/util.c b/src/core/util.c
 +meta_gnoblin_layer_anchor (MetaWindow *window)
 +{
 +  return GPOINTER_TO_INT (g_object_get_data (G_OBJECT (window),
-+                                           "gnoblin-layer-anchor")) - 1;
++                                             "gnoblin-layer-anchor")) - 1;
 +}
 +
 +/**
@@ -33,10 +41,14 @@ diff --git a/src/core/util.c b/src/core/util.c
 +{
 +  return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
 +}
+ #endif
+ 
+ gboolean
 diff --git a/src/meta/util.h b/src/meta/util.h
+index 3ba17129f..09072adda 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -115,3 +115,11 @@
+@@ -106,3 +106,11 @@ MetaDebugPaintFlag meta_get_debug_paint_flags (void);
  META_EXPORT
  char * meta_accelerator_name (ClutterModifierType accelerator_mods,
                                unsigned int        accelerator_key);
@@ -48,3 +60,6 @@ diff --git a/src/meta/util.h b/src/meta/util.h
 +
 +META_EXPORT
 +const char *meta_gnoblin_layer_namespace (MetaWindow *window);
+-- 
+2.55.0
+

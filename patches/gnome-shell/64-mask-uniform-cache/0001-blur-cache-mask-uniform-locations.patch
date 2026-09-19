@@ -1,4 +1,4 @@
-From b8dc1f57fd67f18a04f10127e7dcbd1bd9b3ff13 Mon Sep 17 00:00:00 2001
+From b22d2f5feee7d16331a54043b3da684c4b590676 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
 Date: Sat, 12 Sep 2026 04:45:02 +0100
 Subject: [PATCH] blur: cache masked backdrop uniform locations

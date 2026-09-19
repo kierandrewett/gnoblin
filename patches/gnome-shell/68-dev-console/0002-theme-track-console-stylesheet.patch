@@ -1,11 +1,17 @@
+From 0d04d6031d5bd411574357e3691f2a96b2e3819c Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] theme: rebuild CSS when console styles change
 
 ---
+ data/theme/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
 diff --git a/data/theme/meson.build b/data/theme/meson.build
+index d6f2d8e..c1348a4 100644
 --- a/data/theme/meson.build
 +++ b/data/theme/meson.build
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,7 @@ theme_sources = files([
    'gnome-shell-sass/widgets/_check-box.scss',
    'gnome-shell-sass/widgets/_corner-ripple.scss',
    'gnome-shell-sass/widgets/_dash.scss',
@@ -13,3 +19,6 @@ diff --git a/data/theme/meson.build b/data/theme/meson.build
    'gnome-shell-sass/widgets/_dialogs.scss',
    'gnome-shell-sass/widgets/_entries.scss',
    'gnome-shell-sass/widgets/_ibus-popup.scss',
+-- 
+2.55.0
+

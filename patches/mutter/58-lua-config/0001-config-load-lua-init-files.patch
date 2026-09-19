@@ -1,70 +1,46 @@
+From 2627ef59b72088366ac869553ca626ab8da61a51 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:04:39 +0100
 Subject: [PATCH] config: share Lua init and include loading with Shell
 
+---
+ meson.build     |  1 +
+ src/core/util.c | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/meson.build |  5 ++++-
+ src/meta/util.h |  3 +++
+ 4 files changed, 54 insertions(+), 1 deletion(-)
+
 diff --git a/meson.build b/meson.build
+index 6359dbf40..79a2c2390 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -116,6 +116,7 @@
+@@ -115,6 +115,7 @@ mutter_installed_tests_libexecdir = libexecdir / 'installed-tests' / libmutter_n
  subproject('gvdb')
  
  m_dep = cc.find_library('m', required: true)
 +lua_dep = dependency('lua', version: '>= 5.4')
  graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
- glycin_dep = dependency('glycin-2', version: glycin_req)
- cairo_dep = dependency('cairo', version: cairo_req)
-diff --git a/src/meson.build b/src/meson.build
---- a/src/meson.build
-+++ b/src/meson.build
-@@ -10,6 +10,7 @@
- 
- mutter_lib_deps = [
-   m_dep,
-+  lua_dep,
- ]
- if have_hyprcursor
-   mutter_lib_deps += hyprcursor_dep
-@@ -703,6 +704,8 @@
-     # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
-     # at build time; registered via meta_gnoblin_init_protocols)
-     'wayland/gnoblin-config.c',
-+    'wayland/gnoblin-lua.c',
-+    'wayland/gnoblin-glob.c',
-     'wayland/gnoblin-config.h',
-     'wayland/meta-gnoblin-protocols.c',
-     'wayland/meta-gnoblin-protocols.h',
-@@ -1362,7 +1365,7 @@
- if have_introspection
-   mutter_introspected_sources = []
-   foreach source : mutter_sources
--    if source.endswith('.c')
-+    if source.endswith('.c') and not source.endswith('gnoblin-lua.c')
-       mutter_introspected_sources += source
-     endif
-   endforeach
-diff --git a/src/meta/util.h b/src/meta/util.h
---- a/src/meta/util.h
-+++ b/src/meta/util.h
-@@ -116,6 +116,9 @@
- char * meta_accelerator_name (ClutterModifierType accelerator_mods,
-                               unsigned int        accelerator_key);
- 
-+META_EXPORT
-+GVariant *meta_gnoblin_load_config (const char *path);
-+
- #include "meta/types.h"
- 
- META_EXPORT
+ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_option('hyprcursor'))
+ have_hyprcursor = hyprcursor_dep.found()
 diff --git a/src/core/util.c b/src/core/util.c
+index e8d3ae372..1ae1d6e3f 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -625,6 +625,49 @@
-   va_end (args);
- }
+@@ -41,6 +41,10 @@
+ #include "meta/common.h"
+ #include "meta/main.h"
  
 +#ifdef HAVE_WAYLAND
 +#include "wayland/gnoblin-config.h"
 +#endif
 +
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+   { "workarea", META_DEBUG_WORKAREA },
+@@ -141,6 +145,48 @@ ensure_logfile (void)
+ 
+ #endif
+ 
 +/**
 + * meta_gnoblin_load_config:
 + * @path: root configuration filename
@@ -93,17 +69,67 @@ diff --git a/src/core/util.c b/src/core/util.c
 +                       "Gnoblin config requires Wayland support");
 +#endif
 +  g_variant_builder_add (&result, "{sv}", "paths",
-+                         g_variant_new_strv (paths ? (const char * const *) paths->pdata : NULL,
-+                                             paths ? paths->len : 0));
-+  g_variant_builder_add (&result, "{sv}", "directories",
-+                         g_variant_new_strv (directories ? (const char * const *) directories->pdata : NULL,
-+                                             directories ? directories->len : 0));
++                         g_variant_new_strv (
++                           paths ? (const char * const *) paths->pdata : NULL,
++                           paths ? paths->len : 0));
++  g_variant_builder_add (
++    &result, "{sv}", "directories",
++    g_variant_new_strv (
++      directories ? (const char * const *) directories->pdata : NULL,
++      directories ? directories->len : 0));
 +  if (error)
-+    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
++    g_variant_builder_add (&result, "{sv}", "error",
++                           g_variant_new_string (error->message));
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
 +}
-+
 +
  /**
   * meta_gnoblin_layer_anchor:
   * @window: window to inspect
+diff --git a/src/meson.build b/src/meson.build
+index f1e2f8aff..e18725013 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -10,6 +10,7 @@ mutter_includes = [
+ 
+ mutter_lib_deps = [
+   m_dep,
++  lua_dep,
+ ]
+ if have_hyprcursor
+   mutter_lib_deps += hyprcursor_dep
+@@ -596,6 +597,8 @@ mutter_sources += [
+   # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
+   # at build time; registered via meta_gnoblin_init_protocols)
+   'wayland/gnoblin-config.c',
++  'wayland/gnoblin-lua.c',
++  'wayland/gnoblin-glob.c',
+   'wayland/gnoblin-config.h',
+   'wayland/meta-gnoblin-protocols.c',
+   'wayland/meta-gnoblin-protocols.h',
+@@ -1209,7 +1212,7 @@ mutter = executable('mutter',
+ if have_introspection
+   mutter_introspected_sources = []
+   foreach source : mutter_sources
+-    if source.endswith('.c')
++    if source.endswith('.c') and not source.endswith('gnoblin-lua.c')
+       mutter_introspected_sources += source
+     endif
+   endforeach
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 0acdcfd5b..5e867a2b3 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -107,6 +107,9 @@ META_EXPORT
+ char * meta_accelerator_name (ClutterModifierType accelerator_mods,
+                               unsigned int        accelerator_key);
+ 
++META_EXPORT
++GVariant *meta_gnoblin_load_config (const char *path);
++
+ #include "meta/types.h"
+ 
+ META_EXPORT
+-- 
+2.55.0
+

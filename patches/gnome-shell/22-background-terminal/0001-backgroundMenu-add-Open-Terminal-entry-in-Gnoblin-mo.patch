@@ -1,4 +1,4 @@
-From 184ebf52bfd102e0729134f01494e52b11b56146 Mon Sep 17 00:00:00 2001
+From 2e878d0d608fa3c9329012c6ea0204ead901c806 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 18 Jul 2026 23:16:30 +0100
 Subject: [PATCH] backgroundMenu: add Open Terminal entry in Gnoblin mode
@@ -16,16 +16,15 @@ and a notification is raised when no terminal exists at all.
  1 file changed, 47 insertions(+)
 
 diff --git a/js/ui/backgroundMenu.js b/js/ui/backgroundMenu.js
-index 26fd41e..37fd75c 100644
+index 5365881..2f7da2a 100644
 --- a/js/ui/backgroundMenu.js
 +++ b/js/ui/backgroundMenu.js
-@@ -1,15 +1,62 @@
+@@ -1,14 +1,61 @@
  import Clutter from 'gi://Clutter';
 +import Gio from 'gi://Gio';
 +import GLib from 'gi://GLib';
  import St from 'gi://St';
  
- import * as BoxPointer from './boxpointer.js';
  import * as PopupMenu from './popupMenu.js';
 +import * as Util from '../misc/util.js';
  
@@ -83,5 +82,5 @@ index 26fd41e..37fd75c 100644
          this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
          this.addSettingsAction(_('Display Settings'), 'gnome-display-panel.desktop');
 -- 
-2.53.0
+2.55.0
 

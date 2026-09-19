@@ -15,8 +15,7 @@ OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
 
 # RPM Version field stays numeric; the gnoblin marker lives in Release/meson.
 case "$PROJ" in
-    mutter) VER="49.5" ;;
-    gnome-shell) VER="49.6" ;;
+    mutter | gnome-shell) VER="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)" ;;
     *)
         echo "unknown subproject: $PROJ" >&2
         exit 1

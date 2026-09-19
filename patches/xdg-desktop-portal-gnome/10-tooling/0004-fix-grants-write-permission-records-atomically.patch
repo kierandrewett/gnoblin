@@ -1,7 +1,7 @@
-From a15b7fb1c4bf6462bda5eeafee88a6860a0c20a8 Mon Sep 17 00:00:00 2001
+From f783ec0e1c1b3778ada582c5b272422e1bf45117 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 15 Jul 2026 15:11:56 +0100
-Subject: [PATCH 4/4] fix(grants): write permission records atomically
+Subject: [PATCH] fix(grants): write permission records atomically
 
 Create grant data through a same-directory 0600 temporary file, write and fsync it, then rename it over the final digest path. This removes the 0644 exposure window caused by g_file_set_contents under a normal umask while retaining compatibility with the portal fork's GLib 2.62 floor. The focused grant test passes and still asserts final 0700 directory and 0600 file modes.
 ---
@@ -132,5 +132,5 @@ index b12cbd7..1b17815 100644
  }
  
 -- 
-2.53.0
+2.55.0
 

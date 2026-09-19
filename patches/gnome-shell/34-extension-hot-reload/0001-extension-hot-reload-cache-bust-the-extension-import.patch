@@ -1,4 +1,4 @@
-From b91b27d174255b6a2db1212bc12ad64bb19d2bcf Mon Sep 17 00:00:00 2001
+From 4fd7cc40ae5e8c564d58fce3b9a474b2741c7427 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 19 Jul 2026 01:41:15 +0100
 Subject: [PATCH] extension-hot-reload: cache-bust the extension import
@@ -23,10 +23,10 @@ URIs, so sub-module edits still need a full reload.
  1 file changed, 35 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
-index e87ab26..585174d 100644
+index 2ff8273..b31b369 100644
 --- a/js/ui/extensionSystem.js
 +++ b/js/ui/extensionSystem.js
-@@ -506,7 +506,41 @@ export class ExtensionManager extends Signals.EventEmitter {
+@@ -508,7 +508,41 @@ export class ExtensionManager extends Signals.EventEmitter {
          let extensionState = null;
  
          try {
@@ -70,5 +70,5 @@ index e87ab26..585174d 100644
              // Extensions can only be imported once, so add a property to avoid
              // attempting to re-import an extension.
 -- 
-2.53.0
+2.55.0
 

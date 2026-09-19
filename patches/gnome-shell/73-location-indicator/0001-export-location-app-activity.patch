@@ -1,4 +1,4 @@
-From d2d25e2d02b83b6810e3bc8c6a6150a199731ec5 Mon Sep 17 00:00:00 2001
+From d0f84c80ed53b22ecb91d71de2e136eb2efb9996 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 02:48:22 +0100
 Subject: [PATCH] location: track active requesting applications
@@ -8,7 +8,7 @@ Subject: [PATCH] location: track active requesting applications
  1 file changed, 15 insertions(+), 1 deletion(-)
 
 diff --git a/js/ui/status/location.js b/js/ui/status/location.js
-index 23b8b15..9f64167 100644
+index 9e494c2..ff950f7 100644
 --- a/js/ui/status/location.js
 +++ b/js/ui/status/location.js
 @@ -74,6 +74,7 @@ const GeoclueAgent = GObject.registerClass({
@@ -29,7 +29,7 @@ index 23b8b15..9f64167 100644
 +
      get maxAccuracyLevel() {
          if (this.enabled) {
-             let level = this._settings.get_string(MAX_ACCURACY_LEVEL);
+             const level = this._settings.get_string(MAX_ACCURACY_LEVEL);
 @@ -125,6 +130,10 @@ const GeoclueAgent = GObject.registerClass({
  
          const accuracyLevel = await authorizer.authorize();

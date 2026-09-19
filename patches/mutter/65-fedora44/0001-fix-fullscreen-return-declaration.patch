@@ -1,9 +1,0 @@
-From: Kieran Drewett <kieran@drewett.dev>
-Subject: [PATCH] fix: complete fullscreen return declaration
-
-diff --git a/src/core/util-private.h b/src/core/util-private.h
---- a/src/core/util-private.h
-+++ b/src/core/util-private.h
-@@ -58,1 +58,2 @@
-                                                        gboolean     press,
-+                                                       guint        button);

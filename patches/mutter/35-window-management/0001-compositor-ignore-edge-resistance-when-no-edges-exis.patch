@@ -1,4 +1,4 @@
-From 8f9c7f662f9a3d789c7d80c2b1e6b4c6e6a86c1f Mon Sep 17 00:00:00 2001
+From 24a7fbc7c02cb8a01c5d3eb5345218020c9b5543 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 21 Jun 2026 14:20:00 +0100
 Subject: [PATCH] compositor: ignore edge resistance when no edges exist
@@ -15,7 +15,7 @@ position through.
  1 file changed, 6 insertions(+)
 
 diff --git a/src/compositor/edge-resistance.c b/src/compositor/edge-resistance.c
-index f5386e5..eb37190 100644
+index 3dc6a336f..45c2b976f 100644
 --- a/src/compositor/edge-resistance.c
 +++ b/src/compositor/edge-resistance.c
 @@ -195,6 +195,9 @@ find_nearest_position (const GArray       *edges,
@@ -39,5 +39,5 @@ index f5386e5..eb37190 100644
    begin = find_index_of_edge_near_position (edges, old_pos,  increasing, xdir);
    end   = find_index_of_edge_near_position (edges, new_pos, !increasing, xdir);
 -- 
-2.53.0
+2.55.0
 

@@ -1,26 +1,34 @@
+From 839fb6246dc26d34097e9b8f118ae3bae55ef654 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Subject: [PATCH] Optionally exclude translucent black shadows from backdrop coverage
+Date: Sat, 19 Sep 2026 21:51:38 +0100
+Subject: [PATCH] Optionally exclude translucent black shadows from backdrop
+ coverage
+
+---
+ src/shell-blur-effect.c | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
 
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index e07da16..f90b3ee 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -92,6 +92,7 @@
+@@ -92,6 +92,7 @@ struct _ShellBlurEffect
    int brightness_uniform;
    gboolean mask_pipeline_ready;
    float mask_opacity;
 +  gboolean ignore_shadow_pixels;
-
+ 
    ShellBlurMode mode;
    float downscale_factor;
-@@ -107,6 +108,7 @@
+@@ -107,6 +108,7 @@ enum {
    PROP_BRIGHTNESS,
    PROP_MODE,
    PROP_MASK_OPACITY,
 +  PROP_IGNORE_SHADOW_PIXELS,
    N_PROPS
  };
-
-@@ -773,9 +775,15 @@
+ 
+@@ -773,9 +775,15 @@ paint_actor_mask (ShellBlurEffect *self,
      {
        g_autoptr (CoglSnippet) snippet =
          cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
@@ -37,7 +45,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
                           "cogl_texel.a = coverage * surface_fade * (1.0 - material_alpha) / "
                           "max (1.0 - material_alpha * surface_fade, 0.00001);");
        cogl_pipeline_add_layer_snippet (self->brightness_fb.pipeline, 1, snippet);
-@@ -784,6 +792,9 @@
+@@ -784,6 +792,9 @@ paint_actor_mask (ShellBlurEffect *self,
    cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
      cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "mask_opacity"),
      self->mask_opacity);
@@ -45,12 +53,12 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
 +    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "ignore_shadow_pixels"),
 +    self->ignore_shadow_pixels ? 1.f : 0.f);
  }
-
+ 
  static gboolean
-@@ -967,6 +978,10 @@
+@@ -967,6 +978,10 @@ shell_blur_effect_get_property (GObject    *object,
        g_value_set_float (value, self->mask_opacity);
        break;
-
+ 
 +    case PROP_IGNORE_SHADOW_PIXELS:
 +      g_value_set_boolean (value, self->ignore_shadow_pixels);
 +      break;
@@ -58,10 +66,10 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
      case PROP_MODE:
        g_value_set_enum (value, self->mode);
        break;
-@@ -1003,6 +1018,15 @@
+@@ -1003,6 +1018,15 @@ shell_blur_effect_set_property (GObject      *object,
          clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
        break;
-
+ 
 +    case PROP_IGNORE_SHADOW_PIXELS:
 +      if (self->ignore_shadow_pixels == g_value_get_boolean (value))
 +        break;
@@ -74,14 +82,17 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
      case PROP_MODE:
        shell_blur_effect_set_mode (self, g_value_get_enum (value));
        break;
-@@ -1043,6 +1067,10 @@
-     g_param_spec_float ("mask-opacity", NULL, NULL,
+@@ -1044,6 +1068,10 @@ shell_blur_effect_class_init (ShellBlurEffectClass *klass)
                         0.f, 1.f, 1.f,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-+
+ 
 +  properties[PROP_IGNORE_SHADOW_PIXELS] =
 +    g_param_spec_boolean ("ignore-shadow-pixels", NULL, NULL, FALSE,
 +                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-
++
    properties[PROP_MODE] =
      g_param_spec_enum ("mode", NULL, NULL,
+                        SHELL_TYPE_BLUR_MODE,
+-- 
+2.55.0
+

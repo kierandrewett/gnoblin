@@ -1,5 +1,27 @@
+From 5ff1a6a8e01af1d0581ee7d97075044316e8c560 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:51:04 +0100
 Subject: [PATCH] portal: apply central permission policy
+
+---
+ src/access.c                |  17 +++
+ src/gnoblin-portal-grants.c | 200 --------------------------------
+ src/gnoblin-portal-grants.h |  16 +--
+ src/inputcapture.c          |  17 ++-
+ src/meson.build             |   4 +-
+ src/remotedesktop.c         | 222 ++++++++----------------------------
+ src/remotedesktopdialog.c   |  20 +---
+ src/remotedesktopdialog.h   |   6 +-
+ src/remotedesktopdialog.ui  |   9 --
+ src/screencast.c            | 207 +++++++++++----------------------
+ src/screencast.h            |   7 +-
+ src/screencastdialog.c      |  14 +--
+ src/screencastdialog.h      |   6 +-
+ src/screencastwidget.c      |  26 -----
+ src/screencastwidget.h      |   6 -
+ src/screencastwidget.ui     |  10 --
+ src/screenshot.c            |  12 ++
+ 17 files changed, 170 insertions(+), 629 deletions(-)
 
 diff --git a/src/access.c b/src/access.c
 index 05bd579..e28ea80 100644
@@ -287,7 +309,7 @@ index e625047..b44de85 100644
   * Load or store one portal-scoped grant. A record is keyed by a digest of its
   * namespaced identity, and the stored identity and portal kind are validated
 diff --git a/src/inputcapture.c b/src/inputcapture.c
-index 5ff931b..c659fb0 100644
+index e345ec3..e67faf8 100644
 --- a/src/inputcapture.c
 +++ b/src/inputcapture.c
 @@ -17,6 +17,7 @@
@@ -298,7 +320,7 @@ index 5ff931b..c659fb0 100644
  
  #include <gxdp.h>
  
-@@ -444,7 +445,7 @@ handle_create_session (XdpImplInputCapture   *object,
+@@ -646,7 +647,7 @@ handle_create_session (XdpImplInputCapture   *object,
  {
    const char *sender;
    g_autoptr(Request) request = NULL;
@@ -307,7 +329,7 @@ index 5ff931b..c659fb0 100644
  
    g_variant_lookup (arg_options, "capabilities", "u", &capabilities);
  
-@@ -453,6 +454,20 @@ handle_create_session (XdpImplInputCapture   *object,
+@@ -655,6 +656,20 @@ handle_create_session (XdpImplInputCapture   *object,
    request_export (request,
                    g_dbus_method_invocation_get_connection (invocation));
  
@@ -329,10 +351,10 @@ index 5ff931b..c659fb0 100644
                                 arg_parent_window,
                                 arg_session_handle,
 diff --git a/src/meson.build b/src/meson.build
-index b1a32fd..c9c08a8 100644
+index d8e5231..4582a7e 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -92,6 +92,7 @@ deps = [
+@@ -93,6 +93,7 @@ deps = [
  ]
  
  sources = built_sources + files(
@@ -340,7 +362,7 @@ index b1a32fd..c9c08a8 100644
    'access.c',
    'account.c',
    'accountdialog.c',
-@@ -107,7 +108,7 @@ sources = built_sources + files(
+@@ -108,7 +109,7 @@ sources = built_sources + files(
    'inputcapture.c',
    'inputcapturedialog.c',
    'globalshortcuts.c',
@@ -349,7 +371,7 @@ index b1a32fd..c9c08a8 100644
    'gnomeinputcapture.c',
    'gnomescreencast.c',
    'lockdown.c',
-@@ -150,6 +151,7 @@ gnoblin_portal_grants_test = executable(
+@@ -151,6 +152,7 @@ gnoblin_portal_grants_test = executable(
    'test-gnoblin-portal-grants',
    files(
      'gnoblin-portal-grants.c',
@@ -358,7 +380,7 @@ index b1a32fd..c9c08a8 100644
    ),
    dependencies: [
 diff --git a/src/remotedesktop.c b/src/remotedesktop.c
-index 22ae17b..134da6d 100644
+index 6cd9fdf..32b3b7f 100644
 --- a/src/remotedesktop.c
 +++ b/src/remotedesktop.c
 @@ -31,7 +31,8 @@
@@ -388,7 +410,7 @@ index 22ae17b..134da6d 100644
  } RemoteDesktopSession;
  
  typedef struct _RemoteDesktopSessionClass
-@@ -234,37 +229,6 @@ handle_close (XdpImplRequest *object,
+@@ -202,37 +197,6 @@ handle_close (XdpImplRequest *object,
    return FALSE;
  }
  
@@ -426,7 +448,7 @@ index 22ae17b..134da6d 100644
  
  static void
  remote_desktop_dialog_done (GtkWidget                 *widget,
-@@ -300,26 +264,6 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+@@ -268,26 +232,6 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
      {
        RemoteDesktopSession *session = dialog_handle->session;
        g_autoptr(GError) error = NULL;
@@ -453,7 +475,7 @@ index 22ae17b..134da6d 100644
        if (!start_session (session,
                            device_types,
                            streams,
-@@ -327,7 +271,7 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
+@@ -295,7 +239,7 @@ remote_desktop_dialog_done (GtkWidget                 *widget,
                            persist_allowed,
                            &error))
          {
@@ -462,7 +484,7 @@ index 22ae17b..134da6d 100644
            g_warning ("Failed to start session: %s", error->message);
            response = 2;
          }
-@@ -349,8 +293,6 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -317,8 +261,6 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
    GdkSurface *surface;
    GtkWidget *fake_parent;
    GtkWindow *dialog;
@@ -471,7 +493,7 @@ index 22ae17b..134da6d 100644
  
    if (parent_window)
      {
-@@ -364,12 +306,6 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -332,12 +274,6 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
        external_parent = NULL;
      }
  
@@ -484,7 +506,7 @@ index 22ae17b..134da6d 100644
    fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
    g_object_ref_sink (fake_parent);
  
-@@ -379,8 +315,7 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
+@@ -347,8 +283,7 @@ create_remote_desktop_dialog (RemoteDesktopSession *session,
                                             session->select.screen_cast_enable ?
                                               &session->select.screen_cast : NULL,
                                             session->clipboard.clipboard_requested,
@@ -494,16 +516,16 @@ index 22ae17b..134da6d 100644
    gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
    gtk_window_set_modal (dialog, TRUE);
  
-@@ -692,8 +627,6 @@ start_done (RemoteDesktopSession *remote_desktop_session)
-             {
-               g_warning ("Failed to enable clipboard: %s", error->message);
-               remote_desktop_session->clipboard.clipboard_enabled = FALSE;
--              remote_desktop_session->gnoblin_pending_grant.clipboard_enabled =
--                FALSE;
-               disconnect_clipboard_handlers (remote_desktop_session);
-             }
+@@ -626,8 +561,6 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+           if (error)
+             g_warning ("Failed to create clipboard proxy: %s", error->message);
+           clipboard_enabled = FALSE;
+-          remote_desktop_session->gnoblin_pending_grant.clipboard_enabled =
+-            FALSE;
          }
-@@ -737,8 +670,6 @@ start_done (RemoteDesktopSession *remote_desktop_session)
+ 
+       remote_desktop_session->clipboard.clipboard_enabled = clipboard_enabled;
+@@ -668,8 +601,6 @@ start_done (RemoteDesktopSession *remote_desktop_session)
          }
      }
  
@@ -512,7 +534,7 @@ index 22ae17b..134da6d 100644
    xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
                                            remote_desktop_session->start_invocation,
                                            0,
-@@ -835,7 +766,6 @@ cancel_start_session (RemoteDesktopSession *remote_desktop_session,
+@@ -766,7 +697,6 @@ cancel_start_session (RemoteDesktopSession *remote_desktop_session,
  {
    GVariantBuilder results_builder;
  
@@ -520,7 +542,7 @@ index 22ae17b..134da6d 100644
    g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
    xdp_impl_remote_desktop_complete_start (XDP_IMPL_REMOTE_DESKTOP (impl),
                                            remote_desktop_session->start_invocation,
-@@ -890,84 +820,6 @@ restore_from_data (RemoteDesktopSession *remote_desktop_session)
+@@ -821,84 +751,6 @@ restore_from_data (RemoteDesktopSession *remote_desktop_session)
    return TRUE;
  }
  
@@ -605,7 +627,7 @@ index 22ae17b..134da6d 100644
  static gboolean
  handle_start (XdpImplRemoteDesktop *object,
                GDBusMethodInvocation *invocation,
-@@ -1003,29 +855,57 @@ handle_start (XdpImplRemoteDesktop *object,
+@@ -934,29 +786,57 @@ handle_start (XdpImplRemoteDesktop *object,
  
    remote_desktop_session->start_invocation = invocation;
  
@@ -677,7 +699,7 @@ index 22ae17b..134da6d 100644
        dialog_handle = create_remote_desktop_dialog (remote_desktop_session,
                                                      invocation,
                                                      request,
-@@ -1036,7 +916,7 @@ handle_start (XdpImplRemoteDesktop *object,
+@@ -967,7 +847,7 @@ handle_start (XdpImplRemoteDesktop *object,
    return TRUE;
  
  err:
@@ -686,7 +708,7 @@ index 22ae17b..134da6d 100644
    xdp_impl_remote_desktop_complete_start (object, invocation, 2,
                                            g_variant_builder_end (&results_builder));
  
-@@ -1482,7 +1362,6 @@ remote_desktop_session_close (Session *session)
+@@ -1438,7 +1318,6 @@ remote_desktop_session_close (Session *session)
    OrgGnomeMutterRemoteDesktopSession *session_proxy;
    GnomeScreenCastSession *gnome_screen_cast_session;
    g_autoptr(GError) error = NULL;
@@ -694,19 +716,18 @@ index 22ae17b..134da6d 100644
  
  
    gnome_screen_cast_session = remote_desktop_session->gnome_screen_cast_session;
-@@ -1516,8 +1395,8 @@ remote_desktop_session_finalize (GObject *object)
-   g_clear_pointer (&remote_desktop_session->streams_to_restore,
+@@ -1474,8 +1353,7 @@ remote_desktop_session_finalize (GObject *object)
                     g_ptr_array_unref);
    g_clear_pointer (&remote_desktop_session->restored.data, g_variant_unref);
+   g_clear_object (&remote_desktop_session->clipboard.clipboard_proxy);
 -  g_clear_pointer (&remote_desktop_session->gnoblin_grant_identity, g_free);
 -  clear_pending_grant (remote_desktop_session);
 +  g_clear_pointer (&remote_desktop_session->gnoblin_identity, g_free);
-+
    g_free (remote_desktop_session->mutter_session_path);
  
    G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
 diff --git a/src/remotedesktopdialog.c b/src/remotedesktopdialog.c
-index 344620c..0466ae2 100644
+index 8a980ce..9bb5e4b 100644
 --- a/src/remotedesktopdialog.c
 +++ b/src/remotedesktopdialog.c
 @@ -33,7 +33,6 @@ struct _RemoteDesktopDialog
@@ -801,7 +822,7 @@ index 0ea33e0..d2051e1 100644
                        <object class="GtkListBox">
                          <property name="valign">start</property>
 diff --git a/src/screencast.c b/src/screencast.c
-index 12602cb..968defa 100644
+index ab50d95..b59a5ef 100644
 --- a/src/screencast.c
 +++ b/src/screencast.c
 @@ -29,7 +29,8 @@
@@ -826,7 +847,7 @@ index 12602cb..968defa 100644
  } ScreenCastSession;
  
  typedef struct _ScreenCastSessionClass
-@@ -161,16 +161,6 @@ serialize_screen_cast_streams_to_builder (GPtrArray       *streams,
+@@ -163,16 +163,6 @@ serialize_screen_cast_streams_to_builder (GPtrArray       *streams,
      }
  }
  
@@ -843,7 +864,7 @@ index 12602cb..968defa 100644
  void
  serialize_screen_cast_streams_as_restore_data (GPtrArray       *streams,
                                                 GVariantBuilder *impl_builder)
-@@ -213,42 +203,12 @@ serialize_session_as_restore_data (ScreenCastSession *screen_cast_session,
+@@ -215,42 +205,12 @@ serialize_session_as_restore_data (ScreenCastSession *screen_cast_session,
    return g_variant_builder_end (&restore_data_builder);
  }
  
@@ -886,7 +907,7 @@ index 12602cb..968defa 100644
    g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
    xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
                                         screen_cast_session->start_invocation,
-@@ -305,8 +265,6 @@ on_gnome_screen_cast_session_ready (GnomeScreenCastSession *gnome_screen_cast_se
+@@ -307,8 +267,6 @@ on_gnome_screen_cast_session_ready (GnomeScreenCastSession *gnome_screen_cast_se
          }
      }
  
@@ -895,7 +916,7 @@ index 12602cb..968defa 100644
    xdp_impl_screen_cast_complete_start (XDP_IMPL_SCREEN_CAST (impl),
                                         screen_cast_session->start_invocation, 0,
                                         g_variant_builder_end (&results_builder));
-@@ -317,7 +275,7 @@ static void
+@@ -319,7 +277,7 @@ static void
  on_gnome_screen_cast_session_closed (GnomeScreenCastSession *gnome_screen_cast_session,
                                       ScreenCastSession      *screen_cast_session)
  {
@@ -904,7 +925,7 @@ index 12602cb..968defa 100644
    session_close ((Session *)screen_cast_session, TRUE);
  }
  
-@@ -392,24 +350,12 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
+@@ -394,24 +352,12 @@ on_screen_cast_dialog_done_cb (GtkWidget              *widget,
        ScreenCastSession *screen_cast_session = dialog_handle->session;
        g_autoptr(GError) error = NULL;
  
@@ -930,7 +951,7 @@ index 12602cb..968defa 100644
            g_warning ("Failed to start session: %s", error->message);
            response = 2;
          }
-@@ -434,7 +380,6 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+@@ -436,7 +382,6 @@ create_screen_cast_dialog (ScreenCastSession     *session,
    GdkSurface *surface;
    GtkWidget *fake_parent;
    GtkWindow *dialog;
@@ -938,7 +959,7 @@ index 12602cb..968defa 100644
  
    if (parent_window)
      {
-@@ -451,15 +396,9 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+@@ -453,15 +398,9 @@ create_screen_cast_dialog (ScreenCastSession     *session,
    fake_parent = g_object_new (GTK_TYPE_WINDOW, NULL);
    g_object_ref_sink (fake_parent);
  
@@ -955,7 +976,7 @@ index 12602cb..968defa 100644
    gtk_window_set_transient_for (dialog, GTK_WINDOW (fake_parent));
    gtk_window_set_modal (dialog, TRUE);
  
-@@ -669,14 +608,6 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
+@@ -671,14 +610,6 @@ restore_screen_cast_streams (GVariantIter        *streams_iter,
    return streams->len > 0 ? g_steal_pointer (&streams) : NULL;
  }
  
@@ -970,7 +991,7 @@ index 12602cb..968defa 100644
  static gboolean
  restore_stream_from_data (ScreenCastSession *screen_cast_session)
  {
-@@ -713,55 +644,41 @@ restore_stream_from_data (ScreenCastSession *screen_cast_session)
+@@ -715,55 +646,41 @@ restore_stream_from_data (ScreenCastSession *screen_cast_session)
    return TRUE;
  }
  
@@ -1058,7 +1079,7 @@ index 12602cb..968defa 100644
  }
  
  static gboolean
-@@ -799,30 +716,38 @@ handle_start (XdpImplScreenCast     *object,
+@@ -801,30 +718,38 @@ handle_start (XdpImplScreenCast     *object,
  
    screen_cast_session->start_invocation = invocation;
  
@@ -1113,7 +1134,7 @@ index 12602cb..968defa 100644
        dialog_handle = create_screen_cast_dialog (screen_cast_session,
                                                   invocation,
                                                   request,
-@@ -834,7 +759,7 @@ handle_start (XdpImplScreenCast     *object,
+@@ -836,7 +761,7 @@ handle_start (XdpImplScreenCast     *object,
    return TRUE;
  
  err:
@@ -1122,7 +1143,7 @@ index 12602cb..968defa 100644
    xdp_impl_screen_cast_complete_start (object, invocation, 2,
                                         g_variant_builder_end (&results_builder));
  
-@@ -1082,8 +1007,8 @@ screen_cast_session_finalize (GObject *object)
+@@ -1084,8 +1009,8 @@ screen_cast_session_finalize (GObject *object)
  
    g_clear_pointer (&screen_cast_session->streams_to_restore, g_ptr_array_unref);
    g_clear_pointer (&screen_cast_session->restored.data, g_variant_unref);
@@ -1152,7 +1173,7 @@ index b6ff60e..ba1cebc 100644
 -gboolean screen_cast_selection_can_persist (ScreenCastSelection *selection);
 +GPtrArray *gnoblin_policy_monitor_streams (char **connectors, ScreenCastSelection *selection);
 diff --git a/src/screencastdialog.c b/src/screencastdialog.c
-index a9b2574..f523406 100644
+index ef30916..2ffcc82 100644
 --- a/src/screencastdialog.c
 +++ b/src/screencastdialog.c
 @@ -146,8 +146,7 @@ screen_cast_dialog_init (ScreenCastDialog *dialog)
@@ -1198,7 +1219,7 @@ index 6953c4e..f349814 100644
 -gboolean screen_cast_dialog_get_always_allow (ScreenCastDialog *dialog);
 +                                           ScreenCastPersistMode  persist_mode);
 diff --git a/src/screencastwidget.c b/src/screencastwidget.c
-index 242b155..46e20b7 100644
+index 9182d4a..f3d18b8 100644
 --- a/src/screencastwidget.c
 +++ b/src/screencastwidget.c
 @@ -56,8 +56,6 @@ struct _ScreenCastWidget
@@ -1210,7 +1231,7 @@ index 242b155..46e20b7 100644
    DisplayStateTracker   *display_state_tracker;
    ulong                  monitors_changed_handler_id;
  
-@@ -526,7 +524,6 @@ screen_cast_widget_class_init (ScreenCastWidgetClass *klass)
+@@ -522,7 +520,6 @@ screen_cast_widget_class_init (ScreenCastWidgetClass *klass)
  
    gtk_widget_class_set_template_from_resource (widget_class, "/org/freedesktop/portal/desktop/gnome/screencastwidget.ui");
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, persist_check);
@@ -1218,7 +1239,7 @@ index 242b155..46e20b7 100644
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type_switcher);
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, source_type);
    gtk_widget_class_bind_template_child (widget_class, ScreenCastWidget, window_selection_page);
-@@ -764,26 +761,3 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
+@@ -760,26 +757,3 @@ screen_cast_widget_get_persist_mode (ScreenCastWidget *screen_cast_widget)
  
    return screen_cast_widget->persist_mode;
  }
@@ -1317,3 +1338,6 @@ index c711904..3783d6f 100644
        if (arg_parent_window)
          {
            external_parent = gxdp_external_window_new_from_handle (arg_parent_window);
+-- 
+2.55.0
+

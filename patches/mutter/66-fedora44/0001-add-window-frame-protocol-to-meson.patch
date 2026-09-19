@@ -1,15 +1,24 @@
+From f0734e3abb84080df5495b91f83d80d7a25ef741 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:10:19 +0100
 Subject: [PATCH] build: generate Gnoblin window frame protocol
 
+---
+ src/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
 diff --git a/src/meson.build b/src/meson.build
-index 9e97b4d..874d5ef 100644
+index 79a2e752f..127860f3b 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1214,6 +1214,7 @@ if have_wayland
-     ['gtk-shell', 'private', ],
-     # gnoblin: vendored wlr-layer-shell protocol (overlay src/wayland/protocol/)
-     ['wlr-layer-shell-unstable-v1', 'private', ],
-+    ['gnoblin-window-frame-v1', 'private', ],
-     ['idle-inhibit', 'unstable', 1, ],
-     ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
-     ['linux-dmabuf', 'stable', 1, ],
+@@ -1060,6 +1060,7 @@ wayland_protocols = [
+   ['gtk-shell', 'private', ],
+   # gnoblin: vendored wlr-layer-shell protocol
+   ['wlr-layer-shell-unstable-v1', 'private', ],
++  ['gnoblin-window-frame-v1', 'private', ],
+   ['idle-inhibit', 'unstable', 1, ],
+   ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
+   ['linux-dmabuf', 'stable', 1, ],
+-- 
+2.55.0
+

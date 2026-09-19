@@ -1,6 +1,6 @@
 # Gnoblin roadmap
 
-Gnoblin is pinned to Mutter 49.5 and GNOME Shell 49.6. Keep this file for
+Gnoblin is pinned to the GNOME 51.0 release train. Keep this file for
 unfinished work only; completed investigations and measurements belong in Git
 history or the relevant guide.
 

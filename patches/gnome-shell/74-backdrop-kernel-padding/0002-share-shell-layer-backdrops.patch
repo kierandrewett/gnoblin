@@ -1,6 +1,14 @@
+From bcbb96c61de38d59d741645aef2d065d0138c916 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:57 +0100
 Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
 
+---
+ src/shell-blur-effect.c | 110 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 110 insertions(+)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 491f5c5..f7bba4e 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
 @@ -20,6 +20,8 @@
@@ -12,11 +20,10 @@ Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
  
  #include "shell-blur-effect.h"
  #include "shell-global.h"
-@@ -173,6 +175,48 @@
-  * monitor redraw. Buffer-age repair does not invalidate an unchanged cache. */
+@@ -174,6 +176,48 @@ cache_mask_uniform_locations (ShellBlurEffect *self)
  static GSList *backdrop_effects;
  static gulong backdrop_handler;
-+
+ 
 +typedef struct {
 +  CoglTexture *texture;
 +  CoglFramebuffer *framebuffer;
@@ -58,10 +65,11 @@ Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
 +    }
 +  return table;
 +}
- 
++
  static void
  get_blur_box (ShellBlurEffect *self,
-@@ -254,6 +298,35 @@
+               ClutterActorBox *box)
+@@ -254,6 +298,35 @@ prepare_backdrops (ClutterStage *stage,
          }
      }
    while (changed);
@@ -97,7 +105,7 @@ Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
  }
  
  static void
-@@ -748,6 +821,43 @@
+@@ -748,6 +821,43 @@ paint_background (ShellBlurEffect     *self,
  
    /* Blit node */
    src = clutter_paint_context_get_framebuffer (paint_context);
@@ -141,3 +149,6 @@ Subject: [PATCH] shell: share pre-layer backdrops between layer surfaces
    blit_node = clutter_blit_node_new (src);
    clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
    clutter_paint_node_add_child (background_node, blit_node);
+-- 
+2.55.0
+

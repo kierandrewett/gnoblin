@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From c3ac21d34c4dbeae60e91d3d83787d9ba82a3ef2 Mon Sep 17 00:00:00 2001
 From: Gnoblin contributors <gnoblin@example.invalid>
 Date: Sat, 12 Sep 2026 05:30:00 +0100
 Subject: [PATCH] shell: add Gnoblin developer console entrypoint
@@ -8,25 +8,27 @@ entrypoint while keeping the stock Run dialog and Looking Glass unchanged.
 Create the console lazily, close it on a mode or lock transition, and expose
 its module through the Shell JavaScript resource bundle.
 ---
- data/theme/gnome-shell-sass/_widgets.scss | 1 +
- js/js-resources.gresource.xml             | 2 ++
- js/ui/main.js                             | 38 ++++++++++++++++++++++++++++++
- 3 files changed, 41 insertions(+)
+ data/theme/gnome-shell-sass/_widgets.scss |  1 +
+ js/js-resources.gresource.xml             |  3 ++
+ js/ui/main.js                             | 35 ++++++++++++++++++++++-
+ 3 files changed, 38 insertions(+), 1 deletion(-)
 
 diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-sass/_widgets.scss
+index 1e3fefa..b4fce35 100644
 --- a/data/theme/gnome-shell-sass/_widgets.scss
 +++ b/data/theme/gnome-shell-sass/_widgets.scss
-@@ -45,5 +45,6 @@
- @import 'widgets/misc';
+@@ -46,5 +46,6 @@
  @import 'widgets/keyboard';
  @import 'widgets/looking-glass';
+ @import 'widgets/qr-code';
 +@import 'widgets/dev-console';
  // Lock / login screen
  @import 'widgets/login-lock';
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index a360b91..a56bc84 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -142,6 +142,9 @@
+@@ -153,6 +153,9 @@
      <file>ui/components/gnoblinCornerGeometry.js</file>
      <file>ui/components/gnoblinCorners.js</file>
      <file>ui/components/gnoblinControl.js</file>
@@ -37,9 +39,10 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/components/networkAgent.js</file>
      <file>ui/components/polkitAgent.js</file>
 diff --git a/js/ui/main.js b/js/ui/main.js
+index c44f75d..b86a6f0 100644
 --- a/js/ui/main.js
 +++ b/js/ui/main.js
-@@ -32,6 +32,7 @@ import * as WelcomeDialog from './welcomeDialog.js';
+@@ -30,6 +30,7 @@ import * as WelcomeDialog from './welcomeDialog.js';
  import * as Layout from './layout.js';
  import * as LoginManager from '../misc/loginManager.js';
  import * as LookingGlass from './lookingGlass.js';
@@ -47,7 +50,7 @@ diff --git a/js/ui/main.js b/js/ui/main.js
  import * as NotificationDaemon from './notificationDaemon.js';
  import * as WindowAttentionHandler from './windowAttentionHandler.js';
  import * as Screenshot from './screenshot.js';
-@@ -63,6 +64,7 @@ export let panel = null;
+@@ -61,6 +62,7 @@ export let panel = null;
  export let overview = null;
  export let runDialog = null;
  export let lookingGlass = null;
@@ -55,7 +58,7 @@ diff --git a/js/ui/main.js b/js/ui/main.js
  export let welcomeDialog = null;
  export let wm = null;
  export let messageTray = null;
-@@ -126,7 +128,7 @@ function _sessionUpdated() {
+@@ -124,7 +126,7 @@ function _sessionUpdated() {
  
      wm.setCustomKeybindingHandler('panel-run-dialog',
          Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
@@ -64,16 +67,16 @@ diff --git a/js/ui/main.js b/js/ui/main.js
  
      if (!sessionMode.hasRunDialog) {
          if (runDialog)
-@@ -136,6 +138,8 @@ function _sessionUpdated() {
+@@ -134,6 +136,8 @@ function _sessionUpdated() {
          if (welcomeDialog)
              welcomeDialog.close();
      }
 +    if (!_devConsoleAllowed() && devConsole)
 +        devConsole.close(true);
  
-     let remoteAccessController = global.backend.get_remote_access_controller();
+     const remoteAccessController = global.backend.get_remote_access_controller();
      if (remoteAccessController && !global.backend.is_headless()) {
-@@ -824,16 +828,45 @@ export function popModal(grab) {
+@@ -811,16 +815,45 @@ export function popModal(grab) {
   * @returns {LookingGlass.LookingGlass}
   */
  export function createLookingGlass() {
@@ -120,4 +123,5 @@ diff --git a/js/ui/main.js b/js/ui/main.js
          return;
  
 -- 
-2.53.0
+2.55.0
+

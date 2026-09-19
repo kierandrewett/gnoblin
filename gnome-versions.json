@@ -1,0 +1,22 @@
+{
+  "major": 51,
+  "components": {
+    "mutter": {
+      "version": "51.0",
+      "commit": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
+      "api": "51"
+    },
+    "gnome-shell": {
+      "version": "51.0",
+      "commit": "2177bdf9624b2d285de7c1d34274073d3769d6b8"
+    },
+    "gnome-control-center": {
+      "version": "51.0",
+      "commit": "6ae712c0454f2586f00821c3486150c1e8feb3e7"
+    },
+    "xdg-desktop-portal-gnome": {
+      "version": "51.0",
+      "commit": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120"
+    }
+  }
+}

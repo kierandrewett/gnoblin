@@ -1,6 +1,15 @@
+From 4cc2e46bd36987ccadabbd2698e53f7ac99850f5 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Subject: [PATCH] blur: compose buffer-synchronised item fades with material coverage
+Date: Sat, 19 Sep 2026 21:54:12 +0100
+Subject: [PATCH] blur: compose buffer-synchronised item fades with material
+ coverage
 
+---
+ src/shell-blur-effect.c | 46 +++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 42 insertions(+), 4 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 64cf123..5d996fd 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
 @@ -19,6 +19,7 @@
@@ -11,7 +20,7 @@ Subject: [PATCH] blur: compose buffer-synchronised item fades with material cove
  
  #include "shell-blur-effect.h"
  #include "shell-global.h"
-@@ -775,8 +776,19 @@
+@@ -775,8 +776,19 @@ paint_actor_mask (ShellBlurEffect *self,
      {
        g_autoptr (CoglSnippet) snippet =
          cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
@@ -32,7 +41,7 @@ Subject: [PATCH] blur: compose buffer-synchronised item fades with material cove
                           /* Recover the local material opacity before normalising coverage.
                            * Never turn a partially covered edge into an opaque mask. */
                           "float local_alpha = material_alpha;"
-@@ -788,19 +800,45 @@
+@@ -788,19 +800,45 @@ paint_actor_mask (ShellBlurEffect *self,
                           "  }"
                           "}"
                           "}"
@@ -81,4 +90,6 @@ Subject: [PATCH] blur: compose buffer-synchronised item fades with material cove
    const float mask_pixel[] = {
      1.f / cogl_texture_get_width (self->actor_fb.texture),
      1.f / cogl_texture_get_height (self->actor_fb.texture),
+-- 
+2.55.0
 

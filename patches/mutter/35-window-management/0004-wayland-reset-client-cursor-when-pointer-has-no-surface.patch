@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 0c22c17cedf7e47f5f67e08323b8d4a23f419cf2 Mon Sep 17 00:00:00 2001
 From: Gnoblin Developers <gnoblin@example.invalid>
 Date: Mon, 22 Jun 2026 16:00:00 +0100
 Subject: [PATCH] wayland: reset stale client cursors on idle focus changes
@@ -18,14 +18,14 @@ Treat "no current surface and no button held" as a compositor/root cursor
 situation and unset the client cursor immediately. The button guard preserves
 normal implicit-grab behaviour while dragging or resizing.
 ---
- src/wayland/meta-wayland-pointer.c | 23 +++++++++++++++++++++++
- 1 file changed, 23 insertions(+)
+ src/wayland/meta-wayland-pointer.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
 
 diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
-index a0ace17..ba6f004 100644
+index 93e3348dd..4e8584fa3 100644
 --- a/src/wayland/meta-wayland-pointer.c
 +++ b/src/wayland/meta-wayland-pointer.c
-@@ -1088,6 +1088,9 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+@@ -1126,6 +1126,9 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
    ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
    ClutterSeat *clutter_seat = clutter_backend_get_default_seat (clutter_backend);
    MetaWindow *toplevel_window;
@@ -35,7 +35,7 @@ index a0ace17..ba6f004 100644
  
    g_return_if_fail (meta_cursor_tracker_get_pointer_visible (cursor_tracker) ||
                      clutter_seat_is_unfocus_inhibited (clutter_seat) ||
-@@ -1096,6 +1099,26 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+@@ -1134,6 +1137,26 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
    if (pointer->focus_surface == surface)
      return;
  
@@ -62,7 +62,7 @@ index a0ace17..ba6f004 100644
    pointer->last_rel_x = -FLT_MAX;
    pointer->last_rel_y = -FLT_MAX;
  
-@@ -1210,6 +1233,9 @@ meta_wayland_pointer_update_cursor_surface (MetaWaylandPointer *pointer)
+@@ -1247,6 +1270,9 @@ meta_wayland_pointer_get_cursor (MetaWaylandPointer *pointer)
  
    surface = pointer->focus_surface;
  
@@ -71,6 +71,7 @@ index a0ace17..ba6f004 100644
 +
    if (surface)
      {
-       MetaCursorSprite *cursor_sprite = NULL;
+       switch (pointer->cursor_source)
 -- 
-2.50.0
+2.55.0
+

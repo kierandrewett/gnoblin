@@ -1,15 +1,35 @@
+From bdb7338619dd04561f128e8e95fbb17b66182361 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:55:57 +0100
 Subject: [PATCH] Render explicit standard background regions
 
 Render the full region, including holes, disjoint rectangles and fully
 transparent client pixels. Keep fade composition and the legacy alpha mask.
 Use matching texture coordinates for the backdrop and foreground mask in
 every region rectangle; default per-rectangle coordinates corrupt detail.
+---
+ js/js-resources.gresource.xml |   1 +
+ src/shell-blur-effect.c       | 102 ++++++++++++++++++++++++++++------
+ src/shell-blur-effect.h       |   2 +
+ 3 files changed, 87 insertions(+), 18 deletions(-)
 
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 0d69c6e..da691f3 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -149,6 +149,7 @@
+     <file>ui/components/gnoblinPermissions.js</file>
+     <file>ui/components/gnoblinLayerAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
++    <file>ui/components/gnoblinBackgroundEffects.js</file>
+     <file>ui/components/gnoblinBackdropRedraw.js</file>
+     <file>ui/components/gnoblinCornerGeometry.js</file>
+     <file>ui/components/gnoblinCorners.js</file>
 diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index f346068..21739aa 100644
 --- a/src/shell-blur-effect.c
 +++ b/src/shell-blur-effect.c
-@@ -104,6 +104,8 @@
+@@ -104,6 +104,8 @@ struct _ShellBlurEffect
    int ignore_shadow_pixels_uniform;
    unsigned int mask_uniform_setup_count;
    float mask_opacity;
@@ -18,7 +38,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    gboolean ignore_shadow_pixels;
  
    ShellBlurMode mode;
-@@ -136,6 +138,7 @@
+@@ -136,6 +138,7 @@ invalidate_mask_uniform_locations (ShellBlurEffect *self)
    self->mask_bounds_uniform = -1;
    self->mask_pixel_uniform = -1;
    self->mask_opacity_uniform = -1;
@@ -26,7 +46,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    self->ignore_shadow_pixels_uniform = -1;
  }
  
-@@ -160,6 +163,8 @@
+@@ -160,6 +163,8 @@ cache_mask_uniform_locations (ShellBlurEffect *self)
      cogl_pipeline_get_uniform_location (pipeline, "mask_opacity");
    self->ignore_shadow_pixels_uniform =
      cogl_pipeline_get_uniform_location (pipeline, "ignore_shadow_pixels");
@@ -35,7 +55,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    self->mask_uniform_setup_count++;
  }
  
-@@ -582,6 +587,43 @@
+@@ -582,6 +587,43 @@ update_actor_box (ShellBlurEffect     *self,
    clutter_actor_box_clamp_to_pixel (source_actor_box);
  }
  
@@ -79,7 +99,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
  static void
  add_blurred_pipeline (ShellBlurEffect  *self,
                        ClutterPaintNode *node,
-@@ -601,13 +643,7 @@
+@@ -601,13 +643,7 @@ add_blurred_pipeline (ShellBlurEffect  *self,
    clutter_paint_node_set_static_name (pipeline_node, "ShellBlurEffect (final)");
    clutter_paint_node_add_child (node, pipeline_node);
  
@@ -94,7 +114,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
  }
  
  static ClutterPaintNode *
-@@ -627,13 +663,7 @@
+@@ -627,13 +663,7 @@ create_blur_nodes (ShellBlurEffect  *self,
                                                             self->brightness_fb.pipeline);
    clutter_paint_node_set_static_name (brightness_node, "ShellBlurEffect (brightness)");
    clutter_paint_node_add_child (node, brightness_node);
@@ -109,7 +129,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
  
    if (!self->blur_cache)
      self->blur_cache = clutter_blur_cache_new ();
-@@ -837,7 +867,7 @@
+@@ -837,7 +867,7 @@ paint_actor_mask (ShellBlurEffect *self,
      {
        g_autoptr (CoglSnippet) snippet =
          cogl_snippet_new (COGL_SNIPPET_HOOK_TEXTURE_LOOKUP,
@@ -118,7 +138,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
                           "uniform int fade_count; uniform vec4 fade_rects[32]; uniform float fade_opacities[32]; uniform vec4 mask_bounds;",
                           "float material_alpha = cogl_texel.a;"
                           "vec2 point = mask_bounds.xy + cogl_tex_coord.st * mask_bounds.zw;"
-@@ -857,7 +887,7 @@
+@@ -857,7 +887,7 @@ paint_actor_mask (ShellBlurEffect *self,
                            * so an icon or border cannot supply the material opacity. */
                           "float local_alpha = material_alpha;"
                           "bool silhouette_edge = false;"
@@ -127,7 +147,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
                           "for (int y = -1; y <= 1; y++) {"
                           "  for (int x = -1; x <= 1; x++) {"
                           "    vec4 neighbour = texture2D(cogl_sampler,"
-@@ -882,14 +912,18 @@
+@@ -882,14 +912,18 @@ paint_actor_mask (ShellBlurEffect *self,
                           "float peak = max(cogl_texel.r, max(cogl_texel.g, cogl_texel.b));"
                           "float shadow = (1.0-step(0.002*material_alpha, peak)) * (1.0-step(0.999, material_alpha));"
                           "coverage *= 1.0-ignore_shadow_pixels*shadow;"
@@ -148,7 +168,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
      fades = g_object_get_data (G_OBJECT (meta_window_actor_get_meta_window (META_WINDOW_ACTOR (self->actor))),
                                "gnoblin-buffer-fades");
    gsize fade_size = 0;
-@@ -910,6 +944,8 @@
+@@ -910,6 +944,8 @@ paint_actor_mask (ShellBlurEffect *self,
        cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
          self->fade_opacities_uniform, 1, fade_count, opacities);
      }
@@ -157,7 +177,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    const float mask_bounds[] = {self->paint_box.x1, self->paint_box.y1,
      self->paint_box.x2 - self->paint_box.x1, self->paint_box.y2 - self->paint_box.y1};
    cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
-@@ -1088,6 +1124,7 @@
+@@ -1088,6 +1124,7 @@ shell_blur_effect_finalize (GObject *object)
    g_clear_object (&self->background_fb.pipeline);
    g_clear_object (&self->brightness_fb.pipeline);
  
@@ -165,7 +185,7 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
    G_OBJECT_CLASS (shell_blur_effect_parent_class)->finalize (object);
  }
  
-@@ -1395,3 +1432,32 @@
+@@ -1395,3 +1432,32 @@ shell_blur_effect_uses_surface_fade (ShellBlurEffect *self)
  {
    return TRUE;
  }
@@ -199,23 +219,16 @@ diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
 +    clutter_actor_queue_redraw (self->actor);
 +}
 diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+index d11ce14..b0b180c 100644
 --- a/src/shell-blur-effect.h
 +++ b/src/shell-blur-effect.h
-@@ -67,4 +67,6 @@
+@@ -67,4 +67,6 @@ gboolean shell_blur_effect_uses_damage_tracking (ShellBlurEffect *self);
  unsigned int shell_blur_effect_get_repaint_count (ShellBlurEffect *self);
  gboolean shell_blur_effect_uses_surface_fade (ShellBlurEffect *self);
  
 +void shell_blur_effect_set_clip_region (ShellBlurEffect *self, MtkRegion *region);
 +
  G_END_DECLS
-diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
---- a/js/js-resources.gresource.xml
-+++ b/js/js-resources.gresource.xml
-@@ -138,6 +138,7 @@
-     <file>ui/components/gnoblinPermissions.js</file>
-     <file>ui/components/gnoblinLayerAnimation.js</file>
-     <file>ui/components/gnoblinRules.js</file>
-+    <file>ui/components/gnoblinBackgroundEffects.js</file>
-     <file>ui/components/gnoblinBackdropRedraw.js</file>
-     <file>ui/components/gnoblinCornerGeometry.js</file>
-     <file>ui/components/gnoblinCorners.js</file>
+-- 
+2.55.0
+

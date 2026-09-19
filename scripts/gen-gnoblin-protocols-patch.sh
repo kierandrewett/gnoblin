@@ -20,7 +20,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/mutter"
-TAG=49.5
+TAG="$($ROOT/scripts/gnome-versions.py get mutter version)"
 OUT="$ROOT/patches/mutter/40-gnoblin-protocols"
 TMP="$(mktemp -d /tmp/gnoblin-protocol-patch.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT

@@ -1,10 +1,17 @@
+From bd87299b6c8f93e4fa847ec0d60777408dc1ec3b Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 21:51:37 +0100
 Subject: [PATCH] shell: include built-in window corner rules
 
+---
+ js/js-resources.gresource.xml | 2 ++
+ 1 file changed, 2 insertions(+)
+
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 696b400..c5b5042 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -138,6 +138,8 @@
+@@ -149,6 +149,8 @@
      <file>ui/components/gnoblinLayerAnimation.js</file>
      <file>ui/components/gnoblinRules.js</file>
      <file>ui/components/gnoblinBackdropRedraw.js</file>
@@ -13,3 +20,6 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
+-- 
+2.55.0
+

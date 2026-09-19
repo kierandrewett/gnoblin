@@ -54,8 +54,8 @@ sudo dnf install git just meson ninja-build rpmdevtools rpm-build
 sudo dnf builddep packaging/rpm/mutter.spec
 just init
 just rpm mutter
-sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-49.5-*.rpm \
-  ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-49.5-*.rpm
+sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-51.0-*.rpm \
+  ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-51.0-*.rpm
 sudo dnf builddep packaging/rpm/gnome-shell.spec
 just rpm gnome-shell
 ```
@@ -78,7 +78,7 @@ automatically remove or downgrade them.
 
 ## NixOS
 
-Use Nixpkgs `nixos-25.11` with the GNOME 49 stack. Add Gnoblin to your flake:
+Use current Nixpkgs unstable with the GNOME 51 stack. Add Gnoblin to your flake:
 
 ```nix
 inputs = {
@@ -142,9 +142,9 @@ It supports Fedora 43 and Arch/CachyOS. Arch dependency installation performs a
 full package upgrade; Fedora enables the Gnoblin COPR for build dependencies.
 Use `./build.sh --yes` for unattended package installation.
 
-On other Linux distributions, install the development dependencies for Mutter
-49.5, GNOME Shell 49.6, GNOME Control Center 49.6 and xdg-desktop-portal-gnome
-49.0, then run `./build.sh --no-deps`. That option skips package management;
+On other Linux distributions, install the development dependencies for Mutter,
+GNOME Shell, GNOME Control Center and xdg-desktop-portal-gnome 51.0, then run
+`./build.sh --no-deps`. That option skips package management;
 it runs the same initialization and complete source build.
 
 You need a C/C++ toolchain, Git, Bash, Just, Meson, Ninja, pkg-config, Python,

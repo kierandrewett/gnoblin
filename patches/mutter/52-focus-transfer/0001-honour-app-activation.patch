@@ -1,33 +1,60 @@
+From d5828d8c7f5f90a265882debeef786334fc8bfa8 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:02:01 +0100
 Subject: [PATCH] focus: honour application activation in Gnoblin sessions
 
+---
+ src/core/util-private.h               |  3 +++
+ src/core/util.c                       |  9 ++++++++-
+ src/core/window.c                     | 12 +++++++++++-
+ src/wayland/meta-wayland-activation.c | 13 ++++++++-----
+ 4 files changed, 30 insertions(+), 7 deletions(-)
+
 diff --git a/src/core/util-private.h b/src/core/util-private.h
+index 7c176884c..c32af71e3 100644
 --- a/src/core/util-private.h
 +++ b/src/core/util-private.h
-@@ -49,3 +49,6 @@
- 
+@@ -48,5 +48,8 @@ meta_timeval_to_microseconds (const struct timeval *tv)
  #define META_CONTAINER_OF(ptr, type, member) \
    (type *) ((uint8_t *) (ptr) - G_STRUCT_OFFSET (type, member))
-+
+ 
 +/* Gnoblin honours application focus requests instead of focus prevention. */
 +gboolean meta_is_gnoblin_session (void);
++
+ char * meta_encode_hex (gpointer data,
+                         size_t   size);
 diff --git a/src/core/util.c b/src/core/util.c
+index 12a90879e..226e7e94a 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -672,3 +672,9 @@
+@@ -139,6 +139,8 @@ ensure_logfile (void)
+     }
+ }
+ 
++#endif
++
+ /**
+  * meta_gnoblin_layer_anchor:
+  * @window: window to inspect
+@@ -163,7 +165,12 @@ meta_gnoblin_layer_namespace (MetaWindow *window)
  {
    return g_object_get_data (G_OBJECT (window), "gnoblin-layer-namespace");
  }
+-#endif
 +
 +gboolean
 +meta_is_gnoblin_session (void)
 +{
 +  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
 +}
+ 
+ gboolean
+ meta_is_verbose (void)
 diff --git a/src/core/window.c b/src/core/window.c
+index 4c45cb73a..bb1ac07f1 100644
 --- a/src/core/window.c
 +++ b/src/core/window.c
-@@ -2026,6 +2026,9 @@
+@@ -2056,6 +2056,9 @@ intervening_user_event_occurred (MetaWindow *window)
        return TRUE;
      }
  
@@ -37,7 +64,7 @@ diff --git a/src/core/window.c b/src/core/window.c
    if (!(window->net_wm_user_time_set) && !(window->initial_timestamp_set))
      {
        meta_topic (META_DEBUG_STARTUP,
-@@ -2110,6 +2113,7 @@
+@@ -2140,6 +2143,7 @@ window_state_on_map (MetaWindow *window,
     * focus unless they are ancestors to the transient.
     */
    if (*takes_focus &&
@@ -45,7 +72,7 @@ diff --git a/src/core/window.c b/src/core/window.c
        meta_prefs_get_focus_new_windows () == G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT &&
        !meta_window_is_ancestor_of_transient (window->display->focus_window,
                                               window))
-@@ -3842,6 +3846,11 @@
+@@ -3977,6 +3981,11 @@ meta_window_activate_full (MetaWindow     *window,
                "by client type %u.",
                window->desc, timestamp, source_indication);
  
@@ -57,7 +84,7 @@ diff --git a/src/core/window.c b/src/core/window.c
    allow_workspace_switch = (timestamp != 0);
    if (timestamp != 0 &&
        XSERVER_TIME_IS_BEFORE (timestamp, window->display->last_user_time))
-@@ -3886,7 +3895,8 @@
+@@ -4021,7 +4030,8 @@ meta_window_activate_full (MetaWindow     *window,
  
    unminimize_window_and_all_transient_parents (window);
  
@@ -68,6 +95,7 @@ diff --git a/src/core/window.c b/src/core/window.c
      meta_window_raise (window);
  
 diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
+index 435a9992d..9c2bca6b8 100644
 --- a/src/wayland/meta-wayland-activation.c
 +++ b/src/wayland/meta-wayland-activation.c
 @@ -20,6 +20,7 @@
@@ -78,7 +106,7 @@ diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-ac
  
  #include <glib.h>
  #include <wayland-server.h>
-@@ -349,17 +350,18 @@
+@@ -348,17 +349,18 @@ maybe_activate (MetaWaylandActivation *activation,
                                                              token_str);
      }
  
@@ -101,7 +129,7 @@ diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-ac
  
        if (workspace_idx >= 0)
          meta_window_change_workspace_by_index (window, workspace_idx, TRUE);
-@@ -372,7 +374,8 @@
+@@ -371,7 +373,8 @@ maybe_activate (MetaWaylandActivation *activation,
        meta_window_set_demands_attention (window);
      }
  
@@ -111,3 +139,6 @@ diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-ac
  
    return TRUE;
  }
+-- 
+2.55.0
+

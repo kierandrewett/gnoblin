@@ -1,16 +1,21 @@
+From 670de2bcbd7851c71d26b606eb4423485c6ab368 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
+Date: Sat, 19 Sep 2026 22:09:57 +0100
 Subject: [PATCH] compositor: include decoration children in X11 paint volume
 
 X11 window actors normally contain only the client surface. Gnoblin adds
 corner and frame decorations as children, and the corner shadow can extend
 well outside the window allocation. Include those children in the paint
 volume so movement damages both the old and new decoration bounds.
+---
+ src/compositor/meta-window-actor-x11.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
 
 diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
-index d405549..1529742 100644
+index 9e16b2682..54b03c0dc 100644
 --- a/src/compositor/meta-window-actor-x11.c
 +++ b/src/compositor/meta-window-actor-x11.c
-@@ -1350,7 +1350,7 @@ meta_window_actor_x11_get_paint_volume (ClutterActor       *actor,
+@@ -1250,7 +1250,7 @@ meta_window_actor_x11_get_paint_volume (ClutterActor       *actor,
    MetaWindowActorX11 *actor_x11 = META_WINDOW_ACTOR_X11 (actor);
    MetaWindow *window;
    gboolean appears_focused;
@@ -19,7 +24,7 @@ index d405549..1529742 100644
  
    /* The paint volume is computed before paint functions are called
     * so our bounds might not be updated yet. Force an update. */
-@@ -1379,13 +1379,20 @@ meta_window_actor_x11_get_paint_volume (ClutterActor       *actor,
+@@ -1279,13 +1279,20 @@ meta_window_actor_x11_get_paint_volume (ClutterActor       *actor,
        clutter_paint_volume_union_box (volume, &shadow_box);
      }
  
@@ -44,3 +49,6 @@ index d405549..1529742 100644
                                                                   actor);
        if (!child_volume)
          return FALSE;
+-- 
+2.55.0
+
