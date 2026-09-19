@@ -11,6 +11,8 @@ sources=(
     "$ROOT/src/config/gnoblin-config.c"
     "$ROOT/src/config/gnoblin-lua.c"
     "$ROOT/src/config/gnoblin-glob.c"
+    "$ROOT/src/config/gnoblin-toml.c"
+    "$ROOT/src/config/tomlc99/toml.c"
 )
 for test in lua-config glob-config lua-console; do
     cc "$ROOT/tests/$test-test.c" "${sources[@]}" \
