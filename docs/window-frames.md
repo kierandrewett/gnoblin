@@ -44,8 +44,8 @@ left (0–256). `crop` defaults to zero. Only set it after measuring the actual
 client chrome: it removes pixels **and their input targets**. Excessive crop
 that would eliminate the whole committed client geometry is ignored.
 
-- `auto` (opt-in): honor client CSD preference; provide SSD when the client
-  requests it or leaves the choice to Gnoblin.
+- `auto` (opt-in): honor client CSD preference; provide SSD only when the
+  client explicitly requests server-side decoration.
 - `prefer-server`: choose SSD when the client has an xdg-decoration object.
   An explicit nonzero crop supplies a replacement-frame fallback for CSD-only
   clients. No fallback crop is applied to a negotiated SSD client.
