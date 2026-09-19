@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Register the gnoblin session with your login manager / systemd --user
-# instance. Separate from install-session.sh (and NOT run by `just dev` /
+# instance. Separate from install-session.sh (and NOT run by `just build-local` /
 # `just dev-session`) because it touches state outside the prefix:
 #
 #   1. Links org.gnoblin.Shell.target + org.gnoblin.Shell@wayland.service
@@ -23,7 +23,7 @@ set -euo pipefail
 PREFIX="${1:?usage: register-session.sh <prefix>}"
 if [ ! -d "$PREFIX" ]; then
     echo "Gnoblin prefix does not exist: $PREFIX" >&2
-    echo "Build and install the development session first: GNOBLIN_PREFIX=\"$PREFIX\" just dev" >&2
+    echo "Build and install the local session first: GNOBLIN_PREFIX=\"$PREFIX\" just build-local" >&2
     exit 1
 fi
 PREFIX="$(cd "$PREFIX" && pwd)"

@@ -26,7 +26,7 @@ PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
 MONITOR="${MONITOR:-1600x900}"
 [ -x "$SHELL_BIN" ] || {
-    echo "no gnome-shell in $PREFIX — run 'just dev' first" >&2
+    echo "no gnome-shell in $PREFIX — run 'just build-local' first" >&2
     exit 1
 }
 

@@ -16,7 +16,7 @@ from there too. The full login-session checks (§1) still matter for GDM/session
 
 ```sh
 just init          # fetch pinned source checkouts and Meson subprojects
-just dev           # patched mutter + patched gnome-shell + session data -> ./install
+just build-local   # patched mutter + patched gnome-shell + session data -> ./install
 ```
 
 ## 1. Log in to a real Gnoblin session

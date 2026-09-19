@@ -9,7 +9,7 @@ The default prefix is `./install`, with libraries in `lib64`. Override both
 when needed:
 
 ```sh
-GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just dev
+GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local
 ```
 
 `GNOBLIN_LIBDIR` is relative to the prefix. Pass the same prefix when running
@@ -24,7 +24,7 @@ nix build .#gnoblin              # build the Nix package
 
 ## Optional components
 
-Neither of these is part of `just dev` — build them explicitly once you need
+Neither of these is part of `just build-local` — build them explicitly once you need
 them.
 
 ### Unattended screensharing (`xdg-desktop-portal-gnome`)

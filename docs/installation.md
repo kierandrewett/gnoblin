@@ -128,7 +128,7 @@ just init
 ### Build and try it
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just dev
+GNOBLIN_PREFIX="$PWD/install" just build-local
 GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
@@ -163,7 +163,7 @@ You can then delete the checkout's `build` and `install` directories.
 
 ## Optional components
 
-These require a source build and are not included in `just dev`:
+These require a source build and are not included in `just build-local`:
 
 - **Gnoblin Settings:** feature toggles and a reload button in GNOME Settings.
 - **Persistent screen-sharing permissions:** remember approved Screen Cast

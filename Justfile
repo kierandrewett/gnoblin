@@ -3,12 +3,12 @@
 
 set shell := ["bash", "-uc"]
 
-# Patched subprojects built by `just dev`.
+# Patched subprojects built by `just build-local`.
 patch_projects := "mutter gnome-shell"
 rpm_projects := "mutter gnome-shell"
 
 # Local development layout. Override both together for distro-style prefixes,
-# for example: GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just dev.
+# for example: GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local.
 prefix := env_var_or_default("GNOBLIN_PREFIX", justfile_directory() / "install")
 libdir := env_var_or_default("GNOBLIN_LIBDIR", "lib64")
 # Retain debug symbols while optimising the compositor used by local sessions.
@@ -65,7 +65,7 @@ build PROJ: (patch PROJ)
 
 # --- dev stack: build the whole gnoblin stack into ./install and run it ------
 #
-#   just dev            build+install patched mutter + patched gnome-shell + session
+#   just build-local    build+install patched mutter + patched gnome-shell + session
 #                       data into ./install
 #   just gnome-verify   headless: boot gnome-shell in gnoblin mode, check layer-shell
 #   just gnome-dbus-verify  headless: org.gnoblin.* control protocol round-trip
@@ -106,7 +106,7 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 # kind under $XDG_DATA_HOME/gnoblin/portal-grants/ and are written only after
 # the session starts successfully. List/revoke them with `gnoblinctl
 # portal-grants` and `gnoblinctl revoke-grant <kind> <id>`. It is not part of
-# `just dev`; build it explicitly:
+# `just build-local`; build it explicitly:
 #
 #   just dev-portal
 #
@@ -135,7 +135,7 @@ dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
 # Hiding is done purely at install time below (delete the panel .desktop files),
 # so it is trivially reversible and needs no patch.
 #
-# It is NOT part of `just dev` — build it explicitly:
+# It is NOT part of `just build-local` — build it explicitly:
 #
 #   just dev-settings
 #
@@ -167,7 +167,7 @@ dev-settings: check-install-prefix (patch "gnome-control-center")
     @echo ">> Gnoblin Settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
-dev: dev-gnome-shell dev-session
+build-local: dev-gnome-shell dev-session
     @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just gnome-verify'"
 
 # Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
@@ -182,7 +182,7 @@ check-install-prefix:
 # org.gnoblin.Shell.target/@wayland.service -- gnoblin-specific unit names,
 # does NOT touch org.gnome.Shell*) and print the (root) command to make
 # "Gnoblin" appear at your login manager's session picker. NOT run by
-# `just dev`/`dev-session` -- it's the one step that touches state outside
+# `just build-local`/`dev-session` -- it's the one step that touches state outside
 # ./install. See docs/installation.md.
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
@@ -385,7 +385,7 @@ verify-installed-headless:
     just gnome-devkit-verify
 
 # Build the current source and patch set before running headless integration.
-verify-headless: dev
+verify-headless: build-local
     just verify-installed-headless
 
 # Default local gate: deterministic checks plus the complete headless suite.

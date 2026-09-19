@@ -12,7 +12,7 @@ actual seat, unattended screensharing), see
 
 ## Prerequisites
 
-A build: `just dev`. You also need to be in a Wayland session yourself (the
+A build: `just build-local`. You also need to be in a Wayland session yourself (the
 devkit renders as a window in it) — see [Headless mode](#headless--scripting-mode)
 if you're not.
 
@@ -118,7 +118,7 @@ emulator — useful in CI or over SSH.
 
 - **`no host WAYLAND_DISPLAY`** — the devkit renders into your current
   Wayland session; log into one, or use `GNOME_DEVKIT_HEADLESS=1`.
-- **`no gnome-shell in ./install`** — run `just dev` first.
+- **`no gnome-shell in ./install`** — run `just build-local` first.
 - **`Failed to take control of the session: EBUSY`** — you're hitting this
   from the native/KMS backend, not `--devkit`; `run-gnome-devkit.sh` always
   uses `--devkit` precisely to avoid fighting your real session for the

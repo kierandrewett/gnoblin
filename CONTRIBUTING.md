@@ -11,7 +11,7 @@ Initialise the pinned upstream trees and build a private prefix:
 
 ```sh
 just init
-just dev
+just build-local
 ```
 
 Run the fast checks before sending a change:

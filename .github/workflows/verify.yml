@@ -9,15 +9,26 @@ jobs:
   checkout-and-verify:
     runs-on: ubuntu-latest
     container: fedora:43
+    timeout-minutes: 90
     steps:
       - name: Install checkout and packaging tools
-        run: dnf -y install git just meson ninja-build python3 rpm-build rpmdevtools
+        run: dnf -y install dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
       - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Initialise the source tree
         run: just init
+      - name: Install source-build dependencies
+        run: dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec
+      - name: Build the documented local installation
+        run: GNOBLIN_PREFIX="$PWD/install" just build-local
+      - name: Verify the documented installation output
+        run: |
+          test -x install/bin/gnoblin-session
+          test -x install/bin/gnoblin-shell-service
+          test -f install/share/wayland-sessions/gnoblin.desktop
+          test -f install/share/gnome-session/sessions/gnoblin.session
       - name: Verify installer and package isolation
         run: |
           bash -n scripts/install-system.sh
