@@ -167,7 +167,7 @@ class IsolationTests(unittest.TestCase):
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
-                self.assertIn("-Dextensions_app=false", expanded)
+                self.assertNotIn("-Dextensions_app=false", expanded)
                 self.assertIn("-Dextensions_tool=false", expanded)
                 self.assertNotIn("Requires:       gnome-control-center", expanded)
                 self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
@@ -175,13 +175,15 @@ class IsolationTests(unittest.TestCase):
     def test_build_routes_disable_extension_manager_tools(self):
         justfile = (ROOT / "Justfile").read_text()
         nix_package = (ROOT / "nix/package.nix").read_text()
-        self.assertIn(
-            'if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_app=false -Dextensions_tool=false)', justfile
-        )
-        self.assertIn("-Dextensions_app=false", justfile)
+        no_extensions_patch = (
+            ROOT / "patches/gnome-shell/65-no-extensions/0002-build-omit-extension-preferences-service.patch"
+        ).read_text()
+        self.assertIn('if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_tool=false)', justfile)
+        self.assertNotIn("-Dextensions_app=false", justfile)
         self.assertIn("-Dextensions_tool=false", justfile)
-        self.assertIn('"-Dextensions_app=false"', nix_package)
+        self.assertNotIn('"-Dextensions_app=false"', nix_package)
         self.assertIn('"-Dextensions_tool=false"', nix_package)
+        self.assertIn("-  'org.gnome.Shell.Extensions': 'extensions',", no_extensions_patch)
 
     def test_system_install_defaults_to_official_copr(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()

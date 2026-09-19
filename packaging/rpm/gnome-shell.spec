@@ -182,7 +182,7 @@ export CFLAGS="${CFLAGS} -fPIE"
 # Refuse an accidental build against Fedora's Mutter.
 test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
-  -Dextensions_app=false -Dextensions_tool=false -Dtests=false -Dman=false
+  -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build
 
 %install
