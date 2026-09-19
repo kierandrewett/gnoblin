@@ -4,6 +4,13 @@ Subject: [PATCH] build: detect PangoRenderer cleanup supplied by newer Pango
 Keep the fallback for older distributions without redefining helpers on
 rolling distributions with newer Pango headers.
 
+diff --git a/config.h.meson b/config.h.meson
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -144,2 +144,3 @@
+ #mesondefine HAVE_FONTS
++#mesondefine HAVE_PANGO_RENDERER_AUTOPTR
+ 
 diff --git a/meson.build b/meson.build
 --- a/meson.build
 +++ b/meson.build
