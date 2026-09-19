@@ -5,38 +5,50 @@ cd -- "$(dirname -- "$(realpath -- "$0")")"
 
 case "${1:-}" in
     '') ;;
-    --yes|--no-deps) ;;
-    --help|-h) echo "Usage: ./build.sh [--yes|--no-deps]"; exit 0 ;;
-    *) echo "Usage: ./build.sh [--yes|--no-deps]" >&2; exit 2 ;;
+    --yes | --no-deps) ;;
+    --help | -h)
+        echo "Usage: ./build.sh [--yes|--no-deps]"
+        exit 0
+        ;;
+    *)
+        echo "Usage: ./build.sh [--yes|--no-deps]" >&2
+        exit 2
+        ;;
 esac
-[ "$#" -le 1 ] || { echo 'Too many arguments' >&2; exit 2; }
+[ "$#" -le 1 ] || {
+    echo 'Too many arguments' >&2
+    exit 2
+}
 privilege=()
 [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 confirm=()
 
 if [ "${1:-}" != --no-deps ]; then
-source /etc/os-release
-case " $ID ${ID_LIKE:-} " in
-    *' arch '*)
-        [ "${1:-}" != --yes ] || confirm=(--noconfirm)
-        "${privilege[@]}" pacman -Syu --needed "${confirm[@]}" \
-            base-devel git just meson ninja python glib2-devel gobject-introspection \
-            gnome-shell mutter gnome-session gnome-settings-daemon \
-            gnome-control-center xdg-desktop-portal-gnome blueprint-compiler evolution-data-server \
-            wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua \
-            sassc cmake intltool libxkbfile xorg-xwayland python-docutils
-        ;;
-    *' fedora '*)
-        [ "${1:-}" != --yes ] || confirm=(-y)
-        "${privilege[@]}" dnf "${confirm[@]}" install \
-            dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
-        "${privilege[@]}" dnf "${confirm[@]}" copr enable kierandrewett/gnoblin
-        "${privilege[@]}" dnf "${confirm[@]}" builddep \
-            packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec \
-            gnome-control-center xdg-desktop-portal-gnome
-        ;;
-    *) echo "Install your distribution's build prerequisites, then run ./build.sh --no-deps (see docs/installation.md)." >&2; exit 1 ;;
-esac
+    source /etc/os-release
+    case " $ID ${ID_LIKE:-} " in
+        *' arch '*)
+            [ "${1:-}" != --yes ] || confirm=(--noconfirm)
+            "${privilege[@]}" pacman -Syu --needed "${confirm[@]}" \
+                base-devel git just meson ninja python glib2-devel gobject-introspection \
+                gnome-shell mutter gnome-session gnome-settings-daemon \
+                gnome-control-center xdg-desktop-portal-gnome blueprint-compiler evolution-data-server \
+                wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua \
+                sassc cmake intltool libxkbfile xorg-xwayland python-docutils
+            ;;
+        *' fedora '*)
+            [ "${1:-}" != --yes ] || confirm=(-y)
+            "${privilege[@]}" dnf "${confirm[@]}" install \
+                dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
+            "${privilege[@]}" dnf "${confirm[@]}" copr enable kierandrewett/gnoblin
+            "${privilege[@]}" dnf "${confirm[@]}" builddep \
+                packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec \
+                gnome-control-center xdg-desktop-portal-gnome
+            ;;
+        *)
+            echo "Install your distribution's build prerequisites, then run ./build.sh --no-deps (see docs/installation.md)." >&2
+            exit 1
+            ;;
+    esac
 fi
 
 # A running system session can export GNOBLIN_PREFIX=/usr. Source builds always
