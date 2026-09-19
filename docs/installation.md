@@ -38,8 +38,8 @@ sudo dnf install --refresh gnoblin-mutter gnoblin-shell gnoblin-session
 ```
 
 `gnoblin-session` pulls in the matching `gnoblin-shell` and `gnoblin-mutter`
-packages. No source build, local RPM directory, or manual file copying is part
-of the supported system-install path.
+packages. DNF reuses compatible installed GNOME userspace and installs missing
+requirements. No source build or manual file copying is part of this path.
 
 The repository also enables the Hyprcursor dependency repository used by the
 Gnoblin Mutter build. Install your desktop shell separately, then log out and
@@ -110,8 +110,9 @@ builds remain in private Nix store paths.
 
 ## Arch, Debian and Ubuntu
 
-Gnoblin binary packages aren't available for these distributions yet. Use
-the [source instructions](#build-from-source). Dependency installation is
+Native packages will be generated from the same Nix-owned package manifest as
+the Fedora RPMs. Until those repository pipelines are published, use the
+[source instructions](#build-from-source). Dependency installation is
 automated for Arch/CachyOS. Other distributions can use `./build.sh --no-deps`
 after installing compatible development dependencies.
 

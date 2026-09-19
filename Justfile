@@ -431,6 +431,10 @@ copr PROJECT MUTTER_SRPM SHELL_SRPM:
 check-gnome-version:
     ./scripts/gnome-versions.py check --upstream
 
+# Refresh/check the native-package adapter input exported by the Nix flake.
+package-manifest COMMAND="check":
+    ./scripts/sync-package-manifest.py {{COMMAND}}
+
 lint *args:
     ./scripts/quality.sh lint {{args}}
 

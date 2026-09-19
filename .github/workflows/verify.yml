@@ -34,6 +34,7 @@ jobs:
           test -f install/share/gnome-session/sessions/gnoblin.session
       - name: Verify installer and package isolation
         run: |
+          ./scripts/sync-package-manifest.py check
           bash -n scripts/install-system.sh
           python3 tests/package-isolation.test.py
           git diff --exit-code -- . ':!subprojects'

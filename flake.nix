@@ -52,6 +52,8 @@
     let
       systems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      versions = builtins.fromJSON (builtins.readFile ./gnome-versions.json);
+      nativePackages = import ./nix/native-packages.nix { inherit versions; };
     in
     {
       packages = forAllSystems (
@@ -145,6 +147,8 @@
           '';
         }
       );
+
+      lib = { inherit nativePackages; };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };
     };

@@ -7,6 +7,32 @@ Install Gnoblin first, then install a layer-shell client such as Bingux. A
 successful Gnoblin package install intentionally leaves the session without a
 bar, dock or notification centre until that client is enabled.
 
+## Packaging architecture
+
+Nix is the source of truth for native packaging, not the only installation
+format. `nix/native-packages.nix` describes Gnoblin's package outputs,
+capability-level dependencies, minimum versions, and RPM/DEB/Arch package-name
+translations. Inspect the interface with:
+
+```sh
+nix eval --json .#lib.nativePackages
+```
+
+`packaging/generated/manifest.json` is the materialized input for native
+adapters and repository builders. Refresh or verify it with:
+
+```sh
+just package-manifest write
+just package-manifest
+```
+
+RPM/COPR, Debian repositories, and Arch PKGBUILDs remain native delivery
+adapters. They install ordinary native dependencies, so an existing compatible
+GNOME userspace is reused and only missing or outdated packages are resolved.
+Build flags, source revisions, package relationships, and minimum versions must
+come from the Nix interface rather than being independently redefined by each
+adapter.
+
 ## Release checklist
 
 - [x] Build Gnoblin source RPMs from a clean checkout with all patches included.
