@@ -5,6 +5,7 @@ Subject: [PATCH] gnoblin: bundle the MessageTray notification bridge
 The bridge is enabled by the gnoblin session mode and forwards GNOME-created
 MessageTray notifications to the standard notification API consumed by the
 external shell.
+Apply after the frame, recovery, and console resource patches.
 ---
  js/js-resources.gresource.xml | 1 +
  1 file changed, 1 insertion(+)
