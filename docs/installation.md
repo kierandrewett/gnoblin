@@ -18,14 +18,26 @@ The packages are named `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session`.
 Their runtime lives in `/usr/lib/gnoblin`. Your existing GNOME packages remain
 installed and selectable.
 
-### Install from COPR
+### Install from COPR — the official path
 
-The Fedora 44 COPR has signed builds. Enable it, then install the session:
+The installer uses the signed Gnoblin COPR for the Fedora release it is running
+on. From a checkout, the complete system install is:
+
+```sh
+just install-session dry     # validate the host's COPR packages
+just install-session          # enable COPR and install/update Gnoblin
+```
+
+The same operation can be run without the checkout helper:
 
 ```sh
 sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf install gnoblin-session
+sudo dnf install --refresh gnoblin-session
 ```
+
+`gnoblin-session` pulls in the matching `gnoblin-shell` and `gnoblin-mutter`
+packages. No source build, local RPM directory, or manual file copying is part
+of the supported system-install path.
 
 The repository also enables the Hyprcursor dependency repository used by the
 Gnoblin Mutter build. Install your desktop shell separately, then log out and
@@ -44,13 +56,6 @@ sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-49.5-*.rpm \
   ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-49.5-*.rpm
 sudo dnf builddep packaging/rpm/gnome-shell.spec
 just rpm gnome-shell
-```
-
-Install the built packages:
-
-```sh
-just install-session dry     # validate and list the packages
-just install-session         # review and confirm installation
 ```
 
 Log out, select **Gnoblin** at the login screen and start your chosen shell.

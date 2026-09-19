@@ -183,6 +183,16 @@ class IsolationTests(unittest.TestCase):
         self.assertIn('"-Dextensions_app=false"', nix_package)
         self.assertIn('"-Dextensions_tool=false"', nix_package)
 
+    def test_system_install_defaults_to_official_copr(self):
+        installer = (ROOT / "scripts/install-system.sh").read_text()
+        justfile = (ROOT / "Justfile").read_text()
+        self.assertIn("SOURCE=copr", installer)
+        self.assertIn('dnf copr enable -y "$copr"', installer)
+        self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
+        self.assertIn('MODE == "local"', justfile)
+        self.assertIn('"--local-rpms"', justfile)
+        self.assertIn("cmp -s \"$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf\"", installer)
+
 
 if __name__ == "__main__":
     unittest.main()

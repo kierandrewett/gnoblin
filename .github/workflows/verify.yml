@@ -1,0 +1,25 @@
+name: Verify Gnoblin checkout
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checkout-and-verify:
+    runs-on: ubuntu-latest
+    container: fedora:43
+    steps:
+      - name: Install checkout and packaging tools
+        run: dnf -y install git just meson ninja-build python3 rpm-build rpmdevtools
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Initialise the source tree
+        run: just init
+      - name: Verify installer and package isolation
+        run: |
+          bash -n scripts/install-system.sh
+          python3 tests/package-isolation.test.py
+          git diff --exit-code -- . ':!subprojects'

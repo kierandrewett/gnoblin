@@ -185,15 +185,16 @@ check-install-prefix:
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
-# Install private Gnoblin RPMs alongside the system's GNOME packages.
-# Package paths and dependency metadata are checked before invoking DNF.
+# Install Gnoblin from the official COPR alongside the system's GNOME packages.
+# The local RPM path is an explicit maintainer escape hatch only.
 #   just install-session            # prompts, shows the transaction
 #   just install-session dry        # validate + print only, changes nothing
 #   just install-session yes        # no prompt
 #   just install-session reinstall  # re-apply a rebuild at the same version
-# PRODUCTION: install the built gnoblin RPMs onto THIS host (nothing points at ./install).
+#   just install-session local       # maintainer-only local RPM install
+# PRODUCTION: install the official COPR packages onto THIS host.
 install-session MODE="":
-    ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else if MODE == "reinstall" { "--reinstall" } else { "" } }}
+    ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else if MODE == "reinstall" { "--reinstall" } else if MODE == "local" { "--local-rpms" } else { "" } }}
 
 # Devkit: open a VISIBLE nested gnoblin session (a window in your current Wayland
 # session) + a terminal already wired to it — so you can launch your own chrome
