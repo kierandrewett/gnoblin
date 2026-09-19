@@ -57,11 +57,12 @@ git push origin v51.0
 ```
 
 The `Release` workflow builds the patched Mutter and GNOME Shell source
-archives, the `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin` source RPMs, and
-`SHA256SUMS`. It publishes those files to the GitHub release only after every
-artifact has built. A failed or interrupted release can be repaired with the
-workflow's manual dispatch for the existing tag; uploaded assets are replaced
-atomically by name.
+archives, the `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin` source RPMs, the
+generated Arch PKGBUILD and Debian packaging archive, and `SHA256SUMS`. It
+publishes those files to the GitHub release only after every artifact has
+built. A failed or interrupted release can be repaired with the workflow's
+manual dispatch for the existing tag; uploaded assets are replaced atomically
+by name.
 
 GitHub releases do not submit to COPR. COPR credentials are deliberately kept
 out of the tag workflow, and binary publication remains the ordered, explicit

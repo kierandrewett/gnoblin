@@ -79,9 +79,10 @@ if [ "$SOURCE" = copr ]; then
     printf '  %s\n' "${copr_packages[@]}"
     "${sudo_args[@]}" dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"
 else
+    META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
     MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
     SHELL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnome-shell.spec")"
-    packages=("gnoblin-mutter:$MUTTER_VERSION" "gnoblin-shell:$SHELL_VERSION" "gnoblin-session:$SHELL_VERSION")
+    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION" "gnoblin-shell:$SHELL_VERSION" "gnoblin-session:$SHELL_VERSION")
     if rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
         packages+=("gnoblin-mutter-devel:$MUTTER_VERSION")
     fi
@@ -89,8 +90,11 @@ else
     for package in "${packages[@]}"; do
         name="${package%%:*}"
         version="${package#*:}"
-        project=gnome-shell
-        [[ "$name" == gnoblin-mutter* ]] && project=mutter
+        case "$name" in
+            gnoblin) project=gnoblin ;;
+            gnoblin-mutter*) project=mutter ;;
+            *) project=gnome-shell ;;
+        esac
         release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/$project.spec")"
         mapfile -t matches < <(find "$RPM_DIR" -type f -name "$name-$version-$release.*.rpm" | sort)
         if [ "${#matches[@]}" -ne 1 ]; then

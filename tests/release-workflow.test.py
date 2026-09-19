@@ -14,6 +14,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('make-tarball.sh" gnome-shell', script)
         for project in ("mutter", "gnome-shell", "gnoblin"):
             self.assertIn(f'build-srpm.sh" {project}', script)
+        self.assertIn("gnoblin-$VERSION.PKGBUILD", script)
+        self.assertIn("gnoblin-$VERSION-debian.tar.xz", script)
         self.assertIn("SHA256SUMS", script)
 
     def test_release_workflow_publishes_only_after_artifacts_build(self):

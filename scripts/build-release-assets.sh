@@ -37,6 +37,9 @@ mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
 install -m 0644 -- "$SOURCES/mutter-$VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/gnome-shell-$VERSION.tar.xz" "$OUTPUT/"
 find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
+install -m 0644 -- "$ROOT/packaging/arch/PKGBUILD" "$OUTPUT/gnoblin-$VERSION.PKGBUILD"
+tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+    -C "$ROOT/packaging/deb" -cJf "$OUTPUT/gnoblin-$VERSION-debian.tar.xz" debian
 
 (
     cd "$OUTPUT"

@@ -47,8 +47,8 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core
           dnf -y copr enable kierandrewett/gnoblin
-          dnf -y install --refresh gnoblin-mutter gnoblin-shell gnoblin-session
-          rpm -q gnoblin-mutter gnoblin-shell gnoblin-session
+          dnf -y install --refresh gnoblin
+          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           test -x /usr/lib/gnoblin/bin/gnoblin-session
   arch-source:
