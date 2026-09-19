@@ -15,6 +15,7 @@ Source0:        gsettings-desktop-schemas-%{version}.tar.xz
 BuildArch:      noarch
 
 BuildRequires:  gettext
+BuildRequires:  gcc
 BuildRequires:  glib2-devel
 BuildRequires:  meson
 Requires:       glib2
