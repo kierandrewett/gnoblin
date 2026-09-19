@@ -9,6 +9,7 @@
   hyprcursor,
   lua5_4,
   libepoxy,
+  libglycin,
   python3,
   gtk3,
   wrapGAppsHook3,
@@ -97,38 +98,72 @@ let
       ++ [ "-Dhyprcursor=enabled" ];
   });
 
-  gnoblinShell = (gnomeShell.override { mutter = gnoblinMutter; }).overrideAttrs (old: {
-    pname = "gnoblin-shell";
-    version = gnomeVersion;
-    src = gnomeShellSrc;
-    buildInputs =
-      map (
-        dependency:
-        if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
-      ) (old.buildInputs or [ ])
-      ++ [ libepoxy ];
-    patches = patchesFor "gnome-shell";
-    prePatch =
-      (old.prePatch or "")
-      + copyOverlays "gnome-shell"
-      + addSubproject gvcSrc "gvc"
-      + addSubproject libshewSrc "libshew"
-      + addSubproject jasmineGjsSrc "jasmine-gjs";
-    # Nixpkgs' hook follows its older Shell source and names files removed in
-    # 51. Keep the useful fixups, scoped to paths in the pinned release.
-    postPatch = ''
-      patchShebangs build-aux/generate-app-list.py
-      rm -f man/gnome-shell.1 data/theme/gnome-shell-{light,dark}.css
-      substituteInPlace meson.build \
-          --replace-fail "gjs = find_program('gjs')" "gjs = find_program('${gjs}/bin/gjs')"
-      substituteInPlace data/org.gnome.Shell-disable-extensions.service \
-          --replace-fail "ExecStart=gsettings" "ExecStart=${glib.bin}/bin/gsettings"
-      substituteInPlace js/ui/extensionDownloader.js \
-          --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
-          --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
-    '';
-    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dextensions_tool=false" ];
-  });
+  gnoblinShell =
+    (gnomeShell.override {
+      mutter = gnoblinMutter;
+      stdenv = gcc16Stdenv;
+    }).overrideAttrs
+      (old: {
+        pname = "gnoblin-shell";
+        version = gnomeVersion;
+        src = gnomeShellSrc;
+        buildInputs =
+          map (
+            dependency:
+            if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
+          ) (old.buildInputs or [ ])
+          ++ [
+            libepoxy
+            libglycin
+          ];
+        patches = patchesFor "gnome-shell";
+        prePatch =
+          (old.prePatch or "")
+          + copyOverlays "gnome-shell"
+          + addSubproject gvcSrc "gvc"
+          + addSubproject libshewSrc "libshew"
+          + addSubproject jasmineGjsSrc "jasmine-gjs";
+        preConfigure = ''
+          export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        ''
+        + (old.preConfigure or "");
+        # Nixpkgs' hook follows its older Shell source and names files removed in
+        # 51. Keep the useful fixups, scoped to paths in the pinned release.
+        postPatch = ''
+              patchShebangs build-aux/generate-app-list.py
+              rm -f man/gnome-shell.1 data/theme/gnome-shell-{light,dark}.css
+              substituteInPlace meson.build \
+                  --replace-fail "gjs = find_program('gjs')" "gjs = find_program('${gjs}/bin/gjs')"
+              substituteInPlace data/org.gnome.Shell-disable-extensions.service \
+                  --replace-fail "ExecStart=gsettings" "ExecStart=${glib.bin}/bin/gsettings"
+          substituteInPlace js/ui/extensionDownloader.js \
+              --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
+              --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
+          substituteInPlace src/meson.build \
+              --replace-fail "extra_args: ['--quiet']," \
+              "extra_args: ['--quiet', '--library-path=${gcc16Stdenv.cc.cc.lib}/lib'],"
+          substituteInPlace src/st/meson.build \
+              --replace-fail "extra_args: ['-DST_COMPILATION', '--quiet']," \
+              "extra_args: ['-DST_COMPILATION', '--quiet', '--library-path=${gcc16Stdenv.cc.cc.lib}/lib'],"
+        '';
+        mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dextensions_tool=false" ];
+        postFixup = ''
+          for service in org.gnome.ScreenSaver org.gnome.Shell.Notifications org.gnome.Shell.Screencast; do
+              makeWrapper ${gjs}/bin/gjs "$out/libexec/$service" \
+                  --add-flags "-m" \
+                  --add-flags "$out/share/gnome-shell/$service" \
+                  "''${gappsWrapperArgs[@]}"
+              substituteInPlace "$out/share/dbus-1/services/$service.service" \
+                  --replace-fail \
+                  "Exec=${gjs}/bin/gjs -m $out/share/gnome-shell/$service" \
+                  "Exec=$out/libexec/$service"
+          done
+
+          # Cannot be in postInstall, otherwise the multi-output docs hook moves
+          # the directory back into the primary output.
+          moveToOutput "share/doc" "$devdoc"
+        '';
+      });
 
   session = stdenv.mkDerivation {
     pname = "gnoblin-session";
