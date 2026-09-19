@@ -114,7 +114,7 @@ let
     postPatch = ''
       patchShebangs build-aux/generate-app-list.py
       rm -f man/gnome-shell.1 data/theme/gnome-shell-{light,dark}.css
-      substituteInPlace meson.build subprojects/extensions-tool/meson.build \
+      substituteInPlace meson.build \
           --replace-fail "gjs = find_program('gjs')" "gjs = find_program('${gjs}/bin/gjs')"
       substituteInPlace data/org.gnome.Shell-disable-extensions.service \
           --replace-fail "ExecStart=gsettings" "ExecStart=${glib.bin}/bin/gsettings"
