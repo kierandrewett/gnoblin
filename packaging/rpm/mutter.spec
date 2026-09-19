@@ -127,7 +127,7 @@ Private headers and pkg-config files for Gnoblin builds.
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
-  -Degl_device=true -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
+  -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
   -Dudev_dir=%{_prefix}/lib/udev
 %meson_build
 

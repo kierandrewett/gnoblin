@@ -164,6 +164,7 @@ class IsolationTests(unittest.TestCase):
             self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
             self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
             self.assertNotRegex(expanded, r"(?m)^Name:\s+(?:mutter|gnome-shell)$")
+            self.assertNotIn("-Degl_device", expanded)
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
