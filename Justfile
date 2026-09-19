@@ -24,8 +24,8 @@ _default:
 init:
     git submodule update --init --recursive
     just prepare-tarball-sources
-    @echo "mutter               -> $(git -C subprojects/mutter               describe --tags)"
-    @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags)"
+    @echo "mutter               -> $(git -C subprojects/mutter               describe --tags --always)"
+    @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags --always)"
 
 # Materialise the pinned Meson subprojects required by no-download RPM builds.
 prepare-tarball-sources:
