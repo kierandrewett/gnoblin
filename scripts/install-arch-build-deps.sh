@@ -9,4 +9,4 @@ fi
     base-devel git just meson ninja python glib2-devel gobject-introspection \
     gnome-shell mutter gnome-session gnome-settings-daemon \
     wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua \
-    sassc cmake intltool libxkbfile xorg-xwayland
+    sassc cmake intltool libxkbfile xorg-xwayland python-docutils
