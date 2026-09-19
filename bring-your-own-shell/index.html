@@ -2271,9 +2271,12 @@ Install one before logging into Gnoblin.</p>
 <h2 id="bingux">Bingux<a class="headerlink" href="#bingux" title="Permanent link">&para;</a></h2>
 <p>Bingux is the companion shell. It provides the desktop controls, notifications,
 search and window switcher.</p>
-<p>Follow the <a href="https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md">Bingux installation guide</a>
-for dependencies. From the Bingux checkout, its managed user install is:</p>
-<div class="highlight"><pre><span></span><code>make<span class="w"> </span>install-user
+<p>Install the dependencies in the
+<a href="https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md">Bingux installation guide</a>,
+then build and install it for your user:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/kierandrewett/bingux.git
+<span class="nb">cd</span><span class="w"> </span>bingux
+make<span class="w"> </span>install-user
 </code></pre></div>
 <p>The installer builds the shell, enables its services and adds the Gnoblin
 configuration include. Keep those includes when editing <code>init.lua</code>.</p>
