@@ -262,8 +262,8 @@ let
 
 
       substituteInPlace "$out/bin/gnoblin-session" \
-          --replace-fail "exec gnome-session" \
-          "exec ${gnomeSession}/bin/gnome-session"
+          --replace-fail "    gnome-session --no-reexec" \
+          "    ${gnomeSession}/bin/gnome-session --no-reexec"
       substituteInPlace "$out/share/wayland-sessions/gnoblin.desktop" \
           --replace-fail "Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin" \
           "Exec=$out/bin/gnoblin-session"
