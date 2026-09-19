@@ -160,7 +160,9 @@ Meson, Ninja, pkg-config, Python, GLib development tools and GObject
 Introspection, plus the development dependencies of Mutter 49.5 and GNOME
 Shell 49.6. These include GTK 4, GJS, GNOME desktop libraries, Evolution Data
 Server, Wayland protocols, libei, libdisplay-info, PipeWire, Lua 5.4 and
-Hyprcursor. Meson checks the required versions and reports missing libraries.
+Hyprcursor, plus Docutils (`rst2man`). The combined build requires GLib
+2.86 or newer, GJS 1.85.90 or newer, and the Glycin 2 API. Meson checks
+the remaining required versions and reports missing libraries.
 Package names vary by distribution; a runtime-only package is not sufficient
 where headers and tools are packaged separately. The same initialization and
 build commands below apply once those dependencies are present.
@@ -215,7 +217,7 @@ it does not compile or install Gnoblin. If Git reports local changes, preserve
 them before updating; do not use forced resets to repair an installation.
 
 The GitHub Actions installation workflow tests Fedora 43 package installation
-and source compilation. Graphical devkit use, GDM login, and session removal
+and source compilation on Fedora 43 and Arch Linux. Graphical devkit use, GDM login, and session removal
 still require a graphical host; a successful build alone does not verify them.
 
 <a id="unattended-screensharing-xdg-desktop-portal-gnome"></a>

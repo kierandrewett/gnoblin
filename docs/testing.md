@@ -29,7 +29,9 @@ GDM login, visible chrome, and portal consent remain manual checks covered by
 
 GitHub Actions runs `.github/workflows/verify.yml` on pushes and pull requests.
 It installs the documented COPR package set in a clean Fedora 43 container,
-and separately initializes and compiles a source checkout. It checks installed
+and separately initializes and compiles source checkouts on Fedora and Arch.
+Arch uses `scripts/install-arch-build-deps.sh`, the same prerequisite command
+as the installation guide. It checks installed
 runtime/session files. GDM login and interactive devkit checks remain host tests.
 
 Use the narrow recipe while iterating. Use `just verify` for the complete local
