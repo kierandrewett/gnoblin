@@ -272,7 +272,51 @@ static gboolean renderer_timeout(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+/* Input extends beyond the painted border, including zero-width borders. */
+#define RESIZE_OUTSET 6
+#define RESIZE_INSET 2
+#define RESIZE_CORNER 16
+
+static guint resize_action(Frame* frame, float x, float y) {
+    if (!meta_window_allows_resize(frame->window) || x < -RESIZE_OUTSET || y < -RESIZE_OUTSET ||
+        x >= frame->width + RESIZE_OUTSET || y >= frame->height + RESIZE_OUTSET)
+        return 0;
+    gboolean west = x < RESIZE_INSET;
+    gboolean east = x >= frame->width - RESIZE_INSET;
+    gboolean north = y < RESIZE_INSET;
+    gboolean south = y >= frame->height - RESIZE_INSET;
+    if (!(west || east || north || south))
+        return 0;
+    if (y < RESIZE_CORNER) {
+        if (x < RESIZE_CORNER)
+            return 12;
+        if (x >= frame->width - RESIZE_CORNER)
+            return 6;
+    }
+    if (y >= frame->height - RESIZE_CORNER) {
+        if (x < RESIZE_CORNER)
+            return 10;
+        if (x >= frame->width - RESIZE_CORNER)
+            return 8;
+    }
+    return north ? 5 : east ? 7 : south ? 9 : 11;
+}
+
+static void frame_cursor(Frame* frame, guint action) {
+    static const MetaCursor cursors[] = {
+        META_CURSOR_N_RESIZE, META_CURSOR_NE_RESIZE, META_CURSOR_E_RESIZE, META_CURSOR_SE_RESIZE,
+        META_CURSOR_S_RESIZE, META_CURSOR_SW_RESIZE, META_CURSOR_W_RESIZE, META_CURSOR_NW_RESIZE,
+    };
+    MetaDisplay* display = meta_window_get_display(frame->window);
+    if (!meta_display_is_grabbed(display))
+        meta_display_set_cursor(display, action >= 5 && action <= 12 ? cursors[action - 5]
+                                                                     : META_CURSOR_DEFAULT);
+}
+
 static guint hit_action(Frame* frame, float x, float y) {
+    guint resize = resize_action(frame, x, y);
+    if (resize)
+        return resize;
     int* b = frame->layout.border;
     if (x < 0 || y < 0 || x >= frame->width || y >= frame->height ||
         (x >= b[3] && y >= b[0] && x < frame->width - b[1] && y < frame->height - b[2]))
@@ -296,17 +340,17 @@ static guint hit_action(Frame* frame, float x, float y) {
         for (int i = regions->len - 1; i >= 0; i--) {
             Region* r = &g_array_index(regions, Region, i);
             if (x >= r->x && y >= r->y && x < r->x + r->width && y < r->y + r->height)
-                return r->action;
+                return r->action >= 5 && !meta_window_allows_resize(frame->window) ? 0 : r->action;
         }
         return 0;
     }
-    if (y >= frame->height - b[2])
+    if (meta_window_allows_resize(frame->window) && y >= frame->height - b[2])
         return 9;
-    if (x < b[3])
+    if (meta_window_allows_resize(frame->window) && x < b[3])
         return 11;
-    if (x >= frame->width - b[1])
+    if (meta_window_allows_resize(frame->window) && x >= frame->width - b[1])
         return 7;
-    if (y < MIN(4, b[0]))
+    if (meta_window_allows_resize(frame->window) && y < MIN(4, b[0]))
         return 5;
     if (y < b[0]) {
         int button = (int)((frame->width - b[1] - x) / MAX(1, b[0]));
@@ -323,20 +367,23 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
     guint action;
     ClutterEventType type = clutter_event_type(event);
     if (type == CLUTTER_LEAVE) {
+        frame_cursor(frame, 0);
         frame->hover = 0;
         redraw_buttons(frame);
         if (frame->external && frame->resource)
             gnoblin_window_frame_v1_send_interaction(frame->resource, 0, !!frame->pressed);
         return CLUTTER_EVENT_PROPAGATE;
     }
-    if (type != CLUTTER_BUTTON_PRESS && type != CLUTTER_BUTTON_RELEASE && type != CLUTTER_MOTION)
+    if (type != CLUTTER_BUTTON_PRESS && type != CLUTTER_BUTTON_RELEASE && type != CLUTTER_MOTION &&
+        type != CLUTTER_ENTER)
         return CLUTTER_EVENT_PROPAGATE;
     clutter_event_get_coords(event, &sx, &sy);
     clutter_actor_transform_stage_point(frame->root, sx, sy, &x, &y);
     action = hit_action(frame, x, y);
+    frame_cursor(frame, action);
     if (!action && type != CLUTTER_BUTTON_RELEASE)
         return CLUTTER_EVENT_PROPAGATE;
-    if (type == CLUTTER_MOTION) {
+    if (type == CLUTTER_MOTION || type == CLUTTER_ENTER) {
         if (frame->hover != action && frame->external && frame->resource)
             gnoblin_window_frame_v1_send_interaction(frame->resource, action, !!frame->pressed);
         frame->hover = action;
@@ -549,7 +596,8 @@ static void update_frame(Frame* frame) {
     clutter_actor_set_position(frame->root, (rect.x - buffer.x) / (float)scale,
                                (rect.y - buffer.y) / (float)scale);
     clutter_actor_set_size(frame->root, frame->width, frame->height);
-    clutter_actor_set_clip(frame->root, 0, 0, frame->width, frame->height);
+    clutter_actor_set_clip(frame->root, -RESIZE_OUTSET, -RESIZE_OUTSET,
+                           frame->width + 2 * RESIZE_OUTSET, frame->height + 2 * RESIZE_OUTSET);
     gboolean visible = b[0] || b[1] || b[2] || b[3];
     if (!visible) {
         clutter_actor_hide(frame->root);
@@ -593,10 +641,16 @@ static void update_frame(Frame* frame) {
         clutter_actor_set_position(frame->buttons[i], frame->width - b[1] - (i + 1) * b[0], 0);
         clutter_actor_queue_redraw(frame->buttons[i]);
     }
-    int boxes[4][4] = {{0, 0, frame->width, b[0]},
-                       {frame->width - b[1], b[0], b[1], frame->height - b[0]},
-                       {0, frame->height - b[2], frame->width, b[2]},
-                       {0, b[0], b[3], frame->height - b[0]}};
+    gboolean resizable = meta_window_allows_resize(frame->window);
+    int outset = resizable ? RESIZE_OUTSET : 0;
+    int right = resizable ? MAX(b[1], RESIZE_INSET) : b[1];
+    int bottom = resizable ? MAX(b[2], RESIZE_INSET) : b[2];
+    int left = resizable ? MAX(b[3], RESIZE_INSET) : b[3];
+    int boxes[4][4] = {
+        {-outset, -outset, frame->width + 2 * outset, b[0] + outset},
+        {frame->width - right, b[0], right + outset, frame->height - b[0]},
+        {-outset, frame->height - bottom, frame->width + 2 * outset, bottom + outset},
+        {-outset, b[0], left + outset, frame->height - b[0]}};
     for (int i = 0; i < 4; i++) {
         clutter_actor_set_position(frame->strips[i], boxes[i][0], boxes[i][1]);
         clutter_actor_set_size(frame->strips[i], MAX(0, boxes[i][2]), MAX(0, boxes[i][3]));

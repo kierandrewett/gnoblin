@@ -11,6 +11,13 @@ feedback, and native move/resize controls. It needs no GTK, icon theme or extern
 process. It is also the recovery frame for an explicitly enabled external SSD.
 Bingux owns the styled GTK4/libadwaita renderer; it is not a Gnoblin default.
 
+Both renderers use compositor-owned resize regions and directional cursors.
+The regions extend six logical pixels outside the window and two pixels inside
+its perimeter, even with zero side and bottom extents. Corners select diagonal
+resize within 16 pixels of the corner. These regions take priority over renderer
+hit regions and remain active at rounded corners. Maximised, fullscreen and
+fixed-size windows do not expose resize regions.
+
 Gnoblin can negotiate `xdg-decoration` v1 with Wayland clients, or replace a
 client decoration using an explicit crop. Native code commits crop and frame
 extents with the client's acknowledged configure. Painting and picking use
@@ -101,3 +108,21 @@ control checks. `GNOBLIN_SSD_NEGOTIATED=1` exercises Qt decoration negotiation;
 service's theme file, exercises external rendering, theme reload and recovery.
 `tests/test-window-frames-spotify.py` is an optional installed-Spotify check
 using a private display, private bus, empty profile and disabled network.
+
+`tests/nested-ssd-resize-check.py` tests all eight directions with real pointer
+input and exact geometry checks. It compares captured cursor pixels with each
+expected cursor and checks that a default cursor produces a different image.
+It also checks cursor reset, maximise and fullscreen transitions. Start an
+isolated session with `GNOME_DEVKIT_HEADLESS=1 bash scripts/run-normal-config-devkit.sh`,
+then use its printed snapshot path:
+
+```sh
+python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT bingux
+python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT bingux outside
+python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT native
+python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT native outside
+```
+
+The test requires the normal `[36, 0, 0, 0]` SSD extents. It creates a disposable
+fixture when none exists. `outside` checks the invisible area four pixels beyond
+the perimeter. A new compositor session is required after installing native code.

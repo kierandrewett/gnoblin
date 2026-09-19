@@ -39,8 +39,11 @@ Connect once; do not give that descriptor to a second toolkit display connection
    frame handle and surface and release your per-frame resources.
 
 The compositor enforces a hole for application content, clips the outer radius,
-checks action permissions and owns drag/resize grabs. Regions are last-defined
-wins and commit atomically with pixels. Action numbers: drag=1, close=2,
+checks action permissions and owns drag/resize grabs. Renderer regions are last-defined
+wins and commit atomically with pixels. The compositor owns a resize perimeter
+that takes priority over these regions, including when painted side and bottom
+extents are zero. It supplies edge/corner cursors and disables resize input when
+the window does not allow resizing. Action numbers: drag=1, close=2,
 maximize/restore=3, minimize=4, resize N/NE/E/SE/S/SW/W/NW=5..12.
 Interaction action 0 means no region is hovered. No keyboard focus is transferred.
 Supply real button bounds, not approximate hit rectangles.
