@@ -183,7 +183,14 @@ class IsolationTests(unittest.TestCase):
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         self.assertIn("Name:           gnoblin-gsettings-desktop-schemas", schemas)
         self.assertIn("--prefix=/usr/lib/gnoblin", schemas)
+        self.assertIn("BuildRequires:  gobject-introspection-devel", schemas)
+        self.assertNotIn("-Dintrospection=false", schemas)
         self.assertIn("BuildRequires: gnoblin-gsettings-desktop-schemas >= 51.0", mutter)
+        self.assertIn("GI_GIR_PATH=%{_datadir}/gir-1.0", (ROOT / "packaging/rpm/gnome-shell.spec").read_text())
+        self.assertIn(
+            'GI_TYPELIB_PATH="$prefix/$libdir/girepository-1.0:',
+            (ROOT / "src/tools/gnoblin-env.sh").read_text(),
+        )
         self.assertLess(
             publisher.index('copr-cli build "$project" "$schemas_srpm"'),
             publisher.index('copr-cli build "$project" "$mutter_srpm"'),

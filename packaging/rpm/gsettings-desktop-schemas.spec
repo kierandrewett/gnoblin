@@ -3,16 +3,15 @@
 %global _includedir %{_prefix}/include
 Name:           gnoblin-gsettings-desktop-schemas
 Version:        51.0
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        Private GNOME desktop schemas for Gnoblin
 License:        LGPL-2.1-or-later
 URL:            https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas
 Source0:        gsettings-desktop-schemas-%{version}.tar.xz
-BuildArch:      noarch
-
 BuildRequires:  gettext
 BuildRequires:  gcc
 BuildRequires:  glib2-devel
+BuildRequires:  gobject-introspection-devel
 BuildRequires:  meson
 Requires:       glib2
 
@@ -25,7 +24,7 @@ desktop's schemas.
 %autosetup -n gsettings-desktop-schemas-%{version}
 
 %build
-%meson -Dintrospection=false
+%meson
 %meson_build
 
 %install
@@ -46,5 +45,5 @@ fi
 %ghost %{_datadir}/glib-2.0/schemas/gschemas.compiled
 
 %changelog
-* Sun Sep 20 2026 Gnoblin contributors - 51.0-2
+* Sun Sep 20 2026 Gnoblin contributors - 51.0-3
 - Package GNOME 51 schemas privately for parallel installation.
