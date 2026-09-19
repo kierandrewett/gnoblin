@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/developer-console/">
       
       
-        <link rel="prev" href="../frame-renderer-api/">
+        <link rel="prev" href="../native-ui-removal/">
       
       
         <link rel="next" href="../source-development/">
@@ -27,7 +27,7 @@
     
     
       
-        <title>Developer console - Gnoblin</title>
+        <title>Console - Gnoblin</title>
       
     
     
@@ -84,9 +84,7 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -108,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Developer console
+              Console
             
           </span>
         </div>
@@ -210,6 +208,97 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration-reference/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../shell-integration/" class="md-tabs__link">
+          
+  
+  
+  Shell development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../source-development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -223,8 +312,10 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -255,6 +346,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href=".." class="md-nav__link">
         
@@ -275,9 +418,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -287,26 +431,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Get started
+    Installation
   
 
     
@@ -317,12 +461,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Get started
+    Installation
   
 
           </label>
@@ -342,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Install Gnoblin
+    Choose your system
   
 
     
@@ -351,6 +495,98 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-fedora/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fedora
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-nixos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NixOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -398,7 +634,35 @@
   <span class="md-ellipsis">
     
   
-    Configure your desktop
+    Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
   
 
     
@@ -430,26 +694,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Configuration reference
+    Configuration
   
 
     
@@ -460,12 +724,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration reference
+    Configuration
   
 
           </label>
@@ -485,7 +749,7 @@
   <span class="md-ellipsis">
     
   
-    Option index
+    All settings
   
 
     
@@ -533,6 +797,230 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Basics
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files and load order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autostart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autostart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Appearance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Appearance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../window-effects/" class="md-nav__link">
         
@@ -541,7 +1029,7 @@
   <span class="md-ellipsis">
     
   
-    Window effects
+    Effects
   
 
     
@@ -569,7 +1057,179 @@
   <span class="md-ellipsis">
     
   
-    Window frames (CSD and SSD)
+    Titlebars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shaders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Behavior
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session settings
   
 
     
@@ -597,7 +1257,7 @@
   <span class="md-ellipsis">
     
   
-    Portal permissions
+    Permissions
   
 
     
@@ -646,34 +1306,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../cursors/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cursor themes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../window-state-shortcuts/" class="md-nav__link">
         
   
@@ -681,7 +1313,7 @@
   <span class="md-ellipsis">
     
   
-    Window shortcuts
+    Restore or minimise
   
 
     
@@ -709,7 +1341,7 @@
   <span class="md-ellipsis">
     
   
-    Window snapping
+    Snapping
   
 
     
@@ -718,6 +1350,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -774,23 +1414,26 @@
         
         
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Build a shell
+    Shell development
   
 
     
@@ -801,16 +1444,44 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Build a shell
+    Shell development
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shell-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -854,7 +1525,63 @@
   <span class="md-ellipsis">
     
   
-    Background effects
+    Background blur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blur-fades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blur fades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../effects-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Effect rendering
   
 
     
@@ -882,7 +1609,7 @@
   <span class="md-ellipsis">
     
   
-    Focus transfer
+    Activation
   
 
     
@@ -938,7 +1665,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -966,7 +1693,35 @@
   <span class="md-ellipsis">
     
   
-    Renderer API
+    Write a renderer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-ui-removal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native and external UI
   
 
     
@@ -1003,7 +1758,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1021,7 +1776,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1047,10 +1802,65 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#live-configuration-and-api-help" class="md-nav__link">
+  <a href="#controls" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Live configuration and API help
+        Controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#try-javascript" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try JavaScript
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#try-lua" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try Lua
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#undo-and-reload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Undo and reload
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#developing-the-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Developing the console
       
     </span>
   </a>
@@ -1084,26 +1894,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Contribute
+    Contributing
   
 
     
@@ -1114,12 +1924,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Contribute
+    Contributing
   
 
           </label>
@@ -1167,7 +1977,7 @@
   <span class="md-ellipsis">
     
   
-    Development session
+    Devkit
   
 
     
@@ -1223,7 +2033,7 @@
   <span class="md-ellipsis">
     
   
-    Hardware verification
+    Desktop verification
   
 
     
@@ -1251,7 +2061,35 @@
   <span class="md-ellipsis">
     
   
-    Code quality
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI development
   
 
     
@@ -1279,7 +2117,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1307,7 +2145,35 @@
   <span class="md-ellipsis">
     
   
-    Documentation site
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
   
 
     
@@ -1355,10 +2221,65 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#live-configuration-and-api-help" class="md-nav__link">
+  <a href="#controls" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Live configuration and API help
+        Controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#try-javascript" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try JavaScript
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#try-lua" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try Lua
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#undo-and-reload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Undo and reload
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#developing-the-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Developing the console
       
     </span>
   </a>
@@ -1382,111 +2303,127 @@
 
 
   
-    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/developer-console.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
-      
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
-    </a>
-  
   
 
 
 <h1 id="developer-console">Developer console<a class="headerlink" href="#developer-console" title="Permanent link">&para;</a></h1>
-<p>Implementation checklist:</p>
-<ul>
-<li>[x] Add JavaScript evaluation, retained bindings and object inspection.</li>
-<li>[x] Add the top-edge console, keyboard input, history and completion.</li>
-<li>[x] Replace the Gnoblin Run dialog and Looking Glass entry points.</li>
-<li>[x] Verify keyboard focus, lock behaviour, stacking and rendered output.</li>
-<li>[x] Commit and push each completed part.</li>
-</ul>
-<p><code>Alt+F2</code> opens or closes the console in the primary unlocked Gnoblin session. It is a
-top-edge modal above the Shell chrome, with a multiline input, retained
-bindings, top-level <code>await</code>, result history (<code>r(id)</code> and <code>$_</code>), completion,
-syntax highlighting, inline object expansion and selectable stack traces.
-The initial view contains a prompt and JavaScript/Lua language tabs. Suggestions appear while typing;
-Up/Down selects a suggestion and Tab or Enter accepts it. Enter otherwise
-evaluates, Shift+Enter inserts a newline, and Ctrl+L clears the transcript. <code>Escape</code> first dismisses suggestions and returns focus to the prompt. A second
-press closes the console. With no suggestions, it closes immediately, including
-when an inspector control has focus. <code>Alt+F2</code> closes immediately. A lock transition closes
-it before the stock unlock UI takes over.</p>
-<p>The JavaScript context is intentionally compositor-local: it exposes <code>global</code>,
-<code>Main</code>, GNOME Shell libraries and <code>windows()</code>, while the remote D-Bus control
-surface remains separate. Build the Shell theme resource after changing the
-console Sass file with:</p>
+<p>Press <strong>Alt+F2</strong> to open the console in an unlocked Gnoblin session.
+Choose JavaScript or Lua using the tabs above the prompt.</p>
+<p>Live edits affect the session but do not write your config file.</p>
+<h2 id="controls">Controls<a class="headerlink" href="#controls" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key or command</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enter</td>
+<td>Evaluate, or accept a selected suggestion</td>
+</tr>
+<tr>
+<td>Shift+Enter</td>
+<td>Insert a newline</td>
+</tr>
+<tr>
+<td>Up/Down, Tab</td>
+<td>Select and accept suggestions</td>
+</tr>
+<tr>
+<td>Ctrl+L</td>
+<td>Clear output, keeping variables</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>Dismiss suggestions, then close</td>
+</tr>
+<tr>
+<td>Alt+F2</td>
+<td>Close immediately</td>
+</tr>
+<tr>
+<td>F1 or <code>:help</code></td>
+<td>Show help</td>
+</tr>
+<tr>
+<td><code>:reset</code></td>
+<td>Reset both language contexts</td>
+</tr>
+</tbody>
+</table>
+<p>The console closes on lock. Each language keeps its own unfinished input and state.</p>
+<h2 id="try-javascript">Try JavaScript<a class="headerlink" href="#try-javascript" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nx">windows</span><span class="p">();</span>
+<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">get</span><span class="p">();</span>
+<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="s2">"shell.layer-duration"</span><span class="p">,</span><span class="w"> </span><span class="mf">350</span><span class="p">);</span>
+<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">undo</span><span class="p">();</span>
+<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">reload</span><span class="p">();</span>
+</code></pre></div>
+<p><code>gnoblin.get()</code> returns a copy of the effective config.
+For several changes, modify that copy and pass it to <code>gnoblin.apply(document)</code>.</p>
+<p>The context exposes <code>global</code>, <code>Main</code> and GNOME libraries. It supports retained
+bindings and top-level <code>await</code>. Previous results are available through <code>r(id)</code>
+and <code>$_</code>.</p>
+<h2 id="try-lua">Try Lua<a class="headerlink" href="#try-lua" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="p">[</span><span class="s2">"layer-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">350</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p>Then submit <code>:apply</code> to validate and apply the working copy.
+Nothing applies merely because you type it.</p>
+<p>Globals persist between submissions; <code>local</code> variables belong to one chunk.
+Lua uses the restricted config runtime. Module paths resolve from the active
+config root.</p>
+<h2 id="undo-and-reload">Undo and reload<a class="headerlink" href="#undo-and-reload" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>:apply</code></td>
+<td>Apply the Lua working copy</td>
+</tr>
+<tr>
+<td><code>:undo</code></td>
+<td>Undo a live change; up to 50 retained</td>
+</tr>
+<tr>
+<td><code>:reload</code></td>
+<td>Reload from disk and reset the Lua context</td>
+</tr>
+<tr>
+<td><code>:reset</code></td>
+<td>Clear variables and inspection handles; keep session settings</td>
+</tr>
+</tbody>
+</table>
+<p>File reload discards live changes and undo history.
+After JavaScript or file edits, use <code>:reload</code> before applying an old Lua copy.</p>
+<p>Live edits support rules, animations, shortcuts, keybindings and permissions.
+Saved feature preferences, autostart, renderer services and startup protocols
+must be changed in the file instead.</p>
+<h2 id="inspect-values">Inspect values<a class="headerlink" href="#inspect-values" title="Permanent link">&para;</a></h2>
+<p>Expand an object or table to inspect it. Properties load in pages of 100.
+Circular references are marked; mutable values are read when expanded.</p>
+<p>JavaScript getters run only when clicked and may change state.
+Lua inspection reads raw table entries without invoking metamethods.
+Reset releases retained inspection handles.</p>
+<p>Completion and parameter help use runtime API metadata. They provide syntax
+assistance, not static type checking.</p>
+<h2 id="developing-the-console">Developing the console<a class="headerlink" href="#developing-the-console" title="Permanent link">&para;</a></h2>
+<p>After Sass changes:</p>
 <div class="highlight"><pre><span></span><code>ninja<span class="w"> </span>-C<span class="w"> </span>build/gnome-shell<span class="w"> </span>data/gnome-shell-theme.gresource
 meson<span class="w"> </span>install<span class="w"> </span>-C<span class="w"> </span>build/gnome-shell<span class="w"> </span>--no-rebuild
+just<span class="w"> </span>gnome-developer-console-verify
 </code></pre></div>
-<p>Run the focused integration check with <code>just gnome-developer-console-verify</code>.</p>
-<p>Select the JavaScript or Lua tab at the top to choose the language.
-Each tab keeps its unfinished input. Both languages retain their own state across
-switches. <code>:reset</code> resets both contexts and returns to JavaScript. Ctrl+L
-clears output without resetting variables.</p>
-<p>Lua supports expressions, chunks, multiple return values, <code>print()</code>, and
-completion while typing. Globals persist between submissions; <code>local</code>
-variables belong to the submitted chunk, as in a standard Lua interpreter.
-For example:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">40</span>
-<span class="nv">counter</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2</span>
-<span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s1">'gnoblin'</span><span class="p">);</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s1">'scripts/probe.lua'</span><span class="p">)</span>
-</code></pre></div>
-<p>The Lua console uses the configuration runtime's restricted libraries, memory
-and instruction limits, and <code>require('gnoblin')</code> API. Its initial settings
-are loaded from the current config file. <code>g.load()</code> paths and local modules
-resolve relative to that root. <code>g.set()</code> and changes to <code>g.config</code> edit
-this console's working copy. Enter <code>:apply</code> to validate and apply that document
-to the live session. Nothing is applied while you type or request completion.
-Use JavaScript for direct <code>Main</code>, <code>global</code>, and Mutter object access.</p>
-<p>Inspection expands inline and loads properties in pages of 100. JavaScript
-shows own properties (including symbols and non-enumerable properties), arrays,
-Map/Set entries, and separate <code>[[Prototype]]</code> branches. Accessors remain labelled
-until you click a getter; its result or error then appears on that row. Invoking
-a getter runs application code and may change state.</p>
-<p>Lua results retain object references: expand tables, non-string keys, metatables,
-and function source information and captured upvalues. Inspection reads raw
-entries without invoking table metamethods. Circular references are marked in
-both languages. Expanded contents are read when opened, so mutable values can
-reflect changes since evaluation. Lua retains at most 4,096 inspection handles;
-<code>:reset</code> releases them along with the Lua context.</p>
-<h2 id="live-configuration-and-api-help">Live configuration and API help<a class="headerlink" href="#live-configuration-and-api-help" title="Permanent link">&para;</a></h2>
-<p>Enter <code>:help</code> in either language. In JavaScript, <code>help("set")</code>
-shows a specific API signature and example. Empty prompts list available globals.
-Suggestions show names and types; the selected item
-shows its signature beside the list. Accessors are never evaluated to produce suggestions.
-Parameter help shows types, emphasises the current argument and adds a short
-description below the signature. Parameter names, types and descriptions come from API metadata. Suggestions show
-the selected signature and documentation in an adjacent pane. Nested calls,
-strings and comments preserve argument tracking. F1 shows documentation below the
-prompt without adding transcript output. Syntax errors appear below the prompt.
-<code>gnoblin.set("shell.la</code> suggests supported configuration paths.
-This uses an embedded language service; no external language server is launched.
-GNOME API signatures and parameter types come from installed GObject
-Introspection metadata for Gio, GLib, GObject, Meta, Shell, St, Clutter and Pango.
-This is runtime assistance and syntax checking, not static type checking.</p>
-<div class="highlight"><pre><span></span><code><span class="nx">gnoblin</span><span class="p">.</span><span class="nx">get</span><span class="p">();</span><span class="w"> </span><span class="c1">// Copy of the effective document</span>
-<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="s2">"shell.layer-duration"</span><span class="p">,</span><span class="w"> </span><span class="mf">350</span><span class="p">);</span><span class="w"> </span><span class="c1">// Apply one setting live</span>
-<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">undo</span><span class="p">();</span><span class="w"> </span><span class="c1">// Restore the previous live document</span>
-<span class="nx">gnoblin</span><span class="p">.</span><span class="nx">reload</span><span class="p">();</span><span class="w"> </span><span class="c1">// Reload the configuration file</span>
-</code></pre></div>
-<p>For several changes, modify the copy returned by <code>gnoblin.get()</code>, then pass it
-to <code>gnoblin.apply(document)</code>. The same document schema and application path are
-used by file reloads. A schema error leaves the current configuration intact.
-Live changes support animations, window rules, shortcuts, keybindings and
-permissions. Changes to saved feature preferences, autostart, frame renderer
-services or startup protocol settings are rejected with an explanation. Edit
-the config file for those; protocol registration needs a fresh session.</p>
-<p>In Lua:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">set</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">[</span><span class="s2">"layer-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">350</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-</code></pre></div>
-<p>Then submit <code>:apply</code>. Use <code>:undo</code> to restore the last live change (up to 50),
-or <code>:reload</code> to reload from disk and reset the Lua context. Undo changes the
-session; it leaves the Lua working copy available for further edits. File
-reload discards live changes and undo history. <code>:reset</code> clears evaluator
-variables and inspection handles without changing the session configuration.
-The JavaScript and Lua working copies are independent; avoid applying an old
-Lua copy after unrelated JavaScript or file edits without first using <code>:reload</code>.</p>
-<p>Live edits do not write configuration files. For a permanent change, put the
-setting in the normal <code>init.lua</code> or a module it loads. Existing shortcut
-conflict handling and configuration reload behaviour still apply.</p>
 
 
 
@@ -1517,46 +2454,6 @@ conflict handling and configuration reload behaviour still apply.</p>
       
         <footer class="md-footer">
   
-    
-      
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
-        
-          
-          <a href="../frame-renderer-api/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Renderer API">
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
-            </div>
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              <div class="md-ellipsis">
-                Renderer API
-              </div>
-            </div>
-          </a>
-        
-        
-          
-          <a href="../source-development/" class="md-footer__link md-footer__link--next" aria-label="Next: Source development">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Source development
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
-        
-      </nav>
-    
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -1582,7 +2479,7 @@ conflict handling and configuration reload behaviour still apply.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>

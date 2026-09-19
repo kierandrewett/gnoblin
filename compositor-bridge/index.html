@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/compositor-bridge/">
       
       
-        <link rel="prev" href="../gnoblinctl/">
+        <link rel="prev" href="../shell-integration/">
       
       
         <link rel="next" href="../background-effects/">
@@ -84,9 +84,7 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -210,6 +208,97 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration-reference/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../shell-integration/" class="md-tabs__link">
+          
+  
+  
+  Shell development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../source-development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -223,8 +312,10 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -255,6 +346,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href=".." class="md-nav__link">
         
@@ -275,9 +418,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -287,26 +431,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Get started
+    Installation
   
 
     
@@ -317,12 +461,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Get started
+    Installation
   
 
           </label>
@@ -342,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Install Gnoblin
+    Choose your system
   
 
     
@@ -351,6 +495,98 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-fedora/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fedora
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-nixos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NixOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -398,7 +634,35 @@
   <span class="md-ellipsis">
     
   
-    Configure your desktop
+    Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
   
 
     
@@ -430,26 +694,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Configuration reference
+    Configuration
   
 
     
@@ -460,12 +724,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration reference
+    Configuration
   
 
           </label>
@@ -485,7 +749,7 @@
   <span class="md-ellipsis">
     
   
-    Option index
+    All settings
   
 
     
@@ -533,6 +797,230 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Basics
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files and load order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autostart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autostart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Appearance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Appearance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../window-effects/" class="md-nav__link">
         
@@ -541,7 +1029,7 @@
   <span class="md-ellipsis">
     
   
-    Window effects
+    Effects
   
 
     
@@ -569,7 +1057,179 @@
   <span class="md-ellipsis">
     
   
-    Window frames (CSD and SSD)
+    Titlebars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shaders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Behavior
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session settings
   
 
     
@@ -597,7 +1257,7 @@
   <span class="md-ellipsis">
     
   
-    Portal permissions
+    Permissions
   
 
     
@@ -646,34 +1306,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../cursors/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cursor themes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../window-state-shortcuts/" class="md-nav__link">
         
   
@@ -681,7 +1313,7 @@
   <span class="md-ellipsis">
     
   
-    Window shortcuts
+    Restore or minimise
   
 
     
@@ -709,7 +1341,7 @@
   <span class="md-ellipsis">
     
   
-    Window snapping
+    Snapping
   
 
     
@@ -718,6 +1350,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -774,23 +1414,26 @@
         
         
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Build a shell
+    Shell development
   
 
     
@@ -801,16 +1444,44 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Build a shell
+    Shell development
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shell-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -879,10 +1550,76 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#protocol" class="md-nav__link">
+  <a href="#enable-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Protocol
+        Enable it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a shortcut
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bare-super-and-buffered-typing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bare Super and buffered typing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-and-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows and controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previews
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#text-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Text input
       
     </span>
   </a>
@@ -894,6 +1631,17 @@
     <span class="md-ellipsis">
       
         Recording and camera activity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits-and-disconnects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits and disconnects
       
     </span>
   </a>
@@ -923,7 +1671,63 @@
   <span class="md-ellipsis">
     
   
-    Background effects
+    Background blur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blur-fades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blur fades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../effects-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Effect rendering
   
 
     
@@ -951,7 +1755,7 @@
   <span class="md-ellipsis">
     
   
-    Focus transfer
+    Activation
   
 
     
@@ -1007,7 +1811,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -1035,7 +1839,35 @@
   <span class="md-ellipsis">
     
   
-    Renderer API
+    Write a renderer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-ui-removal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native and external UI
   
 
     
@@ -1063,7 +1895,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1095,26 +1927,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Contribute
+    Contributing
   
 
     
@@ -1125,12 +1957,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Contribute
+    Contributing
   
 
           </label>
@@ -1178,7 +2010,7 @@
   <span class="md-ellipsis">
     
   
-    Development session
+    Devkit
   
 
     
@@ -1234,7 +2066,7 @@
   <span class="md-ellipsis">
     
   
-    Hardware verification
+    Desktop verification
   
 
     
@@ -1262,7 +2094,35 @@
   <span class="md-ellipsis">
     
   
-    Code quality
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI development
   
 
     
@@ -1290,7 +2150,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1318,7 +2178,35 @@
   <span class="md-ellipsis">
     
   
-    Documentation site
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
   
 
     
@@ -1366,10 +2254,76 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#protocol" class="md-nav__link">
+  <a href="#enable-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Protocol
+        Enable it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#register-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a shortcut
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bare-super-and-buffered-typing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bare Super and buffered typing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-and-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows and controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previews
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#text-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Text input
       
     </span>
   </a>
@@ -1381,6 +2335,17 @@
     <span class="md-ellipsis">
       
         Recording and camera activity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits-and-disconnects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits and disconnects
       
     </span>
   </a>
@@ -1404,160 +2369,144 @@
 
 
   
-    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/compositor-bridge.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
-      
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
-    </a>
-  
   
 
 
 <h1 id="compositor-bridge">Compositor bridge<a class="headerlink" href="#compositor-bridge" title="Permanent link">&para;</a></h1>
-<p><code>src/scripts/compositor-bridge.js</code> exposes reusable shortcut sessions and window
-control to desktop clients. It contains no Alt+Tab chooser, window ordering, or
-switcher settings. Bingux owns that feature in Quickshell.</p>
-<p>The local session installer and NixOS package install the script at
-<code>share/gnoblin/scripts/compositor-bridge.js</code>. Link that file into
-<code>~/.config/gnoblin/scripts/</code>, then run <code>gnoblinctl reload</code>. Bingux's
-native package includes its own client wiring; a custom shell can link the
-bridge directly. No compositor restart is required.</p>
-<h2 id="protocol">Protocol<a class="headerlink" href="#protocol" title="Permanent link">&para;</a></h2>
-<p>Connect to <code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>. The server sends
-<code>{"event":"hello","version":1}</code>. Each request and response is one UTF-8 JSON
-record followed by a newline. Keep the connection open. Test sessions can set
-<code>GNOBLIN_COMPOSITOR_SOCKET</code> to a private path on both server and client.</p>
+<p>A user-local JSON socket for shortcuts, window control, previews and activity
+state. The client owns its UI and window ordering.</p>
+<h2 id="enable-it">Enable it<a class="headerlink" href="#enable-it" title="Permanent link">&para;</a></h2>
+<p>Install or link <code>share/gnoblin/scripts/compositor-bridge.js</code> into
+<code>~/.config/gnoblin/scripts/</code>, then run <code>gnoblinctl reload</code>.
+Custom shells can use this directly; Bingux provides its own wiring.</p>
+<h2 id="connect">Connect<a class="headerlink" href="#connect" title="Permanent link">&para;</a></h2>
+<p>Socket: <code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>.
+Use <code>GNOBLIN_COMPOSITOR_SOCKET</code> on both ends for a private test path.</p>
+<p>The server sends:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hello"</span><span class="p">,</span><span class="w"> </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Send one UTF-8 JSON object per line. Keep the connection open.</p>
+<h2 id="register-a-shortcut">Register a shortcut<a class="headerlink" href="#register-a-shortcut" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bind"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"example"</span><span class="p">,</span><span class="w"> </span><span class="nt">"accelerator"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;Alt&gt;F8"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hold"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>The server acknowledges with <code>bound</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Request</th>
-<th>Behaviour</th>
+<th>Hold value</th>
+<th>Behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>{"op":"bind","id":"example","accelerator":"&lt;Alt&gt;F8","hold":8}</code></td>
-<td>Register a shortcut and acknowledge with <code>bound</code>.</td>
+<td><code>0</code></td>
+<td>One activation</td>
 </tr>
 <tr>
-<td><code>{"op":"bind","id":"search","accelerator":"Super","hold":0,"captureInput":true}</code></td>
-<td>Subscribe to bare Super release and buffer typing until the popup acknowledges focus.</td>
+<td><code>8</code></td>
+<td>Hold Alt</td>
 </tr>
 <tr>
-<td><code>{"op":"clear"}</code></td>
-<td>Remove this client's bindings and cancel its input session.</td>
+<td><code>4</code></td>
+<td>Hold Control</td>
 </tr>
 <tr>
-<td><code>{"op":"end"}</code></td>
-<td>Cancel this client's input session.</td>
-</tr>
-<tr>
-<td><code>{"op":"windows"}</code></td>
-<td>Subscribe to complete <code>windows</code> snapshots.</td>
-</tr>
-<tr>
-<td><code>{"op":"activate","window":"123"}</code></td>
-<td>Release this client's input session and activate that window.</td>
-</tr>
-<tr>
-<td><code>{"op":"preview","window":"123","width":224,"height":126}</code></td>
-<td>Request a window thumbnail without raising or focusing it.</td>
-</tr>
-<tr>
-<td><code>{"op":"status"}</code></td>
-<td>Return registered IDs and the active input session's ID.</td>
-</tr>
-<tr>
-<td><code>{"op":"input-anchor"}</code></td>
-<td>Return the pointer, focused window, and native caret geometry when available.</td>
-</tr>
-<tr>
-<td><code>{"op":"type-text","window":"123","text":"..."}</code></td>
-<td>Commit a short Unicode sequence to that window's focused text input.</td>
+<td><code>67108864</code></td>
+<td>Hold Super</td>
 </tr>
 </tbody>
 </table>
-<p>The <code>overlay-shortcut</code> feature advertises direct bare-Super subscriptions. The
-compositor suppresses Super chords and sends the normal <code>activated</code> event on
-release. Only one bridge client can own that binding. Remove a duplicate
-<code>[[shortcuts]]</code> command for Super before registering the client.</p>
-<p><code>captureInput: true</code> uses the binding ID as the input-handoff name. The client
-sends <code>{"op":"shortcut-input","name":"search","state":"ready"}</code> once its
-layer and text field have keyboard focus. Do not release the buffer merely
-because the client has requested visibility. Send
-<code>state: "closed"</code> on dismissal. This buffers native events without starting a
-command process. Disconnecting removes the shortcut registration.</p>
-<p><code>input-anchor</code> returns <code>x</code>, <code>y</code>, <code>pid</code>, <code>window</code>, <code>frame</code>, <code>buffer</code>, and <code>caret</code>.
-Coordinates use logical desktop space. <code>caret</code> is null until the focused native
-text input supplies a rectangle. Its fields are <code>x</code>, <code>y</code>, <code>width</code>, <code>height</code>, and
-<code>source: "caret"</code>. The bridge retains only geometry, clears it on window focus
-changes and lock, and adjusts it when the window moves. Clients can query
-accessibility geometry for <code>pid</code> when the native rectangle is absent.</p>
-<p><code>type-text</code> accepts up to 64 UTF-16 code units without control characters. The
-window must still exist and have focus, the session must be unlocked, and Control,
-Alt and Super must be released. The client must hide its picker and restore the
-target window before sending the request. <code>typed</code> acknowledges the input-method
-commit or the completion of the XWayland paste workaround; clients must verify
-received text when testing application support.</p>
-<p>For XWayland, a GTK helper saves every offered clipboard format in memory, then
-serves the requested text temporarily. The compositor checks focus and modifier
-keys again before sending Ctrl+V through its virtual keyboard. The helper restores
-the saved clipboard after 600 ms. A new copy takes priority over restoration.
-Empty clipboards remain empty. The helper stays alive to serve restored data until
-the next copy, without requiring a clipboard manager. Clipboard managers can still
-record the temporary text in their history.</p>
-<p>Preparation is limited to 64 formats, 64 MiB and three seconds. A failed capture
-leaves the clipboard unchanged. Cancellation restores any temporary ownership.
-XWayland cannot confirm that a text field consumed the paste. Native Wayland inputs
-continue to use direct text-input commits without accessing the clipboard.</p>
-<p>The fallback requires Python 3 with PyGObject and GTK 3. Both helper files under
-<code>scripts/lib/</code> must be installed beside the bridge. The NixOS package supplies
-these dependencies and its runtime wrapper. A native installation must provide
-the same two helpers beside the bridge.</p>
-<p><code>hold</code> is zero for a single activation, 8 for Alt, 4 for Control, or 67108864
-for Super. A held shortcut starts a temporary input grab before a client surface
-maps. It sends <code>activated</code> with <code>id</code>, <code>first</code>, <code>modifiers</code>, and <code>time</code>.
-Further registered shortcuts send another activation. Other key presses send
-<code>key</code> with a keysym and modifier mask. Button presses send <code>pointer</code> with global
-logical <code>x</code>, <code>y</code>, and a Clutter button number (1 is left).</p>
-<p>Modifier release sends <code>released</code>. An explicit end, session lock, disconnection,
-script reload, or ten-second timeout ends the grab. Connected clients receive
-<code>cancelled</code> when the session is cancelled. Clients must hide their UI on either
-event and choose their own action on release.</p>
-<p>Window records contain <code>id</code>, <code>title</code>, <code>appId</code>, <code>focused</code>, <code>minimized</code>,
-<code>lastUserTime</code>, <code>parent</code>, and <code>monitor</code> (logical origin or null). IDs are strings
-and remain stable for the lifetime of the window in this compositor session.
-The bridge excludes skip-taskbar and override-redirect windows. Clients decide
-how to order windows and group transients. Activation of a stale ID returns
-<code>error</code> with a message.</p>
-<p>The socket directory is private to the user. The bridge accepts eight clients,
-32 bindings per client, and bounded input and output buffers. Invalid requests
-return <code>error</code>; malformed JSON or excessive buffered input disconnects the
-client. Disconnection releases all resources owned by that client.</p>
-<p>Preview responses contain <code>event: "preview"</code>, the window ID, dimensions, and a
-PNG data URI in <code>source</code>. A failed capture or released image buffer returns an
-empty source and a message. Clients should retain their previous valid image.
-Requests accept dimensions up to 480 by 320 pixels and preserve aspect ratio.
-Only one capture may be pending per client. Readback runs at low priority after
-a short delay so queued keyboard input runs first. The client controls update
-frequency; the bridge does not start a continuous capture stream. Capture is
-unavailable while the session is locked. The bridge scales the window texture
-on the GPU before reading thumbnail pixels back. PNG encoding uses the shell's
-asynchronous worker and an in-memory stream; no temporary image files are
-written. Minimized windows use their retained backing buffer. Output is limited
-to 4 MiB per connection, including preview data.</p>
+<p>Held sessions begin an input grab before the client maps its surface.
+Events include <code>activated</code>, <code>key</code>, <code>pointer</code>, <code>released</code> and <code>cancelled</code>.</p>
+<p><code>activated</code> includes id, first, modifiers and time.
+Pointer coordinates are global logical pixels; button 1 is left.</p>
+<p>Hide the UI on release or cancellation. Explicit end, lock, disconnect,
+script reload and a ten-second timeout end the grab.</p>
+<h2 id="bare-super-and-buffered-typing">Bare Super and buffered typing<a class="headerlink" href="#bare-super-and-buffered-typing" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bind"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="nt">"accelerator"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Super"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hold"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"captureInput"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Requires the advertised <code>overlay-shortcut</code> feature. Only one bridge client can
+own bare Super; remove a duplicate Lua command binding first.</p>
+<p>Super activates on release, excluding chords. With capture enabled, send:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"shortcut-input"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ready"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Send ready only after the layer and text field have keyboard focus.
+Send <code>state: "closed"</code> when dismissed. The binding ID is the handoff name.</p>
+<h2 id="windows-and-controls">Windows and controls<a class="headerlink" href="#windows-and-controls" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{"op":"windows"}</code></td>
+<td>Subscribe to complete snapshots</td>
+</tr>
+<tr>
+<td><code>{"op":"activate","window":"123"}</code></td>
+<td>End this client's grab and focus a window</td>
+</tr>
+<tr>
+<td><code>{"op":"status"}</code></td>
+<td>Registered IDs and active session</td>
+</tr>
+<tr>
+<td><code>{"op":"end"}</code></td>
+<td>Cancel this client's input session</td>
+</tr>
+<tr>
+<td><code>{"op":"clear"}</code></td>
+<td>Remove this client's bindings and session</td>
+</tr>
+</tbody>
+</table>
+<p>Window records contain id, title, appId, focused, minimized, lastUserTime,
+parent and monitor. IDs are strings, stable for the window's session lifetime.</p>
+<p>Skip-taskbar and override-redirect windows are excluded.
+The client chooses grouping and ordering. Stale IDs return an error.</p>
+<p>The CLI's request/reply form is documented in <a href="../cli-development/#transport">CLI development</a>.</p>
+<h2 id="previews">Previews<a class="headerlink" href="#previews" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"preview"</span><span class="p">,</span><span class="w"> </span><span class="nt">"window"</span><span class="p">:</span><span class="w"> </span><span class="s2">"123"</span><span class="p">,</span><span class="w"> </span><span class="nt">"width"</span><span class="p">:</span><span class="w"> </span><span class="mi">224</span><span class="p">,</span><span class="w"> </span><span class="nt">"height"</span><span class="p">:</span><span class="w"> </span><span class="mi">126</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>The response contains a PNG data URI in <code>source</code>, dimensions and window ID.
+On failure it returns an empty source and a message; retain the last valid image.</p>
+<p>Maximum size: 480 × 320, preserving aspect ratio. One capture may be pending
+per client. No continuous stream is started; clients choose update frequency.</p>
+<p>Capture is unavailable while locked. Readback runs at low priority, PNG encoding
+uses a worker, and minimised windows use their retained buffer.</p>
+<h2 id="text-input">Text input<a class="headerlink" href="#text-input" title="Permanent link">&para;</a></h2>
+<p><code>{"op":"input-anchor"}</code> returns x, y, pid, window, frame, buffer and caret.
+Coordinates are logical desktop pixels. Caret may be null; it clears on focus
+changes and lock, and adjusts when the window moves.</p>
+<p><code>{"op":"type-text","window":"123","text":"…"}</code> accepts up to 64 UTF-16 units,
+without control characters. The target must be focused and unlocked, with
+Control, Alt and Super released.</p>
+<p>Hide the picker and restore the target before sending. A <code>typed</code> reply
+acknowledges delivery, not proof that the app consumed the text.</p>
+<p>For XWayland, a GTK helper temporarily offers the text and sends Ctrl+V.
+It preserves clipboard formats and restores them after 600 ms unless a new copy
+takes priority. Clipboard managers may record the temporary text.</p>
+<p>Clipboard preparation is limited to 64 formats, 64 MiB and three seconds.
+Failed preparation leaves it unchanged. Native Wayland text input does not
+use the clipboard.</p>
+<p>The fallback needs Python, PyGObject, GTK 3 and both installed <code>scripts/lib/</code>
+helpers beside the bridge.</p>
 <h2 id="recording-and-camera-activity">Recording and camera activity<a class="headerlink" href="#recording-and-camera-activity" title="Permanent link">&para;</a></h2>
-<p><code>{"op":"privacy"}</code> subscribes to activity snapshots. Responses contain
-<code>event: "privacy"</code>, <code>screenSharing</code>, <code>recording</code>, <code>recordingCount</code>,
-<code>recordingElapsed</code> (whole seconds), <code>cameraInUse</code>, and <code>locationCaptures</code>.
-<code>locationCaptures</code> contains the currently authorized GeoClue desktop IDs while
-location is in use. The bridge uses Mutter's remote-access handles and GNOME's
-<code>Shell.CameraMonitor</code>. Clients can advance elapsed time locally between activity
-changes. Start times and active handles survive script reloads, so reconnecting
-does not restart the timer.</p>
-<p><code>{"op":"stop-sharing"}</code> stops non-recording remote-access sessions.
-<code>{"op":"stop-recording"}</code> stops recording sessions. A client that owns an encoder
-should stop it through its own normal finalisation path to save its output.
-These methods do not start capture or grant camera access.</p>
+<p><code>{"op":"privacy"}</code> subscribes to screenSharing, recording, recordingCount,
+recordingElapsed, cameraInUse and locationCaptures.</p>
+<p>Location captures list authorised GeoClue desktop IDs. Elapsed time is whole
+seconds and survives script reload; clients can advance it between updates.</p>
+<p><code>stop-sharing</code> stops non-recording remote sessions.
+<code>stop-recording</code> stops recording sessions. An encoder owner should use its
+normal finalisation path to save output. These requests do not grant access.</p>
+<h2 id="limits-and-disconnects">Limits and disconnects<a class="headerlink" href="#limits-and-disconnects" title="Permanent link">&para;</a></h2>
+<p>The socket directory is private to the user.
+Limits: eight clients, 32 bindings per client, 4 MiB output per connection.</p>
+<p>Invalid requests return errors. Malformed JSON or excessive input disconnects
+the client. Disconnect releases its bindings and other resources.</p>
 
 
 
@@ -1588,46 +2537,6 @@ These methods do not start capture or grant camera access.</p>
       
         <footer class="md-footer">
   
-    
-      
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
-        
-          
-          <a href="../gnoblinctl/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Command line">
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
-            </div>
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              <div class="md-ellipsis">
-                Command line
-              </div>
-            </div>
-          </a>
-        
-        
-          
-          <a href="../background-effects/" class="md-footer__link md-footer__link--next" aria-label="Next: Background effects">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Background effects
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
-        
-      </nav>
-    
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -1653,7 +2562,7 @@ These methods do not start capture or grant camera access.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>

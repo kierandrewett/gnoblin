@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/distribution/">
       
       
-        <link rel="prev" href="../code-quality/">
+        <link rel="prev" href="../cli-development/">
       
       
         <link rel="next" href="../documentation-site/">
@@ -27,7 +27,7 @@
     
     
       
-        <title>Distribution - Gnoblin</title>
+        <title>Packaging - Gnoblin</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#distribution-work" class="md-skip">
+        <a href="#packaging-and-releases" class="md-skip">
           Skip to content
         </a>
       
@@ -84,9 +84,7 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -108,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Distribution
+              Packaging
             
           </span>
         </div>
@@ -210,6 +208,97 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration-reference/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../shell-integration/" class="md-tabs__link">
+          
+  
+  
+  Shell development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../source-development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -223,8 +312,10 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -255,6 +346,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href=".." class="md-nav__link">
         
@@ -275,9 +418,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -287,26 +431,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Get started
+    Installation
   
 
     
@@ -317,12 +461,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Get started
+    Installation
   
 
           </label>
@@ -342,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Install Gnoblin
+    Choose your system
   
 
     
@@ -351,6 +495,98 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-fedora/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fedora
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-nixos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NixOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -398,7 +634,35 @@
   <span class="md-ellipsis">
     
   
-    Configure your desktop
+    Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
   
 
     
@@ -430,26 +694,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Configuration reference
+    Configuration
   
 
     
@@ -460,12 +724,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration reference
+    Configuration
   
 
           </label>
@@ -485,7 +749,7 @@
   <span class="md-ellipsis">
     
   
-    Option index
+    All settings
   
 
     
@@ -533,6 +797,230 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Basics
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files and load order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autostart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autostart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Appearance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Appearance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../window-effects/" class="md-nav__link">
         
@@ -541,7 +1029,7 @@
   <span class="md-ellipsis">
     
   
-    Window effects
+    Effects
   
 
     
@@ -569,7 +1057,179 @@
   <span class="md-ellipsis">
     
   
-    Window frames (CSD and SSD)
+    Titlebars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shaders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Behavior
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session settings
   
 
     
@@ -597,7 +1257,7 @@
   <span class="md-ellipsis">
     
   
-    Portal permissions
+    Permissions
   
 
     
@@ -646,34 +1306,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../cursors/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cursor themes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../window-state-shortcuts/" class="md-nav__link">
         
   
@@ -681,7 +1313,7 @@
   <span class="md-ellipsis">
     
   
-    Window shortcuts
+    Restore or minimise
   
 
     
@@ -709,7 +1341,7 @@
   <span class="md-ellipsis">
     
   
-    Window snapping
+    Snapping
   
 
     
@@ -718,6 +1350,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -769,26 +1409,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Build a shell
+    Shell development
   
 
     
@@ -799,16 +1439,44 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Build a shell
+    Shell development
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shell-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -852,7 +1520,63 @@
   <span class="md-ellipsis">
     
   
-    Background effects
+    Background blur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blur-fades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blur fades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../effects-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Effect rendering
   
 
     
@@ -880,7 +1604,7 @@
   <span class="md-ellipsis">
     
   
-    Focus transfer
+    Activation
   
 
     
@@ -936,7 +1660,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -964,7 +1688,35 @@
   <span class="md-ellipsis">
     
   
-    Renderer API
+    Write a renderer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-ui-removal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native and external UI
   
 
     
@@ -992,7 +1744,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1029,23 +1781,26 @@
         
         
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Contribute
+    Contributing
   
 
     
@@ -1056,12 +1811,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Contribute
+    Contributing
   
 
           </label>
@@ -1109,7 +1864,7 @@
   <span class="md-ellipsis">
     
   
-    Development session
+    Devkit
   
 
     
@@ -1165,7 +1920,7 @@
   <span class="md-ellipsis">
     
   
-    Hardware verification
+    Desktop verification
   
 
     
@@ -1193,7 +1948,35 @@
   <span class="md-ellipsis">
     
   
-    Code quality
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI development
   
 
     
@@ -1230,7 +2013,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1248,7 +2031,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1274,10 +2057,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#packaging-architecture" class="md-nav__link">
+  <a href="#package-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Packaging architecture
+        Package layout
       
     </span>
   </a>
@@ -1285,10 +2068,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-checklist" class="md-nav__link">
+  <a href="#package-definitions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release checklist
+        Package definitions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prepare-fedora-source-rpms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare Fedora source RPMs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish-to-copr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publish to COPR
       
     </span>
   </a>
@@ -1307,10 +2112,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#package-boundaries" class="md-nav__link">
+  <a href="#upgrade-the-gnome-base" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Package boundaries
+        Upgrade the GNOME base
       
     </span>
   </a>
@@ -1318,43 +2123,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repository-status" class="md-nav__link">
+  <a href="#release-checklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repository status
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#publishing-access" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Publishing access
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#prepare-and-submit-fedora-builds" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prepare and submit Fedora builds
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gnome-major-upgrades" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GNOME major upgrades
+        Release checklist
       
     </span>
   </a>
@@ -1384,7 +2156,35 @@
   <span class="md-ellipsis">
     
   
-    Documentation site
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
   
 
     
@@ -1432,10 +2232,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#packaging-architecture" class="md-nav__link">
+  <a href="#package-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Packaging architecture
+        Package layout
       
     </span>
   </a>
@@ -1443,10 +2243,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-checklist" class="md-nav__link">
+  <a href="#package-definitions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release checklist
+        Package definitions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prepare-fedora-source-rpms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare Fedora source RPMs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish-to-copr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publish to COPR
       
     </span>
   </a>
@@ -1465,10 +2287,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#package-boundaries" class="md-nav__link">
+  <a href="#upgrade-the-gnome-base" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Package boundaries
+        Upgrade the GNOME base
       
     </span>
   </a>
@@ -1476,43 +2298,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repository-status" class="md-nav__link">
+  <a href="#release-checklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repository status
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#publishing-access" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Publishing access
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#prepare-and-submit-fedora-builds" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prepare and submit Fedora builds
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gnome-major-upgrades" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        GNOME major upgrades
+        Release checklist
       
     </span>
   </a>
@@ -1536,97 +2325,36 @@
 
 
   
-    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/distribution.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
-      
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
-    </a>
-  
   
 
 
-<h1 id="distribution-work">Distribution work<a class="headerlink" href="#distribution-work" title="Permanent link">&para;</a></h1>
-<p>Gnoblin supplies the compositor and login session. Bingux supplies the desktop
-shell. They need separate packages and separate release checks.</p>
-<p>Install Gnoblin first, then install a layer-shell client such as Bingux. A
-successful Gnoblin package install intentionally leaves the session without a
-bar, dock or notification centre until that client is enabled.</p>
-<h2 id="packaging-architecture">Packaging architecture<a class="headerlink" href="#packaging-architecture" title="Permanent link">&para;</a></h2>
-<p>Nix is the source of truth for native packaging, not the only installation
-format. <code>nix/native-packages.nix</code> describes Gnoblin's package outputs,
-capability-level dependencies, minimum versions, and RPM/DEB/Arch package-name
-translations. Inspect the interface with:</p>
+<h1 id="packaging-and-releases">Packaging and releases<a class="headerlink" href="#packaging-and-releases" title="Permanent link">&para;</a></h1>
+<p>For user installation, see <a href="../installation/">Install Gnoblin</a>.
+This page is for release maintainers.</p>
+<h2 id="package-layout">Package layout<a class="headerlink" href="#package-layout" title="Permanent link">&para;</a></h2>
+<p>Gnoblin must install alongside GNOME.</p>
+<ul>
+<li>RPM names: <code>gnoblin-mutter</code>, <code>gnoblin-shell</code>, <code>gnoblin-session</code>.</li>
+<li>Private runtime: <code>/usr/lib/gnoblin</code>.</li>
+<li>Public files: login entry, control tool, service units and named policy files.</li>
+<li>Private libraries must not satisfy stock GNOME dependencies.</li>
+</ul>
+<p>Nix uses separate store outputs. Source builds use a private prefix.
+Bingux owns and releases its shell package separately.</p>
+<h2 id="package-definitions">Package definitions<a class="headerlink" href="#package-definitions" title="Permanent link">&para;</a></h2>
+<p><code>nix/native-packages.nix</code> defines outputs, dependencies and package-name mappings.
+Generate or verify the native adapters with:</p>
 <div class="highlight"><pre><span></span><code>nix<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>--json<span class="w"> </span>.#lib.nativePackages
-</code></pre></div>
-<p>The same command materializes the audit snapshot and concrete <code>gnoblin</code>
-metapackage recipes for RPM/COPR, Debian, and Arch. Refresh or verify every
-generated adapter with:</p>
-<div class="highlight"><pre><span></span><code>just<span class="w"> </span>package-manifest<span class="w"> </span>write
+just<span class="w"> </span>package-manifest<span class="w"> </span>write
 just<span class="w"> </span>package-manifest
 </code></pre></div>
-<p>RPM/COPR, Debian repositories, and Arch PKGBUILDs remain native delivery
-adapters. They install ordinary native dependencies, so an existing compatible
-GNOME userspace is reused and only missing or outdated packages are resolved.
-Build flags, source revisions, package relationships, and minimum versions must
-come from the Nix interface rather than being independently redefined by each
-adapter.</p>
-<h2 id="release-checklist">Release checklist<a class="headerlink" href="#release-checklist" title="Permanent link">&para;</a></h2>
-<ul>
-<li>[x] Build Gnoblin source RPMs from a clean checkout with all patches included.</li>
-<li>[x] Create Fedora COPR projects for Gnoblin and Bingux.</li>
-<li>[x] Build Mutter before GNOME Shell in COPR.</li>
-<li>[ ] Verify installation, login and rollback on a clean supported Fedora host.</li>
-<li>[x] Give Bingux a standalone build, install manifest and service definitions.</li>
-<li>[x] Move Bingux packaging and runtime dependencies to its native shell tree.</li>
-<li>[ ] Build and test Bingux RPMs with the matching Qt and Quickshell runtime.</li>
-<li>[ ] Add signed APT and pacman repositories after distribution-specific builds pass.</li>
-<li>[x] Publish installation instructions for the Fedora COPR package set.</li>
-</ul>
-<h2 id="github-releases">GitHub releases<a class="headerlink" href="#github-releases" title="Permanent link">&para;</a></h2>
-<p>Push the release commit first, then create and push the tag matching the version
-in <code>gnome-versions.json</code>:</p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>v51.0<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 51.0"</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v51.0
-</code></pre></div>
-<p>The <code>Release</code> workflow builds the patched Mutter and GNOME Shell source
-archives, the <code>gnoblin-mutter</code>, <code>gnoblin-shell</code>, and <code>gnoblin</code> source RPMs, the
-generated Arch PKGBUILD and Debian packaging archive, and <code>SHA256SUMS</code>. It
-publishes those files to the GitHub release only after every artifact has
-built. A failed or interrupted release can be repaired with the workflow's
-manual dispatch for the existing tag; uploaded assets are replaced atomically
-by name.</p>
-<p>GitHub releases do not submit to COPR. COPR credentials are deliberately kept
-out of the tag workflow, and binary publication remains the ordered, explicit
-step documented below.</p>
-<h2 id="package-boundaries">Package boundaries<a class="headerlink" href="#package-boundaries" title="Permanent link">&para;</a></h2>
-<p>Every package must install alongside GNOME. RPMs use <code>gnoblin-mutter</code>,
-<code>gnoblin-shell</code> and <code>gnoblin-session</code>, with a private runtime in
-<code>/usr/lib/gnoblin</code>. Only Gnoblin's login entry, control tool, service units
-and separately named backlight policy enter system directories. Private
-libraries must not provide dependencies for stock GNOME packages.</p>
-<p>NixOS exposes the same limited set of entry points from a separate store
-output. Source builds use a private prefix and reject <code>/usr</code> and <code>/usr/local</code>.
-Debian and Arch packages must follow the same rule.</p>
-<p>Bingux needs Quickshell, native QML plugins, its search and metrics daemons,
-and helper programs. Copying its QML directory alone is not a complete install.
-The Bingux repository owns its native build, install manifest, RPM spec and
-user-systemd units; it is no longer a machine-configuration repository.</p>
-<h2 id="repository-status">Repository status<a class="headerlink" href="#repository-status" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin/">Gnoblin COPR</a>
-and <a href="https://copr.fedorainfracloud.org/coprs/kierandrewett/bingux/">Bingux COPR</a>
-exist for Fedora 44 x86_64. Gnoblin's private Mutter and Shell packages are
-published; fresh-install, login and rollback checks on a clean host remain.
-Creating a repository does not establish release readiness.</p>
-<p>The side-by-side RPM layout still needs a clean-host login and removal check.
-Old replacement RPMs are not supported by the new installer; restoring a host
-already using them is a separate migration.</p>
-<h2 id="publishing-access">Publishing access<a class="headerlink" href="#publishing-access" title="Permanent link">&para;</a></h2>
-<p>COPR requires an authenticated Fedora account. Configure credentials locally
-using https://copr.fedorainfracloud.org/api/. Do not commit API tokens.
-APT and pacman repositories also need a publication host and a signing key.
-No repository should be described as available before its packages have built.</p>
-<h2 id="prepare-and-submit-fedora-builds">Prepare and submit Fedora builds<a class="headerlink" href="#prepare-and-submit-fedora-builds" title="Permanent link">&para;</a></h2>
-<p>Install <code>rpm-build</code> and <code>copr-cli</code>. Use a clean release checkout: preparing
-sources applies overlays to the pinned upstream trees.</p>
+<p>Generated recipes are not proof of publication. The source defines a
+<code>gnoblin</code> metapackage; the published Fedora repository still used
+<code>gnoblin-session</code> at the September 2026 documentation check.</p>
+<p>APT and pacman repositories are not published yet.
+Keep the <a href="../installation/">install guide</a> aligned with actual repository metadata.</p>
+<h2 id="prepare-fedora-source-rpms">Prepare Fedora source RPMs<a class="headerlink" href="#prepare-fedora-source-rpms" title="Permanent link">&para;</a></h2>
+<p>Use a clean release checkout and install <code>rpm-build</code> and <code>copr-cli</code>.</p>
 <div class="highlight"><pre><span></span><code>just<span class="w"> </span>init
 scripts/make-tarball.sh<span class="w"> </span>mutter<span class="w"> </span>./dist/sources
 scripts/make-tarball.sh<span class="w"> </span>gnome-shell<span class="w"> </span>./dist/sources
@@ -1634,41 +2362,45 @@ scripts/build-srpm.sh<span class="w"> </span>mutter<span class="w"> </span>./dis
 scripts/build-srpm.sh<span class="w"> </span>gnome-shell<span class="w"> </span>./dist/sources<span class="w"> </span>./dist/srpms
 scripts/build-srpm.sh<span class="w"> </span>gnoblin<span class="w"> </span>./dist/sources<span class="w"> </span>./dist/srpms
 </code></pre></div>
-<p>Source RPM creation uses the prepared archives. It never downloads the
-unpatched upstream archives named by the Fedora specs.</p>
-<h2 id="gnome-major-upgrades">GNOME major upgrades<a class="headerlink" href="#gnome-major-upgrades" title="Permanent link">&para;</a></h2>
-<p><code>gnome-versions.json</code> is the single source of truth for the GNOME release train.
-The weekly <code>Check for a new GNOME release</code> workflow fails when all five pinned
-upstream projects publish a newer stable major, making the new release visible
-in GitHub's workflow notifications.</p>
-<p>Start an upgrade with:</p>
+<p>Archives include Gnoblin's overlays and patches. They must not be replaced
+with unpatched upstream archives.</p>
+<h2 id="publish-to-copr">Publish to COPR<a class="headerlink" href="#publish-to-copr" title="Permanent link">&para;</a></h2>
+<p>Configure a Fedora account using the <a href="https://copr.fedorainfracloud.org/api/">COPR API page</a>.
+Keep credentials outside the repository.</p>
+<div class="highlight"><pre><span></span><code>scripts/publish-copr.sh<span class="w"> </span>OWNER/gnoblin<span class="w"> </span>PATH_TO_MUTTER_SRPM<span class="w"> </span>PATH_TO_SHELL_SRPM<span class="w"> </span>PATH_TO_META_SRPM
+</code></pre></div>
+<p>Replace the owner and paths. The script waits for Mutter before building Shell.
+Do not use asynchronous submission that bypasses this dependency.</p>
+<p>Use a currently available chroot supplying the required dependencies.
+After all builds succeed, test package resolution, login and removal on a clean
+host using <a href="../real-hardware-verification/">hardware verification</a>.</p>
+<h2 id="github-releases">GitHub releases<a class="headerlink" href="#github-releases" title="Permanent link">&para;</a></h2>
+<p>Push the release commit, then the signed tag matching <code>gnome-versions.json</code>:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>v51.0<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 51.0"</span>
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v51.0
+</code></pre></div>
+<p>The release workflow builds source archives, source RPMs, packaging adapters and
+checksums before publishing assets. Manual dispatch can repair an existing tag.</p>
+<p>This does not publish binary packages to COPR.
+Check the release result before telling users assets are available.</p>
+<h2 id="upgrade-the-gnome-base">Upgrade the GNOME base<a class="headerlink" href="#upgrade-the-gnome-base" title="Permanent link">&para;</a></h2>
+<p><code>gnome-versions.json</code> pins the release train.</p>
 <div class="highlight"><pre><span></span><code>./scripts/gnome-versions.py<span class="w"> </span>update<span class="w"> </span><span class="m">52</span>
 </code></pre></div>
-<p>This verifies each upstream <code>52.0</code> tag, records its exact commit, and updates
-the generated RPM, Nix, runtime API, and CI fields. Then rebase every patch
-stack onto the recorded commits, update the submodule gitlinks, and run:</p>
+<p>Use the intended major version. The script verifies upstream tags and updates
+generated version fields. Then rebase patches, update submodule references and run:</p>
 <div class="highlight"><pre><span></span><code>just<span class="w"> </span>check-gnome-version
 just<span class="w"> </span>verify
 </code></pre></div>
-<p>Patch rebasing remains deliberate because upstream API changes need review;
-release discovery and version propagation are automated.</p>
-<p>Create a COPR project with a Fedora 44 chroot that supplies the GNOME 50
-runtime dependencies while building Gnoblin's private GNOME 51 stack. For
-example, use <code>fedora-44-x86_64</code>; confirm the
-chroot is still available in COPR before creating the project.</p>
-<div class="highlight"><pre><span></span><code>copr-cli<span class="w"> </span>create<span class="w"> </span>--chroot<span class="w"> </span>fedora-44-x86_64<span class="w"> </span>gnoblin
-scripts/publish-copr.sh<span class="w"> </span>OWNER/gnoblin<span class="w"> </span>PATH_TO_MUTTER_SRPM<span class="w"> </span>PATH_TO_SHELL_SRPM<span class="w"> </span>PATH_TO_META_SRPM
-</code></pre></div>
-<p>Replace the owner and file paths with the actual account and generated files.
-The submission script waits for Mutter to build before submitting GNOME Shell.
-Do not use <code>--nowait</code>: Shell must build against the published Mutter headers.
-Confirm all three builds succeed before testing <code>dnf install gnoblin</code> on a
-fresh host.</p>
-<p>After installing the packages, select <strong>Gnoblin</strong> at GDM and enable the shell
-from <a href="../bring-your-own-shell/">Bring your own shell</a>. Keep the regular GNOME
-session as the rollback path while the first login is being verified.</p>
-<p>COPR usage and authentication are documented in the
-<a href="https://docs.copr.fedorainfracloud.org/user_documentation.html">official user guide</a>.</p>
+<p>Patch rebasing and runtime compatibility still require review.</p>
+<h2 id="release-checklist">Release checklist<a class="headerlink" href="#release-checklist" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Build all artifacts from the release checkout.</li>
+<li>Verify private package paths and stock GNOME coexistence.</li>
+<li>Publish packages and check dependency resolution.</li>
+<li>Test login, shell startup, portal access and removal on a clean host.</li>
+<li>Update installation commands and version notes to match published packages.</li>
+</ol>
 
 
 
@@ -1699,46 +2431,6 @@ session as the rollback path while the first login is being verified.</p>
       
         <footer class="md-footer">
   
-    
-      
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
-        
-          
-          <a href="../code-quality/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Code quality">
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
-            </div>
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              <div class="md-ellipsis">
-                Code quality
-              </div>
-            </div>
-          </a>
-        
-        
-          
-          <a href="../documentation-site/" class="md-footer__link md-footer__link--next" aria-label="Next: Documentation site">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Documentation site
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
-        
-      </nav>
-    
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -1764,7 +2456,7 @@ session as the rollback path while the first login is being verified.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>

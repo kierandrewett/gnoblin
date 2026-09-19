@@ -27,7 +27,7 @@
     
     
       
-        <title>Frame renderers - Gnoblin</title>
+        <title>Frame architecture - Gnoblin</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#language-independent-ssd-renderers" class="md-skip">
+        <a href="#frame-renderer-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -84,9 +84,7 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -108,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Frame renderers
+              Frame architecture
             
           </span>
         </div>
@@ -210,6 +208,97 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration-reference/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../shell-integration/" class="md-tabs__link">
+          
+  
+  
+  Shell development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../source-development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -223,8 +312,10 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -255,6 +346,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href=".." class="md-nav__link">
         
@@ -275,9 +418,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -287,26 +431,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Get started
+    Installation
   
 
     
@@ -317,12 +461,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Get started
+    Installation
   
 
           </label>
@@ -342,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Install Gnoblin
+    Choose your system
   
 
     
@@ -351,6 +495,98 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-fedora/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fedora
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-nixos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NixOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -398,7 +634,35 @@
   <span class="md-ellipsis">
     
   
-    Configure your desktop
+    Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
   
 
     
@@ -430,26 +694,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Configuration reference
+    Configuration
   
 
     
@@ -460,12 +724,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration reference
+    Configuration
   
 
           </label>
@@ -485,7 +749,7 @@
   <span class="md-ellipsis">
     
   
-    Option index
+    All settings
   
 
     
@@ -533,6 +797,230 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Basics
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files and load order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autostart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autostart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Appearance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Appearance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../window-effects/" class="md-nav__link">
         
@@ -541,7 +1029,7 @@
   <span class="md-ellipsis">
     
   
-    Window effects
+    Effects
   
 
     
@@ -569,7 +1057,179 @@
   <span class="md-ellipsis">
     
   
-    Window frames (CSD and SSD)
+    Titlebars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shaders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Behavior
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session settings
   
 
     
@@ -597,7 +1257,7 @@
   <span class="md-ellipsis">
     
   
-    Portal permissions
+    Permissions
   
 
     
@@ -646,34 +1306,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../cursors/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cursor themes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../window-state-shortcuts/" class="md-nav__link">
         
   
@@ -681,7 +1313,7 @@
   <span class="md-ellipsis">
     
   
-    Window shortcuts
+    Restore or minimise
   
 
     
@@ -709,7 +1341,7 @@
   <span class="md-ellipsis">
     
   
-    Window snapping
+    Snapping
   
 
     
@@ -718,6 +1350,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -774,23 +1414,26 @@
         
         
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Build a shell
+    Shell development
   
 
     
@@ -801,16 +1444,44 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Build a shell
+    Shell development
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shell-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -854,7 +1525,63 @@
   <span class="md-ellipsis">
     
   
-    Background effects
+    Background blur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blur-fades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blur fades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../effects-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Effect rendering
   
 
     
@@ -882,7 +1609,7 @@
   <span class="md-ellipsis">
     
   
-    Focus transfer
+    Activation
   
 
     
@@ -947,7 +1674,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -965,7 +1692,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -991,10 +1718,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#ownership-and-protocol" class="md-nav__link">
+  <a href="#ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Ownership and protocol
+        Ownership
       
     </span>
   </a>
@@ -1002,10 +1729,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#failure-and-lifetime" class="md-nav__link">
+  <a href="#commit-sequence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Failure and lifetime
+        Commit sequence
       
     </span>
   </a>
@@ -1013,10 +1740,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#non-js-adapters" class="md-nav__link">
+  <a href="#slow-or-failed-renderers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Non-JS adapters
+        Slow or failed renderers
       
     </span>
   </a>
@@ -1024,10 +1751,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#configuration-and-verification" class="md-nav__link">
+  <a href="#reference-adapters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration and verification
+        Reference adapters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reload-and-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reload and tests
       
     </span>
   </a>
@@ -1057,7 +1795,35 @@
   <span class="md-ellipsis">
     
   
-    Renderer API
+    Write a renderer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-ui-removal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native and external UI
   
 
     
@@ -1085,7 +1851,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1117,26 +1883,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Contribute
+    Contributing
   
 
     
@@ -1147,12 +1913,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Contribute
+    Contributing
   
 
           </label>
@@ -1200,7 +1966,7 @@
   <span class="md-ellipsis">
     
   
-    Development session
+    Devkit
   
 
     
@@ -1256,7 +2022,7 @@
   <span class="md-ellipsis">
     
   
-    Hardware verification
+    Desktop verification
   
 
     
@@ -1284,7 +2050,35 @@
   <span class="md-ellipsis">
     
   
-    Code quality
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI development
   
 
     
@@ -1312,7 +2106,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1340,7 +2134,35 @@
   <span class="md-ellipsis">
     
   
-    Documentation site
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
   
 
     
@@ -1388,10 +2210,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#ownership-and-protocol" class="md-nav__link">
+  <a href="#ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Ownership and protocol
+        Ownership
       
     </span>
   </a>
@@ -1399,10 +2221,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#failure-and-lifetime" class="md-nav__link">
+  <a href="#commit-sequence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Failure and lifetime
+        Commit sequence
       
     </span>
   </a>
@@ -1410,10 +2232,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#non-js-adapters" class="md-nav__link">
+  <a href="#slow-or-failed-renderers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Non-JS adapters
+        Slow or failed renderers
       
     </span>
   </a>
@@ -1421,10 +2243,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#configuration-and-verification" class="md-nav__link">
+  <a href="#reference-adapters" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration and verification
+        Reference adapters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reload-and-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reload and tests
       
     </span>
   </a>
@@ -1448,89 +2281,93 @@
 
 
   
-    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/window-frame-renderers.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
-      
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
-    </a>
-  
   
 
 
-<h1 id="language-independent-ssd-renderers">Language-independent SSD renderers<a class="headerlink" href="#language-independent-ssd-renderers" title="Permanent link">&para;</a></h1>
-<p>Implemented, experimental v1. Rendering and standard window controls are native;
-the Shell JavaScript module only translates configuration. Neither GJS nor Node
-is needed to implement a renderer. Private tests do not install into the desktop.</p>
-<p>Nothing draws by default: <code>frame.mode = "off"</code> is the native and Lua default.
-The built-in opt-in fallback draws its own vector icons without an icon-theme or
-GTK dependency. Bingux's styled renderer renders actual libadwaita widgets.
-Start with the <a href="../frame-renderer-api/">renderer author quickstart</a>.</p>
-<h2 id="ownership-and-protocol">Ownership and protocol<a class="headerlink" href="#ownership-and-protocol" title="Permanent link">&para;</a></h2>
-<p>Gnoblin owns xdg-decoration negotiation, committed crop/extents, native window
-attachment, input/grabs, content exclusion and the final rounded mask. An external
-process owns appearance. One process can render many frames.</p>
-<p>The compositor launches a configured argv using its socketpair-backed
-MetaWaylandClient facility. Only that exact connection sees the private global.
-There is no target-window-ID claim operation. This restricts compositor
-capabilities; it is not an OS sandbox for the configured executable.</p>
-<p>Source of truth: <a href="https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml">gnoblin-window-frame-v1.xml</a>.</p>
-<p>The manager creates frame handles. Each receives title, app ID, state and allowed
-actions, style name, logical dimensions, committed extents and a configure serial.
-The renderer attaches a previously unroled wl_surface, acknowledges configure,
-sets semantic regions, then submits ordinary Wayland buffers/damage. A normal
-toolkit xdg-toplevel cannot also take this role.</p>
-<p>Acknowledgements and regions are snapshotted with surface commits, including
-merged transactions. Regions are double-buffered, bounded to 64, last-defined
-wins. Actions are drag, close, maximize/restore, minimize and eight resize
-directions. Native code validates allowed actions and starts grabs from the
-actual input event. Hover/press events allow renderer visuals; the renderer
-never takes keyboard focus. Arbitrary command requests are not part of v1.</p>
-<p>A compositor mask removes pixels inside the client body even when a renderer
-paints an opaque full-window buffer. Native reactive strips also exclude the
-body. Native radii restrict frame hit testing. Existing border/shadow rules
-remain separate; no window blur is introduced.</p>
-<h2 id="failure-and-lifetime">Failure and lifetime<a class="headerlink" href="#failure-and-lifetime" title="Permanent link">&para;</a></h2>
-<p>Application commits never wait for a renderer. Geometry changes immediately use
-native fallback until a matching buffer arrives; stale generations cannot replace
-a newer layout. Invalid dimensions/serials disconnect the renderer. The fallback
-keeps the same committed extents and native controls.</p>
-<p>On process exit the connection is destroyed and fallback appears. Restart uses
-bounded exponential backoff, at most four launch attempts per session. A configure
-timeout retains fallback; there is no continuous process heartbeat. A stalled
-renderer with valid current pixels may keep them, but native controls remain
-usable. New geometry selects fallback. Compositor shutdown cancels retries and
-terminates only its renderer children.</p>
-<p>The reference transport limits each frame to two outstanding shared-memory
-buffers, coalescing newer model/theme changes. It uses a full-size canvas rather
-than four strips; high-DPI/many-window memory and GPU costs need measurement.</p>
-<h2 id="non-js-adapters">Non-JS adapters<a class="headerlink" href="#non-js-adapters" title="Permanent link">&para;</a></h2>
-<p>Run <code>scripts/build-frame-renderers.sh</code> to build:</p>
+<h1 id="frame-renderer-architecture">Frame renderer architecture<a class="headerlink" href="#frame-renderer-architecture" title="Permanent link">&para;</a></h1>
+<p>Gnoblin owns decoration policy, geometry and input. An external process draws
+the frame. The private v1 protocol is experimental.</p>
+<p>For configuration, see <a href="../window-frames/">titlebars</a>.
+For implementation steps, see <a href="../frame-renderer-api/">write a renderer</a>.</p>
+<h2 id="ownership">Ownership<a class="headerlink" href="#ownership" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Gnoblin</th>
+<th>Renderer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decoration negotiation</td>
+<td>Frame appearance</td>
+</tr>
+<tr>
+<td>Crop and committed extents</td>
+<td>Buffers and damage</td>
+</tr>
+<tr>
+<td>Move/resize grabs and actions</td>
+<td>Button hit regions</td>
+</tr>
+<tr>
+<td>Content exclusion and final mask</td>
+<td>Hover/pressed appearance</td>
+</tr>
+<tr>
+<td>Native fallback</td>
+<td>Theme interpretation</td>
+</tr>
+</tbody>
+</table>
+<p>One process can render many frames. Gnoblin passes it a private Wayland
+connection; only that connection sees the frame global. This limits protocol
+capabilities, not the executable's OS access.</p>
+<h2 id="commit-sequence">Commit sequence<a class="headerlink" href="#commit-sequence" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Gnoblin creates a frame handle with identity, state, actions and geometry.</li>
+<li>The renderer attaches a surface with no existing role.</li>
+<li>It acknowledges configure, declares regions and commits matching pixels.</li>
+<li>Gnoblin applies the acknowledged state atomically.</li>
+</ol>
+<p>Regions are double-buffered, limited to 64 and last-defined-wins.
+A toolkit xdg-toplevel cannot take a second role.</p>
+<p>The compositor excludes the app body from painting and input.
+Native resize regions take priority. The renderer never takes keyboard focus
+or requests arbitrary commands.</p>
+<p>See the <a href="https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml">protocol XML</a>.</p>
+<h2 id="slow-or-failed-renderers">Slow or failed renderers<a class="headerlink" href="#slow-or-failed-renderers" title="Permanent link">&para;</a></h2>
+<p>App commits never wait for a renderer.
+Geometry changes use native fallback until a matching buffer arrives;
+stale generations cannot replace newer layout.</p>
+<p>Invalid dimensions or serials disconnect the renderer.
+Process failure triggers bounded backoff, with at most four launch attempts
+per session. Shutdown terminates only Gnoblin's renderer children.</p>
+<p>A stalled renderer may keep valid current pixels; native controls remain usable.
+New geometry selects fallback. There is no continuous heartbeat.</p>
+<p>The helper permits two outstanding shared-memory buffers per frame.
+Its full-window canvases need further high-DPI and many-window cost measurements.</p>
+<h2 id="reference-adapters">Reference adapters<a class="headerlink" href="#reference-adapters" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>scripts/build-frame-renderers.sh
+</code></pre></div>
+<p>Outputs:</p>
 <ul>
-<li><code>build/frame-renderers/gnoblin-frame-cairo</code>: C, Cairo/Pango.</li>
-<li><code>build/frame-renderers/gnoblin-frame-qt</code>: C++/Qt QImage and QPainter, offscreen.</li>
+<li><code>build/frame-renderers/gnoblin-frame-cairo</code></li>
+<li><code>build/frame-renderers/gnoblin-frame-qt</code></li>
 </ul>
-<p>Both use <a href="https://github.com/kierandrewett/gnoblin/blob/main/src/tools/frame-renderer/client.c">client.c</a> for transport and
-<a href="https://github.com/kierandrewett/gnoblin/blob/main/src/tools/frame-renderer/paint.h">paint.h</a> as their painting boundary. They
-accept <code>--theme-file=/absolute/path</code>; a six-digit hex background color reloads via
-inotify. Invalid edits retain the last valid color. Their button layout is fixed;
-custom layouts belong in the renderer. Native fallback independently supports
-the Lua button-layout setting.</p>
-<p>Other languages can generate bindings and submit their own buffers. Slint, GTK,
-Rust, GPU engines, optional QML or web renderers need an adapter; unmodified
-toolkit windows are not attachable. Subsurface trees, renderer-proposed extents
-and arbitrary action requests are not implemented in v1.</p>
-<h2 id="configuration-and-verification">Configuration and verification<a class="headerlink" href="#configuration-and-verification" title="Permanent link">&para;</a></h2>
-<p>See <a href="../window-frames/">window-frames.md</a> for named argv services and rules.
-Service definitions reconcile live through <code>gnoblinctl config reload</code> and watched
-config edits. Both restart renderer executables even when their paths are
-unchanged; there is no separate SSD reload command. Native fallback keeps window controls available
-during replacement. Compositor code and protocol enablement still need a new session.</p>
-<p>Private tests cover native/Cairo/Qt pixels, window capture after transitions,
-negotiated SSD and explicit crop, client click mapping, fullscreen, standard
-controls and theme reload. Failure tests exercise capability restriction,
-stalled renderers, native fallback and process restart. Spotify has a separate
-optional private-profile test. Mixed-scale moves, popup-heavy cropped apps,
-overview, adversarial protocol fuzzing and GPU-buffer adapters need more coverage;
-v1 is not claimed stable or universally toolkit-compatible.</p>
+<p>Both accept <code>--theme-file=/absolute/path</code> containing a six-digit hex background.
+Valid edits repaint; invalid edits retain the previous colour.</p>
+<p>Their button layout is fixed. Native fallback separately supports Lua's
+<code>button-layout</code>. Other toolkits need an adapter; ordinary toolkit windows
+cannot be attached directly.</p>
+<h2 id="reload-and-tests">Reload and tests<a class="headerlink" href="#reload-and-tests" title="Permanent link">&para;</a></h2>
+<p><code>gnoblinctl config reload</code> restarts configured services, even when an
+executable's path is unchanged. Compositor upgrades require a new session.</p>
+<p>Private tests cover pixels, crop, controls, fullscreen, theme reload and fallback.
+Start with <code>tests/test-window-frames.py</code>; use <code>GNOBLIN_SSD_RENDERER=cairo</code>
+or <code>qt</code> for adapters.</p>
+<p>Mixed-scale transitions, popup-heavy cropped apps, adversarial fuzzing and
+GPU-buffer adapters need further coverage.</p>
 
 
 
@@ -1561,46 +2398,6 @@ v1 is not claimed stable or universally toolkit-compatible.</p>
       
         <footer class="md-footer">
   
-    
-      
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
-        
-          
-          <a href="../launch-feedback/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Launch feedback">
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
-            </div>
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              <div class="md-ellipsis">
-                Launch feedback
-              </div>
-            </div>
-          </a>
-        
-        
-          
-          <a href="../frame-renderer-api/" class="md-footer__link md-footer__link--next" aria-label="Next: Renderer API">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Renderer API
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
-        
-      </nav>
-    
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -1626,7 +2423,7 @@ v1 is not claimed stable or universally toolkit-compatible.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>

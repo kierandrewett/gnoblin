@@ -16,7 +16,7 @@
         <link rel="prev" href="../window-snapping/">
       
       
-        <link rel="next" href="../compositor-bridge/">
+        <link rel="next" href="../shell-integration/">
       
       
         
@@ -84,9 +84,7 @@
     
       
 
-  
-
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href=".." title="Gnoblin" class="md-header__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -210,6 +208,97 @@
       
         
           
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href=".." class="md-tabs__link">
+          
+  
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../configuration-reference/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../shell-integration/" class="md-tabs__link">
+          
+  
+  
+  Shell development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../source-development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
         
       
       <main class="md-main" data-md-component="main">
@@ -223,8 +312,10 @@
                     
 
 
+  
 
-<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="Gnoblin" class="md-nav__button md-logo" aria-label="Gnoblin" data-md-component="logo">
       
@@ -255,6 +346,58 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href=".." class="md-nav__link">
         
@@ -275,9 +418,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
@@ -287,26 +431,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Get started
+    Installation
   
 
     
@@ -317,12 +461,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Get started
+    Installation
   
 
           </label>
@@ -342,7 +486,7 @@
   <span class="md-ellipsis">
     
   
-    Install Gnoblin
+    Choose your system
   
 
     
@@ -351,6 +495,98 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-fedora/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fedora
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-nixos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    NixOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -398,7 +634,35 @@
   <span class="md-ellipsis">
     
   
-    Configure your desktop
+    Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
   
 
     
@@ -435,23 +699,26 @@
         
         
       
+      
+        
+      
     
     
     <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Configuration reference
+    Configuration
   
 
     
@@ -462,12 +729,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Configuration reference
+    Configuration
   
 
           </label>
@@ -487,7 +754,7 @@
   <span class="md-ellipsis">
     
   
-    Option index
+    All settings
   
 
     
@@ -535,6 +802,236 @@
   
   
   
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Basics
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files and load order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autostart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Autostart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../window-rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Window rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Appearance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Appearance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
       <a href="../window-effects/" class="md-nav__link">
         
@@ -543,7 +1040,7 @@
   <span class="md-ellipsis">
     
   
-    Window effects
+    Effects
   
 
     
@@ -571,7 +1068,182 @@
   <span class="md-ellipsis">
     
   
-    Window frames (CSD and SSD)
+    Titlebars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shaders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shaders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cursors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Behavior
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session settings
   
 
     
@@ -599,7 +1271,7 @@
   <span class="md-ellipsis">
     
   
-    Portal permissions
+    Permissions
   
 
     
@@ -648,34 +1320,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../cursors/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Cursor themes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../window-state-shortcuts/" class="md-nav__link">
         
   
@@ -683,7 +1327,7 @@
   <span class="md-ellipsis">
     
   
-    Window shortcuts
+    Restore or minimise
   
 
     
@@ -711,7 +1355,7 @@
   <span class="md-ellipsis">
     
   
-    Window snapping
+    Snapping
   
 
     
@@ -720,6 +1364,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -792,32 +1444,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#command-map" class="md-nav__link">
+  <a href="#start-here" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Command map
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#output-and-errors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output and errors
+        Start here
       
     </span>
   </a>
@@ -836,10 +1466,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#move-and-resize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Move and resize
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-monitors" class="md-nav__link">
     <span class="md-ellipsis">
       
         Workspaces and monitors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-for-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output for scripts
       
     </span>
   </a>
@@ -858,32 +1521,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#transport-and-installation" class="md-nav__link">
+  <a href="#connection-problems" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Transport and installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#permission-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Permission policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-design-rules" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI design rules
+        Connection problems
       
     </span>
   </a>
@@ -917,26 +1558,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Build a shell
+    Shell development
   
 
     
@@ -947,16 +1588,44 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Build a shell
+    Shell development
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shell-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1000,7 +1669,63 @@
   <span class="md-ellipsis">
     
   
-    Background effects
+    Background blur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../blur-fades/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Blur fades
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../effects-rendering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Effect rendering
   
 
     
@@ -1028,7 +1753,7 @@
   <span class="md-ellipsis">
     
   
-    Focus transfer
+    Activation
   
 
     
@@ -1084,7 +1809,7 @@
   <span class="md-ellipsis">
     
   
-    Frame renderers
+    Frame architecture
   
 
     
@@ -1112,7 +1837,35 @@
   <span class="md-ellipsis">
     
   
-    Renderer API
+    Write a renderer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-ui-removal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native and external UI
   
 
     
@@ -1140,7 +1893,7 @@
   <span class="md-ellipsis">
     
   
-    Developer console
+    Console
   
 
     
@@ -1172,26 +1925,26 @@
     
     
       
-        
+      
         
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    Contribute
+    Contributing
   
 
     
@@ -1202,12 +1955,12 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Contribute
+    Contributing
   
 
           </label>
@@ -1255,7 +2008,7 @@
   <span class="md-ellipsis">
     
   
-    Development session
+    Devkit
   
 
     
@@ -1311,7 +2064,7 @@
   <span class="md-ellipsis">
     
   
-    Hardware verification
+    Desktop verification
   
 
     
@@ -1339,7 +2092,35 @@
   <span class="md-ellipsis">
     
   
-    Code quality
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli-development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI development
   
 
     
@@ -1367,7 +2148,7 @@
   <span class="md-ellipsis">
     
   
-    Distribution
+    Packaging
   
 
     
@@ -1395,7 +2176,35 @@
   <span class="md-ellipsis">
     
   
-    Documentation site
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
   
 
     
@@ -1443,32 +2252,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#command-map" class="md-nav__link">
+  <a href="#start-here" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Command map
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Configuration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#output-and-errors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output and errors
+        Start here
       
     </span>
   </a>
@@ -1487,10 +2274,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#move-and-resize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Move and resize
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-monitors" class="md-nav__link">
     <span class="md-ellipsis">
       
         Workspaces and monitors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-for-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output for scripts
       
     </span>
   </a>
@@ -1509,32 +2329,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#transport-and-installation" class="md-nav__link">
+  <a href="#connection-problems" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Transport and installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#permission-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Permission policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-design-rules" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI design rules
+        Connection problems
       
     </span>
   </a>
@@ -1558,21 +2356,50 @@
 
 
   
-    <a href="https://github.com/kierandrewett/gnoblin/edit/main/docs/gnoblinctl.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
-      
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
-    </a>
-  
   
 
 
 <h1 id="gnoblinctl">gnoblinctl<a class="headerlink" href="#gnoblinctl" title="Permanent link">&para;</a></h1>
-<p><code>gnoblinctl</code> controls the compositor and Gnoblin shell. Bingux panels and app
-menus remain the responsibility of <code>binguxctl</code>.</p>
-<p>Use <code>gnoblinctl --help</code>, <code>gnoblinctl help window</code>, or any command's <code>--help</code>.
-Commands use a group and an action, such as <code>window list</code> or <code>feature enable</code>.
-Running a group on its own shows its available actions.</p>
-<h2 id="command-map">Command map<a class="headerlink" href="#command-map" title="Permanent link">&para;</a></h2>
+<p>Control Gnoblin from a terminal or script. Use <code>binguxctl</code> for Bingux's own panels.</p>
+<h2 id="start-here">Start here<a class="headerlink" href="#start-here" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>ping
+gnoblinctl<span class="w"> </span>status
+gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
+gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
+</code></pre></div>
+<p>Run <code>gnoblinctl --help</code>, <code>gnoblinctl help window</code>, or a command's
+<code>--help</code> for accepted arguments. A bare group lists its actions.</p>
+<h2 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>list
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>focus<span class="w"> </span><span class="m">42</span>
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>minimize<span class="w"> </span>active
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>restore<span class="w"> </span>active
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>maximize<span class="w"> </span>active
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>close<span class="w"> </span><span class="m">42</span>
+</code></pre></div>
+<p>Use an ID from <code>window list</code>, or <code>active</code> for the focused window.
+IDs last for the window's lifetime, not across logins.</p>
+<p><code>restore</code> removes minimisation. Use <code>unmaximize</code> and <code>unfullscreen</code>
+for those states. <code>close</code> requests a normal close, including unsaved-work prompts.</p>
+<p>Filter the list with <code>--focused</code>, <code>--app-id ID</code> or <code>--title TEXT</code>.</p>
+<h2 id="move-and-resize">Move and resize<a class="headerlink" href="#move-and-resize" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>move<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="m">80</span>
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>resize<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">900</span><span class="w"> </span><span class="m">600</span>
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>workspace<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">2</span>
+gnoblinctl<span class="w"> </span>window<span class="w"> </span>monitor<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+<p>Coordinates and frame sizes use logical pixels, including decorations.
+Apps can constrain the result. Geometry operations reject incompatible states
+such as fullscreen or non-resizable windows.</p>
+<h2 id="workspaces-and-monitors">Workspaces and monitors<a class="headerlink" href="#workspaces-and-monitors" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>workspace<span class="w"> </span>list
+gnoblinctl<span class="w"> </span>workspace<span class="w"> </span>switch<span class="w"> </span><span class="m">2</span>
+gnoblinctl<span class="w"> </span>monitor<span class="w"> </span>list
+</code></pre></div>
+<p>Workspace positions start at <strong>1</strong>; monitor IDs start at <strong>0</strong>.
+Dynamic workspaces can be renumbered. Refresh the list before reusing an index.</p>
+<p>Moving a window does not follow it. Focus that window to switch to its workspace.</p>
+<h2 id="other-commands">Other commands<a class="headerlink" href="#other-commands" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -1583,170 +2410,88 @@ Running a group on its own shows its available actions.</p>
 <tbody>
 <tr>
 <td><code>config</code></td>
-<td><code>path</code>, <code>reload</code></td>
-</tr>
-<tr>
-<td><code>window</code></td>
-<td><code>list</code>, <code>focus</code>, <code>close</code>, <code>minimize</code>, <code>restore</code>, <code>restore-or-minimize</code>, <code>maximize</code>, <code>unmaximize</code>, <code>fullscreen</code>, <code>unfullscreen</code>, <code>move</code>, <code>resize</code>, <code>workspace</code>, <code>monitor</code></td>
-</tr>
-<tr>
-<td><code>workspace</code></td>
-<td><code>list</code>, <code>switch</code></td>
-</tr>
-<tr>
-<td><code>monitor</code></td>
-<td><code>list</code></td>
+<td>path, reload</td>
 </tr>
 <tr>
 <td><code>input</code></td>
-<td><code>list</code>, <code>current</code>, <code>select</code></td>
+<td>list, current, select</td>
 </tr>
 <tr>
 <td><code>feature</code></td>
-<td><code>list</code>, <code>show</code>, <code>enable</code>, <code>disable</code></td>
+<td>list, show, enable, disable</td>
 </tr>
 <tr>
 <td><code>script</code></td>
-<td><code>list</code></td>
+<td>list</td>
 </tr>
 <tr>
 <td><code>permissions</code></td>
-<td><code>list</code>, <code>check</code></td>
+<td>list, check</td>
 </tr>
 <tr>
 <td><code>grant</code></td>
-<td><code>list</code>, <code>revoke</code></td>
+<td>list, revoke</td>
 </tr>
 <tr>
 <td><code>launch</code></td>
-<td><code>status</code>, <code>begin</code>, <code>end</code></td>
+<td>status, begin, end</td>
 </tr>
 </tbody>
 </table>
-<p><code>status</code>, <code>ping</code>, <code>version</code>, <code>privacy</code>, and <code>reload</code> are direct commands.
-<code>completion SHELL</code> prints setup for Bash, Zsh, or Fish. <code>launch</code> controls busy-cursor
-feedback for shell integrations; it does not start applications.</p>
-<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
-<p>Keep includes and settings in <code>~/.config/gnoblin/init.lua</code>. The CLI shows the
-selected file and reloads it:</p>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
-gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
+<p>Direct commands include <code>ping</code>, <code>status</code>, <code>version</code>, <code>privacy</code> and
+<code>reload</code>. Reload also refreshes the theme and user scripts.</p>
+<p>See <a href="../permissions/">permission policy</a> and <a href="../launch-feedback/">launch feedback</a>.
+Launch feedback does not start an application.</p>
+<h2 id="output-for-scripts">Output for scripts<a class="headerlink" href="#output-for-scripts" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>list<span class="w"> </span>--json
+gnoblinctl<span class="w"> </span>feature<span class="w"> </span>list<span class="w"> </span>--format<span class="w"> </span>table
 </code></pre></div>
-<p>Edit Lua files directly. To load package and user settings, add these lines to
-the main file:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
-</code></pre></div>
-<p>See <a href="../configuration/">Configuration</a> for file watching and load order.</p>
-<h2 id="output-and-errors">Output and errors<a class="headerlink" href="#output-and-errors" title="Permanent link">&para;</a></h2>
-<p>Structured results use tables in a terminal and JSON in a pipe. Use <code>--json</code>
-(or <code>-j</code>) to request JSON explicitly, or <code>--format table</code> to inspect a table
-from a script. <code>ping</code> and <code>version</code> retain plain text unless JSON is requested.
-Options can appear before or after the command.</p>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>status
-gnoblinctl<span class="w"> </span>feature<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>feature<span class="w"> </span>list<span class="w"> </span>--json
-gnoblinctl<span class="w"> </span>input<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>privacy
-</code></pre></div>
-<p>JSON uses named fields. For example, <code>feature list</code> returns <code>{"features":[{"id":"notifications","description":"...","enabled":false}]}</code>.
-Read commands write results to stdout. Errors go to stderr with exit code 1;
-invalid arguments use exit code 2. <code>--timeout SECONDS</code> accepts 1-60 seconds
-and defaults to 5. An uncertain action is never retried automatically.</p>
-<h2 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>list<span class="w"> </span>--focused
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>list<span class="w"> </span>--app-id<span class="w"> </span>org.gnome.Nautilus.desktop
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>list<span class="w"> </span>--title<span class="w"> </span><span class="s2">"project"</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>focus<span class="w"> </span><span class="m">42</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>minimize<span class="w"> </span><span class="m">42</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>restore<span class="w"> </span><span class="m">42</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>maximize<span class="w"> </span>active
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>unmaximize<span class="w"> </span>active
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>fullscreen<span class="w"> </span><span class="m">42</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>unfullscreen<span class="w"> </span><span class="m">42</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>move<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">100</span><span class="w"> </span><span class="m">80</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>resize<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">900</span><span class="w"> </span><span class="m">600</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>close<span class="w"> </span><span class="m">42</span>
-</code></pre></div>
-<p>Window IDs come from Mutter and remain stable for a window's lifetime. Refresh
-the list after a new login. <code>active</code> selects the focused window when the
-compositor processes the request. Actions without geometry or a destination
-use <code>active</code> when their ID is omitted. Each action affects one window.</p>
-<p><code>restore</code> removes minimisation. Use <code>unmaximize</code> or <code>unfullscreen</code> to remove
-those states. Move and resize use logical screen coordinates and frame sizes,
-including decorations. Applications can constrain their final size. These
-operations reject maximised, fullscreen or non-resizable windows as applicable.
-<code>close</code> requests a normal application close; unsaved-work prompts still apply.</p>
-<p>The JSON window list includes full titles, app IDs, geometry, workspace,
-monitor index, focus and state. Terminal tables shorten long fields to fit.</p>
-<h2 id="workspaces-and-monitors">Workspaces and monitors<a class="headerlink" href="#workspaces-and-monitors" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>workspace<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>workspace<span class="w"> </span>switch<span class="w"> </span><span class="m">2</span>
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>workspace<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">2</span>
-gnoblinctl<span class="w"> </span>monitor<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>window<span class="w"> </span>monitor<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">0</span>
-</code></pre></div>
-<p>Workspace IDs are one-based positions; logical monitor IDs are zero-based.
-Commands accept existing destinations only. GNOME can remove and renumber
-empty dynamic workspaces, so refresh <code>workspace list</code> before using an old index.
-Moving a window does not automatically follow it. <code>window focus ID</code> switches
-to its workspace and activates it.</p>
-<p>A mutation reply with <code>pending: true</code> confirms that the compositor accepted
-the request. List windows or workspaces again to observe the final state.
-Window mutations are rejected while the session is locked.</p>
+<p>Structured results use tables in a terminal and JSON in a pipe.
+<code>--json</code> forces JSON. Options work before or after the command.</p>
+<table>
+<thead>
+<tr>
+<th>Exit code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Runtime failure; error on stderr</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Invalid arguments</td>
+</tr>
+</tbody>
+</table>
+<p><code>--timeout SECONDS</code> accepts 1–60; default is 5.
+Uncertain actions are not retried automatically.</p>
+<p>A reply with <code>pending: true</code> means accepted, not finished.
+List state again to confirm the result. Window changes are rejected while locked.</p>
 <h2 id="shell-completion">Shell completion<a class="headerlink" href="#shell-completion" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># Bash: add to ~/.bashrc</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Bash: ~/.bashrc</span>
 <span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>gnoblinctl<span class="w"> </span>completion<span class="w"> </span>bash<span class="k">)</span><span class="s2">"</span>
 
-<span class="c1"># Zsh: run after compinit in ~/.zshrc</span>
+<span class="c1"># Zsh: ~/.zshrc, after compinit</span>
 <span class="nb">eval</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>gnoblinctl<span class="w"> </span>completion<span class="w"> </span>zsh<span class="k">)</span><span class="s2">"</span>
 
 <span class="c1"># Fish</span>
 gnoblinctl<span class="w"> </span>completion<span class="w"> </span>fish<span class="w"> </span>&gt;<span class="w"> </span>~/.config/fish/completions/gnoblinctl.fish
 </code></pre></div>
-<h2 id="transport-and-installation">Transport and installation<a class="headerlink" href="#transport-and-installation" title="Permanent link">&para;</a></h2>
-<p>Shell settings use D-Bus through <code>busctl</code>. Keyboard calls can use the dedicated
-InputSources service when the shell lacks that interface; failed or timed-out
-mutations do not trigger fallback. The CLI requires Python 3 and <code>busctl</code>.
-Nix pins both runtime paths; the RPM session package declares both dependencies.</p>
-<p>Window commands use the user-private compositor bridge socket. Override it with
-<code>--socket PATH</code> or <code>GNOBLIN_COMPOSITOR_SOCKET</code>. The default is
-<code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>. If the bridge is unavailable, check
-<code>gnoblinctl script list</code> and update/reload <code>compositor-bridge.js</code>.</p>
-<p>The bridge accepts <code>{"op":"command","id":"REQUEST_ID","command":"windows"}</code>
-and replies with <code>{"event":"reply","id":"REQUEST_ID","result":{"windows":[]}}</code>.
-Errors retain the request ID and use <code>event: "error"</code> with a <code>message</code>.
-Other commands are <code>monitors</code>, <code>workspaces</code>, <code>workspace-switch</code> (with
-<code>workspace</code>), and <code>window</code> (with <code>action</code>, <code>window</code>, and the action's arguments).
-Existing shortcut and streaming-window requests retain their protocol.</p>
-<h2 id="permission-policy">Permission policy<a class="headerlink" href="#permission-policy" title="Permanent link">&para;</a></h2>
-<p><code>gnoblinctl permissions list</code> shows the active policy and its configuration path.
-Use <code>permissions check CAPABILITY IDENTITY</code> to explain a decision. Edit the
-<code>permissions</code> table in your Lua configuration to change the policy, then save or
-run <code>gnoblinctl config reload</code>. Both inspection commands support JSON output.
-See <a href="../permissions/">Portal permissions</a> for examples and supported gates.</p>
-<h2 id="cli-design-rules">CLI design rules<a class="headerlink" href="#cli-design-rules" title="Permanent link">&para;</a></h2>
-<p>Keep new commands within this design:</p>
-<ul>
-<li>Use <code>gnoblinctl GROUP ACTION</code>; use singular group names and plain verbs.
-  Keep common diagnostics at the top level. Do not add aliases or another
-  nesting level to expose the same operation.</li>
-<li>A bare group shows contextual help without connecting to the compositor.
-  Missing arguments for an action produce a usage error and a useful hint.</li>
-<li>Define names, descriptions, arguments, and choices once in the argument parser.
-  Help and completion use that same command tree.</li>
-<li>Keep tables compact and readable, with consistent human labels. Preserve full
-  values and named fields in JSON. Never place terminal styling in JSON output.</li>
-<li>Put results on stdout and failures on stderr. Exit 0 for success, 1 for a
-  runtime failure, and 2 for invalid usage. Do not retry uncertain mutations.</li>
-<li>Keep configuration in Lua files. Config commands locate and reload that file;
-  they do not maintain a second configuration store or rewrite executable Lua.</li>
-</ul>
-<p>The local CLI tests exercise command names, help, output, validation, and
-transport failures. <code>tests/test-gnoblinctl.py</code> checks the installed command
-against a private compositor session.</p>
+<h2 id="connection-problems">Connection problems<a class="headerlink" href="#connection-problems" title="Permanent link">&para;</a></h2>
+<p>The CLI needs Python 3 and <code>busctl</code>.
+Settings use D-Bus; window commands use the
+<a href="../compositor-bridge/">compositor bridge</a>.</p>
+<p>The socket defaults to <code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>.
+Override it with <code>--socket PATH</code> or <code>GNOBLIN_COMPOSITOR_SOCKET</code>.</p>
+<p>If it is missing, check <code>gnoblinctl script list</code> and the bridge installation.
+See <a href="../cli-development/">CLI development</a> for the transport contract.</p>
 
 
 
@@ -1777,46 +2522,6 @@ against a private compositor session.</p>
       
         <footer class="md-footer">
   
-    
-      
-      <nav class="md-footer__inner md-grid" aria-label="Footer" >
-        
-          
-          <a href="../window-snapping/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Window snapping">
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
-            </div>
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              <div class="md-ellipsis">
-                Window snapping
-              </div>
-            </div>
-          </a>
-        
-        
-          
-          <a href="../compositor-bridge/" class="md-footer__link md-footer__link--next" aria-label="Next: Compositor bridge">
-            <div class="md-footer__title">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              <div class="md-ellipsis">
-                Compositor bridge
-              </div>
-            </div>
-            <div class="md-footer__button md-icon">
-              
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
-            </div>
-          </a>
-        
-      </nav>
-    
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -1842,7 +2547,7 @@ against a private compositor session.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>

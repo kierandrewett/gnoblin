@@ -5,6 +5,18 @@
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
+         <loc>https://kierandrewett.github.io/gnoblin/animations/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/archive/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/autostart/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
          <loc>https://kierandrewett.github.io/gnoblin/background-effects/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
@@ -17,11 +29,19 @@
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
+         <loc>https://kierandrewett.github.io/gnoblin/cli-development/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
          <loc>https://kierandrewett.github.io/gnoblin/code-quality/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
          <loc>https://kierandrewett.github.io/gnoblin/compositor-bridge/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/configuration-loading/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
@@ -57,6 +77,10 @@
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
+         <loc>https://kierandrewett.github.io/gnoblin/effects-rendering/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
          <loc>https://kierandrewett.github.io/gnoblin/focus-transfer/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
@@ -66,6 +90,18 @@
     </url>
     <url>
          <loc>https://kierandrewett.github.io/gnoblin/gnoblinctl/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/install-fedora/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/install-nixos/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/install-source/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
@@ -101,6 +137,22 @@
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
+         <loc>https://kierandrewett.github.io/gnoblin/session-settings/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/shaders/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/shell-integration/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/shortcuts/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
          <loc>https://kierandrewett.github.io/gnoblin/source-development/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
@@ -110,6 +162,10 @@
     </url>
     <url>
          <loc>https://kierandrewett.github.io/gnoblin/testing/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/troubleshooting/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
@@ -130,6 +186,10 @@
     </url>
     <url>
          <loc>https://kierandrewett.github.io/gnoblin/window-menu/</loc>
+         <lastmod>2026-09-19</lastmod>
+    </url>
+    <url>
+         <loc>https://kierandrewett.github.io/gnoblin/window-rules/</loc>
          <lastmod>2026-09-19</lastmod>
     </url>
     <url>
