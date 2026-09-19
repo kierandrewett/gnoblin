@@ -4,6 +4,7 @@
   gcc16Stdenv,
   symlinkJoin,
   glib,
+  gjs,
   unzip,
   hyprcursor,
   lua5_4,
@@ -108,18 +109,19 @@ let
       + addSubproject gvcSrc "gvc"
       + addSubproject libshewSrc "libshew"
       + addSubproject jasmineGjsSrc "jasmine-gjs";
-    postPatch =
-      lib.replaceStrings
-        [ "rm data/theme/gnome-shell-{light,dark}.css" ]
-        [ "rm -f data/theme/gnome-shell-{light,dark}.css" ]
-        (old.postPatch or "")
-      + ''
-        substituteInPlace data/org.gnome.Shell-disable-extensions.service \
-            --replace-fail "ExecStart=gsettings" "ExecStart=${glib.bin}/bin/gsettings"
-        substituteInPlace js/ui/extensionDownloader.js \
-            --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
-            --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
-      '';
+    # Nixpkgs' hook follows its older Shell source and names files removed in
+    # 51. Keep the useful fixups, scoped to paths in the pinned release.
+    postPatch = ''
+      patchShebangs build-aux/generate-app-list.py
+      rm -f man/gnome-shell.1 data/theme/gnome-shell-{light,dark}.css
+      substituteInPlace meson.build subprojects/extensions-tool/meson.build \
+          --replace-fail "gjs = find_program('gjs')" "gjs = find_program('${gjs}/bin/gjs')"
+      substituteInPlace data/org.gnome.Shell-disable-extensions.service \
+          --replace-fail "ExecStart=gsettings" "ExecStart=${glib.bin}/bin/gsettings"
+      substituteInPlace js/ui/extensionDownloader.js \
+          --replace-fail "['unzip'," "['${unzip}/bin/unzip'," \
+          --replace-fail "['glib-compile-schemas'" "['${glib.dev}/bin/glib-compile-schemas'"
+    '';
     mesonFlags = (old.mesonFlags or [ ]) ++ [
       "-Dextensions_app=false"
       "-Dextensions_tool=false"
