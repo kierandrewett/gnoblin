@@ -1,7 +1,8 @@
 # Source development
 
 For installation, see [Installation](installation.md). This page covers
-build options and optional components.
+build options and optional components. Complete the guide's dependency setup
+and `just init` before running the build commands below.
 
 ## Build options
 

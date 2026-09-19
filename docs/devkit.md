@@ -12,6 +12,9 @@ actual seat, unattended screensharing), see
 
 ## Prerequisites
 
+Follow the [source installation guide](installation.md#build-from-source)
+through dependency installation and compilation first.
+
 A build: `just build-local`. You also need to be in a Wayland session yourself (the
 devkit renders as a window in it) — see [Headless mode](#headless--scripting-mode)
 if you're not.

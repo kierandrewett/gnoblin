@@ -179,9 +179,7 @@ sudo rm /usr/share/gnome-session/sessions/gnoblin.session
 
 You can then delete the checkout's `build` and `install` directories.
 
-<a id="unattended-screensharing-xdg-desktop-portal-gnome"></a>
-
-## Optional components
+### Updating a source checkout
 
 For an existing source checkout, run `git pull --ff-only`, then `just init`
 before rebuilding. Initialization downloads release tags and pinned dependencies;
@@ -191,6 +189,10 @@ them before updating; do not use forced resets to repair an installation.
 The GitHub Actions installation workflow tests Fedora 43 package installation
 and source compilation. Graphical devkit use, GDM login, and session removal
 still require a graphical host; a successful build alone does not verify them.
+
+<a id="unattended-screensharing-xdg-desktop-portal-gnome"></a>
+
+## Optional components
 
 These require a source build and are not included in `just build-local`:
 

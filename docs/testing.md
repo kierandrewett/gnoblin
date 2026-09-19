@@ -27,6 +27,11 @@ GDM login, visible chrome, and portal consent remain manual checks covered by
 | `just verify`                                | `verify-fast`, a fresh `just build-local`, and the complete installed headless suite                                                                                              | Build dependencies                                                                   |
 | `just verify-release`                        | `verify`, Mutter's real-host suite, and both RPM builds                                                                                                                           | Real host plus RPM build dependencies                                                |
 
+GitHub Actions runs `.github/workflows/verify.yml` on pushes and pull requests.
+It installs the documented COPR package set in a clean Fedora 43 container,
+and separately initializes and compiles a source checkout. It checks installed
+runtime/session files. GDM login and interactive devkit checks remain host tests.
+
 Use the narrow recipe while iterating. Use `just verify` for the complete local
 gate: it rebuilds the current source before running every isolated Shell
 integration test. `just verify-release` adds the real-host Mutter suite and
