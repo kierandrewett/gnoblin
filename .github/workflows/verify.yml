@@ -74,10 +74,10 @@ jobs:
       - name: Initialize and build the documented source installation
         run: |
           just init
-          GNOBLIN_PREFIX="$PWD/install" GNOBLIN_LIBDIR=lib just build-local
+          GNOBLIN_PREFIX="$PWD/install" just build-local
       - name: Verify local runtime and session
         run: |
           test -x install/bin/gnome-shell
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop
-          test -f install/lib/libmutter-17.so
+          test -f install/lib64/libmutter-17.so

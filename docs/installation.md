@@ -175,7 +175,7 @@ just init
 ### Build and try it
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" GNOBLIN_LIBDIR=lib just build-local
+GNOBLIN_PREFIX="$PWD/install" just build-local
 GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
