@@ -7,6 +7,6 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 "${privilege[@]}" pacman -Syu --needed "$@" \
     base-devel git just meson ninja python glib2-devel gobject-introspection \
-    gnome-shell mutter gnome-session gnome-settings-daemon \
+    gnome-shell mutter gnome-session gnome-settings-daemon evolution-data-server \
     wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua \
     sassc cmake intltool libxkbfile xorg-xwayland python-docutils
