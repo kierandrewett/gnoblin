@@ -156,8 +156,12 @@ void meta_gnoblin_window_frame_configure(MetaWindow* window,
     decoration = g_object_get_data(G_OBJECT(surface->role), "gnoblin-decoration");
     fullscreen =
         configuration->config && meta_window_config_get_is_fullscreen(configuration->config);
+    /* An unset preference means the client has not opted into SSD. Treat it
+     * as CSD under auto policy: libdecor and similar clients can still paint
+     * their own titlebar even after a compositor-selected server configure.
+     * Only an explicit server-side preference may add SSD in auto mode. */
     if (decoration && state->policy != 0 && state->policy != 3 &&
-        (state->policy == 2 || decoration->preference != 1))
+        (state->policy == 2 || decoration->preference == 2))
         layout.mode = 2;
     if (!fullscreen &&
         (layout.mode == 2 || state->policy == 3 ||
