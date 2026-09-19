@@ -219,8 +219,8 @@ let
           "$out/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
       install -Dm644 src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in \
           "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-      # NixOS 25.11's gnome-session package owns the shared Wayland
-      # target units. Keep one systemd user-unit owner.
+      # The reused gnome-session package owns the generic session target
+      # units. Keep one systemd user-unit owner.
     '';
   };
   runtime = symlinkJoin {
