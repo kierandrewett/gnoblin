@@ -113,7 +113,7 @@ index c2f2484d0..12031d380 100644
          continue;
  
        actor_surface = META_WAYLAND_ACTOR_SURFACE (surface->role);
-@@ -217,8 +272,30 @@ emit_frame_callbacks_for_stage_view (MetaWaylandCompositor *compositor,
+@@ -217,8 +272,29 @@ emit_frame_callbacks_for_stage_view (MetaWaylandCompositor *compositor,
        compositor->frame_callback_surfaces =
          g_list_delete_link (compositor->frame_callback_surfaces, l_cur);
      }
@@ -140,11 +140,10 @@ index c2f2484d0..12031d380 100644
 +                           "[mutter] layer-shell frame callbacks");
  }
  
-+#ifdef HAVE_NATIVE_BACKEND
  static gboolean
  frame_callback_source_prepare (GSource *base,
                                 int     *timeout)
-@@ -598,6 +675,9 @@ meta_wayland_compositor_add_frame_callback_surface (MetaWaylandCompositor *compo
+@@ -598,6 +674,9 @@ meta_wayland_compositor_add_frame_callback_surface (MetaWaylandCompositor *compo
  
    compositor->frame_callback_surfaces =
      g_list_prepend (compositor->frame_callback_surfaces, surface);
@@ -154,7 +153,7 @@ index c2f2484d0..12031d380 100644
  }
  
  void
-@@ -818,6 +898,8 @@ meta_wayland_compositor_finalize (GObject *object)
+@@ -818,6 +897,8 @@ meta_wayland_compositor_finalize (GObject *object)
    g_clear_pointer (&compositor->seat, meta_wayland_seat_free);
    meta_wayland_tablet_manager_finalize (compositor);
  
@@ -165,4 +164,3 @@ index c2f2484d0..12031d380 100644
  
 -- 
 2.55.0
-
