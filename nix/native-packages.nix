@@ -9,7 +9,7 @@ let
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
     gjs = requirement "1.85.90" "gjs" "gjs" "gjs";
     gsettings-desktop-schemas =
-      requirement "51.0" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
+      requirement "49.0" "gsettings-desktop-schemas" "gsettings-desktop-schemas"
         "gsettings-desktop-schemas";
     gnome-session = requirement null "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
@@ -18,7 +18,7 @@ let
     xdg-desktop-portal-gnome =
       requirement null "xdg-desktop-portal-gnome" "xdg-desktop-portal-gnome"
         "xdg-desktop-portal-gnome";
-    wayland = requirement "1.26" "wayland" "libwayland-client0" "wayland";
+    wayland = requirement "1.26" "libwayland-client" "libwayland-client0" "wayland";
     wayland-protocols =
       requirement "1.48" "wayland-protocols-devel" "wayland-protocols"
         "wayland-protocols";

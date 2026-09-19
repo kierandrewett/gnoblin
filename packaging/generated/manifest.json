@@ -69,7 +69,7 @@
       }
     },
     "gsettings-desktop-schemas": {
-      "minVersion": "51.0",
+      "minVersion": "49.0",
       "names": {
         "arch": "gsettings-desktop-schemas",
         "deb": "gsettings-desktop-schemas",
@@ -97,7 +97,7 @@
       "names": {
         "arch": "wayland",
         "deb": "libwayland-client0",
-        "rpm": "wayland"
+        "rpm": "libwayland-client"
       }
     },
     "wayland-protocols": {

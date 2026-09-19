@@ -16,10 +16,10 @@ Requires:       gjs >= 1.85.90
 Requires:       glib2 >= 2.86.0
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
-Requires:       gsettings-desktop-schemas >= 51.0
+Requires:       gsettings-desktop-schemas >= 49.0
 Requires:       libinput >= 1.31.0
 Requires:       pipewire >= 1.6.0
-Requires:       wayland >= 1.26
+Requires:       libwayland-client >= 1.26
 Requires:       xdg-desktop-portal-gnome
 
 %description

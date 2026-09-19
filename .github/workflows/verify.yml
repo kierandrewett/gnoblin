@@ -9,7 +9,7 @@ on:
 jobs:
   checkout-and-verify:
     runs-on: ubuntu-latest
-    container: fedora:43
+    container: fedora:44
     timeout-minutes: 90
     steps:
       - name: Install checkout tools
@@ -40,7 +40,7 @@ jobs:
           git diff --exit-code -- . ':!subprojects'
   copr-install:
     runs-on: ubuntu-latest
-    container: fedora:43
+    container: fedora:44
     timeout-minutes: 20
     steps:
       - name: Install documented Fedora packages

@@ -142,7 +142,7 @@ cd gnoblin
 
 This installs dependencies, initializes the sources, and builds Mutter, GNOME
 Shell, Gnoblin Settings, the portal backend, and session files into `./install`.
-It supports Fedora 43 and Arch/CachyOS. Arch dependency installation performs a
+It supports Fedora 44 and Arch/CachyOS. Arch dependency installation performs a
 full package upgrade; Fedora enables the Gnoblin COPR for build dependencies.
 Use `./build.sh --yes` for unattended package installation.
 
@@ -200,8 +200,8 @@ You can then delete the checkout's `build` and `install` directories.
 For an existing source checkout, run `git pull --ff-only`, then `./build.sh`.
 If Git reports local changes, preserve them before updating; do not use forced resets to repair an installation.
 
-The GitHub Actions installation workflow tests Fedora 43 package installation
-and source compilation on Fedora 43 and Arch Linux. Graphical devkit use, GDM login, and session removal
+The GitHub Actions installation workflow tests Fedora 44 package installation
+and source compilation on Fedora 44 and Arch Linux. Graphical devkit use, GDM login, and session removal
 still require a graphical host; a successful build alone does not verify them.
 
 <a id="unattended-screensharing-xdg-desktop-portal-gnome"></a>

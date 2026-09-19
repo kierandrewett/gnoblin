@@ -28,7 +28,7 @@ GDM login, visible chrome, and portal consent remain manual checks covered by
 | `just verify-release`                        | `verify`, Mutter's real-host suite, and both RPM builds                                                                                                                           | Real host plus RPM build dependencies                                                |
 
 GitHub Actions runs `.github/workflows/verify.yml` on pushes and pull requests.
-It installs the documented COPR package set in a clean Fedora 43 container,
+It installs the documented COPR package set in a clean Fedora 44 container,
 and separately initializes and compiles source checkouts on Fedora and Arch.
 Both source jobs run `./build.sh --yes`, the same build entry point as the
 installation guide. They check installed runtime, Settings, portal and session files. GDM login and interactive devkit checks remain host tests.
