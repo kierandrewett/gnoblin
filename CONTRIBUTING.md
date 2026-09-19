@@ -7,6 +7,8 @@ the Bingux repository.
 
 ## Development
 
+First install the dependencies listed in the
+[source installation guide](docs/installation.md#build-from-source).
 Initialise the pinned upstream trees and build a private prefix:
 
 ```sh

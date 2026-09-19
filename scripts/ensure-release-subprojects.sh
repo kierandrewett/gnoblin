@@ -27,12 +27,7 @@ for project in "${!tags[@]}"; do
         continue
     fi
 
-    if ! git -C "$subproject" diff --quiet || ! git -C "$subproject" diff --cached --quiet; then
-        echo "subproject $project contains local changes; cannot reconcile it to $tag" >&2
-        echo "review or move those changes, then rerun 'just init'" >&2
-        exit 1
-    fi
-
-    echo ">> reconciling $project: $actual -> $tag ($expected)" >&2
-    git -C "$subproject" checkout -qf "$tag"
+    echo "subproject $project is at $actual, but release $tag names $expected" >&2
+    echo "The superproject pin and release tag must agree; no checkout was overwritten." >&2
+    exit 1
 done
