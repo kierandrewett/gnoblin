@@ -2306,7 +2306,7 @@ rebuilt libraries.</p>
 <p>Default: <code>./install</code>, with libraries in <code>lib64</code>.</p>
 <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps
 python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps<span class="w"> </span>--run<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>env<span class="w"> </span><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span>/tmp/gnoblin<span class="w"> </span><span class="nv">GNOBLIN_LIBDIR</span><span class="o">=</span>lib<span class="w"> </span>just<span class="w"> </span>build-local
+<span class="w">    </span>env<span class="w"> </span><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span>/tmp/gnoblin<span class="w"> </span><span class="nv">GNOBLIN_LIBDIR</span><span class="o">=</span>lib<span class="w"> </span>just<span class="w"> </span>build-source
 python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--fix-runtime<span class="w"> </span>--runtime-prefix<span class="w"> </span>/tmp/gnoblin
 </code></pre></div>
@@ -2328,7 +2328,7 @@ python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </s
 Old custom remembered-grant files no longer provide approval.</p>
 <h2 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h2>
 <p>For a source build:</p>
-<div class="highlight"><pre><span></span><code>just<span class="w"> </span>verify-installed-headless
+<div class="highlight"><pre><span></span><code>just<span class="w"> </span>test-session
 </code></pre></div>
 <p>For a Nix build, use <code>nix flake check</code> and <code>nix build .#gnoblin</code>. See <a href="../testing/">testing</a> for the
 full suite and <a href="../real-hardware-verification/">hardware verification</a> for login checks.</p>

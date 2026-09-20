@@ -2347,32 +2347,27 @@
 </thead>
 <tbody>
 <tr>
-<td><code>just verify-fast</code></td>
+<td><code>just check</code></td>
 <td>Syntax, logic, config parser and script tests</td>
 <td>Test dependencies</td>
 </tr>
 <tr>
-<td><code>just test-config</code></td>
-<td>Native Lua/config loader</td>
-<td>C compiler, GLib and Lua development files</td>
-</tr>
-<tr>
-<td><code>just verify-installed-headless</code></td>
+<td><code>just test-session</code></td>
 <td>All isolated Shell integration tests</td>
 <td>Current local build</td>
 </tr>
 <tr>
-<td><code>just verify</code></td>
+<td><code>just test-all</code></td>
 <td>Fast checks, fresh build, headless integration</td>
 <td>Build dependencies</td>
 </tr>
 <tr>
-<td><code>just test-mutter</code></td>
+<td><code>just test-window-manager</code></td>
 <td>Mutter native/Wayland/focus suites</td>
 <td>Working seat and file monitoring</td>
 </tr>
 <tr>
-<td><code>just verify-release</code></td>
+<td><code>just test-release</code></td>
 <td>Full checks plus native tests and RPM builds</td>
 <td>Real host and packaging tools</td>
 </tr>
@@ -2391,39 +2386,39 @@ consent. Use <a href="../real-hardware-verification/">hardware verification</a> 
 </thead>
 <tbody>
 <tr>
-<td><code>just gnome-verify</code></td>
+<td><code>just test-startup</code></td>
 <td>Gnoblin startup and protocol advertisement</td>
 </tr>
 <tr>
-<td><code>just gnome-stock-protocol-isolation-verify</code></td>
+<td><code>just test-stock-gnome</code></td>
 <td>Stock GNOME behavior stays separate</td>
 </tr>
 <tr>
-<td><code>just gnome-protocol-boundaries-verify</code></td>
+<td><code>just test-protocols</code></td>
 <td>Wayland object and geometry contracts</td>
 </tr>
 <tr>
-<td><code>just gnome-dbus-verify</code></td>
+<td><code>just test-control-api</code></td>
 <td>Control API</td>
 </tr>
 <tr>
-<td><code>just gnome-devkit-verify</code></td>
+<td><code>just test-preview</code></td>
 <td>Devkit environment and connectivity</td>
 </tr>
 <tr>
-<td><code>just gnome-native-chrome-verify</code></td>
+<td><code>just test-native-chrome</code></td>
 <td>Removed native UI stays absent</td>
 </tr>
 <tr>
-<td><code>just gnome-scripting-verify</code></td>
+<td><code>just test-scripting</code></td>
 <td>User script load/reload lifecycle</td>
 </tr>
 <tr>
-<td><code>just gnome-notifications-verify</code></td>
+<td><code>just test-notifications</code></td>
 <td>Notification service ownership</td>
 </tr>
 <tr>
-<td><code>just gnome-protocol-gating-verify</code></td>
+<td><code>just test-protocol-gating</code></td>
 <td>Startup protocol switches</td>
 </tr>
 </tbody>

@@ -2340,12 +2340,12 @@ Use it to test a build without logging out.</p>
 <p>First complete the <a href="../install-source/">source build</a>.</p>
 <h2 id="start">Start<a class="headerlink" href="#start" title="Permanent link">&para;</a></h2>
 <p>From the checkout:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>gnome-devkit
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>preview
 </code></pre></div>
 <p>A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor.</p>
 <p>To choose a terminal explicitly:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>gnome-devkit<span class="w"> </span>kitty
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>preview<span class="w"> </span>kitty
 </code></pre></div>
 <h2 id="try-your-shell">Try your shell<a class="headerlink" href="#try-your-shell" title="Permanent link">&para;</a></h2>
 <p>From the devkit terminal, launch an installed layer-shell client:</p>
@@ -2388,10 +2388,10 @@ Close the terminal to stop the devkit.</p>
 <h2 id="headless-scripting-mode">Headless / scripting mode<a class="headerlink" href="#headless-scripting-mode" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">GNOME_DEVKIT_HEADLESS</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
 <span class="nv">GNOME_DEVKIT_EXEC</span><span class="o">=</span><span class="s1">'gnoblinctl feature list --json'</span><span class="w"> </span><span class="se">\</span>
-<span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>gnome-devkit
+<span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>preview
 </code></pre></div>
 <p>This runs without a host Wayland display and exits after the command.
-<code>just gnome-devkit-verify</code> checks this environment.</p>
+<code>just test-preview</code> checks this environment.</p>
 <h2 id="isolation">Isolation<a class="headerlink" href="#isolation" title="Permanent link">&para;</a></h2>
 <p>The nested display and D-Bus bus are separate. Host X11, accessibility and gvfs
 connections are not passed through.</p>

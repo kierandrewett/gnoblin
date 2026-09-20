@@ -2433,13 +2433,13 @@ builds are reused. Settings and the patched portal remain
 <a href="../source-development/#optional-components">optional builds</a>.</p>
 <h2 id="2-try-it-in-a-window">2. Try it in a window<a class="headerlink" href="#2-try-it-in-a-window" title="Permanent link">&para;</a></h2>
 <p>From an existing Wayland desktop:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>gnome-devkit
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>preview
 </code></pre></div>
 <p>A nested desktop and terminal open. Launch your layer-shell client from that
 terminal. Close the terminal to end the test. See <a href="../devkit/">Devkit</a> for help.</p>
 <h2 id="3-add-a-login-session">3. Add a login session<a class="headerlink" href="#3-add-a-login-session" title="Permanent link">&para;</a></h2>
 <p>After the build and nested test succeed:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>dev-session-register
+<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>register-session
 </code></pre></div>
 <p>Run the <code>sudo install</code> commands it prints. Then
 <a href="../bring-your-own-shell/">install a shell</a>, log out and select <strong>Gnoblin</strong>.</p>
