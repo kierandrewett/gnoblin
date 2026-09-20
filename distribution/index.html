@@ -2079,6 +2079,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#build-debian-and-ubuntu-packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build Debian and Ubuntu packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#prepare-fedora-source-rpms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2254,6 +2265,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#build-debian-and-ubuntu-packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build Debian and Ubuntu packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#prepare-fedora-source-rpms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2335,6 +2357,7 @@ This page is for release maintainers.</p>
 <p>Gnoblin must install alongside GNOME.</p>
 <ul>
 <li>RPM names: <code>gnoblin-mutter</code>, <code>gnoblin-shell</code>, <code>gnoblin-session</code>.</li>
+<li>Debian/Ubuntu name: <code>gnoblin</code> (compositor, session and private libraries together).</li>
 <li>Private runtime: <code>/usr/lib/gnoblin</code>.</li>
 <li>Public files: login entry, control tool, service units and named policy files.</li>
 <li>Private libraries must not satisfy stock GNOME dependencies.</li>
@@ -2342,8 +2365,8 @@ This page is for release maintainers.</p>
 <p>Nix uses separate store outputs. Source builds use a private prefix.
 Bingux owns and releases its shell package separately.</p>
 <h2 id="package-definitions">Package definitions<a class="headerlink" href="#package-definitions" title="Permanent link">&para;</a></h2>
-<p><code>nix/native-packages.nix</code> defines outputs, dependencies and package-name mappings.
-Generate or verify the native adapters with:</p>
+<p><code>nix/native-packages.nix</code> defines the RPM and Arch adapters and their package-name
+mappings. Generate or verify those adapters with:</p>
 <div class="highlight"><pre><span></span><code>nix<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>--json<span class="w"> </span>.#lib.nativePackages
 just<span class="w"> </span>package-manifest<span class="w"> </span>write
 just<span class="w"> </span>package-manifest
@@ -2353,6 +2376,18 @@ just<span class="w"> </span>package-manifest
 <code>gnoblin-session</code> at the September 2026 documentation check.</p>
 <p>APT and pacman repositories are not published yet.
 Keep the <a href="../installation/">install guide</a> aligned with actual repository metadata.</p>
+<h2 id="build-debian-and-ubuntu-packages">Build Debian and Ubuntu packages<a class="headerlink" href="#build-debian-and-ubuntu-packages" title="Permanent link">&para;</a></h2>
+<p>The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
+Build separately in each distribution's container; do not reuse a newer
+distribution's binary package on an older one.</p>
+<p>Follow the <a href="https://github.com/kierandrewett/gnoblin/blob/main/packaging/deb/README.md">container build instructions</a>.
+The builder compiles the required newer libraries into <code>/usr/lib/gnoblin/deps</code>
+and produces a <code>.deb</code> with the remaining system dependencies recorded for APT.
+No Nix installation is required.</p>
+<p>The package tests install stock GNOME first, then exercise Gnoblin's installed
+CLI and compositor in a headless session. They also check removal and verify
+that GNOME's binary is unchanged. A real login test remains part of release
+verification.</p>
 <h2 id="prepare-fedora-source-rpms">Prepare Fedora source RPMs<a class="headerlink" href="#prepare-fedora-source-rpms" title="Permanent link">&para;</a></h2>
 <p>Use a clean release checkout and install <code>rpm-build</code> and <code>copr-cli</code>.</p>
 <div class="highlight"><pre><span></span><code>just<span class="w"> </span>init
@@ -2375,12 +2410,16 @@ Do not use asynchronous submission that bypasses this dependency.</p>
 After all builds succeed, test package resolution, login and removal on a clean
 host using <a href="../real-hardware-verification/">hardware verification</a>.</p>
 <h2 id="github-releases">GitHub releases<a class="headerlink" href="#github-releases" title="Permanent link">&para;</a></h2>
-<p>Push the release commit, then the signed tag matching <code>gnome-versions.json</code>:</p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>v51.0<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 51.0"</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v51.0
+<p>Push the release commit, then a signed tag matching <code>gnome-versions.json</code>.
+Use <code>v51.0</code> for the base release or <code>v51.0-1</code>, <code>v51.0-2</code>, etc. for later package
+revisions of the same base:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>v51.0-1<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 51.0, package revision 1"</span>
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v51.0-1
 </code></pre></div>
-<p>The release workflow builds source archives, source RPMs, packaging adapters and
-checksums before publishing assets. Manual dispatch can repair an existing tag.</p>
+<p>The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
+packages and checksums. All three Debian/Ubuntu build and install tests must
+pass before assets are published. Dependency sources accompany the binaries.
+Manual dispatch can repair assets for an existing tag.</p>
 <p>This does not publish binary packages to COPR.
 Check the release result before telling users assets are available.</p>
 <h2 id="upgrade-the-gnome-base">Upgrade the GNOME base<a class="headerlink" href="#upgrade-the-gnome-base" title="Permanent link">&para;</a></h2>
