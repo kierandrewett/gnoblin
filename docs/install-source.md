@@ -12,13 +12,11 @@ Keep the checkout there if you register it as a login session.
 This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
 newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
 The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
-mtdev, Lua, gnome-desktop and the PipeWire client libraries. It does **not yet bootstrap every
-library on a fresh distribution installation**.
+mtdev, Lua, gnome-desktop and the PipeWire client libraries. Other development libraries must already be installed on the host.
 
 Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
-A distro name alone does not guarantee compatible base development libraries.
-If Meson reports a missing base dependency, stop there; do not upgrade your
-GNOME installation to satisfy this build.
+The required library versions are checked during the build. If a base dependency
+is missing or too old, the build stops and reports it without changing host packages.
 
 ## 1. Get the source
 

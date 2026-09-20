@@ -107,11 +107,11 @@ Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 
 ## Existing configs
 
-The declaration API is new and unreleased. Existing `require("gnoblin")`,
-`g.set`, `g.config`, returned tables and TOML configs still work.
+Configs using `require("gnoblin")`, `g.set`, `g.config`, returned tables
+and TOML still work.
 They retain their original hyphenated keys and merge behaviour.
 
-On an older build, this is the equivalent of `gnoblin.configure`:
+For example, this existing config:
 
 ```lua
 local g = require("gnoblin")
@@ -120,8 +120,19 @@ g.set {
 }
 ```
 
-The new functions can follow old component includes in the same file.
-There is no need to rewrite component files before changing your own config.
+is equivalent to:
+
+```lua
+gnoblin.configure {
+    shell = {minimize_duration = 150},
+}
+```
+
+You can use `gnoblin.configure` after existing component includes without
+rewriting the included files.
+
+If `gnoblin` or `configure` is reported as `nil`, see
+[configuration compatibility](troubleshooting.md#gnoblin-or-configure-is-nil).
 
 ## Reload and persistence
 

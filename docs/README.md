@@ -24,6 +24,3 @@ the bar, dock and launcher. GNOME remains available as a separate login session.
 
 Start with [troubleshooting](troubleshooting.md). For scripts and integrations,
 see [gnoblinctl](gnoblinctl.md) and the [compositor bridge](compositor-bridge.md).
-
-These docs describe the current source tree. Published packages may be older;
-check `gnoblinctl version` when an option is unavailable.

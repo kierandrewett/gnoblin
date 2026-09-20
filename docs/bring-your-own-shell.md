@@ -15,7 +15,7 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 [Fuzzel](https://codeberg.org/dnkl/fuzzel) and
 [Mako](https://github.com/emersion/mako) with your distribution's package manager.
 
-With the [new Lua API](configuration-loading.md#existing-configs), add:
+Add this to `~/.config/gnoblin/init.lua`:
 
 ```lua
 gnoblin.autostart {name = "bar", command = {"waybar"}}

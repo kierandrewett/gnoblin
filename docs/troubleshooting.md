@@ -43,9 +43,24 @@ gnoblinctl config reload
 Edit the printed path and read the reload error. Then check:
 
 - Does this setting need a [new session](configuration-loading.md#reload-and-persistence)?
-- Does your installed version support it?
+- Is a function missing? See [configuration compatibility](#gnoblin-or-configure-is-nil).
 - Did an unmatched include glob load nothing?
 - Did a later list replace your rules or shortcuts?
+
+## `gnoblin` or `configure` is nil
+
+An error such as `attempt to index a nil value (global 'gnoblin')` or
+`attempt to call a nil value (field 'configure')` can mean your running
+compositor predates the Lua functions used in these guides.
+
+If you have just updated Gnoblin, log out and back in. Reloading the config
+does not load an updated compositor. Otherwise, update through your
+[installation method](installation.md). If your package does not include these
+functions, keep using the [existing config syntax](configuration-loading.md#existing-configs)
+or [build from source](install-source.md).
+
+On a build that supports these functions, check that your config has not
+assigned another value to `gnoblin` or `gnoblin.configure`.
 
 ## My component's shortcuts or rules disappeared
 

@@ -5,9 +5,6 @@
 Edit `~/.config/gnoblin/init.lua` to change shortcuts, window rules and effects.
 Configure the bar, dock and launcher in your desktop shell.
 
-**Unreleased API:** the declaration functions below are new. Older installed
-builds use the [legacy API](configuration-loading.md#existing-configs).
-
 ## 1. Find your config
 
 Run this inside Gnoblin:

@@ -1,7 +1,5 @@
 # Configuration reference
 
-**Unreleased API.** These functions require the updated Lua loader. See
-[existing configs](configuration-loading.md#existing-configs) for older builds.
 Defaults are Gnoblin's; imported shell settings can override them.
 
 ## Lua API

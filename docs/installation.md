@@ -27,12 +27,9 @@ Terminal**. See [first-login troubleshooting](troubleshooting.md#no-bar-dock-or-
 
 ## Package versions
 
-Configuration pages describe the current source tree. Published packages can
-lag behind it. Check `gnoblinctl version` if an option is rejected.
-
-As of 20 September 2026, Fedora COPR supplies Mutter 49.5 and Shell 49.6;
-the source tree targets GNOME 51. The Fedora guide uses the package names
-actually published in [COPR](https://copr.fedorainfracloud.org/coprs/kierandrewett/gnoblin/).
+These guides document the Lua functions in the source build. Packages can
+receive those changes later. If an example fails because `gnoblin` or a
+function is missing, follow [configuration compatibility](troubleshooting.md#gnoblin-or-configure-is-nil).
 
 For development builds, see [source installation](install-source.md).
 Release maintainers should use the [packaging guide](distribution.md).

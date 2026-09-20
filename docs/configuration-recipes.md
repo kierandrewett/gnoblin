@@ -7,8 +7,7 @@ They extend existing lists rather than replacing them.
 
 ## Complete starter config
 
-Save this as `~/.config/gnoblin/init.lua` on a build with the
-[new declaration API](configuration-loading.md#existing-configs).
+Save this as `~/.config/gnoblin/init.lua`.
 Install the commands you use; replace `ptyxis` with your terminal.
 
 ```lua
