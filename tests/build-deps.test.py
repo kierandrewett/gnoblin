@@ -72,6 +72,7 @@ class BuildDependencies(unittest.TestCase):
                     self.assertNotIn("-Sy", commands[0])
                 if family == "fedora":
                     self.assertIn("expat-devel", commands[0])
+                    self.assertIn("cvt", commands[0])
                     self.assertNotIn("copr", result.stdout)
                     self.assertNotIn("builddep", result.stdout)
 
