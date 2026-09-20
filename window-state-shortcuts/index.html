@@ -2278,8 +2278,12 @@ on a second press.</p>
 <p>The command restores native maximisation/tiling or a saved custom snap frame.
 If neither applies, it minimises the window.</p>
 <h2 id="square-maximised-windows">Square maximised windows<a class="headerlink" href="#square-maximised-windows" title="Permanent link">&para;</a></h2>
-<p>In a window rule, use <code>corners = {["keep-maximized"] = false}</code> and
-<code>borders = {["keep-maximized"] = true}</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nv">keep_maximized</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">inner_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nv">inner_color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span><span class="w"> </span><span class="nv">keep_maximized</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
 <p>Maximised borders become square. Sides touching the physical monitor edge are
 omitted; sides beside reserved panels remain visible.</p>
 <p>See <a href="../shortcuts/">shortcuts</a> for conflicts and persistent bindings.</p>

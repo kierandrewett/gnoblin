@@ -987,6 +987,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#override-an-imported-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Override an imported command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-does-it-run" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2210,6 +2221,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#override-an-imported-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Override an imported command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-does-it-run" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2265,6 +2287,18 @@ needs automatic restarts.</p>
 <p>Install the program first. Reusing a name updates that entry.
 Use <code>gnoblin.remove_autostart("waybar")</code> to remove an imported entry.
 Do not add a program already started by a service, such as Bingux.</p>
+<h2 id="override-an-imported-command">Override an imported command<a class="headerlink" href="#override-an-imported-command" title="Permanent link">&para;</a></h2>
+<p>Use the same name to change its arguments:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"waybar"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"waybar"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--config"</span><span class="p">,</span><span class="w"> </span><span class="s2">"/home/you/.config/waybar/work.jsonc"</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Replace the path with your own. If Waybar has already started, this command
+change takes effect at your next login.</p>
+<p>To prevent an imported program from starting next time:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">remove_autostart</span><span class="p">(</span><span class="s2">"waybar"</span><span class="p">)</span>
+</code></pre></div>
 <h2 id="when-does-it-run">When does it run?<a class="headerlink" href="#when-does-it-run" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A new name starts on the next config reload.</li>

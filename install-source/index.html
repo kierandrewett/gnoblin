@@ -644,6 +644,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-gnome-stays-separate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How GNOME stays separate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2-try-it-in-a-window" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -688,10 +721,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#other-distributions" class="md-nav__link">
+  <a href="#missing-or-outdated-dependencies" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Other distributions
+        Missing or outdated dependencies
       
     </span>
   </a>
@@ -2237,6 +2270,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-gnome-stays-separate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How GNOME stays separate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#2-try-it-in-a-window" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2281,10 +2347,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#other-distributions" class="md-nav__link">
+  <a href="#missing-or-outdated-dependencies" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Other distributions
+        Missing or outdated dependencies
       
     </span>
   </a>
@@ -2322,10 +2388,59 @@ as a login session.</p>
 <span class="nb">cd</span><span class="w"> </span>gnoblin
 ./build.sh
 </code></pre></div>
-<p>On Fedora and Arch/CachyOS, the script installs dependencies, fetches upstream
-sources and builds the runtime, Settings and portal backend.</p>
-<p>Dependency setup changes system packages. On Arch it runs a full system
-upgrade; on Fedora it enables COPR. Use <code>--yes</code> only for unattended setup.</p>
+<p>The script builds pinned dependency versions in <code>./install/deps</code>, then builds
+Mutter, GNOME Shell and the Gnoblin session in <code>./install</code>. It never calls your
+system package manager. Run it as your normal user.</p>
+<p>The dependency sources and checksums are in <code>build-dependencies.json</code>. Completed dependency
+builds are reused. Settings and the patched portal remain
+<a href="../source-development/#optional-components">optional builds</a>.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
+newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
+The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
+mtdev, Lua, gnome-desktop and the PipeWire client libraries. It does <strong>not yet bootstrap every
+library on a fresh distribution installation</strong>.</p>
+<p>Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
+A distro name alone does not guarantee compatible base development libraries.
+If Meson reports a missing base dependency, stop there; do not upgrade your
+GNOME installation to satisfy this build.</p>
+<h2 id="build-options">Build options<a class="headerlink" href="#build-options" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./build.sh</code></td>
+<td>Build private dependencies, then Gnoblin</td>
+</tr>
+<tr>
+<td><code>./build.sh --deps-only</code></td>
+<td>Build only the private dependencies</td>
+</tr>
+<tr>
+<td><code>./build.sh --no-deps</code></td>
+<td>Reuse dependencies and rebuild Gnoblin</td>
+</tr>
+<tr>
+<td><code>./build.sh --dry-run</code></td>
+<td>Show what will be built</td>
+</tr>
+</tbody>
+</table>
+<p><code>--yes</code> and <code>--install-deps</code> remain accepted for older scripts. Neither enables
+host package installation.</p>
+<h2 id="how-gnome-stays-separate">How GNOME stays separate<a class="headerlink" href="#how-gnome-stays-separate" title="Permanent link">&para;</a></h2>
+<p>Dependency headers, libraries and tools stay in <code>./install/deps</code>. Gnoblin's
+binaries link to that directory. Its library paths are not written to your
+shell profile or the system loader configuration. The dependency tool directory
+is not added to application launch paths.</p>
+<p>The host still provides the kernel, graphics drivers, system services and
+compatible base libraries. The private PipeWire client connects to the existing
+audio service; the build does not register another PipeWire service.</p>
 <h2 id="2-try-it-in-a-window">2. Try it in a window<a class="headerlink" href="#2-try-it-in-a-window" title="Permanent link">&para;</a></h2>
 <p>From an existing Wayland desktop:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span>just<span class="w"> </span>gnome-devkit
@@ -2357,16 +2472,11 @@ sudo<span class="w"> </span>rm<span class="w"> </span>/usr/share/gnome-session/s
 </code></pre></div>
 <p>You can then remove the checkout's <code>build</code> and <code>install</code> directories.
 For a packaged install, use the package manager instead.</p>
-<h2 id="other-distributions">Other distributions<a class="headerlink" href="#other-distributions" title="Permanent link">&para;</a></h2>
-<p>Automatic dependency setup is limited to Fedora and Arch. On other systems,
-install development dependencies for the versions in
-<a href="https://github.com/kierandrewett/gnoblin/blob/main/gnome-versions.json">gnome-versions.json</a>, then run:</p>
-<div class="highlight"><pre><span></span><code>./build.sh<span class="w"> </span>--no-deps
-</code></pre></div>
-<p>You need the Mutter, GNOME Shell, GNOME Control Center and portal development
-dependencies, plus Lua and Hyprcursor. Meson reports missing libraries and
-minimum versions. Runtime packages alone do not supply the required headers.</p>
-<p>See <a href="../source-development/">source development</a> for component rebuilds.</p>
+<h2 id="missing-or-outdated-dependencies">Missing or outdated dependencies<a class="headerlink" href="#missing-or-outdated-dependencies" title="Permanent link">&para;</a></h2>
+<p>The build stops at a missing dependency instead of changing host packages.
+Keep the error and the Meson log path when reporting a build problem.</p>
+<p>The pinned GNOME versions are in <a href="https://github.com/kierandrewett/gnoblin/blob/main/gnome-versions.json">gnome-versions.json</a>.
+See <a href="../source-development/">source development</a> for component rebuilds.</p>
 
 
 

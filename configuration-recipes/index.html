@@ -835,6 +835,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#complete-starter-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete starter config
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#add-a-shortcut-without-losing-the-others" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -883,6 +894,28 @@
     <span class="md-ellipsis">
       
         Enable negotiated server decorations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#combine-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combine rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#split-a-config-into-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Split a config into files
       
     </span>
   </a>
@@ -2230,6 +2263,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#complete-starter-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete starter config
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#add-a-shortcut-without-losing-the-others" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2285,6 +2329,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#combine-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combine rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#split-a-config-into-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Split a config into files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#apply-a-recipe" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2319,6 +2385,36 @@
 <p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Add these snippets <strong>after your component includes</strong>.
 They extend existing lists rather than replacing them.</p>
+<h2 id="complete-starter-config">Complete starter config<a class="headerlink" href="#complete-starter-config" title="Permanent link">&para;</a></h2>
+<p>Save this as <code>~/.config/gnoblin/init.lua</code> on a build with the
+<a href="../configuration-loading/#existing-configs">new declaration API</a>.
+Install the commands you use; replace <code>ptyxis</code> with your terminal.</p>
+<div class="highlight"><pre><span></span><code><span class="c1">-- Keep your shell installer's includes if it provided different paths.</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">minimize_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"zoom"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"terminal"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>This adds a terminal shortcut and dims unfocused windows. It does not install or
+start a desktop shell; choose one in <a href="../bring-your-own-shell/">shell setup</a>.
+If an imported shortcut already uses Super+Enter under another name, override
+that name instead.</p>
 <h2 id="add-a-shortcut-without-losing-the-others">Add a shortcut without losing the others<a class="headerlink" href="#add-a-shortcut-without-losing-the-others" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my-terminal"</span><span class="p">,</span>
@@ -2373,6 +2469,39 @@ separately. Configure those animations in that shell.</p>
 The extents are top, right, bottom and left logical pixels. It does not detect
 titlebars from their pixels or guarantee that every client negotiates correctly.
 See <a href="../window-frames/">frame modes and boundaries</a> before changing policy.</p>
+<h2 id="combine-rules">Combine rules<a class="headerlink" href="#combine-rules" title="Permanent link">&para;</a></h2>
+<p>The first rule applies to all application windows. The second changes only
+opacity when a window loses focus; the corner settings remain in effect.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="split-a-config-into-files">Split a config into files<a class="headerlink" href="#split-a-config-into-files" title="Permanent link">&para;</a></h2>
+<p>In <code>init.lua</code>, load files in the order you want them applied:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"appearance.lua"</span><span class="p">)</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"bindings.lua"</span><span class="p">)</span>
+</code></pre></div>
+<p>In <code>appearance.lua</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">120</span><span class="p">,</span><span class="w"> </span><span class="nv">layer_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>In <code>bindings.lua</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"launcher"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;d"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"fuzzel"</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Files share the same API. No <code>require("gnoblin")</code> or return statement is needed.</p>
 <h2 id="apply-a-recipe">Apply a recipe<a class="headerlink" href="#apply-a-recipe" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
 </code></pre></div>

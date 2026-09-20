@@ -2051,6 +2051,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#change-a-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change a window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2210,6 +2221,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#change-a-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change a window
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2264,6 +2286,19 @@ service when the Shell interface is absent. Failed mutations do not fall back.</
 <p>Errors keep the request ID and use <code>event: "error"</code> with a message.
 Other command names include <code>monitors</code>, <code>workspaces</code>,
 <code>workspace-switch</code> and <code>window</code>.</p>
+<h2 id="change-a-window">Change a window<a class="headerlink" href="#change-a-window" title="Permanent link">&para;</a></h2>
+<p>Request (the window ID comes from a previous list):</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"command"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move-1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move"</span><span class="p">,</span><span class="w"> </span><span class="nt">"window"</span><span class="p">:</span><span class="w"> </span><span class="s2">"42"</span><span class="p">,</span><span class="w"> </span><span class="nt">"x"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">"y"</span><span class="p">:</span><span class="w"> </span><span class="mi">80</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Reply:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reply"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move-1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"result"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"ok"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"pending"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"window"</span><span class="p">:</span><span class="w"> </span><span class="s2">"42"</span><span class="p">,</span><span class="w"> </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>If the session is locked:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"error"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move-1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"window management is unavailable while the session is locked"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Match replies to the request <code>id</code>. Other events can arrive between them.
+<code>pending</code> acknowledges the request; read the next window snapshot for its result.
+The CLI prints the inner <code>result</code>, not the socket envelope.</p>
 <h2 id="tests">Tests<a class="headerlink" href="#tests" title="Permanent link">&para;</a></h2>
 <p>Local CLI tests cover names, help, output, validation and transport failures.
 <code>tests/test-gnoblinctl.py</code> checks the installed command in a private compositor.</p>

@@ -2410,8 +2410,13 @@ helpers live in <code>scripts/</code>.</p>
 <p>The private harness uses temporary HOME and XDG directories. The
 <a href="../devkit/#isolation">devkit</a> keeps the real HOME; do not confuse the two.</p>
 <h2 id="ci">CI<a class="headerlink" href="#ci" title="Permanent link">&para;</a></h2>
-<p>The verification workflow checks Fedora package installation and builds sources
-on Fedora and Arch. Source jobs use <code>./build.sh --yes</code>.
+<p>The verification workflow provisions disposable Fedora and Arch images, then
+runs <code>./build.sh</code> as an unprivileged user. Package provisioning is confined to
+the CI images; the user-facing build script never runs it.
+A separate matrix checks dependency provisioning and build tests on Debian,
+Ubuntu and openSUSE. It does not prove a complete desktop installation.
+Run <code>python3 tests/build-deps.test.py</code> and <code>python3 tests/private-deps.test.py</code>
+to check command planning, checksums and private library links.
 Graphical login and interactive checks still need a host.</p>
 <h2 id="environment-failures">Environment failures<a class="headerlink" href="#environment-failures" title="Permanent link">&para;</a></h2>
 <p>Mutter backend tests need a seat and working local file monitoring.

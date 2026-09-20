@@ -739,6 +739,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#start-from-an-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start from an example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-next" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2268,6 +2279,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#start-from-an-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start from an example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-next" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2319,8 +2341,7 @@ builds use the <a href="../configuration-loading/#existing-configs">legacy API</
 <p>Run this inside Gnoblin:</p>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
 </code></pre></div>
-<p>Edit the file it prints. If it already contains <code>gnoblin.load(...)</code> lines from your
-shell installer, keep them.</p>
+<p>Edit the file it prints. Keep existing include lines from your shell installer.</p>
 <h2 id="2-make-a-change">2. Make a change<a class="headerlink" href="#2-make-a-change" title="Permanent link">&para;</a></h2>
 <p>For an existing config, add this <strong>after</strong> its includes:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
@@ -2358,6 +2379,10 @@ may use a different prefix. An unmatched glob loads nothing.</p>
 <p>Use <code>gnoblin.configure</code> for settings, <code>gnoblin.window_rule</code> for rules,
 and <code>gnoblin.shortcut</code> for commands. <code>gnoblin</code> is available in every config file;
 you do not need to import it. See the <a href="../configuration-recipes/">recipes</a>.</p>
+<h2 id="start-from-an-example">Start from an example<a class="headerlink" href="#start-from-an-example" title="Permanent link">&para;</a></h2>
+<p>Use the <a href="../configuration-recipes/#complete-starter-config">complete starter config</a>
+for a small working file. The same page shows how to override imported shortcuts,
+combine window rules and split settings into files.</p>
 <h2 id="what-next">What next?<a class="headerlink" href="#what-next" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../shortcuts/">Shortcuts</a> and <a href="../autostart/">autostart</a></li>
@@ -2369,7 +2394,7 @@ you do not need to import it. See the <a href="../configuration-recipes/">recipe
 <h2 id="reload-or-log-out">Reload or log out?<a class="headerlink" href="#reload-or-log-out" title="Permanent link">&para;</a></h2>
 <p>Most appearance settings and shortcuts reload on save.</p>
 <p><strong>Log out and back in</strong> after upgrading the compositor, changing protocol
-availability, or changing <code>layer-shell.preserve-active-window</code>.</p>
+availability, or changing <code>layer_shell.preserve_active_window</code>.</p>
 <p>Some settings persist after you remove them from Lua. See
 <a href="../configuration-loading/#reload-and-persistence">reload and persistence</a>.
 If an edit does nothing, start with <a href="../troubleshooting/">troubleshooting</a>.</p>

@@ -2266,36 +2266,12 @@
 <p>Start with <a href="../install-source/">build from source</a>. This page covers rebuilding
 individual components after that first build.</p>
 <h2 id="rebuild">Rebuild<a class="headerlink" href="#rebuild" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Changed component</th>
-<th>Command</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Mutter</td>
-<td><code>just dev-mutter</code></td>
-</tr>
-<tr>
-<td>GNOME Shell</td>
-<td><code>just dev-gnome-shell</code></td>
-</tr>
-<tr>
-<td>Portal backend</td>
-<td><code>just dev-portal</code></td>
-</tr>
-<tr>
-<td>Settings</td>
-<td><code>just dev-settings</code></td>
-</tr>
-<tr>
-<td>Complete local runtime</td>
-<td><code>just build-local</code></td>
-</tr>
-</tbody>
-</table>
+<p>Use the private dependency environment when rebuilding a component:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--run<span class="w"> </span>just<span class="w"> </span>dev-mutter
+python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--fix-runtime
+</code></pre></div>
+<p>Replace <code>dev-mutter</code> with <code>dev-gnome-shell</code>, <code>dev-portal</code> or <code>dev-settings</code> as
+needed. For the complete runtime, use <code>./build.sh --no-deps</code>.</p>
 <p>Native compositor changes need a fresh session. A config reload does not load
 rebuilt libraries.</p>
 <h2 id="choose-a-prefix">Choose a prefix<a class="headerlink" href="#choose-a-prefix" title="Permanent link">&para;</a></h2>
@@ -2305,8 +2281,12 @@ rebuilt libraries.</p>
 <p><code>GNOBLIN_LIBDIR</code> is relative to the prefix. Use the same prefix for subsequent
 build and devkit commands. System prefixes <code>/usr</code> and <code>/usr/local</code> are rejected.</p>
 <h2 id="optional-components">Optional components<a class="headerlink" href="#optional-components" title="Permanent link">&para;</a></h2>
-<p><code>./build.sh</code> builds Settings and the portal backend.
-To run the local Settings panel:</p>
+<p>These are not part of <code>./build.sh</code>. They need additional upstream development
+libraries. Build them only when those prerequisites are available:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--run<span class="w"> </span>just<span class="w"> </span>dev-settings<span class="w"> </span>dev-portal
+python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--fix-runtime
+</code></pre></div>
+<p>To run the local Settings panel:</p>
 <div class="highlight"><pre><span></span><code>./install/bin/gnome-control-center<span class="w"> </span>gnoblin
 </code></pre></div>
 <p>To test the patched portal backend in your test session:</p>
@@ -2315,11 +2295,10 @@ To run the local Settings panel:</p>
 <p>See <a href="../permissions/">permission policy</a> before testing remote access.
 Old custom remembered-grant files no longer provide approval.</p>
 <h2 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h2>
+<p>For a source build:</p>
 <div class="highlight"><pre><span></span><code>just<span class="w"> </span>verify-installed-headless
-nix<span class="w"> </span>flake<span class="w"> </span>check
-nix<span class="w"> </span>build<span class="w"> </span>.#gnoblin
 </code></pre></div>
-<p>Use the checks appropriate to your build. See <a href="../testing/">testing</a> for the
+<p>For a Nix build, use <code>nix flake check</code> and <code>nix build .#gnoblin</code>. See <a href="../testing/">testing</a> for the
 full suite and <a href="../real-hardware-verification/">hardware verification</a> for login checks.</p>
 
 

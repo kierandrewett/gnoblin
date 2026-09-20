@@ -2445,6 +2445,13 @@ requires consent. Automatic capture also needs an allow rule's monitor selection
 gnoblinctl<span class="w"> </span>permissions<span class="w"> </span>list
 gnoblinctl<span class="w"> </span>permissions<span class="w"> </span>check<span class="w"> </span>screen-cast<span class="w"> </span>host-exe:/usr/bin/rustdesk
 </code></pre></div>
+<p>For the RustDesk rule above:</p>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>permissions<span class="w"> </span>check<span class="w"> </span>screen-cast<span class="w"> </span>host-exe:/usr/bin/rustdesk<span class="w"> </span>--json
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"level"</span><span class="p">:</span><span class="w"> </span><span class="s2">"allow"</span><span class="p">,</span><span class="w"> </span><span class="nt">"rule"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rustdesk"</span><span class="p">,</span><span class="w"> </span><span class="nt">"monitors"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"primary"</span><span class="p">],</span><span class="w"> </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"clipboard"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>The response uses a device bitmask: keyboard <code>1</code>, pointer <code>2</code>, touchscreen <code>4</code>.
+Here <code>3</code> means keyboard and pointer. Lua uses the readable device-name list.</p>
 <p><code>check</code> explains the policy for a supplied identity. It does not authenticate
 a running process or check that monitors exist.</p>
 <p>Invalid edits retain the last valid policy. At startup, an invalid policy or
