@@ -1,0 +1,73 @@
+name: APT repository
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Published Gnoblin release tag to add to the archive
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published Gnoblin release tag to add to the archive
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apt-repository
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      GNOBLIN_APT_SIGNING_KEY: 4014C902BAACEF89AD169CE98BB87CE740602F47
+      GNOBLIN_APT_SIGNING_PASSPHRASE: ${{ secrets.GNOBLIN_APT_SIGNING_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch the published release
+        run: |
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'gnoblin-*-amd64.deb' --dir release-assets
+      - name: Import the archive signing key
+        env:
+          GNOBLIN_APT_SIGNING_KEY_MATERIAL: ${{ secrets.GNOBLIN_APT_SIGNING_KEY }}
+        run: |
+          test -n "$GNOBLIN_APT_SIGNING_KEY_MATERIAL"
+          printf '%s' "$GNOBLIN_APT_SIGNING_KEY_MATERIAL" | gpg --batch --import
+          gpg --batch --list-secret-keys "$GNOBLIN_APT_SIGNING_KEY"
+      - name: Update the APT archive
+        run: |
+          umask 077
+          printf '%s' "$GNOBLIN_APT_SIGNING_PASSPHRASE" > "$RUNNER_TEMP/apt-signing-passphrase"
+          git fetch origin gh-pages
+          git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
+          python3 scripts/build-apt-repository.py \
+            --archive "$RUNNER_TEMP/pages/apt" \
+            --downloads release-assets \
+            --keyring packaging/apt/gnoblin-archive-keyring.asc \
+            --signing-key "$GNOBLIN_APT_SIGNING_KEY" \
+            --passphrase-file "$RUNNER_TEMP/apt-signing-passphrase"
+      - name: Publish the archive and request a Pages build
+        run: |
+          cd "$RUNNER_TEMP/pages"
+          git config user.name 'Gnoblin release automation'
+          git config user.email 'release@gnoblin.local'
+          git add apt
+          if ! git diff --cached --quiet; then
+            git commit -m "apt: publish $RELEASE_TAG"
+            git push origin HEAD:gh-pages
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"

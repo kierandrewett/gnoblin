@@ -41,7 +41,7 @@ builds are reused. Settings and the patched portal remain
 From an existing Wayland desktop:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
+GNOBLIN_PREFIX="$PWD/install" just preview
 ```
 
 A nested desktop and terminal open. Launch your layer-shell client from that
@@ -52,7 +52,7 @@ terminal. Close the terminal to end the test. See [Devkit](devkit.md) for help.
 After the build and nested test succeed:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just dev-session-register
+GNOBLIN_PREFIX="$PWD/install" just register-session
 ```
 
 Run the `sudo install` commands it prints. Then

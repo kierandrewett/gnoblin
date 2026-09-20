@@ -38,7 +38,7 @@ or claimed as supported.
 6. Add a focused protocol client under `tests/` and include it in
    `tests/test-protocol-boundaries.sh`.
 
-Run `just gnome-protocol-boundaries-verify` for protocol contracts,
-`just gnome-stock-protocol-isolation-verify` for session scoping, and
-`just gnome-protocol-gating-verify` for the configuration gate. Run
-`just test-mutter` on a real host before release.
+Run `just test-protocols` for protocol contracts,
+`just test-stock-gnome` for session scoping, and
+`just test-protocol-gating` for the configuration gate. Run
+`just test-window-manager` on a real host before release.

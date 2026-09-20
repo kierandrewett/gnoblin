@@ -47,9 +47,9 @@ if "$dry_run"; then
     if ! "$deps_only"; then
         printf 'Build Gnoblin into %s/install using ./install/deps.\n' "$PWD"
         echo '  just reset <previously generated subprojects>'
-        echo '  just init'
+        echo '  just setup'
         echo '  python3 scripts/check-build-deps.py'
-        echo '  just build-local'
+        echo '  just build-source'
     fi
     exit 0
 fi
@@ -87,9 +87,9 @@ for project in mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome;
         just reset "$project"
     fi
 done
-just init
+just setup
 python3 scripts/build-private-deps.py --run python3 scripts/check-build-deps.py
-python3 scripts/build-private-deps.py --run just build-local
+python3 scripts/build-private-deps.py --run just build-source
 python3 scripts/build-private-deps.py --fix-runtime
 printf '\nComplete Gnoblin build installed in %s\n' "$GNOBLIN_PREFIX"
-printf 'Optional Settings and portal forks: just dev-settings dev-portal\n'
+printf 'Optional Settings and portal builds: docs/source-development.md\n'

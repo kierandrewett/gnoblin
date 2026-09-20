@@ -10,7 +10,7 @@ First complete the [source build](install-source.md).
 From the checkout:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
+GNOBLIN_PREFIX="$PWD/install" just preview
 ```
 
 A desktop viewer and terminal open. Programs started from that terminal connect
@@ -19,7 +19,7 @@ to the nested compositor.
 To choose a terminal explicitly:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just gnome-devkit kitty
+GNOBLIN_PREFIX="$PWD/install" just preview kitty
 ```
 
 ## Try your shell
@@ -47,11 +47,11 @@ Close the terminal to stop the devkit.
 ```sh
 GNOME_DEVKIT_HEADLESS=1 \
 GNOME_DEVKIT_EXEC='gnoblinctl feature list --json' \
-GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
+GNOBLIN_PREFIX="$PWD/install" just preview
 ```
 
 This runs without a host Wayland display and exits after the command.
-`just gnome-devkit-verify` checks this environment.
+`just test-preview` checks this environment.
 
 ## Isolation
 

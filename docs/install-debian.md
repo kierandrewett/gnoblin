@@ -1,45 +1,55 @@
 # Debian and Ubuntu
 
-Official packages for Intel and AMD 64-bit PCs.
+Official packages for Intel and AMD 64-bit PCs. Add the Gnoblin APT repository
+once; future releases arrive through normal system updates.
 
-## 1. Download your package
+## 1. Add the archive key
 
-| System           | Download                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Debian 13        | [Download .deb](https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-debian13-amd64.deb)    |
-| Ubuntu 24.04 LTS | [Download .deb](https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-ubuntu24.04-amd64.deb) |
-| Ubuntu 26.04 LTS | [Download .deb](https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-ubuntu26.04-amd64.deb) |
+Open a terminal and run:
 
-## 2. Install
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://kierandrewett.github.io/gnoblin/apt/gnoblin-archive-keyring.asc |
+    sudo gpg --dearmor --yes -o /etc/apt/keyrings/gnoblin-archive-keyring.gpg
+```
 
-Open a terminal in the folder containing the download. Refresh APT's package
-list, then install the file for your system.
+This key verifies that packages and updates came from Gnoblin. If `curl` or
+`gpg` is missing, install the `curl` and `gpg` packages first.
+
+## 2. Add your system's repository
 
 Debian 13:
 
 ```sh
-sudo apt update
-sudo apt install ./gnoblin-debian13-amd64.deb
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/debian 13 main' |
+    sudo tee /etc/apt/sources.list.d/gnoblin.list
 ```
 
 Ubuntu 24.04 LTS:
 
 ```sh
-sudo apt update
-sudo apt install ./gnoblin-ubuntu24.04-amd64.deb
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/ubuntu 24.04 main' |
+    sudo tee /etc/apt/sources.list.d/gnoblin.list
 ```
 
 Ubuntu 26.04 LTS:
 
 ```sh
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/ubuntu 26.04 main' |
+    sudo tee /etc/apt/sources.list.d/gnoblin.list
+```
+
+## 3. Install
+
+```sh
 sudo apt update
-sudo apt install ./gnoblin-ubuntu26.04-amd64.deb
+sudo apt install gnoblin
 ```
 
 APT installs the required system packages. Gnoblin's newer runtime libraries
 stay under `/usr/lib/gnoblin`; your GNOME session remains installed separately.
 
-## 3. Choose a shell and log in
+## 4. Choose a shell and log in
 
 [Install a desktop shell](bring-your-own-shell.md) for your bar, launcher and
 other desktop controls. Then log out, select **Gnoblin** in the login screen's
@@ -49,11 +59,14 @@ Next: [configure Gnoblin](configuration.md).
 
 ## Update
 
-Download the new package for your system and run the same `apt install` command.
-Log out and back in to use the updated compositor.
+Run your normal system update, then log out and back in to use a new compositor:
 
-These downloads do not add an APT repository, so normal system updates do not
-fetch new Gnoblin releases automatically.
+```sh
+sudo apt update
+sudo apt upgrade
+```
+
+Direct `.deb` downloads remain available on the [release page](https://github.com/kierandrewett/gnoblin/releases/latest).
 
 ## Remove
 

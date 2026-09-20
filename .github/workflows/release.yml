@@ -86,3 +86,10 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
               --title "Gnoblin ${RELEASE_TAG#v}"
           fi
+
+  apt-repository:
+    needs: github-release
+    uses: ./.github/workflows/apt-repository.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit

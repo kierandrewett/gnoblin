@@ -25,7 +25,7 @@ Default: `./install`, with libraries in `lib64`.
 ```sh
 python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps
 python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps --run \
-    env GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local
+    env GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-source
 python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps \
     --fix-runtime --runtime-prefix /tmp/gnoblin
 ```
@@ -63,7 +63,7 @@ Old custom remembered-grant files no longer provide approval.
 For a source build:
 
 ```sh
-just verify-installed-headless
+just test-session
 ```
 
 For a Nix build, use `nix flake check` and `nix build .#gnoblin`. See [testing](testing.md) for the

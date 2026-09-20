@@ -28,8 +28,8 @@ just package-manifest
 ```
 
 Fedora's COPR packages use `gnoblin-session` as the entry point.
-Debian and Ubuntu use the `gnoblin` package downloaded from GitHub Releases.
-There is no APT or pacman repository.
+Debian and Ubuntu use the `gnoblin` package from the signed
+[Gnoblin APT archive](install-debian.md). There is no pacman repository.
 
 ## Build Debian and Ubuntu packages
 
@@ -52,7 +52,7 @@ verification.
 Use a clean release checkout and install `rpm-build` and `copr-cli`.
 
 ```sh
-just init
+just setup
 scripts/make-tarball.sh mutter ./dist/sources
 scripts/make-tarball.sh gnome-shell ./dist/sources
 scripts/build-srpm.sh mutter ./dist/sources ./dist/srpms

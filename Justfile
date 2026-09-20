@@ -20,7 +20,95 @@ export GNOBLIN_LIBDIR := libdir
 _default:
     @just --list
 
+# The public interface. These are the commands contributors and source-build
+# users should need. The implementation recipes below retain their precise
+# names for CI and focused debugging, but are intentionally hidden from
+# `just --list`.
+
+# Fetch the pinned sources needed for a local build.
+setup: init
+
+# Build Gnoblin into ./install after private dependencies are available.
+build-source: build-local
+
+# Open Gnoblin in a nested window on the current Wayland desktop.
+preview *TERMINAL:
+    just gnome-devkit {{TERMINAL}}
+
+# Add this source build as a selectable login session.
+register-session: dev-session-register
+
+# Install the published Fedora package from COPR.
+install-fedora:
+    ./scripts/install-system.sh
+
+# Run quick deterministic checks. This does not start a compositor.
+check: verify-fast
+
+# Test the installed compositor in isolated headless sessions.
+test-session: verify-installed-headless
+
+# Build the current source, then run all headless checks.
+test-all: verify
+
+# Run the release gate, including real-host Mutter tests and Fedora packages.
+test-release: verify-release
+
+# Test a nested preview session and its control connection.
+test-preview: gnome-devkit-verify
+
+# Test compositor startup and advertised Wayland protocols.
+test-startup: gnome-verify
+
+# Test that ordinary GNOME stays separate from Gnoblin.
+test-stock-gnome: gnome-stock-protocol-isolation-verify
+
+# Test the public control protocol.
+test-control-api: gnome-dbus-verify
+
+# Test the protocol contracts exposed to shell clients.
+test-protocols: gnome-protocol-boundaries-verify
+
+# Test Lua configuration loading and live reload.
+test-configuration: gnome-config-verify
+
+# Test that Gnoblin leaves native desktop chrome to an external shell.
+test-native-chrome: gnome-native-chrome-verify
+
+# Test the user scripting lifecycle.
+test-scripting: gnome-scripting-verify
+
+# Test notification ownership can move between Gnoblin and another daemon.
+test-notifications: gnome-notifications-verify
+
+# Test protocol visibility follows the configuration.
+test-protocol-gating: gnome-protocol-gating-verify
+
+# Test the Gnoblin developer console.
+test-developer-console: gnome-developer-console-verify
+
+# Test layer-shell resize and animation behaviour.
+test-layer-animations: gnome-layer-animation-verify
+
+# Test effects applied to ordinary windows.
+test-window-effects: gnome-window-effects-verify
+
+# Test desktop recovery controls with a real shell client.
+test-desktop-recovery: gnome-desktop-recovery-verify
+
+# Test dock minimisation against a real Quickshell dock.
+test-dock-minimise: gnome-minimize-target-verify
+
+# Test the real-host Mutter window-management suite.
+test-window-manager: test-mutter
+
+# Build a Debian or Ubuntu package in a disposable container.
+package-deb: deb
+
+# --- implementation recipes --------------------------------------------------
+
 # Initialise / update the pinned source checkouts and mandatory Meson wraps.
+[private]
 init:
     git submodule sync --recursive
     git submodule update --init --recursive
@@ -30,18 +118,22 @@ init:
     @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags --always)"
 
 # Materialise the pinned Meson subprojects required by no-download RPM builds.
+[private]
 prepare-tarball-sources:
     for p in {{rpm_projects}}; do ./scripts/list-tarball-sources.sh "$p" --prepare >/dev/null || exit; done
 
 # Apply the patch series to a subproject (resets it to the pinned tag first).
+[private]
 patch PROJ:
     ./scripts/apply-patches.sh {{PROJ}}
 
 # Apply patches to every subproject.
+[private]
 patch-all:
     for p in {{patch_projects}}; do ./scripts/apply-patches.sh "$p" || exit; done
 
 # Reset a subproject back to its pristine pinned tag.
+[private]
 reset PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -55,10 +147,12 @@ reset PROJ:
     ./scripts/subproject-state.sh record "{{PROJ}}" "$t"
     echo "{{PROJ}} reset to $t"
 
+[private]
 reset-all:
     for p in {{patch_projects}}; do just reset "$p" || exit; done
 
 # Configure + compile a subproject with meson into build/<proj> (dev build).
+[private]
 build PROJ: (patch PROJ)
     if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_tool=false); else options=(); fi; meson setup --reconfigure build/{{PROJ}} subprojects/{{PROJ}} --buildtype={{dev_buildtype}} "${options[@]}" || meson setup build/{{PROJ}} subprojects/{{PROJ}} --buildtype={{dev_buildtype}} "${options[@]}"
     meson compile -C build/{{PROJ}}
@@ -84,6 +178,7 @@ private_typelib_path := prefix + "/" + libdir + "/girepository-1.0:" + env_var_o
 # Build + install the pinned GNOME schemas into the private development prefix.
 # Mutter 51 consumes schema enums while configuring, so this must precede Mutter
 # even when the host already has an older, distro-supported GNOME installation.
+[private]
 dev-schemas: check-install-prefix
     #!/usr/bin/env bash
     set -euo pipefail
@@ -99,6 +194,7 @@ dev-schemas: check-install-prefix
     meson install -C "$build_dir"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
+[private]
 dev-mutter: dev-schemas check-install-prefix (patch "mutter")
     PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup --wipe build/mutter subprojects/mutter {{mutter_dev_opts}} || PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
     PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson install -C build/mutter
@@ -107,6 +203,7 @@ dev-mutter: dev-schemas check-install-prefix (patch "mutter")
 # gnome-shell is the compositor+shell again; its stock UI (panel/overview/dash) is
 # stripped via the `gnoblin` session mode + a minimal native-topbar patch, and its
 # subsystems are toggled live over org.gnoblin.* — bring-your-own chrome draws the UI.
+[private]
 dev-gnome-shell: dev-mutter (patch "gnome-shell")
     # ALWAYS build clean: `patch gnome-shell` resets the submodule (git clean/checkout)
     # and re-copies the overlay every run, which resets source mtimes underneath the
@@ -138,6 +235,7 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
 portal_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
 
 # Build + install the patched xdg-desktop-portal-gnome backend into ./install.
+[private]
 dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
     meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
     meson install -C build/xdg-desktop-portal-gnome
@@ -169,6 +267,7 @@ settings_hidden_panels := "multitasking"
 
 # Build + install the gnoblin-forked gnome-control-center into ./install, then
 # hide the panels that don't apply under gnoblin.
+[private]
 dev-settings: check-install-prefix (patch "gnome-control-center")
     meson setup --reconfigure build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}} || meson setup build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}}
     # blueprint-compiler: g-c-c compiles .blp UI files. If the system package is
@@ -188,14 +287,17 @@ dev-settings: check-install-prefix (patch "gnome-control-center")
     @echo ">> Gnoblin Settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
 
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
+[private]
 build-local: dev-gnome-shell dev-session
     @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just gnome-verify'"
 
 # Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
+[private]
 dev-session:
     ./scripts/install-session.sh {{prefix}}
 
 # Reject prefixes that would overwrite an existing GNOME installation.
+[private]
 check-install-prefix:
     source ./src/tools/gnoblin-env.sh; gnoblin_env_validate_install_prefix "{{prefix}}"
 
@@ -205,6 +307,7 @@ check-install-prefix:
 # "Gnoblin" appear at your login manager's session picker. NOT run by
 # `just build-local`/`dev-session` -- it's the one step that touches state outside
 # ./install. See docs/installation.md.
+[private]
 dev-session-register:
     ./scripts/register-session.sh {{prefix}}
 
@@ -216,6 +319,7 @@ dev-session-register:
 #   just install-session reinstall  # re-apply a rebuild at the same version
 #   just install-session local       # maintainer-only local RPM install
 # PRODUCTION: install the official COPR packages onto THIS host.
+[private]
 install-session MODE="":
     ./scripts/install-system.sh {{ if MODE == "dry" { "--dry-run" } else if MODE == "yes" { "--yes" } else if MODE == "reinstall" { "--reinstall" } else if MODE == "local" { "--local-rpms" } else { "" } }}
 
@@ -226,84 +330,101 @@ install-session MODE="":
 # and your bar appears inside the nested gnoblin. Optional arg picks the terminal.
 #   just gnome-devkit          # foot/kitty/alacritty auto-detected
 #   just gnome-devkit kitty
+[private]
 gnome-devkit *TERMINAL:
     ./scripts/run-gnome-devkit.sh {{TERMINAL}}
 
 # Headless regression test for the devkit: boot a nested gnoblin and confirm the
 # spawned-terminal env (isolated bus + gnoblinctl) can drive org.gnoblin.Shell.
+[private]
 gnome-devkit-verify:
     ./tests/test-gnome-devkit.sh
 
 # Headless: boot patched gnome-shell in the `gnoblin` session mode and verify it
 # starts, advertises wlr-layer-shell, applies Gnoblin-only panel and extension
 # policy, and keeps privileged Shell APIs restricted.
+[private]
 gnome-verify:
     GNOBLIN_EXPECT_EXTENSION_SCOPE=1 GNOBLIN_TEST_EXTENSION_ROOT="{{justfile_directory()}}/tests/shell-extensions" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-shell-security-policy.py" ./scripts/run-gnome-shell.sh
 
 # Headless: boot stock GNOME mode from the patched packages and prove Gnoblin's
 # protocols and control API remain unavailable while the native panel,
 # extension validation, and notification ownership keep upstream behaviour.
+[private]
 gnome-stock-protocol-isolation-verify:
     ./tests/test-stock-protocol-isolation.sh
 
 # Headless: exercise the org.gnoblin.* control protocol end-to-end over D-Bus
 # (Ping / GetVersion / Reload → soft in-process reload).
+[private]
 gnome-dbus-verify:
     ./tests/test-gnome-dbus.sh
 
 # Headless: performance smoke test — idle memory budget + growth, soft-reload
 # leak bound and window-churn leak bound. Real-session follow-up is tracked in
 # TODO.md and the real-hardware verification guide.
+[private]
 perf-smoke:
     ./tests/perf-smoke.sh
 
 # Headless: verify external chrome owns the removed native desktop UI.
+[private]
 gnome-native-chrome-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-native-chrome.py" ./scripts/run-gnome-shell.sh
 
 # Headless: verify the Gnoblin developer console replacement, evaluator and
 # lock/unlock lifecycle against the installed patched Shell.
+[private]
 gnome-developer-console-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-developer-console.py" ./scripts/run-gnome-shell.sh
 
 # Headless: real recovery-menu/panel clicks, terminal launch and layer-client
 # failure. Requires foot and a Quickshell build matching the host Qt.
+[private]
 gnome-desktop-recovery-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_UNSAFE_MODE=1 QS_TEST_BIN="${QS_TEST_BIN:-qs}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-desktop-recovery.py" ./scripts/run-gnome-shell.sh
 
 # Headless: prove Lua configuration watching, named autostart and live window behaviour.
+[private]
 gnome-config-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-live-shell-config.py" ./scripts/run-gnome-shell.sh
 
 # Optional real Quickshell dock test; requires qs and Python GTK 4 bindings.
+[private]
 gnome-minimize-target-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-minimize-target.py" ./scripts/run-gnome-shell.sh
 
 # Headless: prove the GJS user-scripting layer — drop a script, edit it, reload
 # via org.gnoblin.*, confirm the new code ran.
+[private]
 gnome-scripting-verify:
     ./tests/test-scripting.sh
 
 # Headless: prove the `notifications` toggle — gnoblin releases org.freedesktop.
 # Notifications when disabled (so an external daemon can own it) and reclaims it.
+[private]
 gnome-notifications-verify:
     ./tests/test-notifications-toggle.sh
 
 # Headless: compile black-box clients from the owned protocol XML and exercise
 # registry binding plus clean disconnect against the running compositor.
+[private]
 gnome-protocol-boundaries-verify:
     ./tests/test-protocol-boundaries.sh
 
 # Headless: prove Lua protocol gating — disabling wlr-layer-shell in the config
 # stops zwlr_layer_shell_v1 being advertised.
+[private]
 gnome-protocol-gating-verify:
     ./tests/test-protocol-gating.sh
 
 # Produce a patched release tarball in ~/rpmbuild/SOURCES.
+[private]
 tarball PROJ:
     ./scripts/make-tarball.sh {{PROJ}}
 
 # Build a binary RPM (Fedora). Patches are pre-applied in the tarball.
+[private]
 rpm PROJ:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -331,19 +452,23 @@ rpm PROJ:
 
 # Build both packages. Shell requires the private gnoblin-mutter-devel package
 # to be installed first; see docs/installation.md for the initial build.
+[private]
 rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
     rpmbuild -bb packaging/rpm/gnoblin.spec
 
 # Package a private runtime in a prepared Debian/Ubuntu build container.
+[private]
 deb:
     ./scripts/build-deb.sh
+[private]
 arch PROJ:
     @echo "Arch packaging is planned — see packaging/arch/README.md"
 
 # --- tests (see scripts/ and the mutter in-tree suite) -----------------------
 
 # Tier 1: logic test for the shared C config parser (src/config), no display.
+[private]
 test-config:
     ./tests/test-config.sh
 
@@ -351,6 +476,7 @@ test-config:
 # regressions in the patched shell; the script documents the headless test
 # boundary and the real-hardware follow-up.
 # Boot-time budget: headless boot, compositor start -> "GNOME Shell started".
+[private]
 test-boot-time:
     ./tests/test-boot-time.sh
 
@@ -359,6 +485,7 @@ test-boot-time:
 # is the latency the desktop's responsiveness actually rides on. Reports only
 # by default; set LAYER_BUDGET_MS to make it a gate.
 # Layer-shell chrome latency: how fast a bar gets its first pixel up.
+[private]
 test-layer-latency:
     ./tests/test-layer-latency.sh
 
@@ -371,6 +498,7 @@ test-layer-latency:
 # they all bail with "Unable to find default local file monitor type" (exit 251) —
 # environmental, NOT a gnoblin regression (the unit tests, which need no backend,
 # pass; the ref-image tests even log "Image matched" before bailing). Run on real HW.
+[private]
 test-mutter: (patch "mutter")
     meson setup --reconfigure build/mutter-tests subprojects/mutter {{mutter_test_opts}} || meson setup build/mutter-tests subprojects/mutter {{mutter_test_opts}}
     meson compile -C build/mutter-tests
@@ -381,6 +509,7 @@ test-mutter: (patch "mutter")
 
 # Fast deterministic checks: syntax, parser behaviour, secure state publication,
 # and RPM sidecar-source completeness. Does not boot a compositor.
+[private]
 verify-fast:
     ./scripts/gnome-versions.py check
     for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin-session src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
@@ -398,6 +527,7 @@ verify-fast:
 # Every isolated headless integration check against an existing ./install.
 # This intentionally reuses installed binaries; use `verify-headless` to build.
 # Run serially because each test starts GNOME Shell and shared host services.
+[private]
 verify-installed-headless:
     just gnome-verify
     just gnome-stock-protocol-isolation-verify
@@ -412,15 +542,18 @@ verify-installed-headless:
     just gnome-devkit-verify
 
 # Build the current source and patch set before running headless integration.
+[private]
 verify-headless: build-local
     just verify-installed-headless
 
 # Default local gate: deterministic checks plus the complete headless suite.
+[private]
 verify:
     just verify-fast
     just verify-headless
 
 # Release gate: local verification, Mutter's real-host suite, then both RPMs.
+[private]
 verify-release:
     just verify
     just test-mutter
@@ -428,39 +561,48 @@ verify-release:
 
 # Compatibility alias. `test` is deliberately fast; use `verify` for headless
 # integration and `verify-release` for the real-host and packaging gates.
+[private]
 test: verify-fast
     @echo ">> fast checks passed; compositor integration was not run."
     @echo ">> run 'just verify' or 'just verify-release' for broader gates."
 
+[private]
 clean:
     rm -rf build
 
 # Isolated layer-shell animation and alpha-masked blur regression tests.
+[private]
 gnome-layer-animation-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-resize.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-animation.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-lifecycle.py" ./scripts/run-gnome-shell.sh
 
+[private]
 gnome-window-effects-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-window-effects.py" ./scripts/run-gnome-shell.sh
 
 # Build a source RPM from an already prepared release source directory.
+[private]
 srpm PROJECT SOURCES OUTPUT:
     ./scripts/build-srpm.sh "{{PROJECT}}" "{{SOURCES}}" "{{OUTPUT}}"
 
 # Build the complete GitHub release asset set from a clean checkout.
+[private]
 release-assets OUTPUT="dist/release" TAG="":
     ./scripts/build-release-assets.sh "{{OUTPUT}}" "{{TAG}}"
 
 # Publish prepared source RPMs to an existing COPR project in dependency order.
+[private]
 copr PROJECT SCHEMAS_SRPM MUTTER_SRPM SHELL_SRPM META_SRPM:
     ./scripts/publish-copr.sh "{{PROJECT}}" "{{SCHEMAS_SRPM}}" "{{MUTTER_SRPM}}" "{{SHELL_SRPM}}" "{{META_SRPM}}"
 
 # Read-only checks across repository-owned source files.
+[private]
 check-gnome-version:
     ./scripts/gnome-versions.py check --upstream
 
 # Refresh/check the native-package adapter input exported by the Nix flake.
+[private]
 package-manifest COMMAND="check":
     ./scripts/sync-package-manifest.py {{COMMAND}}
 

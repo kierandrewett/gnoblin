@@ -90,5 +90,5 @@ After Sass changes:
 ```sh
 ninja -C build/gnome-shell data/gnome-shell-theme.gresource
 meson install -C build/gnome-shell --no-rebuild
-just gnome-developer-console-verify
+just test-developer-console
 ```

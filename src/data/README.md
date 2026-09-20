@@ -28,5 +28,5 @@ treating them as passive examples.
 glib-compile-schemas --strict --dry-run src/data
 ```
 
-Schema changes: after `just dev`, `just gnome-dbus-verify` exercises the
+Schema changes: after a source build, `just test-control-api` exercises the
 `org.gnoblin.Shell` protocol that reads the `disabled-features` key.

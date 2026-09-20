@@ -9,8 +9,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages-archive
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,7 +44,20 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r docs-requirements.txt
-      - run: mkdocs gh-deploy --strict
+      - name: Build documentation without replacing the APT archive
+        run: |
+          mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
+          git fetch origin gh-pages
+          git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
+          rsync -a --delete --exclude=apt "$RUNNER_TEMP/site/" "$RUNNER_TEMP/pages/"
+          cd "$RUNNER_TEMP/pages"
+          git config user.name 'Gnoblin documentation automation'
+          git config user.email 'docs@gnoblin.local'
+          git add --all
+          if ! git diff --cached --quiet; then
+            git commit -m 'docs: publish site'
+            git push origin HEAD:gh-pages
+          fi
       # A push using GITHUB_TOKEN does not itself trigger a Pages build.
       - name: Request Pages build
         env:

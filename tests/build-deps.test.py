@@ -93,7 +93,7 @@ class BuildDependencies(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("check-build-deps.py", result.stdout)
-        self.assertIn("just build-local", result.stdout)
+        self.assertIn("just build-source", result.stdout)
         for args in (("--no-deps", "--deps-only"), ("--unknown",)):
             result = subprocess.run([str(ROOT / "build.sh"), *args], capture_output=True)
             self.assertEqual(result.returncode, 2)
@@ -107,7 +107,7 @@ class BuildDependencies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         for command in ("sudo", "dnf", "pacman", "apt-get", "zypper"):
             self.assertNotIn(command, result.stdout)
-        self.assertIn("just build-local", result.stdout)
+        self.assertIn("just build-source", result.stdout)
 
     def test_constraints_come_from_meson_not_a_second_version_list(self):
         source = """

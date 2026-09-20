@@ -76,5 +76,7 @@ a release ready for normal desktop use.
 
 `.github/workflows/deb.yml` builds and tests all three targets. The release
 workflow waits for every target before publishing `.deb` files, checksums and
-dependency source archives to GitHub Releases. No APT repository is configured;
-users install downloaded packages with `apt install ./FILE.deb`.
+dependency source archives to GitHub Releases. It then publishes the `.deb`
+files to the signed Gnoblin APT archive on GitHub Pages. The archive retains
+each distribution's packages separately and uses the public key in
+`packaging/apt/gnoblin-archive-keyring.asc`.

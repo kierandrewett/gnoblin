@@ -12,18 +12,18 @@ First install the dependencies listed in the
 Initialise the pinned upstream trees and build a private prefix:
 
 ```sh
-just init
-just build-local
+just setup
+just build-source
 ```
 
 Run the fast checks before sending a change:
 
 ```sh
-just test
-just verify-fast
+just check
+just test-session
 ```
 
-Use `just verify` for the full headless suite. Use `just verify-release` only
+Use `just test-all` for a fresh build plus the full headless suite. Use `just test-release` only
 when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
 
