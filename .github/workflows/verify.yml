@@ -44,7 +44,14 @@ jobs:
         run: |
           bash -n scripts/install-system.sh
           python3 tests/package-isolation.test.py
-          git diff --exit-code -- . ':!subprojects'
+          mapfile -t changed_files < <(git diff --name-only)
+          unexpected_files=()
+          for path in "${changed_files[@]}"; do
+            [[ "$path" == subprojects/* ]] || unexpected_files+=("$path")
+          done
+          if ((${#unexpected_files[@]})); then
+            git diff --exit-code -- "${unexpected_files[@]}"
+          fi
   copr-install:
     runs-on: ubuntu-latest
     container: fedora:44
