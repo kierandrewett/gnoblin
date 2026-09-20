@@ -34,6 +34,7 @@ SERVICES = (
     "dconf-gsettings-backend",
     "iso-codes",
     "adwaita-icon-theme",
+    "bubblewrap",
 )
 
 
