@@ -2340,6 +2340,7 @@
 
 
 <h1 id="portal-permissions">Portal permissions<a class="headerlink" href="#portal-permissions" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Control whether apps may request screen sharing, remote input and other portal
 access. The default is the normal consent flow.</p>
 <p>This requires Gnoblin's patched portal backend. Rules apply to new requests;
@@ -2377,11 +2378,7 @@ Automatic approval needs an explicit app rule.</p>
 device and monitor lists do not merge across rules.</p>
 <h2 id="example-allow-a-remote-desktop-app">Example: allow a remote-desktop app<a class="headerlink" href="#example-allow-a-remote-desktop-app" title="Permanent link">&para;</a></h2>
 <p>After your component includes, append a rule:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">permissions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">permissions</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">permissions</span><span class="p">.</span><span class="py">rules</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">permissions</span><span class="p">.</span><span class="py">rules</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">permissions</span><span class="p">.</span><span class="py">rules</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">permission_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"rustdesk"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[[^host-exe:/usr/bin/rustdesk$]]</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">capabilities</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"screen-cast"</span><span class="p">,</span><span class="w"> </span><span class="s2">"remote-desktop"</span><span class="p">},</span>
@@ -2389,7 +2386,7 @@ device and monitor lists do not merge across rules.</p>
 <span class="w">    </span><span class="nv">monitors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"primary"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">devices</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"keyboard"</span><span class="p">,</span><span class="w"> </span><span class="s2">"pointer"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">clipboard</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Use the identity for your installation. This grants portal access; it does not
 configure RustDesk's separate <code>uinput</code> path.</p>

@@ -667,10 +667,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#bingux" class="md-nav__link">
+  <a href="#waybar-fuzzel-and-mako" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bingux
+        Waybar, Fuzzel and Mako
       
     </span>
   </a>
@@ -678,10 +678,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#waybar-or-your-own-setup" class="md-nav__link">
+  <a href="#bingux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Waybar or your own setup
+        Bingux
       
     </span>
   </a>
@@ -2202,10 +2202,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#bingux" class="md-nav__link">
+  <a href="#waybar-fuzzel-and-mako" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bingux
+        Waybar, Fuzzel and Mako
       
     </span>
   </a>
@@ -2213,10 +2213,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#waybar-or-your-own-setup" class="md-nav__link">
+  <a href="#bingux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Waybar or your own setup
+        Bingux
       
     </span>
   </a>
@@ -2266,10 +2266,51 @@
 
 
 <h1 id="choose-a-shell">Choose a shell<a class="headerlink" href="#choose-a-shell" title="Permanent link">&para;</a></h1>
-<p>Gnoblin needs a separate shell for its bar, dock and launcher.
-Install one before logging into Gnoblin.</p>
+<p>Choose a complete shell or combine a bar, launcher and notification daemon.
+Bingux is optional.</p>
+<table>
+<thead>
+<tr>
+<th>Setup</th>
+<th>What you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#waybar-fuzzel-and-mako">Waybar + Fuzzel + Mako</a></td>
+<td>Separate tools you configure independently</td>
+</tr>
+<tr>
+<td><a href="#bingux">Bingux</a></td>
+<td>An integrated bar, dock, launcher and notifications</td>
+</tr>
+<tr>
+<td>Your own layer-shell clients</td>
+<td>A custom desktop using Gnoblin's Wayland protocols</td>
+</tr>
+</tbody>
+</table>
+<h2 id="waybar-fuzzel-and-mako">Waybar, Fuzzel and Mako<a class="headerlink" href="#waybar-fuzzel-and-mako" title="Permanent link">&para;</a></h2>
+<p>Install <a href="https://github.com/Alexays/Waybar">Waybar</a>,
+<a href="https://codeberg.org/dnkl/fuzzel">Fuzzel</a> and
+<a href="https://github.com/emersion/mako">Mako</a> with your distribution's package manager.</p>
+<p>With the <a href="../configuration-loading/#existing-configs">new Lua API</a>, add:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"bar"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"waybar"</span><span class="p">}}</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"notifications"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"mako"</span><span class="p">}}</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"launcher"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;d"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"fuzzel"</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Configure Waybar's clock, tray and system modules as usual. Its Sway and
+Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.
+Run one notification daemon; leave Gnoblin's native notifications disabled when
+using Mako.</p>
+<p>Configure each tool in its own files. Gnoblin's <a href="../autostart/">autostart</a> and
+<a href="../shortcuts/">shortcuts</a> only control how you launch it.</p>
 <h2 id="bingux">Bingux<a class="headerlink" href="#bingux" title="Permanent link">&para;</a></h2>
-<p>Bingux is the companion shell. It provides the desktop controls, notifications,
+<p>Bingux provides the desktop controls, notifications,
 search and window switcher.</p>
 <p>Install the dependencies in the
 <a href="https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md">Bingux installation guide</a>,
@@ -2285,13 +2326,6 @@ configuration include. Keep those includes when editing <code>init.lua</code>.</
 systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>bingux.target
 </code></pre></div>
 <p>Do not also add Bingux to Gnoblin's autostart list.</p>
-<h2 id="waybar-or-your-own-setup">Waybar or your own setup<a class="headerlink" href="#waybar-or-your-own-setup" title="Permanent link">&para;</a></h2>
-<p>Gnoblin supports layer-shell clients such as Waybar. Once Waybar is installed,
-try it from a Gnoblin terminal:</p>
-<div class="highlight"><pre><span></span><code>waybar
-</code></pre></div>
-<p>To start it at login, add an <a href="../autostart/">autostart entry</a>. A bar alone is not
-a complete shell: choose a launcher and notification daemon too.</p>
 <h2 id="what-gnoblin-still-provides">What Gnoblin still provides<a class="headerlink" href="#what-gnoblin-still-provides" title="Permanent link">&para;</a></h2>
 <p>Gnoblin keeps window management, locking and desktop services. GNOME extensions,
 the Overview and native screenshot/OSD popups are not available in this session.</p>

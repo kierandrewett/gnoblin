@@ -2312,8 +2312,7 @@
 
 
 <h1 id="fedora">Fedora<a class="headerlink" href="#fedora" title="Permanent link">&para;</a></h1>
-<p>These instructions use the published <strong>Fedora 44 x86_64</strong> packages.
-You do not need to clone or build Gnoblin.</p>
+<p>Install Gnoblin from COPR. You do not need to clone or build it.</p>
 <h2 id="1-install-gnoblin">1. Install Gnoblin<a class="headerlink" href="#1-install-gnoblin" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> </span>dnf-plugins-core
 sudo<span class="w"> </span>dnf<span class="w"> </span>copr<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>kierandrewett/gnoblin
@@ -2321,16 +2320,12 @@ sudo<span class="w"> </span>dnf<span class="w"> </span>install<span class="w"> <
 </code></pre></div>
 <p><code>gnoblin-session</code> pulls in Gnoblin's Mutter and Shell packages.</p>
 <h2 id="2-install-a-shell">2. Install a shell<a class="headerlink" href="#2-install-a-shell" title="Permanent link">&para;</a></h2>
-<p><a href="../bring-your-own-shell/">Choose a desktop shell</a>. Bingux provides a bar, dock,
-launcher and notification centre. Gnoblin alone does not provide these.</p>
+<p><a href="../bring-your-own-shell/">Choose a desktop shell</a> for your bar and launcher.
+Use a complete shell or combine individual tools.</p>
 <h2 id="3-log-in">3. Log in<a class="headerlink" href="#3-log-in" title="Permanent link">&para;</a></h2>
 <p>Log out, select <strong>Gnoblin</strong> from the login screen's session selector, and log in.
 In GDM, select your user first, then use the gear menu.</p>
-<p>Open a terminal and check:</p>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>ping
-gnoblinctl<span class="w"> </span>version
-</code></pre></div>
-<p>Expect <code>pong</code> from the first command. Continue with <a href="../configuration/">configuration</a>.</p>
+<p>Continue with <a href="../configuration/">configuration</a>.</p>
 <h2 id="update">Update<a class="headerlink" href="#update" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>dnf<span class="w"> </span>upgrade<span class="w"> </span>--refresh<span class="w"> </span>gnoblin-session<span class="w"> </span>gnoblin-shell<span class="w"> </span>gnoblin-mutter
 </code></pre></div>
@@ -2339,8 +2334,7 @@ gnoblinctl<span class="w"> </span>version
 <p>Log into GNOME or another session first, then run:</p>
 <div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>dnf<span class="w"> </span>remove<span class="w"> </span>gnoblin-session<span class="w"> </span>gnoblin-shell<span class="w"> </span>gnoblin-mutter
 </code></pre></div>
-<p>Your shell and personal configuration are separate. Remove Bingux using its
-own uninstall command if you no longer want it.</p>
+<p>Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.</p>
 <h2 id="if-installation-fails">If installation fails<a class="headerlink" href="#if-installation-fails" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Package not found:</strong> check your Fedora release and architecture against

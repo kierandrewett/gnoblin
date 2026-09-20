@@ -2310,36 +2310,35 @@
 
 
 <h1 id="configure-gnoblin">Configure Gnoblin<a class="headerlink" href="#configure-gnoblin" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Edit <code>~/.config/gnoblin/init.lua</code> to change shortcuts, window rules and effects.
 Configure the bar, dock and launcher in your desktop shell.</p>
+<p><strong>Unreleased API:</strong> the declaration functions below are new. Older installed
+builds use the <a href="../configuration-loading/#existing-configs">legacy API</a>.</p>
 <h2 id="1-find-your-config">1. Find your config<a class="headerlink" href="#1-find-your-config" title="Permanent link">&para;</a></h2>
 <p>Run this inside Gnoblin:</p>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
 </code></pre></div>
-<p>Edit the file it prints. If it already contains <code>g.load(...)</code> lines from your
+<p>Edit the file it prints. If it already contains <code>gnoblin.load(...)</code> lines from your
 shell installer, keep them.</p>
 <h2 id="2-make-a-change">2. Make a change<a class="headerlink" href="#2-make-a-change" title="Permanent link">&para;</a></h2>
 <p>For an existing config, add this <strong>after</strong> its includes:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>This makes minimise and restore animations take 150 milliseconds.</p>
 <p>Starting from an empty file? Load your installed component settings first:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
 
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
-
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Use the system include path printed by your shell installer; source installs
 may use a different prefix. An unmatched glob loads nothing.</p>
@@ -2353,12 +2352,12 @@ may use a different prefix. An unmatched glob loads nothing.</p>
 <li>Strings use quotes: <code>"fade"</code>.</li>
 <li>Booleans are <code>true</code> or <code>false</code>, without quotes.</li>
 <li>Lists use braces: <code>{"ptyxis", "--new-window"}</code>.</li>
-<li>Keys containing hyphens use brackets: <code>["minimize-duration"]</code>.</li>
+<li>Setting names use underscores: <code>minimize_duration</code>.</li>
 <li>Comments begin with <code>--</code>.</li>
 </ul>
-<p><code>g.set</code> merges settings. <strong>Lists replace earlier lists.</strong> To extend imported
-shortcuts or rules, append to <code>g.config</code>; the <a href="../configuration-recipes/">recipes</a>
-show how.</p>
+<p>Use <code>gnoblin.configure</code> for settings, <code>gnoblin.window_rule</code> for rules,
+and <code>gnoblin.shortcut</code> for commands. <code>gnoblin</code> is available in every config file;
+you do not need to import it. See the <a href="../configuration-recipes/">recipes</a>.</p>
 <h2 id="what-next">What next?<a class="headerlink" href="#what-next" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../shortcuts/">Shortcuts</a> and <a href="../autostart/">autostart</a></li>

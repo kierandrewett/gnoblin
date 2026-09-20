@@ -2318,17 +2318,15 @@
 
 
 <h1 id="window-effects">Window effects<a class="headerlink" href="#window-effects" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Use <a href="../window-rules/">window rules</a> to apply effects. Edits reload on save.
 These settings change application windows; your shell controls its own panel styling.</p>
 <h2 id="add-an-effect">Add an effect<a class="headerlink" href="#add-an-effect" title="Permanent link">&para;</a></h2>
 <p>Append after your component includes:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.6</span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>The examples below show fields to put inside a rule. Later matching rules
 override the fields they specify.</p>
@@ -2353,7 +2351,7 @@ override the fields they specify.</p>
 <td>Opacity of the whole window, including text</td>
 </tr>
 <tr>
-<td><code>blur-ignore-shadows</code></td>
+<td><code>blur_ignore_shadows</code></td>
 <td>Boolean; default <code>false</code></td>
 <td>Exclude translucent black pixels from the blur mask</td>
 </tr>
@@ -2362,7 +2360,7 @@ override the fields they specify.</p>
 <p>The client needs a translucent background for blur to show through.
 Keep rule opacity at 1 for readable text; adjust the client's background alpha
 to change the glass tint.</p>
-<p><code>blur-ignore-shadows</code> also excludes black translucent glass. Prefer
+<p><code>blur_ignore_shadows</code> also excludes black translucent glass. Prefer
 <a href="../background-effects/">explicit blur regions</a> when writing a shell.</p>
 <h2 id="rounded-window-corners">Rounded window corners<a class="headerlink" href="#rounded-window-corners" title="Permanent link">&para;</a></h2>
 <p>The <code>corners</code> table controls shape. Radius 0 disables rounding.</p>
@@ -2396,27 +2394,27 @@ to change the glass tint.</p>
 <td>Top/right/bottom/left inset, −128–128 logical pixels</td>
 </tr>
 <tr>
-<td><code>keep-maximized</code></td>
+<td><code>keep_maximized</code></td>
 <td><code>true</code></td>
 <td>Keep rounding when maximised</td>
 </tr>
 <tr>
-<td><code>keep-fullscreen</code>, <code>keep-tiled</code></td>
+<td><code>keep_fullscreen</code>, <code>keep_tiled</code></td>
 <td><code>false</code></td>
 <td>Keep rounding in those states</td>
 </tr>
 <tr>
-<td><code>skip-libadwaita</code></td>
+<td><code>skip_libadwaita</code></td>
 <td><code>true</code></td>
 <td>Preserve libadwaita corners in auto mode</td>
 </tr>
 <tr>
-<td><code>skip-libhandy</code></td>
+<td><code>skip_libhandy</code></td>
 <td><code>false</code></td>
 <td>Skip libhandy windows in auto mode</td>
 </tr>
 <tr>
-<td><code>remove-csd</code></td>
+<td><code>remove_csd</code></td>
 <td><code>false</code></td>
 <td>Reconstruct supported client corner gaps</td>
 </tr>
@@ -2426,7 +2424,7 @@ to change the glass tint.</p>
 <td>A shadow table or 1–4 shadow layers</td>
 </tr>
 <tr>
-<td><code>keep-shadow</code></td>
+<td><code>keep_shadow</code></td>
 <td><code>false</code></td>
 <td>Keep replacement shadows in maximised/fullscreen/tiled states</td>
 </tr>
@@ -2434,7 +2432,7 @@ to change the glass tint.</p>
 </table>
 <p><strong>Auto</strong> preserves existing client corners. <strong>Force</strong> clips to Gnoblin's shape
 and removes the original shadow outside it. <strong>Off</strong> disables the mask.</p>
-<p><code>remove-csd</code> treats client <strong>corners</strong>, not titlebars. It works conservatively
+<p><code>remove_csd</code> treats client <strong>corners</strong>, not titlebars. It works conservatively
 with stable client edges; uncertain backgrounds keep their native shape.</p>
 <p>Legacy <code>corners.border-width</code> accepts −40–40 pixels and
 <code>corners.border-color</code> defaults to <code>"#808080ff"</code>.
@@ -2442,9 +2440,9 @@ Use the separate <code>borders</code> table for new configurations.</p>
 <h2 id="inner-and-outer-window-borders">Inner and outer window borders<a class="headerlink" href="#inner-and-outer-window-borders" title="Permanent link">&para;</a></h2>
 <p>Put a <code>borders</code> table in the same rule:</p>
 <div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"inner-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"inner-color"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"outer-width"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">inner_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">inner_color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">outer_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>This is a field value, not a complete rule.</p>
@@ -2453,7 +2451,7 @@ Colours use <code>#RRGGBB</code> or <code>#RRGGBBAA</code>, with alpha last.</p>
 <p>Borders inherit <code>radius</code>, <code>smoothing</code> and <code>padding</code> from corners unless
 you override them. Their ranges are the same as the corner fields above.</p>
 <p>Borders do not clip content or reserve space. The outer stroke extends beyond
-the frame. Set <code>keep-maximized</code>, <code>keep-fullscreen</code> or <code>keep-tiled</code> to
+the frame. Set <code>keep_maximized</code>, <code>keep_fullscreen</code> or <code>keep_tiled</code> to
 <code>false</code> to hide a border in that state.</p>
 <h2 id="shadows">Shadows<a class="headerlink" href="#shadows" title="Permanent link">&para;</a></h2>
 <p>A <code>corners.shadow</code> table accepts <code>x</code>, <code>y</code>, <code>blur</code>, <code>spread</code>,
@@ -2472,11 +2470,11 @@ shadow merges field by field.</p>
 <span class="w">    </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Assign it to <code>corners["shadow-animation"]</code>.
+<p>Assign it to <code>corners.shadow_animation</code>.
 Duration accepts 0–2000 ms and defaults to 0. It uses the same
 <a href="../animations/#easing">easing names</a> as layer animations.</p>
 <h2 id="custom-fragment-shaders">Custom fragment shaders<a class="headerlink" href="#custom-fragment-shaders" title="Permanent link">&para;</a></h2>
-<p>A rule's <code>shader</code> names a GLSL file; <code>shader-uniforms</code> supplies numeric
+<p>A rule's <code>shader</code> names a GLSL file; <code>shader_uniforms</code> supplies numeric
 parameters. Use <code>shader = ""</code> to clear a shader.</p>
 <p>See <a href="../shaders/">custom shaders</a> for a complete example and reload behavior.
 For compositor implementation and test coverage, see <a href="../effects-rendering/">effect rendering</a>.</p>

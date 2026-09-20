@@ -2274,17 +2274,17 @@
 
 
 <h1 id="session-settings">Session settings<a class="headerlink" href="#session-settings" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>These options control native UI, layer focus and protocol availability.
 They belong in <code>init.lua</code>.</p>
 <h2 id="native-features">Native features<a class="headerlink" href="#native-features" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">notifications</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"input-source-switcher"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"window-switcher"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">input_source_switcher</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">window_switcher</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2301,12 +2301,12 @@ They belong in <code>init.lua</code>.</p>
 <td>GNOME's notification service</td>
 </tr>
 <tr>
-<td><code>input-source-switcher</code></td>
+<td><code>input_source_switcher</code></td>
 <td>Initially off</td>
 <td>Native keyboard-layout popup</td>
 </tr>
 <tr>
-<td><code>window-switcher</code></td>
+<td><code>window_switcher</code></td>
 <td>Off</td>
 <td>GNOME's app/window/group switchers</td>
 </tr>
@@ -2318,12 +2318,11 @@ to its default, but disabling it does not release existing shortcut bindings.</p
 <p>Disabling the layout popup does not disable keyboard layouts.
 GNOME's OSD and screenshot UI cannot be re-enabled; legacy keys do not restore them.</p>
 <h2 id="layer-shell-keyboard-focus">Layer-shell keyboard focus<a class="headerlink" href="#layer-shell-keyboard-focus" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"layer-shell"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"preserve-active-window"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">layer_shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">preserve_active_window</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Default: <code>true</code>. <strong>Requires logout and login.</strong></p>
 <p>An exclusive-keyboard layer, such as a launcher, receives typing while the
@@ -2331,24 +2330,22 @@ application underneath stays active. Keys are not sent to both.</p>
 <p>Set <code>false</code> to let exclusive layers deactivate the application beneath them.
 On-demand focus, passive bars and normal application menus are unchanged.</p>
 <h2 id="window-drag-boundary">Window drag boundary<a class="headerlink" href="#window-drag-boundary" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"window-management"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"constrain-drag-to-work-area"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">window_management</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">constrain_drag_to_work_area</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Default: <code>true</code>. Applies at the next drag after reload.</p>
 <p>This keeps the dragged frame below the monitor's reserved top area, including
 space reserved by a layer-shell panel. Set <code>false</code> to allow overlap.</p>
 <h2 id="protocol-settings">Protocol settings<a class="headerlink" href="#protocol-settings" title="Permanent link">&para;</a></h2>
 <p>Implemented gates are enabled by default in Gnoblin. To disable one:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"wlr-screencopy"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">wlr_screencopy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p><strong>Requires logout and login.</strong> Reload cannot remove advertised Wayland globals.</p>
 <table>

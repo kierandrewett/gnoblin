@@ -2333,12 +2333,11 @@ including <code>blur = 0</code>.</p>
 Client item animations use separate <a href="../blur-fades/">blur-fade metadata</a>.</p>
 <h2 id="disable-the-protocol">Disable the protocol<a class="headerlink" href="#disable-the-protocol" title="Permanent link">&para;</a></h2>
 <p>In <code>init.lua</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"ext-background-effect-v1"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">ext_background_effect_v1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Log out and back in. The protocol is only advertised in Gnoblin mode.</p>
 <h2 id="rendering">Rendering<a class="headerlink" href="#rendering" title="Permanent link">&para;</a></h2>

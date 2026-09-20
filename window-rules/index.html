@@ -2296,17 +2296,15 @@
 
 
 <h1 id="window-rules">Window rules<a class="headerlink" href="#window-rules" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Rules select windows and change their appearance. Put broad rules first and
 exceptions last.</p>
 <h2 id="add-a-rule">Add a rule<a class="headerlink" href="#add-a-rule" title="Permanent link">&para;</a></h2>
 <p>This dims unfocused application windows without replacing imported rules:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Save and run <code>gnoblinctl config reload</code>. Switch focus to check the result.</p>
 <h2 id="match-a-window">Match a window<a class="headerlink" href="#match-a-window" title="Permanent link">&para;</a></h2>
@@ -2332,7 +2330,7 @@ exceptions last.</p>
 <td>Focus state</td>
 </tr>
 <tr>
-<td><code>["app-id"]</code></td>
+<td><code>app_id</code></td>
 <td>GTK application ID, falling back to WM class</td>
 </tr>
 <tr>
@@ -2351,7 +2349,7 @@ at least a type.</p>
 <p>Text matchers use <strong>JavaScript regular expressions</strong>, not Lua patterns or globs.
 Use <code>^</code> and <code>$</code> for an exact match.</p>
 <div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"app-id"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[[^org\.example\.Editor$]]</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">app_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[[^org\.example\.Editor$]]</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>Lua's <code>[[...]]</code> strings preserve regex backslashes.

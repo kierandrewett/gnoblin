@@ -986,6 +986,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#existing-configs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing configs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reload-and-persistence" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2309,6 +2320,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#existing-configs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing configs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reload-and-persistence" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2340,6 +2362,7 @@
 
 
 <h1 id="files-and-load-order">Files and load order<a class="headerlink" href="#files-and-load-order" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Start with one <code>init.lua</code>. Split it into modules when that makes it easier
 to read.</p>
 <h2 id="which-file-is-loaded">Which file is loaded?<a class="headerlink" href="#which-file-is-loaded" title="Permanent link">&para;</a></h2>
@@ -2353,20 +2376,16 @@ Use a <code>.lua</code> suffix for Lua; other suffixes select TOML.</p>
 <p>A missing root starts with defaults. Setting <code>GNOBLIN_CONFIG</code> in a terminal
 does not change the already-running compositor's environment.</p>
 <h2 id="include-a-file">Include a file<a class="headerlink" href="#include-a-file" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"appearance.lua"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"appearance.lua"</span><span class="p">)</span>
 </code></pre></div>
 <p>The path is relative to the calling file. Absolute and <code>~/</code> paths also work.
-The included file can call <code>g.set</code> or return a settings table:</p>
-<div class="highlight"><pre><span></span><code><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
-<span class="w">    </span><span class="p">},</span>
+The included file uses the same API:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
 <h2 id="include-a-directory">Include a directory<a class="headerlink" href="#include-a-directory" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
 </code></pre></div>
 <p>Files load in bytewise path order. Names such as <code>10-appearance.lua</code> and
 <code>90-local.lua</code> make that order obvious.</p>
@@ -2379,67 +2398,52 @@ The included file can call <code>g.set</code> or return a settings table:</p>
 <p>Files and searched directories are watched, including newly added matches.</p>
 <h2 id="override-or-append">Override or append?<a class="headerlink" href="#override-or-append" title="Permanent link">&para;</a></h2>
 <p>Load component files first, then your changes.</p>
-<p><code>g.set</code> merges maps recursively. Later scalar values win.
+<p><code>gnoblin.configure</code> merges maps recursively. Later scalar values win.
 A nonempty list replaces the earlier list, including <code>window-rules</code>,
 <code>shortcuts</code>, <code>autostart</code> and permission <code>rules</code>.</p>
 <p>To preserve imported rules, append:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
-<p>Edit an existing named shortcut to change it. Do not append a duplicate name.
-To clear a list, assign it directly: <code>g.config.shortcuts = {}</code>.
-Use <code>g.array({})</code> when merging an explicitly empty array.</p>
+<p><code>gnoblin.shortcut</code> and <code>gnoblin.autostart</code> merge entries with the same name.
+Use <code>gnoblin.remove_shortcut(name)</code> or <code>gnoblin.remove_autostart(name)</code> to
+remove an imported entry. Removing an autostart entry does not stop a process.</p>
+<p>To replace a whole list, use <code>gnoblin.configure {shortcuts = {...}}</code>.
+Use <code>shortcuts = {}</code> to clear it. Prefer declarations when extending imports.</p>
 <h2 id="use-a-lua-module">Use a Lua module<a class="headerlink" href="#use-a-lua-module" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">(</span><span class="nb">require</span><span class="p">(</span><span class="s2">"appearance"</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">configure</span><span class="p">(</span><span class="nb">require</span><span class="p">(</span><span class="s2">"appearance"</span><span class="p">))</span>
 </code></pre></div>
 <p><code>require("appearance")</code> searches <code>appearance.lua</code>, then
 <code>lua/appearance.lua</code>, relative to its caller. It runs once per reload.
-A returned table is only applied when passed to <code>g.set</code>.</p>
+A returned table is only applied when passed to <code>gnoblin.configure</code>.</p>
 <p>Dots in module names are not converted to directories. For explicit subdirectories,
-use <code>g.load("parts/motion.lua")</code>. Avoid loading the same file through both a glob
+use <code>gnoblin.load("parts/motion.lua")</code>. Avoid loading the same file through both a glob
 and <code>require</code>.</p>
 <h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Call</th>
-<th>Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>g.set(table)</code></td>
-<td>Merge settings</td>
-</tr>
-<tr>
-<td><code>g.config</code></td>
-<td>Read or edit the current settings table</td>
-</tr>
-<tr>
-<td><code>g.array(table)</code></td>
-<td>Mark a table as an array, even when empty</td>
-</tr>
-<tr>
-<td><code>g.load(path)</code></td>
-<td>Evaluate a file or glob now</td>
-</tr>
-<tr>
-<td><code>require(name)</code></td>
-<td>Evaluate and cache a local module</td>
-</tr>
-</tbody>
-</table>
+<p><code>gnoblin</code> is available globally in every loaded file and module.
+See the <a href="../configuration-reference/#lua-api">function reference</a>.</p>
+<p>Setting names use <code>snake_case</code>. The API converts them to Gnoblin's internal
+hyphenated names. String values, shader uniform names and renderer names stay
+literal. Do not supply both spellings of the same key in one table.</p>
 <p>Reload starts a fresh Lua state. Standard table, string, math and UTF-8 helpers
 are available; file I/O, process execution and native modules are not.
 Use shortcuts or autostart to launch programs.</p>
 <p>Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.</p>
+<h2 id="existing-configs">Existing configs<a class="headerlink" href="#existing-configs" title="Permanent link">&para;</a></h2>
+<p>The declaration API is new and unreleased. Existing <code>require("gnoblin")</code>,
+<code>g.set</code>, <code>g.config</code>, returned tables and TOML configs still work.
+They retain their original hyphenated keys and merge behaviour.</p>
+<p>On an older build, this is the equivalent of <code>gnoblin.configure</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
+<span class="nv">g</span><span class="p">.</span><span class="py">set</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The new functions can follow old component includes in the same file.
+There is no need to rewrite component files before changing your own config.</p>
 <h2 id="reload-and-persistence">Reload and persistence<a class="headerlink" href="#reload-and-persistence" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

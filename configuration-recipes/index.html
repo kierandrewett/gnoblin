@@ -2316,67 +2316,58 @@
 
 
 <h1 id="recipes">Recipes<a class="headerlink" href="#recipes" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Add these snippets <strong>after your component includes</strong>.
 They extend existing lists rather than replacing them.</p>
 <h2 id="add-a-shortcut-without-losing-the-others">Add a shortcut without losing the others<a class="headerlink" href="#add-a-shortcut-without-losing-the-others" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my-terminal"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
-<p>Use an installed terminal and an unused name and accelerator. If a component
-already supplies that binding, edit its entry instead of adding a duplicate:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="kr">for</span><span class="w"> </span><span class="nv">_</span><span class="p">,</span><span class="w"> </span><span class="nv">shortcut</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="nb">ipairs</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{})</span><span class="w"> </span><span class="kr">do</span>
-<span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="nv">shortcut</span><span class="p">.</span><span class="py">name</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s2">"terminal"</span><span class="w"> </span><span class="kr">then</span>
-<span class="w">        </span><span class="nv">shortcut</span><span class="p">.</span><span class="py">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">}</span>
-<span class="w">    </span><span class="kr">end</span>
-<span class="kr">end</span>
+<p>Use an installed terminal. To change an imported shortcut, use its existing name.
+Only the fields you supply change; its binding stays the same:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"terminal"</span><span class="p">,</span>
+<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">},</span>
+<span class="p">}</span>
 </code></pre></div>
-<p>The entry name must match your component's configured shortcut.</p>
+<p>To remove an imported shortcut:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">remove_shortcut</span><span class="p">(</span><span class="s2">"terminal"</span><span class="p">)</span>
+</code></pre></div>
 <h2 id="make-unfocused-windows-slightly-translucent">Make unfocused windows slightly translucent<a class="headerlink" href="#make-unfocused-windows-slightly-translucent" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Opacity affects text and controls too. Use client background transparency for
 a translucent panel with opaque text. Remove this rule to inherit the previous
 matching opacity again.</p>
 <h2 id="round-application-windows">Round application windows<a class="headerlink" href="#round-application-windows" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.6</span><span class="p">,</span><span class="w"> </span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Radius uses logical pixels; smoothing is a 0–1 shape parameter. Automatic mode
 preserves existing client corners. See <a href="../window-effects/#rounded-window-corners">corners</a>
 for state exceptions and how to force a mask deliberately.</p>
 <h2 id="turn-off-compositor-layer-animations">Turn off compositor layer animations<a class="headerlink" href="#turn-off-compositor-layer-animations" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{[</span><span class="s2">"layer-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"none"</span><span class="p">}})</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">layer_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"none"</span><span class="p">}}</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span><span class="w"> </span><span class="nv">animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>The last rule overrides animation choices in earlier component rules. This
 controls layer map/unmap animations; a shell may animate its own contents
 separately. Configure those animations in that shell.</p>
 <h2 id="enable-negotiated-server-decorations">Enable negotiated server decorations<a class="headerlink" href="#enable-negotiated-server-decorations" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span><span class="w"> </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"native"</span><span class="p">,</span><span class="w"> </span><span class="nv">extents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">}},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>This uses explicit client requests for SSD and requires no app-name list.
 The extents are top, right, bottom and left logical pixels. It does not detect

@@ -2318,18 +2318,16 @@
 
 
 <h1 id="keyboard-shortcuts">Keyboard shortcuts<a class="headerlink" href="#keyboard-shortcuts" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Use <code>shortcuts</code> to launch commands and <code>keybindings</code> to change existing
 GNOME actions. Both reload on save.</p>
 <h2 id="launch-a-command">Launch a command<a class="headerlink" href="#launch-a-command" title="Permanent link">&para;</a></h2>
 <p>Add this after your component includes. Choose an unused name and binding:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my-terminal"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Return"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"ptyxis"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--new-window"</span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Replace <code>ptyxis</code> with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.</p>
@@ -2365,14 +2363,13 @@ Removing one releases its binding; it does not stop a launched program.</p>
 <p>Bindings use GTK accelerator syntax. Held keys do not repeatedly launch commands.
 Command shortcuts are inactive on the lock and login screens.</p>
 <h2 id="change-a-built-in-action">Change a built-in action<a class="headerlink" href="#change-a-built-in-action" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">keybindings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">wm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nv">close</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"&lt;Super&gt;q"</span><span class="p">},</span>
 <span class="w">        </span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Groups are <code>shell</code>, <code>wm</code>, <code>mutter</code>, <code>wayland</code> and <code>media</code>.
 Action names come from the corresponding GNOME keybinding schemas.</p>
@@ -2380,8 +2377,9 @@ Action names come from the corresponding GNOME keybinding schemas.</p>
 These overrides persist in GSettings: removing the Lua entry does not restore
 the former binding. Set the desired value explicitly.</p>
 <h2 id="avoid-conflicts">Avoid conflicts<a class="headerlink" href="#avoid-conflicts" title="Permanent link">&para;</a></h2>
-<p>A component may already define your shortcut. <a href="../configuration-recipes/#add-a-shortcut-without-losing-the-others">Edit its named entry</a>
-instead of adding a second one.</p>
+<p>To override an imported shortcut, use the same <code>name</code>. Only supplied fields
+change. Different names must use different bindings. See the
+<a href="../configuration-recipes/#add-a-shortcut-without-losing-the-others">override example</a>.</p>
 <p>An existing GNOME action can also own the key. Disable or rebind that action
 first. Invalid or conflicting edits keep the previous working registrations.</p>
 <h2 id="commands-and-shell-syntax">Commands and shell syntax<a class="headerlink" href="#commands-and-shell-syntax" title="Permanent link">&para;</a></h2>
@@ -2391,7 +2389,7 @@ Use an absolute path, a program on PATH, or explicitly run a shell:</p>
 </code></pre></div>
 <p>This is a command value to put in a shortcut, not a standalone binding.</p>
 <h2 id="popups-that-capture-typing">Popups that capture typing<a class="headerlink" href="#popups-that-capture-typing" title="Permanent link">&para;</a></h2>
-<p>A shortcut can set <code>["capture-input"] = true</code> to buffer typing while a popup
+<p>A shortcut can set <code>capture_input = true</code> to buffer typing while a popup
 starts. The popup must implement the <a href="../compositor-bridge/">input handoff protocol</a>.
 Do not enable it for ordinary terminal or application launch commands.</p>
 <p>See also <a href="../window-state-shortcuts/">restore-or-minimise bindings</a>.</p>

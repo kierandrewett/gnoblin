@@ -2274,16 +2274,16 @@
 
 
 <h1 id="animations">Animations<a class="headerlink" href="#animations" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Configure minimise/restore and layer-shell animations in <code>shell</code>.
 Changes reload on save. GNOME's reduced-motion setting takes precedence.</p>
 <h2 id="minimise-and-restore">Minimise and restore<a class="headerlink" href="#minimise-and-restore" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"zoom"</span><span class="p">,</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"minimize-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">minimize_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"zoom"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2312,18 +2312,17 @@ Changes reload on save. GNOME's reduced-motion setting takes precedence.</p>
 </tbody>
 </table>
 <p>Duration is 0–5000 milliseconds; the default is 200.</p>
-<p>The target is the dock-supplied icon rectangle, then <code>minimize-target</code>,
+<p>The target is the dock-supplied icon rectangle, then <code>minimize_target</code>,
 then the monitor's bottom centre. A configured target is <code>{x, y}</code> in logical
 desktop coordinates, including monitor offsets.</p>
 <h2 id="bars-launchers-and-other-layer-surfaces">Bars, launchers and other layer surfaces<a class="headerlink" href="#bars-launchers-and-other-layer-surfaces" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"layer-animation"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slide"</span><span class="p">,</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"layer-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">220</span><span class="p">,</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"layer-easing"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">layer_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slide"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">layer_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">220</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">layer_easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>These are the defaults. The mode accepts <code>"slide"</code>, <code>"fade"</code> or <code>"none"</code>.
 Duration accepts 0–5000 milliseconds.</p>
@@ -2333,10 +2332,7 @@ Full-screen input overlays fade. Closing reverses the movement.</p>
 surface do not restart them. Your shell may also animate its own contents.</p>
 <h2 id="per-surface-animations">Per-surface animations<a class="headerlink" href="#per-surface-animations" title="Permanent link">&para;</a></h2>
 <p>Add a rule after your includes:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"layer"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="p">[</span><span class="s2">"in"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slide"</span><span class="p">,</span>
@@ -2344,7 +2340,7 @@ surface do not restart them. Your shell may also animate its own contents.</p>
 <span class="w">        </span><span class="nv">duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
 <span class="w">        </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p><code>in</code> is a Lua keyword, so it needs brackets. Both directions accept the same
 three modes. Omitted fields inherit the shell settings.</p>

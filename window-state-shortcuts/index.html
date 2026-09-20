@@ -2252,31 +2252,28 @@
 
 
 <h1 id="restore-or-minimise">Restore or minimise<a class="headerlink" href="#restore-or-minimise" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Bind Super+Down to restore a maximised/snapped window first, then minimise it
 on a second press.</p>
 <h2 id="1-release-the-existing-binding">1. Release the existing binding<a class="headerlink" href="#1-release-the-existing-binding" title="Permanent link">&para;</a></h2>
 <p>Add this after your includes and reload:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">keybindings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">wm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="nv">minimize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{},</span>
 <span class="w">            </span><span class="nv">unmaximize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{},</span>
 <span class="w">        </span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>These empty lists release the built-in actions before the new command is bound.</p>
 <h2 id="2-add-the-shortcut">2. Add the shortcut<a class="headerlink" href="#2-add-the-shortcut" title="Permanent link">&para;</a></h2>
 <p>Append this and reload again:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">.</span><span class="py">shortcuts</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"restore-or-minimize"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;Down"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"gnoblinctl"</span><span class="p">,</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="s2">"restore-or-minimize"</span><span class="p">,</span><span class="w"> </span><span class="s2">"active"</span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>The command restores native maximisation/tiling or a saved custom snap frame.
 If neither applies, it minimises the window.</p>

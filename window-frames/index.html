@@ -2318,6 +2318,7 @@
 
 
 <h1 id="titlebars-and-window-frames">Titlebars and window frames<a class="headerlink" href="#titlebars-and-window-frames" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/">Configuration reference</a></p>
 <p><strong>CSD:</strong> the app draws its titlebar. <strong>SSD:</strong> Gnoblin draws a frame around it.</p>
 <p>SSD is off by default. Your desktop shell's config may enable it.
 Choosing a renderer only changes how an enabled frame looks.</p>
@@ -2352,17 +2353,14 @@ Choosing a renderer only changes how an enabled frame looks.</p>
 Check the visible result when changing policy.</p>
 <h2 id="enable-negotiated-ssd">Enable negotiated SSD<a class="headerlink" href="#enable-negotiated-ssd" title="Permanent link">&para;</a></h2>
 <p>Append after your config includes:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="p">{}</span>
-
-<span class="nb">table.insert</span><span class="p">(</span><span class="nv">g</span><span class="p">.</span><span class="py">config</span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">],</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span>
 <span class="w">        </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"native"</span><span class="p">,</span>
 <span class="w">        </span><span class="nv">extents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Save and run <code>gnoblinctl config reload</code>. Negotiation also needs a client commit.
 This policy applies to clients generally; it does not need an app-name list.</p>
@@ -2414,12 +2412,12 @@ fields. Sizes are logical pixels.</p>
 <td>Foreground colour</td>
 </tr>
 <tr>
-<td><code>inactive-background</code></td>
+<td><code>inactive_background</code></td>
 <td><code>"#303030"</code></td>
 <td>Unfocused background colour</td>
 </tr>
 <tr>
-<td><code>button-layout</code></td>
+<td><code>button_layout</code></td>
 <td><code>{"minimize", "maximize", "close"}</code></td>
 <td>Ordered buttons, without duplicates; <code>{}</code> hides them</td>
 </tr>
@@ -2435,12 +2433,11 @@ negotiated SSD clients are not cropped. With <code>replace</code>, zero extents 
 crop-only window. Fullscreen temporarily removes crop and frame extents.</p>
 <h2 id="custom-renderers">Custom renderers<a class="headerlink" href="#custom-renderers" title="Permanent link">&para;</a></h2>
 <p>Register a service at the config root, then select its name in a frame rule:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">require</span><span class="p">(</span><span class="s2">"gnoblin"</span><span class="p">)</span>
-<span class="nv">g</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"frame-renderers"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">frame_renderers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">cairo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"/absolute/path/gnoblin-frame-cairo"</span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Use an absolute executable path and separate arguments. <code>native</code> is reserved.
 <a href="../bring-your-own-shell/">Bingux</a> supplies its own styled renderer.</p>
