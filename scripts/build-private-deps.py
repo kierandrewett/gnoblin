@@ -143,6 +143,30 @@ def build(recipe, prefix, cache, env, jobs, manifest=None):
         )
         subprocess.run(["make", f"-j{jobs}"], cwd=builddir, env=env, check=True)
         subprocess.run(["make", "install", f"DESTDIR={stage}"], cwd=builddir, env=env, check=True)
+    elif system == "cmake":
+        subprocess.run(
+            [
+                "cmake",
+                "-S",
+                str(sources),
+                "-B",
+                str(builddir),
+                "-G",
+                "Ninja",
+                f"-DCMAKE_INSTALL_PREFIX={prefix}",
+                "-DCMAKE_INSTALL_LIBDIR=lib64",
+                "-DCMAKE_BUILD_TYPE=Release",
+                *recipe["options"],
+            ],
+            env=env,
+            check=True,
+        )
+        subprocess.run(
+            ["cmake", "--build", str(builddir), "--parallel", str(jobs), "--target", *recipe["targets"]],
+            env=env,
+            check=True,
+        )
+        subprocess.run(["cmake", "--install", str(builddir)], env={**env, "DESTDIR": str(stage)}, check=True)
     elif system == "lua":
         subprocess.run(["make", "clean"], cwd=sources, env=env, check=True)
         subprocess.run(
