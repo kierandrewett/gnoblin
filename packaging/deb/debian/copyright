@@ -1,7 +1,0 @@
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: gnoblin
-Source: https://github.com/kdrew7/gnoblin
-
-Files: *
-Copyright: Gnoblin Developers
-License: GPL-2+

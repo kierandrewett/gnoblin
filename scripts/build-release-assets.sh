@@ -8,9 +8,8 @@ RELEASE_TAG="${2:-}"
 VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
 EXPECTED_TAG="v$VERSION"
 
-if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "$EXPECTED_TAG" ]]; then
-    echo "release tag $RELEASE_TAG does not match GNOME package version $EXPECTED_TAG" >&2
-    exit 2
+if [[ -n "$RELEASE_TAG" ]]; then
+    "$ROOT/scripts/check-release-tag.sh" "$RELEASE_TAG" >/dev/null
 fi
 
 if [[ -e "$OUTPUT" ]] && [[ -n "$(find "$OUTPUT" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
@@ -41,8 +40,7 @@ install -m 0644 -- "$SOURCES/gnome-shell-$VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/gsettings-desktop-schemas-$VERSION.tar.xz" "$OUTPUT/"
 find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
 install -m 0644 -- "$ROOT/packaging/arch/PKGBUILD" "$OUTPUT/gnoblin-$VERSION.PKGBUILD"
-tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-    -C "$ROOT/packaging/deb" -cJf "$OUTPUT/gnoblin-$VERSION-debian.tar.xz" debian
+git -C "$ROOT" archive --format=tar HEAD | xz >"$OUTPUT/gnoblin-$VERSION-debian.tar.xz"
 
 (
     cd "$OUTPUT"

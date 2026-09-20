@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "config.h"
 
-extern "C" {
 #include "backends/gnoblin-hyprcursor.h"
-}
 
 #include <hyprcursor/hyprcursor.hpp>
 #include <cstring>

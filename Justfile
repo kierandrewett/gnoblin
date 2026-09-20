@@ -70,7 +70,8 @@ build PROJ: (patch PROJ)
 #   just gnome-verify   headless: boot gnome-shell in gnoblin mode, check layer-shell
 #   just gnome-dbus-verify  headless: org.gnoblin.* control protocol round-trip
 #
-mutter_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " --buildtype=" + dev_buildtype + " -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
+devkit := env_var_or_default("GNOBLIN_DEVKIT", "enabled")
+mutter_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " --buildtype=" + dev_buildtype + " -Ddevkit=" + devkit + " -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
 mutter_test_opts := "--prefix=" + prefix + " --libdir=" + libdir + " -Ddevkit=enabled -Dtests=enabled -Dmutter_tests=true -Dclutter_tests=false -Dcogl_tests=false -Ddocs=false -Dprofiler=false -Dudev_dir=" + prefix + "/lib/udev"
 mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland --suite mutter:mutter/backends/native"
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
@@ -334,9 +335,9 @@ rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
     rpmbuild -bb packaging/rpm/gnoblin.spec
 
-# Debian / Arch packaging is planned; see packaging/{deb,arch}/README.md.
-deb PROJ:
-    @echo "Debian / Ubuntu packaging is planned — see packaging/deb/README.md"
+# Package a private runtime in a prepared Debian/Ubuntu build container.
+deb:
+    ./scripts/build-deb.sh
 arch PROJ:
     @echo "Arch packaging is planned — see packaging/arch/README.md"
 

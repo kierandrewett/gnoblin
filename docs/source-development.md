@@ -23,7 +23,11 @@ rebuilt libraries.
 Default: `./install`, with libraries in `lib64`.
 
 ```sh
-GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local
+python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps
+python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps --run \
+    env GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local
+python3 scripts/build-private-deps.py --prefix /tmp/gnoblin/deps \
+    --fix-runtime --runtime-prefix /tmp/gnoblin
 ```
 
 `GNOBLIN_LIBDIR` is relative to the prefix. Use the same prefix for subsequent

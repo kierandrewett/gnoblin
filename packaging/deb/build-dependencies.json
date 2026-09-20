@@ -1,0 +1,51 @@
+[
+  {
+    "name": "mozjs",
+    "version": "140.16.0",
+    "url": "https://deb.debian.org/debian/pool/main/m/mozjs140/mozjs140_140.16.0.orig.tar.xz",
+    "sha256": "a7c545e6414fa15c26198e22958ec0f2df693b63fd27cb372f3140856feb9d21",
+    "build_system": "spidermonkey",
+    "options": [
+      "--with-system-zlib",
+      "--with-intl-api",
+      "--enable-readline",
+      "--disable-jemalloc",
+      "--without-system-icu",
+      "--disable-debug-symbols",
+      "--disable-tests"
+    ]
+  },
+  {
+    "name": "glycin",
+    "version": "2.0.0",
+    "url": "https://download.gnome.org/sources/glycin/2.0/glycin-2.0.0.tar.xz",
+    "sha256": "e39c3ca4f5bd6905f19f090456940650c8de1f217d2edb1f46ee17e04e7ae502",
+    "build_system": "meson",
+    "options": [
+      "-Dlibglycin=true",
+      "-Dglycin-loaders=true",
+      "-Dlibglycin-gtk4=false",
+      "-Dglycin-thumbnailer=false",
+      "-Dtests=false",
+      "-Dvapi=false",
+      "-Dintrospection=true",
+      "-Dcapi_docs=false",
+      "-Dlto=false",
+      "-Dloaders=glycin-image-rs,glycin-svg,glycin-heif"
+    ]
+  },
+  {
+    "name": "libei",
+    "version": "1.5.0",
+    "url": "https://gitlab.freedesktop.org/libinput/libei/-/archive/1.5.0/libei-1.5.0.tar.gz",
+    "sha256": "7687c3bbcff89ff331c5db72e0a5cce6bcae382e3c238d6f7019a6bc71d88e43",
+    "options": ["-Dtests=disabled", "-Ddocumentation=[]"]
+  },
+  {
+    "name": "libdisplay-info",
+    "version": "0.3.0",
+    "url": "https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/0.3.0/downloads/libdisplay-info-0.3.0.tar.xz",
+    "sha256": "6ae77cd937f9cf7d1321d35c116062c4911e8447010a6a713ac4286f7a9d5987",
+    "options": []
+  }
+]

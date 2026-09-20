@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import unittest
+import subprocess
 from pathlib import Path
 
 
@@ -7,6 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+    def test_release_tags_match_the_pinned_base_and_positive_revision(self):
+        script = ROOT / "scripts/check-release-tag.sh"
+        version = subprocess.check_output(
+            [str(ROOT / "scripts/gnome-versions.py"), "get", "mutter", "version"], text=True
+        ).strip()
+        for suffix, revision in (("", "1"), ("-1", "1"), ("-12", "12")):
+            self.assertEqual(subprocess.check_output([str(script), f"v{version}{suffix}"], text=True).strip(), revision)
+        for tag in ("main", "v0.0", f"v{version}-0", f"v{version}-01", f"v{version}-preview"):
+            self.assertNotEqual(subprocess.run([str(script), tag], capture_output=True).returncode, 0)
+
     def test_release_build_is_tag_versioned_and_complete(self):
         script = (ROOT / "scripts/build-release-assets.sh").read_text()
         self.assertIn('EXPECTED_TAG="v$VERSION"', script)
@@ -27,7 +38,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertIn('tags:\n      - "v*"', workflow)
         self.assertIn("contents: write", workflow)
-        self.assertIn("needs: source-packages", workflow)
+        self.assertIn("needs: [source-packages, debian-packages]", workflow)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
@@ -44,7 +55,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("dev-schemas: check-install-prefix", justfile)
         self.assertIn("dev-mutter: dev-schemas", justfile)
         self.assertIn("make-tarball.sh gsettings-desktop-schemas", justfile)
-        self.assertIn('private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig"', justfile)
+        self.assertIn(
+            'private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig:"', justfile
+        )
         self.assertIn("GI_GIR_PATH={{private_gir_path}}", justfile)
 
     def test_default_source_build_contains_only_required_runtime(self):

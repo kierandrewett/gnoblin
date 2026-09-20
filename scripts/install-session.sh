@@ -116,13 +116,11 @@ glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
-install -Dm644 "$ROOT/src/scripts/lib/ui-sessions.js" "$PREFIX/share/gnoblin/scripts/lib/ui-sessions.js"
-install -Dm644 "$ROOT/src/scripts/lib/layer-companions.js" "$PREFIX/share/gnoblin/scripts/lib/layer-companions.js"
-install -Dm644 "$ROOT/src/scripts/lib/window-switcher-fallback.js" "$PREFIX/share/gnoblin/scripts/lib/window-switcher-fallback.js"
-install -Dm644 "$ROOT/src/scripts/lib/window-snap.js" "$PREFIX/share/gnoblin/scripts/lib/window-snap.js"
-install -Dm644 "$ROOT/src/scripts/lib/blur-regions.js" "$PREFIX/share/gnoblin/scripts/lib/blur-regions.js"
-install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.js" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.js"
-install -Dm644 "$ROOT/src/scripts/lib/clipboard-paste.py" "$PREFIX/share/gnoblin/scripts/lib/clipboard-paste.py"
+# Keep the bridge and its relative imports together as one installed bundle.
+install -d "$PREFIX/share/gnoblin/scripts/lib"
+for helper in "$ROOT/src/scripts/lib/"*.js "$ROOT/src/scripts/lib/"*.py; do
+    install -m644 "$helper" "$PREFIX/share/gnoblin/scripts/lib/${helper##*/}"
+done
 install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"
 
 echo ">> installed gnoblin session data into $PREFIX:"

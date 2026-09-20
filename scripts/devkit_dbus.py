@@ -11,6 +11,7 @@ with only the portal services the devkit needs plus gnoblin's document stub.
 from __future__ import annotations
 
 import html
+import os
 import pathlib
 import shlex
 import shutil
@@ -56,7 +57,8 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     # Also expose gnoblin's own installed D-Bus services (gnome-shell's
     # dbusServices: notifications, screencast, calendar, …) so tests can activate
     # them on demand. On-demand only — nothing auto-starts by adding the dir.
-    prefix_service_dir = repo_root / "install" / "share" / "dbus-1" / "services"
+    prefix = pathlib.Path(os.environ.get("GNOBLIN_PREFIX", str(repo_root / "install")))
+    prefix_service_dir = prefix / "share" / "dbus-1" / "services"
     prefix_service_dir_xml = (
         f"  <servicedir>{html.escape(str(prefix_service_dir), quote=False)}</servicedir>\n"
         if prefix_service_dir.is_dir()

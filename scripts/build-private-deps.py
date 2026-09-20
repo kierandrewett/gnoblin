@@ -93,10 +93,13 @@ def checked_archive(recipe, downloads):
     return archive
 
 
-def build(recipe, prefix, cache, env, jobs):
+def build(recipe, prefix, cache, env, jobs, manifest=None):
+    platform_patch = ROOT / "packaging/deb/patches/mozjs-platform.patch"
+    patch_bytes = platform_patch.read_bytes() if recipe.get("build_system") == "spidermonkey" else b""
     flags = {key: env.get(key, "") for key in ("CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS")}
     identity = hashlib.sha256(
-        json.dumps(json.loads((ROOT / "build-dependencies.json").read_text()), sort_keys=True).encode()
+        json.dumps(json.loads((manifest or ROOT / "build-dependencies.json").read_text()), sort_keys=True).encode()
+        + patch_bytes
         + str(prefix).encode()
         + json.dumps(flags, sort_keys=True).encode()
     ).hexdigest()
@@ -125,10 +128,15 @@ def build(recipe, prefix, cache, env, jobs):
     stage = work / "install"
     shutil.rmtree(stage, ignore_errors=True)
     system = recipe.get("build_system", "meson")
-    if system == "autotools":
+    if system in ("autotools", "spidermonkey"):
+        configure = sources / ("js/src/configure" if system == "spidermonkey" else "configure")
+        if system == "spidermonkey":
+            if "#undef XP_UNIX" not in (sources / "js/src/js-config.h.in").read_text():
+                subprocess.run(["patch", "-p1", "-i", str(platform_patch)], cwd=sources, check=True)
+            env = {**env, "SHELL": "/bin/sh", "CC": "gcc", "CXX": "g++"}
         builddir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [str(sources / "configure"), f"--prefix={prefix}", f"--libdir={prefix}/lib64"],
+            [str(configure), f"--prefix={prefix}", f"--libdir={prefix}/lib64", *recipe["options"]],
             cwd=builddir,
             env=env,
             check=True,
@@ -188,9 +196,11 @@ def build(recipe, prefix, cache, env, jobs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", type=Path, default=ROOT / "install/deps")
+    parser.add_argument("--manifest", type=Path, default=ROOT / "build-dependencies.json")
     parser.add_argument("--cache", type=Path, default=ROOT / "build/dependencies")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fix-runtime", action="store_true", help="Record private library paths in ./install binaries")
+    parser.add_argument("--runtime-prefix", type=Path, default=ROOT / "install")
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 2, 8))
     parser.add_argument("--run", nargs=argparse.REMAINDER, help="Run a build command in the private environment")
     args = parser.parse_args()
@@ -215,11 +225,14 @@ def main():
         parser.error("--jobs must be positive")
     env = build_environment(prefix)
     if args.fix_runtime:
-        fix_linkage(ROOT / "install", prefix)
+        runtime = args.runtime_prefix.resolve()
+        if runtime in {Path("/"), Path("/usr"), Path("/usr/local"), Path("/lib"), Path("/lib64")}:
+            parser.error("Use a private runtime directory")
+        fix_linkage(runtime, prefix)
         return 0
     if args.run:
         return subprocess.call(args.run, env=env)
-    recipes = json.loads((ROOT / "build-dependencies.json").read_text())
+    recipes = json.loads(args.manifest.read_text())
     if args.dry_run:
         print(f"Build private dependencies in {prefix}:")
         for recipe in recipes:
@@ -236,7 +249,7 @@ def main():
         with (prefix / ".build.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             for recipe in recipes:
-                build(recipe, prefix, args.cache.resolve(), env, args.jobs)
+                build(recipe, prefix, args.cache.resolve(), env, args.jobs, args.manifest)
             runtime_env = env.copy()
             runtime_env.pop("LD_LIBRARY_PATH", None)
             system_typelibs = subprocess.check_output(

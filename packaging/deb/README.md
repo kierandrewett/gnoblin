@@ -1,21 +1,80 @@
-# Debian / Ubuntu packaging
+# Debian and Ubuntu packages
 
-`debian/` is the generated `gnoblin` metapackage source. Its version,
-private-runtime major bounds, GNOME capability dependencies, and Debian
-package-name mappings come from `nix/native-packages.nix`. Refresh it with
-`just package-manifest write`.
+Build one `gnoblin` package per supported distribution: Debian 13, Ubuntu 24.04
+LTS and Ubuntu 26.04 LTS. Each package contains the compositor, session and
+private runtime at `/usr/lib/gnoblin`. It does not replace GNOME packages.
 
-- Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
-- Install the runtime under `/usr/lib/gnoblin`, including private libraries,
-  schemas and upstream service files.
-- Depend on the matching `gnoblin-*` runtime. Do not replace, conflict with,
-  or provide the distribution's `mutter` or `gnome-shell` packages.
-- Export only Gnoblin's login entry, control command, user units and separately
-  named backlight policy. Follow the [RPM layout](../rpm/README.md).
-- Record the private library directory in `libexec/gnoblin-libdir`, relative
-  to `/usr/lib/gnoblin` (for example `lib/x86_64-linux-gnu`).
+## Build in a container
 
-The `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin-session` Debian runtime
-packages and APT repository are not published yet. Until they are, use the
-[source build](../../docs/installation.md#build-from-source). Do not publish
-the metapackage by itself: all dependencies must resolve in the same repository.
+Use Docker or Podman. The example below uses Debian 13; substitute
+`ubuntu:24.04` or `ubuntu:26.04` for the other targets.
+
+From a clean Gnoblin checkout:
+
+```sh
+podman run --name gnoblin-deb-build --security-opt label=disable \
+    -v "$PWD:/source:ro" -it debian:13 bash
+```
+
+Inside that container:
+
+```sh
+apt-get update
+apt-get install -y --no-install-recommends git ca-certificates
+git clone --no-local /source /build
+cd /build
+scripts/provision-deb-container.sh
+chown -R builder /build
+runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \
+    scripts/build-deb.sh
+exit
+```
+
+Copy the result back to your host:
+
+```sh
+podman cp gnoblin-deb-build:/build/dist/deb ./deb-packages
+```
+
+The scripts install build tools only inside the container. The build itself
+runs without root privileges. `GNOBLIN_BUILD_JOBS=2` limits memory use on smaller
+builders. Pass `--revision 2` to `build-deb.sh` for a second packaging revision
+of the same GNOME release.
+
+## What the package contains
+
+The shared dependency builder reads `build-dependencies.json`. Debian 13 and
+Ubuntu 24.04 also build the libraries in `packaging/deb/build-dependencies.json`,
+including SpiderMonkey and Glycin. These stay under `/usr/lib/gnoblin/deps`.
+
+The package exports only its login entry, `gnoblinctl`, Gnoblin user units and
+separately named backlight policy. Headers and static libraries are omitted.
+`dpkg-shlibdeps` determines the remaining system-library dependencies from the
+binaries. It must resolve every dependency; missing library metadata is an error.
+
+`/usr/share/doc/gnoblin/build-info.json` records the source commit and target
+system. The package also includes the dependency manifest and licence notices.
+
+## Test the installed package
+
+Use a **fresh container of the same distribution**. Mount this checkout read-only
+and copy in the `.deb`, then run as root:
+
+```sh
+/source/scripts/test-deb.sh /tmp/gnoblin-debian13-amd64.deb
+```
+
+The test installs stock GNOME first, installs Gnoblin, starts a headless desktop,
+uses the installed CLI to manage a window, checks protocol isolation, and removes
+Gnoblin. Stock GNOME's binary and version must remain unchanged throughout.
+
+This does not exercise a display manager or a hardware seat. Follow
+[hardware verification](../../docs/real-hardware-verification.md) before declaring
+a release ready for normal desktop use.
+
+## Release automation
+
+`.github/workflows/deb.yml` builds and tests all three targets. The release
+workflow waits for every target before publishing `.deb` files, checksums and
+dependency source archives to GitHub Releases. No APT repository is configured;
+users install downloaded packages with `apt install ./FILE.deb`.

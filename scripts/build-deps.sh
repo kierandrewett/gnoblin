@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3
+    local family=$1 build_assume_yes=$2 build_dry_run=$3 bundle_debian=${4:-false}
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -86,7 +86,7 @@ install_build_dependencies() {
                 frontend=(env DEBIAN_FRONTEND=noninteractive)
             fi
             packages=(build-essential git just meson ninja-build pkg-config cmake gettext
-                python3 python3-docutils python3-packaging sassc desktop-file-utils
+                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils
                 gobject-introspection libgirepository-2.0-dev libglib2.0-dev
                 libgtk-4-dev libadwaita-1-dev libgjs-dev libglycin-2-dev
                 libhyprcursor-dev liblua5.4-dev libatk-bridge2.0-dev libatk1.0-dev
@@ -105,8 +105,19 @@ install_build_dependencies() {
                 libxkbcommon-x11-dev libxkbregistry-dev libxrandr-dev xwayland
                 xkb-data gsettings-desktop-schemas-dev gnome-settings-daemon-dev
                 gnome-shell gnome-session-bin gnome-session-common gnome-settings-daemon systemd-dev)
+            if "$bundle_debian"; then
+                local -a base_packages=()
+                local package
+                for package in "${packages[@]}"; do
+                    case "$package" in
+                        libglycin-2-dev | libhyprcursor-dev | libgjs-dev) ;;
+                        *) base_packages+=("$package") ;;
+                    esac
+                done
+                packages=("${base_packages[@]}")
+            fi
             build_dependency_command "${privilege[@]}" apt-get update
-            build_dependency_command "${privilege[@]}" "${frontend[@]}" apt-get install "${confirm[@]}" "${packages[@]}"
+            build_dependency_command "${privilege[@]}" "${frontend[@]}" apt-get install --no-install-recommends "${confirm[@]}" "${packages[@]}"
             ;;
         opensuse)
             "$build_assume_yes" && confirm=(--non-interactive)

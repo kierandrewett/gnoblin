@@ -1,0 +1,108 @@
+name: Debian and Ubuntu packages
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit or release tag to build
+        type: string
+        default: main
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            target: debian13
+          - image: ubuntu:24.04
+            target: ubuntu24.04
+          - image: ubuntu:26.04
+            target: ubuntu26.04
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install checkout tools
+        run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Prepare build container
+        run: |
+          scripts/provision-deb-container.sh
+          chown -R builder "$GITHUB_WORKSPACE"
+      - name: Build private runtime and package
+        env:
+          PACKAGE_REF: ${{ inputs.ref }}
+        run: |
+          revision=1
+          if [[ "$PACKAGE_REF" == refs/tags/* || "$PACKAGE_REF" == v* ]]; then
+            revision="$(scripts/check-release-tag.sh "${PACKAGE_REF#refs/tags/}")"
+          fi
+          runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \
+            GNOBLIN_BUILD_JOBS=2 scripts/build-deb.sh --revision "$revision"
+      - name: Include dependency sources
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mapfile -d '' cargo_sources < <(find build/dependencies -type d -path '*/cargo-home/registry/src' -print0)
+          tar -cJf "dist/deb/gnoblin-$TARGET-dependency-sources.tar.xz" \
+            -C build/dependencies downloads \
+            -C "$GITHUB_WORKSPACE" build/deb-dependencies.json packaging/deb/patches "${cargo_sources[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.target }}
+          path: dist/deb/*
+          if-no-files-found: error
+          retention-days: 14
+
+  install:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            target: debian13
+          - image: ubuntu:24.04
+            target: ubuntu24.04
+          - image: ubuntu:26.04
+            target: ubuntu26.04
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb-${{ matrix.target }}
+          path: packages
+      - name: Verify checksum, install, test and remove
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          (cd packages && sha256sum -c "gnoblin-$TARGET-amd64.deb.sha256")
+          scripts/test-deb.sh "packages/gnoblin-$TARGET-amd64.deb"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: deb-${{ matrix.target }}-test-logs
+          path: /home/tester/.local/state/gnoblin/

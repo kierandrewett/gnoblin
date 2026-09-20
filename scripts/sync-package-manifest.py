@@ -89,37 +89,6 @@ def render_rpm(manifest: dict) -> str:
     )
 
 
-def render_debian_control(manifest: dict) -> str:
-    version = manifest["packages"]["gnoblin"]["version"]
-    next_major = manifest["release"]["gnomeMajor"] + 1
-    packages, requirements = dependency_closure(manifest, "gnoblin")
-    dependencies = [
-        *(f"{name} (>= {version})" for name in packages),
-        *(f"{name} (<< {next_major})" for name in packages),
-        *(
-            package_name + (f" (>= {minimum})" if minimum is not None else "")
-            for name in requirements
-            for package_name, minimum in [native_requirement(manifest, name, "deb")]
-        ),
-    ]
-    wrapped = ",\n         ".join(dependencies)
-    return (
-        "# Generated from nix/native-packages.nix; do not edit.\n"
-        "Source: gnoblin\n"
-        "Section: gnome\n"
-        "Priority: optional\n"
-        "Maintainer: Gnoblin Developers <gnoblin@example.invalid>\n"
-        "Build-Depends: debhelper-compat (= 13)\n"
-        "Standards-Version: 4.7.2\n"
-        "Rules-Requires-Root: no\n\n"
-        "Package: gnoblin\n"
-        "Architecture: all\n"
-        f"Depends: {wrapped}\n"
-        "Description: Gnoblin desktop session\n"
-        " Installs the complete Gnoblin session while reusing compatible GNOME userspace.\n"
-    )
-
-
 def render_arch(manifest: dict) -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     next_major = manifest["release"]["gnomeMajor"] + 1
@@ -150,29 +119,10 @@ def render_arch(manifest: dict) -> str:
     )
 
 
-def render_debian_changelog(manifest: dict) -> str:
-    version = manifest["packages"]["gnoblin"]["version"]
-    return (
-        f"gnoblin ({version}-1) unstable; urgency=medium\n\n"
-        "  * Generate native metapackage from the Nix package model.\n\n"
-        " -- Gnoblin Developers <gnoblin@example.invalid>  Thu, 01 Jan 1970 00:00:00 +0000\n"
-    )
-
-
 def outputs(manifest: dict) -> dict[Path, str]:
     return {
         MANIFEST_OUTPUT: render_manifest(manifest),
         ROOT / "packaging/rpm/gnoblin.spec": render_rpm(manifest),
-        ROOT / "packaging/deb/debian/control": render_debian_control(manifest),
-        ROOT / "packaging/deb/debian/changelog": render_debian_changelog(manifest),
-        ROOT / "packaging/deb/debian/rules": "#!/usr/bin/make -f\n%:\n\tdh $@\n",
-        ROOT / "packaging/deb/debian/source/format": "3.0 (native)\n",
-        ROOT / "packaging/deb/debian/copyright": (
-            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n"
-            "Upstream-Name: gnoblin\n"
-            "Source: https://github.com/kdrew7/gnoblin\n\n"
-            "Files: *\nCopyright: Gnoblin Developers\nLicense: GPL-2+\n"
-        ),
         ROOT / "packaging/arch/PKGBUILD": render_arch(manifest),
     }
 
