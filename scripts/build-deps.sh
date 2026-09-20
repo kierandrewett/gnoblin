@@ -61,7 +61,7 @@ install_build_dependencies() {
     case "$family" in
         fedora)
             "$build_assume_yes" && confirm=(-y)
-            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake
+            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
                 python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
                 mesa-libEGL-devel

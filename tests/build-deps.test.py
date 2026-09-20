@@ -74,6 +74,7 @@ class BuildDependencies(unittest.TestCase):
                     self.assertIn("expat-devel", commands[0])
                     self.assertIn("cvt", commands[0])
                     self.assertIn("mesa-libEGL-devel", commands[0])
+                    self.assertIn("rpm-build", commands[0])
                     self.assertNotIn("copr", result.stdout)
                     self.assertNotIn("builddep", result.stdout)
 
