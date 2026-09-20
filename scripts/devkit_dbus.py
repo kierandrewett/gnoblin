@@ -22,12 +22,14 @@ DBUS_SERVICES = (
     "org.freedesktop.impl.portal.PermissionStore",
     "org.freedesktop.impl.portal.desktop.gnome",
     "org.freedesktop.impl.portal.desktop.gtk",
-    "org.gnome.Settings.GlobalShortcutsProvider",
     # dconf: needed for cross-process gsettings change notification in tests that
     # verify one process reacting to another's SetFeature (e.g. the notifications
     # toggle). The keyfile backend's file monitor is unavailable in the sandbox.
     "ca.desrt.dconf",
 )
+# Older GNOME releases do not provide this portal helper. They can still run
+# the compositor/control tests; global-shortcut portal tests need the helper.
+OPTIONAL_DBUS_SERVICES = ("org.gnome.Settings.GlobalShortcutsProvider",)
 
 
 def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
@@ -36,9 +38,11 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     service_dir = tmp / "dbus-services"
     service_dir.mkdir(parents=True, exist_ok=True)
     system_service_dir = pathlib.Path("/usr/share/dbus-1/services")
-    for name in DBUS_SERVICES:
+    for name in (*DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES):
         src = system_service_dir / f"{name}.service"
         if not src.exists():
+            if name in OPTIONAL_DBUS_SERVICES:
+                continue
             raise RuntimeError(f"missing required DBus service: {src}")
         shutil.copy2(src, service_dir / src.name)
 
