@@ -7,6 +7,19 @@ Private dependency builds are available on the `private-build-dependencies`
 branch while the change is under review. The build goes into `./install`.
 Keep the checkout there if you register it as a login session.
 
+## Prerequisites
+
+This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
+newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
+The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
+mtdev, Lua, gnome-desktop and the PipeWire client libraries. It does **not yet bootstrap every
+library on a fresh distribution installation**.
+
+Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
+A distro name alone does not guarantee compatible base development libraries.
+If Meson reports a missing base dependency, stop there; do not upgrade your
+GNOME installation to satisfy this build.
+
 ## 1. Get the source
 
 Install Git with your distribution's package manager, then:
@@ -24,42 +37,6 @@ system package manager. Run it as your normal user.
 The dependency sources and checksums are in `build-dependencies.json`. Completed dependency
 builds are reused. Settings and the patched portal remain
 [optional builds](source-development.md#optional-components).
-
-## Prerequisites
-
-This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
-newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
-The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
-mtdev, Lua, gnome-desktop and the PipeWire client libraries. It does **not yet bootstrap every
-library on a fresh distribution installation**.
-
-Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
-A distro name alone does not guarantee compatible base development libraries.
-If Meson reports a missing base dependency, stop there; do not upgrade your
-GNOME installation to satisfy this build.
-
-## Build options
-
-| Command                  | Behaviour                                |
-| ------------------------ | ---------------------------------------- |
-| `./build.sh`             | Build private dependencies, then Gnoblin |
-| `./build.sh --deps-only` | Build only the private dependencies      |
-| `./build.sh --no-deps`   | Reuse dependencies and rebuild Gnoblin   |
-| `./build.sh --dry-run`   | Show what will be built                  |
-
-`--yes` and `--install-deps` remain accepted for older scripts. Neither enables
-host package installation.
-
-## How GNOME stays separate
-
-Dependency headers, libraries and tools stay in `./install/deps`. Gnoblin's
-binaries link to that directory. Its library paths are not written to your
-shell profile or the system loader configuration. The dependency tool directory
-is not added to application launch paths.
-
-The host still provides the kernel, graphics drivers, system services and
-compatible base libraries. The private PipeWire client connects to the existing
-audio service; the build does not register another PipeWire service.
 
 ## 2. Try it in a window
 
@@ -84,6 +61,29 @@ Run the `sudo install` commands it prints. Then
 [install a shell](bring-your-own-shell.md), log out and select **Gnoblin**.
 
 Registration only adds session files; it does not build a missing runtime.
+
+## Build options
+
+| Command                  | Behaviour                                |
+| ------------------------ | ---------------------------------------- |
+| `./build.sh`             | Build private dependencies, then Gnoblin |
+| `./build.sh --deps-only` | Build only the private dependencies      |
+| `./build.sh --no-deps`   | Reuse dependencies and rebuild Gnoblin   |
+| `./build.sh --dry-run`   | Show what will be built                  |
+
+`--yes` and `--install-deps` remain accepted for older scripts. Neither enables
+host package installation.
+
+## How GNOME stays separate
+
+Dependency headers, libraries and tools stay in `./install/deps`. Gnoblin's
+binaries link to that directory. Its library paths are not written to your
+shell profile or the system loader configuration. The dependency tool directory
+is not added to application launch paths.
+
+The host still provides the kernel, graphics drivers, system services and
+compatible base libraries. The private PipeWire client connects to the existing
+audio service; the build does not register another PipeWire service.
 
 ## Update
 
