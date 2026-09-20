@@ -64,6 +64,7 @@ install_build_dependencies() {
             packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
                 python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
+                mesa-libEGL-devel
                 pam-devel lua-devel cvt gnome-shell gnome-session gnome-settings-daemon
                 xkeyboard-config-devel xorg-x11-server-Xwayland)
             build_dependency_command "${privilege[@]}" dnf "${confirm[@]}" install \
