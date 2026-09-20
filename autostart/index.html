@@ -2278,7 +2278,7 @@
 <p>Use <code>autostart</code> for simple commands. Use a systemd user service when a program
 needs automatic restarts.</p>
 <h2 id="add-a-program">Add a program<a class="headerlink" href="#add-a-program" title="Permanent link">&para;</a></h2>
-<p>After your component includes:</p>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code>, after any <code>gnoblin.load(...)</code> lines:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"waybar"</span><span class="p">,</span>
 <span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"waybar"</span><span class="p">},</span>
@@ -2305,7 +2305,7 @@ change takes effect at your next login.</p>
 <li>Each name starts once per login.</li>
 <li>Saving again or unlocking does not start a second copy.</li>
 <li>An exited process is not automatically restarted.</li>
-<li>Changing a started name's command takes effect on the next login.</li>
+<li>Changing the command for a program already launched takes effect at the next login.</li>
 <li>Removing the entry does not stop the running process.</li>
 </ul>
 <p>Failed launches are logged and can be retried on a later reload.</p>

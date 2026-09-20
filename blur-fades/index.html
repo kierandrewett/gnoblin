@@ -2263,10 +2263,14 @@
 
 
 <h1 id="blur-during-client-animations">Blur during client animations<a class="headerlink" href="#blur-during-client-animations" title="Permanent link">&para;</a></h1>
-<p>Glass transparency and animation opacity have different meanings.
-Changing a panel's tint must not weaken its background blur.</p>
+<p>A translucent panel still needs full blur while it is visible. During a fade-out,
+both the panel and its blur should disappear. Pixel transparency alone cannot
+tell Gnoblin which of those two cases is happening.</p>
+<p>This page explains how shell developers mark animated regions. For normal
+desktop settings, see <a href="../animations/">animations</a>.</p>
 <h2 id="whole-window-fades">Whole-window fades<a class="headerlink" href="#whole-window-fades" title="Permanent link">&para;</a></h2>
-<p>Use compositor actor opacity to fade the completed window and blur together.
+<p>Let Gnoblin animate the whole surface using a <a href="../animations/#per-surface-animations">layer animation</a>.
+It fades the window and the blur behind it together.
 Do not also fade the client buffer for the same transition.</p>
 <h2 id="items-sharing-one-buffer">Items sharing one buffer<a class="headerlink" href="#items-sharing-one-buffer" title="Permanent link">&para;</a></h2>
 <p>Use <code>gnoblin_blur_fade_manager_v1</code> for independent item fades.

@@ -2275,9 +2275,13 @@
 
 <h1 id="session-settings">Session settings<a class="headerlink" href="#session-settings" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>These options control native UI, layer focus and protocol availability.
-They belong in <code>init.lua</code>.</p>
+<p>Choose which GNOME controls to keep, how launchers affect window focus, and
+whether tools can use particular Wayland interfaces. Add the examples to
+<code>~/.config/gnoblin/init.lua</code>.</p>
 <h2 id="native-features">Native features<a class="headerlink" href="#native-features" title="Permanent link">&para;</a></h2>
+<p>Enable GNOME's notifications if your shell does not provide a notification
+daemon. Run only one notification service. This example enables GNOME's
+notifications and leaves its keyboard-layout and window-switching popups off:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">notifications</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
@@ -2312,11 +2316,14 @@ They belong in <code>init.lua</code>.</p>
 </tr>
 </tbody>
 </table>
-<p>Notifications and the layout-popup setting persist in GSettings.
-Removing them from Lua leaves the saved value. Window-switcher removal returns
-to its default, but disabling it does not release existing shortcut bindings.</p>
+<p>Notifications and the layout-popup setting are saved in GNOME's settings
+database (GSettings). To turn them off again, set them to <code>false</code>; deleting
+the Lua lines leaves the saved values in place.</p>
+<p>Removing <code>window_switcher</code> returns it to <code>false</code>. If your shell needs the same
+switching keys, also <a href="../shortcuts/#avoid-conflicts">release or rebind the built-in shortcuts</a>.</p>
 <p>Disabling the layout popup does not disable keyboard layouts.
-GNOME's OSD and screenshot UI cannot be re-enabled; legacy keys do not restore them.</p>
+Volume/brightness popups and screenshot controls come from your desktop shell;
+these options do not enable GNOME's versions.</p>
 <h2 id="layer-shell-keyboard-focus">Layer-shell keyboard focus<a class="headerlink" href="#layer-shell-keyboard-focus" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">layer_shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -2325,8 +2332,10 @@ GNOME's OSD and screenshot UI cannot be re-enabled; legacy keys do not restore t
 <span class="p">}</span>
 </code></pre></div>
 <p>Default: <code>true</code>. <strong>Requires logout and login.</strong></p>
-<p>An exclusive-keyboard layer, such as a launcher, receives typing while the
-application underneath stays active. Keys are not sent to both.</p>
+<p>When a launcher requests exclusive keyboard focus, typing goes to the launcher.
+With this setting enabled, the application underneath keeps its active
+appearance, so its titlebar and effects do not switch to their unfocused style.
+Typing still goes only to the launcher.</p>
 <p>Set <code>false</code> to let exclusive layers deactivate the application beneath them.
 On-demand focus, passive bars and normal application menus are unchanged.</p>
 <h2 id="window-drag-boundary">Window drag boundary<a class="headerlink" href="#window-drag-boundary" title="Permanent link">&para;</a></h2>
@@ -2340,14 +2349,18 @@ On-demand focus, passive bars and normal application menus are unchanged.</p>
 <p>This keeps the dragged frame below the monitor's reserved top area, including
 space reserved by a layer-shell panel. Set <code>false</code> to allow overlap.</p>
 <h2 id="protocol-settings">Protocol settings<a class="headerlink" href="#protocol-settings" title="Permanent link">&para;</a></h2>
-<p>Implemented gates are enabled by default in Gnoblin. To disable one:</p>
+<p>Wayland protocols let desktop tools request features such as screen capture,
+clipboard access and display power control. The interfaces below are enabled
+by default. Most users can leave them alone.</p>
+<p>For example, this disables the <code>wlr_screencopy</code> screen-capture interface:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">wlr_screencopy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p><strong>Requires logout and login.</strong> Reload cannot remove advertised Wayland globals.</p>
+<p><strong>Log out and back in</strong> to apply protocol changes. Gnoblin exposes these
+interfaces when the session starts and cannot remove them during config reload.</p>
 <table>
 <thead>
 <tr>
@@ -2394,7 +2407,8 @@ space reserved by a layer-shell panel. Set <code>false</code> to allow overlap.<
 </tr>
 </tbody>
 </table>
-<p>Protocol availability and <a href="../permissions/">portal permissions</a> are separate.
+<p>This does not block all screen sharing: apps using the desktop portal follow
+<a href="../permissions/">portal permissions</a> instead.
 Disabling protocols your shell uses can prevent its features from working.</p>
 
 

@@ -2297,8 +2297,9 @@
 
 <h1 id="window-rules">Window rules<a class="headerlink" href="#window-rules" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Rules select windows and change their appearance. Put broad rules first and
-exceptions last.</p>
+<p>A rule has two parts: <code>match</code> selects the windows, and the other fields change
+their appearance. Add rules to <code>~/.config/gnoblin/init.lua</code> after any
+<code>gnoblin.load(...)</code> lines. Put rules for all windows before rules for specific ones.</p>
 <h2 id="add-a-rule">Add a rule<a class="headerlink" href="#add-a-rule" title="Permanent link">&para;</a></h2>
 <p>This dims unfocused application windows without replacing imported rules:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
@@ -2343,25 +2344,42 @@ exceptions last.</p>
 </tr>
 </tbody>
 </table>
-<p>An omitted key adds no constraint. An empty matcher is broad; normally specify
-at least a type.</p>
+<p>For example, <code>{type = "window", focused = false}</code> selects application windows
+that are not focused. It does not select your bar or launcher. Leaving out
+<code>focused</code> selects both focused and unfocused windows.</p>
+<p>A layer namespace is the name a bar or launcher gives its Wayland surface.
+Find it in that shell's documentation; it is not necessarily its executable name.</p>
 <h2 id="match-text">Match text<a class="headerlink" href="#match-text" title="Permanent link">&para;</a></h2>
 <p>Text matchers use <strong>JavaScript regular expressions</strong>, not Lua patterns or globs.
 Use <code>^</code> and <code>$</code> for an exact match.</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">app_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">[[^org\.example\.Editor$]]</span><span class="p">,</span>
+<p>This example fades a window only while its title is exactly <code>Notes</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">title</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"^Notes$"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Lua's <code>[[...]]</code> strings preserve regex backslashes.
-In a quoted string, double them: <code>"^org\\.example\\.Editor$"</code>.</p>
-<p>Inspect windows with <code>gnoblinctl window list --json</code>. Its desktop-entry
-<code>appId</code> may differ from the raw GTK ID or WM class used here.</p>
+<p><code>^</code> means the start of the text and <code>$</code> means the end. Without them, <code>Notes</code>
+also matches <code>Notes — Work</code>.</p>
+<p>For an app ID containing dots, use <code>app_id = [[^org\.example\.Editor$]]</code>.
+The backslash makes each dot literal; Lua's <code>[[...]]</code> strings keep those
+backslashes unchanged. Replace the example ID with the app's GTK ID or WM class.</p>
+<p><code>gnoblinctl window list --json</code> shows titles and window IDs. Its <code>appId</code> is a
+desktop-entry ID and can differ from the ID used by rules. To inspect both raw
+IDs, open the <a href="../developer-console/">JavaScript console</a> with Alt+F2 and run:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">global</span><span class="p">.</span><span class="nx">get_window_actors</span><span class="p">().</span><span class="nx">map</span><span class="p">(({</span><span class="w"> </span><span class="nx">meta_window</span><span class="o">:</span><span class="w"> </span><span class="nb">window</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">({</span>
+<span class="w">    </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">get_title</span><span class="p">(),</span>
+<span class="w">    </span><span class="nx">app_id</span><span class="o">:</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">get_gtk_application_id</span><span class="p">(),</span>
+<span class="w">    </span><span class="nx">wm_class</span><span class="o">:</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">get_wm_class</span><span class="p">(),</span>
+<span class="p">}));</span>
+</code></pre></div>
+<p>Rules use <code>app_id</code> when it is set, otherwise <code>wm_class</code>.</p>
 <h2 id="rule-order">Rule order<a class="headerlink" href="#rule-order" title="Permanent link">&para;</a></h2>
 <p>Matching does not stop at the first rule. Later rules override only the fields
 they set. For example, an unfocused-window rule can change opacity while keeping
 a radius from an earlier all-window rule.</p>
-<p>This is separate from <a href="../configuration-loading/#override-or-append">Lua list merging</a>:
-replacing the rule list discards earlier rules before matching even begins.</p>
+<p>Use <code>gnoblin.window_rule</code> to add rules without removing earlier ones. Passing
+a complete <code>window_rules</code> list to <code>gnoblin.configure</code> replaces the old list;
+see <a href="../configuration-loading/#override-or-append">load order</a>.</p>
 <h2 id="what-can-a-rule-change">What can a rule change?<a class="headerlink" href="#what-can-a-rule-change" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../window-effects/">Effects</a>: blur, opacity, corners, borders, shadows and shaders.</li>

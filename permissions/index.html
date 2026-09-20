@@ -2341,10 +2341,13 @@
 
 <h1 id="portal-permissions">Portal permissions<a class="headerlink" href="#portal-permissions" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Control whether apps may request screen sharing, remote input and other portal
-access. The default is the normal consent flow.</p>
-<p>This requires Gnoblin's patched portal backend. Rules apply to new requests;
-they do not disconnect active sessions.</p>
+<p>Apps use the desktop portal to ask for screen sharing, remote keyboard/mouse
+control and other access. These rules decide whether Gnoblin asks you,
+approves the request or rejects it. Without rules, the usual permission
+dialogs apply.</p>
+<p>These rules require Gnoblin's <a href="../source-development/#optional-components">patched portal backend</a>.
+They have no effect on a stock portal backend. Changes apply to new requests;
+an existing screen share stays connected.</p>
 <h2 id="choose-a-policy">Choose a policy<a class="headerlink" href="#choose-a-policy" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2373,7 +2376,12 @@ they do not disconnect active sessions.</p>
 </tbody>
 </table>
 <p>The global default accepts <code>default</code>, <code>ask</code> or <code>deny</code>.
-Automatic approval needs an explicit app rule.</p>
+Automatic approval needs an explicit app rule. To ask every time by default:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">permissions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">default</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ask"</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code>. Individual rules can override it.</p>
 <p>A matching deny always wins. Otherwise the last matching rule wins as a whole;
 device and monitor lists do not merge across rules.</p>
 <h2 id="example-allow-a-remote-desktop-app">Example: allow a remote-desktop app<a class="headerlink" href="#example-allow-a-remote-desktop-app" title="Permanent link">&para;</a></h2>
@@ -2398,8 +2406,9 @@ configure RustDesk's separate <code>uinput</code> path.</p>
 </ul>
 <p>Use anchors for exact matches. Window titles and client Wayland app IDs are not
 permission identities. Do not grant a broad temporary directory for an AppImage.</p>
-<p>Unverified identities cannot receive automatic approval: they are denied under
-a <code>deny</code> fallback, otherwise sent to a dialog.</p>
+<p>If the portal cannot verify the caller's identity, Gnoblin will not approve it
+automatically. It rejects the request when the global default is <code>deny</code>;
+otherwise it asks you.</p>
 <p>These settings express user preferences. They do not isolate hostile processes
 running as the same Unix user.</p>
 <h2 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Permanent link">&para;</a></h2>
@@ -2438,8 +2447,9 @@ Unattended capture needs an explicit selection. Missing monitors or incompatible
 source types fail; the backend does not guess another source.</p>
 <p><code>devices</code> accepts <code>keyboard</code>, <code>pointer</code> and <code>touchscreen</code>; default is empty.
 <code>clipboard</code> defaults to <code>false</code>. Requests exceeding these limits fail.</p>
-<p>For combined remote sessions, ScreenCast deny blocks video and ScreenCast ask
-requires consent. Automatic capture also needs an allow rule's monitor selection.</p>
+<p>A remote-desktop request can include both video and input control. Video still
+obeys the <code>screen-cast</code> policy: <code>deny</code> blocks it and <code>ask</code> requires consent.
+Automatic video access also needs a monitor selected in an <code>allow</code> rule.</p>
 <h2 id="inspect-a-decision">Inspect a decision<a class="headerlink" href="#inspect-a-decision" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
 gnoblinctl<span class="w"> </span>permissions<span class="w"> </span>list

@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#shell-integration-notes" class="md-skip">
+        <a href="#integrate-a-desktop-shell" class="md-skip">
           Skip to content
         </a>
       
@@ -2240,7 +2240,7 @@
   
 
 
-<h1 id="shell-integration-notes">Shell integration notes<a class="headerlink" href="#shell-integration-notes" title="Permanent link">&para;</a></h1>
+<h1 id="integrate-a-desktop-shell">Integrate a desktop shell<a class="headerlink" href="#integrate-a-desktop-shell" title="Permanent link">&para;</a></h1>
 <p>These APIs are for shell authors. Desktop configuration starts with
 <a href="../configuration/">the configuration guide</a>.</p>
 <h2 id="dock-animation-targets">Dock animation targets<a class="headerlink" href="#dock-animation-targets" title="Permanent link">&para;</a></h2>
@@ -2260,10 +2260,12 @@ Give each grouped window the same icon rectangle before minimising it.</p>
 <p>A zero-size rectangle clears the hint. The hint also clears when its surface
 or window handle disappears.</p>
 <h2 id="layer-placement-and-animation">Layer placement and animation<a class="headerlink" href="#layer-placement-and-animation" title="Permanent link">&para;</a></h2>
-<p>Gnoblin animates the compositor actor without resizing the client or changing
-its exclusive zone. The assigned output stays fixed through entry and exit.</p>
-<p>Layer resize handshakes keep the old buffer anchored until replacement content
-arrives. Clients still need correct committed anchors and margins.</p>
+<p>During entry and exit animations, Gnoblin moves the displayed panel without
+asking the client to resize its buffer. Space reserved for the panel (its
+exclusive zone) stays unchanged, and it remains on the same monitor.</p>
+<p>When a panel changes size, Gnoblin keeps its old buffer aligned to its chosen
+edge until the client submits the new buffer. The client must still set its
+Wayland anchors and margins correctly.</p>
 <p>Use a namespace rule with <code>animation = "none"</code> when the client owns its
 whole-surface transition. See <a href="../animations/">animations</a>.</p>
 <h2 id="input-and-window-control">Input and window control<a class="headerlink" href="#input-and-window-control" title="Permanent link">&para;</a></h2>

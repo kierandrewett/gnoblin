@@ -2221,8 +2221,9 @@
 <h1 id="application-activation">Application activation<a class="headerlink" href="#application-activation" title="Permanent link">&para;</a></h1>
 <p>In Gnoblin, activating an application raises its window, restores it if minimised,
 switches workspace and transfers keyboard focus.</p>
-<p>Old timestamps and Wayland tokens without an input serial do not reduce the
-request to an attention indicator. Explicit no-focus hints and restrictions on
+<p>A request can still bring the app to the front even if its timestamp is old or
+its Wayland activation token is not tied to a recent key or pointer event.
+Gnoblin does not limit those requests to marking the app as needing attention. Explicit no-focus hints and restrictions on
 special windows still apply.</p>
 <p>This policy is native Mutter code and only applies in Gnoblin mode.
 Stock GNOME keeps upstream focus prevention. Native changes need a new session.</p>

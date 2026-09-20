@@ -2341,29 +2341,36 @@
 
 
 <h1 id="write-a-frame-renderer">Write a frame renderer<a class="headerlink" href="#write-a-frame-renderer" title="Permanent link">&para;</a></h1>
+<p><a href="../configuration-reference/#frames">Configuration reference</a></p>
 <p>A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
 window actions and input. Read the <a href="../window-frame-renderers/">architecture</a>
 for ownership and failure behavior.</p>
 <h2 id="register-your-executable">Register your executable<a class="headerlink" href="#register-your-executable" title="Permanent link">&para;</a></h2>
-<p>This standalone config enables a renderer for negotiated SSD:</p>
-<div class="highlight"><pre><span></span><code><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"frame-renderers"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">my_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">"/absolute/path/my-frame"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<span class="w">    </span><span class="p">[</span><span class="s2">"window-rules"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">{</span><span class="w"> </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="w"> </span><span class="p">},</span>
-<span class="w">          </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span><span class="w"> </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my_frame"</span><span class="p">,</span>
-<span class="w">                    </span><span class="nv">extents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">48</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code> after its existing includes. It starts
+your renderer and uses it for apps that request a server-drawn frame:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">frame_renderers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">my_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"/absolute/path/my-frame"</span><span class="p">}},</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my_frame"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">extents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">48</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Reload with <code>gnoblinctl config reload</code>. When adding this to an existing config,
-<a href="../configuration-loading/#override-or-append">append the rule</a> rather than replacing its list.</p>
+<p>Replace the executable path, then run <code>gnoblinctl config reload</code>. The rule
+adds a 48-pixel titlebar and one-pixel edges without removing existing rules.</p>
 <h2 id="implement-the-protocol">Implement the protocol<a class="headerlink" href="#implement-the-protocol" title="Permanent link">&para;</a></h2>
 <p>Generate bindings from <a href="https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml">the protocol XML</a>.
-Gnoblin starts your argv with a private Wayland connection in <code>WAYLAND_SOCKET</code>.
+Gnoblin starts the configured command with a private Wayland connection.
+<code>WAYLAND_SOCKET</code> contains its file descriptor.
 Connect once; do not give that descriptor to a second toolkit display connection.</p>
 <ol>
 <li>Bind <code>gnoblin_window_frame_manager_v1</code>, <code>wl_compositor</code> and your buffer facility.</li>
-<li>For each <code>frame</code> event, create a fresh unroled surface and call <code>attach_surface</code>.</li>
+<li>For each <code>frame</code> event, create a new <code>wl_surface</code> with no assigned role and call <code>attach_surface</code>.</li>
 <li>On <code>configure</code>, draw the supplied outer size. Extents are top/right/bottom/left
    logical pixels. <code>state</code> includes focus, maximized and allowed-action flags.</li>
 <li>Acknowledge its serial, clear/redeclare hit regions, attach a matching buffer,

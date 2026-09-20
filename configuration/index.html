@@ -728,10 +728,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#lua-in-a-minute" class="md-nav__link">
+  <a href="#reading-the-examples" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Lua in a minute
+        Reading the examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sizes-and-window-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sizes and window types
       
     </span>
   </a>
@@ -2268,10 +2279,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#lua-in-a-minute" class="md-nav__link">
+  <a href="#reading-the-examples" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Lua in a minute
+        Reading the examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sizes-and-window-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sizes and window types
       
     </span>
   </a>
@@ -2339,7 +2361,9 @@ Configure the bar, dock and launcher in your desktop shell.</p>
 <p>Run this inside Gnoblin:</p>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
 </code></pre></div>
-<p>Edit the file it prints. Keep existing include lines from your shell installer.</p>
+<p>Edit the file it prints, creating it and its parent directory if needed.
+Keep any <code>gnoblin.load(...)</code> lines already there: they load settings supplied
+by your desktop shell or other config files.</p>
 <h2 id="2-make-a-change">2. Make a change<a class="headerlink" href="#2-make-a-change" title="Permanent link">&para;</a></h2>
 <p>For an existing config, add this <strong>after</strong> its includes:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
@@ -2349,7 +2373,8 @@ Configure the bar, dock and launcher in your desktop shell.</p>
 <span class="p">}</span>
 </code></pre></div>
 <p>This makes minimise and restore animations take 150 milliseconds.</p>
-<p>Starting from an empty file? Load your installed component settings first:</p>
+<p>If your shell installer supplied config files, load them before your own
+settings. For example:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"/usr/share/gnoblin/conf.d/*.lua"</span><span class="p">)</span>
 <span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
 
@@ -2359,24 +2384,36 @@ Configure the bar, dock and launcher in your desktop shell.</p>
 <span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Use the system include path printed by your shell installer; source installs
-may use a different prefix. An unmatched glob loads nothing.</p>
+<p>The first line loads installed settings; the second loads your own files under
+<code>~/.config/gnoblin/conf.d/</code>. Use the paths supplied by your installer if they
+differ. A pattern that finds no files is ignored. If you have no extra config
+files, the first example works on its own.</p>
 <h2 id="3-save-and-check">3. Save and check<a class="headerlink" href="#3-save-and-check" title="Permanent link">&para;</a></h2>
 <p>Valid edits reload automatically. To apply now and see errors:</p>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
 </code></pre></div>
 <p>Try minimising a window. Invalid edits keep the last working configuration.</p>
-<h2 id="lua-in-a-minute">Lua in a minute<a class="headerlink" href="#lua-in-a-minute" title="Permanent link">&para;</a></h2>
+<h2 id="reading-the-examples">Reading the examples<a class="headerlink" href="#reading-the-examples" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Strings use quotes: <code>"fade"</code>.</li>
 <li>Booleans are <code>true</code> or <code>false</code>, without quotes.</li>
-<li>Lists use braces: <code>{"ptyxis", "--new-window"}</code>.</li>
+<li>Braces group settings: <code>shell = {minimize_duration = 150}</code>.</li>
+<li>Braces also hold lists: <code>{"ptyxis", "--new-window"}</code>.</li>
+<li>Separate entries with commas; a comma after the last entry is allowed.</li>
 <li>Setting names use underscores: <code>minimize_duration</code>.</li>
 <li>Comments begin with <code>--</code>.</li>
 </ul>
 <p>Use <code>gnoblin.configure</code> for settings, <code>gnoblin.window_rule</code> for rules,
-and <code>gnoblin.shortcut</code> for commands. <code>gnoblin</code> is available in every config file;
+and <code>gnoblin.shortcut</code> for keyboard shortcuts. The outer braces belong to the
+function call; inner braces group related options. <code>gnoblin</code> is available in every config file;
 you do not need to import it. See the <a href="../configuration-recipes/">recipes</a>.</p>
+<h2 id="sizes-and-window-types">Sizes and window types<a class="headerlink" href="#sizes-and-window-types" title="Permanent link">&para;</a></h2>
+<p>Sizes use <strong>logical pixels</strong>, before display scaling. At 200% scale, a
+10-pixel border occupies 20 physical screen pixels. Durations use milliseconds:
+200 ms is one fifth of a second.</p>
+<p>A <strong>window</strong> is an application window. A <strong>layer surface</strong> is a bar, dock,
+launcher or other desktop panel using the Wayland layer-shell protocol. Rules
+use <code>type = "window"</code> or <code>type = "layer"</code> to distinguish them.</p>
 <h2 id="start-from-an-example">Start from an example<a class="headerlink" href="#start-from-an-example" title="Permanent link">&para;</a></h2>
 <p>Use the <a href="../configuration-recipes/#complete-starter-config">complete starter config</a>
 for a small working file. The same page shows how to override imported shortcuts,

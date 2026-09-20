@@ -2364,10 +2364,29 @@
 <p>Control Gnoblin from a terminal or script. Configure shell panels with that
 shell's own tools.</p>
 <h2 id="start-here">Start here<a class="headerlink" href="#start-here" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>list
-gnoblinctl<span class="w"> </span>config<span class="w"> </span>path
-gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
-</code></pre></div>
+<p>Run commands from a terminal inside Gnoblin:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Use it to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gnoblinctl window list</code></td>
+<td>Find open windows and their IDs</td>
+</tr>
+<tr>
+<td><code>gnoblinctl config path</code></td>
+<td>Find the config file your session uses</td>
+</tr>
+<tr>
+<td><code>gnoblinctl config reload</code></td>
+<td>Apply edits and report config errors</td>
+</tr>
+</tbody>
+</table>
 <p>Run <code>gnoblinctl --help</code>, <code>gnoblinctl help window</code>, or a command's
 <code>--help</code> for accepted arguments. A bare group lists its actions.</p>
 <h2 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h2>
@@ -2389,7 +2408,8 @@ gnoblinctl<span class="w"> </span>window<span class="w"> </span>resize<span clas
 gnoblinctl<span class="w"> </span>window<span class="w"> </span>workspace<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">2</span>
 gnoblinctl<span class="w"> </span>window<span class="w"> </span>monitor<span class="w"> </span><span class="m">42</span><span class="w"> </span><span class="m">0</span>
 </code></pre></div>
-<p>Coordinates and frame sizes use logical pixels, including decorations.
+<p>The move example places the window at <code>(100, 80)</code> on the desktop; the resize
+example sets its outer size to 900 × 600 logical pixels, including its frame.
 Apps can constrain the result. Geometry operations reject incompatible states
 such as fullscreen or non-resizable windows.</p>
 <h2 id="workspaces-and-monitors">Workspaces and monitors<a class="headerlink" href="#workspaces-and-monitors" title="Permanent link">&para;</a></h2>

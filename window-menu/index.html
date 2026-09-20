@@ -2253,8 +2253,9 @@
 
 <h1 id="window-menu">Window menu<a class="headerlink" href="#window-menu" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Your desktop shell draws the window-management menu. Gnoblin supplies the
-target window and actions.</p>
+<p>The window menu contains actions such as Minimise, Maximise and Close. Your
+desktop shell draws it; Gnoblin tells the shell which window it is for and
+which actions are available.</p>
 <p>Bingux's integration config sets this up automatically.</p>
 <h2 id="configure-the-command">Configure the command<a class="headerlink" href="#configure-the-command" title="Permanent link">&para;</a></h2>
 <p>For Bingux:</p>
@@ -2323,10 +2324,10 @@ An empty command list disables the handler. No shortcut is added automatically.<
 <p>Keep the supplied window ID. Run actions with
 <code>gnoblinctl window ACTION ID</code>, not whichever window is focused after the popup opens.</p>
 <p>Gnoblin rejects closed windows, locked sessions and unavailable actions.
-Move and resize start compositor grabs.</p>
-<p>A configured handler replaces the inherited menu. Failed launches are logged;
-no second menu opens. Disabling the handler does not restore menus removed by
-the session mode.</p>
+Move and resize put the window into interactive move/resize mode, with
+Gnoblin handling the pointer until the action finishes.</p>
+<p>If the configured command fails, no fallback menu opens; check the session
+log. Clearing <code>window_menu</code> disables this menu rather than restoring GNOME's.</p>
 <h2 id="test">Test<a class="headerlink" href="#test" title="Permanent link">&para;</a></h2>
 <p>Use <code>GNOBLIN_TEST_WINDOW_MENU=1</code> with <code>tests/test-window-frames.py</code> and Bingux.
 The test clicks a titlebar, opens the menu and checks the original window's action.</p>

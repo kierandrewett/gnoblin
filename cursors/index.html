@@ -2277,7 +2277,8 @@
 <p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Gnoblin uses GNOME's cursor theme and size settings. Adwaita is the default.</p>
 <h2 id="select-a-theme">Select a theme<a class="headerlink" href="#select-a-theme" title="Permanent link">&para;</a></h2>
-<p>Install the theme, then run:</p>
+<p>Install a cursor theme, then replace <code>ThemeName</code> below with its installed
+folder name. The second command selects a 24-pixel cursor size:</p>
 <div class="highlight"><pre><span></span><code>gsettings<span class="w"> </span><span class="nb">set</span><span class="w"> </span>org.gnome.desktop.interface<span class="w"> </span>cursor-theme<span class="w"> </span><span class="s1">'ThemeName'</span>
 gsettings<span class="w"> </span><span class="nb">set</span><span class="w"> </span>org.gnome.desktop.interface<span class="w"> </span>cursor-size<span class="w"> </span><span class="m">24</span>
 </code></pre></div>
@@ -2288,7 +2289,8 @@ gsettings<span class="w"> </span><span class="nb">set</span><span class="w"> </s
 <p>Install a compiled theme in <code>~/.local/share/icons/&lt;theme&gt;/</code> or
 <code>~/.icons/&lt;theme&gt;/</code>, then select it as above.</p>
 <p>Gnoblin uses Hyprcursor for compositor cursors and cursor-shape requests.
-Apps supplying their own cursor buffers need matching Xcursor assets.
+Apps that draw their own cursors need the same theme in Xcursor format as well.
+Otherwise their cursors can look different from Gnoblin's.
 Missing themes or shapes fall back to Xcursor.</p>
 <p><code>HYPRCURSOR_THEME</code>, set before login, overrides the Hyprcursor name while the
 GNOME setting still selects the Xcursor fallback.</p>

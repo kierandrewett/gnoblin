@@ -1137,7 +1137,7 @@
   <a href="#enable-negotiated-ssd" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable negotiated SSD
+        Let apps request a Gnoblin titlebar
       
     </span>
   </a>
@@ -2246,7 +2246,7 @@
   <a href="#enable-negotiated-ssd" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable negotiated SSD
+        Let apps request a Gnoblin titlebar
       
     </span>
   </a>
@@ -2319,9 +2319,11 @@
 
 <h1 id="titlebars-and-window-frames">Titlebars and window frames<a class="headerlink" href="#titlebars-and-window-frames" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p><strong>CSD:</strong> the app draws its titlebar. <strong>SSD:</strong> Gnoblin draws a frame around it.</p>
-<p>SSD is off by default. Your desktop shell's config may enable it.
-Choosing a renderer only changes how an enabled frame looks.</p>
+<p>Most apps draw their own titlebar and buttons. This is <strong>client-side decoration
+(CSD)</strong>. Gnoblin can draw them instead: <strong>server-side decoration (SSD)</strong>.</p>
+<p>Gnoblin's frames are off by default, although your desktop shell can enable
+them through its config. Use <code>mode</code> to decide which windows get a frame and
+<code>renderer</code> to choose what draws it. Setting a renderer alone does not enable frames.</p>
 <h2 id="choose-a-mode">Choose a mode<a class="headerlink" href="#choose-a-mode" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2333,26 +2335,27 @@ Choosing a renderer only changes how an enabled frame looks.</p>
 <tbody>
 <tr>
 <td><code>off</code></td>
-<td>Request CSD; disable Gnoblin's frame and crop</td>
+<td>Let the app draw its titlebar; add no frame or cropping</td>
 </tr>
 <tr>
 <td><code>auto</code></td>
-<td>Supply SSD only for an explicit client request</td>
+<td>Add a frame only when the app explicitly asks for one</td>
 </tr>
 <tr>
 <td><code>prefer-server</code></td>
-<td>Choose SSD when the client has an xdg-decoration object</td>
+<td>Prefer a Gnoblin frame for apps that support decoration negotiation</td>
 </tr>
 <tr>
 <td><code>replace</code></td>
-<td>Keep protocol CSD mode, crop configured margins and add SSD</td>
+<td>Hide the configured app margins and draw a Gnoblin frame</td>
 </tr>
 </tbody>
 </table>
-<p>An unset client preference does not prove that the app draws a titlebar.
-Check the visible result when changing policy.</p>
-<h2 id="enable-negotiated-ssd">Enable negotiated SSD<a class="headerlink" href="#enable-negotiated-ssd" title="Permanent link">&para;</a></h2>
-<p>Append after your config includes:</p>
+<p>Apps negotiate decorations through the Wayland <code>xdg-decoration</code> protocol.
+Not every app supports it, and an app that gives no preference may still draw
+a titlebar. <code>auto</code> uses explicit requests instead of guessing from appearance.</p>
+<h2 id="enable-negotiated-ssd">Let apps request a Gnoblin titlebar<a class="headerlink" href="#enable-negotiated-ssd" title="Permanent link">&para;</a></h2>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code> after any <code>gnoblin.load(...)</code> lines:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -2362,8 +2365,11 @@ Check the visible result when changing policy.</p>
 <span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Save and run <code>gnoblinctl config reload</code>. Negotiation also needs a client commit.
-This policy applies to clients generally; it does not need an app-name list.</p>
+<p>This uses the built-in renderer with a 36-pixel titlebar and no side or bottom
+border. <code>extents</code> lists top, right, bottom and left sizes in that order.</p>
+<p>Save and run <code>gnoblinctl config reload</code>. The app must also update its Wayland
+surface before a decoration change takes effect; if it does not change, reopen
+the app. Apps that draw their own titlebars can look unchanged under <code>auto</code>.</p>
 <h2 id="frame-options">Frame options<a class="headerlink" href="#frame-options" title="Permanent link">&para;</a></h2>
 <p>All fields below go inside <code>frame</code>. Later matching rules override individual
 fields. Sizes are logical pixels.</p>
@@ -2426,17 +2432,23 @@ fields. Sizes are logical pixels.</p>
 <p>Colours accept <code>#RRGGBB</code> or <code>#RRGGBBAA</code>.
 Renderer and style names accept 1–64 letters, digits, <code>_</code> or <code>-</code>.</p>
 <h2 id="cropping-client-decorations">Cropping client decorations<a class="headerlink" href="#cropping-client-decorations" title="Permanent link">&para;</a></h2>
-<p>Crop removes pixels <strong>and their input targets</strong>. Measure the client margins
-before using it. Header bars can contain tabs, search and other app controls.</p>
+<p>Cropping hides a strip of the app and makes that strip unclickable. It cannot
+distinguish a titlebar from tabs, search boxes or other controls. Use it only
+when you know exactly which margins you want to hide.</p>
 <p>With <code>prefer-server</code>, explicit crop provides a fallback for CSD-only clients;
 negotiated SSD clients are not cropped. With <code>replace</code>, zero extents give a
 crop-only window. Fullscreen temporarily removes crop and frame extents.</p>
 <h2 id="custom-renderers">Custom renderers<a class="headerlink" href="#custom-renderers" title="Permanent link">&para;</a></h2>
-<p>Register a service at the config root, then select its name in a frame rule:</p>
+<p>Register the renderer command, then select its name in a rule:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">frame_renderers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">cairo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"/absolute/path/gnoblin-frame-cairo"</span><span class="p">},</span>
 <span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span><span class="w"> </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"cairo"</span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>Use an absolute executable path and separate arguments. <code>native</code> is reserved.
@@ -2445,8 +2457,10 @@ crop-only window. Fullscreen temporarily removes crop and frame extents.</p>
 unchanged paths. The native frame keeps controls available during replacement
 or failure. A compositor upgrade still needs logout and login.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
-<p>Frames support Wayland xdg-toplevels, not Xwayland, popups or layer surfaces.
-Mixed-scale moves and popup-heavy cropped apps need more coverage.</p>
+<p>Frames work on normal Wayland application windows (<code>xdg-toplevel</code>). They do
+not apply to X11 apps running through Xwayland, popups, bars or launchers.
+Moving framed windows between displays with different scales and cropping apps
+with many popups have limited test coverage.</p>
 <p>For renderer implementation and tests, see
 <a href="../window-frame-renderers/">renderer architecture</a> and the <a href="../frame-renderer-api/">author guide</a>.</p>
 

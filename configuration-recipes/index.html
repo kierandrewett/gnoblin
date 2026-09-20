@@ -893,7 +893,7 @@
   <a href="#enable-negotiated-server-decorations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable negotiated server decorations
+        Let apps request a Gnoblin titlebar
       
     </span>
   </a>
@@ -2321,7 +2321,7 @@
   <a href="#enable-negotiated-server-decorations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable negotiated server decorations
+        Let apps request a Gnoblin titlebar
       
     </span>
   </a>
@@ -2383,8 +2383,9 @@
 
 <h1 id="recipes">Recipes<a class="headerlink" href="#recipes" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Add these snippets <strong>after your component includes</strong>.
-They extend existing lists rather than replacing them.</p>
+<p>Add these snippets to <code>~/.config/gnoblin/init.lua</code>, after any <code>gnoblin.load(...)</code>
+lines. Those lines load settings from other files; placing your changes last
+lets them override the loaded values.</p>
 <h2 id="complete-starter-config">Complete starter config<a class="headerlink" href="#complete-starter-config" title="Permanent link">&para;</a></h2>
 <p>Save this as <code>~/.config/gnoblin/init.lua</code>.
 Install the commands you use; replace <code>ptyxis</code> with your terminal.</p>
@@ -2456,18 +2457,17 @@ for state exceptions and how to force a mask deliberately.</p>
 <span class="p">}</span>
 </code></pre></div>
 <p>The last rule overrides animation choices in earlier component rules. This
-controls layer map/unmap animations; a shell may animate its own contents
+controls bars and popups appearing or disappearing; a shell may animate its own contents
 separately. Configure those animations in that shell.</p>
-<h2 id="enable-negotiated-server-decorations">Enable negotiated server decorations<a class="headerlink" href="#enable-negotiated-server-decorations" title="Permanent link">&para;</a></h2>
+<h2 id="enable-negotiated-server-decorations">Let apps request a Gnoblin titlebar<a class="headerlink" href="#enable-negotiated-server-decorations" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span><span class="w"> </span><span class="nv">renderer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"native"</span><span class="p">,</span><span class="w"> </span><span class="nv">extents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">}},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>This uses explicit client requests for SSD and requires no app-name list.
-The extents are top, right, bottom and left logical pixels. It does not detect
-titlebars from their pixels or guarantee that every client negotiates correctly.
-See <a href="../window-frames/">frame modes and boundaries</a> before changing policy.</p>
+<p>This draws a 36-pixel titlebar when an app asks Gnoblin to provide its frame.
+Apps that draw their own titlebars keep them. <code>extents</code> gives the top, right,
+bottom and left sizes in logical pixels. See <a href="../window-frames/">titlebar modes</a>.</p>
 <h2 id="combine-rules">Combine rules<a class="headerlink" href="#combine-rules" title="Permanent link">&para;</a></h2>
 <p>The first rule applies to all application windows. The second changes only
 opacity when a window loses focus; the corner settings remain in effect.</p>

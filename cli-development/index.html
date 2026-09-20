@@ -2272,7 +2272,8 @@
 <li>Keep full values in JSON; shorten only terminal tables.</li>
 <li>Write results to stdout and errors to stderr.</li>
 <li>Exit 0 for success, 1 for runtime failure, 2 for invalid arguments.</li>
-<li>Do not retry an uncertain mutation.</li>
+<li>Do not retry a state-changing command after a timeout: the first request may
+  already have taken effect.</li>
 <li>Keep configuration in Lua; do not add a second settings store.</li>
 </ul>
 <h2 id="transport">Transport<a class="headerlink" href="#transport" title="Permanent link">&para;</a></h2>

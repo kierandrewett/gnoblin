@@ -837,6 +837,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keybinding-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keybinding groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2343,6 +2360,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keybinding-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keybinding groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2482,9 +2516,15 @@
 
 
 <h1 id="configuration-reference">Configuration reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
-<p>Defaults are Gnoblin's; imported shell settings can override them.</p>
+<p>Use this page to look up names, values and defaults. For a first config, start
+with <a href="../configuration/">Configure Gnoblin</a>; for complete examples, see
+<a href="../configuration-recipes/">Recipes</a>.</p>
+<p>Defaults apply before your config loads. Files supplied by your desktop shell
+can change them. Sizes are <a href="../configuration/#sizes-and-window-types">logical pixels</a>.</p>
 <h2 id="lua-api">Lua API<a class="headerlink" href="#lua-api" title="Permanent link">&para;</a></h2>
-<p><code>gnoblin</code> is global. Names use <code>snake_case</code>; string values stay literal.</p>
+<p><code>gnoblin</code> is available in each config file without an import. Call its functions
+with a settings table, for example <code>gnoblin.configure {shell = {minimize_duration = 150}}</code>.
+Setting names use underscores (<code>snake_case</code>). String values are used as written.</p>
 <table>
 <thead>
 <tr>
@@ -2649,6 +2689,38 @@ Groups: <code>shell</code>, <code>wm</code>, <code>mutter</code>, <code>wayland<
 the binding. These values persist in GSettings.</p>
 <p>Guides: <a href="../shortcuts/">shortcuts</a>, <a href="../autostart/">autostart</a>,
 <a href="../window-state-shortcuts/">restore or minimise</a>.</p>
+<h3 id="keybinding-groups">Keybinding groups<a class="headerlink" href="#keybinding-groups" title="Permanent link">&para;</a></h3>
+<p>Use these schemas to look up action names with <code>gsettings list-recursively SCHEMA</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Lua group</th>
+<th>GSettings schema</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>shell</code></td>
+<td><code>org.gnome.shell.keybindings</code></td>
+</tr>
+<tr>
+<td><code>wm</code></td>
+<td><code>org.gnome.desktop.wm.keybindings</code></td>
+</tr>
+<tr>
+<td><code>mutter</code></td>
+<td><code>org.gnome.mutter.keybindings</code></td>
+</tr>
+<tr>
+<td><code>wayland</code></td>
+<td><code>org.gnome.mutter.wayland.keybindings</code></td>
+</tr>
+<tr>
+<td><code>media</code></td>
+<td><code>org.gnome.settings-daemon.plugins.media-keys</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="window-matches">Window matches<a class="headerlink" href="#window-matches" title="Permanent link">&para;</a></h2>
 <p>Inside <code>window_rule {match = {...}, ...}</code>. All specified conditions must match.</p>
 <table>

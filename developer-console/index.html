@@ -2367,15 +2367,14 @@ For several changes, modify that copy and pass it to <code>gnoblin.apply(documen
 bindings and top-level <code>await</code>. Previous results are available through <code>r(id)</code>
 and <code>$_</code>.</p>
 <h2 id="try-lua">Try Lua<a class="headerlink" href="#try-lua" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">set</span><span class="p">({</span>
-<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="p">[</span><span class="s2">"layer-duration"</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">350</span><span class="p">,</span>
-<span class="w">    </span><span class="p">},</span>
-<span class="p">})</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">layer_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">350</span><span class="p">},</span>
+<span class="p">}</span>
 </code></pre></div>
 <p>Then submit <code>:apply</code> to validate and apply the working copy.
 Nothing applies merely because you type it.</p>
-<p>Globals persist between submissions; <code>local</code> variables belong to one chunk.
+<p>Global variables remain available for later submissions. A <code>local</code> variable
+is available only within the submission that creates it.
 Lua uses the restricted config runtime. Module paths resolve from the active
 config root.</p>
 <h2 id="undo-and-reload">Undo and reload<a class="headerlink" href="#undo-and-reload" title="Permanent link">&para;</a></h2>
@@ -2406,7 +2405,9 @@ config root.</p>
 </tbody>
 </table>
 <p>File reload discards live changes and undo history.
-After JavaScript or file edits, use <code>:reload</code> before applying an old Lua copy.</p>
+Lua keeps a separate working copy. After changing settings through JavaScript
+or the config file, use <code>:reload</code> before editing in Lua again so you do not
+apply an outdated copy.</p>
 <p>Live edits support rules, animations, shortcuts, keybindings and permissions.
 Saved feature preferences, autostart, renderer services and startup protocols
 must be changed in the file instead.</p>

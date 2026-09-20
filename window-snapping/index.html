@@ -2253,7 +2253,10 @@
 
 <h1 id="window-snapping">Window snapping<a class="headerlink" href="#window-snapping" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Bingux provides the layout picker. Gnoblin moves and resizes the window.</p>
+<p>With Bingux installed, drag a window toward an edge or press Super+Z to choose
+a layout. Bingux displays the picker; Gnoblin moves and resizes the window.
+The picker controls below belong to Bingux. Other shells can provide their own
+using the <a href="#shell-integration">integration API</a>.</p>
 <p>This supports resizable Wayland and X11 windows. Minimum sizes still apply;
 fullscreen and fixed-size windows are excluded.</p>
 <h2 id="use-the-picker">Use the picker<a class="headerlink" href="#use-the-picker" title="Permanent link">&para;</a></h2>
@@ -2305,7 +2308,8 @@ fullscreen and fixed-size windows are excluded.</p>
 </table>
 <p>Bingux saves layouts in <code>~/.config/bingux/snapping.ini</code>.
 It imports Tiling Shell layouts once when available; otherwise it supplies defaults.</p>
-<p>Targets use the monitor's work area, including panel reservations.
+<p>Windows fill the usable part of the monitor, leaving room for panels that
+reserve space.
 See <a href="../session-settings/#window-drag-boundary">drag boundaries</a> for overlap policy.</p>
 <h2 id="shell-integration">Shell integration<a class="headerlink" href="#shell-integration" title="Permanent link">&para;</a></h2>
 <p>The <a href="../compositor-bridge/">compositor bridge</a> accepts:</p>

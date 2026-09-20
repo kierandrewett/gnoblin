@@ -1572,6 +1572,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#example-watch-the-window-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: watch the window list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#register-a-shortcut" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2276,6 +2287,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#example-watch-the-window-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: watch the window list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#register-a-shortcut" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2373,8 +2395,11 @@
 
 
 <h1 id="compositor-bridge">Compositor bridge<a class="headerlink" href="#compositor-bridge" title="Permanent link">&para;</a></h1>
-<p>A user-local JSON socket for shortcuts, window control, previews and activity
-state. The client owns its UI and window ordering.</p>
+<p>Use this socket API to build a dock, launcher or window switcher. It lets your
+shell read windows, register shortcuts and request window actions. Your shell
+still draws the UI and decides how to group and order windows.</p>
+<p>For terminal commands and scripts, <a href="../gnoblinctl/">gnoblinctl</a> handles the
+connection for you.</p>
 <h2 id="enable-it">Enable it<a class="headerlink" href="#enable-it" title="Permanent link">&para;</a></h2>
 <p>Install or link <code>share/gnoblin/scripts/compositor-bridge.js</code> into
 <code>~/.config/gnoblin/scripts/</code>, then run <code>gnoblinctl reload</code>.
@@ -2387,6 +2412,28 @@ Use <code>GNOBLIN_COMPOSITOR_SOCKET</code> on both ends for a private test path.
 </code></pre></div>
 <p>Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.</p>
+<h2 id="example-watch-the-window-list">Example: watch the window list<a class="headerlink" href="#example-watch-the-window-list" title="Permanent link">&para;</a></h2>
+<p>Run this Python program inside your Gnoblin session after enabling the bridge:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+
+<span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="s2">"GNOBLIN_COMPOSITOR_SOCKET"</span><span class="p">,</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"XDG_RUNTIME_DIR"</span><span class="p">],</span> <span class="s2">"gnoblin/compositor-v1.sock"</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="k">with</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_UNIX</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_STREAM</span><span class="p">)</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="n">connection</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">connection</span><span class="o">.</span><span class="n">makefile</span><span class="p">(</span><span class="s2">"r"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">messages</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Greeting:"</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">messages</span><span class="o">.</span><span class="n">readline</span><span class="p">()))</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="sa">b</span><span class="s1">'{"op":"windows"}</span><span class="se">\n</span><span class="s1">'</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">messages</span><span class="p">:</span>
+            <span class="n">event</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"event"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"windows"</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">event</span><span class="p">[</span><span class="s2">"windows"</span><span class="p">])</span>
+</code></pre></div>
+<p>It prints the current list and subsequent snapshots as windows change. Stop it
+with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.</p>
 <h2 id="register-a-shortcut">Register a shortcut<a class="headerlink" href="#register-a-shortcut" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bind"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"example"</span><span class="p">,</span><span class="w"> </span><span class="nt">"accelerator"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;Alt&gt;F8"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hold"</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
@@ -2419,12 +2466,13 @@ per line, followed by a newline. Keep the connection open.</p>
 </tr>
 </tbody>
 </table>
-<p>Held sessions begin an input grab before the client maps its surface.
+<p>For a held shortcut, Gnoblin captures key and pointer events before your popup
+becomes visible. For example, an Alt-held switcher can finish when Alt is released.
 Events include <code>activated</code>, <code>key</code>, <code>pointer</code>, <code>released</code> and <code>cancelled</code>.</p>
 <p><code>activated</code> includes id, first, modifiers and time.
 Pointer coordinates are global logical pixels; button 1 is left.</p>
-<p>Hide the UI on release or cancellation. Explicit end, lock, disconnect,
-script reload and a ten-second timeout end the grab.</p>
+<p>Hide the UI on release or cancellation. Sending <code>{"op":"end"}</code>, locking, disconnecting, reloading the script or
+reaching the ten-second timeout also releases the captured input.</p>
 <h2 id="bare-super-and-buffered-typing">Bare Super and buffered typing<a class="headerlink" href="#bare-super-and-buffered-typing" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bind"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="nt">"accelerator"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Super"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hold"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"captureInput"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>

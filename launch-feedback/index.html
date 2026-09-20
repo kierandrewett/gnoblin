@@ -2275,6 +2275,9 @@ input-transparent cursor overlay. Application focus is unchanged.</p>
 gnoblinctl<span class="w"> </span>launch<span class="w"> </span>status
 gnoblinctl<span class="w"> </span>launch<span class="w"> </span>end<span class="w"> </span>example
 </code></pre></div>
+<p>Here <code>example</code> is your request token, <code>org.gnome.Nautilus</code> identifies Files,
+and <code>3000</code> sets a three-second timeout. The commands alone show and clear the
+busy cursor; they do not open Files.</p>
 <p>Wait for <code>begin</code> to return before launching the app.
 Use a unique token for each launch and call <code>end</code> if launch fails.</p>
 <p>Requests end when a matching window appears or gains focus, on explicit end,

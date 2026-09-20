@@ -1095,10 +1095,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#add-an-effect" class="md-nav__link">
+  <a href="#rounded-window-corners" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Add an effect
+        Rounded window corners
       
     </span>
   </a>
@@ -1109,18 +1109,7 @@
   <a href="#blur-and-opacity" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Blur and opacity
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rounded-window-corners" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Rounded window corners
+        Blur behind translucent windows
       
     </span>
   </a>
@@ -2232,10 +2221,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#add-an-effect" class="md-nav__link">
+  <a href="#rounded-window-corners" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Add an effect
+        Rounded window corners
       
     </span>
   </a>
@@ -2246,18 +2235,7 @@
   <a href="#blur-and-opacity" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Blur and opacity
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rounded-window-corners" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Rounded window corners
+        Blur behind translucent windows
       
     </span>
   </a>
@@ -2318,166 +2296,111 @@
 
 
 <h1 id="window-effects">Window effects<a class="headerlink" href="#window-effects" title="Permanent link">&para;</a></h1>
-<p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Use <a href="../window-rules/">window rules</a> to apply effects. Edits reload on save.
-These settings change application windows; your shell controls its own panel styling.</p>
-<h2 id="add-an-effect">Add an effect<a class="headerlink" href="#add-an-effect" title="Permanent link">&para;</a></h2>
-<p>Append after your component includes:</p>
+<p><a href="../configuration-reference/#effects">Configuration reference</a></p>
+<p>Add the examples below to <code>~/.config/gnoblin/init.lua</code>, after any
+<code>gnoblin.load(...)</code> lines. Save to apply them. Each example is a complete rule;
+you can combine them because later rules change only the fields they specify.</p>
+<p>These examples affect application windows. Configure a bar or launcher's
+background in that application's own settings.</p>
+<h2 id="rounded-window-corners">Rounded window corners<a class="headerlink" href="#rounded-window-corners" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">smoothing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.6</span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>The examples below show fields to put inside a rule. Later matching rules
-override the fields they specify.</p>
-<h2 id="blur-and-opacity">Blur and opacity<a class="headerlink" href="#blur-and-opacity" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Values</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>blur</code></td>
-<td>Integer 0–100</td>
-<td>Background blur strength; 0 disables it</td>
-</tr>
-<tr>
-<td><code>opacity</code></td>
-<td>Number 0–1</td>
-<td>Opacity of the whole window, including text</td>
-</tr>
-<tr>
-<td><code>blur_ignore_shadows</code></td>
-<td>Boolean; default <code>false</code></td>
-<td>Exclude translucent black pixels from the blur mask</td>
-</tr>
-</tbody>
-</table>
-<p>The client needs a translucent background for blur to show through.
-Keep rule opacity at 1 for readable text; adjust the client's background alpha
-to change the glass tint.</p>
-<p><code>blur_ignore_shadows</code> also excludes black translucent glass. Prefer
-<a href="../background-effects/">explicit blur regions</a> when writing a shell.</p>
-<h2 id="rounded-window-corners">Rounded window corners<a class="headerlink" href="#rounded-window-corners" title="Permanent link">&para;</a></h2>
-<p>The <code>corners</code> table controls shape. Radius 0 disables rounding.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Values</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>radius</code></td>
-<td><code>0</code></td>
-<td>0–200 logical pixels</td>
-</tr>
-<tr>
-<td><code>smoothing</code></td>
-<td><code>0</code></td>
-<td>0–1; circular to a squarer curve</td>
-</tr>
-<tr>
-<td><code>mode</code></td>
-<td><code>"auto"</code></td>
-<td><code>auto</code>, <code>force</code>, <code>off</code></td>
-</tr>
-<tr>
-<td><code>padding</code></td>
-<td><code>{0, 0, 0, 0}</code></td>
-<td>Top/right/bottom/left inset, −128–128 logical pixels</td>
-</tr>
-<tr>
-<td><code>keep_maximized</code></td>
-<td><code>true</code></td>
-<td>Keep rounding when maximised</td>
-</tr>
-<tr>
-<td><code>keep_fullscreen</code>, <code>keep_tiled</code></td>
-<td><code>false</code></td>
-<td>Keep rounding in those states</td>
-</tr>
-<tr>
-<td><code>skip_libadwaita</code></td>
-<td><code>true</code></td>
-<td>Preserve libadwaita corners in auto mode</td>
-</tr>
-<tr>
-<td><code>skip_libhandy</code></td>
-<td><code>false</code></td>
-<td>Skip libhandy windows in auto mode</td>
-</tr>
-<tr>
-<td><code>remove_csd</code></td>
-<td><code>false</code></td>
-<td>Reconstruct supported client corner gaps</td>
-</tr>
-<tr>
-<td><code>shadow</code></td>
-<td><code>false</code></td>
-<td>A shadow table or 1–4 shadow layers</td>
-</tr>
-<tr>
-<td><code>keep_shadow</code></td>
-<td><code>false</code></td>
-<td>Keep replacement shadows in maximised/fullscreen/tiled states</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Auto</strong> preserves existing client corners. <strong>Force</strong> clips to Gnoblin's shape
-and removes the original shadow outside it. <strong>Off</strong> disables the mask.</p>
-<p><code>remove_csd</code> treats client <strong>corners</strong>, not titlebars. It works conservatively
-with stable client edges; uncertain backgrounds keep their native shape.</p>
-<p>Legacy <code>corners.border-width</code> accepts −40–40 pixels and
-<code>corners.border-color</code> defaults to <code>"#808080ff"</code>.
-Use the separate <code>borders</code> table for new configurations.</p>
+<p>This gives windows a 14-pixel corner radius. Sizes use logical pixels, so the
+rounding scales with your display. <code>smoothing</code> ranges from 0 (circular corners)
+to 1 (a squarer curve).</p>
+<p>By default, Gnoblin preserves corners an app already draws. Set
+<code>mode = "force"</code> inside <code>corners</code> to use Gnoblin's shape instead. Forced rounding
+also cuts off the app's original shadow outside that shape.</p>
+<p>Use <code>radius = 0</code> to turn rounding off. To keep maximised windows square:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">radius</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nv">keep_maximized</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Rounding is already disabled for fullscreen and tiled windows by default.
+See the <a href="../configuration-reference/#corners">corner reference</a> for padding and
+exceptions for particular toolkits.</p>
+<p><code>remove_csd</code> fills corner gaps left by supported apps so Gnoblin can draw a
+replacement curve. It does not remove titlebars. Leave it off unless those gaps
+are a problem; see <a href="../window-frames/">titlebars</a> to change window decorations.</p>
+<h2 id="blur-and-opacity">Blur behind translucent windows<a class="headerlink" href="#blur-and-opacity" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Blur ranges from 0 to 100; 0 turns it off. It is visible only where the app's
+background is translucent. For a terminal, enable background transparency in
+the terminal's settings first. An opaque app will look unchanged.</p>
+<p>To fade the entire window, including text and buttons, use <code>opacity</code> instead:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Here unfocused windows are 95% opaque. Keep opacity at 1 if you only want a
+transparent background with readable text.</p>
+<p>If blur appears behind an app's shadow, <code>blur_ignore_shadows = true</code> excludes
+translucent black pixels. It also excludes translucent black backgrounds.
+Shell developers can avoid that guesswork by <a href="../background-effects/">specifying a blur region</a>.</p>
 <h2 id="inner-and-outer-window-borders">Inner and outer window borders<a class="headerlink" href="#inner-and-outer-window-borders" title="Permanent link">&para;</a></h2>
-<p>Put a <code>borders</code> table in the same rule:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">inner_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">    </span><span class="nv">inner_color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span>
-<span class="w">    </span><span class="nv">outer_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">borders</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">inner_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">inner_color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"#505050ff"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">outer_width</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>This is a field value, not a complete rule.</p>
-<p>Widths accept 0–40 logical pixels. Both default to zero.
-Colours use <code>#RRGGBB</code> or <code>#RRGGBBAA</code>, with alpha last.</p>
-<p>Borders inherit <code>radius</code>, <code>smoothing</code> and <code>padding</code> from corners unless
-you override them. Their ranges are the same as the corner fields above.</p>
-<p>Borders do not clip content or reserve space. The outer stroke extends beyond
-the frame. Set <code>keep_maximized</code>, <code>keep_fullscreen</code> or <code>keep_tiled</code> to
-<code>false</code> to hide a border in that state.</p>
+<p>This draws a one-pixel border inside the window's edge. Both widths accept
+0–40 logical pixels and default to 0. An outer border draws beyond the edge;
+neither border changes the space available to the app.</p>
+<p>Colours use <code>#RRGGBB</code> or <code>#RRGGBBAA</code>. The last two digits control transparency:
+<code>ff</code> is opaque and <code>00</code> is transparent.</p>
+<p>Borders follow the corner radius, smoothing and padding unless you set those
+fields inside <code>borders</code>. Set <code>keep_maximized</code>, <code>keep_fullscreen</code> or <code>keep_tiled</code>
+to <code>false</code> there to hide the border in that state.</p>
 <h2 id="shadows">Shadows<a class="headerlink" href="#shadows" title="Permanent link">&para;</a></h2>
-<p>A <code>corners.shadow</code> table accepts <code>x</code>, <code>y</code>, <code>blur</code>, <code>spread</code>,
-<code>opacity</code> and <code>color</code>. For multiple layers:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.22</span><span class="p">},</span>
-<span class="w">    </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.28</span><span class="p">},</span>
+<p>This adds a broad, soft shadow and a smaller shadow close to the edge:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">36</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.22</span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nv">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.28</span><span class="p">},</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Assign this value to <code>corners.shadow</code> in a rule.
-Layers draw in order. A later rule replaces a whole layer list; a single-table
-shadow merges field by field.</p>
-<p>To fade between focused and unfocused shadow styles, set:</p>
-<div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">shadowAnimation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
-<span class="w">    </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">,</span>
+<p><code>x</code> and <code>y</code> move the shadow; positive values move it right and down. <code>blur</code>
+softens its edge, <code>spread</code> grows it, and <code>opacity</code> controls its darkness.
+You can also set <code>color</code>. Supply one shadow table or a list of up to four.</p>
+<p>To make the shadow change smoothly when focus changes:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nv">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="nv">blur</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.3</span><span class="p">},</span>
+<span class="w">        </span><span class="nv">shadow_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span><span class="w"> </span><span class="nv">easing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ease-out-cubic"</span><span class="p">},</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">    </span><span class="nv">corners</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">shadow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.15</span><span class="p">}},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Assign it to <code>corners.shadow_animation</code>.
-Duration accepts 0–2000 ms and defaults to 0. It uses the same
-<a href="../animations/#easing">easing names</a> as layer animations.</p>
+<p>The second rule reduces shadow opacity while keeping the first rule's position
+and blur. The transition takes 180 milliseconds. Duration accepts 0–2000 ms;
+the default, 0, changes immediately. See <a href="../animations/#easing">easing</a>.</p>
+<p>A later list of shadow layers replaces the whole earlier list. A single shadow
+table, as above, changes only its supplied fields.</p>
 <h2 id="custom-fragment-shaders">Custom fragment shaders<a class="headerlink" href="#custom-fragment-shaders" title="Permanent link">&para;</a></h2>
-<p>A rule's <code>shader</code> names a GLSL file; <code>shader_uniforms</code> supplies numeric
-parameters. Use <code>shader = ""</code> to clear a shader.</p>
-<p>See <a href="../shaders/">custom shaders</a> for a complete example and reload behavior.
-For compositor implementation and test coverage, see <a href="../effects-rendering/">effect rendering</a>.</p>
+<p><a href="../shaders/">Custom shaders</a> shows how to tint a window and pass shader parameters.
+For how Gnoblin draws these effects, see <a href="../effects-rendering/">effect rendering</a>.</p>
 
 
 

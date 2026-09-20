@@ -2275,8 +2275,9 @@
 
 <h1 id="animations">Animations<a class="headerlink" href="#animations" title="Permanent link">&para;</a></h1>
 <p><a href="../configuration-reference/">Configuration reference</a></p>
-<p>Configure minimise/restore and layer-shell animations in <code>shell</code>.
-Changes reload on save. GNOME's reduced-motion setting takes precedence.</p>
+<p>Choose how windows minimise and how bars or launchers appear. Add these
+examples to <code>~/.config/gnoblin/init.lua</code>; changes reload on save.
+GNOME's reduced-motion setting can disable animations regardless of these values.</p>
 <h2 id="minimise-and-restore">Minimise and restore<a class="headerlink" href="#minimise-and-restore" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -2312,9 +2313,11 @@ Changes reload on save. GNOME's reduced-motion setting takes precedence.</p>
 </tbody>
 </table>
 <p>Duration is 0–5000 milliseconds; the default is 200.</p>
-<p>The target is the dock-supplied icon rectangle, then <code>minimize_target</code>,
-then the monitor's bottom centre. A configured target is <code>{x, y}</code> in logical
-desktop coordinates, including monitor offsets.</p>
+<p>Gnoblin moves the window toward its dock icon when the dock supplies that
+position. Otherwise it uses <code>minimize_target</code>, if set, or the monitor's bottom
+centre. For a fixed target, add <code>minimize_target = {800, 900}</code> inside <code>shell</code>.
+Coordinates use logical pixels measured across the whole desktop, not from the
+corner of each monitor.</p>
 <h2 id="bars-launchers-and-other-layer-surfaces">Bars, launchers and other layer surfaces<a class="headerlink" href="#bars-launchers-and-other-layer-surfaces" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -2328,8 +2331,8 @@ desktop coordinates, including monitor offsets.</p>
 Duration accepts 0–5000 milliseconds.</p>
 <p>Sliding follows the surface's anchor: a top panel enters from the top.
 Full-screen input overlays fade. Closing reverses the movement.</p>
-<p>Animations run when a surface maps or unmaps. Content changes inside an existing
-surface do not restart them. Your shell may also animate its own contents.</p>
+<p>Animations run when a bar or popup appears or disappears. Changing text or
+other content inside an already visible panel does not restart them. Your shell may also animate its own contents.</p>
 <h2 id="per-surface-animations">Per-surface animations<a class="headerlink" href="#per-surface-animations" title="Permanent link">&para;</a></h2>
 <p>Add a rule after your includes:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
@@ -2345,7 +2348,7 @@ surface do not restart them. Your shell may also animate its own contents.</p>
 <p><code>in</code> is a Lua keyword, so it needs brackets. Both directions accept the same
 three modes. Omitted fields inherit the shell settings.</p>
 <p>For one mode in both directions, use <code>animation = "fade"</code>.
-Use <code>"none"</code> when the client owns its whole-surface transition.</p>
+Use <code>"none"</code> if your shell already animates that panel appearing and disappearing.</p>
 <h2 id="easing">Easing<a class="headerlink" href="#easing" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

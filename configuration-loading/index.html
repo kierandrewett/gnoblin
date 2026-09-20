@@ -975,10 +975,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#available-lua-functions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Available Lua functions
       
     </span>
   </a>
@@ -2309,10 +2309,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
+  <a href="#available-lua-functions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        API
+        Available Lua functions
       
     </span>
   </a>
@@ -2366,14 +2366,14 @@
 <p>Start with one <code>init.lua</code>. Split it into modules when that makes it easier
 to read.</p>
 <h2 id="which-file-is-loaded">Which file is loaded?<a class="headerlink" href="#which-file-is-loaded" title="Permanent link">&para;</a></h2>
-<p><code>gnoblinctl config path</code> shows the running session's root file.</p>
-<p>The normal root is <code>~/.config/gnoblin/init.lua</code>, or
+<p><code>gnoblinctl config path</code> prints the main config file used by your running session.</p>
+<p>The usual path is <code>~/.config/gnoblin/init.lua</code>, or
 <code>$XDG_CONFIG_HOME/gnoblin/init.lua</code> when that variable is set.
 The compositor's <code>GNOBLIN_CONFIG</code> environment variable overrides it.</p>
 <p>If <code>init.lua</code> is absent, the loader checks <code>gnoblin.toml</code>, then
 <code>gnoblin.conf</code>. These are alternatives, not extra includes.
 Use a <code>.lua</code> suffix for Lua; other suffixes select TOML.</p>
-<p>A missing root starts with defaults. Setting <code>GNOBLIN_CONFIG</code> in a terminal
+<p>If no config file exists, Gnoblin uses its defaults. Setting <code>GNOBLIN_CONFIG</code> in a terminal
 does not change the already-running compositor's environment.</p>
 <h2 id="include-a-file">Include a file<a class="headerlink" href="#include-a-file" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"appearance.lua"</span><span class="p">)</span>
@@ -2387,8 +2387,9 @@ The included file uses the same API:</p>
 <h2 id="include-a-directory">Include a directory<a class="headerlink" href="#include-a-directory" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="s2">"conf.d/**/*.lua"</span><span class="p">)</span>
 </code></pre></div>
-<p>Files load in bytewise path order. Names such as <code>10-appearance.lua</code> and
-<code>90-local.lua</code> make that order obvious.</p>
+<p>Matching files load in filename order (byte order, independent of your language
+settings). Use numbered names such as <code>10-appearance.lua</code> and <code>90-local.lua</code>
+to make the order predictable.</p>
 <ul>
 <li><code>*</code>, <code>?</code> and <code>[abc]</code> match within one path segment.</li>
 <li><code>**</code> also searches subdirectories, without following directory symlinks.</li>
@@ -2397,11 +2398,17 @@ The included file uses the same API:</p>
 </ul>
 <p>Files and searched directories are watched, including newly added matches.</p>
 <h2 id="override-or-append">Override or append?<a class="headerlink" href="#override-or-append" title="Permanent link">&para;</a></h2>
-<p>Load component files first, then your changes.</p>
-<p><code>gnoblin.configure</code> merges maps recursively. Later scalar values win.
-A nonempty list replaces the earlier list, including <code>window-rules</code>,
-<code>shortcuts</code>, <code>autostart</code> and permission <code>rules</code>.</p>
-<p>To preserve imported rules, append:</p>
+<p>Put <code>gnoblin.load(...)</code> calls before your personal settings so your changes
+are applied last.</p>
+<p>Repeated <code>gnoblin.configure</code> calls keep settings you have not changed:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">minimize_animation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"fade"</span><span class="p">,</span><span class="w"> </span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200</span><span class="p">}}</span>
+<span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">}}</span>
+</code></pre></div>
+<p>The result is a fade lasting 150 milliseconds. Changing the duration does not
+remove the animation choice.</p>
+<p>Lists behave differently: supplying <code>window_rules</code>, <code>shortcuts</code>, <code>autostart</code>
+or permission <code>rules</code> replaces that list. To add a window rule while keeping
+previous rules, use:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="nv">focused</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
 <span class="w">    </span><span class="nv">opacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.95</span><span class="p">,</span>
@@ -2410,9 +2417,18 @@ A nonempty list replaces the earlier list, including <code>window-rules</code>,
 <p><code>gnoblin.shortcut</code> and <code>gnoblin.autostart</code> merge entries with the same name.
 Use <code>gnoblin.remove_shortcut(name)</code> or <code>gnoblin.remove_autostart(name)</code> to
 remove an imported entry. Removing an autostart entry does not stop a process.</p>
-<p>To replace a whole list, use <code>gnoblin.configure {shortcuts = {...}}</code>.
-Use <code>shortcuts = {}</code> to clear it. Prefer declarations when extending imports.</p>
+<p>To remove every command shortcut loaded so far:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span><span class="nv">shortcuts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{}}</span>
+</code></pre></div>
+<p>Use <code>gnoblin.shortcut</code> to add or change individual shortcuts without clearing
+the others.</p>
 <h2 id="use-a-lua-module">Use a Lua module<a class="headerlink" href="#use-a-lua-module" title="Permanent link">&para;</a></h2>
+<p>Use a module when you want a file to return settings for another file to use.
+For ordinary config files, <code>gnoblin.load</code> is enough.</p>
+<p>In <code>appearance.lua</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kr">return</span><span class="w"> </span><span class="p">{</span><span class="nv">shell</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nv">minimize_duration</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">150</span><span class="p">}}</span>
+</code></pre></div>
+<p>In <code>init.lua</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">configure</span><span class="p">(</span><span class="nb">require</span><span class="p">(</span><span class="s2">"appearance"</span><span class="p">))</span>
 </code></pre></div>
 <p><code>require("appearance")</code> searches <code>appearance.lua</code>, then
@@ -2421,14 +2437,15 @@ A returned table is only applied when passed to <code>gnoblin.configure</code>.<
 <p>Dots in module names are not converted to directories. For explicit subdirectories,
 use <code>gnoblin.load("parts/motion.lua")</code>. Avoid loading the same file through both a glob
 and <code>require</code>.</p>
-<h2 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
+<h2 id="available-lua-functions">Available Lua functions<a class="headerlink" href="#available-lua-functions" title="Permanent link">&para;</a></h2>
 <p><code>gnoblin</code> is available globally in every loaded file and module.
 See the <a href="../configuration-reference/#lua-api">function reference</a>.</p>
 <p>Setting names use <code>snake_case</code>. The API converts them to Gnoblin's internal
 hyphenated names. String values, shader uniform names and renderer names stay
 literal. Do not supply both spellings of the same key in one table.</p>
-<p>Reload starts a fresh Lua state. Standard table, string, math and UTF-8 helpers
-are available; file I/O, process execution and native modules are not.
+<p>Each reload evaluates the files again; Lua variables do not survive it.
+You can use Lua's table, string, math and UTF-8 helpers. Config code cannot
+read arbitrary files, run processes or load native modules.
 Use shortcuts or autostart to launch programs.</p>
 <p>Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.</p>
@@ -2467,8 +2484,8 @@ rewriting the included files.</p>
 <td>Earlier rules/defaults apply</td>
 </tr>
 <tr>
-<td>SSD policy</td>
-<td>On reload and client commit</td>
+<td>Titlebar policy</td>
+<td>After reload and the app's next surface update</td>
 <td>Earlier rules/defaults apply</td>
 </tr>
 <tr>
@@ -2482,7 +2499,7 @@ rewriting the included files.</p>
 <td>Saved GSettings value stays</td>
 </tr>
 <tr>
-<td>Native feature booleans</td>
+<td>Notifications and layout popup</td>
 <td>On reload</td>
 <td>Saved GSettings value stays</td>
 </tr>
@@ -2502,7 +2519,7 @@ rewriting the included files.</p>
 <td>Default on next login</td>
 </tr>
 <tr>
-<td>Exclusive-layer focus policy</td>
+<td>Launcher focus behaviour</td>
 <td>Next login</td>
 <td>Default on next login</td>
 </tr>
@@ -2514,7 +2531,8 @@ rewriting the included files.</p>
 </tbody>
 </table>
 <p>An already-started autostart name uses a changed command only on the next login.
-Explicit file settings override later CLI changes on the next config reload.</p>
+If you change a setting with the CLI, a value written in your config file
+will replace that change on the next config reload.</p>
 <p><code>gnoblinctl reload</code> also reloads the theme and user scripts. Neither reload
 command replaces native libraries or restarts your separate desktop shell.</p>
 

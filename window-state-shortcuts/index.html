@@ -2256,7 +2256,8 @@
 <p>Bind Super+Down to restore a maximised/snapped window first, then minimise it
 on a second press.</p>
 <h2 id="1-release-the-existing-binding">1. Release the existing binding<a class="headerlink" href="#1-release-the-existing-binding" title="Permanent link">&para;</a></h2>
-<p>Add this after your includes and reload:</p>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code>, after any <code>gnoblin.load(...)</code> lines,
+then run <code>gnoblinctl config reload</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">keybindings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">wm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -2275,8 +2276,9 @@ on a second press.</p>
 <span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"gnoblinctl"</span><span class="p">,</span><span class="w"> </span><span class="s2">"window"</span><span class="p">,</span><span class="w"> </span><span class="s2">"restore-or-minimize"</span><span class="p">,</span><span class="w"> </span><span class="s2">"active"</span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>The command restores native maximisation/tiling or a saved custom snap frame.
-If neither applies, it minimises the window.</p>
+<p>Press Super+Down on a maximised or snapped window to return it to its previous
+size. Press it again to minimise. On an ordinary floating window, the first
+press minimises immediately.</p>
 <h2 id="square-maximised-windows">Square maximised windows<a class="headerlink" href="#square-maximised-windows" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">window_rule</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">match</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"window"</span><span class="p">},</span>
