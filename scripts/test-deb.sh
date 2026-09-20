@@ -10,7 +10,7 @@ package="$(realpath -- "${1:?usage: test-deb.sh PACKAGE.deb}")"
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends gnome-shell foot dbus-x11 xauth wayland-utils build-essential pkg-config libwayland-dev
+apt-get install -y --no-install-recommends gnome-shell foot dbus-x11 xauth wayland-utils procps build-essential pkg-config libwayland-dev
 stock_checksum="$(sha256sum /usr/bin/gnome-shell)"
 stock_version="$(/usr/bin/gnome-shell --version)"
 apt-get install -y --no-install-recommends "$package"

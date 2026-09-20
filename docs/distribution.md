@@ -8,6 +8,7 @@ This page is for release maintainers.
 Gnoblin must install alongside GNOME.
 
 - RPM names: `gnoblin-mutter`, `gnoblin-shell`, `gnoblin-session`.
+- Debian/Ubuntu name: `gnoblin` (compositor, session and private libraries together).
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.
@@ -17,8 +18,8 @@ Bingux owns and releases its shell package separately.
 
 ## Package definitions
 
-`nix/native-packages.nix` defines outputs, dependencies and package-name mappings.
-Generate or verify the native adapters with:
+`nix/native-packages.nix` defines the RPM and Arch adapters and their package-name
+mappings. Generate or verify those adapters with:
 
 ```sh
 nix eval --json .#lib.nativePackages
@@ -32,6 +33,22 @@ Generated recipes are not proof of publication. The source defines a
 
 APT and pacman repositories are not published yet.
 Keep the [install guide](installation.md) aligned with actual repository metadata.
+
+## Build Debian and Ubuntu packages
+
+The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
+Build separately in each distribution's container; do not reuse a newer
+distribution's binary package on an older one.
+
+Follow the [container build instructions](../packaging/deb/README.md).
+The builder compiles the required newer libraries into `/usr/lib/gnoblin/deps`
+and produces a `.deb` with the remaining system dependencies recorded for APT.
+No Nix installation is required.
+
+The package tests install stock GNOME first, then exercise Gnoblin's installed
+CLI and compositor in a headless session. They also check removal and verify
+that GNOME's binary is unchanged. A real login test remains part of release
+verification.
 
 ## Prepare Fedora source RPMs
 
@@ -67,15 +84,19 @@ host using [hardware verification](real-hardware-verification.md).
 
 ## GitHub releases
 
-Push the release commit, then the signed tag matching `gnome-versions.json`:
+Push the release commit, then a signed tag matching `gnome-versions.json`.
+Use `v51.0` for the base release or `v51.0-1`, `v51.0-2`, etc. for later package
+revisions of the same base:
 
 ```sh
-git tag -s v51.0 -m "Gnoblin 51.0"
-git push origin v51.0
+git tag -s v51.0-1 -m "Gnoblin 51.0, package revision 1"
+git push origin v51.0-1
 ```
 
-The release workflow builds source archives, source RPMs, packaging adapters and
-checksums before publishing assets. Manual dispatch can repair an existing tag.
+The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
+packages and checksums. All three Debian/Ubuntu build and install tests must
+pass before assets are published. Dependency sources accompany the binaries.
+Manual dispatch can repair assets for an existing tag.
 
 This does not publish binary packages to COPR.
 Check the release result before telling users assets are available.

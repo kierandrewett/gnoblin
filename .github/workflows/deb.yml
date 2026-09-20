@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Commit or release tag to build
+        description: Branch, tag or full commit SHA to build
         type: string
         default: main
         required: true
