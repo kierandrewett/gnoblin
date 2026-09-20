@@ -164,6 +164,7 @@ class IsolationTests(unittest.TestCase):
             self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
             self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
             self.assertNotRegex(expanded, r"(?m)^Name:\s+(?:mutter|gnome-shell)$")
+            self.assertNotRegex(expanded, r"(?m)^Provides:\s+lib(?:mutter|shell-|st-)")
             self.assertNotIn("-Degl_device", expanded)
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
@@ -194,6 +195,13 @@ class IsolationTests(unittest.TestCase):
         self.assertLess(
             publisher.index('copr-cli build "$project" "$schemas_srpm"'),
             publisher.index('copr-cli build "$project" "$mutter_srpm"'),
+        )
+        isolation.validate(
+            "gnoblin-gsettings-desktop-schemas",
+            "/usr/lib/gnoblin/share/pkgconfig/gsettings-desktop-schemas.pc",
+            "pkgconfig(gsettings-desktop-schemas) = 51.0",
+            "",
+            "",
         )
 
     def test_build_routes_disable_extension_manager_tools(self):

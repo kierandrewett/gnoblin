@@ -31,13 +31,9 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       17.gnoblin%{?dist}
+Release:       18.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
-Provides:      libmutter-51.so.0()(64bit)
-Provides:      libmutter-clutter-17.so.0()(64bit)
-Provides:      libmutter-cogl-17.so.0()(64bit)
-Provides:      libmutter-mtk-17.so.0()(64bit)
 
 # Automatically converted from old format: GPLv2+ - review is highly recommended.
 License:       GPL-2.0-or-later
@@ -165,6 +161,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sun Sep 20 2026 Gnoblin contributors - 51.0-18.gnoblin
+- Keep private library capabilities out of the system RPM namespace.
+
 * Mon Sep 14 2026 Gnoblin contributors - 49.5-6.gnoblin
 - Disable incompatible Fedora 44 GObject Introspection generation.
 

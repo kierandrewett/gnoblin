@@ -6,7 +6,7 @@
 %global _sharedstatedir %{_prefix}/var/lib
 # Private libraries must never satisfy dependencies of stock GNOME packages.
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
+%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
 
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %define major_version %(c=%{version}; echo $c | cut -d. -f1 | cut -d~ -f1)
@@ -21,12 +21,9 @@ Name:           gnoblin-shell
 Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        13.gnoblin%{?dist}
+Release:        14.gnoblin%{?dist}
 %global debug_package %{nil}
-%global __requires_exclude ^/usr/sbin/python3$
 Summary:        Private GNOME Shell runtime for Gnoblin
-Provides:       libshell-17.so()(64bit)
-Provides:       libst-17.so()(64bit)
 
 License:        GPL-2.0-or-later
 URL:            https://wiki.gnome.org/Projects/GnomeShell
@@ -243,6 +240,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sun Sep 20 2026 Gnoblin contributors - 51.0-14.gnoblin
+- Filter private Shell and Mutter library requirements from RPM metadata.
+
 * Mon Sep 14 2026 Gnoblin contributors - 49.6-6.gnoblin
 - Rebuild against Mutter without incompatible Fedora 44 introspection output.
 

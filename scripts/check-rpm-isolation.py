@@ -7,7 +7,13 @@ import re
 import subprocess
 
 
-PACKAGES = {"gnoblin-mutter", "gnoblin-mutter-devel", "gnoblin-shell", "gnoblin-session"}
+PACKAGES = {
+    "gnoblin-gsettings-desktop-schemas",
+    "gnoblin-mutter",
+    "gnoblin-mutter-devel",
+    "gnoblin-shell",
+    "gnoblin-session",
+}
 PUBLIC_FILES = {
     "/usr/bin/gnoblinctl",
     "/usr/share/wayland-sessions/gnoblin.desktop",
@@ -26,6 +32,10 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip() or obsoletes.strip():
         raise ValueError(f"{name} declares Conflicts or Obsoletes")
     for capability in provides.splitlines():
+        if name == "gnoblin-gsettings-desktop-schemas" and capability.startswith(
+            "pkgconfig(gsettings-desktop-schemas)"
+        ):
+            continue
         if re.match(
             r"(?:mutter|gnome-shell|libmutter|libshell-|libst-|pkgconfig\(|desktop-notification-daemon|PolicyKit-authentication-agent)",
             capability,
