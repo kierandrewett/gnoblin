@@ -1,20 +1,30 @@
 -- Copy to ~/.config/gnoblin/init.lua.
-local g = require("gnoblin")
-
 -- Load component settings before your overrides.
-g.load("/usr/share/gnoblin/conf.d/*.lua")
-g.load("conf.d/**/*.lua")
-g.set({
-    shell = {
-        ["window-switcher"] = false,
-        ["minimize-animation"] = "zoom",
-        ["minimize-duration"] = 150,
-    },
-    shortcuts = {
-        {name = "terminal", binding = "<Super>Return", command = {"ptyxis"}},
-    },
-})
+gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
+gnoblin.load("conf.d/**/*.lua")
 
--- Split your configuration into ordinary Lua files:
--- g.load("appearance.lua")
--- g.set(require("bindings"))
+gnoblin.configure {
+    shell = {
+        window_switcher = false,
+        minimize_animation = "zoom",
+        minimize_duration = 150,
+    },
+}
+
+-- Rules apply in declaration order.
+gnoblin.window_rule {
+    match = {type = "window", focused = false},
+    opacity = 0.95,
+}
+
+-- Reuse an imported shortcut's name to override only the fields you supply.
+-- gnoblin.shortcut {name = "terminal", command = {"ptyxis", "--new-window"}}
+-- gnoblin.remove_shortcut("terminal")
+
+-- Start a program once per login, unless a service already starts it.
+-- gnoblin.autostart {name = "bar", command = {"waybar"}}
+
+-- Split your configuration into ordinary Lua files when needed.
+-- gnoblin.load("appearance.lua")
+-- gnoblin.configure(require("bindings"))
+-- Reference: https://kierandrewett.github.io/gnoblin/configuration-reference/

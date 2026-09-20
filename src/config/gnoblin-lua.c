@@ -291,8 +291,151 @@ static int lua_set(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
+    if (!lua_istable(state, -1))
+        return luaL_error(state, "gnoblin.config must be a table");
     merge_table(state, -1, 1, NULL);
     lua_pop(state, 2);
+    return 0;
+}
+
+/* Public declarations use Lua identifiers. Keep user-defined map keys literal. */
+static void push_settings(lua_State* state, int source, const char* parent, int depth) {
+    if (depth > MAX_CONFIG_DEPTH)
+        luaL_error(state, "Lua config nesting exceeds 64 levels");
+    luaL_checkstack(state, 6, "settings nesting");
+    source = lua_absindex(state, source);
+    if (!lua_istable(state, source)) {
+        lua_pushvalue(state, source);
+        return;
+    }
+    lua_newtable(state);
+    int destination = lua_gettop(state);
+    gboolean literal =
+        parent && (!strcmp(parent, "shader-uniforms") || !strcmp(parent, "frame-renderers"));
+    lua_pushnil(state);
+    while (lua_next(state, source)) {
+        if (lua_type(state, -2) == LUA_TSTRING && !literal) {
+            char* key = g_strdup(lua_tostring(state, -2));
+            g_strdelimit(key, "_", '-');
+            lua_pushstring(state, key);
+            g_free(key);
+        } else {
+            lua_pushvalue(state, -2);
+        }
+        lua_pushvalue(state, -1);
+        lua_rawget(state, destination);
+        if (!lua_isnil(state, -1))
+            luaL_error(state, "duplicate setting after snake_case conversion");
+        lua_pop(state, 1);
+        const char* key = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        push_settings(state, -2, key, depth + 1);
+        lua_rawset(state, destination);
+        lua_pop(state, 1);
+    }
+    if (marked_array(state, source) && lua_getmetatable(state, source))
+        lua_setmetatable(state, destination);
+}
+
+static int lua_configure(lua_State* state) {
+    luaL_checktype(state, 1, LUA_TTABLE);
+    push_settings(state, 1, NULL, 0);
+    lua_replace(state, 1);
+    return lua_set(state);
+}
+
+static void push_config_list(lua_State* state) {
+    const char* section = lua_tostring(state, lua_upvalueindex(1));
+    const char* key = lua_tostring(state, lua_upvalueindex(2));
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "config");
+    if (!lua_istable(state, -1))
+        luaL_error(state, "gnoblin.config must be a table");
+    if (section[0]) {
+        lua_getfield(state, -1, section);
+        if (lua_isnil(state, -1)) {
+            lua_pop(state, 1);
+            lua_newtable(state);
+            lua_pushvalue(state, -1);
+            lua_setfield(state, -3, section);
+        }
+        if (!lua_istable(state, -1))
+            luaL_error(state, "%s must be a table", section);
+    }
+    lua_getfield(state, -1, key);
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, -3, key);
+    }
+    if (!lua_istable(state, -1))
+        luaL_error(state, "%s must be a list", key);
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list), entries = 0;
+    lua_pushnil(state);
+    while (lua_next(state, list)) {
+        if (!lua_isinteger(state, -2) || lua_tointeger(state, -2) < 1 ||
+            lua_tointeger(state, -2) > count || !lua_istable(state, -1))
+            luaL_error(state, "%s must be a dense list of tables", key);
+        entries++;
+        lua_pop(state, 1);
+    }
+    if (entries != count)
+        luaL_error(state, "%s must be a dense list of tables", key);
+}
+
+/* Named commands merge in place; ordered rules always append. */
+static int lua_declare(lua_State* state) {
+    luaL_checktype(state, 1, LUA_TTABLE);
+    push_settings(state, 1, NULL, 0);
+    int entry = lua_gettop(state);
+    const char* name = NULL;
+    if (lua_toboolean(state, lua_upvalueindex(3))) {
+        lua_getfield(state, entry, "name");
+        if (lua_type(state, -1) != LUA_TSTRING || !lua_rawlen(state, -1))
+            return luaL_error(state, "declaration needs a nonempty string name");
+        name = lua_tostring(state, -1);
+    }
+    push_config_list(state);
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list);
+    for (lua_Integer i = 1; name && i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "name");
+        gboolean matches =
+            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        if (matches) {
+            merge_table(state, -1, entry, NULL);
+            return 0;
+        }
+        lua_pop(state, 1);
+    }
+    lua_pushvalue(state, entry);
+    lua_rawseti(state, list, count + 1);
+    return 0;
+}
+
+static int lua_remove_declaration(lua_State* state) {
+    const char* name = luaL_checkstring(state, 1);
+    push_config_list(state);
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list), next = 1;
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "name");
+        gboolean matches =
+            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        if (matches)
+            lua_pop(state, 1);
+        else
+            lua_rawseti(state, list, next++);
+    }
+    for (lua_Integer i = next; i <= count; i++) {
+        lua_pushnil(state);
+        lua_rawseti(state, list, i);
+    }
     return 0;
 }
 
@@ -353,6 +496,7 @@ static int lua_require(lua_State* state) {
     int status = luaL_loadfilex(state, path, "t");
     if (status == LUA_OK)
         status = lua_pcall(state, 0, 1, 0);
+    g_free(config->current_path);
     config->current_path = g_steal_pointer(&old);
     g_hash_table_remove(config->active, path);
     if (status != LUA_OK)
@@ -380,6 +524,26 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_set, 1);
     lua_setfield(state, -2, "set");
+    lua_pushcfunction(state, lua_configure);
+    lua_setfield(state, -2, "configure");
+    const struct {
+        const char *name, *section, *key;
+        gboolean named, remove;
+    } declarations[] = {
+        {"window_rule", "", "window-rules", FALSE, FALSE},
+        {"permission_rule", "permissions", "rules", FALSE, FALSE},
+        {"shortcut", "", "shortcuts", TRUE, FALSE},
+        {"autostart", "", "autostart", TRUE, FALSE},
+        {"remove_shortcut", "", "shortcuts", TRUE, TRUE},
+        {"remove_autostart", "", "autostart", TRUE, TRUE},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {
+        lua_pushstring(state, declarations[i].section);
+        lua_pushstring(state, declarations[i].key);
+        lua_pushboolean(state, declarations[i].named);
+        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 3);
+        lua_setfield(state, -2, declarations[i].name);
+    }
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_config_load, 1);
     lua_setfield(state, -2, "load");
@@ -478,6 +642,7 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
             }
         }
     }
+    g_free(config->current_path);
     config->current_path = g_steal_pointer(&old);
     g_hash_table_remove(config->active, path);
     return ok;
