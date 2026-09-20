@@ -40,17 +40,16 @@ and `$_`.
 ## Try Lua
 
 ```lua
-gnoblin.set({
-    shell = {
-        ["layer-duration"] = 350,
-    },
-})
+gnoblin.configure {
+    shell = {layer_duration = 350},
+}
 ```
 
 Then submit `:apply` to validate and apply the working copy.
 Nothing applies merely because you type it.
 
-Globals persist between submissions; `local` variables belong to one chunk.
+Global variables remain available for later submissions. A `local` variable
+is available only within the submission that creates it.
 Lua uses the restricted config runtime. Module paths resolve from the active
 config root.
 
@@ -64,7 +63,9 @@ config root.
 | `:reset`  | Clear variables and inspection handles; keep session settings |
 
 File reload discards live changes and undo history.
-After JavaScript or file edits, use `:reload` before applying an old Lua copy.
+Lua keeps a separate working copy. After changing settings through JavaScript
+or the config file, use `:reload` before editing in Lua again so you do not
+apply an outdated copy.
 
 Live edits support rules, animations, shortcuts, keybindings and permissions.
 Saved feature preferences, autostart, renderer services and startup protocols

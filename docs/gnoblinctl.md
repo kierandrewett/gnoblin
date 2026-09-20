@@ -7,11 +7,13 @@ shell's own tools.
 
 ## Start here
 
-```sh
-gnoblinctl window list
-gnoblinctl config path
-gnoblinctl config reload
-```
+Run commands from a terminal inside Gnoblin:
+
+| Command                    | Use it to                              |
+| -------------------------- | -------------------------------------- |
+| `gnoblinctl window list`   | Find open windows and their IDs        |
+| `gnoblinctl config path`   | Find the config file your session uses |
+| `gnoblinctl config reload` | Apply edits and report config errors   |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -44,7 +46,8 @@ gnoblinctl window workspace 42 2
 gnoblinctl window monitor 42 0
 ```
 
-Coordinates and frame sizes use logical pixels, including decorations.
+The move example places the window at `(100, 80)` on the desktop; the resize
+example sets its outer size to 900 × 600 logical pixels, including its frame.
 Apps can constrain the result. Geometry operations reject incompatible states
 such as fullscreen or non-resizable windows.
 

@@ -3,8 +3,7 @@
 Use this route for current development code. Fedora users installing the
 published version should use [COPR](install-fedora.md).
 
-Private dependency builds are available on the `private-build-dependencies`
-branch while the change is under review. The build goes into `./install`.
+The build goes into `./install` inside your checkout.
 Keep the checkout there if you register it as a login session.
 
 ## Prerequisites
@@ -23,7 +22,7 @@ is missing or too old, the build stops and reports it without changing host pack
 Install Git with your distribution's package manager, then:
 
 ```sh
-git clone --branch private-build-dependencies https://github.com/kierandrewett/gnoblin.git
+git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
 ./build.sh
 ```

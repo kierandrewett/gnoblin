@@ -2,8 +2,9 @@
 
 [Configuration reference](configuration-reference.md)
 
-Add these snippets **after your component includes**.
-They extend existing lists rather than replacing them.
+Add these snippets to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)`
+lines. Those lines load settings from other files; placing your changes last
+lets them override the loaded values.
 
 ## Complete starter config
 
@@ -101,10 +102,10 @@ gnoblin.window_rule {
 ```
 
 The last rule overrides animation choices in earlier component rules. This
-controls layer map/unmap animations; a shell may animate its own contents
+controls bars and popups appearing or disappearing; a shell may animate its own contents
 separately. Configure those animations in that shell.
 
-## Enable negotiated server decorations
+## Let apps request a Gnoblin titlebar {#enable-negotiated-server-decorations}
 
 ```lua
 gnoblin.window_rule {
@@ -113,10 +114,9 @@ gnoblin.window_rule {
 }
 ```
 
-This uses explicit client requests for SSD and requires no app-name list.
-The extents are top, right, bottom and left logical pixels. It does not detect
-titlebars from their pixels or guarantee that every client negotiates correctly.
-See [frame modes and boundaries](window-frames.md) before changing policy.
+This draws a 36-pixel titlebar when an app asks Gnoblin to provide its frame.
+Apps that draw their own titlebars keep them. `extents` gives the top, right,
+bottom and left sizes in logical pixels. See [titlebar modes](window-frames.md).
 
 ## Combine rules
 

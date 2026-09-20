@@ -7,7 +7,8 @@ on a second press.
 
 ## 1. Release the existing binding
 
-Add this after your includes and reload:
+Add this to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)` lines,
+then run `gnoblinctl config reload`:
 
 ```lua
 gnoblin.configure {
@@ -34,8 +35,9 @@ gnoblin.shortcut {
 }
 ```
 
-The command restores native maximisation/tiling or a saved custom snap frame.
-If neither applies, it minimises the window.
+Press Super+Down on a maximised or snapped window to return it to its previous
+size. Press it again to minimise. On an ordinary floating window, the first
+press minimises immediately.
 
 ## Square maximised windows
 

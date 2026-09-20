@@ -1,7 +1,9 @@
 # Verify a desktop installation
 
-Run this checklist after installing or upgrading Gnoblin.
-Headless tests cannot establish that the real login and input paths work.
+For contributors and package maintainers: use this checklist to verify a
+release on a real desktop. It covers login, input and visible behaviour that
+headless tests cannot prove. Ordinary installation ends with the steps in the
+[install guide](installation.md).
 
 ## 1. Log in
 

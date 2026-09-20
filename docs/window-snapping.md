@@ -2,7 +2,10 @@
 
 [Configuration reference](configuration-reference.md)
 
-Bingux provides the layout picker. Gnoblin moves and resizes the window.
+With Bingux installed, drag a window toward an edge or press Super+Z to choose
+a layout. Bingux displays the picker; Gnoblin moves and resizes the window.
+The picker controls below belong to Bingux. Other shells can provide their own
+using the [integration API](#shell-integration).
 
 This supports resizable Wayland and X11 windows. Minimum sizes still apply;
 fullscreen and fixed-size windows are excluded.
@@ -24,7 +27,8 @@ fullscreen and fixed-size windows are excluded.
 Bingux saves layouts in `~/.config/bingux/snapping.ini`.
 It imports Tiling Shell layouts once when available; otherwise it supplies defaults.
 
-Targets use the monitor's work area, including panel reservations.
+Windows fill the usable part of the monitor, leaving room for panels that
+reserve space.
 See [drag boundaries](session-settings.md#window-drag-boundary) for overlap policy.
 
 ## Shell integration

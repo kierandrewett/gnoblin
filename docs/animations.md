@@ -2,8 +2,9 @@
 
 [Configuration reference](configuration-reference.md)
 
-Configure minimise/restore and layer-shell animations in `shell`.
-Changes reload on save. GNOME's reduced-motion setting takes precedence.
+Choose how windows minimise and how bars or launchers appear. Add these
+examples to `~/.config/gnoblin/init.lua`; changes reload on save.
+GNOME's reduced-motion setting can disable animations regardless of these values.
 
 ## Minimise and restore
 
@@ -25,9 +26,11 @@ gnoblin.configure {
 
 Duration is 0–5000 milliseconds; the default is 200.
 
-The target is the dock-supplied icon rectangle, then `minimize_target`,
-then the monitor's bottom centre. A configured target is `{x, y}` in logical
-desktop coordinates, including monitor offsets.
+Gnoblin moves the window toward its dock icon when the dock supplies that
+position. Otherwise it uses `minimize_target`, if set, or the monitor's bottom
+centre. For a fixed target, add `minimize_target = {800, 900}` inside `shell`.
+Coordinates use logical pixels measured across the whole desktop, not from the
+corner of each monitor.
 
 ## Bars, launchers and other layer surfaces
 
@@ -47,8 +50,8 @@ Duration accepts 0–5000 milliseconds.
 Sliding follows the surface's anchor: a top panel enters from the top.
 Full-screen input overlays fade. Closing reverses the movement.
 
-Animations run when a surface maps or unmaps. Content changes inside an existing
-surface do not restart them. Your shell may also animate its own contents.
+Animations run when a bar or popup appears or disappears. Changing text or
+other content inside an already visible panel does not restart them. Your shell may also animate its own contents.
 
 ## Per-surface animations
 
@@ -70,7 +73,7 @@ gnoblin.window_rule {
 three modes. Omitted fields inherit the shell settings.
 
 For one mode in both directions, use `animation = "fade"`.
-Use `"none"` when the client owns its whole-surface transition.
+Use `"none"` if your shell already animates that panel appearing and disappearing.
 
 ## Easing
 

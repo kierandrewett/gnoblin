@@ -2,26 +2,29 @@
 
 [Configuration reference](configuration-reference.md)
 
-**CSD:** the app draws its titlebar. **SSD:** Gnoblin draws a frame around it.
+Most apps draw their own titlebar and buttons. This is **client-side decoration
+(CSD)**. Gnoblin can draw them instead: **server-side decoration (SSD)**.
 
-SSD is off by default. Your desktop shell's config may enable it.
-Choosing a renderer only changes how an enabled frame looks.
+Gnoblin's frames are off by default, although your desktop shell can enable
+them through its config. Use `mode` to decide which windows get a frame and
+`renderer` to choose what draws it. Setting a renderer alone does not enable frames.
 
 ## Choose a mode
 
-| Mode            | Behavior                                                    |
-| --------------- | ----------------------------------------------------------- |
-| `off`           | Request CSD; disable Gnoblin's frame and crop               |
-| `auto`          | Supply SSD only for an explicit client request              |
-| `prefer-server` | Choose SSD when the client has an xdg-decoration object     |
-| `replace`       | Keep protocol CSD mode, crop configured margins and add SSD |
+| Mode            | Behavior                                                            |
+| --------------- | ------------------------------------------------------------------- |
+| `off`           | Let the app draw its titlebar; add no frame or cropping             |
+| `auto`          | Add a frame only when the app explicitly asks for one               |
+| `prefer-server` | Prefer a Gnoblin frame for apps that support decoration negotiation |
+| `replace`       | Hide the configured app margins and draw a Gnoblin frame            |
 
-An unset client preference does not prove that the app draws a titlebar.
-Check the visible result when changing policy.
+Apps negotiate decorations through the Wayland `xdg-decoration` protocol.
+Not every app supports it, and an app that gives no preference may still draw
+a titlebar. `auto` uses explicit requests instead of guessing from appearance.
 
-## Enable negotiated SSD
+## Let apps request a Gnoblin titlebar {#enable-negotiated-ssd}
 
-Append after your config includes:
+Add this to `~/.config/gnoblin/init.lua` after any `gnoblin.load(...)` lines:
 
 ```lua
 gnoblin.window_rule {
@@ -34,8 +37,12 @@ gnoblin.window_rule {
 }
 ```
 
-Save and run `gnoblinctl config reload`. Negotiation also needs a client commit.
-This policy applies to clients generally; it does not need an app-name list.
+This uses the built-in renderer with a 36-pixel titlebar and no side or bottom
+border. `extents` lists top, right, bottom and left sizes in that order.
+
+Save and run `gnoblinctl config reload`. The app must also update its Wayland
+surface before a decoration change takes effect; if it does not change, reopen
+the app. Apps that draw their own titlebars can look unchanged under `auto`.
 
 ## Frame options
 
@@ -59,8 +66,9 @@ Renderer and style names accept 1–64 letters, digits, `_` or `-`.
 
 ## Cropping client decorations
 
-Crop removes pixels **and their input targets**. Measure the client margins
-before using it. Header bars can contain tabs, search and other app controls.
+Cropping hides a strip of the app and makes that strip unclickable. It cannot
+distinguish a titlebar from tabs, search boxes or other controls. Use it only
+when you know exactly which margins you want to hide.
 
 With `prefer-server`, explicit crop provides a fallback for CSD-only clients;
 negotiated SSD clients are not cropped. With `replace`, zero extents give a
@@ -68,13 +76,18 @@ crop-only window. Fullscreen temporarily removes crop and frame extents.
 
 ## Custom renderers
 
-Register a service at the config root, then select its name in a frame rule:
+Register the renderer command, then select its name in a rule:
 
 ```lua
 gnoblin.configure {
     frame_renderers = {
         cairo = {"/absolute/path/gnoblin-frame-cairo"},
     },
+}
+
+gnoblin.window_rule {
+    match = {type = "window"},
+    frame = {mode = "auto", renderer = "cairo"},
 }
 ```
 
@@ -87,8 +100,10 @@ or failure. A compositor upgrade still needs logout and login.
 
 ## Limits
 
-Frames support Wayland xdg-toplevels, not Xwayland, popups or layer surfaces.
-Mixed-scale moves and popup-heavy cropped apps need more coverage.
+Frames work on normal Wayland application windows (`xdg-toplevel`). They do
+not apply to X11 apps running through Xwayland, popups, bars or launchers.
+Moving framed windows between displays with different scales and cropping apps
+with many popups have limited test coverage.
 
 For renderer implementation and tests, see
 [renderer architecture](window-frame-renderers.md) and the [author guide](frame-renderer-api.md).

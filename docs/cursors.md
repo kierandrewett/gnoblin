@@ -6,7 +6,8 @@ Gnoblin uses GNOME's cursor theme and size settings. Adwaita is the default.
 
 ## Select a theme
 
-Install the theme, then run:
+Install a cursor theme, then replace `ThemeName` below with its installed
+folder name. The second command selects a 24-pixel cursor size:
 
 ```sh
 gsettings set org.gnome.desktop.interface cursor-theme 'ThemeName'
@@ -25,7 +26,8 @@ Install a compiled theme in `~/.local/share/icons/<theme>/` or
 `~/.icons/<theme>/`, then select it as above.
 
 Gnoblin uses Hyprcursor for compositor cursors and cursor-shape requests.
-Apps supplying their own cursor buffers need matching Xcursor assets.
+Apps that draw their own cursors need the same theme in Xcursor format as well.
+Otherwise their cursors can look different from Gnoblin's.
 Missing themes or shapes fall back to Xcursor.
 
 `HYPRCURSOR_THEME`, set before login, overrides the Hyprcursor name while the

@@ -6,7 +6,7 @@ An external shell owns the bar, dock, launcher and desktop popups.
 ## Provided by your shell
 
 - Bar, dock and application launcher
-- OSDs and workspace feedback
+- Volume/brightness popups and workspace indicators
 - Capture controls
 - Window-management menu
 - Notifications, unless GNOME's service is explicitly enabled

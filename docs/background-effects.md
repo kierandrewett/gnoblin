@@ -1,7 +1,9 @@
 # Client-requested background blur
 
 Gnoblin implements `ext-background-effect-v1` with the `blur` capability.
-Use it when a client knows the shape of its translucent material.
+A shell can use it to specify exactly which parts of a bar or popup need blur,
+without blurring transparent margins or shadows. This page is for client
+developers; desktop users can use [window effects](window-effects.md).
 
 The [protocol XML](https://wayland.app/protocols/ext-background-effect-v1)
 is from Wayland's staging specifications.
@@ -21,8 +23,9 @@ with their surface transaction.
 A null/empty region or destroyed effect removes blur on the next commit.
 Destroying the manager does not destroy existing effects.
 
-Once a client commits standard state, that state overrides automatic whole-window
-blur. An empty region stays empty; it does not restore the alpha-mask fallback.
+After a client sets a blur region through this protocol, Gnoblin uses that
+region instead of guessing from pixel transparency. Sending an empty region
+turns blur off; it does not return to automatic detection.
 
 ## Strength and fades
 

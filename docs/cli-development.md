@@ -10,7 +10,8 @@ The user reference is [gnoblinctl](gnoblinctl.md).
 - Keep full values in JSON; shorten only terminal tables.
 - Write results to stdout and errors to stderr.
 - Exit 0 for success, 1 for runtime failure, 2 for invalid arguments.
-- Do not retry an uncertain mutation.
+- Do not retry a state-changing command after a timeout: the first request may
+  already have taken effect.
 - Keep configuration in Lua; do not add a second settings store.
 
 ## Transport

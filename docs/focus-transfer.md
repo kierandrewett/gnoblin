@@ -3,8 +3,9 @@
 In Gnoblin, activating an application raises its window, restores it if minimised,
 switches workspace and transfers keyboard focus.
 
-Old timestamps and Wayland tokens without an input serial do not reduce the
-request to an attention indicator. Explicit no-focus hints and restrictions on
+A request can still bring the app to the front even if its timestamp is old or
+its Wayland activation token is not tied to a recent key or pointer event.
+Gnoblin does not limit those requests to marking the app as needing attention. Explicit no-focus hints and restrictions on
 special windows still apply.
 
 This policy is native Mutter code and only applies in Gnoblin mode.

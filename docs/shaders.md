@@ -2,7 +2,9 @@
 
 [Configuration reference](configuration-reference.md)
 
-Shaders change a window's pixels. Background blur is a separate effect.
+A fragment shader changes the colour of each pixel in a window. This example
+adds a subtle blue tint to application windows. It does not blur the background;
+use [window effects](window-effects.md#blur-and-opacity) for that.
 
 ## 1. Create the shader
 
@@ -20,7 +22,7 @@ Create the directory first. Do not add `#version` or `main`; Gnoblin supplies th
 
 ## 2. Apply it to a window
 
-After your config includes:
+Add this to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)` lines:
 
 ```lua
 gnoblin.window_rule {
@@ -35,12 +37,12 @@ Set `shader = ""` in a later matching rule to remove it.
 
 ## Inputs and limits
 
-| Input                             | Meaning                                          |
-| --------------------------------- | ------------------------------------------------ |
-| `color`                           | Straight RGBA; Gnoblin handles premultiplication |
-| `uv`                              | Texture coordinates from 0 to 1                  |
-| `gnoblin_width`, `gnoblin_height` | Surface size in logical pixels                   |
-| Custom uniforms                   | Floats; unset values are zero                    |
+| Input                             | Meaning                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `color`                           | Pixel colour and opacity as RGBA; RGB values have not been multiplied by alpha |
+| `uv`                              | Position within the window texture, from 0 to 1 on each axis                   |
+| `gnoblin_width`, `gnoblin_height` | Surface size in logical pixels                                                 |
+| Custom uniforms                   | Floats; unset values are zero                                                  |
 
 Names beginning with `gnoblin_` are reserved.
 A later rule's uniform table replaces the earlier one.

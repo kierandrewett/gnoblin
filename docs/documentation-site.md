@@ -38,6 +38,11 @@ publishes changes automatically. See
 ## Write for the reader
 
 - Give each page one job. Start with what the reader can do.
+- Explain unfamiliar terms before using them: a reader should not need Mutter knowledge
+  to change a titlebar.
+- Give complete, runnable config examples. A variable containing settings does nothing
+  until a config function uses it.
+- State where to put an example and what should change after applying it.
 - Put the normal command before implementation details.
 - Use short paragraphs and one action per numbered step.
 - Explain an option beside its example: accepted values, default, units and reload.

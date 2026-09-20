@@ -1,13 +1,15 @@
 # Window effects
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](configuration-reference.md#effects)
 
-Use [window rules](window-rules.md) to apply effects. Edits reload on save.
-These settings change application windows; your shell controls its own panel styling.
+Add the examples below to `~/.config/gnoblin/init.lua`, after any
+`gnoblin.load(...)` lines. Save to apply them. Each example is a complete rule;
+you can combine them because later rules change only the fields they specify.
 
-## Add an effect
+These examples affect application windows. Configure a bar or launcher's
+background in that application's own settings.
 
-Append after your component includes:
+## Rounded window corners
 
 ```lua
 gnoblin.window_rule {
@@ -16,109 +18,129 @@ gnoblin.window_rule {
 }
 ```
 
-The examples below show fields to put inside a rule. Later matching rules
-override the fields they specify.
+This gives windows a 14-pixel corner radius. Sizes use logical pixels, so the
+rounding scales with your display. `smoothing` ranges from 0 (circular corners)
+to 1 (a squarer curve).
 
-## Blur and opacity
+By default, Gnoblin preserves corners an app already draws. Set
+`mode = "force"` inside `corners` to use Gnoblin's shape instead. Forced rounding
+also cuts off the app's original shadow outside that shape.
 
-| Field                 | Values                   | Effect                                              |
-| --------------------- | ------------------------ | --------------------------------------------------- |
-| `blur`                | Integer 0–100            | Background blur strength; 0 disables it             |
-| `opacity`             | Number 0–1               | Opacity of the whole window, including text         |
-| `blur_ignore_shadows` | Boolean; default `false` | Exclude translucent black pixels from the blur mask |
+Use `radius = 0` to turn rounding off. To keep maximised windows square:
 
-The client needs a translucent background for blur to show through.
-Keep rule opacity at 1 for readable text; adjust the client's background alpha
-to change the glass tint.
+```lua
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {radius = 14, keep_maximized = false},
+}
+```
 
-`blur_ignore_shadows` also excludes black translucent glass. Prefer
-[explicit blur regions](background-effects.md) when writing a shell.
+Rounding is already disabled for fullscreen and tiled windows by default.
+See the [corner reference](configuration-reference.md#corners) for padding and
+exceptions for particular toolkits.
 
-## Rounded window corners
+`remove_csd` fills corner gaps left by supported apps so Gnoblin can draw a
+replacement curve. It does not remove titlebars. Leave it off unless those gaps
+are a problem; see [titlebars](window-frames.md) to change window decorations.
 
-The `corners` table controls shape. Radius 0 disables rounding.
+## Blur behind translucent windows {#blur-and-opacity}
 
-| Field                           | Default        | Values                                                        |
-| ------------------------------- | -------------- | ------------------------------------------------------------- |
-| `radius`                        | `0`            | 0–200 logical pixels                                          |
-| `smoothing`                     | `0`            | 0–1; circular to a squarer curve                              |
-| `mode`                          | `"auto"`       | `auto`, `force`, `off`                                        |
-| `padding`                       | `{0, 0, 0, 0}` | Top/right/bottom/left inset, −128–128 logical pixels          |
-| `keep_maximized`                | `true`         | Keep rounding when maximised                                  |
-| `keep_fullscreen`, `keep_tiled` | `false`        | Keep rounding in those states                                 |
-| `skip_libadwaita`               | `true`         | Preserve libadwaita corners in auto mode                      |
-| `skip_libhandy`                 | `false`        | Skip libhandy windows in auto mode                            |
-| `remove_csd`                    | `false`        | Reconstruct supported client corner gaps                      |
-| `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                           |
-| `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states |
+```lua
+gnoblin.window_rule {
+    match = {type = "window"},
+    blur = 24,
+}
+```
 
-**Auto** preserves existing client corners. **Force** clips to Gnoblin's shape
-and removes the original shadow outside it. **Off** disables the mask.
+Blur ranges from 0 to 100; 0 turns it off. It is visible only where the app's
+background is translucent. For a terminal, enable background transparency in
+the terminal's settings first. An opaque app will look unchanged.
 
-`remove_csd` treats client **corners**, not titlebars. It works conservatively
-with stable client edges; uncertain backgrounds keep their native shape.
+To fade the entire window, including text and buttons, use `opacity` instead:
 
-Legacy `corners.border-width` accepts −40–40 pixels and
-`corners.border-color` defaults to `"#808080ff"`.
-Use the separate `borders` table for new configurations.
+```lua
+gnoblin.window_rule {
+    match = {type = "window", focused = false},
+    opacity = 0.95,
+}
+```
+
+Here unfocused windows are 95% opaque. Keep opacity at 1 if you only want a
+transparent background with readable text.
+
+If blur appears behind an app's shadow, `blur_ignore_shadows = true` excludes
+translucent black pixels. It also excludes translucent black backgrounds.
+Shell developers can avoid that guesswork by [specifying a blur region](background-effects.md).
 
 ## Inner and outer window borders
 
-Put a `borders` table in the same rule:
-
 ```lua
-local borders = {
-    inner_width = 1,
-    inner_color = "#505050ff",
-    outer_width = 0,
+gnoblin.window_rule {
+    match = {type = "window"},
+    borders = {
+        inner_width = 1,
+        inner_color = "#505050ff",
+        outer_width = 0,
+    },
 }
 ```
 
-This is a field value, not a complete rule.
+This draws a one-pixel border inside the window's edge. Both widths accept
+0–40 logical pixels and default to 0. An outer border draws beyond the edge;
+neither border changes the space available to the app.
 
-Widths accept 0–40 logical pixels. Both default to zero.
-Colours use `#RRGGBB` or `#RRGGBBAA`, with alpha last.
+Colours use `#RRGGBB` or `#RRGGBBAA`. The last two digits control transparency:
+`ff` is opaque and `00` is transparent.
 
-Borders inherit `radius`, `smoothing` and `padding` from corners unless
-you override them. Their ranges are the same as the corner fields above.
-
-Borders do not clip content or reserve space. The outer stroke extends beyond
-the frame. Set `keep_maximized`, `keep_fullscreen` or `keep_tiled` to
-`false` to hide a border in that state.
+Borders follow the corner radius, smoothing and padding unless you set those
+fields inside `borders`. Set `keep_maximized`, `keep_fullscreen` or `keep_tiled`
+to `false` there to hide the border in that state.
 
 ## Shadows
 
-A `corners.shadow` table accepts `x`, `y`, `blur`, `spread`,
-`opacity` and `color`. For multiple layers:
+This adds a broad, soft shadow and a smaller shadow close to the edge:
 
 ```lua
-local shadow = {
-    {x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22},
-    {x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28},
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        shadow = {
+            {x = 0, y = 10, blur = 36, spread = 0, opacity = 0.22},
+            {x = 0, y = 2, blur = 5, spread = 0, opacity = 0.28},
+        },
+    },
 }
 ```
 
-Assign this value to `corners.shadow` in a rule.
-Layers draw in order. A later rule replaces a whole layer list; a single-table
-shadow merges field by field.
+`x` and `y` move the shadow; positive values move it right and down. `blur`
+softens its edge, `spread` grows it, and `opacity` controls its darkness.
+You can also set `color`. Supply one shadow table or a list of up to four.
 
-To fade between focused and unfocused shadow styles, set:
+To make the shadow change smoothly when focus changes:
 
 ```lua
-local shadowAnimation = {
-    duration = 180,
-    easing = "ease-out-cubic",
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        shadow = {x = 0, y = 8, blur = 24, opacity = 0.3},
+        shadow_animation = {duration = 180, easing = "ease-out-cubic"},
+    },
+}
+
+gnoblin.window_rule {
+    match = {type = "window", focused = false},
+    corners = {shadow = {opacity = 0.15}},
 }
 ```
 
-Assign it to `corners.shadow_animation`.
-Duration accepts 0–2000 ms and defaults to 0. It uses the same
-[easing names](animations.md#easing) as layer animations.
+The second rule reduces shadow opacity while keeping the first rule's position
+and blur. The transition takes 180 milliseconds. Duration accepts 0–2000 ms;
+the default, 0, changes immediately. See [easing](animations.md#easing).
+
+A later list of shadow layers replaces the whole earlier list. A single shadow
+table, as above, changes only its supplied fields.
 
 ## Custom fragment shaders
 
-A rule's `shader` names a GLSL file; `shader_uniforms` supplies numeric
-parameters. Use `shader = ""` to clear a shader.
-
-See [custom shaders](shaders.md) for a complete example and reload behavior.
-For compositor implementation and test coverage, see [effect rendering](effects-rendering.md).
+[Custom shaders](shaders.md) shows how to tint a window and pass shader parameters.
+For how Gnoblin draws these effects, see [effect rendering](effects-rendering.md).

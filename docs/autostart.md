@@ -7,7 +7,7 @@ needs automatic restarts.
 
 ## Add a program
 
-After your component includes:
+Add this to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)` lines:
 
 ```lua
 gnoblin.autostart {
@@ -46,7 +46,7 @@ gnoblin.remove_autostart("waybar")
 - Each name starts once per login.
 - Saving again or unlocking does not start a second copy.
 - An exited process is not automatically restarted.
-- Changing a started name's command takes effect on the next login.
+- Changing the command for a program already launched takes effect at the next login.
 - Removing the entry does not stop the running process.
 
 Failed launches are logged and can be retried on a later reload.

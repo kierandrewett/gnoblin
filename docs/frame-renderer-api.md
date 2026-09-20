@@ -1,35 +1,43 @@
 # Write a frame renderer
 
+[Configuration reference](configuration-reference.md#frames)
+
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
 window actions and input. Read the [architecture](window-frame-renderers.md)
 for ownership and failure behavior.
 
 ## Register your executable
 
-This standalone config enables a renderer for negotiated SSD:
+Add this to `~/.config/gnoblin/init.lua` after its existing includes. It starts
+your renderer and uses it for apps that request a server-drawn frame:
 
 ```lua
-return {
-    ["frame-renderers"] = { my_frame = { "/absolute/path/my-frame" } },
-    ["window-rules"] = {
-        { match = { type = "window" },
-          frame = { mode = "auto", renderer = "my_frame",
-                    extents = { 48, 1, 1, 1 } } },
+gnoblin.configure {
+    frame_renderers = {my_frame = {"/absolute/path/my-frame"}},
+}
+
+gnoblin.window_rule {
+    match = {type = "window"},
+    frame = {
+        mode = "auto",
+        renderer = "my_frame",
+        extents = {48, 1, 1, 1},
     },
 }
 ```
 
-Reload with `gnoblinctl config reload`. When adding this to an existing config,
-[append the rule](configuration-loading.md#override-or-append) rather than replacing its list.
+Replace the executable path, then run `gnoblinctl config reload`. The rule
+adds a 48-pixel titlebar and one-pixel edges without removing existing rules.
 
 ## Implement the protocol
 
 Generate bindings from [the protocol XML](../src/protocols/window-frame/gnoblin-window-frame-v1.xml).
-Gnoblin starts your argv with a private Wayland connection in `WAYLAND_SOCKET`.
+Gnoblin starts the configured command with a private Wayland connection.
+`WAYLAND_SOCKET` contains its file descriptor.
 Connect once; do not give that descriptor to a second toolkit display connection.
 
 1. Bind `gnoblin_window_frame_manager_v1`, `wl_compositor` and your buffer facility.
-2. For each `frame` event, create a fresh unroled surface and call `attach_surface`.
+2. For each `frame` event, create a new `wl_surface` with no assigned role and call `attach_surface`.
 3. On `configure`, draw the supplied outer size. Extents are top/right/bottom/left
    logical pixels. `state` includes focus, maximized and allowed-action flags.
 4. Acknowledge its serial, clear/redeclare hit regions, attach a matching buffer,

@@ -2,8 +2,9 @@
 
 [Configuration reference](configuration-reference.md)
 
-Your desktop shell draws the window-management menu. Gnoblin supplies the
-target window and actions.
+The window menu contains actions such as Minimise, Maximise and Close. Your
+desktop shell draws it; Gnoblin tells the shell which window it is for and
+which actions are available.
 
 Bingux's integration config sets this up automatically.
 
@@ -69,11 +70,11 @@ Keep the supplied window ID. Run actions with
 `gnoblinctl window ACTION ID`, not whichever window is focused after the popup opens.
 
 Gnoblin rejects closed windows, locked sessions and unavailable actions.
-Move and resize start compositor grabs.
+Move and resize put the window into interactive move/resize mode, with
+Gnoblin handling the pointer until the action finishes.
 
-A configured handler replaces the inherited menu. Failed launches are logged;
-no second menu opens. Disabling the handler does not restore menus removed by
-the session mode.
+If the configured command fails, no fallback menu opens; check the session
+log. Clearing `window_menu` disables this menu rather than restoring GNOME's.
 
 ## Test
 

@@ -1,4 +1,4 @@
-# Shell integration notes
+# Integrate a desktop shell
 
 These APIs are for shell authors. Desktop configuration starts with
 [the configuration guide](configuration.md).
@@ -28,11 +28,13 @@ or window handle disappears.
 
 ## Layer placement and animation
 
-Gnoblin animates the compositor actor without resizing the client or changing
-its exclusive zone. The assigned output stays fixed through entry and exit.
+During entry and exit animations, Gnoblin moves the displayed panel without
+asking the client to resize its buffer. Space reserved for the panel (its
+exclusive zone) stays unchanged, and it remains on the same monitor.
 
-Layer resize handshakes keep the old buffer anchored until replacement content
-arrives. Clients still need correct committed anchors and margins.
+When a panel changes size, Gnoblin keeps its old buffer aligned to its chosen
+edge until the client submits the new buffer. The client must still set its
+Wayland anchors and margins correctly.
 
 Use a namespace rule with `animation = "none"` when the client owns its
 whole-surface transition. See [animations](animations.md).

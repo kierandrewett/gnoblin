@@ -1,11 +1,16 @@
 # Blur during client animations
 
-Glass transparency and animation opacity have different meanings.
-Changing a panel's tint must not weaken its background blur.
+A translucent panel still needs full blur while it is visible. During a fade-out,
+both the panel and its blur should disappear. Pixel transparency alone cannot
+tell Gnoblin which of those two cases is happening.
+
+This page explains how shell developers mark animated regions. For normal
+desktop settings, see [animations](animations.md).
 
 ## Whole-window fades
 
-Use compositor actor opacity to fade the completed window and blur together.
+Let Gnoblin animate the whole surface using a [layer animation](animations.md#per-surface-animations).
+It fades the window and the blur behind it together.
 Do not also fade the client buffer for the same transition.
 
 ## Items sharing one buffer

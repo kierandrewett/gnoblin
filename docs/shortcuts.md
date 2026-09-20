@@ -2,12 +2,13 @@
 
 [Configuration reference](configuration-reference.md)
 
-Use `shortcuts` to launch commands and `keybindings` to change existing
-GNOME actions. Both reload on save.
+Use `gnoblin.shortcut` to launch a program when you press a key combination.
+Use `keybindings` to change built-in actions such as closing a window.
+Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 
 ## Launch a command
 
-Add this after your component includes. Choose an unused name and binding:
+Add this after any `gnoblin.load(...)` lines. It opens a terminal with Super+Enter:
 
 ```lua
 gnoblin.shortcut {
@@ -32,7 +33,8 @@ Removing one releases its binding; it does not stop a launched program.
 | `"<Alt>F8"`         | Alt + F8                                     |
 | `"Super"`           | Super press and release, without another key |
 
-Bindings use GTK accelerator syntax. Held keys do not repeatedly launch commands.
+Super is usually the Windows-logo key. Put modifiers in angle brackets and
+the main key after them, as in the examples above (GTK accelerator syntax). Held keys do not repeatedly launch commands.
 Command shortcuts are inactive on the lock and login screens.
 
 ## Change a built-in action
@@ -47,8 +49,16 @@ gnoblin.configure {
 }
 ```
 
-Groups are `shell`, `wm`, `mutter`, `wayland` and `media`.
-Action names come from the corresponding GNOME keybinding schemas.
+Here `wm` selects window-management actions and `close` names the action.
+To see its available actions and current bindings:
+
+```sh
+gsettings list-recursively org.gnome.desktop.wm.keybindings
+```
+
+Other groups are `shell`, `mutter`, `wayland` and `media`. See the
+[keybinding groups](configuration-reference.md#keybinding-groups) for their
+GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
 These overrides persist in GSettings: removing the Lua entry does not restore
@@ -69,10 +79,14 @@ Commands run directly. `$HOME`, `~`, pipes and redirection are not expanded.
 Use an absolute path, a program on PATH, or explicitly run a shell:
 
 ```lua
-local command = {"sh", "-c", "date >> \"$HOME/shortcut.log\""}
+gnoblin.shortcut {
+    name = "log-time",
+    binding = "<Super><Shift>t",
+    command = {"sh", "-c", "date >> \"$HOME/shortcut.log\""},
+}
 ```
 
-This is a command value to put in a shortcut, not a standalone binding.
+This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
 ## Popups that capture typing
 

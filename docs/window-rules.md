@@ -2,8 +2,9 @@
 
 [Configuration reference](configuration-reference.md)
 
-Rules select windows and change their appearance. Put broad rules first and
-exceptions last.
+A rule has two parts: `match` selects the windows, and the other fields change
+their appearance. Add rules to `~/.config/gnoblin/init.lua` after any
+`gnoblin.load(...)` lines. Put rules for all windows before rules for specific ones.
 
 ## Add a rule
 
@@ -31,25 +32,47 @@ Every condition in `match` must match.
 | `title`                     | Window title                                     |
 | `layer`                     | Layer-shell namespace                            |
 
-An omitted key adds no constraint. An empty matcher is broad; normally specify
-at least a type.
+For example, `{type = "window", focused = false}` selects application windows
+that are not focused. It does not select your bar or launcher. Leaving out
+`focused` selects both focused and unfocused windows.
+
+A layer namespace is the name a bar or launcher gives its Wayland surface.
+Find it in that shell's documentation; it is not necessarily its executable name.
 
 ## Match text
 
 Text matchers use **JavaScript regular expressions**, not Lua patterns or globs.
 Use `^` and `$` for an exact match.
 
+This example fades a window only while its title is exactly `Notes`:
+
 ```lua
-local match = {
-    app_id = [[^org\.example\.Editor$]],
+gnoblin.window_rule {
+    match = {type = "window", title = "^Notes$", focused = false},
+    opacity = 0.9,
 }
 ```
 
-Lua's `[[...]]` strings preserve regex backslashes.
-In a quoted string, double them: `"^org\\.example\\.Editor$"`.
+`^` means the start of the text and `$` means the end. Without them, `Notes`
+also matches `Notes — Work`.
 
-Inspect windows with `gnoblinctl window list --json`. Its desktop-entry
-`appId` may differ from the raw GTK ID or WM class used here.
+For an app ID containing dots, use `app_id = [[^org\.example\.Editor$]]`.
+The backslash makes each dot literal; Lua's `[[...]]` strings keep those
+backslashes unchanged. Replace the example ID with the app's GTK ID or WM class.
+
+`gnoblinctl window list --json` shows titles and window IDs. Its `appId` is a
+desktop-entry ID and can differ from the ID used by rules. To inspect both raw
+IDs, open the [JavaScript console](developer-console.md) with Alt+F2 and run:
+
+```javascript
+global.get_window_actors().map(({ meta_window: window }) => ({
+    title: window.get_title(),
+    app_id: window.get_gtk_application_id(),
+    wm_class: window.get_wm_class(),
+}));
+```
+
+Rules use `app_id` when it is set, otherwise `wm_class`.
 
 ## Rule order
 
@@ -57,8 +80,9 @@ Matching does not stop at the first rule. Later rules override only the fields
 they set. For example, an unfocused-window rule can change opacity while keeping
 a radius from an earlier all-window rule.
 
-This is separate from [Lua list merging](configuration-loading.md#override-or-append):
-replacing the rule list discards earlier rules before matching even begins.
+Use `gnoblin.window_rule` to add rules without removing earlier ones. Passing
+a complete `window_rules` list to `gnoblin.configure` replaces the old list;
+see [load order](configuration-loading.md#override-or-append).
 
 ## What can a rule change?
 

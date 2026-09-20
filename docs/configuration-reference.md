@@ -1,10 +1,17 @@
 # Configuration reference
 
-Defaults are Gnoblin's; imported shell settings can override them.
+Use this page to look up names, values and defaults. For a first config, start
+with [Configure Gnoblin](configuration.md); for complete examples, see
+[Recipes](configuration-recipes.md).
+
+Defaults apply before your config loads. Files supplied by your desktop shell
+can change them. Sizes are [logical pixels](configuration.md#sizes-and-window-types).
 
 ## Lua API
 
-`gnoblin` is global. Names use `snake_case`; string values stay literal.
+`gnoblin` is available in each config file without an import. Call its functions
+with a settings table, for example `gnoblin.configure {shell = {minimize_duration = 150}}`.
+Setting names use underscores (`snake_case`). String values are used as written.
 
 | Function                  | Input                      | Behaviour                                                                  |
 | ------------------------- | -------------------------- | -------------------------------------------------------------------------- |
@@ -61,6 +68,18 @@ the binding. These values persist in GSettings.
 
 Guides: [shortcuts](shortcuts.md), [autostart](autostart.md),
 [restore or minimise](window-state-shortcuts.md).
+
+### Keybinding groups
+
+Use these schemas to look up action names with `gsettings list-recursively SCHEMA`:
+
+| Lua group | GSettings schema                               |
+| --------- | ---------------------------------------------- |
+| `shell`   | `org.gnome.shell.keybindings`                  |
+| `wm`      | `org.gnome.desktop.wm.keybindings`             |
+| `mutter`  | `org.gnome.mutter.keybindings`                 |
+| `wayland` | `org.gnome.mutter.wayland.keybindings`         |
+| `media`   | `org.gnome.settings-daemon.plugins.media-keys` |
 
 ## Window matches
 

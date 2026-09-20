@@ -19,6 +19,10 @@ gnoblinctl launch status
 gnoblinctl launch end example
 ```
 
+Here `example` is your request token, `org.gnome.Nautilus` identifies Files,
+and `3000` sets a three-second timeout. The commands alone show and clear the
+busy cursor; they do not open Files.
+
 Wait for `begin` to return before launching the app.
 Use a unique token for each launch and call `end` if launch fails.
 

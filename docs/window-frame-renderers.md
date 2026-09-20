@@ -67,7 +67,7 @@ Both accept `--theme-file=/absolute/path` containing a six-digit hex background.
 Valid edits repaint; invalid edits retain the previous colour.
 
 Their button layout is fixed. Native fallback separately supports Lua's
-`button-layout`. Other toolkits need an adapter; ordinary toolkit windows
+`button_layout`. Other toolkits need an adapter; ordinary toolkit windows
 cannot be attached directly.
 
 ## Reload and tests

@@ -1,7 +1,11 @@
 # Compositor bridge
 
-A user-local JSON socket for shortcuts, window control, previews and activity
-state. The client owns its UI and window ordering.
+Use this socket API to build a dock, launcher or window switcher. It lets your
+shell read windows, register shortcuts and request window actions. Your shell
+still draws the UI and decides how to group and order windows.
+
+For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
+connection for you.
 
 ## Enable it
 
@@ -23,6 +27,33 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
+## Example: watch the window list
+
+Run this Python program inside your Gnoblin session after enabling the bridge:
+
+```python
+import json
+import os
+import socket
+
+path = os.environ.get(
+    "GNOBLIN_COMPOSITOR_SOCKET",
+    os.path.join(os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"),
+)
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+    connection.connect(path)
+    with connection.makefile("r", encoding="utf-8") as messages:
+        print("Greeting:", json.loads(messages.readline()))
+        connection.sendall(b'{"op":"windows"}\n')
+        for line in messages:
+            event = json.loads(line)
+            if event.get("event") == "windows":
+                print(event["windows"])
+```
+
+It prints the current list and subsequent snapshots as windows change. Stop it
+with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.
+
 ## Register a shortcut
 
 ```json
@@ -42,14 +73,15 @@ The server acknowledges:
 | `4`        | Hold Control   |
 | `67108864` | Hold Super     |
 
-Held sessions begin an input grab before the client maps its surface.
+For a held shortcut, Gnoblin captures key and pointer events before your popup
+becomes visible. For example, an Alt-held switcher can finish when Alt is released.
 Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
 
 `activated` includes id, first, modifiers and time.
 Pointer coordinates are global logical pixels; button 1 is left.
 
-Hide the UI on release or cancellation. Explicit end, lock, disconnect,
-script reload and a ten-second timeout end the grab.
+Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking, disconnecting, reloading the script or
+reaching the ten-second timeout also releases the captured input.
 
 ## Bare Super and buffered typing
 

@@ -2,11 +2,14 @@
 
 [Configuration reference](configuration-reference.md)
 
-Control whether apps may request screen sharing, remote input and other portal
-access. The default is the normal consent flow.
+Apps use the desktop portal to ask for screen sharing, remote keyboard/mouse
+control and other access. These rules decide whether Gnoblin asks you,
+approves the request or rejects it. Without rules, the usual permission
+dialogs apply.
 
-This requires Gnoblin's patched portal backend. Rules apply to new requests;
-they do not disconnect active sessions.
+These rules require Gnoblin's [patched portal backend](source-development.md#optional-components).
+They have no effect on a stock portal backend. Changes apply to new requests;
+an existing screen share stays connected.
 
 ## Choose a policy
 
@@ -18,7 +21,15 @@ they do not disconnect active sessions.
 | `deny`    | Reject without a dialog                          |
 
 The global default accepts `default`, `ask` or `deny`.
-Automatic approval needs an explicit app rule.
+Automatic approval needs an explicit app rule. To ask every time by default:
+
+```lua
+gnoblin.configure {
+    permissions = {default = "ask"},
+}
+```
+
+Add this to `~/.config/gnoblin/init.lua`. Individual rules can override it.
 
 A matching deny always wins. Otherwise the last matching rule wins as a whole;
 device and monitor lists do not merge across rules.
@@ -52,8 +63,9 @@ configure RustDesk's separate `uinput` path.
 Use anchors for exact matches. Window titles and client Wayland app IDs are not
 permission identities. Do not grant a broad temporary directory for an AppImage.
 
-Unverified identities cannot receive automatic approval: they are denied under
-a `deny` fallback, otherwise sent to a dialog.
+If the portal cannot verify the caller's identity, Gnoblin will not approve it
+automatically. It rejects the request when the global default is `deny`;
+otherwise it asks you.
 
 These settings express user preferences. They do not isolate hostile processes
 running as the same Unix user.
@@ -75,8 +87,9 @@ source types fail; the backend does not guess another source.
 `devices` accepts `keyboard`, `pointer` and `touchscreen`; default is empty.
 `clipboard` defaults to `false`. Requests exceeding these limits fail.
 
-For combined remote sessions, ScreenCast deny blocks video and ScreenCast ask
-requires consent. Automatic capture also needs an allow rule's monitor selection.
+A remote-desktop request can include both video and input control. Video still
+obeys the `screen-cast` policy: `deny` blocks it and `ask` requires consent.
+Automatic video access also needs a monitor selected in an `allow` rule.
 
 ## Inspect a decision
 
