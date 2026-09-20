@@ -1,131 +1,75 @@
-# Devkit
+# Try Gnoblin in a window
 
-The devkit is the fast loop for iterating on your own chrome (Quickshell,
-waybar, a custom layer-shell client) against a real Gnoblin compositor,
-without touching your login session. It boots a **visible nested gnoblin
-session** — a window inside your current Wayland session — plus a terminal
-already wired to it.
+The devkit runs a nested Gnoblin session inside your Wayland desktop.
+Use it to test a build without logging out.
 
-For testing things that only make sense in a real login session (GDM, an
-actual seat, unattended screensharing), see
-[Real-hardware verification](real-hardware-verification.md) instead.
+First complete the [source build](install-source.md).
 
-## Prerequisites
+## Start
 
-Follow the [source installation guide](installation.md#build-from-source)
-through dependency installation and compilation first.
-
-A build: `just build-local`. You also need to be in a Wayland session yourself (the
-devkit renders as a window in it) — see [Headless mode](#headless--scripting-mode)
-if you're not.
-
-## Running it
+From the checkout:
 
 ```sh
-just gnome-devkit            # auto-detects foot/kitty/alacritty/wezterm/…
-just gnome-devkit kitty      # or name a terminal explicitly
+GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
-This boots gnome-shell in the `gnoblin` session mode using Mutter's
-development-kit viewer (`--devkit`) — a window in your current session that
-does **not** take the seat, so it coexists with your real desktop. Once
-`org.gnoblin.Shell` comes up, a terminal opens. It renders as a window on
-your host session, but its shell exports `WAYLAND_DISPLAY` so anything you
-launch from it draws into the nested session, not your real desktop; see
-[Isolation](#isolation) below for what else is (and isn't) separated from
-your host session.
+A desktop viewer and terminal open. Programs started from that terminal connect
+to the nested compositor.
 
-Environment variables:
-
-| Variable                   | Default    | Effect                                                                                      |
-| -------------------------- | ---------- | ------------------------------------------------------------------------------------------- |
-| `MONITOR`                  | `1600x900` | Nested virtual monitor resolution                                                           |
-| `GNOME_DEVKIT_HEADLESS`    | unset      | `1` boots with no visible window (see below)                                                |
-| `GNOME_DEVKIT_EXEC`        | unset      | Run this command instead of opening a terminal, with children pointed at the nested display |
-| `GNOME_DEVKIT_UNSAFE_MODE` | unset      | `1` enables privileged shell D-Bus APIs in this nested process only                         |
-
-Normal, headless, and login sessions leave `org.gnome.Shell.Eval` restricted.
-Set `GNOME_DEVKIT_UNSAFE_MODE=1` only when a development tool specifically
-requires Mutter's native `--unsafe-mode` option; the setting dies with that
-nested devkit process.
-
-## Run your own chrome
-
-From the terminal the devkit opens:
+To choose a terminal explicitly:
 
 ```sh
-qs -p ~/dev/kobel-shell     # Quickshell
-# or: waybar
-# or: your own layer-shell client
+GNOBLIN_PREFIX="$PWD/install" just gnome-devkit kitty
 ```
 
-Your bar/dock appears inside the nested gnoblin window, anchored via
-`zwlr_layer_shell_v1`.
+## Try your shell
 
-> If Quickshell warns _"built against Qt X but system has Qt Y … must be
-> rebuilt"_, rebuild the Quickshell package first — a stale build crashes
-> before it maps a surface.
-
-## Drive gnoblin
-
-`gnoblinctl` is on `PATH` inside the devkit terminal:
+From the devkit terminal, launch an installed layer-shell client:
 
 ```sh
-gnoblinctl ping
-gnoblinctl version
-gnoblinctl reload
-gnoblinctl feature list
-gnoblinctl feature disable osd    # let your bar's OSD own volume/brightness popups
+waybar
 ```
 
-Full command + feature reference in [Configuration](configuration.md).
+The bar should appear inside the viewer. Try its menus and launcher.
+Close the terminal to stop the devkit.
 
-## Isolation
+## Options
 
-The devkit is a sandbox, not a preview window into your real session:
-
-- `DISPLAY` is unset and `GDK_BACKEND`/`QT_QPA_PLATFORM`/`CLUTTER_BACKEND`
-  are forced to `wayland`, so anything you launch connects to the nested
-  compositor, not your host's Xwayland.
-- It runs on its own D-Bus session bus, shared by the nested shell, the
-  terminal, and anything you launch from it — not your host session bus.
-  `devkit_dbus.py` copies in only the services the devkit needs (portal
-  bits, dconf for cross-process GSettings notification); a host service
-  it doesn't list isn't reachable from inside the devkit.
-- No host accessibility bus, no gvfs mounts.
-- `HOME` and `XDG_RUNTIME_DIR` are left as your real ones (not scrubbed),
-  so config that reads them directly (not over D-Bus) behaves normally.
-
-This is also what `run-gnome-devkit.sh` isolates for the headless regression
-test (`just gnome-devkit-verify`) — see [Testing](testing.md).
-
-## Ending the session
-
-Close the terminal. The script tears the nested session down on exit (or on
-Ctrl-C/TERM).
+| Variable                   | Default    | Purpose                                      |
+| -------------------------- | ---------- | -------------------------------------------- |
+| `MONITOR`                  | `1600x900` | Virtual display size                         |
+| `GNOME_DEVKIT_HEADLESS`    | Unset      | Set `1` to hide the viewer                   |
+| `GNOME_DEVKIT_EXEC`        | Unset      | Command to run instead of a terminal         |
+| `GNOME_DEVKIT_UNSAFE_MODE` | Unset      | Enable privileged Eval for this test process |
 
 ## Headless / scripting mode
 
 ```sh
-GNOME_DEVKIT_HEADLESS=1 GNOME_DEVKIT_EXEC='gnoblinctl ping' just gnome-devkit
+GNOME_DEVKIT_HEADLESS=1 \
+GNOME_DEVKIT_EXEC='gnoblinctl feature list --json' \
+GNOBLIN_PREFIX="$PWD/install" just gnome-devkit
 ```
 
-Boots with no visible window and runs `GNOME_DEVKIT_EXEC` with its children
-pointed at the nested display instead of opening a terminal, then exits.
-This is exactly what `just gnome-devkit-verify` does to regression-test the
-devkit's env plumbing (isolated bus + `gnoblinctl` reaching
-`org.gnoblin.Shell`) without needing a Wayland session or a terminal
-emulator — useful in CI or over SSH.
+This runs without a host Wayland display and exits after the command.
+`just gnome-devkit-verify` checks this environment.
+
+## Isolation
+
+The nested display and D-Bus bus are separate. Host X11, accessibility and gvfs
+connections are not passed through.
+
+**Your HOME and runtime directory remain real.** Applications can still read
+or change your files and configuration. This is not a security sandbox.
+
+For disposable settings, use the [private test harness](testing.md).
+A devkit run does not verify the installed login session.
 
 ## Troubleshooting
 
-- **`no host WAYLAND_DISPLAY`** — the devkit renders into your current
-  Wayland session; log into one, or use `GNOME_DEVKIT_HEADLESS=1`.
-- **`no gnome-shell in ./install`** — run `just build-local` first.
-- **`Failed to take control of the session: EBUSY`** — you're hitting this
-  from the native/KMS backend, not `--devkit`; `run-gnome-devkit.sh` always
-  uses `--devkit` precisely to avoid fighting your real session for the
-  seat, so this should only come up if you're invoking `gnome-shell`
-  directly.
-- **no terminal found** — install foot, kitty, or alacritty, or pass one
-  explicitly (`just gnome-devkit <terminal>`).
+| Problem                    | Next step                                                |
+| -------------------------- | -------------------------------------------------------- |
+| No host `WAYLAND_DISPLAY`  | Use a Wayland desktop or headless mode                   |
+| No Shell in `./install`    | Finish the source build                                  |
+| No terminal found          | Install one or pass its command explicitly               |
+| Quickshell/Qt mismatch     | Install or rebuild a matching Quickshell                 |
+| `EBUSY` taking the session | Use this devkit launcher, not a direct native/KMS launch |

@@ -6,6 +6,7 @@
 
 # Scratch/local packaging output. Nothing in the repo writes here by default.
 /dist/
+/site/
 
 # Local packaging outputs
 /packaging/**/*.rpm

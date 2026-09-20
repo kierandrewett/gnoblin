@@ -1,38 +1,32 @@
-# Application focus transfer
+# Application activation
 
-Gnoblin honours application activation requests. Activating a normal application
-window raises it, restores it from minimisation, switches to its workspace, and
-transfers keyboard focus. An old timestamp or a Wayland activation token without
-an input serial does not turn the request into a demands-attention indicator.
-Wayland activation requests without a recognised startup sequence also work.
-New windows are not denied focus merely because input occurred during startup.
-Explicit no-focus hints and the existing restrictions for non-focusable and
-special-purpose windows remain in place.
+In Gnoblin, activating an application raises its window, restores it if minimised,
+switches workspace and transfers keyboard focus.
 
-The policy lives in Mutter and is enabled only when the effective
-`GNOME_SHELL_SESSION_MODE` is `gnoblin`. Other session modes retain upstream focus
-prevention. Rebuilding and installing Mutter requires a new compositor session;
-reloading shell scripts cannot replace an already loaded native library.
+Old timestamps and Wayland tokens without an input serial do not reduce the
+request to an attention indicator. Explicit no-focus hints and restrictions on
+special windows still apply.
 
-Bingux also activates the matching app window before invoking a notification's
-default action. This covers actions whose sender handles the notification without
-presenting its window. The sender can subsequently select a more specific window.
+This policy is native Mutter code and only applies in Gnoblin mode.
+Stock GNOME keeps upstream focus prevention. Native changes need a new session.
 
-## Verification
+## Notification actions
 
-After building and installing the local prefix:
+Bingux activates the matching app window before invoking a notification's default
+action. The app can then select a more specific window.
+
+## Test
+
+After building the local prefix:
 
 ```sh
 GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
 EXPECT_FOCUS_TRANSFER=0 GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
 ```
 
-The private compositor test restores a minimised Foot window on another workspace
-using a stale activation timestamp and verifies actual keyboard input. A GTK
-Wayland client requests an activation token without a seat/input serial and checks
-keyboard delivery after activation. The negative run changes the private
-compositor's policy selector to `gnome` and checks that both requests are denied;
-it is a policy regression test, not a full GNOME session test.
+The positive run checks stale timestamps and token-without-serial activation
+using real keyboard input. The negative run changes the policy selector; it is
+not a complete stock GNOME test.
 
-The tests require Foot, Python, GTK 3 development files, a C compiler,
-`wayland-scanner`, and `wayland-protocols`.
+Dependencies: Foot, Python, GTK 3 development files, C compiler,
+`wayland-scanner` and `wayland-protocols`.

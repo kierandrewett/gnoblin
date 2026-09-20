@@ -1,4 +1,17 @@
+---
+search:
+    exclude: true
+---
+
 # Compositor performance pass, 12 September 2026
+
+**Archived record.** 12 September 2026 benchmark record: native caching, protocol updates and compositor CPU/memory. Figures exclude the full desktop shell.
+
+For current instructions, see [installation](installation.md),
+[window frames](window-frames.md) or [testing](testing.md).
+
+<details markdown="1">
+<summary>Read the original record</summary>
 
 This pass starts from the existing working tree. Earlier uncommitted fixes are
 preserved. The scope is Gnoblin's compositor and session code. Bingux remains a
@@ -177,7 +190,7 @@ zero while fully covered, and resumed after reveal. The invalid configuration
 ownership run was discarded and is not in these tables. The later Lua-only
 reader removal and new console work are not included in this snapshot.
 
-Raw records are in [benchmarks/2026-09-12](benchmarks/2026-09-12). Bingux, other
+Raw records are in [benchmarks/2026-09-12](https://github.com/kierandrewett/gnoblin/tree/main/docs/benchmarks/2026-09-12). Bingux, other
 session processes and GPU allocations are excluded. The active desktop was not
 restarted; hardware latency, VRAM, scanout and power remain unmeasured.
 
@@ -199,3 +212,5 @@ settling was 100,360 KiB, changed by -5,372 KiB over the following minute, then
 grew by 120 KiB across ten soft reloads. RSS grew by 44 KiB across fifteen
 window open/close cycles. These are bounded regression checks, not a proof that
 no long-term leak exists.
+
+</details>

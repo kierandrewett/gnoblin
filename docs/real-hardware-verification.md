@@ -1,165 +1,78 @@
-# Verifying Gnoblin on real hardware
+# Verify a desktop installation
 
-`just verify` builds the current source and runs deterministic checks plus every
-isolated GNOME Shell integration recipe headlessly. `just verify-release` also
-runs Mutter's native/Wayland/focus suites on the host and builds both RPMs.
-Neither gate can prove a GDM login, visible bring-your-own chrome, interactive
-portal consent, or an installed system-package transaction. This checklist
-covers those boundaries.
+Run this checklist after installing or upgrading Gnoblin.
+Headless tests cannot establish that the real login and input paths work.
 
-**Fastest path to eyeball it without logging out:** `just gnome-devkit` opens a _nested_
-gnoblin session (a window in your current Wayland session) + a terminal wired to it; run
-your chrome (`qs -p ~/dev/kobel-shell`) from that terminal. Everything below can be poked
-from there too. The full login-session checks (§1) still matter for GDM/session wiring.
+## 1. Log in
 
-## 0. Build & install
+Use the [package guide](installation.md) or complete
+[source session registration](install-source.md#3-add-a-login-session).
+Choose **Gnoblin** at the login screen.
 
-```sh
-just init          # fetch pinned source checkouts and Meson subprojects
-just build-local   # patched mutter + patched gnome-shell + session data -> ./install
-```
+Record the build you installed, distribution, GPU, displays and scale factors.
 
-## 1. Log in to a real Gnoblin session
+## 2. Check your shell
 
-```sh
-just dev-session              # installs gnoblin.desktop + gnome-session + session mode
-just dev-session-register     # links the systemd --user units, prints the (root) command
-```
+Verify the bar, dock, launcher and notifications appear and respond to input.
+Open and close menus near each screen edge. Test every display.
 
-`dev-session-register` links the gnoblin-specific `org.gnoblin.Shell.target` /
-`@wayland.service` systemd --user units (does not touch the shared
-`org.gnome.Shell@wayland.service`, so this can't affect a system GNOME
-session) and prints the `sudo install` command that copies `gnoblin.desktop`
-into `/usr/share/wayland-sessions/` — the one step it can't do for you,
-since login managers only read session `.desktop` files from a fixed system
-directory. Run that, then pick **Gnoblin** at GDM. Full detail:
-[Installation § install the session for real](installation.md#install-the-session-for-real).
+If the shell fails, confirm desktop right-click opens a terminal and the recovery
+panel appears. Check the shell's log before restarting it.
 
-Expect: a bare session — **no top bar, no dash, no overview** (stripped by the session
-mode), your windows managed by mutter, and **nothing drawing chrome until you run a
-layer-shell client**. That's by design: chrome is bring-your-own.
+## 3. Check windows and keys
 
-Sanity from a terminal in the session:
+Test focus, typing, minimise/restore, maximise, fullscreen, drag and resize.
+Check app switching, launcher shortcuts and any custom bindings.
+
+For SSD windows, check all buttons, titlebar drag and edge resize.
+A correct screenshot alone does not prove input works.
+
+## 4. Reload
+
+Change one visible config setting, then:
 
 ```sh
-gnoblinctl ping          # -> pong
-gnoblinctl version       # -> 51.0-gnoblin
-gnoblinctl feature list  # notifications, input-source-switcher
-```
-
-## 2. Bring-your-own shell (Bingux / Quickshell / Waybar / …)
-
-gnoblin advertises `zwlr_layer_shell_v1` v5, so any layer-shell client draws the bar.
-
-```sh
-qs -p ~/path/to/shell.qml        # Quickshell
-# or: waybar
-```
-
-- If Quickshell warns _"built against Qt X but system has Qt Y … must be rebuilt"_,
-  rebuild the quickshell package first — a stale build crashes before it maps a surface.
-- A client's surface should appear at the anchored edge. Drive gnoblin from QML/JS via
-  the `org.gnoblin.Shell` D-Bus interface (see the control protocol in the README).
-
-## 3. Feature toggles
-
-```sh
-gnoblinctl feature enable notifications   # let GNOME Shell own org.freedesktop.Notifications
-gnoblinctl feature disable notifications  # release it for your notification daemon
-gnoblinctl feature enable input-source-switcher
-```
-
-GNOME OSD popups and the GNOME screenshot UI are permanently absent in Gnoblin.
-With `notifications` disabled, run a notification service and confirm it claims
-`org.freedesktop.Notifications` (`gdbus call ... NameHasOwner`).
-
-## 4. Wayland soft-reload (windows survive)
-
-Edit a `~/.config/gnoblin/scripts/*.js` file, then:
-
-```sh
+gnoblinctl config reload
 gnoblinctl reload
 ```
 
-Your windows and your chrome stay up (mutter is never torn down); the JS layer reloads.
+Confirm the setting changed and existing windows survived.
+The second command also reloads theme and user scripts.
 
-## 5. User scripting
+## 5. Lock and unlock
 
-```sh
-gnoblinctl script list
-gnoblinctl reload
-```
+Confirm the lock screen receives input, desktop controls are unavailable while
+locked, and the shell recovers after unlock.
 
-## 6. Mutter's own test suite
+## 6. Screen sharing and remote input
 
-```sh
-just test-mutter
-```
+With the patched portal backend installed:
 
-Validates that gnoblin's mutter patches (layer-shell, protocol overlays, WM/crash fixes)
-don't regress mutter. The native/Wayland backend tests boot a compositor that monitors an
-ICC profile directory, so they need a real environment with a working local file monitor
-(inotify) and a seat — in a restricted sandbox they all bail with _"Unable to find default
-local file monitor type"_ (exit 251), which is environmental, not a regression. The unit
-tests (no backend) pass anywhere.
+1. Under the default policy, start a share and complete the source picker.
+2. Confirm the selected monitor is the one actually shared.
+3. Test an explicit `ask` rule, then a `deny` rule.
+4. For an `allow` rule, test both permitted and broader device requests.
+5. Stop sharing and confirm the stream ends.
 
-## 7. Persistent Screen Cast and Remote Desktop grants
+See [portal permissions](permissions.md). Old custom grants and
+“remember forever” checkboxes are obsolete; do not use them as acceptance criteria.
 
-```sh
-sudo dnf install xdg-desktop-portal-devel
-just dev-portal
-```
+## 7. Settings
 
-Run the patched backend so it owns
-`org.freedesktop.impl.portal.desktop.gnome`, then connect the application:
+If you built the optional Settings fork, open it. Confirm the Gnoblin panel appears,
+feature controls work, and reload completes.
+
+For a local source build:
 
 ```sh
-./install/libexec/xdg-desktop-portal-gnome -r
-```
-
-On the first connection, expect the normal Screen Cast source picker or Remote
-Desktop consent dialog. The remember checkbox is shown only when Gnoblin can
-derive a trustworthy requester identity and can restore the selected source
-exactly. Select it and approve the request.
-
-On a later matching request, expect no dialog: the backend restores only the
-approved monitor selection, input-device mask, and clipboard state. It prompts
-again if the requester asks for broader capabilities or an approved monitor is
-no longer available. Window selections and other source shapes that cannot be
-matched safely remain one-shot approvals.
-
-Grants live under `$XDG_DATA_HOME/gnoblin/portal-grants/<kind>/`, which defaults
-to `~/.local/share/gnoblin/portal-grants/<kind>/`. Sandboxed apps use a verified
-`app-id:<id>` identity. Unsandboxed callers use
-`host-exe:<canonical-executable-path>`. Filenames are opaque SHA-256 digests.
-
-```sh
-gnoblinctl grant list
-gnoblinctl grant revoke <kind> <id>
-```
-
-The Gnoblin Settings panel in the next section shows the same typed list and
-provides a Revoke button for each record.
-
-## 8. Gnoblin Settings (forked gnome-control-center)
-
-```sh
-sudo dnf install accountsservice-devel colord-gtk4-devel cups-devel gsound-devel ibus-devel \
-  libgtop2-devel libnma-gtk4-devel malcontent-devel ModemManager-glib-devel libpwquality-devel \
-  libsmbclient-devel libudisks2-devel
-just dev-settings                 # builds the fork + hides the multitasking panel
 ./install/bin/gnome-control-center gnoblin
 ```
 
-> g-c-c compiles `.blp` UI files with `blueprint-compiler` (≥ 0.17). `dev-settings`
-> handles it automatically — it uses the system package if present, else links the
-> meson-wrap's source package next to its launcher (the wrap's launcher otherwise can't
-> import itself). Installing `sudo dnf install blueprint-compiler` is the cleaner path
-> but not required. The `Gnoblin` panel should compile, link and appear in the
-> `gnome-control-center --list` output before it is used on a real session.
+## 8. Return to GNOME
 
-Expect: GNOME Settings with a **Gnoblin** panel, switch rows for every
-`gnoblinctl feature list` output, typed Screen Cast and Remote Desktop grant rows
-with capability summaries and Revoke buttons, and a **Reload Gnoblin** button.
-The **Multitasking** panel is gone. With `./install/bin` ahead on `PATH`, "open
-Settings" or `gnome-control-center` launches this fork.
+Log out and select GNOME. Confirm its desktop still works.
+For package-release testing, also remove Gnoblin using its documented uninstall
+path and check that the Gnoblin login entry disappears.
+
+Record failures separately from skipped checks. Include the exact commands,
+logs and visible outcome; a successful build is not a successful desktop test.

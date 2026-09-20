@@ -1,4 +1,17 @@
+---
+search:
+    exclude: true
+---
+
 # SSD/CSD regression verification — 13 September 2026
+
+**Archived record.** 13 September 2026 private-session decoration tests. App behavior and installed-session status are historical, not current compatibility guarantees.
+
+For current instructions, see [installation](installation.md),
+[window frames](window-frames.md) or [testing](testing.md).
+
+<details markdown="1">
+<summary>Read the original record</summary>
 
 ## Installed changes
 
@@ -135,3 +148,5 @@ desktop was returned to 36px using GTK's `default-decoration` class via
 normal-GTK reference comparison in that same compact mode: all six endpoints
 still match byte-for-byte and animated phases still produce 11–12 changing
 frames. The persistent widget tree and GTK event-loop integration are unchanged.
+
+</details>

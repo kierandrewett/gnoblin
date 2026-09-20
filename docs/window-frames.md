@@ -1,128 +1,94 @@
-# Window frames (SSD)
+# Titlebars and window frames
 
-Native SSD with experimental [language-independent renderers](window-frame-renderers.md).
-The former GJS renderer factory is no longer supported.
+[Configuration reference](configuration-reference.md)
 
-SSD is **off by default**, including when a client requests server decorations.
-Opt in with a rule whose `frame.mode` is `auto`, `prefer-server` or `replace`.
-Selecting a renderer alone does not enable SSD. Gnoblin's bundled `native`
-renderer is deliberately basic: title, built-in vector buttons with hover/press
-feedback, and native move/resize controls. It needs no GTK, icon theme or external
-process. It is also the recovery frame for an explicitly enabled external SSD.
-Bingux owns the styled GTK4/libadwaita renderer; it is not a Gnoblin default.
+**CSD:** the app draws its titlebar. **SSD:** Gnoblin draws a frame around it.
 
-Both renderers use compositor-owned resize regions and directional cursors.
-The regions extend six logical pixels outside the window and two pixels inside
-its perimeter, even with zero side and bottom extents. Corners select diagonal
-resize within 16 pixels of the corner. These regions take priority over renderer
-hit regions and remain active at rounded corners. Maximised, fullscreen and
-fixed-size windows do not expose resize regions.
+SSD is off by default. Your desktop shell's config may enable it.
+Choosing a renderer only changes how an enabled frame looks.
 
-Gnoblin can negotiate `xdg-decoration` v1 with Wayland clients, or replace a
-client decoration using an explicit crop. Native code commits crop and frame
-extents with the client's acknowledged configure. Painting and picking use
-the same crop; fullscreen temporarily removes both crop and frame extents.
+## Choose a mode
 
-Add a `frame` table to an ordinary Lua window rule:
+| Mode            | Behavior                                                    |
+| --------------- | ----------------------------------------------------------- |
+| `off`           | Request CSD; disable Gnoblin's frame and crop               |
+| `auto`          | Supply SSD only for an explicit client request              |
+| `prefer-server` | Choose SSD when the client has an xdg-decoration object     |
+| `replace`       | Keep protocol CSD mode, crop configured margins and add SSD |
+
+An unset client preference does not prove that the app draws a titlebar.
+Check the visible result when changing policy.
+
+## Enable negotiated SSD
+
+Append after your config includes:
 
 ```lua
-{
-    match = { ["app-id"] = "^(spotify|com\\.spotify\\.Client(?:\\.desktop)?)$" },
+gnoblin.window_rule {
+    match = {type = "window"},
     frame = {
-        mode = "prefer-server",
-        extents = { 36, 2, 2, 2 },
-        background = "#242424",
-        foreground = "#eeeeee",
-        ["inactive-background"] = "#303030",
-        ["button-layout"] = { "minimize", "maximize", "close" },
+        mode = "auto",
+        renderer = "native",
+        extents = {36, 0, 0, 0},
     },
 }
 ```
 
-`extents` and `crop` are four integers in logical pixels: top, right, bottom,
-left (0–256). `crop` defaults to zero. Only set it after measuring the actual
-client chrome: it removes pixels **and their input targets**. Excessive crop
-that would eliminate the whole committed client geometry is ignored.
+Save and run `gnoblinctl config reload`. Negotiation also needs a client commit.
+This policy applies to clients generally; it does not need an app-name list.
 
-- `auto` (opt-in): honor client CSD preference; provide SSD only when the
-  client explicitly requests server-side decoration.
-- `prefer-server`: choose SSD when the client has an xdg-decoration object.
-  An explicit nonzero crop supplies a replacement-frame fallback for CSD-only
-  clients. No fallback crop is applied to a negotiated SSD client.
-- `replace`: retain protocol CSD mode, crop the requested margins and add SSD.
-- `off` (default): request CSD and disable Gnoblin crop/frame layout.
+## Frame options
 
-With `replace`, zero extents and nonzero crop give a crop-only window. Existing
-`corners` and `borders` rules style the outer frame. Window blur is not required.
+All fields below go inside `frame`. Later matching rules override individual
+fields. Sizes are logical pixels.
+
+| Field                 | Default                             | Values                                               |
+| --------------------- | ----------------------------------- | ---------------------------------------------------- |
+| `mode`                | `"off"`                             | Modes listed above                                   |
+| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256     |
+| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range         |
+| `renderer`            | `"native"`                          | Registered service name                              |
+| `style`               | `"default"`                         | Style understood by that renderer                    |
+| `background`          | `"#242424"`                         | Active background colour                             |
+| `foreground`          | `"#eeeeee"`                         | Foreground colour                                    |
+| `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
+| `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
+
+Colours accept `#RRGGBB` or `#RRGGBBAA`.
+Renderer and style names accept 1–64 letters, digits, `_` or `-`.
+
+## Cropping client decorations
+
+Crop removes pixels **and their input targets**. Measure the client margins
+before using it. Header bars can contain tabs, search and other app controls.
+
+With `prefer-server`, explicit crop provides a fallback for CSD-only clients;
+negotiated SSD clients are not cropped. With `replace`, zero extents give a
+crop-only window. Fullscreen temporarily removes crop and frame extents.
 
 ## Custom renderers
 
-Build the non-JS examples with `scripts/build-frame-renderers.sh`. Register named
-services at the root of your Lua configuration, using absolute executable paths
-and argv arrays (no shell expansion):
+Register a service at the config root, then select its name in a frame rule:
 
 ```lua
-return {
-    ["frame-renderers"] = {
-        cairo = { "/absolute/path/gnoblin-frame-cairo", "--theme-file=/absolute/path/theme.txt" },
-        qt = { "/absolute/path/gnoblin-frame-qt", "--theme-file=/absolute/path/theme.txt" },
-    },
-    ["window-rules"] = {
-        { match = { ["app-id"] = "spotify" },
-          frame = { mode = "prefer-server", renderer = "cairo", style = "default",
-                    extents = { 36, 2, 2, 2 } } },
+gnoblin.configure {
+    frame_renderers = {
+        cairo = {"/absolute/path/gnoblin-frame-cairo"},
     },
 }
 ```
 
-When SSD is enabled, `native` is the basic renderer and reserved fallback. Renderer/style names accept
-letters, digits, `_` and `-`, up to 64 characters. Each service starts lazily and
-handles all assigned windows. Unknown or unavailable services retain native
-frames. Service definitions require a new compositor session; rule selection and
-native appearance can reload. The example theme file contains `#204080`; valid
-color edits repaint, invalid edits retain the previous color.
+Use an absolute executable path and separate arguments. `native` is reserved.
+[Bingux](bring-your-own-shell.md) supplies its own styled renderer.
 
-External renderers draw buffers and declare standard-action regions through the
-private Wayland protocol. They cannot paint or intercept the client body. The
-native fallback handles crashes and pending geometry. See the protocol and C/Qt
-adapters linked in the architecture document to implement another language.
+Config reload restarts external renderers, including rebuilt executables at
+unchanged paths. The native frame keeps controls available during replacement
+or failure. A compositor upgrade still needs logout and login.
 
-## Current boundaries
+## Limits
 
-This implementation targets Wayland xdg-toplevels, not Xwayland, popups or layer
-shell. The stock renderer uses a top titlebar; use a custom renderer for other
-layouts. State-specific crop profiles, decoration protocol v2 and external
-Quickshell-rendered frames are not implemented. Mixed-scale transitions and
-popup-heavy cropped applications need further integration coverage.
+Frames support Wayland xdg-toplevels, not Xwayland, popups or layer surfaces.
+Mixed-scale moves and popup-heavy cropped apps need more coverage.
 
-Native changes require a new compositor session. Reloading Lua can change
-frame policy and appearance only once the native frame API is running.
-
-## Tests
-
-`tests/window-frame-policy.test.mjs` validates rule policy. Run
-`tests/test-window-frames.py` through `scripts/run-gnome-shell.sh` using
-`GNOBLIN_TEST_DBUS_CLIENT` for real pixel, crop, input, fullscreen and window
-control checks. `GNOBLIN_SSD_NEGOTIATED=1` exercises Qt decoration negotiation;
-`GNOBLIN_SSD_RENDERER=cairo` or `qt`, with `GNOBLIN_SSD_THEME` pointing to the
-service's theme file, exercises external rendering, theme reload and recovery.
-`tests/test-window-frames-spotify.py` is an optional installed-Spotify check
-using a private display, private bus, empty profile and disabled network.
-
-`tests/nested-ssd-resize-check.py` tests all eight directions with real pointer
-input and exact geometry checks. It compares captured cursor pixels with each
-expected cursor and checks that a default cursor produces a different image.
-It also checks cursor reset, maximise and fullscreen transitions. Start an
-isolated session with `GNOME_DEVKIT_HEADLESS=1 bash scripts/run-normal-config-devkit.sh`,
-then use its printed snapshot path:
-
-```sh
-python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT bingux
-python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT bingux outside
-python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT native
-python3 tests/nested-ssd-resize-check.py SNAPSHOT_ROOT native outside
-```
-
-The test requires the normal `[36, 0, 0, 0]` SSD extents. It creates a disposable
-fixture when none exists. `outside` checks the invisible area four pixels beyond
-the perimeter. A new compositor session is required after installing native code.
+For renderer implementation and tests, see
+[renderer architecture](window-frame-renderers.md) and the [author guide](frame-renderer-api.md).

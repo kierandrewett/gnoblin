@@ -1,4 +1,17 @@
+---
+search:
+    exclude: true
+---
+
 # Desktop performance investigation
+
+**Archived record.** September 2026 investigation of covered-window drawing and effect costs. Results describe private test workloads, not current desktop performance.
+
+For current instructions, see [installation](installation.md),
+[window frames](window-frames.md) or [testing](testing.md).
+
+<details markdown="1">
+<summary>Read the original record</summary>
 
 Measured on 2026-09-10. The immediate finding is unnecessary client drawing
 behind fully opaque windows when the covered actor has effects. The fix is
@@ -178,3 +191,5 @@ the throwaway test compositor so the benchmark can dismiss and verify Overview.
 Set `GNOBLIN_BENCH_SECONDS` to increase the sample
 duration. Optional `GNOBLIN_BENCH_SCREENSHOT` saves the covered state for visual
 verification. Run comparisons sequentially to avoid competing test compositors.
+
+</details>

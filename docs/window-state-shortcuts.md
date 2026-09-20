@@ -1,33 +1,53 @@
-# Window state shortcuts
+# Restore or minimise
 
-Gnoblin can restore a maximised or snapped window before minimising it. Configure
-these bindings in `~/.config/gnoblin/init.lua`:
+[Configuration reference](configuration-reference.md)
+
+Bind Super+Down to restore a maximised/snapped window first, then minimise it
+on a second press.
+
+## 1. Release the existing binding
+
+Add this after your includes and reload:
 
 ```lua
-g.config.keybindings = {
-    wm = {maximize = {"<Super>Up"}, minimize = {}, unmaximize = {}},
-    mutter = {["toggle-tiled-left"] = {"<Super>Left"}, ["toggle-tiled-right"] = {"<Super>Right"}},
-}
-g.config.shortcuts = {
-    {name = "restore-or-minimize", binding = "<Super>Down",
-     command = {"gnoblinctl", "window", "restore-or-minimize", "active"}},
+gnoblin.configure {
+    keybindings = {
+        wm = {
+            minimize = {},
+            unmaximize = {},
+        },
+    },
 }
 ```
 
-When replacing an existing Super+Down binding, save the empty `minimize` and
-`unmaximize` arrays first. Then add the custom shortcut. This releases the old
-binding before Gnoblin registers the command.
+These empty lists release the built-in actions before the new command is bound.
 
-`restore-or-minimize` restores native maximisation or tiling first. For a custom
-snap, it restores the saved frame. Otherwise it minimises the window.
+## 2. Add the shortcut
 
-Bingux marks its top-edge region with `maximize = true`. Gnoblin applies native
-maximisation for that region, so the title bar can restore the window when dragged
-away. The top-edge preview covers the work area. Other regions retain their
-configured inner and outer gaps.
+Append this and reload again:
 
-To keep square maximised windows with a border, set `corners.keep-maximized =
-false` and `borders.keep-maximized = true` in the relevant window rules. Maximised
-borders use square corners. A border side that touches the physical monitor edge
-is omitted only while maximised. Edges beside a topbar or dock remain visible.
-Floating windows retain their configured radius and all four border sides.
+```lua
+gnoblin.shortcut {
+    name = "restore-or-minimize",
+    binding = "<Super>Down",
+    command = {"gnoblinctl", "window", "restore-or-minimize", "active"},
+}
+```
+
+The command restores native maximisation/tiling or a saved custom snap frame.
+If neither applies, it minimises the window.
+
+## Square maximised windows
+
+```lua
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {radius = 12, keep_maximized = false},
+    borders = {inner_width = 1, inner_color = "#505050ff", keep_maximized = true},
+}
+```
+
+Maximised borders become square. Sides touching the physical monitor edge are
+omitted; sides beside reserved panels remain visible.
+
+See [shortcuts](shortcuts.md) for conflicts and persistent bindings.

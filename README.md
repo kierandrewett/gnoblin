@@ -4,7 +4,7 @@
 
 A no-frills fork of GNOME Shell with layer-shell support.
 
-[Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
+[Documentation](https://kierandrewett.github.io/gnoblin/) · [Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
 
 </div>
 
@@ -73,7 +73,7 @@ and `wlr-output-management` aren't implemented.
 
 ## Get started
 
-Build everything from source on Fedora or Arch/CachyOS with `./build.sh`.
+Build from source with `./build.sh`. It builds private dependencies without changing host packages.
 
 [Install](docs/installation.md) on Fedora, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.

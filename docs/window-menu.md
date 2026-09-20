@@ -1,40 +1,81 @@
-# Desktop window menu
+# Window menu
 
-Gnoblin owns window identity, allowed actions and input. A configured desktop
-command owns the menu UI. Bingux uses a compact Quickshell window-menu surface
-that follows the keyboard layout selector's row spacing,
-including keyboard navigation, outside-click dismissal, theme and screen-edge
-placement. The GTK SSD renderer does not create a second popup.
+[Configuration reference](configuration-reference.md)
+
+Your desktop shell draws the window-management menu. Gnoblin supplies the
+target window and actions.
+
+Bingux's integration config sets this up automatically.
+
+## Configure the command
+
+For Bingux:
 
 ```lua
-return {
+gnoblin.configure {
     shell = {
-        ["window-menu"] = { "binguxctl", "ipc", "shell", "windowMenu" },
+        window_menu = {"binguxctl", "ipc", "shell", "windowMenu"},
     },
 }
 ```
 
-The Bingux integration drop-in sets the command. No keyboard shortcut is added.
-`gnoblinctl window menu active` is available for a binding of your choosing.
-`gnoblinctl config reload` applies command changes. An empty argv disables the
-external handler. This does not enable the inherited menu in session modes that
-disable it. A configured handler suppresses the inherited menu, so they never
-open together. Failed commands are logged; no second desktop menu is launched.
+Reload, then try:
 
-The command is spawned directly, without a shell. Gnoblin appends **one JSON
-argument** with `version: 1`, stable string `window` ID, `title`, global logical
-pointer coordinates `x`/`y`, and `actions`. Entries have `id`, `text`, `enabled`,
-optional `checked`, or `isSeparator`. Renderers must retain the supplied window
-ID instead of acting on whichever window is focused after the popup opens.
-Actions run through `gnoblinctl window ACTION ID`; Gnoblin resolves the target
-again and rejects closed windows and unavailable geometry operations.
+```sh
+gnoblinctl window menu active
+```
 
-Requests arrive from SSD titlebar right-clicks, standard client window-menu
-requests, or `gnoblinctl window menu ID`. Locked sessions cannot request window
-management. Move/Resize start interactive compositor grabs, not client-side
-geometry guesses. This is the window-management menu, not an application's
-document/preferences menu.
+The same handler receives titlebar right-clicks and standard client menu requests.
+An empty command list disables the handler. No shortcut is added automatically.
 
-Private integration coverage:
-`GNOBLIN_TEST_WINDOW_MENU=1` with `tests/test-window-frames.py` and the Bingux
-renderer exercises real right-click -> Quickshell popup -> original-window action.
+## Write a handler
+
+The command runs without a shell. Gnoblin appends one JSON argument:
+
+| Field     | Meaning                                                         |
+| --------- | --------------------------------------------------------------- |
+| `version` | `1`                                                             |
+| `window`  | Stable string window ID                                         |
+| `title`   | Window title                                                    |
+| `x`, `y`  | Pointer in logical desktop coordinates                          |
+| `actions` | Entries with id, text, enabled, optional checked or isSeparator |
+
+Example payload, with the actions list shortened:
+
+```json
+{
+    "version": 1,
+    "window": "42",
+    "title": "Notes",
+    "x": 640,
+    "y": 120,
+    "actions": [
+        { "id": "minimize", "text": "Minimize", "enabled": true },
+        { "id": "above", "text": "Always on Top", "enabled": true, "checked": false },
+        { "isSeparator": true },
+        { "id": "close", "text": "Close", "enabled": true }
+    ]
+}
+```
+
+A handler reads that argument as JSON, draws the enabled actions and uses their
+`id` values. For example, selecting Close for this payload runs:
+
+```sh
+gnoblinctl window close 42
+```
+
+Keep the supplied window ID. Run actions with
+`gnoblinctl window ACTION ID`, not whichever window is focused after the popup opens.
+
+Gnoblin rejects closed windows, locked sessions and unavailable actions.
+Move and resize start compositor grabs.
+
+A configured handler replaces the inherited menu. Failed launches are logged;
+no second menu opens. Disabling the handler does not restore menus removed by
+the session mode.
+
+## Test
+
+Use `GNOBLIN_TEST_WINDOW_MENU=1` with `tests/test-window-frames.py` and Bingux.
+The test clicks a titlebar, opens the menu and checks the original window's action.

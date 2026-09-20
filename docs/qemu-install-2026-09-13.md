@@ -1,4 +1,17 @@
+---
+search:
+    exclude: true
+---
+
 # QEMU install test — 2026-09-13
+
+**Archived record.** 13 September 2026 Fedora 43 guest test. Gnoblin login passed; Bingux startup failed. This is not the current installation guide.
+
+For current instructions, see [installation](installation.md),
+[window frames](window-frames.md) or [testing](testing.md).
+
+<details markdown="1">
+<summary>Read the original record</summary>
 
 This is an end-to-end clean guest test of the documented Fedora installation
 paths for Gnoblin and Bingux. The guest used Fedora 43 Workstation Live
@@ -137,3 +150,5 @@ installer screenshots (`review.png`, `progress3.png`), setup screenshots
 (`setup*.png`), GDM/session screenshots (`gdm.png`, `sessions.png`,
 `gnoblin-login.png`, `integration-session.png`), and the command/journal logs
 named above.
+
+</details>

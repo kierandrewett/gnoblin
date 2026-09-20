@@ -1,67 +1,63 @@
-# Standard background effects
+# Client-requested background blur
 
-Gnoblin supports version 1 of `ext_background_effect_manager_v1` and advertises
-its `blur` capability. The protocol is the Wayland staging specification
-[`ext-background-effect-v1`](https://wayland.app/protocols/ext-background-effect-v1).
-The XML is copied unchanged from wayland-protocols, with its licence. Staging
-protocols are standards-track protocols, but are not yet in the stable directory.
+Gnoblin implements `ext-background-effect-v1` with the `blur` capability.
+Use it when a client knows the shape of its translucent material.
 
-A client supplies a `wl_region` in surface-local coordinates. Gnoblin copies the
-region when requested and applies it with the next surface commit, including
-synchronised subsurface transactions. The renderer preserves holes and disjoint
-rectangles, clips to the surface size, and can blur fully transparent pixels.
-Destroying the effect or setting a NULL/empty region removes blur on the next
-commit. Destroying the manager does not remove existing effect objects.
+The [protocol XML](https://wayland.app/protocols/ext-background-effect-v1)
+is from Wayland's staging specifications.
 
-The region defines the material shape. Foreground icon alpha, text, borders and
-separators cannot cut gaps in it. Surfaces which have never requested the
-standard protocol retain the existing rule-based alpha mask. Once a client has
-committed standard state, that state takes precedence over automatic whole-window
-blur. An empty standard region must remain empty rather than trigger fallback.
+## Submit a region
 
-The standard does not select blur strength. Gnoblin uses a default radius of 24
-for client requests. Existing window rules override it, including `blur = 0`.
-The Bingux dock therefore retains its configured radius of 48. The standard also
-does not carry per-item animation opacity. Bingux retains `gnoblin-blur-fade-v1`
-for item fades within a shared buffer. This metadata is applied in the same
-surface transaction as the standard region.
+1. Create a `wl_region` in surface-local coordinates.
+2. Set it as the effect's blur region.
+3. Commit the surface with the matching buffer.
 
-Bingux requests standard regions for the dock, shared `ShellPopup` component,
-search panel, search preview and window switcher. Regions cover each material
-rectangle and exclude its sibling shadow.
-The Qt client combines all requested items in each window into one region and
-sends it during scene synchronisation, before the matching buffer commit. Rounded
-corners and item transforms are included. When the compositor does not advertise
-blur support, Bingux retains its previous blur material and region fallback.
-Other Bingux surfaces continue to use their existing blur paths.
+The compositor copies the region. Holes and disjoint rectangles are preserved;
+the result is clipped to the surface size. Synchronised subsurfaces apply it
+with their surface transaction.
 
-Protocol registration is limited to Gnoblin mode. It can be disabled at compositor
-startup with this Lua configuration:
+## Clear or destroy
+
+A null/empty region or destroyed effect removes blur on the next commit.
+Destroying the manager does not destroy existing effects.
+
+Once a client commits standard state, that state overrides automatic whole-window
+blur. An empty region stays empty; it does not restore the alpha-mask fallback.
+
+## Strength and fades
+
+The protocol supplies shape, not strength.
+Gnoblin defaults client requests to radius 24; a window rule can override it,
+including `blur = 0`.
+
+Foreground icons and text do not punch holes in the material region.
+Client item animations use separate [blur-fade metadata](blur-fades.md).
+
+## Disable the protocol
+
+In `init.lua`:
 
 ```lua
-return { protocols = { ['ext-background-effect-v1'] = false } }
+gnoblin.configure {
+    protocols = {
+        ext_background_effect_v1 = false,
+    },
+}
 ```
 
-Native changes require a new compositor session. Rebuilding and installing does
-not replace libraries already loaded by the current desktop.
+Log out and back in. The protocol is only advertised in Gnoblin mode.
 
-Layer surfaces in the same compositor stack layer share a backdrop captured
-before that layer is painted. This prevents neighbouring panels from sampling
-each other's tint. Capture bounds extend beyond the client buffer by the blur
-kernel margin; material masks still limit the visible result. Snapshot textures
-are reused until output size changes. When a layer backdrop changes, the blur
-sampling areas are repainted together, including dependent window blurs.
-Offscreen captures use the same grouping so screenshots match the desktop.
+## Rendering
 
-## Validation
+Layer surfaces in the same stack layer share a backdrop captured before the
+layer paints. Adjacent panels therefore do not sample each other's tint.
+Offscreen captures use the same grouping.
 
-`tests/test-blur-surface-joins.py` compares a single panel with three adjoining
-layer surfaces, including a 20-pixel-wide piece. Both joins must match within
-five channel levels. Run through `GNOBLIN_TEST_DBUS_CLIENT` in the private
-compositor harness; set `GNOBLIN_TEST_STANDARD_BLUR=1` to test explicit regions
-and supply the Bingux effects module through `QML_IMPORT_PATH`.
+Bingux combines material regions per window during scene synchronisation.
+Its standard regions exclude shadows; clients without protocol support retain
+their fallback behavior.
 
-Run the protocol tests in an isolated compositor:
+## Tests
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" \
@@ -69,27 +65,15 @@ GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-background-effect.sh" \
 bash scripts/run-gnome-shell.sh
 ```
 
-This checks capability negotiation, duplicate/dead object errors, copy and commit
-semantics, empty regions, holes, disjoint rectangles, surface-size clipping,
-buffer scale, destruction/recreation and synchronised subsurfaces through actual
-rendered pixels. The same script checks that the global is absent in stock mode.
+Covers negotiation, object errors, commit timing, holes, clipping, scale,
+destruction and subsurfaces with rendered pixels.
 
-`tests/test-blur-detail-coverage.py` checks the legacy path by default. Set
-`GNOBLIN_TEST_STANDARD_BLUR=1` for the standard path. Both use the same seven icon,
-separator and border samples. Set `STEAM_ICON` and `LOCALSEND_ICON` to installed
-icons to include those exact images.
+Additional checks:
 
-The paired Bingux `tests/standard-background.py` test opens the actual dock's
-right-click menu. It checks both installed icons, backdrop leakage and the
-configured radii. Run it with `MONITOR=1920x1080` and the matching `QS_TEST_BIN`.
-For fallback coverage, set `EXPECT_STANDARD=0` and start the compositor with a
-`GNOBLIN_CONFIG` file that disables this protocol and retains the dock/popup rules.
-`tests/shared-buffer-fades.py` and `tests/panel-blur-fade.py` cover item and native
-window fades with the migrated popup component.
+- `tests/test-blur-surface-joins.py`: adjoining surfaces and narrow panels.
+- `tests/test-blur-detail-coverage.py`: icons, separators and borders.
+- Bingux `tests/standard-background.py`: real dock menus.
+- Bingux `tests/popup-shadow-blur.py`: shadows excluded from blur.
 
-`tests/popup-shadow-blur.py` in Bingux verifies search, emoji and switcher shadows
-against a checkerboard. It disables alpha-based shadow exclusion deliberately:
-standard regions must keep shadows outside backdrop blur without colour guesses.
-The test requires visible shadows and blurred panel interiors, so removing either
-effect cannot make it pass. Search and preview item fades remain covered by
-`FADE_TEST_ITEMS='search preview' tests/shared-buffer-fades.py` in the same harness.
+Use `GNOBLIN_TEST_STANDARD_BLUR=1` for standard-region paths where supported.
+Provide the matching Bingux effects module through `QML_IMPORT_PATH`.

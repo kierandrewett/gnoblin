@@ -1,94 +1,83 @@
-# Language-independent SSD renderers
+# Frame renderer architecture
 
-Implemented, experimental v1. Rendering and standard window controls are native;
-the Shell JavaScript module only translates configuration. Neither GJS nor Node
-is needed to implement a renderer. Private tests do not install into the desktop.
+Gnoblin owns decoration policy, geometry and input. An external process draws
+the frame. The private v1 protocol is experimental.
 
-Nothing draws by default: `frame.mode = "off"` is the native and Lua default.
-The built-in opt-in fallback draws its own vector icons without an icon-theme or
-GTK dependency. Bingux's styled renderer renders actual libadwaita widgets.
-Start with the [renderer author quickstart](frame-renderer-api.md).
+For configuration, see [titlebars](window-frames.md).
+For implementation steps, see [write a renderer](frame-renderer-api.md).
 
-## Ownership and protocol
+## Ownership
 
-Gnoblin owns xdg-decoration negotiation, committed crop/extents, native window
-attachment, input/grabs, content exclusion and the final rounded mask. An external
-process owns appearance. One process can render many frames.
+| Gnoblin                          | Renderer                 |
+| -------------------------------- | ------------------------ |
+| Decoration negotiation           | Frame appearance         |
+| Crop and committed extents       | Buffers and damage       |
+| Move/resize grabs and actions    | Button hit regions       |
+| Content exclusion and final mask | Hover/pressed appearance |
+| Native fallback                  | Theme interpretation     |
 
-The compositor launches a configured argv using its socketpair-backed
-MetaWaylandClient facility. Only that exact connection sees the private global.
-There is no target-window-ID claim operation. This restricts compositor
-capabilities; it is not an OS sandbox for the configured executable.
+One process can render many frames. Gnoblin passes it a private Wayland
+connection; only that connection sees the frame global. This limits protocol
+capabilities, not the executable's OS access.
 
-Source of truth: [gnoblin-window-frame-v1.xml](../src/protocols/window-frame/gnoblin-window-frame-v1.xml).
+## Commit sequence
 
-The manager creates frame handles. Each receives title, app ID, state and allowed
-actions, style name, logical dimensions, committed extents and a configure serial.
-The renderer attaches a previously unroled wl_surface, acknowledges configure,
-sets semantic regions, then submits ordinary Wayland buffers/damage. A normal
-toolkit xdg-toplevel cannot also take this role.
+1. Gnoblin creates a frame handle with identity, state, actions and geometry.
+2. The renderer attaches a surface with no existing role.
+3. It acknowledges configure, declares regions and commits matching pixels.
+4. Gnoblin applies the acknowledged state atomically.
 
-Acknowledgements and regions are snapshotted with surface commits, including
-merged transactions. Regions are double-buffered, bounded to 64, last-defined
-wins. Actions are drag, close, maximize/restore, minimize and eight resize
-directions. Native code validates allowed actions and starts grabs from the
-actual input event. Hover/press events allow renderer visuals; the renderer
-never takes keyboard focus. Arbitrary command requests are not part of v1.
+Regions are double-buffered, limited to 64 and last-defined-wins.
+A toolkit xdg-toplevel cannot take a second role.
 
-A compositor mask removes pixels inside the client body even when a renderer
-paints an opaque full-window buffer. Native reactive strips also exclude the
-body. Native radii restrict frame hit testing. Existing border/shadow rules
-remain separate; no window blur is introduced.
+The compositor excludes the app body from painting and input.
+Native resize regions take priority. The renderer never takes keyboard focus
+or requests arbitrary commands.
 
-## Failure and lifetime
+See the [protocol XML](../src/protocols/window-frame/gnoblin-window-frame-v1.xml).
 
-Application commits never wait for a renderer. Geometry changes immediately use
-native fallback until a matching buffer arrives; stale generations cannot replace
-a newer layout. Invalid dimensions/serials disconnect the renderer. The fallback
-keeps the same committed extents and native controls.
+## Slow or failed renderers
 
-On process exit the connection is destroyed and fallback appears. Restart uses
-bounded exponential backoff, at most four launch attempts per session. A configure
-timeout retains fallback; there is no continuous process heartbeat. A stalled
-renderer with valid current pixels may keep them, but native controls remain
-usable. New geometry selects fallback. Compositor shutdown cancels retries and
-terminates only its renderer children.
+App commits never wait for a renderer.
+Geometry changes use native fallback until a matching buffer arrives;
+stale generations cannot replace newer layout.
 
-The reference transport limits each frame to two outstanding shared-memory
-buffers, coalescing newer model/theme changes. It uses a full-size canvas rather
-than four strips; high-DPI/many-window memory and GPU costs need measurement.
+Invalid dimensions or serials disconnect the renderer.
+Process failure triggers bounded backoff, with at most four launch attempts
+per session. Shutdown terminates only Gnoblin's renderer children.
 
-## Non-JS adapters
+A stalled renderer may keep valid current pixels; native controls remain usable.
+New geometry selects fallback. There is no continuous heartbeat.
 
-Run `scripts/build-frame-renderers.sh` to build:
+The helper permits two outstanding shared-memory buffers per frame.
+Its full-window canvases need further high-DPI and many-window cost measurements.
 
-- `build/frame-renderers/gnoblin-frame-cairo`: C, Cairo/Pango.
-- `build/frame-renderers/gnoblin-frame-qt`: C++/Qt QImage and QPainter, offscreen.
+## Reference adapters
 
-Both use [client.c](../src/tools/frame-renderer/client.c) for transport and
-[paint.h](../src/tools/frame-renderer/paint.h) as their painting boundary. They
-accept `--theme-file=/absolute/path`; a six-digit hex background color reloads via
-inotify. Invalid edits retain the last valid color. Their button layout is fixed;
-custom layouts belong in the renderer. Native fallback independently supports
-the Lua button-layout setting.
+```sh
+scripts/build-frame-renderers.sh
+```
 
-Other languages can generate bindings and submit their own buffers. Slint, GTK,
-Rust, GPU engines, optional QML or web renderers need an adapter; unmodified
-toolkit windows are not attachable. Subsurface trees, renderer-proposed extents
-and arbitrary action requests are not implemented in v1.
+Outputs:
 
-## Configuration and verification
+- `build/frame-renderers/gnoblin-frame-cairo`
+- `build/frame-renderers/gnoblin-frame-qt`
 
-See [window-frames.md](window-frames.md) for named argv services and rules.
-Service definitions reconcile live through `gnoblinctl config reload` and watched
-config edits. Both restart renderer executables even when their paths are
-unchanged; there is no separate SSD reload command. Native fallback keeps window controls available
-during replacement. Compositor code and protocol enablement still need a new session.
+Both accept `--theme-file=/absolute/path` containing a six-digit hex background.
+Valid edits repaint; invalid edits retain the previous colour.
 
-Private tests cover native/Cairo/Qt pixels, window capture after transitions,
-negotiated SSD and explicit crop, client click mapping, fullscreen, standard
-controls and theme reload. Failure tests exercise capability restriction,
-stalled renderers, native fallback and process restart. Spotify has a separate
-optional private-profile test. Mixed-scale moves, popup-heavy cropped apps,
-overview, adversarial protocol fuzzing and GPU-buffer adapters need more coverage;
-v1 is not claimed stable or universally toolkit-compatible.
+Their button layout is fixed. Native fallback separately supports Lua's
+`button-layout`. Other toolkits need an adapter; ordinary toolkit windows
+cannot be attached directly.
+
+## Reload and tests
+
+`gnoblinctl config reload` restarts configured services, even when an
+executable's path is unchanged. Compositor upgrades require a new session.
+
+Private tests cover pixels, crop, controls, fullscreen, theme reload and fallback.
+Start with `tests/test-window-frames.py`; use `GNOBLIN_SSD_RENDERER=cairo`
+or `qt` for adapters.
+
+Mixed-scale transitions, popup-heavy cropped apps, adversarial fuzzing and
+GPU-buffer adapters need further coverage.

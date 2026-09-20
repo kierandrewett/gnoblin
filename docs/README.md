@@ -1,21 +1,29 @@
-# Gnoblin documentation
+# Gnoblin
 
-Gnoblin provides a Wayland session built from Mutter and GNOME Shell.
-It manages application windows and desktop services while a separate
-layer-shell client provides the bar, dock and other desktop controls. The
-session is intentionally usable with no shell running: log out or start your
-own chrome when you are ready. Start with the [README](../README.md).
+A Wayland desktop with GNOME's window management and a shell of your choice.
 
-- [Installation](installation.md): build and install the session.
-- [Bring your own shell](bring-your-own-shell.md): start Bingux, Waybar or a
-  custom layer-shell client.
-- [Distribution](distribution.md): package boundaries and repository publication.
-- [Devkit](devkit.md): test in a nested session without logging out.
-- [Configuration](configuration.md): `init.lua` and `gnoblinctl`.
-- [Background effects](background-effects.md): standard Wayland blur regions and compatibility.
-- [Developer console](developer-console.md): the `Alt+F2` compositor JavaScript console.
-- [Native UI removal](native-ui-removal.md): the external-shell ownership boundary.
-- [Testing](testing.md): automated checks and release requirements.
-- [Real-hardware verification](real-hardware-verification.md): login, graphics,
-  screen sharing and other checks that need a physical session.
-- [Source map](../src/README.md): owned source, patches and upstream dependencies.
+Gnoblin manages windows, workspaces and desktop services. Your shell provides
+the bar, dock and launcher. GNOME remains available as a separate login session.
+
+## Get started
+
+1. [Install Gnoblin](installation.md).
+2. [Choose a shell](bring-your-own-shell.md).
+3. [Configure your desktop](configuration.md).
+
+## Make it yours
+
+- [Shortcuts](shortcuts.md) — launch commands and change keys.
+- [Window rules](window-rules.md) — choose which windows a setting affects.
+- [Effects](window-effects.md) — blur, corners, borders and shadows.
+- [Titlebars](window-frames.md) — client and server decorations.
+- [Animations](animations.md) — timing and motion.
+- [All settings](configuration-reference.md) — find an option.
+
+## Need help?
+
+Start with [troubleshooting](troubleshooting.md). For scripts and integrations,
+see [gnoblinctl](gnoblinctl.md) and the [compositor bridge](compositor-bridge.md).
+
+These docs describe the current source tree. Published packages may be older;
+check `gnoblinctl version` when an option is unavailable.

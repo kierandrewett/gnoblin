@@ -1,4 +1,17 @@
+---
+search:
+    exclude: true
+---
+
 # Custom window frames and client cropping
+
+**Archived record.** Superseded frame design proposal. Its illustrative GJS renderer settings are not valid configuration; use the current frame and renderer guides.
+
+For current instructions, see [installation](installation.md),
+[window frames](window-frames.md) or [testing](testing.md).
+
+<details markdown="1">
+<summary>Read the original record</summary>
 
 Status: proposed design, based on the running Spotify client and the current
 Gnoblin/Mutter source. This document does not enable SSD or introduce working
@@ -177,3 +190,5 @@ bar, dead strip or click-coordinate offset, both negotiated and fallback
 fixtures pass, and disabling the rule restores the client's normal frame.
 Native protocol and geometry changes require starting a new compositor;
 subsequent theme/rule changes should be live.
+
+</details>

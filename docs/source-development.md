@@ -1,62 +1,66 @@
 # Source development
 
-For installation, see [Installation](installation.md). This page covers
-component rebuilds and build options. Run `./build.sh` first to install dependencies
-and build everything.
+Start with [build from source](install-source.md). This page covers rebuilding
+individual components after that first build.
 
-## Build options
+## Rebuild
 
-The default prefix is `./install`, with libraries in `lib64`. Override both
-when needed:
+Use the private dependency environment when rebuilding a component:
+
+```sh
+python3 scripts/build-private-deps.py --run just dev-mutter
+python3 scripts/build-private-deps.py --fix-runtime
+```
+
+Replace `dev-mutter` with `dev-gnome-shell`, `dev-portal` or `dev-settings` as
+needed. For the complete runtime, use `./build.sh --no-deps`.
+
+Native compositor changes need a fresh session. A config reload does not load
+rebuilt libraries.
+
+## Choose a prefix
+
+Default: `./install`, with libraries in `lib64`.
 
 ```sh
 GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local
 ```
 
-`GNOBLIN_LIBDIR` is relative to the prefix. Pass the same prefix when running
-other build or devkit commands. GNOME Shell gets a clean rebuild each time;
-see `dev-gnome-shell` in the Justfile for the reason.
-
-```sh
-just verify-installed-headless   # check the existing local build
-nix flake check                  # check the Nix flake
-nix build .#gnoblin              # build the Nix package
-```
+`GNOBLIN_LIBDIR` is relative to the prefix. Use the same prefix for subsequent
+build and devkit commands. System prefixes `/usr` and `/usr/local` are rejected.
 
 ## Optional components
 
-Both components are built by `./build.sh`. The commands below rebuild them
-individually during development.
-
-### Unattended screensharing (`xdg-desktop-portal-gnome`)
-
-The optional portal backend can remember exact, portal-scoped Screen Cast and
-Remote Desktop permissions for a verified requester. To rebuild it:
+These are not part of `./build.sh`. They need additional upstream development
+libraries. Build them only when those prerequisites are available:
 
 ```sh
-just dev-portal
+python3 scripts/build-private-deps.py --run just dev-settings dev-portal
+python3 scripts/build-private-deps.py --fix-runtime
 ```
 
-Then run the patched backend so it owns the impl portal:
+To run the local Settings panel:
+
+```sh
+./install/bin/gnome-control-center gnoblin
+```
+
+To test the patched portal backend in your test session:
 
 ```sh
 ./install/libexec/xdg-desktop-portal-gnome -r
 ```
 
-The [real-hardware verification guide](real-hardware-verification.md#7-persistent-screen-cast-and-remote-desktop-grants)
-shows the first approval, exact-capability restore, storage, and revocation flow.
+See [permission policy](permissions.md) before testing remote access.
+Old custom remembered-grant files no longer provide approval.
 
-### Gnoblin Settings (forked `gnome-control-center`)
+## Verify
 
-A `gnoblin` panel in GNOME Settings driving `org.gnoblin.Shell` (feature
-toggles, Screen Cast and Remote Desktop grants, and a reload button):
+For a source build:
 
 ```sh
-just dev-settings
-./install/bin/gnome-control-center gnoblin
+just verify-installed-headless
 ```
 
-`dev-settings` also hides the Multitasking panel (no top bar/overview/dash
-under gnoblin, so it doesn't apply) and handles the `blueprint-compiler`
-build-side quirk automatically. Details in
-[Real-hardware verification §8](real-hardware-verification.md#8-gnoblin-settings-forked-gnome-control-center).
+For a Nix build, use `nix flake check` and `nix build .#gnoblin`. See [testing](testing.md) for the
+full suite and [hardware verification](real-hardware-verification.md) for login checks.

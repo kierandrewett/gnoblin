@@ -1,60 +1,34 @@
-# Native UI removal
+# Native and external UI
 
-Gnoblin is moving desktop controls into the external shell. This change removes
-GNOME extensions and the remaining general desktop popups from the Gnoblin
-session. Stock GNOME retains its own behaviour.
+Gnoblin keeps GNOME's window management and core desktop services.
+An external shell owns the bar, dock, launcher and desktop popups.
 
-QuickShell replacements are tracked in
-[Bingux #12](https://github.com/kierandrewett/bingux/issues/12). Standard OSDs,
-notifications and capture controls already exist in Bingux. The open issues
-cover lock-mode OSD transport, tablet controls, interactive capture portal routing, monitor labels,
-window menus, workspace feedback, the command launcher, welcome
-guidance and wellbeing UI. Add an issue for each additional GUI or OSD removed;
-first check the existing Bingux implementation to avoid duplicate work.
+## Provided by your shell
 
-The official GNOME Extensions component is not constructed in Gnoblin. Its
-management API, app and CLI are removed. GNOME extension compatibility is not
-a QuickShell replacement requirement; Gnoblin user scripts remain supported.
+- Bar, dock and application launcher
+- OSDs and workspace feedback
+- Capture controls
+- Window-management menu
+- Notifications, unless GNOME's service is explicitly enabled
 
-The native Run dialog is also gone. `Alt+F2` now opens the compositor's
-developer console for JavaScript inspection and live compositor changes;
-[Bingux #4](https://github.com/kierandrewett/bingux/issues/4) remains open for
-the separate external command launcher.
+See [choose a shell](bring-your-own-shell.md) and [native feature settings](session-settings.md#native-features).
 
-Gnoblin retains a native desktop right-click menu with Open Terminal. An
-independent session component shows a recovery panel after eight seconds
-without a visible layer surface. These tools remain available when the external
-shell cannot start. They are disabled on the lock screen. See
-[desktop recovery](bring-your-own-shell.md).
+## Kept in Gnoblin
 
-Implementation checklist:
+- Screen locking and authentication
+- Keyring, network and mount prompts
+- Accessibility services
+- Portal permission and selection dialogs
+- Desktop right-click recovery menu
+- Recovery panel when no shell surface is visible
 
-- [x] Remove extension loading, installation and reload entry points.
-- [x] Remove native OSD actors and keep external OSD events.
-- [x] Remove screenshot controls, Run dialog, monitor labels and
-      workspace popup. Keep workspace operations and non-interactive capture.
-- [x] Stop building the extension app, preferences service and command-line tool.
-- [x] Verify the private Gnoblin session and stock session isolation.
+## Removed from this session
 
-Verified against the rebuilt private prefix on 2026-09-12: native-chrome,
-D-Bus, notification ownership, stock protocol isolation and `gnome-verify`
-all passed. The lifecycle probe waits for lock-mode components to settle
-before checking widget absence, then waits for the control component to return.
-All 36 Shell patches also replayed cleanly against the pinned upstream source.
+GNOME's Overview, dash, app grid, extension loader and extension management UI
+are unavailable. User scripts remain supported.
 
-OSD and screenshot feature ids are accepted as disabled compatibility settings.
-They cannot restore removed UI and no longer appear as feature switches.
-Notifications and the native keyboard-layout switcher remain opt-in controls.
+Alt+F2 opens the [developer console](developer-console.md), not the old Run dialog.
+Legacy OSD/screenshot config keys cannot restore removed widgets.
 
-The stock unlock-dialog mode disables the control component and its OSD
-forwarding. [Bingux #8](https://github.com/kierandrewett/bingux/issues/8) tracks
-carrying those events to the existing renderer while locked. It does not
-require rebuilding the OSD widgets.
-
-Remaining native services need replacements before removal: screen locking,
-authentication and keyring prompts, network credentials, mount prompts,
-accessibility controls, and portal permission and selection dialogs. The
-optional GNOME Settings build remains available for hardware configuration.
-
-Installing a rebuilt runtime requires a new login to replace in-process shell
-code. A private headless test does not verify the installed login session.
+Stock GNOME retains its normal behavior. Test both modes when changing shared
+code; see [testing](testing.md).
