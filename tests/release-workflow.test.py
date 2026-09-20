@@ -28,6 +28,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('tags:\n      - "v*"', workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("needs: source-packages", workflow)
+        self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
 

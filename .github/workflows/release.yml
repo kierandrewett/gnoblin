@@ -31,6 +31,8 @@ jobs:
           submodules: recursive
       - name: Set checkout ownership
         run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+      - name: Fetch upstream release tags
+        run: git submodule foreach --recursive 'git fetch --force --tags origin'
       - name: Validate release tag
         run: |
           expected="v$(./scripts/gnome-versions.py get mutter version)"
