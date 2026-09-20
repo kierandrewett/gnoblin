@@ -535,6 +535,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../install-debian/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debian / Ubuntu
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../install-nixos/" class="md-nav__link">
         
   
@@ -2371,11 +2399,9 @@ mappings. Generate or verify those adapters with:</p>
 just<span class="w"> </span>package-manifest<span class="w"> </span>write
 just<span class="w"> </span>package-manifest
 </code></pre></div>
-<p>Generated recipes are not proof of publication. The source defines a
-<code>gnoblin</code> metapackage; the published Fedora repository still used
-<code>gnoblin-session</code> at the September 2026 documentation check.</p>
-<p>APT and pacman repositories are not published yet.
-Keep the <a href="../installation/">install guide</a> aligned with actual repository metadata.</p>
+<p>Fedora's COPR packages use <code>gnoblin-session</code> as the entry point.
+Debian and Ubuntu use the <code>gnoblin</code> package downloaded from GitHub Releases.
+There is no APT or pacman repository.</p>
 <h2 id="build-debian-and-ubuntu-packages">Build Debian and Ubuntu packages<a class="headerlink" href="#build-debian-and-ubuntu-packages" title="Permanent link">&para;</a></h2>
 <p>The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
 Build separately in each distribution's container; do not reuse a newer

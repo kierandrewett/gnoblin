@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/bring-your-own-shell/">
+        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/install-debian/">
       
       
-        <link rel="prev" href="../install-source/">
+        <link rel="prev" href="../install-fedora/">
       
       
-        <link rel="next" href="../configuration/">
+        <link rel="next" href="../install-nixos/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Choose a shell - Gnoblin</title>
+        <title>Debian / Ubuntu - Gnoblin</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#choose-a-shell" class="md-skip">
+        <a href="#debian-and-ubuntu" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Choose a shell
+              Debian / Ubuntu
             
           </span>
         </div>
@@ -429,6 +429,8 @@
                 
   
   
+    
+  
   
   
     
@@ -444,11 +446,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_2" checked>
         
           
           <label class="md-nav__link" for="__nav_1_2" id="__nav_1_2_label" tabindex="">
@@ -469,7 +471,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_1_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -540,10 +542,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../install-debian/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debian / Ubuntu
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -559,6 +588,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-download-your-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Download your package
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-choose-a-shell-and-log-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Choose a shell and log in
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -632,37 +736,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Choose a shell
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../bring-your-own-shell/" class="md-nav__link">
         
   
   
@@ -678,70 +755,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#waybar-fuzzel-and-mako" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Waybar, Fuzzel and Mako
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bingux" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bingux
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-gnoblin-still-provides" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What Gnoblin still provides
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#if-the-shell-does-not-appear" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        If the shell does not appear
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2230,10 +2243,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#waybar-fuzzel-and-mako" class="md-nav__link">
+  <a href="#1-download-your-package" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Waybar, Fuzzel and Mako
+        1. Download your package
       
     </span>
   </a>
@@ -2241,10 +2254,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bingux" class="md-nav__link">
+  <a href="#2-install" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bingux
+        2. Install
       
     </span>
   </a>
@@ -2252,10 +2265,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-gnoblin-still-provides" class="md-nav__link">
+  <a href="#3-choose-a-shell-and-log-in" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What Gnoblin still provides
+        3. Choose a shell and log in
       
     </span>
   </a>
@@ -2263,10 +2276,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#if-the-shell-does-not-appear" class="md-nav__link">
+  <a href="#update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        If the shell does not appear
+        Update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove
       
     </span>
   </a>
@@ -2293,81 +2317,63 @@
   
 
 
-<h1 id="choose-a-shell">Choose a shell<a class="headerlink" href="#choose-a-shell" title="Permanent link">&para;</a></h1>
-<p>Choose a complete shell or combine a bar, launcher and notification daemon.
-Bingux is optional.</p>
+<h1 id="debian-and-ubuntu">Debian and Ubuntu<a class="headerlink" href="#debian-and-ubuntu" title="Permanent link">&para;</a></h1>
+<p>Official packages for Intel and AMD 64-bit PCs.</p>
+<h2 id="1-download-your-package">1. Download your package<a class="headerlink" href="#1-download-your-package" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Setup</th>
-<th>What you get</th>
+<th>System</th>
+<th>Download</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><a href="#waybar-fuzzel-and-mako">Waybar + Fuzzel + Mako</a></td>
-<td>Separate tools you configure independently</td>
+<td>Debian 13</td>
+<td><a href="https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-debian13-amd64.deb">Download .deb</a></td>
 </tr>
 <tr>
-<td><a href="#bingux">Bingux</a></td>
-<td>An integrated bar, dock, launcher and notifications</td>
+<td>Ubuntu 24.04 LTS</td>
+<td><a href="https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-ubuntu24.04-amd64.deb">Download .deb</a></td>
 </tr>
 <tr>
-<td>Your own layer-shell clients</td>
-<td>A custom desktop using Gnoblin's Wayland protocols</td>
+<td>Ubuntu 26.04 LTS</td>
+<td><a href="https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-ubuntu26.04-amd64.deb">Download .deb</a></td>
 </tr>
 </tbody>
 </table>
-<h2 id="waybar-fuzzel-and-mako">Waybar, Fuzzel and Mako<a class="headerlink" href="#waybar-fuzzel-and-mako" title="Permanent link">&para;</a></h2>
-<p>Install <a href="https://github.com/Alexays/Waybar">Waybar</a>,
-<a href="https://codeberg.org/dnkl/fuzzel">Fuzzel</a> and
-<a href="https://github.com/emersion/mako">Mako</a> with your distribution's package manager.</p>
-<p>Add this to <code>~/.config/gnoblin/init.lua</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"bar"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"waybar"</span><span class="p">}}</span>
-<span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"notifications"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"mako"</span><span class="p">}}</span>
-<span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"launcher"</span><span class="p">,</span>
-<span class="w">    </span><span class="nv">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&lt;Super&gt;d"</span><span class="p">,</span>
-<span class="w">    </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"fuzzel"</span><span class="p">},</span>
-<span class="p">}</span>
+<h2 id="2-install">2. Install<a class="headerlink" href="#2-install" title="Permanent link">&para;</a></h2>
+<p>Open a terminal in the folder containing the download. Refresh APT's package
+list, then install the file for your system.</p>
+<p>Debian 13:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>./gnoblin-debian13-amd64.deb
 </code></pre></div>
-<p>Configure Waybar's clock, tray and system modules as usual. Its Sway and
-Hyprland modules need those compositors' own interfaces and do not work in Gnoblin.
-Run one notification daemon; leave Gnoblin's native notifications disabled when
-using Mako.</p>
-<p>Configure each tool in its own files. Gnoblin's <a href="../autostart/">autostart</a> and
-<a href="../shortcuts/">shortcuts</a> only control how you launch it.</p>
-<h2 id="bingux">Bingux<a class="headerlink" href="#bingux" title="Permanent link">&para;</a></h2>
-<p>Bingux provides the desktop controls, notifications,
-search and window switcher.</p>
-<p>Install the dependencies in the
-<a href="https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md">Bingux installation guide</a>,
-then build and install it for your user:</p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/kierandrewett/bingux.git
-<span class="nb">cd</span><span class="w"> </span>bingux
-make<span class="w"> </span>install-user
+<p>Ubuntu 24.04 LTS:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>./gnoblin-ubuntu24.04-amd64.deb
 </code></pre></div>
-<p>The installer builds the shell, enables its services and adds the Gnoblin
-configuration include. Keep those includes when editing <code>init.lua</code>.</p>
-<p>If you installed a Bingux package instead, enable its services:</p>
-<div class="highlight"><pre><span></span><code>systemctl<span class="w"> </span>--user<span class="w"> </span>daemon-reload
-systemctl<span class="w"> </span>--user<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>bingux.target
+<p>Ubuntu 26.04 LTS:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>./gnoblin-ubuntu26.04-amd64.deb
 </code></pre></div>
-<p>Do not also add Bingux to Gnoblin's autostart list.</p>
-<h2 id="what-gnoblin-still-provides">What Gnoblin still provides<a class="headerlink" href="#what-gnoblin-still-provides" title="Permanent link">&para;</a></h2>
-<p>Gnoblin keeps window management, locking and desktop services. GNOME extensions,
-the Overview and native screenshot/OSD popups are not available in this session.</p>
-<p>Native notifications and the keyboard-layout popup are optional.
-See <a href="../session-settings/#native-features">session settings</a>.</p>
-<h2 id="if-the-shell-does-not-appear">If the shell does not appear<a class="headerlink" href="#if-the-shell-does-not-appear" title="Permanent link">&para;</a></h2>
-<p>Right-click the desktop and choose <strong>Open Terminal</strong>. If no layer surface appears
-for eight seconds, Gnoblin also shows a recovery panel.</p>
-<p>For Bingux, inspect its service:</p>
-<div class="highlight"><pre><span></span><code>systemctl<span class="w"> </span>--user<span class="w"> </span>status<span class="w"> </span>bingux.service
-journalctl<span class="w"> </span>--user<span class="w"> </span>-b<span class="w"> </span>-u<span class="w"> </span>bingux.service
+<p>APT installs the required system packages. Gnoblin's newer runtime libraries
+stay under <code>/usr/lib/gnoblin</code>; your GNOME session remains installed separately.</p>
+<h2 id="3-choose-a-shell-and-log-in">3. Choose a shell and log in<a class="headerlink" href="#3-choose-a-shell-and-log-in" title="Permanent link">&para;</a></h2>
+<p><a href="../bring-your-own-shell/">Install a desktop shell</a> for your bar, launcher and
+other desktop controls. Then log out, select <strong>Gnoblin</strong> in the login screen's
+session menu, and log in.</p>
+<p>Next: <a href="../configuration/">configure Gnoblin</a>.</p>
+<h2 id="update">Update<a class="headerlink" href="#update" title="Permanent link">&para;</a></h2>
+<p>Download the new package for your system and run the same <code>apt install</code> command.
+Log out and back in to use the updated compositor.</p>
+<p>These downloads do not add an APT repository, so normal system updates do not
+fetch new Gnoblin releases automatically.</p>
+<h2 id="remove">Remove<a class="headerlink" href="#remove" title="Permanent link">&para;</a></h2>
+<p>Log into another session, then:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>remove<span class="w"> </span>gnoblin
 </code></pre></div>
-<p>See <a href="../troubleshooting/#no-bar-dock-or-launcher">troubleshooting</a>.
-To write your own shell, start with the <a href="../compositor-bridge/">compositor bridge</a>.</p>
+<p>Your configuration in <code>~/.config/gnoblin</code> is kept.</p>
 
 
 
