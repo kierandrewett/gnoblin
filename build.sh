@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install build dependencies and build the complete local Gnoblin installation.
+# Install build dependencies and build the complete required Gnoblin runtime.
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")"
 
@@ -67,5 +67,6 @@ for project in mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome;
     fi
 done
 just init
-just build-local dev-settings dev-portal
+just build-local
 printf '\nComplete Gnoblin build installed in %s\n' "$GNOBLIN_PREFIX"
+printf 'Optional Settings and portal forks: just dev-settings dev-portal\n'

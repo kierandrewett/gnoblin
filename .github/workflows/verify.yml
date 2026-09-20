@@ -27,8 +27,6 @@ jobs:
         run: |
           test -x install/bin/gnoblin-session
           test -x install/bin/gnoblin-shell-service
-          test -x install/bin/gnome-control-center
-          test -x install/libexec/xdg-desktop-portal-gnome
           test -x install/bin/gnome-shell
           test -f install/share/wayland-sessions/gnoblin.desktop
           test -f install/share/gnome-session/sessions/gnoblin.session
@@ -66,8 +64,6 @@ jobs:
         run: ./build.sh --yes
       - name: Verify local runtime and session
         run: |
-          test -x install/bin/gnome-control-center
-          test -x install/libexec/xdg-desktop-portal-gnome
           test -x install/bin/gnome-shell
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop

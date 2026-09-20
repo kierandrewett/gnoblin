@@ -44,6 +44,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig"', justfile)
         self.assertIn("GI_GIR_PATH={{private_gir_path}}", justfile)
 
+    def test_default_source_build_contains_only_required_runtime(self):
+        script = (ROOT / "build.sh").read_text()
+        self.assertIn("just build-local", script)
+        self.assertNotIn("just build-local dev-settings dev-portal", script)
+        self.assertIn("Optional Settings and portal forks", script)
+
 
 if __name__ == "__main__":
     unittest.main()
