@@ -2276,7 +2276,11 @@ needed. For the complete runtime, use <code>./build.sh --no-deps</code>.</p>
 rebuilt libraries.</p>
 <h2 id="choose-a-prefix">Choose a prefix<a class="headerlink" href="#choose-a-prefix" title="Permanent link">&para;</a></h2>
 <p>Default: <code>./install</code>, with libraries in <code>lib64</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span>/tmp/gnoblin<span class="w"> </span><span class="nv">GNOBLIN_LIBDIR</span><span class="o">=</span>lib<span class="w"> </span>just<span class="w"> </span>build-local
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps
+python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps<span class="w"> </span>--run<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>env<span class="w"> </span><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span>/tmp/gnoblin<span class="w"> </span><span class="nv">GNOBLIN_LIBDIR</span><span class="o">=</span>lib<span class="w"> </span>just<span class="w"> </span>build-local
+python3<span class="w"> </span>scripts/build-private-deps.py<span class="w"> </span>--prefix<span class="w"> </span>/tmp/gnoblin/deps<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--fix-runtime<span class="w"> </span>--runtime-prefix<span class="w"> </span>/tmp/gnoblin
 </code></pre></div>
 <p><code>GNOBLIN_LIBDIR</code> is relative to the prefix. Use the same prefix for subsequent
 build and devkit commands. System prefixes <code>/usr</code> and <code>/usr/local</code> are rejected.</p>
