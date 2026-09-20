@@ -49,7 +49,7 @@ jobs:
           mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
           git fetch origin gh-pages
           git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
-          rsync -a --delete --exclude=apt "$RUNNER_TEMP/site/" "$RUNNER_TEMP/pages/"
+          rsync -a --delete --exclude=.git --exclude=apt "$RUNNER_TEMP/site/" "$RUNNER_TEMP/pages/"
           cd "$RUNNER_TEMP/pages"
           git config user.name 'Gnoblin documentation automation'
           git config user.email 'docs@gnoblin.local'
