@@ -32,6 +32,7 @@
 let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
   gnomeVersion = versions.components.gnome-shell.version;
+  gnoblinVersion = (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnoblin-version.json")).version;
   clipboardPython = python3.withPackages (ps: [ ps.pygobject3 ]);
   patchesFor =
     project:
@@ -167,7 +168,7 @@ let
 
   session = stdenv.mkDerivation {
     pname = "gnoblin-session";
-    version = gnomeVersion;
+    version = gnoblinVersion;
     src = gnoblinSrc;
     dontBuild = true;
     nativeBuildInputs = [
@@ -195,6 +196,7 @@ let
       install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
       install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
       install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
+      install -Dm644 gnoblin-version.json "$out/share/gnoblin/version.json"
       substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
       wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
       install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
@@ -312,7 +314,7 @@ let
   };
 in
 symlinkJoin {
-  name = "gnoblin-${gnomeVersion}";
+  name = "gnoblin-${gnoblinVersion}";
   paths = [ ];
   nativeBuildInputs = [ makeWrapper ];
   postBuild = ''

@@ -42,6 +42,11 @@ def output(*args, cwd=None):
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
 
 
+def package_version(gnome_version, gnoblin_version, revision, distribution, release):
+    """Encode the GNOME compatibility train and Gnoblin's SemVer identity."""
+    return f"{gnome_version}+gnoblin{gnoblin_version}-{revision}~{distribution}{release}"
+
+
 def elf_files(directory):
     for path in sorted(directory.rglob("*")):
         if path.is_file() and not path.is_symlink():
@@ -165,9 +170,10 @@ def main():
     release = distro["VERSION_ID"].strip('"')
     if distribution not in ("debian", "ubuntu") or not re.fullmatch(r"[0-9.]+", release):
         parser.error("Build in a released Debian or Ubuntu container")
-    upstream = json.loads((ROOT / "gnome-versions.json").read_text())["components"]["gnome-shell"]["version"]
+    gnome_version = json.loads((ROOT / "gnome-versions.json").read_text())["components"]["gnome-shell"]["version"]
+    gnoblin_version = json.loads((ROOT / "gnoblin-version.json").read_text())["version"]
     commit = output("git", "rev-parse", "HEAD", cwd=ROOT)
-    version = f"{upstream}-{args.revision}~{distribution}{release}"
+    version = package_version(gnome_version, gnoblin_version, args.revision, distribution, release)
     arch = output("dpkg", "--print-architecture")
     args.output.mkdir(parents=True, exist_ok=True)
     artifact = args.output.resolve() / f"gnoblin-{distribution}{release}-{arch}.deb"
@@ -198,6 +204,8 @@ def main():
             json.dumps(
                 {
                     "commit": commit,
+                    "gnoblinVersion": gnoblin_version,
+                    "gnomeVersion": gnome_version,
                     "distribution": distribution,
                     "release": release,
                     "architecture": arch,

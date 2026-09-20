@@ -106,6 +106,13 @@ class CliTests(unittest.TestCase):
             ctl.table([{"appId": "org.example.App"}])
         self.assertIn("APP ID", output.getvalue())
 
+    def test_version_record_keeps_gnome_compatibility_and_gnoblin_semver_separate(self):
+        with patch.object(ctl, "gnoblin_version", return_value="0.1.0"):
+            self.assertEqual(
+                ctl.version_record("51.0-gnoblin"),
+                {"gnomeVersion": "51.0", "gnoblinVersion": "0.1.0", "shellVersion": "51.0-gnoblin"},
+            )
+
     def test_canonical_groups_are_discoverable_and_flat_commands_are_rejected(self):
         self.assertEqual(
             set(ctl.subcommands(ctl.parser())),

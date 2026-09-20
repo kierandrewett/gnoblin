@@ -1,4 +1,4 @@
-{ versions }:
+{ versions, gnoblinRelease }:
 let
   component = name: versions.components.${name};
   requirement = minVersion: rpm: deb: arch: {
@@ -27,6 +27,8 @@ in
   formatVersion = 1;
   release = {
     gnomeMajor = versions.major;
+    gnomeVersion = (component "gnome-shell").version;
+    gnoblinVersion = gnoblinRelease.version;
     mutterApi = (component "mutter").api;
   };
 
@@ -38,7 +40,7 @@ in
 
   packages = {
     gnoblin = {
-      version = (component "gnome-shell").version;
+      version = gnoblinRelease.version;
       meta = true;
       requiresSameMajor = [ "gnoblin-session" ];
       requires = [ ];

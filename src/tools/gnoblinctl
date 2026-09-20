@@ -18,6 +18,31 @@ class CommandError(Exception):
     pass
 
 
+def gnoblin_version():
+    """Return the installed Gnoblin SemVer without depending on the live shell."""
+    script = Path(__file__).resolve()
+    candidates = []
+    if override := os.environ.get("GNOBLIN_VERSION_FILE"):
+        candidates.append(Path(override))
+    candidates.extend((script.parent.parent / "share/gnoblin/version.json", script.parents[2] / "gnoblin-version.json"))
+    for candidate in candidates:
+        try:
+            version = json.loads(candidate.read_text())["version"]
+        except (FileNotFoundError, KeyError, ValueError):
+            continue
+        if isinstance(version, str):
+            return version
+    return "unknown"
+
+
+def version_record(shell_version):
+    return {
+        "gnomeVersion": str(shell_version).removesuffix("-gnoblin"),
+        "gnoblinVersion": gnoblin_version(),
+        "shellVersion": shell_version,
+    }
+
+
 def number(low, high):
     def parse(value):
         try:
@@ -342,7 +367,7 @@ def dispatch(args, cli):
             else {"command": "workspace-switch", "workspace": args.workspace}
         )
     if cmd == "status":
-        result = {"version": call("GetVersion")[0], "connected": call("Ping")[0] == "pong"}
+        result = {**version_record(call("GetVersion")[0]), "connected": call("Ping")[0] == "pong"}
         try:
             windows = rpc({"command": "windows"})["windows"]
             result.update(
@@ -354,7 +379,7 @@ def dispatch(args, cli):
     if cmd == "ping":
         return call("Ping")[0]
     if cmd == "version":
-        return call("GetVersion")[0]
+        return version_record(call("GetVersion")[0])
     if cmd == "feature":
         if args.action == "list":
             return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}

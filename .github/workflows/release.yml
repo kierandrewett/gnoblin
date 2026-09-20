@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "gnoblin-v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -84,7 +84,7 @@ jobs:
           else
             gh release create "$RELEASE_TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-              --title "Gnoblin ${RELEASE_TAG#v}"
+              --title "Gnoblin $(./scripts/gnoblin-version.py get version) (GNOME $(./scripts/gnoblin-version.py get gnomeVersion))"
           fi
 
   apt-repository:

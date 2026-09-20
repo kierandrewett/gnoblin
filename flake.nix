@@ -53,7 +53,8 @@
       systems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
       versions = builtins.fromJSON (builtins.readFile ./gnome-versions.json);
-      nativePackages = import ./nix/native-packages.nix { inherit versions; };
+      gnoblinRelease = builtins.fromJSON (builtins.readFile ./gnoblin-version.json);
+      nativePackages = import ./nix/native-packages.nix { inherit versions gnoblinRelease; };
     in
     {
       packages = forAllSystems (

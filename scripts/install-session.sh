@@ -115,6 +115,7 @@ install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
 glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
+install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
 install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
 # Keep the bridge and its relative imports together as one installed bundle.
 install -d "$PREFIX/share/gnoblin/scripts/lib"

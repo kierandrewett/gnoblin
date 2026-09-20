@@ -8,26 +8,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
-    def test_release_tags_match_the_pinned_base_and_positive_revision(self):
+    def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
-        version = subprocess.check_output(
-            [str(ROOT / "scripts/gnome-versions.py"), "get", "mutter", "version"], text=True
-        ).strip()
-        for suffix, revision in (("", "1"), ("-1", "1"), ("-12", "12")):
-            self.assertEqual(subprocess.check_output([str(script), f"v{version}{suffix}"], text=True).strip(), revision)
-        for tag in ("main", "v0.0", f"v{version}-0", f"v{version}-01", f"v{version}-preview"):
+        version = subprocess.check_output([str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True).strip()
+        self.assertEqual(subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(), "1")
+        for tag in ("main", "v51.0", "gnoblin-v0.1", "gnoblin-v0.1.0-1", "gnoblin-v0.1.0.1"):
             self.assertNotEqual(subprocess.run([str(script), tag], capture_output=True).returncode, 0)
 
     def test_release_build_is_tag_versioned_and_complete(self):
         script = (ROOT / "scripts/build-release-assets.sh").read_text()
-        self.assertIn('EXPECTED_TAG="v$VERSION"', script)
+        self.assertIn('EXPECTED_TAG="gnoblin-v$GNOBLIN_VERSION"', script)
         self.assertIn('make-tarball.sh" mutter', script)
         self.assertIn('make-tarball.sh" gnome-shell', script)
         self.assertIn('make-tarball.sh" gsettings-desktop-schemas', script)
         for project in ("gsettings-desktop-schemas", "mutter", "gnome-shell", "gnoblin"):
             self.assertIn(f'build-srpm.sh" {project}', script)
-        self.assertIn("gnoblin-$VERSION.PKGBUILD", script)
-        self.assertIn("gnoblin-$VERSION-debian.tar.xz", script)
+        self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD", script)
+        self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz", script)
         self.assertIn("SHA256SUMS", script)
 
     def test_release_tarballs_preserve_relative_link_targets(self):
@@ -36,7 +33,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_release_workflow_publishes_only_after_artifacts_build(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
-        self.assertIn('tags:\n      - "v*"', workflow)
+        self.assertIn('tags:\n      - "gnoblin-v*"', workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("needs: [source-packages, debian-packages]", workflow)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
@@ -44,6 +41,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
+        self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):
         workflow = (ROOT / ".github/workflows/nix.yml").read_text()
@@ -62,9 +60,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_default_source_build_contains_only_required_runtime(self):
         script = (ROOT / "build.sh").read_text()
-        self.assertIn("just build-local", script)
-        self.assertNotIn("just build-local dev-settings dev-portal", script)
-        self.assertIn("Optional Settings and portal forks", script)
+        self.assertIn("just build-source", script)
+        self.assertNotIn("just build-source dev-settings dev-portal", script)
+        self.assertIn("Optional Settings and portal builds", script)
 
 
 if __name__ == "__main__":

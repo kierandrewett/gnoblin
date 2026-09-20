@@ -52,7 +52,7 @@ jobs:
           PACKAGE_REF: ${{ inputs.ref }}
         run: |
           revision=1
-          if [[ "$PACKAGE_REF" == refs/tags/* || "$PACKAGE_REF" == v* ]]; then
+          if [[ "$PACKAGE_REF" == refs/tags/gnoblin-v* || "$PACKAGE_REF" == gnoblin-v* ]]; then
             revision="$(scripts/check-release-tag.sh "${PACKAGE_REF#refs/tags/}")"
           fi
           runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \

@@ -81,19 +81,28 @@ host using [hardware verification](real-hardware-verification.md).
 
 ## GitHub releases
 
-Push the release commit, then a signed tag matching `gnome-versions.json`.
-Use `v51.0` for the base release or `v51.0-1`, `v51.0-2`, etc. for later package
-revisions of the same base:
+Gnoblin and GNOME version independently. `gnoblin-version.json` is the
+canonical Gnoblin [SemVer](https://semver.org/) identity; `gnome-versions.json`
+continues to pin the compatible GNOME train. For example, Gnoblin `0.1.0` can
+target GNOME `51.0` without claiming that it is GNOME version `0.1.0`.
+
+Before release, update `gnoblin-version.json` deliberately: use a major version
+for incompatible Gnoblin configuration or protocol changes, a minor version for
+backwards-compatible features, and a patch version for compatible fixes. Then
+push the release commit and a signed `gnoblin-v<semver>` tag:
 
 ```sh
-git tag -s v51.0-1 -m "Gnoblin 51.0, package revision 1"
-git push origin v51.0-1
+git tag -s gnoblin-v0.1.0 -m "Gnoblin 0.1.0 (GNOME 51.0)"
+git push origin gnoblin-v0.1.0
 ```
 
 The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
 packages and checksums. All three Debian/Ubuntu build and install tests must
-pass before assets are published. Dependency sources accompany the binaries.
-Manual dispatch can repair assets for an existing tag.
+pass before assets are published. Asset names and package metadata include both
+versions; for example, a Debian package is versioned
+`51.0+gnoblin0.1.0-1~debian13`. Dependency sources accompany the binaries.
+Manual dispatch can repair assets for an existing SemVer tag. Historical
+`v<gnome-version>` tags predate this convention and remain historical releases.
 
 This does not publish binary packages to COPR.
 Check the release result before telling users assets are available.

@@ -5,8 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="$(realpath -m "${1:-$ROOT/dist/release}")"
 RELEASE_TAG="${2:-}"
-VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
-EXPECTED_TAG="v$VERSION"
+GNOME_VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
+GNOBLIN_VERSION="$($ROOT/scripts/gnoblin-version.py get version)"
+EXPECTED_TAG="gnoblin-v$GNOBLIN_VERSION"
 
 if [[ -n "$RELEASE_TAG" ]]; then
     "$ROOT/scripts/check-release-tag.sh" "$RELEASE_TAG" >/dev/null
@@ -35,12 +36,12 @@ mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
 "$ROOT/scripts/build-srpm.sh" gnome-shell "$SOURCES" "$SRPMS"
 "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
 
-install -m 0644 -- "$SOURCES/mutter-$VERSION.tar.xz" "$OUTPUT/"
-install -m 0644 -- "$SOURCES/gnome-shell-$VERSION.tar.xz" "$OUTPUT/"
-install -m 0644 -- "$SOURCES/gsettings-desktop-schemas-$VERSION.tar.xz" "$OUTPUT/"
+install -m 0644 -- "$SOURCES/mutter-$GNOME_VERSION.tar.xz" "$OUTPUT/"
+install -m 0644 -- "$SOURCES/gnome-shell-$GNOME_VERSION.tar.xz" "$OUTPUT/"
+install -m 0644 -- "$SOURCES/gsettings-desktop-schemas-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
-install -m 0644 -- "$ROOT/packaging/arch/PKGBUILD" "$OUTPUT/gnoblin-$VERSION.PKGBUILD"
-git -C "$ROOT" archive --format=tar HEAD | xz >"$OUTPUT/gnoblin-$VERSION-debian.tar.xz"
+install -m 0644 -- "$ROOT/packaging/arch/PKGBUILD" "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD"
+git -C "$ROOT" archive --format=tar HEAD | xz >"$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz"
 
 (
     cd "$OUTPUT"

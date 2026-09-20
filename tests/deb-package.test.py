@@ -13,6 +13,12 @@ spec.loader.exec_module(package)
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_package_version_keeps_gnome_compatibility_and_gnoblin_semver(self):
+        self.assertEqual(
+            package.package_version("51.0", "0.1.0", "1", "debian", "13"),
+            "51.0+gnoblin0.1.0-1~debian13",
+        )
+
     def test_runtime_exports_only_gnoblin_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -21,6 +27,7 @@ class PackageLayoutTests(unittest.TestCase):
                 "bin/gnome-shell",
                 "bin/gnoblin-session",
                 "bin/gnoblinctl",
+                "share/gnoblin/version.json",
                 "share/gnome-shell/gnome-shell-theme.gresource",
                 "lib/systemd/user/org.gnome.Shell@wayland.service",
                 *package.PUBLIC_FILES,
@@ -36,6 +43,8 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertFalse((stage / "usr/lib/systemd/user/org.gnome.Shell@wayland.service").exists())
             self.assertFalse((stage / "usr/bin/gnome-shell").exists())
             self.assertEqual((stage / "usr/bin/gnoblinctl").readlink(), Path("../lib/gnoblin/bin/gnoblinctl"))
+            self.assertTrue((private / "share/gnoblin/version.json").is_file())
+            self.assertFalse((stage / "usr/share/gnoblin/version.json").exists())
 
     def test_shared_gnome_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
