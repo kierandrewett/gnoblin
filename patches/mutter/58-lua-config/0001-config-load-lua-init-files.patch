@@ -18,7 +18,7 @@ index 6359dbf40..79a2c2390 100644
  subproject('gvdb')
  
  m_dep = cc.find_library('m', required: true)
-+lua_dep = dependency('lua', version: '>= 5.4')
++lua_dep = dependency('lua', 'lua5.4', 'lua-5.4', 'lua54', version: '>= 5.4')
  graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
  hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_option('hyprcursor'))
  have_hyprcursor = hyprcursor_dep.found()

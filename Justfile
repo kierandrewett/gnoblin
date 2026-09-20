@@ -76,9 +76,9 @@ mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland 
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
 mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
 gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " --buildtype=" + dev_buildtype + " -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false"
-private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig"
-private_gir_path := prefix + "/share/gir-1.0"
-private_typelib_path := prefix + "/" + libdir + "/girepository-1.0"
+private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig:" + env_var_or_default("PKG_CONFIG_PATH", "")
+private_gir_path := prefix + "/share/gir-1.0:" + env_var_or_default("GI_GIR_PATH", "")
+private_typelib_path := prefix + "/" + libdir + "/girepository-1.0:" + env_var_or_default("GI_TYPELIB_PATH", "")
 
 # Build + install the pinned GNOME schemas into the private development prefix.
 # Mutter 51 consumes schema enums while configuring, so this must precede Mutter
@@ -99,7 +99,7 @@ dev-schemas: check-install-prefix
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
 dev-mutter: dev-schemas check-install-prefix (patch "mutter")
-    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup --reconfigure build/mutter subprojects/mutter {{mutter_dev_opts}} || PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
+    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup --wipe build/mutter subprojects/mutter {{mutter_dev_opts}} || PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
     PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson install -C build/mutter
 
 # Build + install patched gnome-shell against the freshly built mutter in ./install.
@@ -390,6 +390,8 @@ verify-fast:
     python3 tests/frame-renderer-policy.test.py
     python3 tests/session-environment.test.py
     python3 tests/package-isolation.test.py
+    python3 tests/build-deps.test.py
+    python3 tests/private-deps.test.py
     just test-config
 
 # Every isolated headless integration check against an existing ./install.

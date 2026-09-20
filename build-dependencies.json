@@ -1,0 +1,86 @@
+[
+  {
+    "name": "patchelf",
+    "version": "0.19.1",
+    "url": "https://github.com/NixOS/patchelf/releases/download/0.19.1/patchelf-0.19.1.tar.bz2",
+    "sha256": "2cce01de93653829f6ab68a20c2ec275e1c00a946110704a27e928d2e6e88716",
+    "options": [],
+    "build_system": "autotools"
+  },
+  {
+    "name": "glib",
+    "version": "2.86.5",
+    "url": "https://download.gnome.org/sources/glib/2.86/glib-2.86.5.tar.xz",
+    "sha256": "ce85a947bb8b3c0204dbeff79aec39bcb46371c6fafb64ba5b8726c71e038d5f",
+    "options": ["-Dtests=false", "-Dinstalled_tests=false", "-Ddocumentation=false", "-Dintrospection=enabled"]
+  },
+  {
+    "name": "wayland",
+    "version": "1.26.0",
+    "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz",
+    "sha256": "64176eaa46e4969903e286f8e5ef8331affc17fdf03ac9b58381d2b23162b7a3",
+    "options": ["-Ddocumentation=false", "-Dtests=false"]
+  },
+  {
+    "name": "wayland-protocols",
+    "version": "1.48",
+    "url": "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.48/downloads/wayland-protocols-1.48.tar.xz",
+    "sha256": "398036ac0eb6484982ddbde7ff86848d753231f9cdeeae983f06b52946625aa1",
+    "options": ["-Dtests=false"]
+  },
+  {
+    "name": "lua",
+    "version": "5.4.8",
+    "url": "https://www.lua.org/ftp/lua-5.4.8.tar.gz",
+    "sha256": "4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae",
+    "build_system": "lua",
+    "options": []
+  },
+  {
+    "name": "mtdev",
+    "version": "1.1.7",
+    "url": "https://bitmath.org/code/mtdev/mtdev-1.1.7.tar.bz2",
+    "sha256": "a107adad2101fecac54ac7f9f0e0a0dd155d954193da55c2340c97f2ff1d814e",
+    "build_system": "autotools",
+    "options": []
+  },
+  {
+    "name": "libinput",
+    "version": "1.31.0",
+    "url": "https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.31.0/libinput-1.31.0.tar.gz",
+    "sha256": "5f95a8ce039b3b2b4560a60bbdb920518d41baa9419344e5878c94bd841d5a54",
+    "options": ["-Dtests=false", "-Ddocumentation=false", "-Ddebug-gui=false", "-Dudev-dir={prefix}/lib/udev"]
+  },
+  {
+    "name": "pipewire",
+    "version": "1.6.0",
+    "url": "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.0/pipewire-1.6.0.tar.gz",
+    "sha256": "eef582901d8323669560dd32e3b76b1b15011d73a38f0035a3f11b933112f397",
+    "options": [
+      "-Dauto_features=disabled",
+      "-Dtests=disabled",
+      "-Dexamples=disabled",
+      "-Dsession-managers=[]",
+      "-Dpipewire-jack=disabled",
+      "-Drlimits-install=false",
+      "-Dudevrulesdir={prefix}/lib/udev/rules.d",
+      "-Dsystemd-system-unit-dir={prefix}/lib/systemd/system",
+      "-Dsystemd-user-unit-dir={prefix}/lib/systemd/user"
+    ]
+  },
+  {
+    "name": "gjs",
+    "version": "1.88.1",
+    "url": "https://download.gnome.org/sources/gjs/1.88/gjs-1.88.1.tar.xz",
+    "sha256": "767bab80e665d672cb00563c25f0b392a9ec8c2996ed1d4454c698b4c2f0a3d9",
+    "options": ["-Dinstalled_tests=false", "-Dprofiler=disabled", "-Dskip_dbus_tests=true", "-Dskip_gtk_tests=true"]
+  },
+  {
+    "name": "gnome-desktop",
+    "version": "51.0",
+    "url": "https://download.gnome.org/sources/gnome-desktop/51/gnome-desktop-51.0.tar.xz",
+    "sha256": "9ebeb9f1769d3c310caeadd921ab34c8f264b92937740518b3bc859a579a6912",
+    "options": ["-Ddesktop_docs=false", "-Ddebug_tools=false", "-Dlegacy_library=false", "-Dqr=enabled"],
+    "build_system": "meson"
+  }
+]

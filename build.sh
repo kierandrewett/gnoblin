@@ -1,55 +1,76 @@
 #!/usr/bin/env bash
-# Install build dependencies and build the complete required Gnoblin runtime.
+# Build private dependencies and the required Gnoblin runtime.
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")"
 
-case "${1:-}" in
-    '') ;;
-    --yes | --no-deps) ;;
-    --help | -h)
-        echo "Usage: ./build.sh [--yes|--no-deps]"
-        exit 0
-        ;;
-    *)
-        echo "Usage: ./build.sh [--yes|--no-deps]" >&2
-        exit 2
-        ;;
-esac
-[ "$#" -le 1 ] || {
-    echo 'Too many arguments' >&2
-    exit 2
-}
-privilege=()
-[ "$(id -u)" -eq 0 ] || privilege=(sudo)
-confirm=()
+usage() {
+    cat <<'HELP'
+Usage: ./build.sh [--deps-only | --no-deps] [--dry-run]
 
-if [ "${1:-}" != --no-deps ]; then
-    source /etc/os-release
-    case " $ID ${ID_LIKE:-} " in
-        *' arch '*)
-            [ "${1:-}" != --yes ] || confirm=(--noconfirm)
-            "${privilege[@]}" pacman -Syu --needed "${confirm[@]}" \
-                base-devel git just meson ninja python glib2-devel gobject-introspection \
-                gnome-shell mutter gnome-session gnome-settings-daemon \
-                gnome-control-center xdg-desktop-portal-gnome blueprint-compiler evolution-data-server \
-                wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua \
-                sassc cmake intltool libxkbfile xorg-xwayland python-docutils
-            ;;
-        *' fedora '*)
-            [ "${1:-}" != --yes ] || confirm=(-y)
-            "${privilege[@]}" dnf "${confirm[@]}" install \
-                dnf-plugins-core git just meson ninja-build python3 rpm-build rpmdevtools
-            "${privilege[@]}" dnf "${confirm[@]}" copr enable kierandrewett/gnoblin
-            "${privilege[@]}" dnf "${confirm[@]}" builddep \
-                packaging/rpm/mutter.spec packaging/rpm/gnome-shell.spec \
-                gnome-control-center xdg-desktop-portal-gnome
+Build private dependencies in ./install/deps, then Gnoblin in ./install.
+No host package manager is invoked. Run as your normal user.
+
+  --deps-only  Build private dependencies without building Gnoblin
+  --no-deps    Reuse the existing private dependencies
+  --dry-run    Print the build steps without changing files
+  --help       Show this help
+HELP
+}
+
+skip_deps=false
+deps_only=false
+dry_run=false
+for argument in "$@"; do
+    case "$argument" in
+        --yes | --install-deps) ;; # Compatibility: private builds need no prompts.
+        --no-deps) skip_deps=true ;;
+        --deps-only) deps_only=true ;;
+        --dry-run) dry_run=true ;;
+        --help | -h)
+            usage
+            exit 0
             ;;
         *)
-            echo "Install your distribution's build prerequisites, then run ./build.sh --no-deps (see docs/installation.md)." >&2
-            exit 1
+            usage >&2
+            exit 2
             ;;
     esac
+done
+if "$skip_deps" && "$deps_only"; then
+    echo '--no-deps cannot be combined with --deps-only.' >&2
+    exit 2
 fi
+if "$dry_run"; then
+    if ! "$skip_deps"; then
+        python3 scripts/build-private-deps.py --dry-run
+    fi
+    if ! "$deps_only"; then
+        printf 'Build Gnoblin into %s/install using ./install/deps.\n' "$PWD"
+        echo '  just reset <previously generated subprojects>'
+        echo '  just init'
+        echo '  python3 scripts/check-build-deps.py'
+        echo '  just build-local'
+    fi
+    exit 0
+fi
+for tool in python3 git; do
+    if ! command -v "$tool" >/dev/null; then
+        echo "Missing $tool. See docs/install-source.md for build prerequisites." >&2
+        exit 1
+    fi
+done
+if ! "$deps_only" && ! command -v just >/dev/null; then
+    echo 'Missing just. See docs/install-source.md for build prerequisites.' >&2
+    exit 1
+fi
+if "$skip_deps" && [ ! -x install/deps/bin/patchelf ]; then
+    echo 'Private dependencies are missing. Run ./build.sh without --no-deps first.' >&2
+    exit 1
+fi
+if ! "$skip_deps"; then
+    python3 scripts/build-private-deps.py
+fi
+"$deps_only" && exit 0
 
 # A running system session can export GNOBLIN_PREFIX=/usr. Source builds always
 # stay in this checkout; use the individual Just recipes for custom prefixes.
@@ -67,6 +88,8 @@ for project in mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome;
     fi
 done
 just init
-just build-local
+python3 scripts/build-private-deps.py --run python3 scripts/check-build-deps.py
+python3 scripts/build-private-deps.py --run just build-local
+python3 scripts/build-private-deps.py --fix-runtime
 printf '\nComplete Gnoblin build installed in %s\n' "$GNOBLIN_PREFIX"
 printf 'Optional Settings and portal forks: just dev-settings dev-portal\n'

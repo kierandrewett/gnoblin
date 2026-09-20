@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   checkout-and-verify:
     runs-on: ubuntu-latest
@@ -22,7 +26,13 @@ jobs:
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
       - name: Build everything
-        run: ./build.sh --yes
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- ./build.sh
       - name: Verify the documented installation output
         run: |
           test -x install/bin/gnoblin-session
@@ -60,10 +70,44 @@ jobs:
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
       - name: Build everything
-        run: ./build.sh --yes
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- ./build.sh
       - name: Verify local runtime and session
         run: |
           test -x install/bin/gnome-shell
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop
           test -f install/lib64/libmutter-51.so
+
+  distro-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:sid
+            bootstrap: apt-get update && apt-get install -y git ca-certificates
+          - image: ubuntu:26.04
+            bootstrap: apt-get update && apt-get install -y git ca-certificates
+          - image: registry.opensuse.org/opensuse/tumbleweed:latest
+            bootstrap: zypper --non-interactive install git ca-certificates
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install checkout tools
+        run: ${{ matrix.bootstrap }}
+      - uses: actions/checkout@v4
+      - name: Install source-build dependencies
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+      - name: Test dependency command planning
+        run: |
+          python3 tests/build-deps.test.py
+          python3 tests/private-deps.test.py

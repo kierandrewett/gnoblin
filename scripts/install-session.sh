@@ -60,6 +60,31 @@ install -Dm644 "$SRC/gnome-session/gnoblin.session" \
 install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$PREFIX/libexec/gnoblin-env.sh"
 install -Dm644 /dev/null "$PREFIX/libexec/gnoblin-libdir"
 printf '%s\n' "$LIBDIR" >"$PREFIX/libexec/gnoblin-libdir"
+# A privately built GIRepository searches its own prefix. Keep access to the
+# host's service bindings (AccountsService, NetworkManager, UPower, and others).
+# Link only namespaces not supplied privately. Exporting the entire host
+# typelib directory would make its GLib/Gio bindings override our private ones.
+if [ -d "$PREFIX/deps" ]; then
+    typelib_dir="$(pkg-config --variable=typelibdir gobject-introspection-1.0)"
+    [ -d "$typelib_dir" ] || {
+        echo "Missing system typelib directory: $typelib_dir" >&2
+        exit 1
+    }
+    mkdir -p "$PREFIX/$LIBDIR/girepository-1.0"
+    for typelib in "$typelib_dir"/*.typelib; do
+        [ -f "$typelib" ] || continue
+        name="${typelib##*/}"
+        target="$PREFIX/$LIBDIR/girepository-1.0/$name"
+        if [ -e "$PREFIX/deps/$LIBDIR/girepository-1.0/$name" ]; then
+            if [ -L "$target" ] && [ "$(readlink "$target")" = "$typelib" ]; then
+                rm "$target"
+            fi
+            continue
+        fi
+        [ ! -e "$target" ] || continue
+        ln -s "$typelib" "$target"
+    done
+fi
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
