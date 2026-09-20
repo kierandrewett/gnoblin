@@ -35,6 +35,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertIn('tags:\n      - "gnoblin-v*"', workflow)
         self.assertIn("contents: write", workflow)
+        self.assertIn("pages: write", workflow)
         self.assertIn("needs: [source-packages, debian-packages]", workflow)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)

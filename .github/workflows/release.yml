@@ -12,7 +12,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+  pages: write
 
 jobs:
   source-packages:
