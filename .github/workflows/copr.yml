@@ -7,6 +7,10 @@ on:
         description: Published Gnoblin release tag to build in COPR
         required: true
         type: string
+    secrets:
+      COPR_CONFIG:
+        description: copr-cli configuration for the Gnoblin publisher account
+        required: true
   workflow_dispatch:
     inputs:
       tag:

@@ -99,4 +99,5 @@ jobs:
     uses: ./.github/workflows/copr.yml
     with:
       tag: ${{ inputs.tag || github.ref_name }}
-    secrets: inherit
+    secrets:
+      COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
