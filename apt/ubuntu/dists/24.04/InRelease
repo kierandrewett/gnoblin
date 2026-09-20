@@ -1,0 +1,21 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: Gnoblin
+Label: Gnoblin
+Suite: 24.04
+Codename: 24.04
+Date: Sun, 20 Sep 2026 15:53:48 GMT
+Architectures: amd64
+Components: main
+Description: Gnoblin packages for Ubuntu 24.04 LTS
+SHA256:
+ 6c20c0a525cf44ab235f955973d26cffd7667953052c5288af10850a8f9c4451             4306 main/binary-amd64/Packages
+ 3d30957b99b1c3453fe4d1ddb1b0c855d574f70905c2f9cc1b3966bcdcaa26af             1701 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQTX1HnIX3yZ7TNvvRJ/ieBKJNfRvgUCarABjAAKCRB/ieBKJNfR
+vuATAQDFnjN0ROeVa9JLHPgGaTboh0bNyIgaM9o9rs3HK5aSOAD/YrAzHcpfrE0n
+tTtBkvfDi7ISDEYq9bySaGKJPvBYPAA=
+=krDy
+-----END PGP SIGNATURE-----

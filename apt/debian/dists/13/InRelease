@@ -1,0 +1,21 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: Gnoblin
+Label: Gnoblin
+Suite: 13
+Codename: 13
+Date: Sun, 20 Sep 2026 15:53:46 GMT
+Architectures: amd64
+Components: main
+Description: Gnoblin packages for Debian 13
+SHA256:
+ 635b04d8cb67376591aeb936378f5e7bab726c59a1497009fcb747fc445d4898             4046 main/binary-amd64/Packages
+ bd393e634aa03989fa8122a8c45807d61c79aca91759017bd43632939b7e0101             1612 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQTX1HnIX3yZ7TNvvRJ/ieBKJNfRvgUCarABiwAKCRB/ieBKJNfR
+vmo6AQD5x/iUQ2tEiPizDFdPnN+CQgb9hqRZ7dUd5rzLWj8dXAD8DMAFUF+nKYjG
+vfdD3YJpkkMw01CALnmKvrKnsXviEgg=
+=uBnY
+-----END PGP SIGNATURE-----

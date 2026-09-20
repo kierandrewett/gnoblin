@@ -1,0 +1,21 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: Gnoblin
+Label: Gnoblin
+Suite: 26.04
+Codename: 26.04
+Date: Sun, 20 Sep 2026 15:53:48 GMT
+Architectures: amd64
+Components: main
+Description: Gnoblin packages for Ubuntu 26.04 LTS
+SHA256:
+ e9b26eb85857f647d80c64d564fd81d01af76bec0251fe0a47033e67b292a1dd             8493 main/binary-amd64/Packages
+ 10d557620cdd9e7c756a155c0a263bc0e783a6910f82d2d1cbd3dfad9a6f5166             2244 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQTX1HnIX3yZ7TNvvRJ/ieBKJNfRvgUCarABjAAKCRB/ieBKJNfR
+vnvCAP99y9IJsmBGx/h6br30plwWc/2G1XL4u/xClJ0gpjVYBgD9Fp9RDpLogfUf
+6I5aSHOgo0fsSwdKIw2CsXgXCtRtngc=
+=YriN
+-----END PGP SIGNATURE-----
