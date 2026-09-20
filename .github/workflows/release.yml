@@ -93,3 +93,10 @@ jobs:
     with:
       tag: ${{ inputs.tag || github.ref_name }}
     secrets: inherit
+
+  copr-repository:
+    needs: github-release
+    uses: ./.github/workflows/copr.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+    secrets: inherit

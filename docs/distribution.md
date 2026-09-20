@@ -104,8 +104,19 @@ versions; for example, a Debian package is versioned
 Manual dispatch can repair assets for an existing SemVer tag. Historical
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
-This does not publish binary packages to COPR.
-Check the release result before telling users assets are available.
+The release workflow then publishes the same source RPMs to COPR and installs
+the result in a Fedora 44 container before it completes. The workflow requires
+the repository secret `COPR_CONFIG`, containing the publisher's `copr-cli`
+configuration. Configure it once before the first automated release:
+
+```sh
+gh secret set COPR_CONFIG < ~/.config/copr
+```
+
+Debian and Ubuntu packages are added to the signed APT archive after the GitHub
+release; Fedora users receive the resulting COPR update through normal `dnf`
+updates. Check the completed release workflow before telling users a release is
+available.
 
 ## Upgrade the GNOME base
 

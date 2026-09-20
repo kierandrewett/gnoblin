@@ -42,6 +42,17 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
         self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
+        self.assertIn("copr-repository:", workflow)
+        self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
+
+    def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
+        workflow = (ROOT / ".github/workflows/copr.yml").read_text()
+        self.assertIn("COPR_CONFIG:", workflow)
+        self.assertIn("required: true", workflow)
+        self.assertIn("gh release download \"$RELEASE_TAG\"", workflow)
+        self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
+        self.assertIn("dnf -y install --refresh gnoblin", workflow)
+        self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):
         workflow = (ROOT / ".github/workflows/nix.yml").read_text()

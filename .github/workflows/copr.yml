@@ -1,0 +1,76 @@
+name: COPR repository
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Published Gnoblin release tag to build in COPR
+        required: true
+        type: string
+    secrets:
+      COPR_CONFIG:
+        description: copr-cli configuration for the Gnoblin publisher account
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published Gnoblin release tag to build in COPR
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copr-repository
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+    steps:
+      - name: Install publication tools
+        run: dnf -y install copr-cli git
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Configure the COPR publisher
+        run: |
+          test -n "$COPR_CONFIG"
+          install -d -m 700 "$HOME/.config"
+          printf '%s' "$COPR_CONFIG" > "$HOME/.config/copr"
+          chmod 600 "$HOME/.config/copr"
+          copr-cli whoami
+      - name: Download and validate source RPMs
+        run: |
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.src.rpm' --dir release-assets
+          shopt -s nullglob
+          schemas=(release-assets/gnoblin-gsettings-desktop-schemas-*.src.rpm)
+          mutter=(release-assets/gnoblin-mutter-*.src.rpm)
+          shell=(release-assets/gnoblin-shell-*.src.rpm)
+          meta=(release-assets/gnoblin-[0-9]*.src.rpm)
+          test "${#schemas[@]}" -eq 1
+          test "${#mutter[@]}" -eq 1
+          test "${#shell[@]}" -eq 1
+          test "${#meta[@]}" -eq 1
+          printf '%s\n' "${schemas[@]}" "${mutter[@]}" "${shell[@]}" "${meta[@]}"
+      - name: Publish and verify the release in COPR
+        run: |
+          scripts/publish-copr.sh kierandrewett/gnoblin \
+            release-assets/gnoblin-gsettings-desktop-schemas-*.src.rpm \
+            release-assets/gnoblin-mutter-*.src.rpm \
+            release-assets/gnoblin-shell-*.src.rpm \
+            release-assets/gnoblin-[0-9]*.src.rpm
+          dnf -y install dnf-plugins-core
+          dnf -y copr enable kierandrewett/gnoblin
+          dnf -y install --refresh gnoblin
+          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
