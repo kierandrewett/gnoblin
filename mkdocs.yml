@@ -53,6 +53,7 @@ nav:
       - Installation:
           - Choose your system: installation.md
           - Fedora: install-fedora.md
+          - Debian / Ubuntu: install-debian.md
           - NixOS: install-nixos.md
           - Build from source: install-source.md
       - Choose a shell: bring-your-own-shell.md

@@ -1,7 +1,8 @@
 # Build from source
 
-Use this route for current development code. Fedora users installing the
-published version should use [COPR](install-fedora.md).
+Use this route for current development code. For a packaged install, use
+[Fedora's COPR packages](install-fedora.md) or the
+[Debian/Ubuntu downloads](install-debian.md).
 
 The build goes into `./install` inside your checkout.
 Keep the checkout there if you register it as a login session.

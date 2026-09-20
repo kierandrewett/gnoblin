@@ -5,13 +5,13 @@ bar, dock and launcher. Install both before your first login.
 
 ## Choose your system
 
-| System          | Install method                           |
-| --------------- | ---------------------------------------- |
-| Fedora          | [Install from COPR](install-fedora.md)   |
-| NixOS           | [Add the NixOS module](install-nixos.md) |
-| Arch / CachyOS  | [Build from source](install-source.md)   |
-| Debian / Ubuntu | [Build from source](install-source.md)   |
-| openSUSE        | [Build from source](install-source.md)   |
+| System          | Install method                                    |
+| --------------- | ------------------------------------------------- |
+| Fedora          | [Install from COPR](install-fedora.md)            |
+| NixOS           | [Add the NixOS module](install-nixos.md)          |
+| Arch / CachyOS  | [Build from source](install-source.md)            |
+| Debian / Ubuntu | [Install the official package](install-debian.md) |
+| openSUSE        | [Build from source](install-source.md)            |
 
 Gnoblin installs alongside GNOME. Your existing GNOME session remains available.
 
@@ -24,12 +24,6 @@ Gnoblin installs alongside GNOME. Your existing GNOME session remains available.
 
 If there is no bar or launcher, right-click the desktop and choose **Open
 Terminal**. See [first-login troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
-
-## Package versions
-
-These guides document the Lua functions in the source build. Packages can
-receive those changes later. If an example fails because `gnoblin` or a
-function is missing, follow [configuration compatibility](troubleshooting.md#gnoblin-or-configure-is-nil).
 
 For development builds, see [source installation](install-source.md).
 Release maintainers should use the [packaging guide](distribution.md).

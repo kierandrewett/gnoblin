@@ -27,12 +27,9 @@ just package-manifest write
 just package-manifest
 ```
 
-Generated recipes are not proof of publication. The source defines a
-`gnoblin` metapackage; the published Fedora repository still used
-`gnoblin-session` at the September 2026 documentation check.
-
-APT and pacman repositories are not published yet.
-Keep the [install guide](installation.md) aligned with actual repository metadata.
+Fedora's COPR packages use `gnoblin-session` as the entry point.
+Debian and Ubuntu use the `gnoblin` package downloaded from GitHub Releases.
+There is no APT or pacman repository.
 
 ## Build Debian and Ubuntu packages
 
