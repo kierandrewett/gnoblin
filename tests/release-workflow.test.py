@@ -48,7 +48,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
         self.assertIn("COPR_CONFIG:", workflow)
-        self.assertIn("required: true", workflow)
+        self.assertIn('test -n "$COPR_CONFIG"', workflow)
         self.assertIn("gh release download \"$RELEASE_TAG\"", workflow)
         self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
         self.assertIn("dnf -y install --refresh gnoblin", workflow)
