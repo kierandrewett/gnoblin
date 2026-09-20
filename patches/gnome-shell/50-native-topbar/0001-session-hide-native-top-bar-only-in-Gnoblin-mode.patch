@@ -4,18 +4,18 @@ Date: Wed, 15 Jul 2026 13:28:18 +0100
 Subject: [PATCH] session: hide native top bar only in Gnoblin mode
 
 Use the immutable primary session mode when deciding whether the native panel
-is visible, reactive, part of the input region, and reserving a strut. Stock
+is visible, reactive, and reserving a strut. Stock
 GNOME and non-Gnoblin modes retain their upstream top bar behaviour.
 ---
- js/ui/layout.js | 4 +++-
+ js/ui/layout.js | 3 ++-
  js/ui/panel.js  | 4 +++-
- 2 files changed, 6 insertions(+), 2 deletions(-)
+ 2 files changed, 5 insertions(+), 2 deletions(-)
 
 diff --git a/js/ui/layout.js b/js/ui/layout.js
 index 47cf50c..53880b1 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -265,12 +265,14 @@ export const LayoutManager = GObject.registerClass({
+@@ -265,12 +265,13 @@ export const LayoutManager = GObject.registerClass({
          });
          this.addChrome(this.screenShieldGroup);
  
@@ -26,7 +26,6 @@ index 47cf50c..53880b1 100644
          });
          this.addChrome(this.panelBox, {
 -            affectsStruts: true,
-+            affectsInputRegion: !isGnoblin,
 +            affectsStruts: !isGnoblin,
              trackFullscreen: true,
          });

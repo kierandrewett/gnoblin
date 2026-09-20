@@ -762,6 +762,9 @@ export class Component {
     // --- desktop state ---
     _setupDesktopState() {
         this._inputSourceManager = Keyboard.getInputSourceManager();
+        // The stock keyboard indicator normally initialises the keymap. Gnoblin
+        // omits that indicator, so initialise it before IBus reports readiness.
+        this._inputSourceManager.reload();
         this._inputSourceManager.connectObject(
             "current-source-changed",
             () => this._emitInputSourceChanged(),

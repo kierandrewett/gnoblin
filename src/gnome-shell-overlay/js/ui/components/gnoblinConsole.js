@@ -235,7 +235,6 @@ export const DeveloperConsole = GObject.registerClass(
 
             this._newEvaluator();
             Main.layoutManager.addTopChrome(this, {
-                affectsInputRegion: true,
                 affectsStruts: false,
                 trackFullscreen: false,
             });
