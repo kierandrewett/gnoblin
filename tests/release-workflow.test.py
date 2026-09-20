@@ -29,6 +29,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("contents: write", workflow)
         self.assertIn("needs: source-packages", workflow)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
+        self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)
+        self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
 
