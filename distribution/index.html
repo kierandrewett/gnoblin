@@ -2454,8 +2454,16 @@ versions; for example, a Debian package is versioned
 <code>51.0+gnoblin0.1.0-1~debian13</code>. Dependency sources accompany the binaries.
 Manual dispatch can repair assets for an existing SemVer tag. Historical
 <code>v&lt;gnome-version&gt;</code> tags predate this convention and remain historical releases.</p>
-<p>This does not publish binary packages to COPR.
-Check the release result before telling users assets are available.</p>
+<p>The release workflow then publishes the same source RPMs to COPR and installs
+the result in a Fedora 44 container before it completes. The workflow requires
+the repository secret <code>COPR_CONFIG</code>, containing the publisher's <code>copr-cli</code>
+configuration. Configure it once before the first automated release:</p>
+<div class="highlight"><pre><span></span><code>gh<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>COPR_CONFIG<span class="w"> </span>&lt;<span class="w"> </span>~/.config/copr
+</code></pre></div>
+<p>Debian and Ubuntu packages are added to the signed APT archive after the GitHub
+release; Fedora users receive the resulting COPR update through normal <code>dnf</code>
+updates. Check the completed release workflow before telling users a release is
+available.</p>
 <h2 id="upgrade-the-gnome-base">Upgrade the GNOME base<a class="headerlink" href="#upgrade-the-gnome-base" title="Permanent link">&para;</a></h2>
 <p><code>gnome-versions.json</code> pins the release train.</p>
 <div class="highlight"><pre><span></span><code>./scripts/gnome-versions.py<span class="w"> </span>update<span class="w"> </span><span class="m">52</span>
