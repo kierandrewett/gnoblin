@@ -59,13 +59,19 @@ class BuildDependencies(unittest.TestCase):
                     self.assertIn("libsysprof-capture-4-dev", commands[1])
                 if family == "opensuse":
                     self.assertIn("refresh", commands[0])
-                    self.assertIn("--non-interactive", commands[1])
-                    self.assertIn("pkgconfig(wayland-server)", commands[1])
+                    self.assertIn("remove", commands[1])
+                    self.assertIn("busybox-gawk", commands[1])
+                    self.assertIn("--non-interactive", commands[2])
+                    self.assertIn("gawk", commands[2])
+                    self.assertIn("pkgconfig(wayland-server)", commands[2])
                 if family == "arch":
                     self.assertIn("-S", commands[0])
+                    self.assertIn("glycin", commands[0])
+                    self.assertNotIn("libglycin", commands[0])
                     self.assertNotIn("-Syu", commands[0])
                     self.assertNotIn("-Sy", commands[0])
                 if family == "fedora":
+                    self.assertIn("expat-devel", commands[0])
                     self.assertNotIn("copr", result.stdout)
                     self.assertNotIn("builddep", result.stdout)
 

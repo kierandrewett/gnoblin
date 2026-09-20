@@ -63,7 +63,7 @@ install_build_dependencies() {
             "$build_assume_yes" && confirm=(-y)
             packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
-                python3-docutils python3-packaging glib2-devel libadwaita-devel
+                python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
                 pam-devel lua-devel gnome-shell gnome-session gnome-settings-daemon
                 xkeyboard-config-devel xorg-x11-server-Xwayland)
             build_dependency_command "${privilege[@]}" dnf "${confirm[@]}" install \
@@ -75,7 +75,7 @@ install_build_dependencies() {
                 glib2-devel gobject-introspection gjs gtk4 libadwaita
                 gnome-shell mutter gnome-session gnome-settings-daemon
                 wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
-                libglycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
+                glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
                 sassc cmake gettext xorg-xwayland python-docutils)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
@@ -126,8 +126,11 @@ install_build_dependencies() {
                 python3-packaging readline-devel iso-codes pam-devel lua54-devel gnome-shell gnome-session gnome-settings-daemon)
             capabilities+=('pkgconfig(libadwaita-1)' 'pkgconfig(xkeyboard-config)')
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" refresh
+            # The minimal CI image gains busybox-gawk while bootstrapping Git,
+            # but desktop-file-utils requires the full gawk implementation.
+            build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" remove busybox-gawk
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" install \
-                "${packages[@]}" "${capabilities[@]}"
+                gawk "${packages[@]}" "${capabilities[@]}"
             ;;
         *)
             echo "No dependency setup for $family. See docs/install-source.md." >&2
