@@ -36,6 +36,14 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("./scripts/sync-package-manifest.py check", workflow)
         self.assertIn("nix flake check -L", workflow)
 
+    def test_source_build_bootstraps_private_gnome_schemas(self):
+        justfile = (ROOT / "Justfile").read_text()
+        self.assertIn("dev-schemas: check-install-prefix", justfile)
+        self.assertIn("dev-mutter: dev-schemas", justfile)
+        self.assertIn("make-tarball.sh gsettings-desktop-schemas", justfile)
+        self.assertIn('private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig"', justfile)
+        self.assertIn("GI_GIR_PATH={{private_gir_path}}", justfile)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -76,11 +76,31 @@ mutter_test_suites := "--suite mutter:mutter/unit --suite mutter:mutter/wayland 
 mutter_focus_tests := "mutter:focus-default-window-globally-active-input mutter:click-to-focus-and-raise mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise mutter:popup-focus"
 mutter_test_run_opts := "--no-rebuild --num-processes 1 --print-errorlogs"
 gnome_shell_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir + " --buildtype=" + dev_buildtype + " -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false"
+private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/share/pkgconfig"
+private_gir_path := prefix + "/share/gir-1.0"
+private_typelib_path := prefix + "/" + libdir + "/girepository-1.0"
+
+# Build + install the pinned GNOME schemas into the private development prefix.
+# Mutter 51 consumes schema enums while configuring, so this must precede Mutter
+# even when the host already has an older, distro-supported GNOME installation.
+dev-schemas: check-install-prefix
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sources="build/release-sources"
+    source_dir="build/gsettings-desktop-schemas-source"
+    build_dir="build/gsettings-desktop-schemas"
+    archive="$(./scripts/make-tarball.sh gsettings-desktop-schemas "$sources")"
+    rm -rf -- "$source_dir" "$build_dir"
+    mkdir -p -- "$source_dir"
+    tar -xf "$archive" -C "$source_dir" --strip-components=1
+    meson setup "$build_dir" "$source_dir" \
+      --prefix={{prefix}} --libdir={{libdir}} --buildtype={{dev_buildtype}}
+    meson install -C "$build_dir"
 
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
-dev-mutter: check-install-prefix (patch "mutter")
-    meson setup --reconfigure build/mutter subprojects/mutter {{mutter_dev_opts}} || meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
-    meson install -C build/mutter
+dev-mutter: dev-schemas check-install-prefix (patch "mutter")
+    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup --reconfigure build/mutter subprojects/mutter {{mutter_dev_opts}} || PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
+    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson install -C build/mutter
 
 # Build + install patched gnome-shell against the freshly built mutter in ./install.
 # gnome-shell is the compositor+shell again; its stock UI (panel/overview/dash) is
@@ -93,8 +113,8 @@ dev-gnome-shell: dev-mutter (patch "gnome-shell")
     # g_boxed_type registration → GJS boxed-prototype crash at boot). A fresh build dir
     # is the only reliably-correct option here.
     rm -rf build/gnome-shell
-    PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
-    PKG_CONFIG_PATH={{prefix}}/{{libdir}}/pkgconfig meson install -C build/gnome-shell
+    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}}:{{prefix}}/{{libdir}}/mutter-51 meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
+    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}}:{{prefix}}/{{libdir}}/mutter-51 meson install -C build/gnome-shell
     rm -f {{prefix}}/lib/systemd/user/org.gnome.Shell-disable-extensions.service
 
 # --- optional: unattended screen-share portal backend -----------------------
