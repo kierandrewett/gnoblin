@@ -31,7 +31,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       18.gnoblin%{?dist}
+Release:       19.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -121,6 +121,7 @@ Private headers and pkg-config files for Gnoblin builds.
 
 %build
 export PKG_CONFIG_PATH=%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
@@ -161,6 +162,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sun Sep 20 2026 Gnoblin contributors - 51.0-19.gnoblin
+- Discover private GNOME schema introspection data while building.
+
 * Sun Sep 20 2026 Gnoblin contributors - 51.0-18.gnoblin
 - Keep private library capabilities out of the system RPM namespace.
 
