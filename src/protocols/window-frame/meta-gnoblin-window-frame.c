@@ -201,6 +201,29 @@ void meta_gnoblin_window_frame_commit(MetaWindow* window,
     geometry->height += layout.border[0] + layout.border[2] - layout.crop[0] - layout.crop[2];
 }
 
+/* XDG positioners are relative to the client surface, whereas MetaWindow's
+ * frame rectangle includes the optional Gnoblin frame. Keep the coordinate
+ * conversion here with the inverse of meta_gnoblin_window_frame_commit(). */
+void meta_gnoblin_window_frame_rect_to_client(MetaWindow* window,
+                                              const MetaWaylandWindowConfiguration* configuration,
+                                              MtkRectangle* rect) {
+    FrameState* state;
+    MetaGnoblinFrameLayout layout;
+
+    if (!window_surface(window))
+        return;
+
+    state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
+    if (!state)
+        return;
+
+    layout = configuration ? configuration->gnoblin_frame : state->committed;
+    rect->x += layout.border[3] - layout.crop[3];
+    rect->y += layout.border[0] - layout.crop[0];
+    rect->width += layout.crop[1] + layout.crop[3] - layout.border[1] - layout.border[3];
+    rect->height += layout.crop[0] + layout.crop[2] - layout.border[0] - layout.border[2];
+}
+
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface) {
     FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
     if (!state)

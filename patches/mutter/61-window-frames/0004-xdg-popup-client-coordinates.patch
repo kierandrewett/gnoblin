@@ -1,0 +1,67 @@
+From 3b75bf0d3c58f275ff2af39ce54708fe8f8fb8df Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Sat, 20 Sep 2026 12:00:00 +0100
+Subject: [PATCH] wayland: place XDG popups relative to SSD client geometry
+
+XDG positioner anchor rectangles are client-surface coordinates. Gnoblin's
+server-side frame expands MetaWindow's frame rectangle, so convert that
+rectangle back to client coordinates before placing the popup.
+
+---
+ src/wayland/meta-wayland-xdg-shell.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index 9c7179a7e..ba24d4447 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -2524,25 +2524,47 @@ meta_wayland_xdg_positioner_to_placement (MetaWaylandXdgPositioner *xdg_position
+                   parent_rect.height =
+                     configuration->height / configuration->scale;
+                 }
++              meta_gnoblin_window_frame_rect_to_client (parent_window,
++                                                         configuration,
++                                                         &parent_rect);
+             }
+           else if (xdg_positioner->has_parent_size)
+             {
++              meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                         &parent_rect);
+               meta_rectangle_resize_with_gravity (&parent_rect,
+                                                   &parent_rect,
+                                                   configuration->gravity,
+                                                   xdg_positioner->parent_width,
+                                                   xdg_positioner->parent_height);
+             }
++          else
++            {
++              meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                         &parent_rect);
++            }
++        }
++      else
++        {
++          meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                     &parent_rect);
+         }
+     }
+   else if (xdg_positioner->has_parent_size)
+     {
++      meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                 &parent_rect);
+       meta_rectangle_resize_with_gravity (&parent_rect,
+                                           &parent_rect,
+                                           META_GRAVITY_SOUTH_EAST,
+                                           xdg_positioner->parent_width,
+                                           xdg_positioner->parent_height);
+     }
++  else
++    {
++      meta_gnoblin_window_frame_rect_to_client (parent_window, NULL,
++                                                 &parent_rect);
++    }
+ 
+   return (MetaPlacementRule) {
+     .anchor_rect = xdg_positioner->anchor_rect,
+-- 
+2.55.0
