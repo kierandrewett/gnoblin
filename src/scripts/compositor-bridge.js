@@ -28,21 +28,21 @@ class CompositorBridge {
         this.fullscreenReturnGuard = new FullscreenReturnGuard({
             buttonPress: Clutter.EventType.BUTTON_PRESS,
             buttonRelease: Clutter.EventType.BUTTON_RELEASE,
+            pointerEvents: [
+                Clutter.EventType.BUTTON_PRESS,
+                Clutter.EventType.BUTTON_RELEASE,
+                Clutter.EventType.MOTION,
+                Clutter.EventType.SCROLL,
+            ],
             pick: (event) => this.windowAtPointer(event),
-            dismiss: () => this.dismissSearchForOutsideClick(),
+            dismiss: (done) => this.dismissSearchForOutsideClick(done),
             set: (armed) => Meta.gnoblin_fullscreen_return_guard_set(global.display, armed),
         });
         this.uiSessions = new UiSessions((client, record) => this.send(client, record), {
             update: (requests) => {
                 this.layerCompanions.update(requests);
                 const search = this.uiSessions.owners.get("search")?.state;
-                const searchOpen =
-                    search?.visible === true &&
-                    search.revealCompanions === true &&
-                    search.surface === "bingux-search" &&
-                    requests.some((request) => request.surface === "bingux-search");
-                if (searchOpen) this.fullscreenReturnGuard.arm();
-                else this.fullscreenReturnGuard.disarm();
+                this.fullscreenReturnGuard.update(search, requests);
             },
             cancelDismiss: () => this.layerCompanions.cancelDismiss(),
         });
@@ -814,11 +814,15 @@ class CompositorBridge {
         });
     }
 
-    dismissSearchForOutsideClick() {
+    dismissSearchForOutsideClick(done) {
         const search = this.uiSessions.owners.get("search")?.state;
-        if (!search?.visible || !search.revealCompanions) return;
+        if (!search?.revealCompanions) {
+            done();
+            return;
+        }
         this.layerCompanions.dismiss(search.surface, () => {
             this.uiSessions.command(null, { action: "command", name: "search", command: { action: "hide" } });
+            done();
         });
     }
 
