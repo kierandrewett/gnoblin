@@ -2436,16 +2436,24 @@ Do not use asynchronous submission that bypasses this dependency.</p>
 After all builds succeed, test package resolution, login and removal on a clean
 host using <a href="../real-hardware-verification/">hardware verification</a>.</p>
 <h2 id="github-releases">GitHub releases<a class="headerlink" href="#github-releases" title="Permanent link">&para;</a></h2>
-<p>Push the release commit, then a signed tag matching <code>gnome-versions.json</code>.
-Use <code>v51.0</code> for the base release or <code>v51.0-1</code>, <code>v51.0-2</code>, etc. for later package
-revisions of the same base:</p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>v51.0-1<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 51.0, package revision 1"</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v51.0-1
+<p>Gnoblin and GNOME version independently. <code>gnoblin-version.json</code> is the
+canonical Gnoblin <a href="https://semver.org/">SemVer</a> identity; <code>gnome-versions.json</code>
+continues to pin the compatible GNOME train. For example, Gnoblin <code>0.1.0</code> can
+target GNOME <code>51.0</code> without claiming that it is GNOME version <code>0.1.0</code>.</p>
+<p>Before release, update <code>gnoblin-version.json</code> deliberately: use a major version
+for incompatible Gnoblin configuration or protocol changes, a minor version for
+backwards-compatible features, and a patch version for compatible fixes. Then
+push the release commit and a signed <code>gnoblin-v&lt;semver&gt;</code> tag:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>tag<span class="w"> </span>-s<span class="w"> </span>gnoblin-v0.1.0<span class="w"> </span>-m<span class="w"> </span><span class="s2">"Gnoblin 0.1.0 (GNOME 51.0)"</span>
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>gnoblin-v0.1.0
 </code></pre></div>
 <p>The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
 packages and checksums. All three Debian/Ubuntu build and install tests must
-pass before assets are published. Dependency sources accompany the binaries.
-Manual dispatch can repair assets for an existing tag.</p>
+pass before assets are published. Asset names and package metadata include both
+versions; for example, a Debian package is versioned
+<code>51.0+gnoblin0.1.0-1~debian13</code>. Dependency sources accompany the binaries.
+Manual dispatch can repair assets for an existing SemVer tag. Historical
+<code>v&lt;gnome-version&gt;</code> tags predate this convention and remain historical releases.</p>
 <p>This does not publish binary packages to COPR.
 Check the release result before telling users assets are available.</p>
 <h2 id="upgrade-the-gnome-base">Upgrade the GNOME base<a class="headerlink" href="#upgrade-the-gnome-base" title="Permanent link">&para;</a></h2>
