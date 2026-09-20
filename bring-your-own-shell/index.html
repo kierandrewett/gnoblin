@@ -2294,7 +2294,7 @@ Bingux is optional.</p>
 <p>Install <a href="https://github.com/Alexays/Waybar">Waybar</a>,
 <a href="https://codeberg.org/dnkl/fuzzel">Fuzzel</a> and
 <a href="https://github.com/emersion/mako">Mako</a> with your distribution's package manager.</p>
-<p>With the <a href="../configuration-loading/#existing-configs">new Lua API</a>, add:</p>
+<p>Add this to <code>~/.config/gnoblin/init.lua</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"bar"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"waybar"</span><span class="p">}}</span>
 <span class="nv">gnoblin</span><span class="p">.</span><span class="py">autostart</span><span class="w"> </span><span class="p">{</span><span class="nv">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"notifications"</span><span class="p">,</span><span class="w"> </span><span class="nv">command</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="s2">"mako"</span><span class="p">}}</span>
 <span class="nv">gnoblin</span><span class="p">.</span><span class="py">shortcut</span><span class="w"> </span><span class="p">{</span>

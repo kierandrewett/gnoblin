@@ -756,6 +756,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gnoblin-or-configure-is-nil" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gnoblin or configure is nil
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#my-components-shortcuts-or-rules-disappeared" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2301,6 +2312,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#gnoblin-or-configure-is-nil" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gnoblin or configure is nil
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#my-components-shortcuts-or-rules-disappeared" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2425,10 +2447,21 @@ gnoblinctl<span class="w"> </span>config<span class="w"> </span>reload
 <p>Edit the printed path and read the reload error. Then check:</p>
 <ul>
 <li>Does this setting need a <a href="../configuration-loading/#reload-and-persistence">new session</a>?</li>
-<li>Does your installed version support it?</li>
+<li>Is a function missing? See <a href="#gnoblin-or-configure-is-nil">configuration compatibility</a>.</li>
 <li>Did an unmatched include glob load nothing?</li>
 <li>Did a later list replace your rules or shortcuts?</li>
 </ul>
+<h2 id="gnoblin-or-configure-is-nil"><code>gnoblin</code> or <code>configure</code> is nil<a class="headerlink" href="#gnoblin-or-configure-is-nil" title="Permanent link">&para;</a></h2>
+<p>An error such as <code>attempt to index a nil value (global 'gnoblin')</code> or
+<code>attempt to call a nil value (field 'configure')</code> can mean your running
+compositor predates the Lua functions used in these guides.</p>
+<p>If you have just updated Gnoblin, log out and back in. Reloading the config
+does not load an updated compositor. Otherwise, update through your
+<a href="../installation/">installation method</a>. If your package does not include these
+functions, keep using the <a href="../configuration-loading/#existing-configs">existing config syntax</a>
+or <a href="../install-source/">build from source</a>.</p>
+<p>On a build that supports these functions, check that your config has not
+assigned another value to <code>gnoblin</code> or <code>gnoblin.configure</code>.</p>
 <h2 id="my-components-shortcuts-or-rules-disappeared">My component's shortcuts or rules disappeared<a class="headerlink" href="#my-components-shortcuts-or-rules-disappeared" title="Permanent link">&para;</a></h2>
 <p>Nonempty lists in <code>gnoblin.configure</code> replace earlier lists.
 <a href="../configuration-loading/#override-or-append">Append to the existing list</a>
