@@ -4,23 +4,22 @@ Date: Sat, 19 Sep 2026 22:05:00 +0100
 Subject: [PATCH] console: expose persistent Lua evaluation to Shell
 
 ---
- src/core/util.c | 18 ++++++++++++++++++
+ src/core/util.c | 14 ++++++++++++++
  src/meta/util.h |  3 +++
- 2 files changed, 21 insertions(+)
+ 2 files changed, 17 insertions(+)
 
 diff --git a/src/core/util.c b/src/core/util.c
 index 1ae1d6e3f..35c49b6b4 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -43,6 +43,7 @@
- 
- #ifdef HAVE_WAYLAND
+@@ -41,5 +41,6 @@
+ #include "meta/main.h"
+
  #include "wayland/gnoblin-config.h"
 +#include "wayland/gnoblin-console-lua.h"
- #endif
  
  static const GDebugKey meta_debug_keys[] = {
-@@ -145,6 +146,23 @@ ensure_logfile (void)
+@@ -143,6 +144,19 @@ ensure_logfile (void)
  
  #endif
  
@@ -34,11 +33,7 @@ index 1ae1d6e3f..35c49b6b4 100644
 +GVariant *
 +meta_gnoblin_console_lua (const char *operation, const char *source)
 +{
-+#ifdef HAVE_WAYLAND
 +  return gnoblin_console_lua (operation, source);
-+#else
-+  return NULL;
-+#endif
 +}
 +
  /**
@@ -60,4 +55,3 @@ index 5e867a2b3..742acc53a 100644
  META_EXPORT
 -- 
 2.55.0
-

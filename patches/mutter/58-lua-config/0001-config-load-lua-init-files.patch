@@ -5,10 +5,10 @@ Subject: [PATCH] config: share Lua init and include loading with Shell
 
 ---
  meson.build     |  1 +
- src/core/util.c | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/core/util.c | 39 +++++++++++++++++++++++++++++++++++++++
  src/meson.build |  5 ++++-
  src/meta/util.h |  3 +++
- 4 files changed, 54 insertions(+), 1 deletion(-)
+ 4 files changed, 47 insertions(+), 1 deletion(-)
 
 diff --git a/meson.build b/meson.build
 index 6359dbf40..79a2c2390 100644
@@ -26,18 +26,16 @@ diff --git a/src/core/util.c b/src/core/util.c
 index e8d3ae372..1ae1d6e3f 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -41,6 +41,10 @@
+@@ -41,6 +41,8 @@
  #include "meta/common.h"
  #include "meta/main.h"
  
-+#ifdef HAVE_WAYLAND
 +#include "wayland/gnoblin-config.h"
-+#endif
 +
  static const GDebugKey meta_debug_keys[] = {
    { "focus", META_DEBUG_FOCUS },
    { "workarea", META_DEBUG_WORKAREA },
-@@ -141,6 +145,48 @@ ensure_logfile (void)
+@@ -141,6 +143,43 @@ ensure_logfile (void)
  
  #endif
  
@@ -60,14 +58,9 @@ index e8d3ae372..1ae1d6e3f 100644
 +  g_autoptr (GVariant) document = NULL;
 +
 +  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
-+#ifdef HAVE_WAYLAND
 +  document = gnoblin_config_load_document (path, &paths, &directories, &error);
 +  if (document)
 +    g_variant_builder_add (&result, "{sv}", "document", document);
-+#else
-+  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-+                       "Gnoblin config requires Wayland support");
-+#endif
 +  g_variant_builder_add (&result, "{sv}", "paths",
 +                         g_variant_new_strv (
 +                           paths ? (const char * const *) paths->pdata : NULL,
@@ -132,4 +125,3 @@ index 0acdcfd5b..5e867a2b3 100644
  META_EXPORT
 -- 
 2.55.0
-
