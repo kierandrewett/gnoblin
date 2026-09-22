@@ -22,6 +22,16 @@ if not str(config).startswith("/tmp/gnoblin-gs."):
 
 scripts = config / "gnoblin/scripts"
 (scripts / "lib").mkdir(parents=True, exist_ok=True)
+boundary_config = config / "gnoblin" / "init.lua"
+boundary_config.parent.mkdir(parents=True, exist_ok=True)
+boundary_config.write_text(
+    """gnoblin.configure {
+    window_management = {
+        constrain_drag_to_work_area = true,
+    },
+}
+"""
+)
 shutil.copy(repo / "src/scripts/compositor-bridge.js", scripts)
 for source in (repo / "src/scripts/lib").glob("*"):
     if source.is_file():
@@ -154,7 +164,30 @@ try:
     pointer("button", down=False)
     pointer("key", key="Super_L", down=False)
     time.sleep(0.3)
-    binding_config = config / "gnoblin" / "init.lua"
+    # The boundary is policy, not a Bingux snap side effect. Disabling it must
+    # let the same Super+drag overlap the panel, then a later drag sees the
+    # restored setting without restarting the compositor.
+    boundary_config.write_text(
+        """gnoblin.configure {
+    window_management = {
+        constrain_drag_to_work_area = false,
+    },
+}
+"""
+    )
+    subprocess.run([str(repo / "src/tools/gnoblinctl"), "config", "reload"], check=True)
+    pointer("move", x=clamped["x"] + 250, y=clamped["y"] + 150)
+    pointer("key", key="Super_L", down=True)
+    pointer("button", down=True)
+    pointer("move", x=500, y=5)
+    time.sleep(0.3)
+    assert window()["geometry"]["y"] < 32, window()
+    pointer("key", key="Escape", down=True)
+    pointer("key", key="Escape", down=False)
+    pointer("button", down=False)
+    pointer("key", key="Super_L", down=False)
+    time.sleep(0.3)
+    binding_config = boundary_config
     binding_config.write_text("""local g = require("gnoblin")
 g.set({keybindings = {wm = {
     maximize = {"<Super>Up"},

@@ -1,0 +1,111 @@
+From 1a08f000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Mon, 22 Sep 2026 12:00:00 +0100
+Subject: [PATCH] window-management: constrain drags to reserved work areas
+
+Layer-shell panels expose their exclusive zones through Mutter work areas, but
+the interactive move path only applies edge resistance.  A Super+pointer drag
+could therefore place a floating window over a top panel even though tiling
+and snapping use the reserved work area.
+
+Read Gnoblin's window-management policy at the start of every grab and keep
+that value stable for the grab.  When enabled (the default), clamp the final
+frame position to the pointer monitor's current work area after regular edge
+resistance.  This keeps all exclusive edges authoritative without changing the
+existing resistance or edge-tiling behaviour.  Disabling the setting restores
+Mutter's normal overlap behaviour.  Non-Gnoblin sessions retain upstream
+Mutter behaviour.
+---
+ src/compositor/meta-window-drag.c | 53 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 53 insertions(+)
+
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index 8b5c87aaa..07d11fc9b 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -28,6 +28,7 @@
+ #include "core/meta-window-config-private.h"
+ #include "core/window-private.h"
+ #include "meta/meta-enum-types.h"
++#include "wayland/gnoblin-config.h"
+ 
+ #ifdef HAVE_X11_CLIENT
+ #include "x11/meta-x11-frame.h"
+@@ -78,6 +79,7 @@ struct _MetaWindowDrag {
+   guint tile_preview_timeout_id;
+   guint preview_tile_mode : 2;
+   guint pos_hint_set : 1;
++  guint constrain_drag_to_work_area : 1;
+ };
+ 
+ G_DEFINE_FINAL_TYPE (MetaWindowDrag, meta_window_drag, G_TYPE_OBJECT)
+@@ -1301,6 +1303,39 @@ update_move_maybe_tile (MetaWindowDrag *window_drag,
+     }
+ }
+ 
++static void
++constrain_move_to_work_area (MetaWindowDrag *window_drag,
++                              int             window_width,
++                              int             window_height,
++                              int            *x,
++                              int            *y)
++{
++  MetaWindow *window = window_drag->effective_grab_window;
++  MetaDisplay *display = meta_window_get_display (window);
++  MetaContext *context = meta_display_get_context (display);
++  MetaBackend *backend = meta_context_get_backend (context);
++  MetaMonitorManager *monitor_manager =
++    meta_backend_get_monitor_manager (backend);
++  MetaLogicalMonitor *logical_monitor;
++  MtkRectangle work_area;
++  int max_x, max_y;
++
++  logical_monitor =
++    meta_monitor_manager_get_logical_monitor_at (monitor_manager,
++                                                  window_drag->latest_motion_x,
++                                                  window_drag->latest_motion_y);
++  if (!logical_monitor)
++    return;
++
++  meta_window_get_work_area_for_monitor (window, logical_monitor->number,
++                                         &work_area);
++
++  max_x = MAX (work_area.x, work_area.x + work_area.width - window_width);
++  max_y = MAX (work_area.y, work_area.y + work_area.height - window_height);
++  *x = CLAMP (*x, work_area.x, max_x);
++  *y = CLAMP (*y, work_area.y, max_y);
++}
++
+ static void
+ calculate_window_position (MetaWindowDrag          *window_drag,
+                            MetaEdgeResistanceFlags  flags,
+@@ -1330,6 +1372,9 @@ calculate_window_position (MetaWindowDrag          *window_drag,
+                                              &new_y,
+                                              flags);
+ 
++  if (window_drag->constrain_drag_to_work_area)
++    constrain_move_to_work_area (window_drag, window_width, window_height, &new_x, &new_y);
++
+   *out_x = new_x;
+   *out_y = new_y;
+ }
+@@ -2052,5 +2097,17 @@ meta_window_drag_begin (MetaWindowDrag      *window_drag,
+   meta_window_get_frame_rect (grab_window, &window_drag->drag_rect);
+ 
++  /* Configuration is intentionally snapshotted per grab: a reload affects
++   * the next drag and cannot make an in-flight pointer operation jump. */
++  if (g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0)
++    {
++      gnoblin_config_reload ();
++      window_drag->constrain_drag_to_work_area =
++        gnoblin_config_get_bool ("window-management", "constrain-drag-to-work-area",
++                                 TRUE);
++    }
++  else
++    window_drag->constrain_drag_to_work_area = FALSE;
++
+   if ((grab_op & META_GRAB_OP_KEYBOARD_MOVING) == META_GRAB_OP_KEYBOARD_MOVING)
+     {
+       warp_grab_pointer (window_drag, window, grab_op, &root_x, &root_y);
+-- 
+2.55.0

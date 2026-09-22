@@ -53,6 +53,7 @@ int main(void) {
                          "gnoblin.load('component.lua')\n"
                          "gnoblin.configure {shell={minimize_duration=150},"
                          "layer_shell={preserve_active_window=true},"
+                         "window_management={constrain_drag_to_work_area=true},"
                          "frame_renderers={my_frame={'my_renderer'}}}\n"
                          "gnoblin.shortcut {name='terminal',command={'new'}}\n"
                          "gnoblin.shortcut {name='temporary',command={'unused'}}\n"
@@ -73,6 +74,7 @@ int main(void) {
     g_autoptr(GVariant) expected =
         evaluate(root, "return {shell={['minimize-duration']=150},"
                        "['layer-shell']={['preserve-active-window']=true},"
+                       "['window-management']={['constrain-drag-to-work-area']=true},"
                        "['frame-renderers']={my_frame={'my_renderer'}},"
                        "shortcuts={{name='terminal',binding='<Super>Return',command={'new'}},"
                        "{name='keep',binding='<Super>k',command={'keep'}}},"
