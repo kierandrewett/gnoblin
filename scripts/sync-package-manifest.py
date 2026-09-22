@@ -65,6 +65,7 @@ def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, st
 def render_rpm(manifest: dict) -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     next_major = manifest["release"]["gnomeMajor"] + 1
+    epoch = manifest["release"]["rpmEpoch"]
     mutter_version = manifest["packages"]["gnoblin-mutter"]["version"]
     mutter_release = manifest["release"]["mutterRpmRelease"]
     packages, requirements = dependency_closure(manifest, "gnoblin")
@@ -81,6 +82,7 @@ def render_rpm(manifest: dict) -> str:
         "# Generated from nix/native-packages.nix; do not edit.\n"
         "Name:           gnoblin\n"
         f"Version:        {version}\n"
+        f"Epoch:          {epoch}\n"
         "Release:        1%{?dist}\n"
         "Summary:        Gnoblin desktop session\n"
         "License:        GPL-2.0-or-later\n"

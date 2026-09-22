@@ -1,13 +1,13 @@
 # Generated from nix/native-packages.nix; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
-pkgver=0.1.3
+pkgver=0.1.4
 pkgrel=1
 pkgdesc='Gnoblin desktop session'
 arch=('any')
 url='https://github.com/kdrew7/gnoblin'
 license=('GPL-2.0-or-later')
-depends=('gnoblin-gsettings-desktop-schemas>=0.1.3' 'gnoblin-mutter>=0.1.3' 'gnoblin-session>=0.1.3' 'gnoblin-shell>=0.1.3' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.31.0' 'pipewire>=1.6.0' 'wayland>=1.26' 'xdg-desktop-portal-gnome')
+depends=('gnoblin-gsettings-desktop-schemas>=0.1.4' 'gnoblin-mutter>=0.1.4' 'gnoblin-session>=0.1.4' 'gnoblin-shell>=0.1.4' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.31.0' 'pipewire>=1.6.0' 'wayland>=1.26' 'xdg-desktop-portal-gnome')
 
 package() {
     install -dm755 "$pkgdir/usr/share/gnoblin"
