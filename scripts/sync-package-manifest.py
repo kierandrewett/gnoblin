@@ -65,6 +65,8 @@ def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, st
 def render_rpm(manifest: dict) -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     next_major = manifest["release"]["gnomeMajor"] + 1
+    mutter_version = manifest["packages"]["gnoblin-mutter"]["version"]
+    mutter_release = manifest["release"]["mutterRpmRelease"]
     packages, requirements = dependency_closure(manifest, "gnoblin")
     dependencies = [
         *(f"Requires:       {name} >= {version}" for name in packages),
@@ -83,7 +85,8 @@ def render_rpm(manifest: dict) -> str:
         "Summary:        Gnoblin desktop session\n"
         "License:        GPL-2.0-or-later\n"
         "URL:            https://github.com/kdrew7/gnoblin\n"
-        "BuildArch:      noarch\n" + "\n".join(dependencies) + "\n\n%description\n"
+        "BuildArch:      noarch\n" + "\n".join(dependencies)
+        + f"\nRequires:       gnoblin-mutter = {mutter_version}-{mutter_release}%{{?dist}}\n\n%description\n"
         "Installs the complete Gnoblin session while reusing compatible GNOME userspace.\n\n"
         "%files\n"
     )

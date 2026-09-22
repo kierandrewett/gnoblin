@@ -29,6 +29,9 @@ in
     gnomeMajor = versions.major;
     gnomeVersion = (component "gnome-shell").version;
     gnoblinVersion = gnoblinRelease.version;
+    # Keep the meta package coupled to the private Mutter build that contains
+    # the current compositor fixes.  This is an RPM release, not a GNOME ABI.
+    mutterRpmRelease = "20.gnoblin";
     mutterApi = (component "mutter").api;
   };
 

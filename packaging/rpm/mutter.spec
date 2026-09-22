@@ -31,7 +31,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       19.gnoblin%{?dist}
+Release:       20.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -162,6 +162,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Tue Sep 22 2026 Gnoblin contributors - 51.0-20.gnoblin
+- Respect reserved exclusive zones while moving windows.
+
 * Sun Sep 20 2026 Gnoblin contributors - 51.0-19.gnoblin
 - Discover private GNOME schema introspection data while building.
 
