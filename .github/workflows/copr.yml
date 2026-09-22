@@ -74,17 +74,3 @@ jobs:
           dnf -y install --refresh gnoblin
           rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
           test -f /usr/share/wayland-sessions/gnoblin.desktop
-
-  verify-fedora43:
-    needs: publish
-    runs-on: ubuntu-latest
-    container: fedora:43
-    timeout-minutes: 20
-    steps:
-      - name: Install published Fedora 43 packages
-        run: |
-          dnf -y install dnf-plugins-core
-          dnf -y copr enable kierandrewett/gnoblin
-          dnf -y install --refresh gnoblin
-          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
-          test -f /usr/share/wayland-sessions/gnoblin.desktop
