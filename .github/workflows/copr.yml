@@ -36,7 +36,7 @@ jobs:
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
     steps:
       - name: Install publication tools
-        run: dnf -y install copr-cli git
+        run: dnf -y install copr-cli gh git
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
