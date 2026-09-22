@@ -16,30 +16,30 @@ existing resistance or edge-tiling behaviour.  Disabling the setting restores
 Mutter's normal overlap behaviour.  Non-Gnoblin sessions retain upstream
 Mutter behaviour.
 ---
- src/compositor/meta-window-drag.c | 53 ++++++++++++++++++++++++++++++++++++++
- 1 file changed, 53 insertions(+)
+ src/compositor/meta-window-drag.c | 52 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
 
 diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
-index 8b5c87aaa..07d11fc9b 100644
+index 85a999756..98e02d1d5 100644
 --- a/src/compositor/meta-window-drag.c
 +++ b/src/compositor/meta-window-drag.c
-@@ -28,6 +28,7 @@
- #include "core/meta-window-config-private.h"
+@@ -27,6 +27,7 @@
  #include "core/window-private.h"
  #include "meta/meta-enum-types.h"
+ #include "mtk/mtk.h"
 +#include "wayland/gnoblin-config.h"
  
- #ifdef HAVE_X11_CLIENT
+ #ifdef HAVE_XWAYLAND
  #include "x11/meta-x11-frame.h"
-@@ -78,6 +79,7 @@ struct _MetaWindowDrag {
+@@ -85,6 +86,7 @@ struct _MetaWindowDrag {
    guint tile_preview_timeout_id;
-   guint preview_tile_mode : 2;
-   guint pos_hint_set : 1;
-+  guint constrain_drag_to_work_area : 1;
+   MetaTileMode preview_tile_mode;
+   gboolean pos_hint_set;
++  gboolean constrain_drag_to_work_area;
  };
  
  G_DEFINE_FINAL_TYPE (MetaWindowDrag, meta_window_drag, G_TYPE_OBJECT)
-@@ -1301,6 +1303,39 @@ update_move_maybe_tile (MetaWindowDrag *window_drag,
+@@ -1268,6 +1270,39 @@ update_move_maybe_tile (MetaWindowDrag *window_drag,
      }
  }
  
@@ -79,7 +79,7 @@ index 8b5c87aaa..07d11fc9b 100644
  static void
  calculate_window_position (MetaWindowDrag          *window_drag,
                             MetaEdgeResistanceFlags  flags,
-@@ -1330,6 +1372,9 @@ calculate_window_position (MetaWindowDrag          *window_drag,
+@@ -1302,6 +1337,9 @@ calculate_window_position (MetaWindowDrag          *window_drag,
                                               &new_y,
                                               flags);
  
@@ -89,7 +89,7 @@ index 8b5c87aaa..07d11fc9b 100644
    *out_x = new_x;
    *out_y = new_y;
  }
-@@ -2052,5 +2097,17 @@ meta_window_drag_begin (MetaWindowDrag      *window_drag,
+@@ -1991,5 +2029,17 @@ meta_window_drag_begin (MetaWindowDrag      *window_drag,
    meta_window_get_frame_rect (grab_window, &window_drag->drag_rect);
  
 +  /* Configuration is intentionally snapshotted per grab: a reload affects
