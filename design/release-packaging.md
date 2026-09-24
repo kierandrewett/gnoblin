@@ -61,5 +61,7 @@ is still required to prove RPM build and runtime compatibility on Fedora 43.
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
 its new resource entry made the notification patch stale. Both patches now
-apply in sequence. The complete source matrix must pass before tagging a
-release. A source build alone does not establish COPR package compatibility.
+apply in sequence. On commit `25af4af`, Fedora 43 completed the full source
+build successfully. Fedora 44 checkout hit a transient upstream GitLab 503
+before compilation; rerun that job. The Fedora 43 COPR package build and clean
+install remain the release compatibility gates.

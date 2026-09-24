@@ -1,13 +1,13 @@
 # Generated from nix/native-packages.nix; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
-pkgver=0.1.4
+pkgver=0.1.5
 pkgrel=1
 pkgdesc='Gnoblin desktop session'
 arch=('any')
 url='https://github.com/kdrew7/gnoblin'
 license=('GPL-2.0-or-later')
-depends=('gnoblin-gsettings-desktop-schemas>=0.1.4' 'gnoblin-mutter>=0.1.4' 'gnoblin-session>=0.1.4' 'gnoblin-shell>=0.1.4' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'brightnessctl' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
+depends=('gnoblin-gsettings-desktop-schemas>=0.1.5' 'gnoblin-mutter>=0.1.5' 'gnoblin-session>=0.1.5' 'gnoblin-shell>=0.1.5' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'brightnessctl' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
 
 package() {
     install -Dm644 "$startdir/../../src/data/init.lua.example" "$pkgdir/usr/share/gnoblin/init.lua.example"
