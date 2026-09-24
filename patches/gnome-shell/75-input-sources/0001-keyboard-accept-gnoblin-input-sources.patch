@@ -1,0 +1,141 @@
+From: Codex <codex@openai.com>
+Date: Thu, 24 Sep 2026 20:12:00 +0000
+Subject: [PATCH] keyboard: accept Gnoblin input sources in memory
+
+---
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index ce2dff50f..1421f9750 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -330,6 +330,79 @@ class InputSourceSessionSettings extends InputSourceSettings {
+     }
+ }
+ 
++// Gnoblin supplies input sources from its Lua configuration. Keep the small
++// MRU list in memory so the normal switching code can be reused without
++// writing input-source overrides to GNOME's desktop GSettings.
++class InputSourceGnoblinSettings extends InputSourceSettings {
++    constructor() {
++        super();
++        this._sessionSettings = new InputSourceSessionSettings();
++        this._sessionSettings.connect('input-sources-changed', () =>
++            this._emitInputSourcesChanged());
++        this._sessionSettings.connect('keyboard-options-changed', () =>
++            this._emitKeyboardOptionsChanged());
++        this._sessionSettings.connect('keyboard-model-changed', () =>
++            this._emitKeyboardModelChanged());
++        this._sessionSettings.connect('per-window-changed', () =>
++            this._emitPerWindowChanged());
++        this._perWindow = gnoblinPerWindow;
++        this._mruSources = [];
++    }
++
++    get inputSources() {
++        return gnoblinSources ?? this._sessionSettings.inputSources;
++    }
++
++    setInputSources(sources, perWindow = false) {
++        this._perWindow = perWindow;
++        if (sources === null)
++            this._mruSources = [];
++        this._emitInputSourcesChanged();
++        this._emitPerWindowChanged();
++    }
++
++    get mruSources() {
++        return gnoblinSources === null
++            ? this._sessionSettings.mruSources
++            : this._mruSources;
++    }
++
++    set mruSources(sources) {
++        if (gnoblinSources === null)
++            this._sessionSettings.mruSources = sources;
++        else
++            this._mruSources = sources;
++    }
++
++    get perWindow() {
++        return gnoblinSources === null
++            ? this._sessionSettings.perWindow
++            : this._perWindow;
++    }
++
++    get keyboardOptions() {
++        return this._sessionSettings.keyboardOptions;
++    }
++
++    get keyboardModel() {
++        return this._sessionSettings.keyboardModel;
++    }
++}
++
++let gnoblinSources = null;
++let gnoblinPerWindow = false;
++let gnoblinManager = null;
++
++// Runtime injection seam for Gnoblin control. `sources` is an array of
++// `{type: 'xkb'|'ibus', id: string}` records, matching GNOME's source IDs.
++export function configureGnoblinInputSources(sources, perWindow = false) {
++    gnoblinSources = sources === null
++        ? null
++        : sources.map(({type, id}) => ({type, id}));
++    gnoblinPerWindow = perWindow;
++    gnoblinManager?._setGnoblinInputSources(gnoblinSources, perWindow);
++}
++
+ export class InputSourceManager extends Signals.EventEmitter {
+     constructor() {
+         super();
+@@ -360,7 +433,10 @@ export class InputSourceManager extends Signals.EventEmitter {
+                 Meta.KeyBindingFlags.IS_REVERSED,
+                 Shell.ActionMode.ALL,
+                 this._switchInputSource.bind(this));
+-        if (Main.sessionMode.isGreeter)
++        if (Main.sessionMode.currentMode === 'gnoblin') {
++            this._settings = new InputSourceGnoblinSettings();
++            gnoblinManager = this;
++        } else if (Main.sessionMode.isGreeter)
+             this._settings = new InputSourceSystemSettings();
+         else
+             this._settings = new InputSourceSessionSettings();
+@@ -391,6 +467,13 @@ export class InputSourceManager extends Signals.EventEmitter {
+         this.reload();
+     }
+ 
++    _setGnoblinInputSources(sources, perWindow) {
++        if (!(this._settings instanceof InputSourceGnoblinSettings))
++            return;
++        this._settings.setInputSources(sources, perWindow);
++        this._sourcesPerWindowChanged();
++    }
++
+     reload() {
+         this._reloading = true;
+         this._keyboardManager.setKeyboardOptions(this._settings.keyboardOptions);
+@@ -597,6 +680,7 @@ export class InputSourceManager extends Signals.EventEmitter {
+     }
+ 
+     _inputSourcesChanged() {
++        const previousSource = this._currentSource;
+         let sources = this._settings.inputSources;
+         let nSources = sources.length;
+ 
+@@ -673,6 +757,17 @@ export class InputSourceManager extends Signals.EventEmitter {
+ 
+         this._updateMruSources();
+ 
++        if (previousSource) {
++            const matchingSource = Object.values(this._inputSources).find(source =>
++                source.type === previousSource.type && source.id === previousSource.id);
++            if (matchingSource) {
++                this._mruSources = [
++                    matchingSource,
++                    ...this._mruSources.filter(source => source !== matchingSource),
++                ];
++            }
++        }
++
+         if (this._mruSources.length > 0)
+             this._mruSources[0].activate(false);
+ 

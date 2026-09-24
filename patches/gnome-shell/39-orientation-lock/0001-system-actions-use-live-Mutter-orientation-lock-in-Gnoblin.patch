@@ -1,0 +1,119 @@
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index 4017fc2a0..483ff6a43 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -76,6 +76,10 @@ const SystemActions = GObject.registerClass({
+             'orientation-lock-icon', null, null,
+             GObject.ParamFlags.READWRITE,
+             null),
++        'orientation-locked': GObject.ParamSpec.boolean(
++            'orientation-locked', null, null,
++            GObject.ParamFlags.READABLE,
++            false),
+     },
+ }, class SystemActions extends GObject.Object {
+     _init() {
+@@ -155,7 +159,13 @@ const SystemActions = GObject.registerClass({
+ 
+         this._loginScreenSettings = new Gio.Settings({schema_id: LOGIN_SCREEN_SCHEMA});
+         this._lockdownSettings = new Gio.Settings({schema_id: LOCKDOWN_SCHEMA});
+-        this._orientationSettings = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.peripherals.touchscreen'});
++        this._gnoblinMode = global.session_mode === 'gnoblin';
++        this._orientationManager = this._gnoblinMode
++            ? global.backend.get_orientation_manager()
++            : null;
++        this._orientationSettings = this._gnoblinMode
++            ? null
++            : new Gio.Settings({schema_id: 'org.gnome.settings-daemon.peripherals.touchscreen'});
+         this._screenSaverSettings = new Gio.Settings({schema_id: SCREENSAVER_SCHEMA});
+ 
+         this._session = new GnomeSession.SessionManager();
+@@ -195,10 +205,15 @@ const SystemActions = GObject.registerClass({
+ 
+         this.forceUpdate();
+ 
+-        this._orientationSettings.connect('changed::orientation-lock', () => {
+-            this._updateOrientationLock();
+-            this._updateOrientationLockStatus();
+-        });
++        if (this._orientationManager) {
++            this._orientationManager.connect('notify::orientation-locked',
++                () => this._updateOrientationLockStatus());
++        } else {
++            this._orientationSettings.connect('changed::orientation-lock', () => {
++                this._updateOrientationLock();
++                this._updateOrientationLockStatus();
++            });
++        }
+         Main.layoutManager.connect('monitors-changed',
+             () => this._updateOrientationLock());
+         this._monitorManager.connect('notify::panel-orientation-managed',
+@@ -242,6 +257,12 @@ const SystemActions = GObject.registerClass({
+         return this._actions.get(LOCK_ORIENTATION_ACTION_ID).iconName;
+     }
+ 
++    get orientationLocked() {
++        return this._orientationManager
++            ? this._orientationManager.get_orientation_locked()
++            : this._orientationSettings.get_boolean('orientation-lock');
++    }
++
+     _updateOrientationLock() {
+         const available = this._monitorManager.get_panel_orientation_managed();
+ 
+@@ -251,7 +272,7 @@ const SystemActions = GObject.registerClass({
+     }
+ 
+     _updateOrientationLockStatus() {
+-        let locked = this._orientationSettings.get_boolean('orientation-lock');
++        let locked = this.orientationLocked;
+         let action = this._actions.get(LOCK_ORIENTATION_ACTION_ID);
+ 
+         // Translators: The name of the lock orientation action in search
+@@ -267,6 +288,7 @@ const SystemActions = GObject.registerClass({
+         action.iconName = iconName;
+ 
+         this.notify('orientation-lock-icon');
++        this.notify('orientation-locked');
+     }
+ 
+     _sessionUpdated() {
+@@ -421,8 +443,11 @@ const SystemActions = GObject.registerClass({
+         if (!this._actions.get(LOCK_ORIENTATION_ACTION_ID).available)
+             throw new Error('The lock-orientation action is not available!');
+ 
+-        let locked = this._orientationSettings.get_boolean('orientation-lock');
+-        this._orientationSettings.set_boolean('orientation-lock', !locked);
++        let locked = this.orientationLocked;
++        if (this._orientationManager)
++            this._orientationManager.set_orientation_locked(!locked);
++        else
++            this._orientationSettings.set_boolean('orientation-lock', !locked);
+     }
+ 
+     activateLockScreen() {
+diff --git a/js/ui/status/autoRotate.js b/js/ui/status/autoRotate.js
+index 277e5fc86..db3bc3aa6 100644
+--- a/js/ui/status/autoRotate.js
++++ b/js/ui/status/autoRotate.js
+@@ -1,4 +1,3 @@
+-import Gio from 'gi://Gio';
+ import GObject from 'gi://GObject';
+ 
+ import * as SystemActions from '../../misc/systemActions.js';
+@@ -23,12 +22,10 @@ class RotationToggle extends QuickToggle {
+             GObject.BindingFlags.DEFAULT |
+             GObject.BindingFlags.SYNC_CREATE);
+ 
+-        this._settings = new Gio.Settings({
+-            schema_id: 'org.gnome.settings-daemon.peripherals.touchscreen',
+-        });
+-        this._settings.bind('orientation-lock',
++        this._systemActions.bind_property('orientation-locked',
+             this, 'checked',
+-            Gio.SettingsBindFlags.INVERT_BOOLEAN);
++            GObject.BindingFlags.INVERT_BOOLEAN |
++            GObject.BindingFlags.SYNC_CREATE);
+ 
+         this.connect('clicked',
+             () => this._systemActions.activateLockOrientation());
