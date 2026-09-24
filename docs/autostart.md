@@ -17,7 +17,6 @@ gnoblin.autostart {
 ```
 
 Install the program first. Reusing a name updates that entry.
-Use `gnoblin.remove_autostart("waybar")` to remove an imported entry.
 Do not add a program already started by a service, such as Bingux.
 
 ## Override an imported command
@@ -34,11 +33,17 @@ gnoblin.autostart {
 Replace the path with your own. If Waybar has already started, this command
 change takes effect at your next login.
 
-To prevent an imported program from starting next time:
+## Remove an entry
+
+To prevent an imported program from starting next time, remove it by name
+after the file that adds it:
 
 ```lua
 gnoblin.remove_autostart("waybar")
 ```
+
+An unknown name does nothing. Removing an entry does not stop an already
+running process.
 
 ## When does it run?
 

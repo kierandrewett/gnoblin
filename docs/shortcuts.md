@@ -24,6 +24,17 @@ string. Spaces inside a string stay in that argument.
 Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
 Removing one releases its binding; it does not stop a launched program.
 
+## Remove a shortcut
+
+Remove a shortcut by name, including one loaded from another config file:
+
+```lua
+gnoblin.remove_shortcut("my-terminal")
+```
+
+An unknown name does nothing. Put the removal after the file that adds the
+shortcut; [load order](configuration-loading.md#override-or-append) matters.
+
 ## Key names
 
 | Binding             | Keys                                         |

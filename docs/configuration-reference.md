@@ -13,17 +13,17 @@ can change them. Sizes are [logical pixels](configuration.md#sizes-and-window-ty
 with a settings table, for example `gnoblin.configure {shell = {minimize_duration = 150}}`.
 Setting names use underscores (`snake_case`). String values are used as written.
 
-| Function                  | Input                      | Behaviour                                                                  |
-| ------------------------- | -------------------------- | -------------------------------------------------------------------------- |
-| `configure { ... }`       | Settings table             | Merge maps; replace supplied lists; later values win                       |
-| `window_rule { ... }`     | Match and effect fields    | Append a rule; later matching fields win                                   |
-| `permission_rule { ... }` | Identity and policy fields | Append a policy rule; any matching deny wins                               |
-| `shortcut { ... }`        | Named command              | Add or update by name; omitted fields stay unchanged                       |
-| `autostart { ... }`       | Named command              | Add or update by name; run once per name per login                         |
-| `remove_shortcut(name)`   | String                     | Remove a named shortcut; missing names do nothing                          |
-| `remove_autostart(name)`  | String                     | Remove an entry; does not stop its process                                 |
-| `load(path)`              | File or glob               | Evaluate now, relative to the calling file                                 |
-| `require(name)`           | Local module name          | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| Function | Input | Behaviour |
+| --- | --- | --- |
+| [`configure { ... }`](configuration.md#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
+| [`window_rule { ... }`](window-rules.md#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
+| [`permission_rule { ... }`](permissions.md#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
+| [`shortcut { ... }`](shortcuts.md#launch-a-command) | Named command | Add or update by name; omitted fields stay unchanged |
+| [`autostart { ... }`](autostart.md#add-a-program) | Named command | Add or update by name; run once per name per login |
+| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | String | Remove a named shortcut; missing names do nothing |
+| [`remove_autostart(name)`](autostart.md#remove-an-entry) | String | Remove an entry; does not stop its process |
+| [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
+| [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
 
 Call functions as `gnoblin.window_rule { ... }`, for example.
 Tables passed to declarations are copied. Later changes to your table do not
