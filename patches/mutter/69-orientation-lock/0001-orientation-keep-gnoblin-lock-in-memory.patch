@@ -1,4 +1,4 @@
-From: Codex <codex@openai.com>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 20:12:00 +0000
 Subject: [PATCH] orientation: keep Gnoblin lock state in memory
 

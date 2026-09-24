@@ -7,8 +7,8 @@ pkgdesc='Gnoblin desktop session'
 arch=('any')
 url='https://github.com/kdrew7/gnoblin'
 license=('GPL-2.0-or-later')
-depends=('gnoblin-gsettings-desktop-schemas>=0.1.4' 'gnoblin-mutter>=0.1.4' 'gnoblin-session>=0.1.4' 'gnoblin-shell>=0.1.4' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.31.0' 'pipewire>=1.6.0' 'wayland>=1.26' 'xdg-desktop-portal-gnome')
+depends=('gnoblin-gsettings-desktop-schemas>=0.1.4' 'gnoblin-mutter>=0.1.4' 'gnoblin-session>=0.1.4' 'gnoblin-shell>=0.1.4' 'gnoblin-gsettings-desktop-schemas<52' 'gnoblin-mutter<52' 'gnoblin-session<52' 'gnoblin-shell<52' 'brightnessctl' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.31.0' 'pipewire>=1.6.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
 
 package() {
-    install -dm755 "$pkgdir/usr/share/gnoblin"
+    install -Dm644 "$startdir/../../src/data/init.lua.example" "$pkgdir/usr/share/gnoblin/init.lua.example"
 }

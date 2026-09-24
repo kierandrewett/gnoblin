@@ -21,7 +21,9 @@ typedef struct {
 
 static gboolean append_array_key(const char* key) {
     return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-                   !strcmp(key, "shortcuts") || !strcmp(key, "rules"));
+                   !strcmp(key, "shortcuts") || !strcmp(key, "rules") ||
+                   !strcmp(key, "workspace-names") || !strcmp(key, "xkb-options") ||
+                   !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
@@ -440,8 +442,25 @@ static int lua_set(lua_State* state) {
     return 0;
 }
 
-/* Public declarations use Lua identifiers. Keep user-defined map keys literal. */
-static void push_settings(lua_State* state, int source, const char* parent, int depth) {
+static gboolean is_keybinding_action_name(const char* key) {
+    if (!key || !*key) return FALSE;
+    gboolean previous_underscore = TRUE;
+    for (const unsigned char* p = (const unsigned char*)key; *p; p++) {
+        if (*p == '_') {
+            if (previous_underscore) return FALSE;
+            previous_underscore = TRUE;
+        } else if (g_ascii_islower(*p) || g_ascii_isdigit(*p))
+            previous_underscore = FALSE;
+        else
+            return FALSE;
+    }
+    return !previous_underscore;
+}
+
+/* Public declarations use Lua identifiers. Keep keybinding action names in
+ * snake_case until the shell maps them to their native GSettings names. */
+static void push_settings(lua_State* state, int source, const char* parent, int depth,
+                          int keybinding_depth) {
     if (depth > MAX_CONFIG_DEPTH)
         luaL_error(state, "Lua config nesting exceeds 64 levels");
     luaL_checkstack(state, 6, "settings nesting");
@@ -457,7 +476,10 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
                    !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart"));
     lua_pushnil(state);
     while (lua_next(state, source)) {
-        if (lua_type(state, -2) == LUA_TSTRING && !literal) {
+        gboolean keybinding_action = keybinding_depth == 2 && lua_type(state, -2) == LUA_TSTRING;
+        if (keybinding_action && !is_keybinding_action_name(lua_tostring(state, -2)))
+            luaL_error(state, "keybinding action names must use snake_case");
+        if (lua_type(state, -2) == LUA_TSTRING && !literal && !keybinding_action) {
             char* key = g_strdup(lua_tostring(state, -2));
             g_strdelimit(key, "_", '-');
             lua_pushstring(state, key);
@@ -471,7 +493,10 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
             luaL_error(state, "duplicate setting after snake_case conversion");
         lua_pop(state, 1);
         const char* key = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
-        push_settings(state, -2, key, depth + 1);
+        int child_keybinding_depth = key && !strcmp(key, "keybindings") ? 1
+                                     : keybinding_depth == 1               ? 2
+                                                                           : 0;
+        push_settings(state, -2, key, depth + 1, child_keybinding_depth);
         lua_rawset(state, destination);
         lua_pop(state, 1);
     }
@@ -481,7 +506,7 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
 
 static int lua_configure(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
-    push_settings(state, 1, NULL, 0);
+    push_settings(state, 1, NULL, 0, 0);
     lua_replace(state, 1);
     return lua_set(state);
 }
@@ -530,7 +555,7 @@ static void push_config_list(lua_State* state) {
 /* Named commands merge in place; ordered rules always append. */
 static int lua_declare(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
-    push_settings(state, 1, NULL, 0);
+    push_settings(state, 1, NULL, 0, 0);
     int entry = lua_gettop(state);
     const char* name = NULL;
     if (lua_toboolean(state, lua_upvalueindex(3))) {

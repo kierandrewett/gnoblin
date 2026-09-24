@@ -119,7 +119,7 @@ def render_arch(manifest: dict) -> str:
         "license=('GPL-2.0-or-later')\n"
         f"depends=({' '.join(dependencies)})\n\n"
         "package() {\n"
-        '    install -dm755 "$pkgdir/usr/share/gnoblin"\n'
+        '    install -Dm644 "$startdir/../../src/data/init.lua.example" "$pkgdir/usr/share/gnoblin/init.lua.example"\n'
         "}\n"
     )
 

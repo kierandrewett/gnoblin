@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # Custom window frames and client cropping
@@ -69,7 +68,7 @@ of truth for the shell renderer and existing effects.
 Keep client geometry, visible content geometry, and managed outer geometry
 distinct. In logical coordinates:
 
-```
+```text
 visible size = client geometry size - crop margins
 managed outer size = visible size + SSD extents
 requested client size = requested outer size - SSD extents + crop margins
@@ -111,8 +110,14 @@ Do not promise browser CSS support: St supports its own CSS subset.
 
 Proposed renderer interface:
 
-```
-create(context) -> { actor, update(model), destroy() }
+```typescript
+interface FrameRenderer {
+  actor: Actor;
+  update(model: FrameModel): void;
+  destroy(): void;
+}
+
+function create(context: FrameRendererContext): FrameRenderer;
 ```
 
 `model` contains title, app identity, focus/state, allowed actions, committed

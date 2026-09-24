@@ -31,8 +31,8 @@ static GPtrArray* ensure_section(GHashTable* sections, const char* name) {
 }
 
 static gboolean validate_document(GVariant* document, GError** error) {
-    const char* sections[] = {"protocols", "layer-shell", "window-management"};
-    const char* keys[] = {NULL, "preserve-active-window", "constrain-drag-to-work-area"};
+    const char* sections[] = {"protocols", "layer-shell"};
+    const char* keys[] = {NULL, "preserve-active-window"};
     for (guint i = 0; i < G_N_ELEMENTS(sections); i++) {
         g_autoptr(GVariant) section = g_variant_lookup_value(document, sections[i], NULL);
         if (!section)
@@ -51,6 +51,92 @@ static gboolean validate_document(GVariant* document, GError** error) {
         if (!valid) {
             g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                         "%s must be a table of supported boolean settings", sections[i]);
+            return FALSE;
+        }
+    }
+    g_autoptr(GVariant) window = g_variant_lookup_value(document, "window-management", NULL);
+    if (window) {
+        static const char* booleans[] = {
+            "constrain-drag-to-work-area", "raise-on-click", "auto-raise",
+            "focus-change-on-pointer-rest", "dynamic-workspaces",
+            "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
+            "attach-modal-dialogs", NULL,
+        };
+        static const char* titlebar[] = {
+            "toggle-maximize", "toggle-maximize-horizontally",
+            "toggle-maximize-vertically", "minimize", "none", "lower", "menu", NULL,
+        };
+        gboolean valid = g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* name;
+        GVariant* value;
+        if (valid) g_variant_iter_init(&iter, window);
+        while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+            gboolean known_boolean = FALSE;
+            for (guint i = 0; booleans[i]; i++)
+                known_boolean |= g_str_equal(name, booleans[i]);
+            if (known_boolean) {
+                valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            } else if (g_str_equal(name, "workspace-names")) {
+                valid = g_variant_is_of_type(value, G_VARIANT_TYPE("av")) &&
+                        g_variant_n_children(value) <= 36;
+                for (gsize i = 0; valid && i < g_variant_n_children(value); i++) {
+                    g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+                    g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+                    valid = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING) &&
+                            g_utf8_strlen(g_variant_get_string(item, NULL), -1) <= 80;
+                }
+            } else if (g_str_equal(name, "auto-raise-delay") || g_str_equal(name, "num-workspaces")) {
+                gint64 number = g_variant_is_of_type(value, G_VARIANT_TYPE_INT32) ? g_variant_get_int32(value)
+                               : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value) : -1;
+                valid = g_str_equal(name, "auto-raise-delay") ? number >= 0 && number <= 10000
+                                                             : number >= 1 && number <= 36;
+            } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                const char* string = g_variant_get_string(value, NULL);
+                if (g_str_equal(name, "focus-mode"))
+                    valid = g_str_equal(string, "click") || g_str_equal(string, "sloppy") || g_str_equal(string, "mouse");
+                else if (g_str_equal(name, "focus-new-windows"))
+                    valid = g_str_equal(string, "smart") || g_str_equal(string, "strict");
+                else if (g_str_equal(name, "action-double-click-titlebar") ||
+                         g_str_equal(name, "action-middle-click-titlebar") ||
+                         g_str_equal(name, "action-right-click-titlebar")) {
+                    valid = FALSE;
+                    for (guint i = 0; titlebar[i]; i++) valid |= g_str_equal(string, titlebar[i]);
+                } else valid = FALSE;
+            } else valid = FALSE;
+            g_variant_unref(value);
+        }
+        if (!valid) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "window-management contains an unsupported name or value");
+            return FALSE;
+        }
+    }
+    g_autoptr(GVariant) compositor = g_variant_lookup_value(document, "compositor", NULL);
+    if (compositor) {
+        static const char* booleans[] = {
+            "enable-animations", "locate-pointer", "visual-bell", "audible-bell", NULL,
+        };
+        gboolean valid = g_variant_is_of_type(compositor, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* name;
+        GVariant* value;
+        if (valid) g_variant_iter_init(&iter, compositor);
+        while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+            gboolean known_boolean = FALSE;
+            for (guint i = 0; booleans[i]; i++) known_boolean |= g_str_equal(name, booleans[i]);
+            if (known_boolean)
+                valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            else if (g_str_equal(name, "visual-bell-type") &&
+                     g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                const char* bell = g_variant_get_string(value, NULL);
+                valid = g_str_equal(bell, "fullscreen-flash") || g_str_equal(bell, "frame-flash");
+            } else valid = FALSE;
+            g_variant_unref(value);
+        }
+        if (!valid) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "compositor contains an unsupported name or value");
             return FALSE;
         }
     }

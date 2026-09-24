@@ -92,4 +92,4 @@ python3 scripts/build-private-deps.py --run python3 scripts/check-build-deps.py
 python3 scripts/build-private-deps.py --run just build-source
 python3 scripts/build-private-deps.py --fix-runtime
 printf '\nComplete Gnoblin build installed in %s\n' "$GNOBLIN_PREFIX"
-printf 'Optional Settings and portal builds: docs/source-development.md\n'
+printf 'Optional portal backend build: docs/source-development.md\n'

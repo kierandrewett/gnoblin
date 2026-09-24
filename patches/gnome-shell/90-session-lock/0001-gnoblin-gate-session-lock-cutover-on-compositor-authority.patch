@@ -1,0 +1,180 @@
+From 45adecb68c48e05f5cea4fea6d1f48d6d0ab2e0f Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:40:50 +0100
+Subject: [PATCH] gnoblin: gate session lock cutover on secure protocol
+
+---
+ js/js-resources.gresource.xml |  1 +
+ js/misc/systemActions.js      | 10 +++++++++-
+ js/ui/main.js                 |  5 +++--
+ js/ui/screenshot.js           | 28 ++++++++++++++++++++++++++++
+ 4 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index fbf21b6af..4055b91fb 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -145,6 +145,7 @@
+     <file>ui/components/gnoblinFrames.js</file>
+     <file>ui/components/gnoblinFramePolicy.js</file>
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinSessionLock.js</file>
+     <file>ui/components/gnoblinRecovery.js</file>
+     <file>ui/components/gnoblinConsole.js</file>
+     <file>ui/components/gnoblinConsoleEvaluator.js</file>
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index 483ff6a43..2ae4a6eac 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -10,6 +10,7 @@ import * as GnomeSession from './gnomeSession.js';
+ import * as LoginManager from './loginManager.js';
+ import * as Main from '../ui/main.js';
+ import * as Screenshot from '../ui/screenshot.js';
++import * as GnoblinSessionLock from '../ui/components/gnoblinSessionLock.js';
+ 
+ const LOCKDOWN_SCHEMA = 'org.gnome.desktop.lockdown';
+ const LOGIN_SCREEN_SCHEMA = 'org.gnome.login-screen';
+@@ -365,7 +366,8 @@ const SystemActions = GObject.registerClass({
+     _updateLockScreen() {
+         let showLock = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+         let allowLockScreen = !this._lockdownSettings.get_boolean(DISABLE_LOCK_SCREEN_KEY);
+-        this._actions.get(LOCK_SCREEN_ACTION_ID).available = showLock && allowLockScreen && LoginManager.canLock();
++        this._actions.get(LOCK_SCREEN_ACTION_ID).available =
++            showLock && allowLockScreen && LoginManager.canLock() && !GnoblinSessionLock.isAuthoritative();
+         this.notify('can-lock-screen');
+     }
+ 
+@@ -454,6 +456,9 @@ const SystemActions = GObject.registerClass({
+         if (!this._actions.get(LOCK_SCREEN_ACTION_ID).available)
+             throw new Error('The lock-screen action is not available!');
+ 
++        if (GnoblinSessionLock.isAuthoritative())
++            return;
++
+         Main.screenShield.lock(true);
+     }
+ 
+@@ -461,6 +466,9 @@ const SystemActions = GObject.registerClass({
+         if (!this._actions.get(SWITCH_USER_ACTION_ID).available)
+             throw new Error('The switch-user action is not available!');
+ 
++        if (GnoblinSessionLock.isAuthoritative())
++            return;
++
+         if (Main.screenShield)
+             Main.screenShield.lock(false);
+ 
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 8b5adf43b..eddaaa50c 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -33,6 +33,7 @@ import * as Layout from './layout.js';
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
+ import * as DevConsole from './components/gnoblinConsole.js';
++import * as GnoblinSessionLock from './components/gnoblinSessionLock.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -240,7 +241,7 @@ async function _initializeUI() {
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+-    if (LoginManager.canLock())
++    if (LoginManager.canLock() && !GnoblinSessionLock.shouldReplaceScreenShield())
+         screenShield = new ScreenShield.ScreenShield();
+ 
+     inputMethod = new InputMethod.InputMethod();
+@@ -411,7 +412,7 @@ async function _handleLockScreenWarning() {
+     const path = `${global.userdatadir}/lock-warning-shown`;
+     const file = Gio.File.new_for_path(path);
+ 
+-    const hasLockScreen = screenShield !== null;
++    const hasLockScreen = screenShield !== null || GnoblinSessionLock.isAuthoritative();
+     if (hasLockScreen) {
+         try {
+             await file.delete_async(0, null);
+diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
+index 78d815932..5a1829e6b 100644
+--- a/js/ui/screenshot.js
++++ b/js/ui/screenshot.js
+@@ -13,6 +13,7 @@ import * as GrabHelper from './grabHelper.js';
+ import * as Layout from './layout.js';
+ import * as Lightbox from './lightbox.js';
+ import * as Main from './main.js';
++import * as GnoblinSessionLock from './components/gnoblinSessionLock.js';
+ import * as MessageTray from './messageTray.js';
+ import * as Workspace from './workspace.js';
+ 
+@@ -2400,6 +2401,9 @@ function _storeScreenshot(bytes, pixbuf) {
+  * @param {number} cursor.scale - The cursor texture scale.
+  */
+ export async function captureScreenshot(texture, geometry, scale, cursor) {
++    if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked))
++        throw new Error('Screenshot unavailable while the session is locked');
++
+     const stream = Gio.MemoryOutputStream.new_resizable();
+     const [x, y, w, h] = geometry ?? [0, 0, -1, -1];
+     if (cursor === null)
+@@ -2424,6 +2428,9 @@ export async function captureScreenshot(texture, geometry, scale, cursor) {
+  * Shows the screenshot UI.
+  */
+ export function showScreenshotUI() {
++    if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked))
++        return;
++
+     if (!Main.screenshotUI)
+         return;
+ 
+@@ -2436,6 +2443,9 @@ export function showScreenshotUI() {
+  * Shows the screen recording UI.
+  */
+ export function showScreenRecordingUI() {
++    if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked))
++        return;
++
+     if (!Main.screenshotUI)
+         return;
+ 
+@@ -2461,6 +2471,12 @@ export class ScreenshotService {
+     }
+ 
+     async _createScreenshot(invocation, needsDisk = true, restrictCallers = true) {
++        if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked)) {
++            invocation.return_error_literal(Gio.IOErrorEnum, Gio.IOErrorEnum.PERMISSION_DENIED,
++                'Screenshot unavailable while the session is locked');
++            return null;
++        }
++
+         let lockedDown = false;
+         if (needsDisk)
+             lockedDown = this._lockdownSettings.get_boolean('disable-save-to-disk');
+@@ -2691,6 +2707,12 @@ export class ScreenshotService {
+     }
+ 
+     async InteractiveScreenshotAsync(params, invocation) {
++        if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked)) {
++            invocation.return_error_literal(Gio.IOErrorEnum, Gio.IOErrorEnum.PERMISSION_DENIED,
++                'Screenshot unavailable while the session is locked');
++            return;
++        }
++
+         if (!Main.screenshotUI) {
+             invocation.return_error_literal(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED,
+                 'Gnoblin delegates interactive screenshots to the external shell');
+@@ -2725,6 +2747,12 @@ export class ScreenshotService {
+     }
+ 
+     async SelectAreaAsync(params, invocation) {
++        if (GnoblinSessionLock.isLocked(Main.sessionMode.isLocked)) {
++            invocation.return_error_literal(Gio.IOErrorEnum, Gio.IOErrorEnum.PERMISSION_DENIED,
++                'Screenshot unavailable while the session is locked');
++            return;
++        }
++
+         try {
+             await this._senderChecker.checkInvocation(invocation);
+         } catch (e) {
+-- 
+2.55.0
+

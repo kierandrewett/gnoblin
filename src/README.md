@@ -30,11 +30,6 @@ a feature lives.
   (the shared prefix and library lookup contract), `gnoblin-session` (the login
   entry's `Exec=` target), and `gnoblin-shell-service` (the systemd user-unit
   wrapper).
-- `control-center/` — the `gnoblin` panel for the forked `gnome-control-center`
-  (feature toggles, typed portal grants, and a reload button). Copied into the
-  submodule via its `manifest` and registered by
-  `patches/gnome-control-center/10-gnoblin-panel`. Built with `just dev-settings`
-  (not part of `just dev`).
 
 ## Common Tasks
 

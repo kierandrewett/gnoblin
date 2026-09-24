@@ -15,6 +15,7 @@ PREFIX = Path("/usr/lib/gnoblin")
 PUBLIC_FILES = (
     "share/wayland-sessions/gnoblin.desktop",
     "share/gnome-session/sessions/gnoblin.session",
+    "share/gnoblin/init.lua.example",
     "lib/systemd/user/org.gnoblin.Shell.target",
     "lib/systemd/user/org.gnoblin.Shell@wayland.service",
     "lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf",
@@ -35,6 +36,10 @@ SERVICES = (
     "iso-codes",
     "adwaita-icon-theme",
     "bubblewrap",
+    "wireplumber",
+    "playerctl",
+    "brightnessctl",
+    "libglib2.0-bin",
 )
 
 
@@ -60,7 +65,14 @@ def elf_files(directory):
 
 def stage_runtime(prefix, stage):
     """Export only Gnoblin-named entry points; keep upstream files private."""
-    for relative in ("bin/gnome-shell", "bin/gnoblin-session", "deps/lib64", *PUBLIC_FILES):
+    for relative in (
+        "bin/gnome-shell",
+        "bin/gnoblin-session",
+        "libexec/gnoblin-seed-config",
+        "share/gnoblin/init.lua.example",
+        "deps/lib64",
+        *PUBLIC_FILES,
+    ):
         if not (prefix / relative).exists():
             raise RuntimeError(f"Incomplete private runtime: {prefix / relative}")
     private = stage / PREFIX.relative_to("/")

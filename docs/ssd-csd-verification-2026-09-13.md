@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # SSD/CSD regression verification — 13 September 2026

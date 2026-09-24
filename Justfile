@@ -240,52 +240,6 @@ dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
     meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
     meson install -C build/xdg-desktop-portal-gnome
 
-# --- optional: Gnoblin Settings (forked gnome-control-center) ---------------
-#
-# A light fork of gnome-control-center: it keeps the `gnome-control-center`
-# binary name (so "open Settings" / Exec=gnome-control-center gets this build
-# when ./install is ahead on PATH), adds a `gnoblin` panel that drives the
-# org.gnoblin.Shell control protocol (feature toggles + typed portal grants +
-# soft reload), and hides panels that make no sense under gnoblin.
-#
-# Two gnoblin changes on top of the pinned GNOME release tag:
-#   - overlay:  src/control-center/panels/gnoblin/*  (the whole panel)
-#   - patch:    patches/gnome-control-center/10-gnoblin-panel  (2 one-line regs)
-# Hiding is done purely at install time below (delete the panel .desktop files),
-# so it is trivially reversible and needs no patch.
-#
-# It is NOT part of `just build-local` — build it explicitly:
-#
-#   just dev-settings
-#
-settings_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
-
-# Panels that make no sense under gnoblin (no GNOME top bar / overview / dash /
-# workspaces gestures). Hidden by removing their installed panel .desktop, which
-# cc_panel_loader_fill_model() treats as "panel absent" (skips it from the list).
-settings_hidden_panels := "multitasking"
-
-# Build + install the gnoblin-forked gnome-control-center into ./install, then
-# hide the panels that don't apply under gnoblin.
-[private]
-dev-settings: check-install-prefix (patch "gnome-control-center")
-    meson setup --reconfigure build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}} || meson setup build/gnome-control-center subprojects/gnome-control-center {{settings_dev_opts}}
-    # blueprint-compiler: g-c-c compiles .blp UI files. If the system package is
-    # present, meson uses it. Otherwise it falls back to the meson wrap, whose
-    # build-side launcher can't import its own package (sys.path[0] is the build dir,
-    # not the source) — so link the source package next to the launcher. No-op when
-    # the system blueprint-compiler is used (no wrap dir).
-    bpsrc="{{justfile_directory()}}/subprojects/gnome-control-center/subprojects/blueprint-compiler/blueprintcompiler"; \
-    bpdir="build/gnome-control-center/subprojects/blueprint-compiler"; \
-    if [ -d "$bpdir" ] && [ -d "$bpsrc" ]; then ln -sfn "$bpsrc" "$bpdir/blueprintcompiler"; fi
-    meson install -C build/gnome-control-center
-    # Hide non-applicable panels (reversible: just re-run dev-settings to restore).
-    for p in {{settings_hidden_panels}}; do \
-      rm -f "{{prefix}}/share/applications/gnome-$p-panel.desktop" || exit; \
-      echo ">> hid $p panel"; \
-    done
-    @echo ">> Gnoblin Settings installed in {{prefix}} — run: {{prefix}}/bin/gnome-control-center gnoblin"
-
 # Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
 [private]
 build-local: dev-gnome-shell dev-session

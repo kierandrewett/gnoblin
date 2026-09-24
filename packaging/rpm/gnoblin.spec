@@ -15,13 +15,16 @@ Requires:       gnoblin-gsettings-desktop-schemas < 52
 Requires:       gnoblin-mutter < 52
 Requires:       gnoblin-session < 52
 Requires:       gnoblin-shell < 52
+Requires:       brightnessctl
 Requires:       gjs >= 1.85.90
 Requires:       glib2 >= 2.86.0
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
 Requires:       libinput >= 1.31.0
 Requires:       pipewire >= 1.6.0
+Requires:       playerctl
 Requires:       libwayland-client >= 1.26
+Requires:       wireplumber
 Requires:       xdg-desktop-portal-gnome
 Requires:       gnoblin-mutter = 51.0-20.gnoblin%{?dist}
 

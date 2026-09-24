@@ -11,11 +11,11 @@ connection for you.
 
 The bridge is a built-in Gnoblin compositor service. It starts with the
 Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
-not need to be installed under `~/.config/gnoblin/scripts/`. `gnoblinctl window
-list` uses the same socket. Check `gnoblinctl status` before debugging a client
-connection. Older installed builds may not include the built-in service yet;
-[check the running build](source-development.md#verify) when its behaviour
-differs from this reference.
+not need to be installed under `~/.config/gnoblin/scripts/`.
+`gnoblinctl window list` uses the same socket. Check `gnoblinctl status` before
+debugging a client connection. Older installed builds may not include the
+built-in service yet; [check the running build](source-development.md#verify)
+when its behaviour differs from this reference.
 
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.
@@ -52,8 +52,6 @@ closes the socket; ordinary validation errors leave it open.
 | `bind` | `id`, `accelerator`, `hold` | `bound`, then activation and input events |
 | `activate` | `window` | Focus a window; no success reply |
 | `preview` | `window`, `width`, `height` | One `preview` event |
-| `input-anchor` | None | One `input-anchor` event |
-| `type-text` | `window`, `text` | `typed` or `error` |
 | `shortcut-input` | `name`, `state` | Input handoff; no success reply |
 | `ui-session` | `action`; other fields depend on action | `ui-state` or `ui-command` events |
 | `layer-animation-policy` | `namespace` | One policy event for that layer namespace |
@@ -197,15 +195,20 @@ per client. No continuous stream is started; clients choose update frequency.
 Capture is unavailable while locked. Readback runs at low priority, PNG encoding
 uses a worker, and minimised windows use their retained buffer.
 
-## Text input
+## Bingux text-entry integration
 
-`{"op":"input-anchor"}` returns x, y, pid, window, frame, buffer and caret.
+Text entry is provided by a Bingux-owned integration. Bingux installs a Gnoblin
+script that registers the namespaced
+`bingux.input-anchor` and `bingux.type-text` operations. Other shells can omit
+the integration script and implement their own text-entry behavior.
+
+`{"op":"bingux.input-anchor"}` returns x, y, pid, window, frame and caret.
 Coordinates are logical desktop pixels. Caret may be null; it clears on focus
 changes and lock, and adjusts when the window moves.
 
-`{"op":"type-text","window":"123","text":"…"}` accepts up to 64 UTF-16 units,
-without control characters. The target must be focused and unlocked, with
-Control, Alt and Super released.
+`{"op":"bingux.type-text","window":"123","text":"…"}` accepts up to 64 UTF-16
+units, without control characters. The target must be focused and unlocked,
+with Control, Alt and Super released.
 
 Hide the picker and restore the target before sending. A `typed` reply
 acknowledges delivery, not proof that the app consumed the text.
@@ -218,9 +221,10 @@ Clipboard preparation is limited to 64 formats, 64 MiB and three seconds.
 Failed preparation leaves it unchanged. Native Wayland text input does not
 use the clipboard.
 
-On XWayland, text insertion uses the packaged `gnoblin-clipboard-paste` helper,
-which needs Python, PyGObject and GTK 3. Native Wayland text input does not use
-that helper.
+On XWayland, Bingux uses its `bingux-clipboard-paste` helper, which needs
+Python, PyGObject and GTK 3. Native Wayland text input does not use the helper.
+The helper and GJS integration are shipped by Bingux. The integration script
+is loaded from the XDG script search path; see [writing scripts](user-scripts.md).
 
 ## Recording and camera activity
 

@@ -1,13 +1,18 @@
-From: Codex <codex@openai.com>
+From abb4026fcb49c495aed765d5d683eb55f5fde07a Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 20:12:00 +0000
-Subject: [PATCH] keyboard: accept Gnoblin input sources in memory
+Subject: [PATCH] keyboard: accept Gnoblin input sources and XKB options in
+ memory
 
 ---
+ js/ui/status/keyboard.js | 106 +++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 103 insertions(+), 3 deletions(-)
+
 diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
-index ce2dff50f..1421f9750 100644
+index 2dcc634a0..ca54f4591 100644
 --- a/js/ui/status/keyboard.js
 +++ b/js/ui/status/keyboard.js
-@@ -330,6 +330,79 @@ class InputSourceSessionSettings extends InputSourceSettings {
+@@ -328,6 +328,84 @@ class InputSourceSessionSettings extends InputSourceSettings {
      }
  }
  
@@ -27,6 +32,7 @@ index ce2dff50f..1421f9750 100644
 +        this._sessionSettings.connect('per-window-changed', () =>
 +            this._emitPerWindowChanged());
 +        this._perWindow = gnoblinPerWindow;
++        this._xkbOptions = gnoblinXkbOptions;
 +        this._mruSources = [];
 +    }
 +
@@ -34,12 +40,14 @@ index ce2dff50f..1421f9750 100644
 +        return gnoblinSources ?? this._sessionSettings.inputSources;
 +    }
 +
-+    setInputSources(sources, perWindow = false) {
++    setInputSources(sources, perWindow = false, xkbOptions = null) {
 +        this._perWindow = perWindow;
 +        if (sources === null)
 +            this._mruSources = [];
++        this._xkbOptions = xkbOptions;
 +        this._emitInputSourcesChanged();
 +        this._emitPerWindowChanged();
++        this._emitKeyboardOptionsChanged();
 +    }
 +
 +    get mruSources() {
@@ -62,7 +70,7 @@ index ce2dff50f..1421f9750 100644
 +    }
 +
 +    get keyboardOptions() {
-+        return this._sessionSettings.keyboardOptions;
++        return this._xkbOptions ?? this._sessionSettings.keyboardOptions;
 +    }
 +
 +    get keyboardModel() {
@@ -72,22 +80,24 @@ index ce2dff50f..1421f9750 100644
 +
 +let gnoblinSources = null;
 +let gnoblinPerWindow = false;
++let gnoblinXkbOptions = null;
 +let gnoblinManager = null;
 +
 +// Runtime injection seam for Gnoblin control. `sources` is an array of
 +// `{type: 'xkb'|'ibus', id: string}` records, matching GNOME's source IDs.
-+export function configureGnoblinInputSources(sources, perWindow = false) {
++export function configureGnoblinInputSources(sources, perWindow = false, xkbOptions = null) {
 +    gnoblinSources = sources === null
 +        ? null
 +        : sources.map(({type, id}) => ({type, id}));
 +    gnoblinPerWindow = perWindow;
-+    gnoblinManager?._setGnoblinInputSources(gnoblinSources, perWindow);
++    gnoblinXkbOptions = xkbOptions === null ? null : [...xkbOptions];
++    gnoblinManager?._setGnoblinInputSources(gnoblinSources, perWindow, gnoblinXkbOptions);
 +}
 +
  export class InputSourceManager extends Signals.EventEmitter {
      constructor() {
          super();
-@@ -360,7 +433,10 @@ export class InputSourceManager extends Signals.EventEmitter {
+@@ -358,7 +436,10 @@ export class InputSourceManager extends Signals.EventEmitter {
                  Meta.KeyBindingFlags.IS_REVERSED,
                  Shell.ActionMode.ALL,
                  this._switchInputSource.bind(this));
@@ -99,29 +109,33 @@ index ce2dff50f..1421f9750 100644
              this._settings = new InputSourceSystemSettings();
          else
              this._settings = new InputSourceSessionSettings();
-@@ -391,6 +467,13 @@ export class InputSourceManager extends Signals.EventEmitter {
-         this.reload();
+@@ -387,6 +468,13 @@ export class InputSourceManager extends Signals.EventEmitter {
+         this._reloading = false;
      }
  
-+    _setGnoblinInputSources(sources, perWindow) {
++    _setGnoblinInputSources(sources, perWindow, xkbOptions) {
 +        if (!(this._settings instanceof InputSourceGnoblinSettings))
 +            return;
-+        this._settings.setInputSources(sources, perWindow);
++        this._settings.setInputSources(sources, perWindow, xkbOptions);
 +        this._sourcesPerWindowChanged();
 +    }
 +
      reload() {
          this._reloading = true;
          this._keyboardManager.setKeyboardOptions(this._settings.keyboardOptions);
-@@ -597,6 +680,7 @@ export class InputSourceManager extends Signals.EventEmitter {
+@@ -584,8 +672,9 @@ export class InputSourceManager extends Signals.EventEmitter {
      }
  
      _inputSourcesChanged() {
+-        const sources = this._settings.inputSources;
+-        const nSources = sources.length;
 +        const previousSource = this._currentSource;
-         let sources = this._settings.inputSources;
-         let nSources = sources.length;
++        let sources = this._settings.inputSources;
++        let nSources = sources.length;
  
-@@ -673,6 +757,17 @@ export class InputSourceManager extends Signals.EventEmitter {
+         this._currentSource = null;
+         this._inputSources = {};
+@@ -660,6 +749,17 @@ export class InputSourceManager extends Signals.EventEmitter {
  
          this._updateMruSources();
  
@@ -139,3 +153,6 @@ index ce2dff50f..1421f9750 100644
          if (this._mruSources.length > 0)
              this._mruSources[0].activate(false);
  
+-- 
+2.55.0
+

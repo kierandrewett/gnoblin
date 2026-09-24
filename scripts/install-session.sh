@@ -86,6 +86,8 @@ if [ -d "$PREFIX/deps" ]; then
     done
 fi
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
+install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$PREFIX/libexec/gnoblin-seed-config"
+install -Dm644 "$ROOT/src/data/init.lua.example" "$PREFIX/share/gnoblin/init.lua.example"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
     "$PREFIX/share/wayland-sessions/gnoblin.desktop"
@@ -115,17 +117,6 @@ install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
 glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
-# Installed for explicit development only. This unit is intentionally neither
-# enabled nor attached to the session while GNOME ScreenShield owns locking.
-install -Dm755 "$ROOT/src/lock/gnoblin-lockd.py" "$PREFIX/libexec/gnoblin-lockd"
-install -Dm644 "$ROOT/src/lock/policy.py" "$PREFIX/libexec/policy.py"
-install -Dm755 "$ROOT/src/lock/gnoblin-lockctl" "$PREFIX/bin/gnoblin-lockctl"
-install -Dm644 "$ROOT/src/lock/lock.conf.example" "$PREFIX/share/gnoblin/lock.conf.example"
-sed "s|@PREFIX@|$PREFIX|g" "$ROOT/src/lock/gnoblin-lockd.service" \
-    >"$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp"
-install -Dm644 "$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp" \
-    "$PREFIX/lib/systemd/user/gnoblin-lockd.service"
-rm -f "$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp"
 install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
 install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
 # Keep the bridge and its relative imports together as one installed bundle.
@@ -142,6 +133,7 @@ echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/g
 echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
 echo "     libexec/gnoblin-libdir                  (installed library-directory contract)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
+echo "     share/gnoblin/init.lua.example           (first-login user config template)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
 echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"

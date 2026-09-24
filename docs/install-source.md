@@ -116,5 +116,5 @@ For a packaged install, use the package manager instead.
 The build stops at a missing dependency instead of changing host packages.
 Keep the error and the Meson log path when reporting a build problem.
 
-The pinned GNOME versions are in [gnome-versions.json](../gnome-versions.json).
+The pinned GNOME versions are in [gnome-versions.json](https://github.com/kierandrewett/gnoblin/blob/main/gnome-versions.json).
 See [source development](source-development.md) for component rebuilds.

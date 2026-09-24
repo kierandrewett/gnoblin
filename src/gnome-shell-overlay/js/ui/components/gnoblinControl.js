@@ -14,7 +14,7 @@ import * as Permissions from "./gnoblinPermissions.js";
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput } from "./gnoblinConfig.js";
+import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput, applyWindowPreferences, applyCompositorPreferences, applyInputPreferences } from "./gnoblinConfig.js";
 import { WindowRules } from "./gnoblinRules.js";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -874,6 +874,12 @@ export class Component {
     }
 
     _applyConfig(next) {
+        applyWindowPreferences(next["window-management"]);
+        applyCompositorPreferences(next.compositor);
+        applyInputPreferences(next.input);
+        Keyboard.configureGnoblinInputSources(next["input-sources"]?.sources ?? null,
+            next["input-sources"]?.["per-window"] ?? false,
+            next.input?.keyboard?.["xkb-options"] ?? null);
         try {
             this._shortcuts.apply(next);
         } catch (error) {

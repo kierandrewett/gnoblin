@@ -243,6 +243,24 @@ meta_wayland_session_lock_get_state (MetaWaylandCompositor *compositor)
   return get_controller (compositor)->state;
 }
 
+gboolean
+meta_wayland_session_lock_is_active (MetaWaylandCompositor *compositor)
+{
+  return meta_wayland_session_lock_get_state (compositor) !=
+         META_WAYLAND_SESSION_LOCK_UNLOCKED;
+}
+
+gboolean
+meta_wayland_session_lock_is_presentation_confirmed (
+  MetaWaylandCompositor *compositor)
+{
+  MetaWaylandSessionLockState state =
+    meta_wayland_session_lock_get_state (compositor);
+
+  return state == META_WAYLAND_SESSION_LOCK_LOCKED ||
+         state == META_WAYLAND_SESSION_LOCK_FAILSAFE;
+}
+
 ClutterActor *
 meta_wayland_session_lock_get_scene (MetaWaylandCompositor *compositor)
 {

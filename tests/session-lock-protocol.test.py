@@ -56,6 +56,8 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("clutter_stage_peek_stage_views", source)
         self.assertIn("unpresented_stage_views", source)
         self.assertIn("controller->scene", source)
+        self.assertIn("meta_wayland_session_lock_is_active", source)
+        self.assertIn("meta_wayland_session_lock_is_presentation_confirmed", source)
 
 
 if __name__ == "__main__":

@@ -1,39 +1,33 @@
-# Maintain the docs
+# Documentation site
 
-Edit Markdown in `docs/`. The same files appear on GitHub and the
-[public site](https://kierandrewett.github.io/gnoblin/).
+Edit the Markdown in `docs/`. VitePress builds the
+[public site](https://kierandrewett.github.io/gnoblin/) from those files.
 
 ## Preview
 
 From the repository root:
 
 ```sh
-python3 -m venv /tmp/gnoblin-docs
-/tmp/gnoblin-docs/bin/pip install -r docs-requirements.txt
-/tmp/gnoblin-docs/bin/mkdocs serve
+npm ci
+npm run docs:dev
 ```
 
 Open the printed localhost address. To check links and build static HTML:
 
 ```sh
-/tmp/gnoblin-docs/bin/mkdocs build --strict
+npm run docs:build
 ```
 
-Output goes to ignored `site/`. Source links are checked and rewritten to
-GitHub by `scripts/docs-links.py`.
+The preview command serves the site on localhost. The production build goes to
+`docs/.vitepress/dist/`. The build checks local page links and writes redirects
+from the previous MkDocs URLs. Links to files outside `docs/` should point
+directly to their source on GitHub.
 
 ## Publish
 
-```sh
-/tmp/gnoblin-docs/bin/mkdocs gh-deploy --strict
-```
-
-This pushes generated HTML to `gh-pages`, not your source branch.
-GitHub Pages must use **Deploy from a branch → gh-pages → / (root)**.
-
-Once the Documentation workflow is on `main`, it checks pull requests and
-publishes changes automatically. See
-[Material's guide](https://squidfunk.github.io/mkdocs-material/publishing-your-site/).
+The Documentation workflow publishes changes merged to `main` to `gh-pages`
+and preserves the APT archive stored on that branch. GitHub Pages must use
+**Deploy from a branch → gh-pages → / (root)**.
 
 ## Write for the reader
 

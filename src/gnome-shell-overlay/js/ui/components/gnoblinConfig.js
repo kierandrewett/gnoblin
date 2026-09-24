@@ -19,6 +19,86 @@ export const FEATURE_KEYS = Object.freeze([
     "input-source-switcher",
 ]);
 
+export const WINDOW_PREFERENCES = Object.freeze({
+    "focus-mode": "click", "focus-new-windows": "smart", "raise-on-click": true,
+    "auto-raise": false, "auto-raise-delay": 500, "focus-change-on-pointer-rest": false,
+    "action-double-click-titlebar": "toggle-maximize", "action-middle-click-titlebar": "lower",
+    "action-right-click-titlebar": "menu", "dynamic-workspaces": false,
+    "num-workspaces": 4, "workspaces-only-on-primary": false, "edge-tiling": false,
+    "center-new-windows": false, "attach-modal-dialogs": false, "workspace-names": [],
+});
+export const COMPOSITOR_PREFERENCES = Object.freeze({
+    "enable-animations": true,
+    "locate-pointer": false,
+    "visual-bell": false,
+    "audible-bell": true,
+    "visual-bell-type": "fullscreen-flash",
+});
+const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [] });
+const TITLEBAR_ACTIONS = new Set([
+    "toggle-maximize", "toggle-maximize-horizontally",
+    "toggle-maximize-vertically", "minimize", "none", "lower", "menu",
+]);
+const INPUT_FIELDS = Object.freeze({
+    mouse: { speed: "number", "left-handed": "boolean", "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"] },
+    touchpad: { speed: "number", "left-handed": ["right", "left", "mouse"], "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"],
+        "tap-to-click": "boolean", "tap-button-map": ["default", "lrm", "lmr"], "tap-and-drag": "boolean", "tap-and-drag-lock": "boolean",
+        "disable-while-typing": "boolean", "edge-scrolling-enabled": "boolean", "two-finger-scrolling-enabled": "boolean",
+        "click-method": ["default", "none", "areas", "fingers"] },
+    keyboard: { repeat: "boolean", delay: "milliseconds", "repeat-interval": "milliseconds", "remember-numlock-state": "boolean",
+        "numlock-state": "boolean", "xkb-options": "strings" },
+    tablets: { mapping: ["absolute", "relative"], "left-handed": "boolean", "keep-aspect": "boolean" },
+    styluses: { "button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
+        "secondary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
+        "tertiary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
+        "button-keybinding": "string", "secondary-button-keybinding": "string", "tertiary-button-keybinding": "string" },
+});
+const isTable = value => value !== null && typeof value === "object" && !Array.isArray(value);
+
+function validateInputFields(group, values, path) {
+    if (!isTable(values)) throw new Error(`${path}: expected a table`);
+    for (const [key, value] of Object.entries(values)) {
+        const kind = INPUT_FIELDS[group][key];
+        if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
+        const valid = Array.isArray(kind) ? kind.includes(value) :
+            kind === "boolean" ? typeof value === "boolean" :
+            kind === "number" ? typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1 :
+            kind === "milliseconds" ? Number.isInteger(value) && value >= 1 && value <= 10000 :
+            kind === "strings" ? Array.isArray(value) && value.every(item => typeof item === "string" && !item.includes("\0")) :
+            typeof value === "string" && !value.includes("\0");
+        if (!valid) throw new Error(`${path}.${key}: invalid value`);
+    }
+}
+
+function validateInput(input) {
+    if (!isTable(input)) throw new Error("input must be a table");
+    for (const [group, values] of Object.entries(input)) {
+        if (group === "orientation-lock") {
+            if (typeof values !== "boolean") throw new Error("input.orientation-lock: expected a boolean");
+        } else if (group === "tablets" || group === "styluses") {
+            if (!isTable(values)) throw new Error(`input.${group}: expected a table`);
+            for (const [device, fields] of Object.entries(values)) {
+                if (!(group === "tablets" ? /^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$/ : /^(?:[0-9a-fA-F]+|default-[0-9a-fA-F]{4}:[0-9a-fA-F]{4})$/).test(device))
+                    throw new Error(`input.${group}: invalid device identifier ${device}`);
+                validateInputFields(group, fields, `input.${group}.${device}`);
+            }
+        } else if (Object.hasOwn(INPUT_FIELDS, group)) {
+            validateInputFields(group, values, `input.${group}`);
+        } else throw new Error(`unknown input group: ${group}`);
+    }
+}
+
+function validateInputSources(value) {
+    if (!isTable(value) || Object.keys(value).some(key => !["sources", "per-window"].includes(key)))
+        throw new Error("input-sources must contain sources and per-window only");
+    if (value["per-window"] !== undefined && typeof value["per-window"] !== "boolean")
+        throw new Error("input-sources.per-window: expected a boolean");
+    if (!Array.isArray(value.sources) || !value.sources.every(source => isTable(source) &&
+        Object.keys(source).length === 2 && ["xkb", "ibus"].includes(source.type) &&
+        typeof source.id === "string" && source.id.length > 0 && !source.id.includes("\0")))
+        throw new Error("input-sources.sources: expected {type, id} records");
+}
+
 export const DEFAULTS = Object.freeze({
     ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, null])),
     "window-switcher": false,
@@ -36,7 +116,9 @@ export const DEFAULTS = Object.freeze({
     keybindings: {},
 });
 
-export let settings = { ...DEFAULTS };
+export let settings = { ...DEFAULTS,
+    "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
+    input: null, "input-sources": null };
 
 const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
     "blur",
@@ -66,9 +148,61 @@ function compileWindowRuleMatchers(rules) {
 }
 
 export function parseDocument(document) {
-    const next = { ...DEFAULTS };
+    const next = { ...DEFAULTS,
+        "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
+        input: null, "input-sources": null };
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
+    const windowManagement = document["window-management"] ?? {};
+    if (!windowManagement || Array.isArray(windowManagement) || typeof windowManagement !== "object")
+        throw new Error("window-management must be a table");
+    for (const [key, value] of Object.entries(windowManagement)) {
+        if (key === "constrain-drag-to-work-area") {
+            if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
+        } else if (!Object.hasOwn(WINDOW_PREFERENCES, key)) {
+            throw new Error(`unknown window-management setting: ${key}`);
+        } else if (key === "focus-mode") {
+            if (!["click", "sloppy", "mouse"].includes(value)) throw new Error(`${key}: invalid focus mode`);
+        } else if (key === "focus-new-windows") {
+            if (!["smart", "strict"].includes(value)) throw new Error(`${key}: invalid focus policy`);
+        } else if (key.startsWith("action-") && key.endsWith("-titlebar")) {
+            if (!TITLEBAR_ACTIONS.has(value)) throw new Error(`${key}: invalid titlebar action`);
+        } else if (key === "auto-raise-delay") {
+            if (!Number.isInteger(value) || value < 0 || value > 10000)
+                throw new Error(`${key}: expected 0 to 10000 milliseconds`);
+        } else if (key === "num-workspaces") {
+            if (!Number.isInteger(value) || value < 1 || value > 36)
+                throw new Error(`${key}: expected 1 to 36 workspaces`);
+        } else if (key === "workspace-names") {
+            if (!Array.isArray(value) || value.length > 36 ||
+                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0")))
+                throw new Error(`${key}: expected up to 36 names of at most 80 characters`);
+        } else if (typeof value !== "boolean") {
+            throw new Error(`${key}: expected a boolean`);
+        }
+        next["window-management"][key] = value;
+    }
+    const compositor = document.compositor ?? {};
+    if (!compositor || Array.isArray(compositor) || typeof compositor !== "object")
+        throw new Error("compositor must be a table");
+    for (const [key, value] of Object.entries(compositor)) {
+        if (!Object.hasOwn(COMPOSITOR_PREFERENCES, key)) throw new Error(`unknown compositor setting: ${key}`);
+        if (key === "visual-bell-type") {
+            if (!["fullscreen-flash", "frame-flash"].includes(value))
+                throw new Error(`${key}: expected fullscreen-flash or frame-flash`);
+        } else if (typeof value !== "boolean") {
+            throw new Error(`${key}: expected a boolean`);
+        }
+        next.compositor[key] = value;
+    }
+    if (document.input !== undefined) {
+        validateInput(document.input);
+        next.input = document.input;
+    }
+    if (document["input-sources"] !== undefined) {
+        validateInputSources(document["input-sources"]);
+        next["input-sources"] = document["input-sources"];
+    }
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== "object") throw new Error("shell must be a table");
     for (const [key, value] of Object.entries(shell)) {
@@ -249,11 +383,8 @@ export const KEYBINDING_SCHEMAS = Object.freeze({
     wm: "org.gnome.desktop.wm.keybindings",
     mutter: "org.gnome.mutter.keybindings",
     wayland: "org.gnome.mutter.wayland.keybindings",
-    media: "org.gnome.settings-daemon.plugins.media-keys",
 });
-const SHORTCUT_BASE = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/";
-const SHORTCUT_PREFIX = `${SHORTCUT_BASE}gnoblin-config-`;
-const SHORTCUT_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
+const gsettingsKey = (key) => key.replaceAll("_", "-");
 
 function acceleratorIdentity(value) {
     if (value === "Super") return "overlay-key";
@@ -311,10 +442,12 @@ export function validateShortcuts(document) {
         if (!schema || !entries || typeof entries !== "object" || Array.isArray(entries))
             throw new Error(`unknown keybinding group: ${group}`);
         for (const [key, bindings] of Object.entries(entries)) {
+            if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(key))
+                throw new Error(`invalid keybinding name: ${group}.${key}; use snake_case`);
+            const nativeKey = gsettingsKey(key);
             if (
-                !schema.has_key(key) ||
-                key === "custom-keybindings" ||
-                schema.get_key(key).get_value_type().dup_string() !== "as" ||
+                !schema.has_key(nativeKey) ||
+                schema.get_key(nativeKey).get_value_type().dup_string() !== "as" ||
                 !Array.isArray(bindings)
             )
                 throw new Error(`unknown or unsupported keybinding: ${group}.${key}`);
@@ -328,71 +461,25 @@ export function validateShortcuts(document) {
     return { shortcuts, keybindings };
 }
 
-// Config owns only its named command entries. Other custom shortcuts are
-// preserved; explicit built-in overrides follow the persistent feature policy.
+// Gnoblin owns command shortcut registration in the compositor. Built-in
+// keybinding overrides use Mutter's prefs API below and never touch GSettings.
 export class Shortcuts {
-    constructor(commands = null) {
+    constructor(commands, prefs = Meta) {
+        if (!commands || typeof commands.apply !== "function")
+            throw new Error("native command shortcut registration is required");
         this.commands = commands;
+        this.prefs = prefs;
+        this.keybindings = {};
     }
 
     apply(config) {
         const { shortcuts, keybindings } = validateShortcuts(config);
-        const media = new Gio.Settings({ schema_id: KEYBINDING_SCHEMAS.media });
-        const previous = media.get_strv("custom-keybindings");
-        if (!this.commands && shortcuts.some((entry) => entry.binding === "Super"))
-            throw new Error("Super release requires native command shortcuts");
-        const settingsShortcuts = this.commands ? [] : shortcuts;
-        const paths = settingsShortcuts.map((entry) => `${SHORTCUT_PREFIX}${entry.name}/`);
-        const writes = [];
-        if (shortcuts.some((entry) => entry.binding === "Super"))
-            writes.push([
-                new Gio.Settings({ schema_id: "org.gnome.mutter" }),
-                "overlay-key",
-                new GLib.Variant("s", "Super"),
-            ]);
-        for (const [group, entries] of Object.entries(keybindings)) {
-            const settings = new Gio.Settings({ schema_id: KEYBINDING_SCHEMAS[group] });
-            for (const [key, value] of Object.entries(entries))
-                writes.push([settings, key, new GLib.Variant("as", value)]);
-        }
-        for (const [index, entry] of settingsShortcuts.entries()) {
-            const settings = new Gio.Settings({ schema_id: SHORTCUT_SCHEMA, path: paths[index] });
-            for (const [key, value] of Object.entries({
-                name: entry.name,
-                binding: entry.binding,
-                command: entry.command.map((arg) => GLib.shell_quote(arg)).join(" "),
-            }))
-                writes.push([settings, key, new GLib.Variant("s", value)]);
-        }
-        writes.push([
-            media,
-            "custom-keybindings",
-            new GLib.Variant("as", [...previous.filter((path) => !path.startsWith(SHORTCUT_PREFIX)), ...paths]),
-        ]);
-        for (const path of previous.filter((path) => path.startsWith(SHORTCUT_PREFIX) && !paths.includes(path))) {
-            const settings = new Gio.Settings({ schema_id: SHORTCUT_SCHEMA, path });
-            for (const key of ["binding", "command", "name"]) writes.push([settings, key, null]);
-        }
-        // Check every key before changing anything, including policy-locked keys.
-        const changes = writes.filter(([settings, key, value]) =>
-            value ? !settings.get_value(key).equal(value) : settings.get_user_value(key) !== null,
-        );
-        for (const [settings, key] of changes) {
-            if (!settings.is_writable(key)) throw new Error(`shortcut setting is locked: ${key}`);
-        }
-        const applied = [];
         try {
-            for (const [settings, key, value] of changes) {
-                applied.push([settings, key, settings.get_user_value(key)]);
-                if (value === null) settings.reset(key);
-                else if (!settings.set_value(key, value)) throw new Error(`could not save shortcut: ${key}`);
-            }
-            this.commands?.apply(shortcuts);
+            this.prefs.prefs_apply_gnoblin_keybindings(keybindingVariant(keybindings));
+            this.commands.apply(shortcuts);
+            this.keybindings = keybindings;
         } catch (error) {
-            for (const [settings, key, value] of applied.reverse()) {
-                if (value === null) settings.reset(key);
-                else settings.set_value(key, value);
-            }
+            this.prefs.prefs_apply_gnoblin_keybindings(keybindingVariant(this.keybindings));
             throw error;
         }
     }
@@ -400,6 +487,53 @@ export class Shortcuts {
     destroy() {
         this.commands?.destroy();
     }
+}
+
+function keybindingVariant(groups) {
+    return new GLib.Variant("a{sv}", Object.fromEntries(
+        Object.entries(groups).map(([group, entries]) => [group, new GLib.Variant("a{sv}", Object.fromEntries(
+            Object.entries(entries).map(([key, bindings]) => [gsettingsKey(key), new GLib.Variant("as", bindings)]),
+        ))]),
+    ));
+}
+
+export function applyWindowPreferences(preferences) {
+    const values = Object.fromEntries(Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
+        key,
+        new GLib.Variant(Array.isArray(fallback) ? "as" : typeof fallback === "boolean" ? "b" : typeof fallback === "number" ? "i" : "s",
+            preferences[key] ?? fallback),
+    ]));
+    Meta.prefs_apply_gnoblin_window_preferences(new GLib.Variant("a{sv}", values));
+}
+
+export function applyCompositorPreferences(preferences) {
+    const values = Object.fromEntries(Object.entries(COMPOSITOR_PREFERENCES).map(([key, fallback]) => [
+        key, new GLib.Variant(typeof fallback === "boolean" ? "b" : "s", preferences[key] ?? fallback),
+    ]));
+    Meta.prefs_apply_gnoblin_compositor_preferences(new GLib.Variant("a{sv}", values));
+}
+
+function inputVariant(group, values) {
+    return new GLib.Variant("a{sv}", Object.fromEntries(Object.entries(values).map(([key, value]) => {
+        if (group === "tablets" || group === "styluses")
+            return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
+        const type = Array.isArray(value) ? "as" : typeof value === "boolean" ? "b" :
+            typeof value === "number" ? key === "speed" ? "d" : "u" : "s";
+        return [key, new GLib.Variant(type, value)];
+    })));
+}
+
+export function applyInputPreferences(input) {
+    const groups = Object.fromEntries(Object.entries(input ?? {})
+        .filter(([key]) => key !== "orientation-lock")
+        .map(([key, value]) => [key, inputVariant(key, value)]));
+    global.display.apply_gnoblin_input_config(input === null ? null : new GLib.Variant("a{sv}", groups));
+    Meta.prefs_apply_gnoblin_keyboard_preferences(input?.keyboard?.["xkb-options"] !== undefined
+        ? inputVariant("keyboard", { "xkb-options": input.keyboard["xkb-options"] }) : null);
+    const orientationManager = global.backend.get_orientation_manager();
+    if (input && Object.hasOwn(input, "orientation-lock"))
+        orientationManager.set_orientation_locked(input["orientation-lock"]);
+    else orientationManager.clear_orientation_lock_override();
 }
 
 // Commands are edge-triggered, not text input: holding a shortcut must never
@@ -694,7 +828,7 @@ export class ConfigFile {
                     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)))
                     : item;
             });
-        const live = new Set(["shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
+        const live = new Set(["cursor", "window-management", "compositor", "input", "input-sources", "shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
         for (const key of new Set([...Object.keys(previous), ...Object.keys(document)])) {
             if (!live.has(key) && stable(previous[key]) !== stable(document[key]))
                 throw new Error(`${key}: edit the config file and reload; protocol changes need a new session`);
