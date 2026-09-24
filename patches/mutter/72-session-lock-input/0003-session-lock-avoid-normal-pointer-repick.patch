@@ -1,0 +1,73 @@
+From 099e296c8f9487842b2be8461e42a1e7216e1163 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:47:05 +0100
+Subject: [PATCH] session-lock: avoid normal pointer repick
+
+---
+ src/wayland/meta-wayland-pointer.c | 30 ++++++++++++++++++++++++++++++
+ src/wayland/meta-wayland-pointer.h |  4 ++++
+ src/wayland/meta-wayland-seat.c    |  5 +----
+ 3 files changed, 35 insertions(+), 4 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index 044b261f4..9432f0df7 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -1258,2 +1258,32 @@ meta_wayland_pointer_focus_session_lock_surface (MetaWaylandPointer *pointer,
+ 
++void
++meta_wayland_pointer_update_session_lock (MetaWaylandPointer *pointer,
++                                          const ClutterEvent *event,
++                                          MetaWaylandSurface *surface)
++{
++  MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (pointer);
++  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
++  MetaBackend *backend = backend_from_pointer (pointer);
++  ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++  ClutterEventType event_type = clutter_event_type (event);
++
++  /* Never call meta_wayland_pointer_update() here: it repicks the normal
++   * scene and can broadcast an enter to an unlocked client before the lock
++   * route takes control. */
++  pointer->sprite = clutter_backend_get_sprite (clutter_backend, stage, event);
++  meta_wayland_pointer_focus_session_lock_surface (pointer, surface);
++
++  if (event_type == CLUTTER_BUTTON_PRESS && pointer->button_count == 0)
++    meta_wayland_pointer_set_implicit_grab_surface (pointer, surface);
++  if (event_type == CLUTTER_MOTION ||
++      event_type == CLUTTER_BUTTON_PRESS ||
++      event_type == CLUTTER_BUTTON_RELEASE)
++    {
++      pointer->button_count = count_buttons (event);
++      if (event_type == CLUTTER_BUTTON_RELEASE && pointer->button_count == 0)
++        meta_wayland_pointer_set_implicit_grab_surface (pointer, NULL);
++    }
++}
++
+ void
+diff --git a/src/wayland/meta-wayland-pointer.h b/src/wayland/meta-wayland-pointer.h
+index 6603d0214..48b899b51 100644
+--- a/src/wayland/meta-wayland-pointer.h
++++ b/src/wayland/meta-wayland-pointer.h
+@@ -109,2 +109,6 @@ void meta_wayland_pointer_focus_session_lock_surface (MetaWaylandPointer *pointe
+ 
++void meta_wayland_pointer_update_session_lock (MetaWaylandPointer *pointer,
++                                               const ClutterEvent *event,
++                                               MetaWaylandSurface *surface);
++
+ MetaWaylandSurface * meta_wayland_pointer_get_implicit_grab_surface (MetaWaylandPointer *pointer);
+diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
+index 3333ad206..c8540235f 100644
+--- a/src/wayland/meta-wayland-seat.c
++++ b/src/wayland/meta-wayland-seat.c
+@@ -727,6 +727,3 @@ meta_wayland_seat_handle_session_lock_event (MetaWaylandSeat    *seat,
+     {
+-      /* Update coordinates, then overwrite normal hit-test focus with the
+-       * verified lock role before delivery. */
+-      meta_wayland_seat_update (seat, event);
+-      meta_wayland_pointer_focus_session_lock_surface (seat->pointer, surface);
++      meta_wayland_pointer_update_session_lock (seat->pointer, event, surface);
+     }
+-- 
+2.55.0

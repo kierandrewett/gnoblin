@@ -1,0 +1,45 @@
+From 3829603173984689f3e886fb931ac788667c4eb4 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:52:05 +0100
+Subject: [PATCH] session-lock: allow verified pointer focus while hidden
+
+---
+ src/wayland/meta-wayland-pointer.c | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index baece3bd3..9d0027300 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -1086,4 +1086,5 @@ focus_surface_alive_notify (MetaWindow         *window,
+ static void
+-meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+-                                MetaWaylandSurface *surface)
++meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
++                                     MetaWaylandSurface *surface,
++                                     gboolean            allow_hidden_cursor)
+ {
+@@ -1098,2 +1099,3 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+                     clutter_seat_is_unfocus_inhibited (clutter_seat) ||
++                    allow_hidden_cursor ||
+                     surface == NULL);
+@@ -1171,2 +1173,9 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+ 
++static void
++meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
++                                MetaWaylandSurface *surface)
++{
++  meta_wayland_pointer_set_focus_full (pointer, surface, FALSE);
++}
++
+ void
+@@ -1327,5 +1336,5 @@ meta_wayland_pointer_focus_session_lock_surface (MetaWaylandPointer *pointer,
+    * role of its active lock.  Do not apply normal-window liveness policy here:
+-   * lock roles do not participate in normal focus arbitration. */
++  * lock roles do not participate in normal focus arbitration. */
+   meta_wayland_pointer_set_current (pointer, surface);
+-  meta_wayland_pointer_set_focus (pointer, surface);
++  meta_wayland_pointer_set_focus_full (pointer, surface, TRUE);
+ }
+-- 
+2.55.0

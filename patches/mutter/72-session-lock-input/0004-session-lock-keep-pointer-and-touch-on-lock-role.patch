@@ -1,0 +1,41 @@
+From ef07810e5d370f9d24c9fdcf8b477e7d956b4131 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:50:19 +0100
+Subject: [PATCH] session-lock: keep pointer and touch on lock role
+
+---
+ src/wayland/meta-wayland-pointer.c | 2 --
+ src/wayland/meta-wayland-touch.c   | 7 +++++--
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index bfb28a7ed..baece3bd3 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -1298,4 +1298,2 @@ meta_wayland_pointer_update_session_lock (MetaWaylandPointer *pointer,
+ {
+-  MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (pointer);
+-  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
+   MetaBackend *backend = backend_from_pointer (pointer);
+diff --git a/src/wayland/meta-wayland-touch.c b/src/wayland/meta-wayland-touch.c
+index 647d8669f..7ff1ea7c3 100644
+--- a/src/wayland/meta-wayland-touch.c
++++ b/src/wayland/meta-wayland-touch.c
+@@ -357,3 +357,4 @@ meta_wayland_touch_update_session_lock (MetaWaylandTouch   *touch,
+       touch_info = touch_get_info (touch, sequence, TRUE);
+-      touch_info->touch_surface = touch_surface_get (touch, surface);
++      touch_info->current_surface = surface;
++      touch_info->focus_surface = touch_surface_get (touch, surface);
+       clutter_event_get_coords (event, &touch_info->start_x, &touch_info->start_y);
+@@ -363,2 +364,4 @@ meta_wayland_touch_update_session_lock (MetaWaylandTouch   *touch,
+ 
++  meta_wayland_touch_info_set_current_surface (touch_info, surface);
++
+   if (event_type == CLUTTER_TOUCH_BEGIN || event_type == CLUTTER_TOUCH_END)
+@@ -372,3 +375,3 @@ meta_wayland_touch_update_session_lock (MetaWaylandTouch   *touch,
+ 
+-  touch_get_relative_coordinates (touch, surface, event,
++  touch_get_relative_coordinates (touch, touch_info->focus_surface->surface, event,
+                                   &touch_info->x, &touch_info->y);
+-- 
+2.55.0
