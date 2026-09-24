@@ -63,8 +63,10 @@ explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
 file. `gnoblinctl config reload` reports errors and applies a valid edit.
-Autostart runs each named command once per login; adding a new name during a
-reload starts it, while removing one does not stop a running process.
+Autostart launches each named command once per login; an entry can opt into
+restarts with `restart = "on_failure"` or `restart = "always"`. Adding a new
+name during a reload starts it, while removing one does not stop a running
+process. See the [autostart guide](/guides/autostart) for details.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
@@ -102,11 +104,13 @@ remote control.
 
 ## Work on the desktop in a nested session
 
-The [devkit](devkit.md) starts Gnoblin in a window. It is useful for trying a
-bar or rule before logging out. When making screenshots or demos, give it a
-fresh home and XDG config, data, cache, state and runtime directories, and run
-only the applications that belong in the example. A normal devkit invocation
-keeps your real home directory; see its [isolation notes](devkit.md#isolation).
+The [devkit](devkit.md) starts Gnoblin in a window. Use it to try a bar or rule
+before logging out.
+
+For screenshots and demos, give it fresh home and XDG config, data, cache,
+state, and runtime directories. Launch only the applications that belong in
+the example. A normal devkit invocation keeps your real home directory; see
+the [isolation notes](devkit.md#isolation).
 
 For packaging or a final session check, use a real Gnoblin login. A devkit
 image proves what appeared in that nested run, not what is installed in a
