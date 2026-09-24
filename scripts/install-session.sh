@@ -118,13 +118,6 @@ glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
-install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
-# Keep the bridge and its relative imports together as one installed bundle.
-install -d "$PREFIX/share/gnoblin/scripts/lib"
-for helper in "$ROOT/src/scripts/lib/"*.js "$ROOT/src/scripts/lib/"*.py; do
-    install -m644 "$helper" "$PREFIX/share/gnoblin/scripts/lib/${helper##*/}"
-done
-install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"
 
 echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"

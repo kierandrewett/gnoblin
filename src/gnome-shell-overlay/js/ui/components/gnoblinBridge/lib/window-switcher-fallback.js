@@ -3,6 +3,7 @@ import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 
 // Keep switching in the compositor. The optional UI gets the first chance to
 // commit its selection. If it stalls, modifier release still changes focus.
@@ -81,11 +82,6 @@ export class WindowSwitcherFallback {
             // Finish a previous release before a rapid second gesture can
             // replace its fallback. Frozen clients cannot accumulate grabs.
             this.commitPending();
-            this.bridge.uiSessions.command(this.client, {
-                action: "command",
-                name: "search",
-                command: { action: "close" },
-            });
             const windows = global.display
                 .get_tab_list(Meta.TabList.NORMAL_ALL, null)
                 .filter((window) => this.bridge.eligible(window));
@@ -126,7 +122,7 @@ export class WindowSwitcherFallback {
         if (!active.fallback || !this.gesture) return;
         const gesture = this.gesture;
         this.gesture = null;
-        if (reason !== "released" || Main.sessionMode.isLocked) return;
+        if (reason !== "released" || SessionLock.isLocked(Main.sessionMode.isLocked)) return;
         this.pending = gesture;
         if (gesture.client === this.client || gesture.client.closed) this.commitPending();
         else
@@ -142,7 +138,7 @@ export class WindowSwitcherFallback {
         this.timer = 0;
         const gesture = this.pending;
         this.pending = null;
-        if (!gesture || Main.sessionMode.isLocked) return;
+        if (!gesture || SessionLock.isLocked(Main.sessionMode.isLocked)) return;
         const live = new Set(global.display.list_all_windows());
         const windows = gesture.windows.filter((window) => live.has(window));
         const selected = gesture.windows[gesture.selected];

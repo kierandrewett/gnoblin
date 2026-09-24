@@ -48,9 +48,9 @@ regular GNOME session stays available.
 - **Portal permissions.** The [optional portal backend](docs/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.
-- **Scriptable session.** Reload Gnoblin user scripts without replacing the
-  compositor or disconnecting applications. GNOME Shell extensions and their
-  management tools are removed from the Gnoblin session.
+- **Scriptable session.** Package integrations and personal GJS scripts can
+  extend Shell behavior without replacing the compositor or disconnecting
+  applications. See [how scripts work](docs/user-scripts.md).
 
 ## Supported protocols
 

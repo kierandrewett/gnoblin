@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import shutil
 import time
 
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
@@ -14,14 +13,7 @@ ctl = str(repo / "src/tools/gnoblinctl")
 config = Path(os.environ["XDG_CONFIG_HOME"])
 script_dir = config / "gnoblin/scripts"
 script_dir.mkdir(parents=True, exist_ok=True)
-if (repo / "src/scripts/lib").is_dir():
-    shutil.copytree(repo / "src/scripts/lib", script_dir / "lib", ignore=shutil.ignore_patterns("__pycache__"))
-path = config / "compositor.sock"
-bridge = (
-    (repo / "src/scripts/compositor-bridge.js")
-    .read_text()
-    .replace("GLib.getenv('GNOBLIN_COMPOSITOR_SOCKET')", json.dumps(str(path)))
-)
+path = Path(os.environ["GNOBLIN_COMPOSITOR_SOCKET"])
 (script_dir / "00-cli-workspaces.js").write_text("""
 import Gio from 'gi://Gio';
 export default function () {
@@ -29,8 +21,6 @@ export default function () {
     new Gio.Settings({schema_id: 'org.gnome.desktop.wm.preferences'}).set_int('num-workspaces', 3);
 }
 """)
-(script_dir / "compositor-bridge.js").write_text(bridge)
-(script_dir / "launch-feedback.js").write_text((repo / "src/scripts/launch-feedback.js").read_text())
 
 
 def call(*args):

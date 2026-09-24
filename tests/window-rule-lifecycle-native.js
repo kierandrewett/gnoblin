@@ -21,7 +21,7 @@ export default function (api) {
         }),
     );
     // Reproduce the compatibility script that uses its owner during disposal.
-    api._disposers.push(() => rules.refresh());
+    api.addCleanup(() => rules.refresh());
     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
         const actor = global.get_window_actors().find((a) => a.meta_window.title === "Lifecycle fixture");
         const entry = rules._actors.get(actor);

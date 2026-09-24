@@ -1,6 +1,7 @@
 import Meta from "gi://Meta";
 import Clutter from "gi://Clutter";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 
 // Raise existing panel buffers with an independent overlay. This does not need
 // a frame or a Wayland request from the process that owns the panels.
@@ -112,7 +113,7 @@ export class LayerCompanions {
 
     apply() {
         this.restore();
-        if (Main.sessionMode.isLocked || !this.requests.length) return;
+        if (SessionLock.isLocked(Main.sessionMode.isLocked) || !this.requests.length) return;
         const byNamespace = new Map();
         const byParent = new Map();
         for (const actor of global.get_window_actors()) {

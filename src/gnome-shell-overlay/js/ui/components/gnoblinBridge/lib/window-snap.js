@@ -2,6 +2,7 @@ import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 
 // Presentation belongs to the client. The compositor owns the drag lifetime,
 // hit testing at release, work-area bounds, and the final window operation.
@@ -69,7 +70,7 @@ export class WindowSnap {
     }
 
     state() {
-        if (!this.drag || Main.sessionMode.isLocked) return { event: "window-drag", active: false };
+        if (!this.drag || SessionLock.isLocked(Main.sessionMode.isLocked)) return { event: "window-drag", active: false };
         const [x, y, modifiers] = global.get_pointer();
         const monitor = Main.layoutManager.monitors.find(
             (m) => x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height,
@@ -147,7 +148,7 @@ export class WindowSnap {
 
     apply(window, target, monitorId, original = null, maximize = false) {
         if (
-            Main.sessionMode.isLocked ||
+            SessionLock.isLocked(Main.sessionMode.isLocked) ||
             !window ||
             !target ||
             !this.bridge.eligible(window) ||

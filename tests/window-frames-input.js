@@ -69,7 +69,7 @@ export default function (api) {
         result.replace_contents(JSON.stringify(data), null, false, 0, null);
         return GLib.SOURCE_CONTINUE;
     });
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         GLib.source_remove(timer);
         pointer.run_dispose();
         keyboard.run_dispose();

@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../src/scripts/compositor-bridge.js", import.meta.url), "utf8")
+const source = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/compositor-bridge.js", import.meta.url), "utf8")
     .replace(/^import .*;\n/gm, "")
-    .replace("class CompositorBridge", "this.CompositorBridge = class CompositorBridge")
-    .replace("export default function enable(api)", "function enable(api)");
+    .replace("export class CompositorBridge", "this.CompositorBridge = class CompositorBridge");
 const context = vm.createContext({
     Gio: { _promisify() {} },
     Shell: {},

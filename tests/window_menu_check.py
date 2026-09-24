@@ -16,8 +16,7 @@ def check(send, inspect, root, config, repo):
             shutil.copy2(source, fixture)
     shutil.copy2(bingux / "tests/window-menu.qml", fixture / "shell.qml")
     scripts = root / "scripts"
-    shutil.copy2(repo / "src/scripts/compositor-bridge.js", scripts)
-    shutil.copytree(repo / "src/scripts/lib", scripts / "lib", dirs_exist_ok=True)
+    scripts.mkdir(parents=True, exist_ok=True)
     (scripts / "frames.js").unlink()  # One-shot fixture setup must not run twice.
     subprocess.run(
         [
