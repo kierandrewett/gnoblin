@@ -49,6 +49,9 @@ jobs:
           command -v dbus-run-session
           test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 
+      - name: Verify Gnoblin JavaScript resources
+        run: python3 tests/gnome-shell-overlay-resources.test.py
+
       - name: Run deterministic plan checks
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
 

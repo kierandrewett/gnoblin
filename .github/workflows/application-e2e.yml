@@ -68,6 +68,7 @@ jobs:
           runuser -u builder -- env \
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             ./build.sh
+          python3 tests/gnome-shell-overlay-resources.test.py
           mkdir -p e2e-ci-artifacts
           python3 tests/e2e/app-catalog.test.py
           python3 tests/e2e/app-catalog.py --output e2e-ci-artifacts/app-catalog.json

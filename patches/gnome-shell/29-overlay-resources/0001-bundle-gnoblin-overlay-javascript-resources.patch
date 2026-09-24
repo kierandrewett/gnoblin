@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 22:00:00 +0100
+Subject: [PATCH] shell: bundle Gnoblin JavaScript overlay modules
+
+Bundle the compositor bridge and its helper modules, plus launch feedback,
+so resource:/// imports from Gnoblin shell components resolve at runtime.
+---
+ js/js-resources.gresource.xml | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 9b9253b..cb00d3a 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -151,6 +151,14 @@
+     <file>ui/components/polkitAgent.js</file>
++    <file>ui/components/gnoblinLaunchFeedback.js</file>
++    <file>ui/components/gnoblinBridge/compositor-bridge.js</file>
++    <file>ui/components/gnoblinBridge/lib/blur-regions.js</file>
++    <file>ui/components/gnoblinBridge/lib/fullscreen-return-guard.js</file>
++    <file>ui/components/gnoblinBridge/lib/layer-companions.js</file>
++    <file>ui/components/gnoblinBridge/lib/ui-sessions.js</file>
++    <file>ui/components/gnoblinBridge/lib/window-snap.js</file>
++    <file>ui/components/gnoblinBridge/lib/window-switcher-fallback.js</file>
+ 
+     <file>ui/status/accessibility.js</file>
+     <file>ui/status/autoRotate.js</file>
+     <file>ui/status/backgroundApps.js</file>
+     <file>ui/status/backlight.js</file>
+-- 
+2.55.0
