@@ -103,7 +103,7 @@ or disable them by name in the same file.
 
 To override an imported shortcut, use the same map key. Only supplied fields
 change. Different names must use different bindings. See the
-[override example](/recipes#add-a-shortcut-without-losing-the-others).
+[override example](/recipes/add-a-shortcut).
 
 An existing GNOME action can also own the key. Disable or rebind that action
 first. Invalid or conflicting edits keep the previous working registrations.

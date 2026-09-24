@@ -26,4 +26,4 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
 
-Use [`gnoblin.snapshot()`](/config/snapshot) to inspect a copy of the config assembled so far. See [recipes](/recipes) for complete examples and [file loading](/guides/files_and_load_order) for include order and reload behavior.
+Use [`gnoblin.snapshot()`](/config/snapshot) to inspect a copy of the config assembled so far. See [recipes](/recipes/) for complete examples and [file loading](/guides/files_and_load_order) for include order and reload behavior.

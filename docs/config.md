@@ -45,4 +45,4 @@ gnoblinctl config path
 gnoblinctl config reload
 ```
 
-See [configuration recipes](/recipes) for complete examples and the [guides](/guides/window_rules) for task-based instructions.
+See [configuration recipes](/recipes/) for complete examples and the [guides](/guides/window_rules) for task-based instructions.
