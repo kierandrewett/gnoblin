@@ -385,9 +385,6 @@ export const KEYBINDING_SCHEMAS = Object.freeze({
     wayland: "org.gnome.mutter.wayland.keybindings",
 });
 const gsettingsKey = (key) => key.replaceAll("_", "-");
-const SHORTCUT_BASE = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/";
-const SHORTCUT_PREFIX = `${SHORTCUT_BASE}gnoblin-config-`;
-const SHORTCUT_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
 
 function acceleratorIdentity(value) {
     if (value === "Super") return "overlay-key";
@@ -450,7 +447,6 @@ export function validateShortcuts(document) {
             const nativeKey = gsettingsKey(key);
             if (
                 !schema.has_key(nativeKey) ||
-                nativeKey === "custom-keybindings" ||
                 schema.get_key(nativeKey).get_value_type().dup_string() !== "as" ||
                 !Array.isArray(bindings)
             )
@@ -465,64 +461,25 @@ export function validateShortcuts(document) {
     return { shortcuts, keybindings };
 }
 
-// Config owns only its named command entries. Other custom shortcuts are
-// preserved; explicit built-in overrides follow the persistent feature policy.
+// Gnoblin owns command shortcut registration in the compositor. Built-in
+// keybinding overrides use Mutter's prefs API below and never touch GSettings.
 export class Shortcuts {
-    constructor(commands = null) {
+    constructor(commands, prefs = Meta) {
+        if (!commands || typeof commands.apply !== "function")
+            throw new Error("native command shortcut registration is required");
         this.commands = commands;
+        this.prefs = prefs;
         this.keybindings = {};
     }
 
     apply(config) {
         const { shortcuts, keybindings } = validateShortcuts(config);
-        const media = new Gio.Settings({ schema_id: "org.gnome.settings-daemon.plugins.media-keys" });
-        const previous = media.get_strv("custom-keybindings");
-        if (!this.commands && shortcuts.some((entry) => entry.binding === "Super"))
-            throw new Error("Super release requires native command shortcuts");
-        const settingsShortcuts = this.commands ? [] : shortcuts;
-        const paths = settingsShortcuts.map((entry) => `${SHORTCUT_PREFIX}${entry.name}/`);
-        const writes = [];
-        for (const [index, entry] of settingsShortcuts.entries()) {
-            const settings = new Gio.Settings({ schema_id: SHORTCUT_SCHEMA, path: paths[index] });
-            for (const [key, value] of Object.entries({
-                name: entry.name,
-                binding: entry.binding,
-                command: entry.command.map((arg) => GLib.shell_quote(arg)).join(" "),
-            }))
-                writes.push([settings, key, new GLib.Variant("s", value)]);
-        }
-        writes.push([
-            media,
-            "custom-keybindings",
-            new GLib.Variant("as", [...previous.filter((path) => !path.startsWith(SHORTCUT_PREFIX)), ...paths]),
-        ]);
-        for (const path of previous.filter((path) => path.startsWith(SHORTCUT_PREFIX) && !paths.includes(path))) {
-            const settings = new Gio.Settings({ schema_id: SHORTCUT_SCHEMA, path });
-            for (const key of ["binding", "command", "name"]) writes.push([settings, key, null]);
-        }
-        // Check every key before changing anything, including policy-locked keys.
-        const changes = writes.filter(([settings, key, value]) =>
-            value ? !settings.get_value(key).equal(value) : settings.get_user_value(key) !== null,
-        );
-        for (const [settings, key] of changes) {
-            if (!settings.is_writable(key)) throw new Error(`shortcut setting is locked: ${key}`);
-        }
-        const applied = [];
         try {
-            Meta.prefs_apply_gnoblin_keybindings(keybindingVariant(keybindings));
-            for (const [settings, key, value] of changes) {
-                applied.push([settings, key, settings.get_user_value(key)]);
-                if (value === null) settings.reset(key);
-                else if (!settings.set_value(key, value)) throw new Error(`could not save shortcut: ${key}`);
-            }
-            this.commands?.apply(shortcuts);
+            this.prefs.prefs_apply_gnoblin_keybindings(keybindingVariant(keybindings));
+            this.commands.apply(shortcuts);
             this.keybindings = keybindings;
         } catch (error) {
-            Meta.prefs_apply_gnoblin_keybindings(keybindingVariant(this.keybindings));
-            for (const [settings, key, value] of applied.reverse()) {
-                if (value === null) settings.reset(key);
-                else settings.set_value(key, value);
-            }
+            this.prefs.prefs_apply_gnoblin_keybindings(keybindingVariant(this.keybindings));
             throw error;
         }
     }
@@ -871,7 +828,7 @@ export class ConfigFile {
                     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)))
                     : item;
             });
-        const live = new Set(["window-management", "compositor", "input", "input-sources", "shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
+        const live = new Set(["cursor", "window-management", "compositor", "input", "input-sources", "shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
         for (const key of new Set([...Object.keys(previous), ...Object.keys(document)])) {
             if (!live.has(key) && stable(previous[key]) !== stable(document[key]))
                 throw new Error(`${key}: edit the config file and reload; protocol changes need a new session`);
