@@ -27,7 +27,10 @@ jobs:
       - name: Checkout Gnoblin and submodules
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch GNOME submodules with retry backoff
+        run: scripts/checkout-submodules-with-retry.sh
 
       - name: Build a private Gnoblin prefix
         run: |
