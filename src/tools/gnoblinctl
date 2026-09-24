@@ -35,6 +35,25 @@ def gnoblin_version():
     return "unknown"
 
 
+def default_lua_config():
+    """Read the example shipped with this installation, without contacting the shell."""
+    script = Path(__file__).resolve()
+    candidates = [
+        script.parent.parent / "share/gnoblin/init.lua.example",
+        script.parents[2] / "src/data/init.lua.example",
+    ]
+    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    candidates.extend(Path(directory) / "gnoblin/init.lua.example" for directory in data_dirs.split(":") if directory)
+    for candidate in candidates:
+        try:
+            return candidate.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise CommandError(f"Cannot read default Lua config at {candidate}: {error.strerror}") from None
+    raise CommandError("Default Lua config not found; install the Gnoblin session config package")
+
+
 def version_record(shell_version):
     return {
         "gnomeVersion": str(shell_version).removesuffix("-gnoblin"),
@@ -167,9 +186,10 @@ def parser():
             action.add_argument(field, type=number(*bounds))
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
-    config = add(commands, "config", "Show or reload the active configuration")
+    config = add(commands, "config", "Show the default or manage the active configuration")
     config_actions = config.add_subparsers(dest="action")
     add(config_actions, "path", "Show the active configuration path")
+    add(config_actions, "default", "Print the bundled default Lua configuration")
     add(config_actions, "reload", "Reload the active configuration")
     for name, description in (
         ("workspace", "List and switch workspaces"),
@@ -612,7 +632,10 @@ def main(argv=None):
         subcommands(cli)[args.command].print_help()
         return 0
     try:
-        render(dispatch(args, cli), args.format)
+        if args.command == "config" and args.action == "default":
+            sys.stdout.write(default_lua_config())
+        else:
+            render(dispatch(args, cli), args.format)
         return 0
     except BrokenPipeError:
         return 0

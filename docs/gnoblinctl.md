@@ -13,6 +13,7 @@ Run commands from a terminal inside Gnoblin:
 | -------------------------- | -------------------------------------- |
 | `gnoblinctl window list`   | Find open windows and their IDs        |
 | `gnoblinctl config path`   | Find the config file your session uses |
+| `gnoblinctl config default` | Print the bundled default `init.lua`  |
 | `gnoblinctl config reload` | Apply edits and report config errors   |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
@@ -90,7 +91,7 @@ Actions without extra arguments accept an optional window ID; they use
 | --- | --- |
 | `ping`, `version`, `status` | Check the shell, build version and window bridge |
 | `reload` | Refresh the Shell, theme and installed/personal scripts while keeping windows |
-| `config path`, `config reload` | Find or reload the active config |
+| `config path`, `config default`, `config reload` | Find the active config, print the bundled example, or reload |
 | `input list`, `input current` | Inspect configured and selected keyboard sources |
 | `input select TYPE ID` | Select an exact source from `input list` |
 | `feature list`, `feature show ID` | Inspect live Shell switches |
