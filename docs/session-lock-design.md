@@ -92,6 +92,42 @@ The regular GNOME login continues using GNOME's lock screen. GDM,
 recovery controls must query the new lock state before exposing operations
 that `Main.sessionMode.isLocked` currently protects.
 
+## Shell cutover contract
+
+The first implementation keeps GNOME Shell's path by default. A developer can
+set `GNOBLIN_SESSION_LOCK_CUTOVER=1` only for a fresh Gnoblin Shell process.
+At startup, Shell reads Mutter's native
+`get_gnoblin_session_lock_capability()` accessor. It does not synchronously
+query D-Bus: Mutter and the Shell JavaScript share one process, so a startup
+call into a service owned by that process can deadlock. Shell skips constructing
+`ScreenShield` only when the native accessor reports all of the following:
+
+1. `CapabilityVersion >= 1`;
+2. a server with compositor-enforced `unlocked`, `covering`, `locked`, and
+   `failsafe` states is installed; and
+3. the coordinator already owns `org.gnome.ScreenSaver` and
+   `org.gnome.Shell.ScreenShield` compatibility names.
+
+The native seam also supplies `get_gnoblin_session_lock_active()` and
+`request_gnoblin_session_lock(reason)`. Its future coordinator exposes `State`
+(`unavailable`, `unlocked`, `covering`, `locked`, or `failsafe`), `Active`,
+`StateChanged`, and `RequestLock(reason)` on `org.gnoblin.SessionLock` for
+external clients. The native active accessor is true from `covering` through
+`failsafe`, so Shell's bridge stops work as soon as Mutter installs its input
+embargo rather than waiting for presentation confirmation.
+`RequestLock` only confirms that acquisition began; it does not substitute for
+the compositor presentation confirmation. The coordinator owns logind and the
+two compatibility D-Bus names during cutover, while GNOME Shell owns all of
+them during fallback. This single-owner rule prevents competing ScreenSaver
+methods and sleep listeners.
+
+Gnoblin's bridge and developer console use the same adapter for their locked
+state. It combines stock `sessionMode.isLocked` with the coordinator's active
+state, cancels bridge interaction when the compositor becomes active, and
+refuses screenshots, previews and window operations while locked. A coordinator
+which is absent, too old, `covering`, or `unavailable` leaves GNOME's normal
+ScreenShield untouched.
+
 ## Release gates
 
 The replacement is ready to become the default only when a fresh installed

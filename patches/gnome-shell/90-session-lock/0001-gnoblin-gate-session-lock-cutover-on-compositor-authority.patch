@@ -1,0 +1,73 @@
+From e1bbc394e8b3d8182b72573aac590273581ae24a Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:19:12 +0100
+Subject: [PATCH] gnoblin: gate session lock cutover on compositor authority
+
+---
+ js/js-resources.gresource.xml | 1 +
+ js/misc/systemActions.js      | 6 +++++-
+ js/ui/main.js                 | 5 ++++-
+ 3 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 386609027..08d8671ac 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -145,6 +145,7 @@
+     <file>ui/components/gnoblinFrames.js</file>
+     <file>ui/components/gnoblinFramePolicy.js</file>
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinSessionLock.js</file>
+     <file>ui/components/gnoblinBridge/compositor-bridge.js</file>
+     <file>ui/components/gnoblinBridge/lib/blur-regions.js</file>
+     <file>ui/components/gnoblinBridge/lib/clipboard-paste.js</file>
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index 483ff6a43..398c692fd 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -10,6 +10,7 @@ import * as GnomeSession from './gnomeSession.js';
+ import * as LoginManager from './loginManager.js';
+ import * as Main from '../ui/main.js';
+ import * as Screenshot from '../ui/screenshot.js';
++import * as GnoblinSessionLock from '../ui/components/gnoblinSessionLock.js';
+ 
+ const LOCKDOWN_SCHEMA = 'org.gnome.desktop.lockdown';
+ const LOGIN_SCREEN_SCHEMA = 'org.gnome.login-screen';
+@@ -454,7 +455,10 @@ const SystemActions = GObject.registerClass({
+         if (!this._actions.get(LOCK_SCREEN_ACTION_ID).available)
+             throw new Error('The lock-screen action is not available!');
+ 
+-        Main.screenShield.lock(true);
++        if (GnoblinSessionLock.isAuthoritative())
++            GnoblinSessionLock.requestLock('system-actions');
++        else
++            Main.screenShield?.lock(true);
+     }
+ 
+     activateSwitchUser() {
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 8b5adf43b..f6e6f29ed 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -33,6 +33,7 @@ import * as Layout from './layout.js';
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
+ import * as DevConsole from './components/gnoblinConsole.js';
++import * as GnoblinSessionLock from './components/gnoblinSessionLock.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -240,7 +241,9 @@ async function _initializeUI() {
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+-    if (LoginManager.canLock())
++    // The opt-in coordinator must already hold the compatibility D-Bus names
++    // and prove an unlocked compositor lock before it can replace ScreenShield.
++    if (LoginManager.canLock() && !GnoblinSessionLock.shouldReplaceScreenShield())
+         screenShield = new ScreenShield.ScreenShield();
+ 
+     inputMethod = new InputMethod.InputMethod();
+-- 
+2.55.0
+
