@@ -131,6 +131,25 @@ close_lock_surfaces (MetaWaylandSessionLockController *controller)
 }
 
 static void
+disconnect_scene_signals (MetaWaylandSessionLockController *controller)
+{
+  /* A controller survives unlock so capture/privacy observers can retain their
+   * callback registrations. Its stage signal subscriptions only belong to one
+   * blackout scene, however. Leaving them connected would install duplicate
+   * presentation barriers on the next lock transition. */
+  if (controller->stage)
+    {
+      g_clear_signal_handler (&controller->stage_presented_id, controller->stage);
+      g_clear_signal_handler (&controller->stage_views_changed_id, controller->stage);
+      g_clear_signal_handler (&controller->stage_child_added_id, controller->stage);
+      g_clear_signal_handler (&controller->stage_before_paint_id, controller->stage);
+    }
+  if (controller->monitor_manager)
+    g_clear_signal_handler (&controller->monitors_changed_id,
+                            controller->monitor_manager);
+}
+
+static void
 destroy_state_changed_callback (gpointer data)
 {
   MetaWaylandSessionLockStateChangedCallback *callback = data;
@@ -213,12 +232,15 @@ session_lock_unlock_and_destroy (struct wl_client   *client,
    * removed only after the opaque scene has gone, and observers see UNLOCKED
    * only after both cursor and direct-scanout holds are balanced. */
   close_lock_surfaces (controller);
+  disconnect_scene_signals (controller);
   if (controller->scene)
     {
       clutter_actor_destroy (controller->scene);
       controller->scene = NULL;
       controller->cover = NULL;
     }
+  controller->stage = NULL;
+  controller->monitor_manager = NULL;
   if (controller->input_handler && controller->compositor->seat)
     {
       meta_wayland_input_detach_event_handler (
@@ -584,8 +606,20 @@ on_stage_presented (ClutterStage                         *stage,
 
   minimum_frame = g_hash_table_lookup (controller->unpresented_stage_views,
                                        stage_view);
-  if (!minimum_frame || frame_info->global_frame_counter <= *minimum_frame)
+  if (!minimum_frame)
     return;
+
+  if (frame_info->global_frame_counter <= *minimum_frame)
+    {
+      /* `clutter_stage_get_frame_counter()` is the next counter to be assigned.
+       * On an idle stage the one redraw submitted by reset can therefore carry
+       * exactly the sampled value. It cannot prove this generation because it
+       * may have been queued before the cover/restack. Submit another covered
+       * frame instead of weakening the strict counter fence and stalling every
+       * later lock transition. */
+      clutter_actor_queue_redraw (CLUTTER_ACTOR (controller->stage));
+      return;
+    }
 
   g_hash_table_remove (controller->unpresented_stage_views, stage_view);
   if (g_hash_table_size (controller->unpresented_stage_views) == 0)
@@ -616,11 +650,7 @@ destroy_controller (gpointer data)
 {
   MetaWaylandSessionLockController *controller = data;
 
-  g_clear_signal_handler (&controller->stage_presented_id, controller->stage);
-  g_clear_signal_handler (&controller->stage_views_changed_id, controller->stage);
-  g_clear_signal_handler (&controller->stage_child_added_id, controller->stage);
-  g_clear_signal_handler (&controller->stage_before_paint_id, controller->stage);
-  g_clear_signal_handler (&controller->monitors_changed_id, controller->monitor_manager);
+  disconnect_scene_signals (controller);
 
   if (controller->input_handler && controller->compositor->seat)
     meta_wayland_input_detach_event_handler (

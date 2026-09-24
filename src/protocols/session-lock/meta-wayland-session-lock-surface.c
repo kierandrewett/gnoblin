@@ -390,6 +390,10 @@ meta_wayland_session_lock_surface_new (MetaWaylandSurface *surface,
 
     window->type = META_WINDOW_DOCK;
     window->input = TRUE;
+    /* This MetaWindow is only backing state for a private stage-scene actor.
+     * The lock role has already selected its output geometry, so it must never
+     * enter normal first-show toplevel placement before the window is ready. */
+    window->placed = TRUE;
     meta_wayland_shell_surface_set_window (META_WAYLAND_SHELL_SURFACE (lock_surface),
                                            window);
   }
