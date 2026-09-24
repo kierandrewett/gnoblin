@@ -103,16 +103,21 @@ call into a service owned by that process can deadlock. Shell skips constructing
 `ScreenShield` only when the native accessor reports all of the following:
 
 1. `CapabilityVersion >= 1`;
-2. a server with compositor-enforced `unlocked`, `covering`, `locked`, and
+2. Mutter's `get_gnoblin_session_lock_launcher_ready()` confirms the fixed
+   trusted Bingux lock-client path is executable;
+3. a server with compositor-enforced `unlocked`, `covering`, `locked`, and
    `failsafe` states is installed; and
-3. the coordinator already owns `org.gnome.ScreenSaver` and
+4. the coordinator already owns `org.gnome.ScreenSaver` and
    `org.gnome.Shell.ScreenShield` compatibility names.
 
-Mutter exposes the last condition separately through
-`get_gnoblin_session_lock_coordinator_ready()`. It remains false until the
-coordinator has logind and idle handling running and has acquired both names.
-This avoids a period with neither GNOME Shell nor the coordinator serving the
-ScreenSaver APIs.
+Shell obtains the last condition from the external broker, never from the
+in-process compositor endpoint. It makes bounded 1-second session-bus calls to
+`org.gnoblin.Lock` at `/org/gnoblin/Lock`, reads its `CompatibilityReady`
+property, then verifies that `org.gnoblin.Lock`, `org.gnome.ScreenSaver`, and
+`org.gnome.Shell.ScreenShield` all have the same D-Bus owner. The broker keeps
+`CompatibilityReady` false until logind and idle forwarding run and it owns
+both names. Any timeout, error, missing name, or owner mismatch retains GNOME
+ScreenShield.
 
 The native seam also supplies `get_gnoblin_session_lock_active()` and
 `request_gnoblin_session_lock(reason)`. Its future coordinator exposes `State`
@@ -133,6 +138,13 @@ state, cancels bridge interaction when the compositor becomes active, and
 refuses screenshots, previews and window operations while locked. A coordinator
 which is absent, too old, `covering`, or `unavailable` leaves GNOME's normal
 ScreenShield untouched.
+
+The Shell screenshot service applies that same predicate before creating a
+`Shell.Screenshot`, opening screenshot or recording UI, interactive capture,
+and area selection. It returns permission denied over
+`org.gnome.Shell.Screenshot` from `covering` onward. This complements the
+compositor's capture isolation and prevents Shell-owned screenshot paths from
+leaking a frame during the handover.
 
 The Shell suppresses GNOME's “Screen Lock disabled” warning only after that
 authority check. Switch User remains unavailable during the first cutover
