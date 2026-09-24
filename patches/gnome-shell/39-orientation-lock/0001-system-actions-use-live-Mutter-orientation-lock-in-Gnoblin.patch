@@ -1,5 +1,5 @@
 From 99fbb95ce318aa05b996e41bc6f1f5d8e86fd75e Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 20:12:00 +0000
 Subject: [PATCH] system-actions: use live Mutter orientation lock in Gnoblin
 

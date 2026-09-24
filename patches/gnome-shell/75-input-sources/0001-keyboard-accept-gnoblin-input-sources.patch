@@ -1,5 +1,5 @@
 From abb4026fcb49c495aed765d5d683eb55f5fde07a Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 20:12:00 +0000
 Subject: [PATCH] keyboard: accept Gnoblin input sources and XKB options in
  memory
