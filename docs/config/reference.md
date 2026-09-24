@@ -15,17 +15,20 @@ Setting names use underscores (`snake_case`). String values are used as written.
 Each reload builds the config afresh; these functions describe that config,
 not one-off commands to change the running desktop.
 
-| Function | Input | Behaviour |
-| --- | --- | --- |
-| [`configure { ... }`](/config#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
-| [`window_rule { ... }`](/config/window_rules#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
-| [`permission_rule { ... }`](/config/permissions#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
-| [`shortcut { ... }`](/config/shortcuts#launch-a-command) | Named command | Add or update by name; omitted fields stay unchanged |
-| [`autostart { ... }`](/config/autostart#add-a-program) | Named command | Add or update by name; run once per name per login |
-| [`remove_shortcut(name)`](/config/shortcuts#remove-a-shortcut) | Shortcut name | Exclude an earlier named shortcut from this config load |
-| [`remove_autostart(name)`](/config/autostart#remove-an-entry) | String | Remove an entry; does not stop its process |
-| [`load(path)`](/config/files_and_load_order#include-a-file) | File or glob | Evaluate now, relative to the calling file |
-| [`require(name)`](/config/files_and_load_order#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| Function                                                                            | Input                      | Behaviour                                                                  |
+| ----------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------- |
+| [`configure { ... }`](/config#2-make-a-change)                                      | Settings table             | Merge maps; replace supplied lists; later values win                       |
+| [`window_rule { ... }`](/config/window_rules#add-a-rule)                            | Match and effect fields    | Append a rule; later matching fields win                                   |
+| [`permission_rule { ... }`](/config/permissions#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins                               |
+| [`shortcut { ... }`](/config/shortcuts#function-form)                               | Named command              | Add or update by name; `enable = false` disables it                        |
+| [`autostart { ... }`](/config/autostart#function-form)                              | Named command              | Add or update by name; `enable = false` disables it                        |
+| [`configure.shortcuts.NAME`](/config/shortcuts#remove-a-shortcut)                   | Shortcut name              | Read or edit an existing entry; assign a table to add or override one      |
+| [`configure.autostart.NAME`](/config/autostart#remove-an-entry)                     | Autostart name             | Read or edit an existing entry; assign a table to add or override one      |
+| [`remove_shortcut(name)`](/config/shortcuts#remove-a-shortcut)                      | Shortcut name              | Older form of disabling an earlier named shortcut                          |
+| [`remove_autostart(name)`](/config/autostart#remove-an-entry)                       | Entry name                 | Older form of disabling an earlier named autostart                         |
+| [`load(path)`](/config/files_and_load_order#include-a-file)                         | File or glob               | Evaluate now, relative to the calling file                                 |
+| [`require(name)`](/config/files_and_load_order#use-a-lua-module)                    | Local module name          | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| [`snapshot()`](/config/files_and_load_order#inspect-loaded-settings)                | None                       | Copy the config assembled so far                                           |
 
 Call functions as `gnoblin.window_rule { ... }`, for example.
 Tables passed to declarations are copied. Later changes to your table do not
@@ -55,14 +58,20 @@ Guides: [animations](/config/animations), [native features](/config/session_sett
 
 | Field           | Used by             | Value                                                                |
 | --------------- | ------------------- | -------------------------------------------------------------------- |
-| `name`          | Shortcut, autostart | Required string; identifies the entry for overrides                  |
+| `name`          | Shortcut, autostart | Required in function calls; named maps use the map key instead       |
 | `command`       | Shortcut, autostart | Argument list, e.g. `{"ptyxis", "--new-window"}`; no shell expansion |
 | `binding`       | Shortcut            | GTK accelerator, e.g. `"<Super>Return"`                              |
 | `capture_input` | Shortcut            | Boolean; buffers popup typing; default `false`                       |
 
 Shortcut names use letters, digits, `_` and `-`. Limit: 256 command shortcuts.
-A new shortcut needs a binding and command. An override needs only its name and
-changed fields. Different shortcut names must not claim the same binding.
+A new shortcut needs a binding and command. Set `configure {shortcuts = {
+NAME = {binding = "...", command = {...}}}}` to define one, or set
+`NAME = {enable = false}` to disable an imported entry. Named map entries merge
+with earlier entries; omitted fields stay unchanged. Different shortcut names
+must not claim the same binding.
+
+`autostart` accepts the same named map form. Its entries run once per name per
+login; disabling one does not stop a process that already started.
 
 Built-in bindings go in `configure {keybindings = {GROUP = {ACTION = {KEYS}}}}`.
 Use underscores in action names; hyphenated config names are rejected. For
@@ -70,8 +79,8 @@ example, configure `show_screenshot_ui` for GSettings' `show-screenshot-ui`.
 Groups: `shell`, `wm`, `mutter`, `wayland`. Empty action lists disable the
 binding. Gnoblin applies these to Mutter's native keybinding table on reload;
 the Lua file owns persistence. Removing an override restores the built-in
-default. GNOME Settings Daemon media keys are a separate service and are not
-configured by this table.
+default. Media keys are [command shortcuts in Lua](shortcuts.md#media-keys),
+not built-in `keybindings` actions.
 
 Guides: [shortcuts](/config/shortcuts), [autostart](/config/autostart),
 [restore or minimise](/config/window_state_shortcuts).
@@ -80,12 +89,12 @@ Guides: [shortcuts](/config/shortcuts), [autostart](/config/autostart),
 
 Use these schemas to look up action names with `gsettings list-keys SCHEMA`:
 
-| Lua group | GSettings schema                               |
-| --------- | ---------------------------------------------- |
-| `shell`   | `org.gnome.shell.keybindings`                  |
-| `wm`      | `org.gnome.desktop.wm.keybindings`             |
-| `mutter`  | `org.gnome.mutter.keybindings`                 |
-| `wayland` | `org.gnome.mutter.wayland.keybindings`         |
+| Lua group | GSettings schema                       |
+| --------- | -------------------------------------- |
+| `shell`   | `org.gnome.shell.keybindings`          |
+| `wm`      | `org.gnome.desktop.wm.keybindings`     |
+| `mutter`  | `org.gnome.mutter.keybindings`         |
+| `wayland` | `org.gnome.mutter.wayland.keybindings` |
 
 These schemas still provide the built-in action catalogue and default bindings.
 Gnoblin does not save the configured overrides to them.
@@ -95,20 +104,20 @@ Gnoblin does not save the configured overrides to them.
 Inside `gnoblin.configure {window_management = {...}}`. Values apply on reload
 and omitted fields return to the Gnoblin defaults below.
 
-| Key | Values | Default |
-| --- | --- | --- |
-| `focus_mode` | `"click"`, `"sloppy"`, `"mouse"` | `"click"` |
-| `focus_new_windows` | `"smart"`, `"strict"` | `"smart"` |
-| `raise_on_click`, `auto_raise`, `focus_change_on_pointer_rest` | Boolean | `true`, `false`, `false` |
-| `auto_raise_delay` | 0–10000 ms | `500` |
-| `action_double_click_titlebar` | Titlebar action below | `"toggle-maximize"` |
-| `action_middle_click_titlebar` | Titlebar action below | `"lower"` |
-| `action_right_click_titlebar` | Titlebar action below | `"menu"` |
-| `dynamic_workspaces`, `workspaces_only_on_primary`, `edge_tiling` | Boolean | `false` |
-| `num_workspaces` | 1–36; used when dynamic workspaces are off | `4` |
-| `workspace_names` | Array of up to 36 strings, each at most 80 characters | `{}` |
-| `center_new_windows`, `attach_modal_dialogs` | Boolean | `false` |
-| `constrain_drag_to_work_area` | Boolean | `true` |
+| Key                                                               | Values                                                | Default                  |
+| ----------------------------------------------------------------- | ----------------------------------------------------- | ------------------------ |
+| `focus_mode`                                                      | `"click"`, `"sloppy"`, `"mouse"`                      | `"click"`                |
+| `focus_new_windows`                                               | `"smart"`, `"strict"`                                 | `"smart"`                |
+| `raise_on_click`, `auto_raise`, `focus_change_on_pointer_rest`    | Boolean                                               | `true`, `false`, `false` |
+| `auto_raise_delay`                                                | 0–10000 ms                                            | `500`                    |
+| `action_double_click_titlebar`                                    | Titlebar action below                                 | `"toggle-maximize"`      |
+| `action_middle_click_titlebar`                                    | Titlebar action below                                 | `"lower"`                |
+| `action_right_click_titlebar`                                     | Titlebar action below                                 | `"menu"`                 |
+| `dynamic_workspaces`, `workspaces_only_on_primary`, `edge_tiling` | Boolean                                               | `false`                  |
+| `num_workspaces`                                                  | 1–36; used when dynamic workspaces are off            | `4`                      |
+| `workspace_names`                                                 | Array of up to 36 strings, each at most 80 characters | `{}`                     |
+| `center_new_windows`, `attach_modal_dialogs`                      | Boolean                                               | `false`                  |
+| `constrain_drag_to_work_area`                                     | Boolean                                               | `true`                   |
 
 Titlebar actions: `toggle-maximize`, `toggle-maximize-horizontally`,
 `toggle-maximize-vertically`, `minimize`, `lower`, `menu`, `none`.
@@ -125,12 +134,12 @@ Inside `gnoblin.configure {compositor = {...}}`. Values apply on reload.
 These settings cover compositor interaction preferences; accessibility
 settings remain separate.
 
-| Key | Values | Default |
-| --- | --- | --- |
-| `enable_animations` | Boolean | `true` |
-| `locate_pointer` | Boolean | `false` |
-| `visual_bell`, `audible_bell` | Boolean | `false`, `true` |
-| `visual_bell_type` | `"fullscreen-flash"`, `"frame-flash"` | `"fullscreen-flash"` |
+| Key                           | Values                                | Default              |
+| ----------------------------- | ------------------------------------- | -------------------- |
+| `enable_animations`           | Boolean                               | `true`               |
+| `locate_pointer`              | Boolean                               | `false`              |
+| `visual_bell`, `audible_bell` | Boolean                               | `false`, `true`      |
+| `visual_bell_type`            | `"fullscreen-flash"`, `"frame-flash"` | `"fullscreen-flash"` |
 
 Guide: [session settings](/config/session_settings).
 
@@ -141,20 +150,20 @@ Each group is optional. Fields you omit continue to use the corresponding
 GNOME/Mutter setting. Global settings use `mouse`, `touchpad`, and `keyboard`;
 tablet and stylus overrides are selected by device identifier.
 
-| Group | Fields | Values |
-| --- | --- | --- |
-| `mouse` | `speed` | Number from -1 to 1 |
-| | `left_handed`, `natural_scroll` | Boolean |
-| | `accel_profile` | `"default"`, `"flat"`, `"adaptive"` |
-| `touchpad` | `speed` | Number from -1 to 1 |
-| | `left_handed` | `"right"`, `"left"`, `"mouse"` |
-| | `natural_scroll`, `tap_to_click`, `tap_and_drag`, `tap_and_drag_lock`, `disable_while_typing`, `edge_scrolling_enabled`, `two_finger_scrolling_enabled` | Boolean |
-| | `accel_profile` | `"default"`, `"flat"`, `"adaptive"` |
-| | `tap_button_map` | `"default"`, `"lrm"`, `"lmr"` |
-| | `click_method` | `"default"`, `"none"`, `"areas"`, `"fingers"` |
-| `keyboard` | `repeat`, `remember_numlock_state`, `numlock_state` | Boolean |
-| | `delay`, `repeat_interval` | 1–10000 ms |
-| | `xkb_options` | Array of XKB option strings |
+| Group      | Fields                                                                                                                                                  | Values                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `mouse`    | `speed`                                                                                                                                                 | Number from -1 to 1                           |
+|            | `left_handed`, `natural_scroll`                                                                                                                         | Boolean                                       |
+|            | `accel_profile`                                                                                                                                         | `"default"`, `"flat"`, `"adaptive"`           |
+| `touchpad` | `speed`                                                                                                                                                 | Number from -1 to 1                           |
+|            | `left_handed`                                                                                                                                           | `"right"`, `"left"`, `"mouse"`                |
+|            | `natural_scroll`, `tap_to_click`, `tap_and_drag`, `tap_and_drag_lock`, `disable_while_typing`, `edge_scrolling_enabled`, `two_finger_scrolling_enabled` | Boolean                                       |
+|            | `accel_profile`                                                                                                                                         | `"default"`, `"flat"`, `"adaptive"`           |
+|            | `tap_button_map`                                                                                                                                        | `"default"`, `"lrm"`, `"lmr"`                 |
+|            | `click_method`                                                                                                                                          | `"default"`, `"none"`, `"areas"`, `"fingers"` |
+| `keyboard` | `repeat`, `remember_numlock_state`, `numlock_state`                                                                                                     | Boolean                                       |
+|            | `delay`, `repeat_interval`                                                                                                                              | 1–10000 ms                                    |
+|            | `xkb_options`                                                                                                                                           | Array of XKB option strings                   |
 
 `numlock_state` is kept in memory while Gnoblin's config is active. Tablet keys
 use four-hex-digit vendor and product IDs such as `"1234:5678"`; their fields

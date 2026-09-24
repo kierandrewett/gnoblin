@@ -76,7 +76,8 @@ int main(void) {
         g_autoptr(GVariant) example_shortcuts =
             g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
         g_assert_nonnull(example_shortcuts);
-        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 10);
+        /* The seeded file keeps the shell fragment plus its ten own shortcuts. */
+        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 11);
     }
 
     g_assert_true(g_file_set_contents(explicit_root, "return { shell={osd=true} }\n", -1, &error));

@@ -2,7 +2,7 @@
 
 [Configuration reference](/config/reference)
 
-Use `gnoblin.shortcut` to launch a program when you press a key combination.
+Use the named `shortcuts` table to launch a program when you press a key combination.
 Use `keybindings` to change built-in actions such as closing a window.
 Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 
@@ -11,34 +11,51 @@ Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 Add this after any `gnoblin.load(...)` lines. It opens a terminal with Super+Enter:
 
 ```lua
-gnoblin.shortcut {
-    name = "my-terminal",
-    binding = "<Super>Return",
-    command = {"ptyxis", "--new-window"},
+gnoblin.configure {
+    shortcuts = {
+        my_terminal = {
+            binding = "<Super>Return",
+            command = {"ptyxis", "--new-window"},
+        },
+    },
 }
 ```
 
 Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
-Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
-Removing one releases its binding; it does not stop a launched program.
+The map key is the shortcut's name. Names use letters, numbers, `_` and `-`.
+Up to 256 command shortcuts are allowed.
+
+## Function form
+
+For an existing config that uses declarations, the same shortcut is:
+
+```lua
+gnoblin.shortcut {
+    name = "my_terminal",
+    binding = "<Super>Return",
+    command = {"ptyxis", "--new-window"},
+}
+```
+
+Use the same name to change only the fields you supply. Set `enable = false`
+with that name to disable it.
 
 ## Remove a shortcut
 
-`remove_shortcut` excludes a named `gnoblin.shortcut` entry added earlier in
-the same config load. Use it when a shell's config supplies a shortcut you do
-not want:
+After loading the file that defines `my_terminal`, disable it directly:
 
 ```lua
-gnoblin.remove_shortcut("my-terminal")
+gnoblin.configure.shortcuts.my_terminal.enable = false
 ```
 
-The config is rebuilt on every reload. This releases that entry's binding;
-it does not change GNOME's built-in keybindings or shortcuts belonging to
-other programs. An unknown name does nothing. Put the removal after the file
-that adds the shortcut;
-[load order](/config/files_and_load_order#override-or-append) matters.
+The config is rebuilt on every reload. Disabling releases that entry's binding;
+it does not stop a program already launched by the shortcut. Put this after
+the file that defines it; [load order](/config/files_and_load_order#override-or-append)
+matters. An unknown name raises a Lua error. The named map form,
+`gnoblin.configure {shortcuts = {my_terminal = {enable = false}}}`, also works;
+`gnoblin.remove_shortcut(name)` remains available for older configs.
 
 ## Key names
 
@@ -83,8 +100,31 @@ GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
 These overrides live in Gnoblin's native keybinding table and persist in the
-Lua file. Removing an entry restores its built-in default on reload. Media keys
-handled by GNOME Settings Daemon are outside this table.
+Lua file. Removing an entry restores its built-in default on reload.
+
+## Media keys
+
+Volume, brightness and playback keys are ordinary Gnoblin command shortcuts
+in the editable first-login `init.lua`. For example:
+
+```lua
+gnoblin.shortcut {
+    name = "volume-up",
+    binding = "XF86AudioRaiseVolume",
+    command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"},
+}
+```
+
+Change or disable them in Lua like any other named shortcut. Gnoblin does not
+start GNOME Settings Daemon's media-key handler in its session.
+
+## Inspect shortcuts loaded so far
+
+Use `pairs(gnoblin.configure.shortcuts)` to loop over command shortcuts loaded
+so far and edit them by name. The [example](/config/files_and_load_order#inspect-loaded-settings)
+shows this. `gnoblin.snapshot()` copies the assembled config when you need a
+stable value. Built-in actions in `keybindings` are separate. Lua runs before
+the compositor registers keys, so neither view reports successful live grabs.
 
 ## Avoid conflicts
 

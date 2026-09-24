@@ -73,7 +73,8 @@ The result is a fade lasting 150 milliseconds. Changing the duration does not
 remove the animation choice.
 
 Lists behave differently: supplying `window_rules`, `shortcuts`, `autostart`
-or permission `rules` replaces that list. To add a window rule while keeping
+or permission `rules` through `gnoblin.configure` replaces that list. Returned
+config fragments append these lists. To add a window rule while keeping
 previous rules, use:
 
 ```lua
@@ -84,8 +85,15 @@ gnoblin.window_rule {
 ```
 
 `gnoblin.shortcut` and `gnoblin.autostart` merge entries with the same name.
-Use `gnoblin.remove_shortcut(name)` or `gnoblin.remove_autostart(name)` to
-remove an imported entry. Removing an autostart entry does not stop a process.
+Named maps in `gnoblin.configure` do the same. To disable an imported shortcut:
+
+```lua
+gnoblin.configure {shortcuts = {terminal = {enable = false}}}
+```
+
+The same form works for `autostart`. Disabling an autostart entry does not stop
+an already-running process. Older configs can still use
+`gnoblin.remove_shortcut(name)` and `gnoblin.remove_autostart(name)`.
 
 To remove every command shortcut loaded so far:
 
@@ -95,6 +103,33 @@ gnoblin.configure {shortcuts = {}}
 
 Use `gnoblin.shortcut` to add or change individual shortcuts without clearing
 the others.
+
+## Inspect loaded settings
+
+After loading a shell's config, `gnoblin.configure.shortcuts` provides named
+access to command shortcuts loaded so far. For example, disable all imported
+shortcuts with a `shell-` name prefix:
+
+```lua
+gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
+
+for name, shortcut in pairs(gnoblin.configure.shortcuts) do
+    if name:match("^shell%-") then
+        shortcut.enable = false
+    end
+end
+```
+
+You can also change an entry directly, for example
+`gnoblin.configure.autostart.waybar.enable = false`. For field edits, the name
+must already exist. Assign a table to a name to add or override an entry:
+`gnoblin.configure.autostart.waybar = {command = {"waybar"}}`.
+
+`gnoblin.snapshot()` returns a copy of the assembled settings when you need a
+stable value. Both views contain only declarations loaded before the call.
+`snapshot().keybindings` contains built-in action overrides declared so far,
+not the complete catalogue of defaults. Lua runs before the compositor grabs
+the keys, so neither view can report which grabs succeeded at runtime.
 
 ## Use a Lua module
 
@@ -173,24 +208,24 @@ If `gnoblin` or `configure` is reported as `nil`, see
 
 ## Reload and persistence
 
-| Change                         | Applies                                        | When removed                             |
-| ------------------------------ | ---------------------------------------------- | ---------------------------------------- |
-| Rules and animations           | On reload                                      | Earlier rules/defaults apply             |
-| Titlebar policy                | After reload and the app's next surface update | Earlier rules/defaults apply             |
-| Command shortcuts              | On reload                                      | Binding released; launched process stays |
-| Built-in keybindings           | On reload                                      | Built-in default applies                 |
-| Window-management preferences | On reload                                      | Gnoblin default applies                  |
-| Compositor interaction preferences | On reload                                  | Gnoblin default applies                  |
-| Input preferences              | On reload                                      | GNOME/Mutter settings apply              |
-| Input sources                  | On reload                                      | GNOME session sources apply              |
-| Orientation lock               | On reload                                      | GNOME orientation setting applies        |
-| Cursor theme and size          | On reload                                      | Adwaita at 24 logical pixels              |
-| Notifications and layout popup | On reload                                      | Saved GSettings value stays              |
-| Autostart                      | New names start on reload                      | Running process stays                    |
-| Renderer services              | Restart on reload                              | Enabled frames use native fallback       |
-| Protocols                      | Next login                                     | Default on next login                    |
-| Launcher focus behaviour       | Next login                                     | Default on next login                    |
-| Drag boundary                  | Next drag after reload                         | Defaults to enabled                      |
+| Change                             | Applies                                        | When removed                             |
+| ---------------------------------- | ---------------------------------------------- | ---------------------------------------- |
+| Rules and animations               | On reload                                      | Earlier rules/defaults apply             |
+| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply             |
+| Command shortcuts                  | On reload                                      | Binding released; launched process stays |
+| Built-in keybindings               | On reload                                      | Built-in default applies                 |
+| Window-management preferences      | On reload                                      | Gnoblin default applies                  |
+| Compositor interaction preferences | On reload                                      | Gnoblin default applies                  |
+| Input preferences                  | On reload                                      | GNOME/Mutter settings apply              |
+| Input sources                      | On reload                                      | GNOME session sources apply              |
+| Orientation lock                   | On reload                                      | GNOME orientation setting applies        |
+| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels             |
+| Notifications and layout popup     | On reload                                      | Saved GSettings value stays              |
+| Autostart                          | New names start on reload                      | Running process stays                    |
+| Renderer services                  | Restart on reload                              | Enabled frames use native fallback       |
+| Protocols                          | Next login                                     | Default on next login                    |
+| Launcher focus behaviour           | Next login                                     | Default on next login                    |
+| Drag boundary                      | Next drag after reload                         | Defaults to enabled                      |
 
 An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file
