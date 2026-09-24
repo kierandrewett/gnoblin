@@ -26,6 +26,7 @@ not one-off commands to change the running desktop.
 | [`remove_autostart(name)`](autostart.md#remove-an-entry) | Entry name | Older form of disabling an earlier named autostart |
 | [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
 | [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| [`snapshot()`](configuration-loading.md#inspect-loaded-settings) | None | Copy the config assembled so far for Lua loops |
 
 Call functions as `gnoblin.window_rule { ... }`, for example.
 Tables passed to declarations are copied. Later changes to your table do not

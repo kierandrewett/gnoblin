@@ -104,6 +104,10 @@ int main(void) {
               "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n");
     g_autoptr(GVariant) named = evaluate(
         root, "gnoblin.load('component.lua')\n"
+              "local snapshot=gnoblin.snapshot()\n"
+              "assert(#snapshot.shortcuts==2)\n"
+              "snapshot.shortcuts[1].binding='changed'\n"
+              "assert(gnoblin.config.shortcuts[1].binding=='<Super>Return')\n"
               "gnoblin.configure {shortcuts={terminal={command={'new'}},"
               "keep={enable=false},my_extra={binding='<Super>e',command={'extra'}}}}\n"
               "gnoblin.shortcut {name='my_extra',command={'updated'}}\n");

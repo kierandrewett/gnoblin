@@ -99,6 +99,26 @@ gnoblin.configure {shortcuts = {}}
 Use `gnoblin.shortcut` to add or change individual shortcuts without clearing
 the others.
 
+## Inspect loaded settings
+
+After loading a shell's config, `gnoblin.snapshot()` returns a copy of the
+settings assembled so far. You can loop over its named shortcuts without
+changing the underlying table while you iterate:
+
+```lua
+gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
+
+for _, shortcut in ipairs(gnoblin.snapshot().shortcuts or {}) do
+    if shortcut.name:match("^shell%-") then
+        gnoblin.shortcut {name = shortcut.name, enable = false}
+    end
+end
+```
+
+This example disables imported command shortcuts whose names start with
+`shell-`. The snapshot contains only declarations loaded before the call.
+It does not query live key grabs or GNOME Settings Daemon bindings.
+
 ## Use a Lua module
 
 Use a module when you want a file to return settings for another file to use.

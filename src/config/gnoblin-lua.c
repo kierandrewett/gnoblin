@@ -397,6 +397,38 @@ static int lua_array(lua_State* state) {
     return 1;
 }
 
+static void copy_config_value(lua_State* state, int source, int depth) {
+    if (depth > MAX_CONFIG_DEPTH)
+        luaL_error(state, "Lua config nesting exceeds 64 levels");
+    source = lua_absindex(state, source);
+    if (!lua_istable(state, source)) {
+        lua_pushvalue(state, source);
+        return;
+    }
+    lua_newtable(state);
+    int destination = lua_gettop(state);
+    lua_pushnil(state);
+    while (lua_next(state, source)) {
+        lua_pushvalue(state, -2);
+        copy_config_value(state, -2, depth + 1);
+        lua_rawset(state, destination);
+        lua_pop(state, 1);
+    }
+    if (marked_array(state, source) && lua_getmetatable(state, source))
+        lua_setmetatable(state, destination);
+}
+
+static int lua_snapshot(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "snapshot takes no arguments");
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "config");
+    if (!lua_istable(state, -1))
+        return luaL_error(state, "gnoblin.config must be a table");
+    copy_config_value(state, -1, 0);
+    return 1;
+}
+
 static int lua_set(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     lua_getglobal(state, "gnoblin");
@@ -633,6 +665,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setfield(state, -2, "set");
     lua_pushcfunction(state, lua_configure);
     lua_setfield(state, -2, "configure");
+    lua_pushcfunction(state, lua_snapshot);
+    lua_setfield(state, -2, "snapshot");
     const struct {
         const char *name, *section, *key;
         gboolean named, remove;

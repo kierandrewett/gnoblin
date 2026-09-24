@@ -11,6 +11,8 @@ by name. `remove_shortcut(name)` and `remove_autostart(name)` remove them.
 For named overrides, `gnoblin.configure {shortcuts = {terminal = {command = {...}}}}`
 merges fields, and `terminal = {enable = false}` disables that entry. The same
 form works for autostart. The removal functions remain for older configs.
+`gnoblin.snapshot()` copies the config accumulated at that point in the file,
+so Lua code can inspect it while declaring more settings.
 
 Declarations copy their input and convert snake_case setting names to the
 internal hyphenated form. Renderer names and shader uniform names stay literal.
