@@ -6,18 +6,18 @@ It must stay that way until the compositor implements and hardware-validates
 `ext-session-lock-v1`.
 
 The broker listens for the current logind session's `Lock` signal and
-`PrepareForSleep(true)`.  It holds a logind `sleep` *delay* inhibitor from daemon
-startup, launches the configured locker once, and releases that FD only after the
-locker reports it received `ext_session_lock_v1.locked`.  It reacquires the FD on
-wake.  This prevents a normal sleep race; logind still enforces its configured
-maximum delay, so it cannot substitute for compositor black fallback.
+`PrepareForSleep(true)`. It holds a logind `sleep` *delay* inhibitor from daemon
+startup and launches the configured locker once. It has no trusted compositor
+callback yet, so it never releases that FD based on a locker report. Logind's
+configured maximum delay eventually proceeds; this prototype therefore cannot
+make a suspend safety claim or replace GNOME ScreenShield.
 
 ## State contract
 
 ```
-unlocked --request--> requested --ReportPresented(token)--> presented
-                                     |                         |
-                                     +-- timeout/failure -------+-- client death stays presented
+unlocked --request--> requested --compositor callback--> compositor-locked
+                                     |
+                                     +-- timeout/client death/failure --> failed
 ```
 
 There is no D-Bus `Unlock` method.  The locker must authenticate and send
@@ -25,10 +25,21 @@ There is no D-Bus `Unlock` method.  The locker must authenticate and send
 server round-trip confirmation after that request, so the public prototype has
 no completion method. A future compositor callback will update the broker.
 
-`ReportPresented` is deliberately labelled prototype evidence.  The token avoids
-accidental reports from unrelated applications but does not authenticate a hostile
-same-UID process.  Production confirmation must come from the compositor after it
-has blanked every output and isolated keyboard, pointer, touch and tablet input.
+`ReportPresented` is diagnostic only. The token avoids accidental reports from
+unrelated applications but does not authenticate a hostile same-UID process and
+cannot advance the lock state or release the sleep inhibitor. Production
+confirmation must come from the compositor after it has blanked every output and
+isolated keyboard, pointer, touch and tablet input.
+
+## Idle timeout and inhibitors
+
+`IdleTimeoutSeconds` uses Mutter's session-wide `org.gnome.Mutter.IdleMonitor`,
+which measures actual compositor input. A positive value creates an `AddIdleWatch`
+and also locks immediately if the session is already past the threshold at broker
+startup. `Inhibit(application, reason)` returns a cookie; it applies only to the
+calling D-Bus unique name, and is removed if that caller disconnects. `UnInhibit`
+only accepts cookies issued to the same caller. The resulting request reason is
+available through `GetLastReason` (`manual`, `idle`, `login1`, or `sleep`).
 
 ## Required compositor gate
 

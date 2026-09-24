@@ -8,10 +8,6 @@ Enabled=false
 # `locked` event.  Do not put a shell pipeline here; arguments are parsed safely.
 Command=
 
-# 0 disables broker-side idle locking.  Input-idle integration is intentionally
-# deferred until it can use compositor ext-idle-notify rather than a timer proxy.
+# 0 disables idle locking. A positive value uses Mutter's compositor-global
+# IdleMonitor, never a broker wall-clock timer. It honours broker inhibitors.
 IdleTimeoutSeconds=0
-
-# Set true only after the GNOME ScreenShield/screen-saver D-Bus owner is removed
-# from the Gnoblin session.  Duplicate owners race and are not supported.
-OwnScreenSaverNames=false
