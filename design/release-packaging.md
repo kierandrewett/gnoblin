@@ -84,8 +84,8 @@ options before source activation and default absent option arrays. The smoke
 fixture now creates its per-user script directory when no packaged
 integrations exist. A subsequent Fedora build exposed duplicate GResource
 entries because the bridge modules were included by two patches; the
-redundant later patch is removed in `52982ab`; the following Fedora 43 source
-build passed. Fedora 44's verification was blocked by a transient GitLab 503
-while fetching Mutter, so rerun it before treating the entire supported
-matrix as green. A COPR build and Fedora 43 installation check are still
-required before this compatibility change is complete.
+redundant later patch is removed in `52982ab`. The Fedora 43 source build
+passed on the first retry; Fedora 44 then hit a transient GitLab 503 while
+fetching Mutter, but a subsequent run on `835ca3b` passed both Fedora source
+builds. A COPR build and Fedora 43 installation check are still required
+before this compatibility change is complete.
