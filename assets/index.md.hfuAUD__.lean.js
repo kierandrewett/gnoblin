@@ -1,0 +1,1 @@
+import{_ as a,o as l,c as o,a2 as i}from"./chunks/framework.BfI5QxtK.js";const b=JSON.parse('{"title":"Gnoblin","description":"","frontmatter":{},"headers":[],"relativePath":"index.md","filePath":"index.md"}'),n={name:"index.md"};function r(t,e,s,d,h,u){return l(),o("div",null,[...e[0]||(e[0]=[i("",10)])])}const g=a(n,[["render",r]]);export{b as __pageData,g as default};
