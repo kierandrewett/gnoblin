@@ -147,8 +147,20 @@ gnoblin.configure {
     -- An entry with the same name overrides imported fields. Set enable =
     -- false to disable one. Accelerators use GTK syntax, such as <Super>Return.
     shortcuts = {
-        screenshot = {action = "gnome:shell.show_screenshot_ui", binding = {"Print"}},
-        close_window = {action = "wm.close", binding = {"<Alt>F4"}},
+        screenshot = {
+            action = {
+                schema = "org.gnome.shell.keybindings",
+                key = "show-screenshot-ui",
+            },
+            binding = {"Print"},
+        },
+        close_window = {
+            action = {
+                schema = "org.gnome.desktop.wm.keybindings",
+                key = "close",
+            },
+            binding = {"<Alt>F4"},
+        },
         ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
         ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
         ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},

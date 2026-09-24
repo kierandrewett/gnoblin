@@ -863,7 +863,41 @@ export const KEYBINDING_SCHEMAS = Object.freeze({
     mutter: "org.gnome.mutter.keybindings",
     wayland: "org.gnome.mutter.wayland.keybindings",
 });
+const KEYBINDING_SCHEMA_GROUPS = Object.freeze(
+    Object.fromEntries(Object.entries(KEYBINDING_SCHEMAS).map(([group, schema]) => [schema, group])),
+);
 const gsettingsKey = (key) => key.replaceAll("_", "-");
+
+function parseShortcutAction(action) {
+    if (typeof action === "string") {
+        const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(action);
+        if (!match) return null;
+        const [, namespace, key] = match;
+        const group = namespace === "gnome:shell" ? "shell" : namespace;
+        return { group, key, nativeKey: gsettingsKey(key), label: action };
+    }
+
+    if (
+        !action ||
+        typeof action !== "object" ||
+        Array.isArray(action) ||
+        Object.keys(action).length !== 2 ||
+        Object.keys(action).some((key) => !["schema", "key"].includes(key)) ||
+        typeof action.schema !== "string" ||
+        typeof action.key !== "string" ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(action.key)
+    )
+        return null;
+
+    const group = KEYBINDING_SCHEMA_GROUPS[action.schema];
+    if (!group) return null;
+    return {
+        group,
+        key: action.key.replaceAll("-", "_"),
+        nativeKey: action.key,
+        label: `${action.schema} ${action.key}`,
+    };
+}
 
 function acceleratorIdentity(value) {
     if (value === "Super") return "overlay-key";
@@ -916,19 +950,19 @@ export function validateShortcuts(document) {
             throw new Error("shortcut requires a unique name and exactly one of action or command");
         names.add(entry.name);
         if (entry.action !== undefined) {
-            const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(entry.action);
-            if (!match || !Array.isArray(entry.binding))
-                throw new Error('built-in shortcut requires action = "group.action" and a binding list');
-            const [, namespace, key] = match;
-            const group = namespace === "gnome:shell" ? "shell" : namespace;
+            const parsedAction = parseShortcutAction(entry.action);
+            if (!parsedAction || !Array.isArray(entry.binding))
+                throw new Error(
+                    'built-in shortcut requires action = {schema = "org.gnome.shell.keybindings", key = "show-screenshot-ui"} and a binding list',
+                );
+            const { group, key, nativeKey, label } = parsedAction;
             const actionKey = `${group}.${key}`;
             if (declaredActions.has(actionKey) || Object.hasOwn(keybindings[group] ?? {}, key))
-                throw new Error(`built-in shortcut action is configured more than once: ${entry.action}`);
+                throw new Error(`built-in shortcut action is configured more than once: ${label}`);
             declaredActions.add(actionKey);
             const schema = Gio.SettingsSchemaSource.get_default().lookup(KEYBINDING_SCHEMAS[group], true);
-            const nativeKey = gsettingsKey(key);
             if (!schema?.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
-                throw new Error(`unknown built-in shortcut action: ${entry.action}`);
+                throw new Error(`unknown built-in shortcut action: ${label}`);
             for (const binding of entry.binding) {
                 const identity = acceleratorIdentity(binding);
                 if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);

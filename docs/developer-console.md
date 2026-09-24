@@ -14,7 +14,10 @@ Disable the Alt+F2 binding in `~/.config/gnoblin/init.lua` with:
 gnoblin.configure {
     shortcuts = {
         run_dialog = {
-            action = "gnome:shell.panel_run_dialog",
+            action = {
+                schema = "org.gnome.shell.keybindings",
+                key = "panel-run-dialog",
+            },
             binding = {},
         },
     },

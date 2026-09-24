@@ -71,31 +71,33 @@ Command shortcuts are inactive on the lock and login screens.
 gnoblin.configure {
     shortcuts = {
         close_window = {
-            action = "wm.close",
+            action = {
+                schema = "org.gnome.desktop.wm.keybindings",
+                key = "close",
+            },
             binding = {"<Super>q"},
         },
     },
 }
 ```
 
-`action` uses a group and action name. Action names use underscores, even
-though GSettings displays hyphens. Use `gsettings list-keys SCHEMA` to find
-available names and `gsettings describe SCHEMA KEY` to read what an action
-does. For example:
+`action` names a GSettings schema and key. Use `gsettings list-keys SCHEMA`
+to find keys and `gsettings describe SCHEMA KEY` to read what one does. For
+example:
 
 ```sh
 gsettings list-keys org.gnome.desktop.wm.keybindings
 gsettings describe org.gnome.desktop.wm.keybindings close
 ```
 
-GSettings shows `close` with hyphens where needed; use underscores in the
-`group.action` name. Action catalogs vary by GNOME version. The
-[shortcut reference](/config/configure/shortcuts) maps all four groups to
-their schemas and lists each GNOME 51 action with a description. The listed
-actions are GNOME's available actions; the Lua config shows Gnoblin's active
-bindings. Use an empty binding list to disable an action. Removing the entry
-restores its built-in default on reload. Commands and built-in actions share
-the same `shortcuts` map.
+Copy the schema ID and native key spelling into the `action` table. For
+example, use `schema = "org.gnome.desktop.wm.keybindings"` and `key = "close"`.
+The [shortcut reference](/config/configure/shortcuts) lists the GNOME 51 keys
+with descriptions and maps each schema to its purpose. Other GNOME versions
+may provide different keys. The Lua config shows Gnoblin's active bindings;
+the list from GSettings shows available keys. Use an empty binding list to
+disable an action. Removing the entry restores its built-in default on reload.
+Commands and built-in actions share the same `shortcuts` map.
 
 ## Avoid conflicts
 

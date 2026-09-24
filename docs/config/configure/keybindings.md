@@ -18,7 +18,10 @@ to:
 ```lua
 gnoblin.configure {
     shortcuts = {
-        close_window = {action = "wm.close", binding = {"<Super>q"}},
+        close_window = {
+            action = {schema = "org.gnome.desktop.wm.keybindings", key = "close"},
+            binding = {"<Super>q"},
+        },
     },
 }
 ```
