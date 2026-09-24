@@ -69,6 +69,19 @@ jobs:
             release-assets/gnoblin-mutter-*.src.rpm \
             release-assets/gnoblin-shell-*.src.rpm \
             release-assets/gnoblin-[0-9]*.src.rpm
+
+  install-smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [43, 44]
+    container: fedora:${{ matrix.fedora }}
+    timeout-minutes: 20
+    steps:
+      - name: Install the published release
+        run: |
           dnf -y install dnf-plugins-core
           dnf -y copr enable kierandrewett/gnoblin
           dnf -y install --refresh gnoblin

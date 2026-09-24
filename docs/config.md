@@ -1,134 +1,46 @@
-# config
+# Config API
 
-[reference](/config/reference) · [recipes](/recipes)
+Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and autostart commands. The reference pages list the supported fields and defaults.
 
-On first login, `gnoblin-session` copies the packaged reference config to
-`~/.config/gnoblin/init.lua` when there is no Lua or legacy config already
-there. Gnoblin loads that file on the first shell start. The seed step never
-replaces an existing config. Edit the file to change shortcuts, window rules,
-effects and desktop preferences.
-Configure the bar, dock and launcher in your desktop shell.
+## Functions
 
-## 1. Find your config
+- [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
+- [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
+- [`gnoblin.permission_rule`](/config/permission_rule) — add a portal permission rule.
+- [`gnoblin.load`](/config/load) — load another Lua config file.
+- [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
+- [`gnoblin.array`](/config/array) — mark a Lua table as a list.
 
-Run this inside Gnoblin:
+The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
+
+## First config
+
+On first login, `gnoblin-session` copies the packaged reference config to `~/.config/gnoblin/init.lua` when no Lua or legacy config exists. It does not replace an existing config. Edit that file to configure Gnoblin.
 
 ```sh
 gnoblinctl config path
-```
-
-Edit the file it prints, creating it and its parent directory if needed.
-Keep any `gnoblin.load(...)` lines already there: they load settings supplied
-by your desktop shell or other config files.
-
-## 2. Make a change
-
-For an existing config, add this **after** its includes:
-
-```lua
-gnoblin.configure {
-    shell = {
-        minimize_duration = 150,
-    },
-}
-```
-
-This makes minimise and restore animations take 150 milliseconds.
-
-If your shell installer supplied config files, load them before your own
-settings. For example:
-
-```lua
-gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
-gnoblin.load("conf.d/**/*.lua")
-
-gnoblin.configure {
-    shell = {
-        minimize_duration = 150,
-    },
-}
-```
-
-The first line loads installed settings; the second loads your own files under
-`~/.config/gnoblin/conf.d/`. Use the paths supplied by your installer if they
-differ. A pattern that finds no files is ignored. If you have no extra config
-files, the first example works on its own.
-
-## 3. Save and check
-
-Valid edits reload automatically. To apply now and see errors:
-
-```sh
 gnoblinctl config reload
 ```
 
-Try minimising a window. Invalid edits keep the last working configuration.
-
-## Reading the examples
-
-- Strings use quotes: `"fade"`.
-- Booleans are `true` or `false`, without quotes.
-- Braces group settings: `shell = {minimize_duration = 150}`.
-- Braces also hold lists: `{"ptyxis", "--new-window"}`.
-- Separate entries with commas; a comma after the last entry is allowed.
-- Setting names use underscores: `minimize_duration`.
-- Comments begin with `--`.
-
-Use `gnoblin.configure` for settings, `gnoblin.window_rule` for rules,
-and `gnoblin.shortcut` for keyboard shortcuts. The outer braces belong to the
-function call; inner braces group related options. `gnoblin` is available in every config file;
-you do not need to import it. See the [recipes](/recipes).
-
-## Sizes and window types
-
-Sizes use **logical pixels**, before display scaling. At 200% scale, a
-10-pixel border occupies 20 physical screen pixels. Durations use milliseconds:
-200 ms is one fifth of a second.
-
-A **window** is an application window. A **layer surface** is a bar, dock,
-launcher or other desktop panel using the Wayland layer-shell protocol. Rules
-use `type = "window"` or `type = "layer"` to distinguish them.
-
-## Start from an example
-
-Use the [complete starter config](/recipes#complete-starter-config)
-for a small working file. The same page shows how to override imported shortcuts,
-combine window rules and split settings into files.
-
-## What next?
-
-- [Shortcuts](/config/shortcuts) and [autostart](/config/autostart)
-- [Window rules](/config/window_rules), [effects](/config/window_effects) and [titlebars](/config/window_frames)
-- [Animations](/config/animations) and [session settings](/config/session_settings)
-- [Split your config into files](/config/files_and_load_order)
-- [All settings](/config/reference)
-
-## Reload or log out?
-
-Most appearance settings and shortcuts reload on save.
-
-**Log out and back in** after upgrading the compositor, changing protocol
-availability, or changing `layer_shell.preserve_active_window`.
-
-Some settings persist after you remove them from Lua. See
-[reload and persistence](/config/files_and_load_order#reload-and-persistence).
-If an edit does nothing, start with [troubleshooting](/troubleshooting).
+See [configuration recipes](/recipes) for complete examples and the [guides](/guides/window_rules) for task-based instructions.
 
 ## Deprecated compatibility functions
 
 `gnoblin.shortcut`, `gnoblin.autostart`, `gnoblin.remove_shortcut`,
-`gnoblin.remove_autostart`, and `gnoblin.set` are deprecated. They are retained
-for older configs and may be removed at any time. Every config refresh that
-executes one of these functions prints a warning with its migration path; move
-to the replacement API now.
+`gnoblin.remove_autostart`, and `gnoblin.set` are deprecated. Older configs may
+continue to use them for now, but they may be removed at any time. Each config
+refresh that executes one prints a warning with its migration path. Migrate to
+`gnoblin.configure` now.
 
-- Replace `gnoblin.shortcut {name = ..., ...}` with
-  `gnoblin.configure {shortcuts = {{name = ..., ...}}}`.
-- Replace `gnoblin.autostart {name = ..., ...}` with
-  `gnoblin.configure {autostart = {{name = ..., ...}}}`.
-- Replace `gnoblin.remove_shortcut(name)` by removing that named entry from the
-  `shortcuts` list passed to `gnoblin.configure`.
-- Replace `gnoblin.remove_autostart(name)` by removing that named entry from
-  the `autostart` list passed to `gnoblin.configure`.
+- Replace `gnoblin.shortcut {name = "terminal", binding = ..., command = ...}`
+  with `gnoblin.configure {shortcuts = {terminal = {binding = ..., command = ...}}}`.
+- Replace `gnoblin.autostart {name = "panel", command = ...}` with
+  `gnoblin.configure {autostart = {panel = {command = ...}}}`.
+- Replace `gnoblin.remove_shortcut("terminal")` by removing `terminal` from
+  `gnoblin.configure.shortcuts`; to disable an imported shortcut, set
+  `gnoblin.configure.shortcuts.terminal.enable = false`.
+- Replace `gnoblin.remove_autostart("panel")` by removing `panel` from
+  `gnoblin.configure.autostart`; to disable an imported command, set
+  `gnoblin.configure.autostart.panel.enable = false`.
 - Replace `gnoblin.set { ... }` with `gnoblin.configure { ... }`, using public
   `snake_case` setting names.

@@ -1,6 +1,6 @@
-# window_frames
+# Window frames
 
-[Configuration reference](/config/reference)
+[Configuration API](/config)
 
 Most apps draw their own titlebar and buttons. This is **client-side decoration
 (CSD)**. Gnoblin can draw them instead: **server-side decoration (SSD)**.

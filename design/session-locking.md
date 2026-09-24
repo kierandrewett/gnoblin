@@ -1,11 +1,10 @@
 # Session locking design
 
-Gnoblin is moving session locking from GNOME Shell's `ScreenShield` to a
-compositor-enforced Wayland lock. This page records the security contract and
-the rollout gates. **The running Gnoblin session still uses GNOME's lock screen
-until the compositor passes the protocol checks below.** A vendored
-protocol XML file, a build that succeeds, or a lock window that looks correct
-does not establish a secure lock.
+Gnoblin uses a compositor-enforced Wayland lock in its own session. This page
+records the security contract and remaining release checks. The source now
+advertises the protocol in Gnoblin sessions; the installed compositor needs a
+fresh session before that change becomes active. A build or a lock window that
+looks correct does not establish a secure lock.
 
 ## Why a compositor lock
 
@@ -21,19 +20,19 @@ the compositor enforces the lock, while
 [hyprlock](https://github.com/hyprwm/hyprlock) supplies the graphics and
 authentication.
 
-Mutter does not currently provide this protocol in Gnoblin. The XML under
-`src/protocols/session-lock/` is a specification, not an advertised global.
-The compositor implementation must be validated before any external lock
-client replaces `ScreenShield`.
+Gnoblin's Mutter extension implements this protocol in
+`src/protocols/session-lock/`. The compositor has passed an isolated lifecycle
+suite and a real hyprlock protocol run; integrated display, portal and RustDesk
+checks remain separate release evidence.
 
 ## Responsibilities
 
-| Component | Owns |
-| --- | --- |
-| Gnoblin's Mutter fork | Lock state, opaque fallback on every output, input and capture isolation, lock surface placement, and the `ext-session-lock-v1` server |
-| Bingux lock client, current | Lock-screen appearance, accessible prompts, authentication flow, and `unlock_and_destroy` after successful authentication |
-| Bingux policy, future | Optional manual, idle, logind, sleep, timeout, inhibitor, and compatibility D-Bus integration |
-| GDM and logind | Login/greeter and system session management; both remain installed |
+| Component                   | Owns                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Gnoblin's Mutter fork       | Lock state, opaque fallback on every output, input and capture isolation, lock surface placement, and the `ext-session-lock-v1` server |
+| Bingux lock client, current | Lock-screen appearance, accessible prompts, authentication flow, and `unlock_and_destroy` after successful authentication              |
+| Bingux policy               | Its manual Lock action; optional idle, logind, sleep, timeout, inhibitor, and compatibility D-Bus integration                          |
+| GDM and logind              | Login/greeter and system session management; both remain installed                                                                     |
 
 The Bingux desktop shell process is separate from its lock client. Reloading
 the bar, dock or settings cannot dismiss a lock. The compositor owns the blank
@@ -84,8 +83,8 @@ If it implements pre-suspend locking, it must hold a logind **delay inhibitor**
 until compositor presentation is confirmed. A timeout, process start, or visual
 animation cannot substitute for the protocol's `locked` event.
 
-GNOME Shell's `ScreenShield`, its D-Bus owner and its idle/sleep listeners are
-removed **only in the Gnoblin session** after the replacement is verified.
+GNOME Shell's `ScreenShield` is skipped **only in the Gnoblin session** when
+Mutter advertises native lock capability.
 The regular GNOME login continues using GNOME's lock screen. GDM,
 `gnome-session` and settings-daemon are retained. Gnoblin's own bridge and
 recovery controls must query the new lock state before exposing operations
@@ -104,16 +103,23 @@ constructing `ScreenShield` only when it reports:
 3. all presentation, input isolation, client-death, and capture gates are
    secure.
 
-The native capability defaults to zero while the protocol global is hidden. A
-missing accessor or false result retains GNOME ScreenShield. The regular GNOME
-session always retains its own ScreenShield.
+The native capability reports one only when the protocol global was created.
+A missing accessor or false result retains GNOME ScreenShield. The regular
+GNOME session always retains its own ScreenShield.
 
-The native manager will advertise the standard `ext-session-lock-v1` global to
-any client in the same session. Bingux and compatible clients such as hyprlock
-may acquire the same protocol role directly. The global remains hidden in the
-current build until the compositor has passed the secure coverage, input
-isolation, client-death, and presentation checks in this document. No runtime
-compatibility claim is made before those tests pass.
+The native manager advertises the standard `ext-session-lock-v1` global to
+clients in the Gnoblin session. Bingux and compatible clients such as hyprlock
+may acquire the same protocol role directly. Isolated native tests confirm
+hyprlock's basic lock path; installed-session compatibility remains to verify.
+
+The Wayland socket is the trust boundary for lock ownership. To support
+ordinary third-party lockers without a Gnoblin-specific launch token, any
+client already allowed on that socket may attempt a lock or take over after a
+locker dies. A replacement can then unlock through the protocol; Gnoblin
+cannot verify that client's password check. The lock protects against access
+at the seat while the compositor enforces it, but does not isolate mutually
+untrusted applications sharing one user's Wayland connection. Run untrusted
+applications with separate Wayland socket access if that distinction matters.
 
 The Wayland socket is the trust boundary for lock ownership. To support
 ordinary third-party lockers without a Gnoblin-specific launch token, any
@@ -145,22 +151,22 @@ compositor's capture isolation and prevents Shell-owned screenshot paths from
 leaking a frame during the handover.
 
 The Shell suppresses GNOME's “Screen Lock disabled” warning only after that
-authority check. Until Bingux explicitly integrates a Lock Screen action, the
-Shell hides it in cutover rather than routing a lock request to an unspecified
-native policy owner. Switch User is likewise unavailable in cutover because its
-old path locks `ScreenShield`.
+authority check. Bingux's own Lock action starts `bingux-lock`; GNOME Shell's
+old Lock and Switch User actions remain hidden in cutover because they invoke
+`ScreenShield`.
 
 ## Release gates
 
 ### Compositor protocol
 
-Gnoblin may expose `ext-session-lock-v1` only after a fresh installed session
-proves all of these paths:
+Before treating the installed session as release verified, check these paths:
 
 1. A conforming client acquires one owner and repeated requests cannot create
    competing lock owners.
-2. No app receives keyboard, pointer, touch, shortcut, clipboard or remote
-   input while locked; capture and portal paths cannot reveal normal content.
+2. Ordinary apps receive no keyboard, pointer, touch, shortcut or clipboard
+   input while locked. Existing authorised portal monitor streams see only the
+   lock scene, and authorised remote input reaches only the active lock UI
+   after presentation. Other capture paths cannot reveal normal content.
 3. Lock UI crash, forced kill, hang before its first buffer, output hotplug,
    scale/rotation changes and GPU reset stay opaque and locked.
 4. Real multi-monitor hardware and a fresh session confirm the `locked` event
@@ -175,9 +181,8 @@ presentation-confirmed delay inhibitor before suspend. Authentication success,
 failure, cancellation, and multi-prompt PAM or biometric conversations belong
 to the selected lock client and must be tested before that client is promoted.
 
-The previous GNOME lock remains the default while any gate is open. A nested
-headless test can check protocol ordering but cannot prove display scanout,
-hotplug, VT or resume behaviour.
+A nested headless test can check protocol ordering but cannot prove display
+scanout, hotplug, VT, resume, or an installed RustDesk connection.
 
 ## References
 

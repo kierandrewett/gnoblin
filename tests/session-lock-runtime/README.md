@@ -29,6 +29,40 @@ Run it after installing a build which advertises the protocol:
 tests/session-lock-runtime/run-nested.sh
 ```
 
+## Raw Mutter ScreenCast and RemoteDesktop path
+
+`run-raw-remote-path.sh` is a separate, optional compositor-path test. It
+starts a raw, isolated, global-enabled Mutter build, holds a standard session
+lock, then creates an associated monitor ScreenCast and RemoteDesktop session
+using Mutter's private D-Bus API. It verifies that the session starts and that
+keyboard notifications are accepted after the lock client reports
+`locked`.
+
+Supply paths from an isolated build; for example:
+
+```sh
+GNOBLIN_MUTTER_BIN=/path/to/build/src/mutter \
+GNOBLIN_MUTTER_PLUGIN=/path/to/build/src/compositor/plugins/libdefault.so \
+GNOBLIN_MUTTER_LIBDIR=/path/to/build/src \
+GNOBLIN_SCHEMA_DIR=/path/to/merged-schemas \
+GNOBLIN_PIPEWIRE_BIN=/path/to/private/prefix/usr/bin/pipewire \
+GNOBLIN_PIPEWIRE_CONFIG_DIR=/path/to/private/prefix/usr/share/pipewire \
+GNOBLIN_SPA_PLUGIN_DIR=/path/to/private/prefix/usr/lib64/spa-0.2 \
+tests/session-lock-runtime/run-raw-remote-path.sh
+```
+
+The runner starts the supplied PipeWire binary inside the disposable D-Bus
+session, using a socket under its private `XDG_RUNTIME_DIR`. It never connects
+to the desktop PipeWire instance. This proves that Mutter admits the associated
+monitor stream and accepts RemoteDesktop key-notification D-Bus calls after the
+lock presentation barrier.
+
+It intentionally does not claim portal or RustDesk end-to-end coverage. Raw
+Mutter has no Gnoblin Shell permission service, and the test does not consume
+the PipeWire node. Portal-policy, actual lock-scene pixels, delivery of the key
+to the locker, and a real RustDesk peer require a freshly installed integrated
+Gnoblin session with private PipeWire and portal services.
+
 The test client reports whether `locked` arrived before its own first buffer
 was committed. Both results can conform: the protocol permits the compositor
 to confirm a presented opaque fallback frame. The `locked` event itself is the

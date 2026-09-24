@@ -1,6 +1,6 @@
-# permissions
+# Permissions
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Apps use the desktop portal to ask for screen sharing, remote keyboard/mouse
 control and other access. These rules decide whether Gnoblin asks you,
@@ -125,7 +125,7 @@ raw Wayland protocols and kernel devices are outside this policy.
 Frontend-cached permissions may bypass the backend.
 
 `access` cannot distinguish camera, microphone and location requests.
-[Protocol settings](/config/session_settings#protocol-settings) are separate.
+[Protocol settings](/guides/session_settings#protocol-settings) are separate.
 
 ## Older grants
 

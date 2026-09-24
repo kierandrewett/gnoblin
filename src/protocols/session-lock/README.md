@@ -7,23 +7,17 @@ default locker, or expose a separate lock protocol.
 
 ## Current status
 
-**Implemented behind an unadvertised manager global.** The generated protocol,
-manager state machine, lock-surface role, compositor cover, recovery path, and
-input/capture integration seams are present. `meta_wayland_session_lock_get_capability()`
-returns `0`, and `wl_global_create()` is deliberately absent. Therefore no
-client can bind the protocol in a normal Gnoblin session yet.
-
-This is a security boundary, not a feature flag. The global may only be
-advertised after the runtime acceptance suite below passes in the patched
-Mutter build. Until then, GNOME's established lock path remains responsible
-for locking a shipped session.
-
-When enabled, the manager is created only when
+The manager is advertised only when
 `GNOME_SHELL_SESSION_MODE=gnoblin`, through the existing
 `gnoblin_config_protocol_enabled("ext-session-lock")` predicate. It defaults
 on in that session and can be disabled in Gnoblin's `[protocols]` settings. A
 regular GNOME session never receives this global, so GNOME ScreenShield remains
-its lock implementation.
+its lock implementation. The native capability returns one only after the
+global is created, allowing GNOME Shell to cut over to the compositor lock.
+
+The isolated Mutter lifecycle and real hyprlock protocol paths pass. A fresh
+installed session remains necessary to verify Bingux, portal capture and
+RustDesk end to end.
 
 ## Protocol and ownership
 
@@ -62,25 +56,28 @@ On a lock transition the controller:
    reset baseline before `locked` can be sent.
 5. Embargoes normal session input from the early Mutter event path. A verified,
    mapped lock surface is the only allowed destination; a miss is consumed.
-6. Notifies private consumers synchronously on state changes. Capture, remote
-   input, clipboard, data control, and related integrations must deny access
-   in every state except `UNLOCKED`.
+6. Notifies private consumers synchronously on state changes. Direct capture,
+   clipboard and data control cannot reach ordinary session data. An existing
+   authorised portal monitor stream sees the lock scene after `LOCKED` and
+   presentation; authorised remote input then routes to the active lock
+   surface. Earlier transitions and failsafe refuse remote input.
 
 `unlock_and_destroy` removes the lock scene and input embargo in one Mutter
 main-loop transaction, balances cursor/direct-scanout holds, and then reports
 `UNLOCKED`. A client disconnect never takes that path.
 
-## Runtime acceptance before advertisement
+## Installed-session acceptance
 
-The source guard tests only protect wiring. Before changing the capability or
-creating a global, run a real Gnoblin session with at least Bingux and one
-unmodified third-party client:
+The isolated tests cover protocol ordering and hyprlock's basic path. Before
+claiming release verification, run a fresh installed Gnoblin session with
+Bingux and a third-party client:
 
 - Lock, suspend, and resume: every output remains covered before and after
   `locked`; no queued pre-cover frame is accepted.
-- Verify keyboard shortcuts, IME, pointer, touch, tablet, virtual input,
-  Xwayland grabs, clipboard/DnD/data-control, screencast, remote desktop, and
-  portal capture cannot reach normal-session data while locked.
+- Verify ordinary keyboard shortcuts, IME, pointer, touch, tablet, virtual
+  input, Xwayland grabs and clipboard/DnD/data-control cannot reach normal
+  clients. An authorised portal monitor stream must show only the lock scene,
+  and remote input must reach only the lock UI after presentation.
 - Kill and reload the locker. The cover must persist; a replacement client can
   take ownership without exposing the desktop.
 - Hotplug, unplug, rotate, and scale outputs. The new or reconfigured output

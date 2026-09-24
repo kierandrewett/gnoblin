@@ -43,26 +43,26 @@ closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op` | Required fields | Reply or stream |
-| --- | --- | --- |
-| `command` | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error` |
-| `windows` | None | Current `windows` snapshot, then changes |
-| `privacy` | None | Current `privacy` state, then changes |
-| `status` | None | One `status` with binding IDs and active session ID |
-| `bind` | `id`, `accelerator`, `hold` | `bound`, then activation and input events |
-| `activate` | `window` | Focus a window; no success reply |
-| `preview` | `window`, `width`, `height` | One `preview` event |
-| `shortcut-input` | `name`, `state` | Input handoff; no success reply |
-| `ui-session` | `action`; other fields depend on action | `ui-state` or `ui-command` events |
-| `layer-animation-policy` | `namespace` | One policy event for that layer namespace |
-| `blur-region` | `namespace`, `screen`, `region` | No success reply |
-| `window-drag` | None | Current `window-drag` state, then changes |
-| `snap-offer` | `serial`, `regions` | No success reply; may later get `snap-completed` |
-| `snap-context` | None | One `snap-context` event |
-| `snap-window` | `window`, `monitor`, `target` | Applies a region; no success reply |
-| `stop-sharing`, `stop-recording` | None | Requests stop; no success reply |
-| `end` | Optional `session` for fallback switcher | Ends this client's input session |
-| `clear` | None | Removes this client's bindings and session |
+| `op`                             | Required fields                          | Reply or stream                                     |
+| -------------------------------- | ---------------------------------------- | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                     | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                     | Current `privacy` state, then changes               |
+| `status`                         | None                                     | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`              | `bound`, then activation and input events           |
+| `activate`                       | `window`                                 | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`              | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                          | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action  | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                              | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`          | No success reply                                    |
+| `window-drag`                    | None                                     | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                      | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                     | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`            | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                     | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher | Ends this client's input session                    |
+| `clear`                          | None                                     | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
 `workspace-switch` and `window`. `workspace-switch` needs a one-based
@@ -87,9 +87,8 @@ import json
 import os
 import socket
 
-path = os.environ.get(
-    "GNOBLIN_COMPOSITOR_SOCKET",
-    os.path.join(os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"),
+path = os.environ.get("GNOBLIN_COMPOSITOR_SOCKET") or os.path.join(
+    os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"
 )
 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
     connection.connect(path)
@@ -105,7 +104,9 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
 It prints the current list and subsequent snapshots as windows change. Stop it
 with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.
 
-## Register a shortcut
+## Temporary UI bindings
+
+Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
 
 ```json
 { "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8 }
@@ -243,25 +244,25 @@ normal finalisation path to save output. These requests do not grant access.
 `ui-session` shares named state between UI processes. Names match
 `^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
 
-| Action | Fields | Event |
-| --- | --- | --- |
-| `watch` | None | `ui-state` for each owner and later changes |
-| `state` | `name`, `state` object | Publishes `ui-state` |
-| `command` | `name`, `command` | Sends `ui-command` to the owner |
+| Action    | Fields                 | Event                                       |
+| --------- | ---------------------- | ------------------------------------------- |
+| `watch`   | None                   | `ui-state` for each owner and later changes |
+| `state`   | `name`, `state` object | Publishes `ui-state`                        |
+| `command` | `name`, `command`      | Sends `ui-command` to the owner             |
 
 Use the envelope `{"op":"ui-session","action":"watch"}`. Owner disconnect
 publishes `state: null`. A visible layer can include `surface` (its namespace),
 `companions` (up to 16 namespaces), `revealCompanions: true`, and
 `companionsAbove: true` in its state to coordinate panel stacking.
 
-| Operation | Fields | Limit or effect |
-| --- | --- | --- |
-| `blur-region` | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
-| `layer-animation-policy` | `namespace` | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters |
+| Operation                | Fields                                                                                    | Limit or effect                                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `blur-region`            | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
+| `layer-animation-policy` | `namespace`                                                                               | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters                                                                  |
 
 For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
 using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
-The [snapping guide](/config/window_snapping#shell-integration) gives the request
+The [snapping guide](/guides/window_snapping#shell-integration) gives the request
 shapes and work-area checks.
 
 ## Limits and disconnects

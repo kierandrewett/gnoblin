@@ -110,7 +110,8 @@ export class CompositorBridge {
             typeof handler !== "function"
         )
             throw new Error("Compositor script operations must use a namespaced name and a function handler");
-        if (this.extensionOperations.has(operation)) throw new Error(`Compositor operation already registered: ${operation}`);
+        if (this.extensionOperations.has(operation))
+            throw new Error(`Compositor operation already registered: ${operation}`);
         this.extensionOperations.set(operation, handler);
         return () => {
             if (this.extensionOperations.get(operation) === handler) this.extensionOperations.delete(operation);
@@ -333,7 +334,12 @@ export class CompositorBridge {
         }
         if (record.op === "snap-context") {
             const window = global.display.focus_window;
-            if (SessionLock.isLocked(Main.sessionMode.isLocked) || !window || !this.eligible(window) || !window.allows_resize())
+            if (
+                SessionLock.isLocked(Main.sessionMode.isLocked) ||
+                !window ||
+                !this.eligible(window) ||
+                !window.allows_resize()
+            )
                 throw new Error("Focus a resizable window to choose a snap region");
             const monitor = Main.layoutManager.monitors[window.get_monitor()];
             const area = window.get_workspace().get_work_area_for_monitor(monitor.index);
@@ -743,7 +749,8 @@ export class CompositorBridge {
                 if (!visible) throw new Error("window image buffer unavailable");
             }
             stream.close(null);
-            if (client.closed || SessionLock.isLocked(Main.sessionMode.isLocked) || !this.windows.has(request.window)) return;
+            if (client.closed || SessionLock.isLocked(Main.sessionMode.isLocked) || !this.windows.has(request.window))
+                return;
             const bytes = stream.steal_as_bytes().toArray();
             this.send(client, {
                 event: "preview",
@@ -774,9 +781,10 @@ export class CompositorBridge {
     }
 
     dismissRevealedUi() {
-        const [name, owner] = [...this.uiSessions.owners].find(([, candidate]) =>
-            candidate.state?.revealCompanions && typeof candidate.state.surface === "string",
-        ) ?? [];
+        const [name, owner] =
+            [...this.uiSessions.owners].find(
+                ([, candidate]) => candidate.state?.revealCompanions && typeof candidate.state.surface === "string",
+            ) ?? [];
         if (name) this.dismissUiSession(name, "hide");
     }
 
@@ -836,10 +844,15 @@ export class CompositorBridge {
                 const monitor = Main.layoutManager.monitors[window.get_monitor()];
                 const frame = window.get_frame_rect();
                 const app = tracker.get_window_app(window);
+                const gtkAppId = window.get_gtk_application_id() || "";
+                const wmClass = window.get_wm_class() || "";
                 return {
                     id,
                     title: window.title || "",
-                    appId: app && !app.is_window_backed() ? app.get_id() : window.get_wm_class() || "",
+                    appId: app && !app.is_window_backed() ? app.get_id() : wmClass,
+                    gtkAppId,
+                    wmClass,
+                    ruleAppId: gtkAppId || wmClass,
                     focused: global.display.focus_window === window,
                     minimized: window.minimized,
                     workspace: window.get_workspace()?.index() + 1 || null,
@@ -856,7 +869,18 @@ export class CompositorBridge {
             });
     }
 
+    layerRecords() {
+        return [...this.windows]
+            .map(([id, { window }]) => ({
+                id,
+                namespace: Meta.gnoblin_layer_namespace(window),
+                title: window.title || "",
+            }))
+            .filter(({ namespace }) => namespace !== null);
+    }
+
     control(record) {
+        if (record.command === "layers") return { surfaces: this.layerRecords() };
         if (record.command === "capture-windows") {
             if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("Session is locked.");
             const windows = global.display.sort_windows_by_stacking(
@@ -871,12 +895,14 @@ export class CompositorBridge {
                         const actor = window.get_compositor_private();
                         const paintBoxResult = actor?.get_paint_box();
                         const paintBox = Array.isArray(paintBoxResult) ? paintBoxResult[1] : paintBoxResult;
-                        const paintWidth = paintBox && Number.isFinite(paintBox.x1) && Number.isFinite(paintBox.x2)
-                            ? Math.max(1, Math.ceil(paintBox.x2 - paintBox.x1))
-                            : 0;
-                        const paintHeight = paintBox && Number.isFinite(paintBox.y1) && Number.isFinite(paintBox.y2)
-                            ? Math.max(1, Math.ceil(paintBox.y2 - paintBox.y1))
-                            : 0;
+                        const paintWidth =
+                            paintBox && Number.isFinite(paintBox.x1) && Number.isFinite(paintBox.x2)
+                                ? Math.max(1, Math.ceil(paintBox.x2 - paintBox.x1))
+                                : 0;
+                        const paintHeight =
+                            paintBox && Number.isFinite(paintBox.y1) && Number.isFinite(paintBox.y2)
+                                ? Math.max(1, Math.ceil(paintBox.y2 - paintBox.y1))
+                                : 0;
                         const app = Shell.WindowTracker.get_default().get_window_app(window);
                         const texture = actor?.get_texture()?.get_texture();
                         return {
@@ -922,7 +948,8 @@ export class CompositorBridge {
                     scale: global.display.get_monitor_scale(monitor.index),
                 })),
             };
-        if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("window management is unavailable while the session is locked");
+        if (SessionLock.isLocked(Main.sessionMode.isLocked))
+            throw new Error("window management is unavailable while the session is locked");
         const workspace = () => {
             if (!Number.isInteger(record.workspace) || record.workspace < 1 || record.workspace > manager.n_workspaces)
                 throw new Error("workspace not found; list workspaces first");

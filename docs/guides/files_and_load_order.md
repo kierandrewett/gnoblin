@@ -1,6 +1,6 @@
-# files_and_load_order
+# Files and load order
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Start with one `init.lua`. Split it into modules when that makes it easier
 to read.
@@ -83,18 +83,13 @@ gnoblin.window_rule {
 }
 ```
 
-`gnoblin.shortcut` and `gnoblin.autostart` merge entries with the same name.
-Use `gnoblin.remove_shortcut(name)` or `gnoblin.remove_autostart(name)` to
-remove an imported entry. Removing an autostart entry does not stop a process.
+Named shortcuts and autostart entries merge by name. Use the same name to
+change an imported entry; omitted fields keep their earlier values. Set
+`enable = false` to disable an imported shortcut or autostart entry. Disabling
+autostart does not stop a process that is already running.
 
-To remove every command shortcut loaded so far:
-
-```lua
-gnoblin.configure {shortcuts = {}}
-```
-
-Use `gnoblin.shortcut` to add or change individual shortcuts without clearing
-the others.
+Named shortcuts and autostart entries belong under `gnoblin.configure`; see
+the [function reference](/config#functions).
 
 ## Use a Lua module
 
@@ -124,7 +119,7 @@ and `require`.
 ## Available Lua functions
 
 `gnoblin` is available globally in every loaded file and module.
-See the [function reference](/config/reference#lua-api).
+See the [function reference](/config#functions).
 
 Setting names use `snake_case`. The API converts them to Gnoblin's internal
 hyphenated names. String values, shader uniform names and renderer names stay
@@ -173,24 +168,24 @@ If `gnoblin` or `configure` is reported as `nil`, see
 
 ## Reload and persistence
 
-| Change                         | Applies                                        | When removed                             |
-| ------------------------------ | ---------------------------------------------- | ---------------------------------------- |
-| Rules and animations           | On reload                                      | Earlier rules/defaults apply             |
-| Titlebar policy                | After reload and the app's next surface update | Earlier rules/defaults apply             |
-| Command shortcuts              | On reload                                      | Binding released; launched process stays |
-| Built-in keybindings           | On reload                                      | Built-in default applies                 |
-| Window-management preferences | On reload                                      | Gnoblin default applies                  |
-| Compositor interaction preferences | On reload                                  | Gnoblin default applies                  |
-| Input preferences              | On reload                                      | GNOME/Mutter settings apply              |
-| Input sources                  | On reload                                      | GNOME session sources apply              |
-| Orientation lock               | On reload                                      | GNOME orientation setting applies        |
-| Cursor theme and size          | On reload                                      | Adwaita at 24 logical pixels              |
-| Notifications and layout popup | On reload                                      | Saved GSettings value stays              |
-| Autostart                      | New names start on reload                      | Running process stays                    |
-| Renderer services              | Restart on reload                              | Enabled frames use native fallback       |
-| Protocols                      | Next login                                     | Default on next login                    |
-| Launcher focus behaviour       | Next login                                     | Default on next login                    |
-| Drag boundary                  | Next drag after reload                         | Defaults to enabled                      |
+| Change                             | Applies                                        | When removed                             |
+| ---------------------------------- | ---------------------------------------------- | ---------------------------------------- |
+| Rules and animations               | On reload                                      | Earlier rules/defaults apply             |
+| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply             |
+| Command shortcuts                  | On reload                                      | Binding released; launched process stays |
+| Built-in keybindings               | On reload                                      | Built-in default applies                 |
+| Window-management preferences      | On reload                                      | Gnoblin default applies                  |
+| Compositor interaction preferences | On reload                                      | Gnoblin default applies                  |
+| Input preferences                  | On reload                                      | GNOME/Mutter settings apply              |
+| Input sources                      | On reload                                      | GNOME session sources apply              |
+| Orientation lock                   | On reload                                      | GNOME orientation setting applies        |
+| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels             |
+| Notifications and layout popup     | On reload                                      | Saved GSettings value stays              |
+| Autostart                          | New names start on reload                      | Running process stays                    |
+| Renderer services                  | Restart on reload                              | Enabled frames use native fallback       |
+| Protocols                          | Next login                                     | Default on next login                    |
+| Launcher focus behaviour           | Next login                                     | Default on next login                    |
+| Drag boundary                      | Next drag after reload                         | Defaults to enabled                      |
 
 An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file

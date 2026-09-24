@@ -1,0 +1,58 @@
+From 11e7b90e141fb6540e60b0d46373d1769bd6888c Mon Sep 17 00:00:00 2001
+From: Gnoblin Build <build@gnoblin.local>
+Date: Thu, 24 Sep 2026 23:24:11 +0100
+Subject: [PATCH] input: allow GNOME 51 builds with libinput 1.30
+
+---
+ meson.build                                      | 7 +++++--
+ src/backends/native/meta-input-settings-native.c | 4 ++++
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index cdd13b683..fd6042971 100644
+--- a/meson.build
++++ b/meson.build
+@@ -50,12 +50,12 @@ wayland_server_req = '>= 1.26'
+ wayland_protocols_req = '>= 1.48'
+ 
+ # native backend version requirements
+-libinput_req = '>= 1.31.0'
++libinput_req = '>= 1.30.0'
+ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+ # screen cast version requirements
+-libpipewire_req = '>= 1.6.0'
++libpipewire_req = '>= 1.4.0'
+ 
+ # profiler requirements
+ sysprof_req = '>= 3.37.2'
+@@ -243,6 +243,9 @@ endif
+ 
+ libgbm_dep = dependency('gbm', version: gbm_req)
+ libinput_dep = dependency('libinput', version: libinput_req)
++if libinput_dep.version().version_compare('>= 1.31.0')
++  add_project_arguments('-DHAVE_LIBINPUT_DWT_TIMEOUT', language: 'c')
++endif
+ 
+ 
+ if not have_egl
+diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
+index 39f8e7611..3bbcc52a7 100644
+--- a/src/backends/native/meta-input-settings-native.c
++++ b/src/backends/native/meta-input-settings-native.c
+@@ -288,7 +288,11 @@ meta_input_settings_native_set_disable_while_typing_timeout (MetaInputSettings
+     return;
+ 
+   if (libinput_device_config_dwt_is_available (libinput_device))
++#ifdef HAVE_LIBINPUT_DWT_TIMEOUT
+     libinput_device_config_dwt_set_timeout (libinput_device, millis);
++#else
++    (void) millis;
++#endif
+ }
+ 
+ static void
+-- 
+2.55.0
+

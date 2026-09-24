@@ -18,8 +18,8 @@ to the nested compositor.
 
 ![A calculator window in a Gnoblin devkit desktop with a separate shell](images/gnoblin-example-desktop.png)
 
-*This capture shows Gnoblin managing the application window while Bingux,
-which is a separate project, provides the visible desktop shell.*
+_This capture shows Gnoblin managing the application window while Bingux,
+which is a separate project, provides the visible desktop shell._
 
 To choose a terminal explicitly:
 
@@ -82,14 +82,14 @@ fully separate from host services. Check the image before publishing it.
 The checked-in documentation scenes can be recaptured with:
 
 ```sh
-scripts/capture-doc-examples.sh [desktop|console|all]
+scripts/capture-doc-examples.sh desktop
 ```
 
-The script starts Gnoblin in a disposable profile, configures Waybar, Mako,
-Fuzzel and Foot for the desktop scene, and writes PNGs to `docs/images/`.
-Pass a second argument to choose another output directory. It needs a visible
-Wayland session, `grim`, the desktop applications used by the selected scene,
-and an installed Adwaita Hyprcursor theme (or a built theme in `build/`).
+The script builds a fresh profile, starts Waybar and Files, then writes
+`docs/images/gnoblin-build-a-desktop.png`. Pass a second argument for another
+output directory. It needs a visible Wayland session, a current Gnoblin build
+in `./install`, `grim`, the desktop apps configured by the script, and an
+installed Adwaita Hyprcursor theme (or a built theme in `build/`).
 
 The [private test harness](testing.md) is for automated checks.
 A devkit run does not verify the installed login session.

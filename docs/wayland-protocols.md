@@ -26,42 +26,59 @@ globals.
 
 ## Available interfaces
 
-| Lua key | Advertised interface | Use it for | Guide |
-| --- | --- | --- | --- |
-| `wlr_layer_shell` | `zwlr_layer_shell_v1` | Bars, docks, launchers, overlays and exclusive zones | [Choose a shell](bring-your-own-shell.md) |
-| `wlr_screencopy` | `zwlr_screencopy_manager_v1` | Native output capture | [Permissions](/config/permissions) |
-| `ext_foreign_toplevel_list` | `ext_foreign_toplevel_list_v1` | Enumerate toplevel windows | [Shell integration](shell-integration.md) |
-| `wlr_foreign_toplevel_management` | `zwlr_foreign_toplevel_manager_v1` | Inspect and control windows | [Shell integration](shell-integration.md) |
-| `ext_data_control` | `ext_data_control_manager_v1` | Clipboard managers | [Session settings](/config/session_settings) |
-| `ext_idle_notify` | `ext_idle_notifier_v1` | Idle notifications | [Session settings](/config/session_settings) |
-| `wlr_gamma_control` | `zwlr_gamma_control_manager_v1` | Per-output gamma | [Session settings](/config/session_settings) |
-| `wlr_output_power_management` | `zwlr_output_power_manager_v1` | Output power state | [Session settings](/config/session_settings) |
-| `ext_background_effect_v1` | `ext_background_effect_manager_v1` | Client-defined background blur regions | [Background blur](background-effects.md) |
-| `xdg_decoration` | `zxdg_decoration_manager_v1` | Negotiate client or server titlebars | [Window frames](/config/window_frames) |
-| `window_frame_renderer` | `gnoblin_window_frame_manager_v1` | External frame renderer service | [Frame renderer API](frame-renderer-api.md) |
-| `blur_fade` | `gnoblin_blur_fade_manager_v1` | Per-item blur fade metadata | [Blur fades](blur-fades.md) |
+| Lua key                           | Advertised interface                                                                                            | Use it for                                           | Guide                                        |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| `wlr_layer_shell`                 | [`zwlr_layer_shell_v1`](https://github.com/swaywm/wlroots/blob/master/protocol/wlr-layer-shell-unstable-v1.xml) | Bars, docks, launchers, overlays and exclusive zones | [Choose a shell](bring-your-own-shell.md)    |
+| `wlr_screencopy`                  | `zwlr_screencopy_manager_v1`                                                                                    | Native output capture                                | [Permissions](/guides/permissions)           |
+| `ext_foreign_toplevel_list`       | `ext_foreign_toplevel_list_v1`                                                                                  | Enumerate toplevel windows                           | [Shell integration](shell-integration.md)    |
+| `wlr_foreign_toplevel_management` | `zwlr_foreign_toplevel_manager_v1`                                                                              | Inspect and control windows                          | [Shell integration](shell-integration.md)    |
+| `ext_data_control`                | `ext_data_control_manager_v1`                                                                                   | Clipboard managers                                   | [Session settings](/guides/session_settings) |
+| `ext_idle_notify`                 | `ext_idle_notifier_v1`                                                                                          | Idle notifications                                   | [Session settings](/guides/session_settings) |
+| `wlr_gamma_control`               | `zwlr_gamma_control_manager_v1`                                                                                 | Per-output gamma                                     | [Session settings](/guides/session_settings) |
+| `wlr_output_power_management`     | `zwlr_output_power_manager_v1`                                                                                  | Output power state                                   | [Session settings](/guides/session_settings) |
+| `ext_background_effect_v1`        | `ext_background_effect_manager_v1`                                                                              | Client-defined background blur regions               | [Background blur](background-effects.md)     |
+| `xdg_decoration`                  | `zxdg_decoration_manager_v1`                                                                                    | Negotiate client or server titlebars                 | [Window frames](/guides/window_frames)       |
+| `window_frame_renderer`           | `gnoblin_window_frame_manager_v1`                                                                               | External frame renderer service                      | [Frame renderer API](frame-renderer-api.md)  |
+| `blur_fade`                       | `gnoblin_blur_fade_manager_v1`                                                                                  | Per-item blur fade metadata                          | [Blur fades](blur-fades.md)                  |
 
 The interface version that a client binds must be no higher than the version
 the compositor advertises. The XML shipped under `src/protocols/` is the
-wire-level reference for Gnoblin-owned implementations; this catalog explains
-which interface to use and where its behavior is documented.
+wire-level reference for Gnoblin-owned implementations. For standard protocol
+requests, events and enum values, see the
+[Wayland protocol documentation](https://wayland.freedesktop.org/docs/book/)
+and the [wayland-protocols source](https://gitlab.freedesktop.org/wayland/wayland-protocols).
+This catalog explains which interface to use and where its behavior is documented.
 
 For example, a layer-shell client controls its anchors, keyboard interactivity
 and exclusive zone. Gnoblin then places the surface and applies any matching
-`type = "layer"` [window rules](/config/window_rules). A panel that animates its own
+`type = "layer"` [window rules](/guides/window_rules). A panel that animates its own
 whole surface can disable the compositor's layer animation for its namespace.
 
 Screen capture through `wlr_screencopy` is separate from capture through the
-desktop portal. The latter follows [portal permission policy](/config/permissions).
+desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.
 
-## Interfaces not yet available
+## Session locking
 
-`ext_session_lock_v1` and `zwlr_output_manager_v1` have vendored XML but are
-not registered as supported Gnoblin globals. The session-lock startup boundary
-is compiled but deliberately advertises no global until it can enforce a lock.
-Do not build a shell that requires them yet. Gnoblin's existing lock and
-display configuration paths are separate from these two proposed interfaces.
+Gnoblin advertises the standard `ext-session-lock-v1` manager in the Gnoblin
+session. The first locker to acquire it owns the active lock; a second locker
+receives `finished`. The compositor covers every output, keeps the session
+locked if the client exits, and sends `locked` only after its covered frame has
+presented.
+
+Gnoblin deliberately has no built-in lock UI or locker policy. Bingux ships a
+separate lock client, and unmodified clients such as hyprlock, swaylock,
+gtklock and waylock can use the same protocol. The regular GNOME session never
+receives this global and retains GNOME ScreenShield.
+
+Portal permissions do not change when the session locks. An already authorised
+monitor stream sees the compositor lock scene instead of desktop content.
+Remote input is available after `locked` and lock-scene presentation, and goes
+only to the active lock surface; it is refused during transitions and failsafe.
+No lock-specific portal configuration is needed. See [session locking](session-lock.md).
+
+`zwlr_output_manager_v1` remains vendored XML only and is not an advertised
+Gnoblin global.
 
 ## Inspect a running session
 

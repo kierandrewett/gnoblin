@@ -1,6 +1,6 @@
-# window_effects
+# Window effects
 
-[Configuration reference](/config/reference#effects)
+[Rule field reference](/config/window_rule)
 
 Add the examples below to `~/.config/gnoblin/init.lua`, after any
 `gnoblin.load(...)` lines. Save to apply them. Each example is a complete rule;
@@ -36,12 +36,12 @@ gnoblin.window_rule {
 ```
 
 Rounding is already disabled for fullscreen and tiled windows by default.
-See the [corner reference](/config/reference#corners) for padding and
+See the [corner reference](/config/window_rule#corners) for padding and
 exceptions for particular toolkits.
 
 `remove_csd` fills corner gaps left by supported apps so Gnoblin can draw a
 replacement curve. It does not remove titlebars. Leave it off unless those gaps
-are a problem; see [titlebars](/config/window_frames) to change window decorations.
+are a problem; see [titlebars](/guides/window_frames) to change window decorations.
 
 ## Blur behind translucent windows {#blur-and-opacity}
 
@@ -135,12 +135,12 @@ gnoblin.window_rule {
 
 The second rule reduces shadow opacity while keeping the first rule's position
 and blur. The transition takes 180 milliseconds. Duration accepts 0–2000 ms;
-the default, 0, changes immediately. See [easing](/config/animations#easing).
+the default, 0, changes immediately. See [easing](/guides/animations#easing).
 
 A later list of shadow layers replaces the whole earlier list. A single shadow
 table, as above, changes only its supplied fields.
 
 ## Custom fragment shaders
 
-[Custom shaders](/config/shaders) shows how to tint a window and pass shader parameters.
+[Custom shaders](/guides/shaders) shows how to tint a window and pass shader parameters.
 For how Gnoblin draws these effects, see [effect rendering](/effects-rendering).

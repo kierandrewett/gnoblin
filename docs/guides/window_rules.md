@@ -1,6 +1,6 @@
-# window_rules
+# Window rules
 
-[Configuration reference](/config/reference)
+[Configuration API](/config)
 
 A rule has two parts: `match` selects the windows, and the other fields change
 their appearance. Add rules to `~/.config/gnoblin/init.lua` after any
@@ -42,7 +42,8 @@ Find it in that shell's documentation; it is not necessarily its executable name
 ## Match text
 
 Text matchers use **JavaScript regular expressions**, not Lua patterns or globs.
-Use `^` and `$` for an exact match.
+The [JavaScript regular-expression guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions)
+explains the syntax. Use `^` and `$` for an exact match.
 
 This example fades a window only while its title is exactly `Notes`:
 
@@ -82,13 +83,13 @@ a radius from an earlier all-window rule.
 
 Use `gnoblin.window_rule` to add rules without removing earlier ones. Passing
 a complete `window_rules` list to `gnoblin.configure` replaces the old list;
-see [load order](/config/files_and_load_order#override-or-append).
+see [load order](/guides/files_and_load_order#override-or-append).
 
 ## What can a rule change?
 
-- [Effects](/config/window_effects): blur, opacity, corners, borders, shadows and shaders.
-- [Titlebars](/config/window_frames): decoration policy and renderer.
-- [Layer animations](/config/animations#per-surface-animations): entry, exit and timing.
+- [Effects](/guides/window_effects): blur, opacity, corners, borders, shadows and shaders.
+- [Titlebars](/guides/window_frames): decoration policy and renderer.
+- [Layer animations](/guides/animations#per-surface-animations): entry, exit and timing.
 
 Prefer general rules when a behavior should apply to all clients.
 Use app-name exceptions only when you intend different behavior for that app.

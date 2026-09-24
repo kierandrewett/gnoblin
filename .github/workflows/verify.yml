@@ -13,7 +13,11 @@ defaults:
 jobs:
   checkout-and-verify:
     runs-on: ubuntu-latest
-    container: fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [43, 44]
+    container: fedora:${{ matrix.fedora }}
     timeout-minutes: 90
     steps:
       - name: Install checkout tools

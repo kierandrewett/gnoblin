@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the fail-closed boundary around ext-session-lock-v1.
-
-This is deliberately a source-level test.  A real compositor session is still
-required before the protocol can be advertised; see the session-lock design
-document for that acceptance suite.
-"""
+"""Check ext-session-lock-v1 wiring and the compositor's fail-closed paths."""
 
 from pathlib import Path
 import unittest
@@ -40,12 +35,11 @@ class SessionLockProtocolTests(unittest.TestCase):
             interfaces["ext_session_lock_v1"].find("event[@name='locked']")
         )
 
-    def test_boundary_cannot_advertise_an_incomplete_lock_protocol(self):
+    def test_manager_is_advertised_only_for_gnoblin_sessions(self):
         source = SOURCE.read_text()
-        self.assertIn('gnoblin_config_get_bool ("protocols", "ext-session-lock", FALSE)', source)
-        self.assertIn("required fail-closed scene", source)
-        self.assertIn("output-hotplug, and client-death controller", source)
-        self.assertNotIn("wl_global_create", source)
+        self.assertIn('gnoblin_config_protocol_enabled ("ext-session-lock")', source)
+        self.assertIn("wl_global_create", source)
+        self.assertIn("controller->global ? 1 : 0", source)
         self.assertIn("session_lock_manager_interface", source)
 
     def test_failsafe_keeps_cover_and_input_embargo_in_compositor(self):
@@ -65,6 +59,9 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("reset_presentation_barrier (controller)", source)
         self.assertIn("global_frame_counter", source)
         self.assertIn("frame_info->global_frame_counter <= *minimum_frame", source)
+        self.assertIn("Submit another covered", source)
+        self.assertIn("clutter_actor_queue_redraw (CLUTTER_ACTOR (controller->stage))", source)
+        self.assertIn("disconnect_scene_signals (controller)", source)
         self.assertIn("controller->presentation_confirmed = FALSE", source)
         self.assertIn("controller->presentation_confirmed = TRUE", source)
         self.assertIn("before-paint", source)
@@ -81,8 +78,14 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("meta_wayland_session_lock_get_scene", source)
         self.assertIn("clutter_actor_remove_child", source)
         self.assertIn("clutter_actor_set_position", source)
-        self.assertIn("meta_window_move_resize_frame", source)
+        self.assertNotIn("meta_window_move_resize_frame", source)
+        self.assertIn("not ready during its first", source)
+        self.assertIn("window->placed = TRUE", source)
+        self.assertIn("normal first-show toplevel placement", source)
+        self.assertIn("pending->newly_attached && pending->buffer", source)
         self.assertIn("wl_client_post_no_memory", source)
+        self.assertIn("shell_class->managed = managed", source)
+        self.assertIn("shell_class->ping = ping", source)
 
     def test_manager_rejects_duplicate_outputs_and_precommitted_roles(self):
         source = SOURCE.read_text()

@@ -136,6 +136,8 @@ def parser():
     window = add(commands, "window", "List and manage windows")
     actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
+    match = add(actions, "match", "Show the fields used to match one window in config rules")
+    match.add_argument("id", nargs="?", default="active", help="Window ID from window list (default: active)")
     for name in (
         "menu",
         "interactive-move",
@@ -184,6 +186,9 @@ def parser():
                 else (-100000, 100000)
             )
             action.add_argument(field, type=number(*bounds))
+    layer = add(commands, "layer", "Inspect layer-shell surfaces")
+    layer_actions = layer.add_subparsers(dest="action", metavar="ACTION")
+    add(layer_actions, "list", "List layer surfaces and their rule namespaces")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
     config = add(commands, "config", "Show the default or manage the active configuration")
@@ -372,12 +377,37 @@ def dispatch(args, cli):
             and (not args.focused or window["focused"])
         ]
         return result
+    if cmd == "window" and args.action == "match":
+        windows = rpc({"command": "windows"})["windows"]
+        candidates = (
+            (entry for entry in windows if entry["focused"])
+            if args.id == "active"
+            else (entry for entry in windows if entry["id"] == args.id)
+        )
+        window = next(candidates, None)
+        if window is None:
+            raise CommandError(f"Window not found: {args.id}")
+        match = {"type": "window", "title": window["title"], "focused": window["focused"]}
+        if window["ruleAppId"]:
+            match["app_id"] = window["ruleAppId"]
+        return {
+            "id": window["id"],
+            "identity": {
+                "desktop_app_id": window["appId"],
+                "gtk_app_id": window["gtkAppId"],
+                "wm_class": window["wmClass"],
+                "rule_app_id": window["ruleAppId"],
+            },
+            "match": match,
+        }
     if cmd == "window":
         request = {"command": "window", "action": args.action, "window": args.id}
         for field in ("x", "y", "width", "height", "workspace", "monitor"):
             if hasattr(args, field):
                 request[field] = getattr(args, field)
         return rpc(request)
+    if cmd == "layer" and args.action == "list":
+        return rpc({"command": "layers"})
     if cmd == "monitor":
         return rpc({"command": "monitors"})
     if cmd == "workspace":
@@ -618,6 +648,7 @@ def main(argv=None):
         in (
             "config",
             "window",
+            "layer",
             "workspace",
             "monitor",
             "input",
