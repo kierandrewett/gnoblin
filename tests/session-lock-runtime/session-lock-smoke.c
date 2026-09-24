@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -59,15 +60,32 @@ static int
 wait_until (struct state *state, bool *condition, int seconds)
 {
   struct timespec start, now;
+  int64_t deadline_ms;
   clock_gettime (CLOCK_MONOTONIC, &start);
+  deadline_ms = (int64_t) start.tv_sec * 1000 + start.tv_nsec / 1000000 + seconds * 1000;
   while (!*condition)
     {
-      int result = wl_display_dispatch (state->display);
-      if (result < 0)
-        { report_display_error (state->display, "event dispatch"); return -1; }
+      struct pollfd poll_fd = { .fd = wl_display_get_fd (state->display), .events = POLLIN };
+      int64_t now_ms;
+      int timeout_ms;
+
+      if (wl_display_dispatch_pending (state->display) < 0)
+        { report_display_error (state->display, "pending event dispatch"); return -1; }
+      if (*condition)
+        break;
       clock_gettime (CLOCK_MONOTONIC, &now);
-      if (now.tv_sec - start.tv_sec >= seconds)
+      now_ms = (int64_t) now.tv_sec * 1000 + now.tv_nsec / 1000000;
+      if (now_ms >= deadline_ms)
         return 0;
+      timeout_ms = (int) (deadline_ms - now_ms);
+      if (wl_display_flush (state->display) < 0 && errno != EAGAIN)
+        { report_display_error (state->display, "display flush"); return -1; }
+      if (poll (&poll_fd, 1, timeout_ms) < 0)
+        { perror ("poll"); return -1; }
+      if (poll_fd.revents == 0)
+        return 0;
+      if (wl_display_dispatch (state->display) < 0)
+        { report_display_error (state->display, "event dispatch"); return -1; }
     }
   return 1;
 }
