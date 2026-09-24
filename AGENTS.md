@@ -125,6 +125,8 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - After packaging or publication work, update
   `design/release-packaging.md` with the target matrix, exact build IDs/NVRs,
   checks performed, and any remaining runtime or release gap.
+- Release and packaging changes started in a side worktree must be merged or
+  fast-forwarded to `main`; verify the remote `main` commit after pushing.
 
 ## Scope, collaboration, and delivery
 

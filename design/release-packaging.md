@@ -7,12 +7,13 @@ release pipeline or COPR publication changes.
 
 - `gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
 - The latest COPR release is Gnoblin 0.1.4, build 11021823, with Mutter
-  51.0-20 and Shell 51.0-14. The project currently enables only
-  `fedora-44-x86_64`.
+  51.0-20 and Shell 51.0-14. The project currently enables
+  `fedora-43-x86_64` and `fedora-44-x86_64`; no Fedora 43 RPM build has been
+  published yet.
 - The running host is Fedora 43 and has Fedora 43 Gnoblin 49.6-era packages.
-- The source-build and COPR-install jobs in `.github/workflows/verify.yml` and
-  the source-RPM/COPR release jobs in `.github/workflows/release.yml` and
-  `.github/workflows/copr.yml` currently use Fedora 44.
+- The source-build job in `.github/workflows/verify.yml` covers Fedora 43 and 44. The initial matrix run exposed a stale GNOME Shell patch hunk and is
+  being corrected. The source-RPM job uses Fedora 44; COPR compiles SRPMs in
+  each enabled chroot.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -41,9 +42,8 @@ Adding an older Fedora target requires all of the following:
   metadata publishes packages for that release.
 - Build all source RPMs in that chroot; resolve actual compiler, API, and
   dependency failures instead of changing the release label.
-- Check RPM `Requires` against the target's repositories. The Fedora 43 host
-  currently reports PipeWire 1.4.11, libinput 1.30.3, and libwayland-client
-  1.25.0; current package metadata asks for 1.6.0, 1.31.0, and 1.26.
+- Check RPM `Requires` against the target's repositories. Fedora 43 updates
+  currently provide PipeWire 1.4.11, libinput 1.30.3, and Wayland 1.26.
 - Lower a dependency floor only after compiling against that library version
   and checking the symbols/APIs the built runtime uses. Keep shared package
   manifest requirements valid for every supported distribution.
@@ -51,6 +51,15 @@ Adding an older Fedora target requires all of the following:
   verify a fresh graphical session on suitable hardware before marking the
   release usable.
 
-The current Fedora 43 work starts by adding a Fedora 43 source-build job. The
-runtime package floors and COPR install job must be updated only after that
-build establishes which APIs the pinned GNOME 51 sources use.
+The Fedora 43 work enables the COPR chroot and adds clean source-build and
+post-publication package-install matrices. Mutter 51 calls the libinput 1.31
+DWT-timeout API; this setting is now compiled conditionally so older libinput
+retains normal disable-while-typing behavior. The shared package manifest
+floors are set to PipeWire 1.4 and libinput 1.30. The COPR build/install run
+is still required to prove RPM build and runtime compatibility on Fedora 43.
+
+The first Fedora 43/44 source matrix run reached Shell patch application and
+failed because the session-lock patch had malformed unified-diff context and
+its new resource entry made the notification patch stale. Both patches now
+apply in sequence. The complete source matrix must pass before tagging a
+release. A source build alone does not establish COPR package compatibility.

@@ -87,7 +87,7 @@
       }
     },
     "libinput": {
-      "minVersion": "1.31.0",
+      "minVersion": "1.30.0",
       "names": {
         "arch": "libinput",
         "deb": "libinput10",
@@ -95,7 +95,7 @@
       }
     },
     "pipewire": {
-      "minVersion": "1.6.0",
+      "minVersion": "1.4.0",
       "names": {
         "arch": "pipewire",
         "deb": "pipewire",
