@@ -53,8 +53,9 @@ gnoblin.configure {
         visual_bell_type = "fullscreen-flash", -- or "frame-flash"
     },
 
-    -- Input overrides are optional. Omitted values continue to use GNOME's
-    -- setting for that device/group. Device overrides use vendor:product IDs.
+    -- Input works automatically with your device/system settings. Only add
+    -- fields below when you want to change their behavior. Tablets and pens
+    -- need no device IDs, and screen rotation follows the system setting.
     input = {
         mouse = {
             -- speed = 0.0, -- -1..1
@@ -84,24 +85,7 @@ gnoblin.configure {
             -- numlock_state = false, -- in-memory while this config is active
             -- xkb_options = {"caps:escape"}, -- overrides the current XKB options
         },
-        -- Tablet mapping: "absolute" or "relative"; optional handedness/aspect.
-        -- tablets = {
-        --     ["1234:5678"] = {mapping = "absolute", left_handed = false, keep_aspect = true},
-        -- },
-        -- Stylus keys are a hex serial or default-vvvv:pppp. Actions may be
-        -- "default", "middle", "right", "back", "forward", "switch-monitor",
-        -- or "keybinding". Each button can also specify a keybinding string.
-        -- styluses = {
-        --     ["default-1234:5678"] = {
-        --         button_action = "default",
-        --         secondary_button_action = "default",
-        --         tertiary_button_action = "default",
-        --         button_keybinding = "",
-        --         secondary_button_keybinding = "",
-        --         tertiary_button_keybinding = "",
-        --     },
-        -- },
-        -- orientation_lock = true, -- omit to use GNOME's orientation setting
+        -- Advanced tablet, pen, and rotation overrides are shown below.
     },
 
     -- Keep the GNOME session's configured sources unless you intentionally
@@ -262,6 +246,34 @@ gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", '
 -- gnoblin.remove_shortcut("terminal")
 -- gnoblin.autostart {name = "bar", command = {"waybar"}}
 -- gnoblin.remove_autostart("bar")
+
+-- Advanced input overrides. Most people should leave these commented out:
+-- Gnoblin then follows each tablet/pen's existing settings and the system's
+-- rotation setting. IDs only identify a device you want to change.
+-- gnoblin.configure {
+--     input = {
+--         tablets = {
+--             ["1234:5678"] = {
+--                 mapping = "absolute", -- or "relative"
+--                 left_handed = false,
+--                 keep_aspect = true,
+--             },
+--         },
+--         styluses = {
+--             ["default-1234:5678"] = { -- or a pen's hex serial number
+--                 button_action = "default",
+--                 secondary_button_action = "default",
+--                 tertiary_button_action = "default",
+--                 button_keybinding = "",
+--                 secondary_button_keybinding = "",
+--                 tertiary_button_keybinding = "",
+--             },
+--         },
+--         orientation_lock = true, -- true/false overrides the system setting
+--     },
+-- }
+-- Pen button actions: "default", "middle", "right", "back", "forward",
+-- "switch-monitor", or "keybinding" (with the matching keybinding string).
 
 -- Split this file into modules as the config grows. Paths are relative to the
 -- Lua file making the load call; globs are sorted and recursive.
