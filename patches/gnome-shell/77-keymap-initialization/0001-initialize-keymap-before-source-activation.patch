@@ -1,0 +1,43 @@
+From 52830a2179c350e358280d08408a4e885b62096b Mon Sep 17 00:00:00 2001
+From: Gnoblin Build <build@gnoblin.local>
+Date: Fri, 25 Sep 2026 00:23:02 +0100
+Subject: [PATCH] keyboard: initialize XKB before Gnoblin source activation
+
+---
+ js/ui/status/keyboard.js | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index ca54f4591..ffe003cd2 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -359,6 +359,7 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
+         this._xkbOptions = xkbOptions;
+         this._emitInputSourcesChanged();
+         this._emitPerWindowChanged();
++        this._emitKeyboardModelChanged();
+         this._emitKeyboardOptionsChanged();
+     }
+ 
+@@ -386,7 +387,7 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
+     }
+ 
+     get keyboardModel() {
+-        return this._sessionSettings.keyboardModel;
++        return this._sessionSettings.keyboardModel ?? '';
+     }
+ }
+ 
+@@ -471,6 +472,9 @@ export class InputSourceManager extends Signals.EventEmitter {
+     _setGnoblinInputSources(sources, perWindow, xkbOptions) {
+         if (!(this._settings instanceof InputSourceGnoblinSettings))
+             return;
++        this._keyboardManager.setKeyboardOptions(
++            xkbOptions ?? this._settings.keyboardOptions ?? []);
++        this._keyboardManager.setKeyboardModel(this._settings.keyboardModel ?? '');
+         this._settings.setInputSources(sources, perWindow, xkbOptions);
+         this._sourcesPerWindowChanged();
+     }
+-- 
+2.55.0
+

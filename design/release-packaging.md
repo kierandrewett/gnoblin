@@ -14,6 +14,12 @@ release pipeline or COPR publication changes.
 - The source-build job in `.github/workflows/verify.yml` covers Fedora 43 and 44. The initial matrix run exposed a stale GNOME Shell patch hunk and is
   being corrected. The source-RPM job uses Fedora 44; COPR compiles SRPMs in
   each enabled chroot.
+- Both Fedora source-build jobs passed on commit `300190f`. The `0.1.5` tag's
+  source RPMs and Debian/Ubuntu package builds succeeded, but all three
+  package-install smoke tests failed on input-source initialization; the
+  Ubuntu 24.04 test also assumed a package script directory that is not
+  installed when no integrations are shipped. No GitHub release or COPR build
+  was published from that tag. Fixes are being prepared for `0.1.6`.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -60,8 +66,11 @@ is still required to prove RPM build and runtime compatibility on Fedora 43.
 
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
-its new resource entry made the notification patch stale. Both patches now
-apply in sequence. On commit `25af4af`, Fedora 43 completed the full source
-build successfully. Fedora 44 checkout hit a transient upstream GitLab 503
-before compilation; rerun that job. The Fedora 43 COPR package build and clean
-install remain the release compatibility gates.
+its resource entry made the notification patch stale. Both patches now apply
+in sequence. The follow-up run on commit `300190f` passed both Fedora source
+builds. The later release run found an XKB options initialization error in the
+headless smoke test; two ordered Shell patches initialize keyboard options
+before source activation and default absent option arrays. The smoke fixture
+now creates its per-user script directory when no packaged integrations
+exist. These fixes still need a fresh release build and COPR installation
+check on Fedora 43 before the compatibility change is complete.
