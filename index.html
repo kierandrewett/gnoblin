@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -484,6 +484,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#build-a-shell-or-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build a shell or integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#need-help" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -749,6 +760,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1627,6 +1666,90 @@
   
   
     <li class="md-nav__item">
+      <a href="bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="background-effects/" class="md-nav__link">
         
   
@@ -2239,6 +2362,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#build-a-shell-or-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build a shell or integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#need-help" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2270,14 +2404,16 @@
 
 
 <h1 id="gnoblin">Gnoblin<a class="headerlink" href="#gnoblin" title="Permanent link">&para;</a></h1>
-<p>A Wayland desktop with GNOME's window management and a shell of your choice.</p>
-<p>Gnoblin manages windows, workspaces and desktop services. Your shell provides
-the bar, dock and launcher. GNOME remains available as a separate login session.</p>
+<p>Gnoblin is the floating window manager and desktop tooling you can build a
+Wayland desktop on. It manages windows, workspaces, input and desktop services;
+you choose the bar, dock, launcher and other visible shell components. A regular
+GNOME login remains available separately.</p>
 <h2 id="get-started">Get started<a class="headerlink" href="#get-started" title="Permanent link">&para;</a></h2>
 <ol>
 <li><a href="installation/">Install Gnoblin</a>.</li>
 <li><a href="bring-your-own-shell/">Choose a shell</a>.</li>
 <li><a href="configuration/">Configure your desktop</a>.</li>
+<li><a href="build-a-desktop/">Build a desktop from Gnoblin's primitives</a>.</li>
 </ol>
 <h2 id="make-it-yours">Make it yours<a class="headerlink" href="#make-it-yours" title="Permanent link">&para;</a></h2>
 <ul>
@@ -2288,9 +2424,43 @@ the bar, dock and launcher. GNOME remains available as a separate login session.
 <li><a href="animations/">Animations</a> — timing and motion.</li>
 <li><a href="configuration-reference/">All settings</a> — find an option.</li>
 </ul>
+<h2 id="build-a-shell-or-integration">Build a shell or integration<a class="headerlink" href="#build-a-shell-or-integration" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Start here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Read and control windows from a program</td>
+<td><a href="gnoblinctl/">gnoblinctl</a> or the <a href="compositor-bridge/">compositor bridge</a></td>
+</tr>
+<tr>
+<td>Wire up a bar, dock or launcher</td>
+<td><a href="shell-integration/">Shell integration</a> and <a href="bridge-examples/">bridge examples</a></td>
+</tr>
+<tr>
+<td>Use a Wayland client protocol</td>
+<td><a href="wayland-protocols/">Protocol catalog</a></td>
+</tr>
+<tr>
+<td>React inside GNOME Shell</td>
+<td><a href="user-scripts/">User scripts</a></td>
+</tr>
+<tr>
+<td>Choose which application gets an effect</td>
+<td><a href="window-rules/">Window rules</a></td>
+</tr>
+</tbody>
+</table>
+<p>Gnoblin owns the compositor interfaces. Bingux is one independent project that
+uses them; the same interfaces are available to your shell.</p>
 <h2 id="need-help">Need help?<a class="headerlink" href="#need-help" title="Permanent link">&para;</a></h2>
-<p>Start with <a href="troubleshooting/">troubleshooting</a>. For scripts and integrations,
-see <a href="gnoblinctl/">gnoblinctl</a> and the <a href="compositor-bridge/">compositor bridge</a>.</p>
+<p>Start with <a href="troubleshooting/">troubleshooting</a>. For custom automation, see
+<a href="user-scripts/">user scripts</a>. Shells use the built-in
+<a href="compositor-bridge/">compositor bridge</a> and can use <a href="gnoblinctl/">gnoblinctl</a>.</p>
 
 
 

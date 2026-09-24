@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -657,6 +657,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1535,6 +1563,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2169,6 +2281,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shell-cutover-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell cutover contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-gates" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2306,6 +2429,39 @@ The regular GNOME login continues using GNOME's lock screen. GDM,
 <code>gnome-session</code> and settings-daemon are retained. Gnoblin's own bridge and
 recovery controls must query the new lock state before exposing operations
 that <code>Main.sessionMode.isLocked</code> currently protects.</p>
+<h2 id="shell-cutover-contract">Shell cutover contract<a class="headerlink" href="#shell-cutover-contract" title="Permanent link">&para;</a></h2>
+<p>The first implementation keeps GNOME Shell's path by default. A developer can
+set <code>GNOBLIN_SESSION_LOCK_CUTOVER=1</code> only for a fresh Gnoblin Shell process.
+At startup, Shell reads Mutter's native
+<code>get_gnoblin_session_lock_capability()</code> accessor. It does not synchronously
+query D-Bus: Mutter and the Shell JavaScript share one process, so a startup
+call into a service owned by that process can deadlock. Shell skips constructing
+<code>ScreenShield</code> only when the native accessor reports all of the following:</p>
+<ol>
+<li><code>CapabilityVersion &gt;= 1</code>;</li>
+<li>a server with compositor-enforced <code>unlocked</code>, <code>covering</code>, <code>locked</code>, and
+   <code>failsafe</code> states is installed; and</li>
+<li>the coordinator already owns <code>org.gnome.ScreenSaver</code> and
+   <code>org.gnome.Shell.ScreenShield</code> compatibility names.</li>
+</ol>
+<p>The native seam also supplies <code>get_gnoblin_session_lock_active()</code> and
+<code>request_gnoblin_session_lock(reason)</code>. Its future coordinator exposes <code>State</code>
+(<code>unavailable</code>, <code>unlocked</code>, <code>covering</code>, <code>locked</code>, or <code>failsafe</code>), <code>Active</code>,
+<code>StateChanged</code>, and <code>RequestLock(reason)</code> on <code>org.gnoblin.SessionLock</code> for
+external clients. The native active accessor is true from <code>covering</code> through
+<code>failsafe</code>, so Shell's bridge stops work as soon as Mutter installs its input
+embargo rather than waiting for presentation confirmation.
+<code>RequestLock</code> only confirms that acquisition began; it does not substitute for
+the compositor presentation confirmation. The coordinator owns logind and the
+two compatibility D-Bus names during cutover, while GNOME Shell owns all of
+them during fallback. This single-owner rule prevents competing ScreenSaver
+methods and sleep listeners.</p>
+<p>Gnoblin's bridge and developer console use the same adapter for their locked
+state. It combines stock <code>sessionMode.isLocked</code> with the coordinator's active
+state, cancels bridge interaction when the compositor becomes active, and
+refuses screenshots, previews and window operations while locked. A coordinator
+which is absent, too old, <code>covering</code>, or <code>unavailable</code> leaves GNOME's normal
+ScreenShield untouched.</p>
 <h2 id="release-gates">Release gates<a class="headerlink" href="#release-gates" title="Permanent link">&para;</a></h2>
 <p>The replacement is ready to become the default only when a fresh installed
 Gnoblin session proves all of these paths:</p>

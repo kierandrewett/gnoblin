@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1516,10 +1544,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#other-commands" class="md-nav__link">
+  <a href="#window-actions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Other commands
+        Window actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shell-and-policy-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell and policy commands
       
     </span>
   </a>
@@ -1670,6 +1709,90 @@
     
   
     Compositor bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
   
 
     
@@ -2324,10 +2447,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#other-commands" class="md-nav__link">
+  <a href="#window-actions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Other commands
+        Window actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shell-and-policy-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell and policy commands
       
     </span>
   </a>
@@ -2448,48 +2582,154 @@ gnoblinctl<span class="w"> </span>monitor<span class="w"> </span>list
 <p>Workspace positions start at <strong>1</strong>; monitor IDs start at <strong>0</strong>.
 Dynamic workspaces can be renumbered. Refresh the list before reusing an index.</p>
 <p>Moving a window does not follow it. Focus that window to switch to its workspace.</p>
-<h2 id="other-commands">Other commands<a class="headerlink" href="#other-commands" title="Permanent link">&para;</a></h2>
+<h2 id="window-actions">Window actions<a class="headerlink" href="#window-actions" title="Permanent link">&para;</a></h2>
+<p>Actions without extra arguments accept an optional window ID; they use
+<code>active</code> if omitted. The geometry actions require the ID and numbers shown.</p>
 <table>
 <thead>
 <tr>
-<th>Group</th>
-<th>Actions</th>
+<th>Action</th>
+<th>Arguments after action</th>
+<th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>config</code></td>
-<td>path, reload</td>
+<td><code>menu</code></td>
+<td><code>[ID]</code></td>
+<td>Open the window menu</td>
 </tr>
 <tr>
-<td><code>input</code></td>
-<td>list, current, select</td>
+<td><code>interactive-move</code>, <code>interactive-resize</code></td>
+<td><code>[ID]</code></td>
+<td>Begin pointer-driven move or resize</td>
 </tr>
 <tr>
-<td><code>feature</code></td>
-<td>list, show, enable, disable</td>
+<td><code>above</code>, <code>unabove</code></td>
+<td><code>[ID]</code></td>
+<td>Set or clear always-on-top</td>
 </tr>
 <tr>
-<td><code>script</code></td>
-<td>list</td>
+<td><code>stick</code>, <code>unstick</code></td>
+<td><code>[ID]</code></td>
+<td>Show on all workspaces or only its own</td>
 </tr>
 <tr>
-<td><code>permissions</code></td>
-<td>list, check</td>
+<td><code>focus</code>, <code>close</code>, <code>minimize</code></td>
+<td><code>[ID]</code></td>
+<td>Focus, request close, or minimize</td>
 </tr>
 <tr>
-<td><code>grant</code></td>
-<td>list, revoke</td>
+<td><code>restore-or-minimize</code></td>
+<td><code>[ID]</code></td>
+<td>Restore a maximized/snapped window; otherwise minimize</td>
 </tr>
 <tr>
-<td><code>launch</code></td>
-<td>status, begin, end</td>
+<td><code>restore</code>, <code>maximize</code>, <code>unmaximize</code></td>
+<td><code>[ID]</code></td>
+<td>Change minimization or maximization</td>
+</tr>
+<tr>
+<td><code>fullscreen</code>, <code>unfullscreen</code></td>
+<td><code>[ID]</code></td>
+<td>Enter or leave fullscreen</td>
+</tr>
+<tr>
+<td><code>move</code></td>
+<td><code>ID X Y</code></td>
+<td>Set frame position; each coordinate: −100000–100000</td>
+</tr>
+<tr>
+<td><code>resize</code></td>
+<td><code>ID WIDTH HEIGHT</code></td>
+<td>Set frame size; each dimension: 1–32768</td>
+</tr>
+<tr>
+<td><code>workspace</code></td>
+<td><code>ID WORKSPACE</code></td>
+<td>Move to a one-based workspace: 1–1024</td>
+</tr>
+<tr>
+<td><code>monitor</code></td>
+<td><code>ID MONITOR</code></td>
+<td>Move to a zero-based monitor: 0–1024</td>
 </tr>
 </tbody>
 </table>
-<p>Direct commands include <code>ping</code>, <code>status</code>, <code>version</code>, <code>privacy</code> and
-<code>reload</code>. Reload also refreshes the theme and user scripts.</p>
-<p>See <a href="../permissions/">permission policy</a> and <a href="../launch-feedback/">launch feedback</a>.
+<h2 id="shell-and-policy-commands">Shell and policy commands<a class="headerlink" href="#shell-and-policy-commands" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping</code>, <code>version</code>, <code>status</code></td>
+<td>Check the shell, build version and window bridge</td>
+</tr>
+<tr>
+<td><code>reload</code></td>
+<td>Refresh the Shell, theme and user scripts while keeping windows</td>
+</tr>
+<tr>
+<td><code>config path</code>, <code>config reload</code></td>
+<td>Find or reload the active config</td>
+</tr>
+<tr>
+<td><code>input list</code>, <code>input current</code></td>
+<td>Inspect configured and selected keyboard sources</td>
+</tr>
+<tr>
+<td><code>input select TYPE ID</code></td>
+<td>Select an exact source from <code>input list</code></td>
+</tr>
+<tr>
+<td><code>feature list</code>, <code>feature show ID</code></td>
+<td>Inspect live Shell switches</td>
+</tr>
+<tr>
+<td><code>feature enable ID</code>, <code>feature disable ID</code></td>
+<td>Change a switch</td>
+</tr>
+<tr>
+<td><code>script list</code></td>
+<td>List loaded user scripts</td>
+</tr>
+<tr>
+<td><code>privacy</code></td>
+<td>Read screen-sharing, microphone and location indicators</td>
+</tr>
+<tr>
+<td><code>permissions list</code></td>
+<td>Read portal rules and capabilities</td>
+</tr>
+<tr>
+<td><code>permissions check CAPABILITY IDENTITY</code></td>
+<td>Explain a decision for <code>app-id:…</code> or <code>host-exe:…</code></td>
+</tr>
+<tr>
+<td><code>grant list</code>, <code>grant revoke KIND ID</code></td>
+<td>List or revoke persistent portal grants; kind is <code>screen-cast</code> or <code>remote-desktop</code></td>
+</tr>
+<tr>
+<td><code>launch status</code></td>
+<td>List pending launch feedback</td>
+</tr>
+<tr>
+<td><code>launch begin TOKEN APP [MILLISECONDS]</code>, <code>launch end TOKEN</code></td>
+<td>Start or end busy-cursor feedback; duration defaults to 3000 ms, range 1–60000 ms</td>
+</tr>
+</tbody>
+</table>
+<p>For example, to inspect a portal decision and change keyboard source:</p>
+<div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>permissions<span class="w"> </span>check<span class="w"> </span>screen-cast<span class="w"> </span>app-id:org.example.Recorder
+gnoblinctl<span class="w"> </span>input<span class="w"> </span>list<span class="w"> </span>--json
+gnoblinctl<span class="w"> </span>input<span class="w"> </span><span class="k">select</span><span class="w"> </span>xkb<span class="w"> </span>us
+</code></pre></div>
+<p>Use a capability from <code>permissions list</code> and a source from <code>input list</code>.
+See <a href="../permissions/">permission policy</a> and <a href="../launch-feedback/">launch feedback</a>.
 Launch feedback does not start an application.</p>
 <h2 id="output-for-scripts">Output for scripts<a class="headerlink" href="#output-for-scripts" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>gnoblinctl<span class="w"> </span>window<span class="w"> </span>list<span class="w"> </span>--json
@@ -2575,7 +2815,9 @@ Settings use D-Bus; window commands use the
 <a href="../compositor-bridge/">compositor bridge</a>.</p>
 <p>The socket defaults to <code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>.
 Override it with <code>--socket PATH</code> or <code>GNOBLIN_COMPOSITOR_SOCKET</code>.</p>
-<p>If it is missing, check <code>gnoblinctl script list</code> and the bridge installation.
+<p>The bridge is built into current Gnoblin source builds, so <code>script list</code> does
+not show it. Check <code>gnoblinctl status</code>, the running Gnoblin version and the
+session log. Older installed builds may not include the built-in service yet.
 See <a href="../cli-development/">CLI development</a> for the transport contract.</p>
 
 

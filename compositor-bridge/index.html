@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -16,7 +16,7 @@
         <link rel="prev" href="../shell-integration/">
       
       
-        <link rel="next" href="../background-effects/">
+        <link rel="next" href="../bridge-examples/">
       
       
         
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1578,10 +1606,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enable-it" class="md-nav__link">
+  <a href="#availability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable it
+        Availability
       
     </span>
   </a>
@@ -1593,6 +1621,17 @@
     <span class="md-ellipsis">
       
         Connect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation index
       
     </span>
   </a>
@@ -1677,6 +1716,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#coordinate-shell-processes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinate shell processes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#limits-and-disconnects" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1691,6 +1741,90 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2293,10 +2427,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enable-it" class="md-nav__link">
+  <a href="#availability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enable it
+        Availability
       
     </span>
   </a>
@@ -2308,6 +2442,17 @@
     <span class="md-ellipsis">
       
         Connect
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation index
       
     </span>
   </a>
@@ -2392,6 +2537,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#coordinate-shell-processes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinate shell processes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#limits-and-disconnects" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2428,10 +2584,16 @@ shell read windows, register shortcuts and request window actions. Your shell
 still draws the UI and decides how to group and order windows.</p>
 <p>For terminal commands and scripts, <a href="../gnoblinctl/">gnoblinctl</a> handles the
 connection for you.</p>
-<h2 id="enable-it">Enable it<a class="headerlink" href="#enable-it" title="Permanent link">&para;</a></h2>
-<p>Install or link <code>share/gnoblin/scripts/compositor-bridge.js</code> into
-<code>~/.config/gnoblin/scripts/</code>, then run <code>gnoblinctl reload</code>.
-Custom shells can use this directly; Bingux provides its own wiring.</p>
+<h2 id="availability">Availability<a class="headerlink" href="#availability" title="Permanent link">&para;</a></h2>
+<p>The bridge is a built-in Gnoblin compositor service. It starts with the
+Gnoblin Shell component, stays available across <code>gnoblinctl reload</code>, and does
+not need to be installed under <code>~/.config/gnoblin/scripts/</code>. <code>gnoblinctl window
+list</code> uses the same socket. Check <code>gnoblinctl status</code> before debugging a client
+connection. Older installed builds may not include the built-in service yet;
+<a href="../source-development/#verify">check the running build</a> when its behaviour
+differs from this reference.</p>
+<p>Bingux is a separate shell project that uses this interface. A custom shell can
+connect to it without installing Bingux.</p>
 <h2 id="connect">Connect<a class="headerlink" href="#connect" title="Permanent link">&para;</a></h2>
 <p>Socket: <code>$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock</code>.
 Use <code>GNOBLIN_COMPOSITOR_SOCKET</code> on both ends for a private test path.</p>
@@ -2440,8 +2602,138 @@ Use <code>GNOBLIN_COMPOSITOR_SOCKET</code> on both ends for a private test path.
 </code></pre></div>
 <p>Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.</p>
+<p>The <code>hello.version</code> field is the socket protocol version. Check <code>features</code>
+before using optional operations such as <code>ui-session</code>, bare Super, blur regions
+or layer animation policy. A validation error is
+<code>{"event":"error","message":"..."}</code>; if a valid <code>command</code> request fails,
+the error also carries its request <code>id</code>. Malformed JSON or excessive input
+closes the socket; ordinary validation errors leave it open.</p>
+<h2 id="operation-index">Operation index<a class="headerlink" href="#operation-index" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th><code>op</code></th>
+<th>Required fields</th>
+<th>Reply or stream</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>command</code></td>
+<td><code>id</code>, <code>command</code>; command-specific fields</td>
+<td>One <code>reply</code> with matching <code>id</code>, or <code>error</code></td>
+</tr>
+<tr>
+<td><code>windows</code></td>
+<td>None</td>
+<td>Current <code>windows</code> snapshot, then changes</td>
+</tr>
+<tr>
+<td><code>privacy</code></td>
+<td>None</td>
+<td>Current <code>privacy</code> state, then changes</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>None</td>
+<td>One <code>status</code> with binding IDs and active session ID</td>
+</tr>
+<tr>
+<td><code>bind</code></td>
+<td><code>id</code>, <code>accelerator</code>, <code>hold</code></td>
+<td><code>bound</code>, then activation and input events</td>
+</tr>
+<tr>
+<td><code>activate</code></td>
+<td><code>window</code></td>
+<td>Focus a window; no success reply</td>
+</tr>
+<tr>
+<td><code>preview</code></td>
+<td><code>window</code>, <code>width</code>, <code>height</code></td>
+<td>One <code>preview</code> event</td>
+</tr>
+<tr>
+<td><code>input-anchor</code></td>
+<td>None</td>
+<td>One <code>input-anchor</code> event</td>
+</tr>
+<tr>
+<td><code>type-text</code></td>
+<td><code>window</code>, <code>text</code></td>
+<td><code>typed</code> or <code>error</code></td>
+</tr>
+<tr>
+<td><code>shortcut-input</code></td>
+<td><code>name</code>, <code>state</code></td>
+<td>Input handoff; no success reply</td>
+</tr>
+<tr>
+<td><code>ui-session</code></td>
+<td><code>action</code>; other fields depend on action</td>
+<td><code>ui-state</code> or <code>ui-command</code> events</td>
+</tr>
+<tr>
+<td><code>layer-animation-policy</code></td>
+<td><code>namespace</code></td>
+<td>One policy event for that layer namespace</td>
+</tr>
+<tr>
+<td><code>blur-region</code></td>
+<td><code>namespace</code>, <code>screen</code>, <code>region</code></td>
+<td>No success reply</td>
+</tr>
+<tr>
+<td><code>window-drag</code></td>
+<td>None</td>
+<td>Current <code>window-drag</code> state, then changes</td>
+</tr>
+<tr>
+<td><code>snap-offer</code></td>
+<td><code>serial</code>, <code>regions</code></td>
+<td>No success reply; may later get <code>snap-completed</code></td>
+</tr>
+<tr>
+<td><code>snap-context</code></td>
+<td>None</td>
+<td>One <code>snap-context</code> event</td>
+</tr>
+<tr>
+<td><code>snap-window</code></td>
+<td><code>window</code>, <code>monitor</code>, <code>target</code></td>
+<td>Applies a region; no success reply</td>
+</tr>
+<tr>
+<td><code>stop-sharing</code>, <code>stop-recording</code></td>
+<td>None</td>
+<td>Requests stop; no success reply</td>
+</tr>
+<tr>
+<td><code>end</code></td>
+<td>Optional <code>session</code> for fallback switcher</td>
+<td>Ends this client's input session</td>
+</tr>
+<tr>
+<td><code>clear</code></td>
+<td>None</td>
+<td>Removes this client's bindings and session</td>
+</tr>
+</tbody>
+</table>
+<p><code>command</code> accepts <code>windows</code>, <code>capture-windows</code>, <code>workspaces</code>, <code>monitors</code>,
+<code>workspace-switch</code> and <code>window</code>. <code>workspace-switch</code> needs a one-based
+<code>workspace</code>; <code>window</code> needs an <code>action</code> and a stable window ID or <code>"active"</code>.
+The <a href="../gnoblinctl/">CLI reference</a> lists window actions and arguments. Only
+<code>command</code> supplies a correlation ID: match <code>reply</code> or <code>error</code> by that ID
+because other events can arrive first. A reply with <code>pending: true</code> means the
+action was accepted; observe later state to confirm completion.</p>
+<p><code>capture-windows</code> returns visible, non-minimised windows in stacking order
+with title, app name, frame position and size, and <code>bufferWidth</code> and
+<code>bufferHeight</code> for capture. These IDs come from Mutter's window ID, whereas
+<code>windows</code> snapshots use a stable sequence string. Obtain an action ID from
+<code>windows</code> or <code>gnoblinctl window list</code> before sending a <code>window</code> action.</p>
 <h2 id="example-watch-the-window-list">Example: watch the window list<a class="headerlink" href="#example-watch-the-window-list" title="Permanent link">&para;</a></h2>
-<p>Run this Python program inside your Gnoblin session after enabling the bridge:</p>
+<p>Run this Python program inside your Gnoblin session:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
@@ -2499,8 +2791,9 @@ becomes visible. For example, an Alt-held switcher can finish when Alt is releas
 Events include <code>activated</code>, <code>key</code>, <code>pointer</code>, <code>released</code> and <code>cancelled</code>.</p>
 <p><code>activated</code> includes id, first, modifiers and time.
 Pointer coordinates are global logical pixels; button 1 is left.</p>
-<p>Hide the UI on release or cancellation. Sending <code>{"op":"end"}</code>, locking, disconnecting, reloading the script or
-reaching the ten-second timeout also releases the captured input.</p>
+<p>Hide the UI on release or cancellation. Sending <code>{"op":"end"}</code>, locking,
+disconnecting or reaching the ten-second timeout also releases the captured
+input.</p>
 <h2 id="bare-super-and-buffered-typing">Bare Super and buffered typing<a class="headerlink" href="#bare-super-and-buffered-typing" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"op"</span><span class="p">:</span><span class="w"> </span><span class="s2">"bind"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"search"</span><span class="p">,</span><span class="w"> </span><span class="nt">"accelerator"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Super"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hold"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"captureInput"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
@@ -2545,7 +2838,8 @@ Send <code>state: "closed"</code> when dismissed. The binding ID is the handoff 
 <p>Window records contain id, title, appId, focused, minimized, lastUserTime,
 parent and monitor. IDs are strings, stable for the window's session lifetime.</p>
 <p>Skip-taskbar and override-redirect windows are excluded.
-The client chooses grouping and ordering. Stale IDs return an error.</p>
+The client chooses grouping and ordering. Stale IDs return an error. <code>parent</code>
+links a transient dialog to its parent; <code>lastUserTime</code> is a recency hint.</p>
 <p>A subscription with no open windows produces:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"windows"</span><span class="p">,</span><span class="w"> </span><span class="nt">"windows"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
@@ -2576,19 +2870,80 @@ takes priority. Clipboard managers may record the temporary text.</p>
 <p>Clipboard preparation is limited to 64 formats, 64 MiB and three seconds.
 Failed preparation leaves it unchanged. Native Wayland text input does not
 use the clipboard.</p>
-<p>The fallback needs Python, PyGObject, GTK 3 and both installed <code>scripts/lib/</code>
-helpers beside the bridge.</p>
+<p>On XWayland, text insertion uses the packaged <code>gnoblin-clipboard-paste</code> helper,
+which needs Python, PyGObject and GTK 3. Native Wayland text input does not use
+that helper.</p>
 <h2 id="recording-and-camera-activity">Recording and camera activity<a class="headerlink" href="#recording-and-camera-activity" title="Permanent link">&para;</a></h2>
 <p><code>{"op":"privacy"}</code> subscribes to screenSharing, recording, recordingCount,
 recordingElapsed, cameraInUse and locationCaptures.</p>
 <p>Location captures list authorised GeoClue desktop IDs. Elapsed time is whole
-seconds and survives script reload; clients can advance it between updates.</p>
+seconds; clients can advance it between updates.</p>
 <p><code>stop-sharing</code> stops non-recording remote sessions.
 <code>stop-recording</code> stops recording sessions. An encoder owner should use its
 normal finalisation path to save output. These requests do not grant access.</p>
+<h2 id="coordinate-shell-processes">Coordinate shell processes<a class="headerlink" href="#coordinate-shell-processes" title="Permanent link">&para;</a></h2>
+<p><code>ui-session</code> shares named state between UI processes. Names match
+<code>^[a-z][a-z0-9-]{0,63}$</code>; one client owns each name.</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Fields</th>
+<th>Event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watch</code></td>
+<td>None</td>
+<td><code>ui-state</code> for each owner and later changes</td>
+</tr>
+<tr>
+<td><code>state</code></td>
+<td><code>name</code>, <code>state</code> object</td>
+<td>Publishes <code>ui-state</code></td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td><code>name</code>, <code>command</code></td>
+<td>Sends <code>ui-command</code> to the owner</td>
+</tr>
+</tbody>
+</table>
+<p>Use the envelope <code>{"op":"ui-session","action":"watch"}</code>. Owner disconnect
+publishes <code>state: null</code>. A visible layer can include <code>surface</code> (its namespace),
+<code>companions</code> (up to 16 namespaces), <code>revealCompanions: true</code>, and
+<code>companionsAbove: true</code> in its state to coordinate panel stacking.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Fields</th>
+<th>Limit or effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>blur-region</code></td>
+<td><code>namespace</code>, monitor origin <code>screen: [x,y]</code>, local <code>region: [x,y,width,height]</code> or <code>null</code></td>
+<td>Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See <a href="../effects-rendering/#blur-cache">effect rendering</a>.</td>
+</tr>
+<tr>
+<td><code>layer-animation-policy</code></td>
+<td><code>namespace</code></td>
+<td>Returns <code>enter</code>, <code>exit</code>, <code>windowShadow</code>; namespace at most 128 characters</td>
+</tr>
+</tbody>
+</table>
+<p>For drag layouts, subscribe with <code>window-drag</code>, offer hit and target rectangles
+using <code>snap-offer</code>, and apply a keyboard-chosen rectangle with <code>snap-window</code>.
+The <a href="../window-snapping/#shell-integration">snapping guide</a> gives the request
+shapes and work-area checks.</p>
 <h2 id="limits-and-disconnects">Limits and disconnects<a class="headerlink" href="#limits-and-disconnects" title="Permanent link">&para;</a></h2>
 <p>The socket directory is private to the user.
-Limits: eight clients, 32 bindings per client, 4 MiB output per connection.</p>
+Limits: 32 clients, 32 bindings per client, 64 queued records and 4 MiB queued
+output per connection. An input buffer over 16 KiB or malformed JSON closes the
+connection. A slow reader can also be disconnected when its output queue fills.</p>
 <p>Invalid requests return errors. Malformed JSON or excessive input disconnects
 the client. Disconnect releases its bindings and other resources.</p>
 

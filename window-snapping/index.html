@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1459,17 +1487,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Test
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1617,6 +1634,90 @@
     
   
     Compositor bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
   
 
     
@@ -2248,17 +2349,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Test
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2340,50 +2430,57 @@ It imports Tiling Shell layouts once when available; otherwise it supplies defau
 reserve space.
 See <a href="../session-settings/#window-drag-boundary">drag boundaries</a> for overlap policy.</p>
 <h2 id="shell-integration">Shell integration<a class="headerlink" href="#shell-integration" title="Permanent link">&para;</a></h2>
-<p>The <a href="../compositor-bridge/">compositor bridge</a> accepts:</p>
+<p>Use the <a href="../compositor-bridge/">bridge socket</a> to supply a picker. Rectangles
+use logical desktop pixels. Read the work area from Gnoblin; it excludes space
+reserved by panels.</p>
 <table>
 <thead>
 <tr>
-<th>Request</th>
-<th>Purpose</th>
+<th>Step</th>
+<th>Message</th>
+<th>What Gnoblin returns or does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>window-drag</code></td>
-<td>Subscribe to serial, window, pointer, modifiers and work area</td>
+<td>Watch drags</td>
+<td><code>{"op":"window-drag"}</code></td>
+<td><code>window-drag</code> events with <code>active</code>, <code>serial</code>, <code>window</code>, pointer <code>x</code>/<code>y</code>, <code>modifiers</code>, <code>monitor</code> and <code>area</code></td>
 </tr>
 <tr>
+<td>Offer regions</td>
 <td><code>snap-offer</code></td>
-<td>Offer hit/target rectangles for the current drag</td>
+<td>Tests the pointer against <code>hit</code> rectangles on release, then applies the matching <code>target</code></td>
 </tr>
 <tr>
-<td><code>snap-context</code></td>
-<td>Get the focused window and work area</td>
+<td>Ask about focus</td>
+<td><code>{"op":"snap-context"}</code></td>
+<td><code>snap-context</code> with focused <code>window</code>, <code>monitor</code> and <code>area</code></td>
 </tr>
 <tr>
+<td>Apply keyboard choice</td>
 <td><code>snap-window</code></td>
-<td>Apply a rectangle to a window</td>
-</tr>
-<tr>
-<td><code>snap-completed</code></td>
-<td>Receive the committed layout</td>
+<td>Moves and resizes the chosen window</td>
 </tr>
 </tbody>
 </table>
-<p>Only one client can own a drag. The compositor rechecks the pointer at release
-and rejects stale serials or out-of-work-area targets.</p>
-<p>Escape, disconnect, script reload and drag completion clear offers.
-The picker does not take an input grab during a mouse drag.</p>
-<h2 id="test">Test<a class="headerlink" href="#test" title="Permanent link">&para;</a></h2>
-<p>From Gnoblin, with the sibling Bingux checkout:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="nv">GNOBLIN_CONFIG</span><span class="o">=</span><span class="s1">''</span><span class="w"> </span><span class="se">\</span>
-<span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-window-snapping.py"</span><span class="w"> </span><span class="se">\</span>
-bash<span class="w"> </span>scripts/run-gnome-shell.sh
+<p>For example, after receiving an active drag with <code>serial: 7</code>, a shell can
+offer the left half of a 1920 × 1048 work area starting at <code>(0, 32)</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"op"</span><span class="p">:</span><span class="s2">"snap-offer"</span><span class="p">,</span><span class="nt">"serial"</span><span class="p">:</span><span class="mi">7</span><span class="p">,</span><span class="nt">"regions"</span><span class="p">:[{</span><span class="nt">"hit"</span><span class="p">:{</span><span class="nt">"x"</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">"y"</span><span class="p">:</span><span class="mi">32</span><span class="p">,</span><span class="nt">"width"</span><span class="p">:</span><span class="mi">80</span><span class="p">,</span><span class="nt">"height"</span><span class="p">:</span><span class="mi">1048</span><span class="p">},</span><span class="nt">"target"</span><span class="p">:{</span><span class="nt">"x"</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">"y"</span><span class="p">:</span><span class="mi">32</span><span class="p">,</span><span class="nt">"width"</span><span class="p">:</span><span class="mi">960</span><span class="p">,</span><span class="nt">"height"</span><span class="p">:</span><span class="mi">1048</span><span class="p">},</span><span class="nt">"layout"</span><span class="p">:</span><span class="s2">"left-half"</span><span class="p">}]}</span>
 </code></pre></div>
-<p>Set <code>BINGUX_SOURCE</code> for another checkout location and <code>GNOBLIN_QS</code> for a
-specific Quickshell wrapper. Add <code>GNOBLIN_TEST_XWAYLAND=1 SNAP_TEST_BACKEND=x11</code>
-for X11. Geometry tests also run with <code>node tests/snap-layouts.test.cjs</code> in Bingux.</p>
+<p>Build both rectangles from the current event's <code>area</code> and <code>monitor</code>; the
+numbers above only show the message shape. At most 128 regions may be offered.
+Each rectangle needs finite <code>x</code>, <code>y</code>, <code>width</code> and <code>height</code>; sizes must be 1–32768.
+Optional <code>control: true</code> requires Ctrl at release. Optional <code>maximize: true</code>
+maximizes the window instead of using <code>target</code> as its final size. On success the
+owner receives <code>{"event":"snap-completed","layout":"left-half"}</code>.</p>
+<p>For a keyboard picker, request <code>snap-context</code>, let the user choose a rectangle
+inside its <code>area</code>, then send:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"op"</span><span class="p">:</span><span class="s2">"snap-window"</span><span class="p">,</span><span class="nt">"window"</span><span class="p">:</span><span class="s2">"42"</span><span class="p">,</span><span class="nt">"monitor"</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">"target"</span><span class="p">:{</span><span class="nt">"x"</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">"y"</span><span class="p">:</span><span class="mi">32</span><span class="p">,</span><span class="nt">"width"</span><span class="p">:</span><span class="mi">960</span><span class="p">,</span><span class="nt">"height"</span><span class="p">:</span><span class="mi">1048</span><span class="p">}}</span>
+</code></pre></div>
+<p>Use the returned window ID and monitor ID. Only one client owns a drag. Gnoblin
+rejects stale serials and targets outside the work area. Escape, disconnect or
+drag completion clears offers; the picker does not grab input during a drag.</p>
 
 
 

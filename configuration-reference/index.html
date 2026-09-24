@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -683,6 +683,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../troubleshooting/" class="md-nav__link">
         
   
@@ -873,6 +901,56 @@
     <span class="md-ellipsis">
       
         Keybinding groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#window-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compositor-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compositor interaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Input">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input sources
       
     </span>
   </a>
@@ -1768,6 +1846,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2408,6 +2570,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#window-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Window management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compositor-interaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compositor interaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#input" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Input">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#window-matches" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2552,7 +2764,9 @@ can change them. Sizes are <a href="../configuration/#sizes-and-window-types">lo
 <h2 id="lua-api">Lua API<a class="headerlink" href="#lua-api" title="Permanent link">&para;</a></h2>
 <p><code>gnoblin</code> is available in each config file without an import. Call its functions
 with a settings table, for example <code>gnoblin.configure {shell = {minimize_duration = 150}}</code>.
-Setting names use underscores (<code>snake_case</code>). String values are used as written.</p>
+Setting names use underscores (<code>snake_case</code>). String values are used as written.
+Each reload builds the config afresh; these functions describe that config,
+not one-off commands to change the running desktop.</p>
 <table>
 <thead>
 <tr>
@@ -2563,47 +2777,47 @@ Setting names use underscores (<code>snake_case</code>). String values are used 
 </thead>
 <tbody>
 <tr>
-<td><code>configure { ... }</code></td>
+<td><a href="../configuration/#2-make-a-change"><code>configure { ... }</code></a></td>
 <td>Settings table</td>
 <td>Merge maps; replace supplied lists; later values win</td>
 </tr>
 <tr>
-<td><code>window_rule { ... }</code></td>
+<td><a href="../window-rules/#add-a-rule"><code>window_rule { ... }</code></a></td>
 <td>Match and effect fields</td>
 <td>Append a rule; later matching fields win</td>
 </tr>
 <tr>
-<td><code>permission_rule { ... }</code></td>
+<td><a href="../permissions/#example-allow-a-remote-desktop-app"><code>permission_rule { ... }</code></a></td>
 <td>Identity and policy fields</td>
 <td>Append a policy rule; any matching deny wins</td>
 </tr>
 <tr>
-<td><code>shortcut { ... }</code></td>
+<td><a href="../shortcuts/#launch-a-command"><code>shortcut { ... }</code></a></td>
 <td>Named command</td>
 <td>Add or update by name; omitted fields stay unchanged</td>
 </tr>
 <tr>
-<td><code>autostart { ... }</code></td>
+<td><a href="../autostart/#add-a-program"><code>autostart { ... }</code></a></td>
 <td>Named command</td>
 <td>Add or update by name; run once per name per login</td>
 </tr>
 <tr>
-<td><code>remove_shortcut(name)</code></td>
-<td>String</td>
-<td>Remove a named shortcut; missing names do nothing</td>
+<td><a href="../shortcuts/#remove-a-shortcut"><code>remove_shortcut(name)</code></a></td>
+<td>Shortcut name</td>
+<td>Exclude an earlier named shortcut from this config load</td>
 </tr>
 <tr>
-<td><code>remove_autostart(name)</code></td>
+<td><a href="../autostart/#remove-an-entry"><code>remove_autostart(name)</code></a></td>
 <td>String</td>
 <td>Remove an entry; does not stop its process</td>
 </tr>
 <tr>
-<td><code>load(path)</code></td>
+<td><a href="../configuration-loading/#include-a-file"><code>load(path)</code></a></td>
 <td>File or glob</td>
 <td>Evaluate now, relative to the calling file</td>
 </tr>
 <tr>
-<td><code>require(name)</code></td>
+<td><a href="../configuration-loading/#use-a-lua-module"><code>require(name)</code></a></td>
 <td>Local module name</td>
 <td>Return a module result; once per reload; Lua global, not <code>gnoblin.require</code></td>
 </tr>
@@ -2713,12 +2927,17 @@ change the declaration. Shader uniform keys and renderer names stay literal.</p>
 A new shortcut needs a binding and command. An override needs only its name and
 changed fields. Different shortcut names must not claim the same binding.</p>
 <p>Built-in bindings go in <code>configure {keybindings = {GROUP = {ACTION = {KEYS}}}}</code>.
-Groups: <code>shell</code>, <code>wm</code>, <code>mutter</code>, <code>wayland</code>, <code>media</code>. Empty action lists disable
-the binding. These values persist in GSettings.</p>
+Use underscores in action names; hyphenated config names are rejected. For
+example, configure <code>show_screenshot_ui</code> for GSettings' <code>show-screenshot-ui</code>.
+Groups: <code>shell</code>, <code>wm</code>, <code>mutter</code>, <code>wayland</code>. Empty action lists disable the
+binding. Gnoblin applies these to Mutter's native keybinding table on reload;
+the Lua file owns persistence. Removing an override restores the built-in
+default. GNOME Settings Daemon media keys are a separate service and are not
+configured by this table.</p>
 <p>Guides: <a href="../shortcuts/">shortcuts</a>, <a href="../autostart/">autostart</a>,
 <a href="../window-state-shortcuts/">restore or minimise</a>.</p>
 <h3 id="keybinding-groups">Keybinding groups<a class="headerlink" href="#keybinding-groups" title="Permanent link">&para;</a></h3>
-<p>Use these schemas to look up action names with <code>gsettings list-recursively SCHEMA</code>:</p>
+<p>Use these schemas to look up action names with <code>gsettings list-keys SCHEMA</code>:</p>
 <table>
 <thead>
 <tr>
@@ -2743,12 +2962,230 @@ the binding. These values persist in GSettings.</p>
 <td><code>wayland</code></td>
 <td><code>org.gnome.mutter.wayland.keybindings</code></td>
 </tr>
+</tbody>
+</table>
+<p>These schemas still provide the built-in action catalogue and default bindings.
+Gnoblin does not save the configured overrides to them.</p>
+<h2 id="window-management">Window management<a class="headerlink" href="#window-management" title="Permanent link">&para;</a></h2>
+<p>Inside <code>gnoblin.configure {window_management = {...}}</code>. Values apply on reload
+and omitted fields return to the Gnoblin defaults below.</p>
+<table>
+<thead>
 <tr>
-<td><code>media</code></td>
-<td><code>org.gnome.settings-daemon.plugins.media-keys</code></td>
+<th>Key</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>focus_mode</code></td>
+<td><code>"click"</code>, <code>"sloppy"</code>, <code>"mouse"</code></td>
+<td><code>"click"</code></td>
+</tr>
+<tr>
+<td><code>focus_new_windows</code></td>
+<td><code>"smart"</code>, <code>"strict"</code></td>
+<td><code>"smart"</code></td>
+</tr>
+<tr>
+<td><code>raise_on_click</code>, <code>auto_raise</code>, <code>focus_change_on_pointer_rest</code></td>
+<td>Boolean</td>
+<td><code>true</code>, <code>false</code>, <code>false</code></td>
+</tr>
+<tr>
+<td><code>auto_raise_delay</code></td>
+<td>0–10000 ms</td>
+<td><code>500</code></td>
+</tr>
+<tr>
+<td><code>action_double_click_titlebar</code></td>
+<td>Titlebar action below</td>
+<td><code>"toggle-maximize"</code></td>
+</tr>
+<tr>
+<td><code>action_middle_click_titlebar</code></td>
+<td>Titlebar action below</td>
+<td><code>"lower"</code></td>
+</tr>
+<tr>
+<td><code>action_right_click_titlebar</code></td>
+<td>Titlebar action below</td>
+<td><code>"menu"</code></td>
+</tr>
+<tr>
+<td><code>dynamic_workspaces</code>, <code>workspaces_only_on_primary</code>, <code>edge_tiling</code></td>
+<td>Boolean</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>num_workspaces</code></td>
+<td>1–36; used when dynamic workspaces are off</td>
+<td><code>4</code></td>
+</tr>
+<tr>
+<td><code>workspace_names</code></td>
+<td>Array of up to 36 strings, each at most 80 characters</td>
+<td><code>{}</code></td>
+</tr>
+<tr>
+<td><code>center_new_windows</code>, <code>attach_modal_dialogs</code></td>
+<td>Boolean</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>constrain_drag_to_work_area</code></td>
+<td>Boolean</td>
+<td><code>true</code></td>
 </tr>
 </tbody>
 </table>
+<p>Titlebar actions: <code>toggle-maximize</code>, <code>toggle-maximize-horizontally</code>,
+<code>toggle-maximize-vertically</code>, <code>minimize</code>, <code>lower</code>, <code>menu</code>, <code>none</code>.
+GTK apps usually draw their own titlebars and read GNOME's window-manager
+settings directly; this Lua section does not change those app settings. It
+controls Mutter policy and Gnoblin's built-in fallback SSD, which implements
+these actions. A custom SSD renderer must implement its own titlebar click
+behavior.
+See <a href="../window-frames/">titlebars</a>.</p>
+<h2 id="compositor-interaction">Compositor interaction<a class="headerlink" href="#compositor-interaction" title="Permanent link">&para;</a></h2>
+<p>Inside <code>gnoblin.configure {compositor = {...}}</code>. Values apply on reload.
+These settings cover compositor interaction preferences; accessibility
+settings remain separate.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enable_animations</code></td>
+<td>Boolean</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>locate_pointer</code></td>
+<td>Boolean</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>visual_bell</code>, <code>audible_bell</code></td>
+<td>Boolean</td>
+<td><code>false</code>, <code>true</code></td>
+</tr>
+<tr>
+<td><code>visual_bell_type</code></td>
+<td><code>"fullscreen-flash"</code>, <code>"frame-flash"</code></td>
+<td><code>"fullscreen-flash"</code></td>
+</tr>
+</tbody>
+</table>
+<p>Guide: <a href="../session-settings/">session settings</a>.</p>
+<h2 id="input">Input<a class="headerlink" href="#input" title="Permanent link">&para;</a></h2>
+<p>Input settings go in <code>gnoblin.configure {input = {...}}</code> and apply on reload.
+Each group is optional. Fields you omit continue to use the corresponding
+GNOME/Mutter setting. Global settings use <code>mouse</code>, <code>touchpad</code>, and <code>keyboard</code>;
+tablet and stylus overrides are selected by device identifier.</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Fields</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mouse</code></td>
+<td><code>speed</code></td>
+<td>Number from -1 to 1</td>
+</tr>
+<tr>
+<td></td>
+<td><code>left_handed</code>, <code>natural_scroll</code></td>
+<td>Boolean</td>
+</tr>
+<tr>
+<td></td>
+<td><code>accel_profile</code></td>
+<td><code>"default"</code>, <code>"flat"</code>, <code>"adaptive"</code></td>
+</tr>
+<tr>
+<td><code>touchpad</code></td>
+<td><code>speed</code></td>
+<td>Number from -1 to 1</td>
+</tr>
+<tr>
+<td></td>
+<td><code>left_handed</code></td>
+<td><code>"right"</code>, <code>"left"</code>, <code>"mouse"</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>natural_scroll</code>, <code>tap_to_click</code>, <code>tap_and_drag</code>, <code>tap_and_drag_lock</code>, <code>disable_while_typing</code>, <code>edge_scrolling_enabled</code>, <code>two_finger_scrolling_enabled</code></td>
+<td>Boolean</td>
+</tr>
+<tr>
+<td></td>
+<td><code>accel_profile</code></td>
+<td><code>"default"</code>, <code>"flat"</code>, <code>"adaptive"</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>tap_button_map</code></td>
+<td><code>"default"</code>, <code>"lrm"</code>, <code>"lmr"</code></td>
+</tr>
+<tr>
+<td></td>
+<td><code>click_method</code></td>
+<td><code>"default"</code>, <code>"none"</code>, <code>"areas"</code>, <code>"fingers"</code></td>
+</tr>
+<tr>
+<td><code>keyboard</code></td>
+<td><code>repeat</code>, <code>remember_numlock_state</code>, <code>numlock_state</code></td>
+<td>Boolean</td>
+</tr>
+<tr>
+<td></td>
+<td><code>delay</code>, <code>repeat_interval</code></td>
+<td>1–10000 ms</td>
+</tr>
+<tr>
+<td></td>
+<td><code>xkb_options</code></td>
+<td>Array of XKB option strings</td>
+</tr>
+</tbody>
+</table>
+<p><code>numlock_state</code> is kept in memory while Gnoblin's config is active. Tablet keys
+use four-hex-digit vendor and product IDs such as <code>"1234:5678"</code>; their fields
+are <code>mapping</code> (<code>"absolute"</code> or <code>"relative"</code>), <code>left_handed</code>, and <code>keep_aspect</code>.
+Stylus keys use a device serial or <code>"default-1234:5678"</code>. Stylus fields are
+<code>button_action</code>, <code>secondary_button_action</code>, and <code>tertiary_button_action</code>
+(<code>"default"</code>, <code>"middle"</code>, <code>"right"</code>, <code>"back"</code>, <code>"forward"</code>,
+<code>"switch-monitor"</code>, or <code>"keybinding"</code>), plus the matching
+<code>*_button_keybinding</code> string fields.</p>
+<p>Orientation lock uses the boolean <code>input.orientation_lock</code> field. Removing it
+restores GNOME's orientation-lock setting.</p>
+<h3 id="input-sources">Input sources<a class="headerlink" href="#input-sources" title="Permanent link">&para;</a></h3>
+<p>Set sources with <code>gnoblin.configure {input_sources = {...}}</code>. This replaces the
+active source list in memory on reload; removing the table restores GNOME's
+session sources. <code>sources</code> is required and contains records with <code>type</code> set to
+<code>"xkb"</code> or <code>"ibus"</code> and a nonempty <code>id</code>. Set <code>per_window</code> to <code>true</code> to track
+the active source per window; it defaults to <code>false</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">input_sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">sources</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"xkb"</span><span class="p">,</span><span class="w"> </span><span class="nv">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"us"</span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span><span class="nb">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"xkb"</span><span class="p">,</span><span class="w"> </span><span class="nv">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"gb"</span><span class="p">},</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nv">per_window</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
 <h2 id="window-matches">Window matches<a class="headerlink" href="#window-matches" title="Permanent link">&para;</a></h2>
 <p>Inside <code>window_rule {match = {...}, ...}</code>. All specified conditions must match.</p>
 <table>
@@ -3101,12 +3538,21 @@ Guide: <a href="../permissions/">portal permissions</a>.</p>
 </table>
 <p>Protocol keys: <code>wlr_layer_shell</code>, <code>wlr_screencopy</code>, <code>ext_foreign_toplevel_list</code>,
 <code>wlr_foreign_toplevel_management</code>, <code>ext_data_control</code>, <code>ext_idle_notify</code>,
-<code>wlr_gamma_control</code>, <code>wlr_output_power_management</code>, <code>ext_background_effect_v1</code>.</p>
-<p>Guide: <a href="../session-settings/">session settings</a>.</p>
+<code>wlr_gamma_control</code>, <code>wlr_output_power_management</code>, <code>ext_background_effect_v1</code>,
+<code>xdg_decoration</code>, <code>window_frame_renderer</code>, <code>blur_fade</code>.</p>
+<p>Guides: <a href="../session-settings/">session settings</a>, <a href="../wayland-protocols/">protocol catalog</a>.</p>
 <h2 id="cursor">Cursor<a class="headerlink" href="#cursor" title="Permanent link">&para;</a></h2>
-<p>GSettings schema: <code>org.gnome.desktop.interface</code>.
-Keys: <code>cursor-theme</code> (string), <code>cursor-size</code> (integer).
-These are GSettings, not Lua fields. Guide: <a href="../cursors/">cursor themes</a>.</p>
+<p>Configure the compositor cursor theme and size in Gnoblin's config:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">cursor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">theme</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"Adwaita-Hyprcursor"</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>theme</code> is an installed cursor theme name. Gnoblin currently renders it with
+Hyprcursor. <code>size</code> is an integer from 1 to 256 logical pixels (default <code>24</code>).
+Changes apply on config reload. Guide: <a href="../cursors/">cursor themes</a>.</p>
 <h2 id="files-and-reload">Files and reload<a class="headerlink" href="#files-and-reload" title="Permanent link">&para;</a></h2>
 <p>Root: <code>~/.config/gnoblin/init.lua</code>. Override: <code>GNOBLIN_CONFIG</code>.
 Inspect: <code>gnoblinctl config path</code>. Apply: <code>gnoblinctl config reload</code>.</p>

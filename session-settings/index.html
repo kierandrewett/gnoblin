@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1648,6 +1676,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2306,6 +2418,11 @@
 <p>Choose which GNOME controls to keep, how launchers affect window focus, and
 whether tools can use particular Wayland interfaces. Add the examples to
 <code>~/.config/gnoblin/init.lua</code>.</p>
+<p><img alt="Gnoblin Settings showing Shell Features and Screen Recording in a clean devkit session" src="../images/gnoblin-devkit-desktop.png" /></p>
+<p><em>The Gnoblin settings panel in a fresh nested devkit session. Bingux, a
+separate example shell, supplies the bar and dock visible around it. The
+switches and grant list belong to Gnoblin. The dock pins stock Files, Firefox
+and Terminal applications.</em></p>
 <h2 id="native-features">Native features<a class="headerlink" href="#native-features" title="Permanent link">&para;</a></h2>
 <p>Enable GNOME's notifications if your shell does not provide a notification
 daemon. Run only one notification service. This example enables GNOME's
@@ -2433,11 +2550,25 @@ interfaces when the session starts and cannot remove them during config reload.<
 <td><code>ext_background_effect_v1</code></td>
 <td>Client-requested background blur</td>
 </tr>
+<tr>
+<td><code>xdg_decoration</code></td>
+<td>Client/server titlebar negotiation</td>
+</tr>
+<tr>
+<td><code>window_frame_renderer</code></td>
+<td>External frame renderer service</td>
+</tr>
+<tr>
+<td><code>blur_fade</code></td>
+<td>Per-item blur fade metadata</td>
+</tr>
 </tbody>
 </table>
 <p>This does not block all screen sharing: apps using the desktop portal follow
 <a href="../permissions/">portal permissions</a> instead.
-Disabling protocols your shell uses can prevent its features from working.</p>
+Disabling protocols your shell uses can prevent its features from working.
+See the <a href="../wayland-protocols/">protocol catalog</a> for the advertised interface
+names, related guides and interfaces that are not yet supported.</p>
 
 
 

@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1670,6 +1698,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2349,6 +2461,12 @@
 <p><a href="../configuration-reference/">Configuration reference</a></p>
 <p>Most apps draw their own titlebar and buttons. This is <strong>client-side decoration
 (CSD)</strong>. Gnoblin can draw them instead: <strong>server-side decoration (SSD)</strong>.</p>
+<p><code>window_management.action_*_titlebar</code> sets Mutter's titlebar action preferences.
+GTK apps typically draw their own titlebars and read GNOME settings directly,
+so this Lua setting does not change their CSD behavior. Gnoblin's built-in
+fallback SSD implements these actions. A custom SSD renderer must implement
+its own titlebar click behavior. Supported actions are maximize, horizontal or vertical maximize,
+minimize, lower, menu and no action.</p>
 <p>Gnoblin's frames are off by default, although your desktop shell can enable
 them through its config. Use <code>mode</code> to decide which windows get a frame and
 <code>renderer</code> to choose what draws it. Setting a renderer alone does not enable frames.</p>

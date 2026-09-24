@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1541,6 +1569,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2397,7 +2509,14 @@ Close the terminal to stop the devkit.</p>
 connections are not passed through.</p>
 <p><strong>Your HOME and runtime directory remain real.</strong> Applications can still read
 or change your files and configuration. This is not a security sandbox.</p>
-<p>For disposable settings, use the <a href="../testing/">private test harness</a>.
+<p>For a fresh profile, including screenshots and demos, run:</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>scripts/run-clean-devkit.sh
+</code></pre></div>
+<p>This creates disposable home, config, data, cache, state and runtime directories
+and removes them when the devkit closes. The viewer still connects to your host
+Wayland session and may use its PipeWire socket. Use a VM when the guest must be
+fully separate from host services. Check the image before publishing it.</p>
+<p>The <a href="../testing/">private test harness</a> is for automated checks.
 A devkit run does not verify the installed login session.</p>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <table>

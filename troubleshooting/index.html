@@ -6,14 +6,14 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
         <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/troubleshooting/">
       
       
-        <link rel="prev" href="../configuration/">
+        <link rel="prev" href="../build-a-desktop/">
       
       
         <link rel="next" href="../configuration-reference/">
@@ -688,6 +688,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -821,6 +849,17 @@
     <span class="md-ellipsis">
       
         A shortcut fails
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shell-integration-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell integration errors
       
     </span>
   </a>
@@ -1717,6 +1756,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2384,6 +2507,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#shell-integration-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell integration errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#removing-a-setting-does-not-reset-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2502,6 +2636,33 @@ Check anchors, escaping and the raw app ID. See <a href="../window-rules/">windo
 Command arguments do not expand <code>~</code>, <code>$HOME</code> or pipes.</p>
 <p>Check for an existing binding in your component config or GNOME keybindings.
 See <a href="../shortcuts/#avoid-conflicts">shortcut conflicts</a>.</p>
+<h2 id="shell-integration-errors">Shell integration errors<a class="headerlink" href="#shell-integration-errors" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gnoblinctl window list</code> cannot connect</td>
+<td>Run <code>gnoblinctl status --json</code>. Check <code>windowControlError</code> and the active socket path. The bridge is built into current source builds; it does not appear in <code>script list</code>. See <a href="../gnoblinctl/#connection-problems">connection details</a>.</td>
+</tr>
+<tr>
+<td>A bridge request says a window is unavailable</td>
+<td>Get a fresh ID from <code>gnoblinctl window list --json</code> or a <code>windows</code> snapshot. IDs expire when windows close.</td>
+</tr>
+<tr>
+<td>A Wayland client cannot bind a Gnoblin interface</td>
+<td>Inspect the registry inside the Gnoblin session, then check its <a href="../wayland-protocols/">protocol gate</a>. Gates take effect at login, not config reload.</td>
+</tr>
+<tr>
+<td>A layer appears on the host desktop during devkit work</td>
+<td>Launch it from the devkit environment and check <code>WAYLAND_DISPLAY</code>. The <a href="../devkit/">devkit guide</a> explains the nested display.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="removing-a-setting-does-not-reset-it">Removing a setting does not reset it<a class="headerlink" href="#removing-a-setting-does-not-reset-it" title="Permanent link">&para;</a></h2>
 <p>Built-in bindings and native feature booleans persist in GSettings.
 Set the desired value explicitly. Removing an autostart entry does not stop

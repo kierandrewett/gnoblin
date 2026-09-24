@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/testing/">
+        <link rel="canonical" href="https://kierandrewett.github.io/gnoblin/wayland-protocols/">
       
       
-        <link rel="prev" href="../devkit/">
+        <link rel="prev" href="../bridge-examples/">
       
       
-        <link rel="next" href="../real-hardware-verification/">
+        <link rel="next" href="../user-scripts/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Testing - Gnoblin</title>
+        <title>Wayland protocols - Gnoblin</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#testing" class="md-skip">
+        <a href="#wayland-protocol-catalog" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Testing
+              Wayland protocols
             
           </span>
         </div>
@@ -257,10 +257,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../shell-integration/" class="md-tabs__link">
           
   
@@ -277,12 +279,10 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../source-development/" class="md-tabs__link">
           
   
@@ -1458,26 +1458,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -1495,7 +1500,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1594,10 +1599,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../wayland-protocols/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1613,6 +1645,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configure-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure availability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#available-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available interfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interfaces-not-yet-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interfaces not yet available
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect-a-running-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect a running session
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1909,31 +2005,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
@@ -1951,7 +2042,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2022,37 +2113,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Testing
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
         
   
   
@@ -2068,92 +2132,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#choose-a-check" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Choose a check
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#focused-integration-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Focused integration checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#run-a-private-test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Run a private test
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ci" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-failures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment failures
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#add-a-test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Add a test
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2361,10 +2339,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#choose-a-check" class="md-nav__link">
+  <a href="#configure-availability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Choose a check
+        Configure availability
       
     </span>
   </a>
@@ -2372,10 +2350,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#focused-integration-checks" class="md-nav__link">
+  <a href="#available-interfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Focused integration checks
+        Available interfaces
       
     </span>
   </a>
@@ -2383,10 +2361,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#run-a-private-test" class="md-nav__link">
+  <a href="#interfaces-not-yet-available" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Run a private test
+        Interfaces not yet available
       
     </span>
   </a>
@@ -2394,32 +2372,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#ci" class="md-nav__link">
+  <a href="#inspect-a-running-session" class="md-nav__link">
     <span class="md-ellipsis">
       
-        CI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#environment-failures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Environment failures
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#add-a-test" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Add a test
+        Inspect a running session
       
     </span>
   </a>
@@ -2446,121 +2402,133 @@
   
 
 
-<h1 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h1>
-<p>Use a focused test while editing. Run the broader checks before a release.</p>
-<h2 id="choose-a-check">Choose a check<a class="headerlink" href="#choose-a-check" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Checks</th>
-<th>Requires</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>just check</code></td>
-<td>Syntax, logic, config parser and script tests</td>
-<td>Test dependencies</td>
-</tr>
-<tr>
-<td><code>just test-session</code></td>
-<td>All isolated Shell integration tests</td>
-<td>Current local build</td>
-</tr>
-<tr>
-<td><code>just test-all</code></td>
-<td>Fast checks, fresh build, headless integration</td>
-<td>Build dependencies</td>
-</tr>
-<tr>
-<td><code>just test-window-manager</code></td>
-<td>Mutter native/Wayland/focus suites</td>
-<td>Working seat and file monitoring</td>
-</tr>
-<tr>
-<td><code>just test-release</code></td>
-<td>Full checks plus native tests and RPM builds</td>
-<td>Real host and packaging tools</td>
-</tr>
-</tbody>
-</table>
-<p>A passing headless build does not prove login, visible shell controls or portal
-consent. Use <a href="../real-hardware-verification/">hardware verification</a> for those.</p>
-<h2 id="focused-integration-checks">Focused integration checks<a class="headerlink" href="#focused-integration-checks" title="Permanent link">&para;</a></h2>
-<p>Run against the prefix built from your current source:</p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Covers</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>just test-startup</code></td>
-<td>Gnoblin startup and protocol advertisement</td>
-</tr>
-<tr>
-<td><code>just test-stock-gnome</code></td>
-<td>Stock GNOME behavior stays separate</td>
-</tr>
-<tr>
-<td><code>just test-protocols</code></td>
-<td>Wayland object and geometry contracts</td>
-</tr>
-<tr>
-<td><code>just test-control-api</code></td>
-<td>Control API</td>
-</tr>
-<tr>
-<td><code>just test-preview</code></td>
-<td>Devkit environment and connectivity</td>
-</tr>
-<tr>
-<td><code>just test-native-chrome</code></td>
-<td>Removed native UI stays absent</td>
-</tr>
-<tr>
-<td><code>just test-scripting</code></td>
-<td>User script load/reload lifecycle</td>
-</tr>
-<tr>
-<td><code>just test-notifications</code></td>
-<td>Notification service ownership</td>
-</tr>
-<tr>
-<td><code>just test-protocol-gating</code></td>
-<td>Startup protocol switches</td>
-</tr>
-</tbody>
-</table>
-<h2 id="run-a-private-test">Run a private test<a class="headerlink" href="#run-a-private-test" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="nv">GNOBLIN_PREFIX</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/install"</span><span class="w"> </span><span class="se">\</span>
-<span class="nv">GNOBLIN_TEST_DBUS_CLIENT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/tests/test-permissions-live.py"</span><span class="w"> </span><span class="se">\</span>
-bash<span class="w"> </span>scripts/run-gnome-shell.sh
+<h1 id="wayland-protocol-catalog">Wayland protocol catalog<a class="headerlink" href="#wayland-protocol-catalog" title="Permanent link">&para;</a></h1>
+<p>This page covers the additional protocol globals Gnoblin registers or gates
+in a Gnoblin session. It does not list every core Wayland or upstream Mutter
+global. A client must bind the interface advertised by the running compositor;
+vendored XML alone does not mean a protocol is available.</p>
+<h2 id="configure-availability">Configure availability<a class="headerlink" href="#configure-availability" title="Permanent link">&para;</a></h2>
+<p>Gnoblin enables the listed interfaces by default in its own session. Disable
+one in <code>init.lua</code> with its Lua key:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="py">configure</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nv">protocols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nv">wlr_screencopy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="p">}</span>
 </code></pre></div>
-<p>Choose the test matching your change. Tests live in <code>tests/</code>; build and launch
-helpers live in <code>scripts/</code>.</p>
-<p>The private harness uses temporary HOME and XDG directories. The
-<a href="../devkit/#isolation">devkit</a> keeps the real HOME; do not confuse the two.</p>
-<h2 id="ci">CI<a class="headerlink" href="#ci" title="Permanent link">&para;</a></h2>
-<p>The verification workflow provisions disposable Fedora and Arch images, then
-runs <code>./build.sh</code> as an unprivileged user. Package provisioning is confined to
-the CI images; the user-facing build script never runs it.
-A separate matrix checks dependency provisioning and build tests on Debian,
-Ubuntu and openSUSE. It does not prove a complete desktop installation.
-Run <code>python3 tests/build-deps.test.py</code> and <code>python3 tests/private-deps.test.py</code>
-to check command planning, checksums and private library links.
-Graphical login and interactive checks still need a host.</p>
-<h2 id="environment-failures">Environment failures<a class="headerlink" href="#environment-failures" title="Permanent link">&para;</a></h2>
-<p>Mutter backend tests need a seat and working local file monitoring.
-If they fail with <code>Unable to find default local file monitor type</code> (exit 251),
-fix that environment before treating the run as compositor evidence.</p>
-<h2 id="add-a-test">Add a test<a class="headerlink" href="#add-a-test" title="Permanent link">&para;</a></h2>
-<p>Use an existing <code>tests/test-*.sh</code> as a starting point.
-Assert observable behavior, keep session state private, and preserve literal
-errors. Add an appropriate Just recipe and include it in the relevant suite.</p>
+<p>Lua underscores become hyphens in the native setting name. Protocol globals
+are registered at compositor startup, so <strong>log out and back in</strong> after changing
+these gates. <code>gnoblinctl config reload</code> cannot add or remove an advertised
+global. GNOME's separate login session does not advertise Gnoblin-owned
+globals.</p>
+<h2 id="available-interfaces">Available interfaces<a class="headerlink" href="#available-interfaces" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Lua key</th>
+<th>Advertised interface</th>
+<th>Use it for</th>
+<th>Guide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wlr_layer_shell</code></td>
+<td><code>zwlr_layer_shell_v1</code></td>
+<td>Bars, docks, launchers, overlays and exclusive zones</td>
+<td><a href="../bring-your-own-shell/">Choose a shell</a></td>
+</tr>
+<tr>
+<td><code>wlr_screencopy</code></td>
+<td><code>zwlr_screencopy_manager_v1</code></td>
+<td>Native output capture</td>
+<td><a href="../permissions/">Permissions</a></td>
+</tr>
+<tr>
+<td><code>ext_foreign_toplevel_list</code></td>
+<td><code>ext_foreign_toplevel_list_v1</code></td>
+<td>Enumerate toplevel windows</td>
+<td><a href="../shell-integration/">Shell integration</a></td>
+</tr>
+<tr>
+<td><code>wlr_foreign_toplevel_management</code></td>
+<td><code>zwlr_foreign_toplevel_manager_v1</code></td>
+<td>Inspect and control windows</td>
+<td><a href="../shell-integration/">Shell integration</a></td>
+</tr>
+<tr>
+<td><code>ext_data_control</code></td>
+<td><code>ext_data_control_manager_v1</code></td>
+<td>Clipboard managers</td>
+<td><a href="../session-settings/">Session settings</a></td>
+</tr>
+<tr>
+<td><code>ext_idle_notify</code></td>
+<td><code>ext_idle_notifier_v1</code></td>
+<td>Idle notifications</td>
+<td><a href="../session-settings/">Session settings</a></td>
+</tr>
+<tr>
+<td><code>wlr_gamma_control</code></td>
+<td><code>zwlr_gamma_control_manager_v1</code></td>
+<td>Per-output gamma</td>
+<td><a href="../session-settings/">Session settings</a></td>
+</tr>
+<tr>
+<td><code>wlr_output_power_management</code></td>
+<td><code>zwlr_output_power_manager_v1</code></td>
+<td>Output power state</td>
+<td><a href="../session-settings/">Session settings</a></td>
+</tr>
+<tr>
+<td><code>ext_background_effect_v1</code></td>
+<td><code>ext_background_effect_manager_v1</code></td>
+<td>Client-defined background blur regions</td>
+<td><a href="../background-effects/">Background blur</a></td>
+</tr>
+<tr>
+<td><code>xdg_decoration</code></td>
+<td><code>zxdg_decoration_manager_v1</code></td>
+<td>Negotiate client or server titlebars</td>
+<td><a href="../window-frames/">Window frames</a></td>
+</tr>
+<tr>
+<td><code>window_frame_renderer</code></td>
+<td><code>gnoblin_window_frame_manager_v1</code></td>
+<td>External frame renderer service</td>
+<td><a href="../frame-renderer-api/">Frame renderer API</a></td>
+</tr>
+<tr>
+<td><code>blur_fade</code></td>
+<td><code>gnoblin_blur_fade_manager_v1</code></td>
+<td>Per-item blur fade metadata</td>
+<td><a href="../blur-fades/">Blur fades</a></td>
+</tr>
+</tbody>
+</table>
+<p>The interface version that a client binds must be no higher than the version
+the compositor advertises. The XML shipped under <code>src/protocols/</code> is the
+wire-level reference for Gnoblin-owned implementations; this catalog explains
+which interface to use and where its behavior is documented.</p>
+<p>For example, a layer-shell client controls its anchors, keyboard interactivity
+and exclusive zone. Gnoblin then places the surface and applies any matching
+<code>type = "layer"</code> <a href="../window-rules/">window rules</a>. A panel that animates its own
+whole surface can disable the compositor's layer animation for its namespace.</p>
+<p>Screen capture through <code>wlr_screencopy</code> is separate from capture through the
+desktop portal. The latter follows <a href="../permissions/">portal permission policy</a>.
+Turning off this global is not a blanket screen-sharing policy.</p>
+<h2 id="interfaces-not-yet-available">Interfaces not yet available<a class="headerlink" href="#interfaces-not-yet-available" title="Permanent link">&para;</a></h2>
+<p><code>ext_session_lock_v1</code> and <code>zwlr_output_manager_v1</code> have vendored XML but are
+not registered as supported Gnoblin globals. The session-lock startup boundary
+is compiled but deliberately advertises no global until it can enforce a lock.
+Do not build a shell that requires them yet. Gnoblin's existing lock and
+display configuration paths are separate from these two proposed interfaces.</p>
+<h2 id="inspect-a-running-session">Inspect a running session<a class="headerlink" href="#inspect-a-running-session" title="Permanent link">&para;</a></h2>
+<p>Check the running compositor when packaging or debugging a client. A Wayland
+registry inspector such as <code>wayland-info</code> can show advertised globals; run it
+inside the Gnoblin session or devkit terminal so it connects to the right
+<code>WAYLAND_DISPLAY</code>. A source checkout, package manifest or XML file cannot prove
+that a particular login session has advertised a global.</p>
 
 
 

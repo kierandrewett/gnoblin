@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -683,6 +683,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../troubleshooting/" class="md-nav__link">
         
   
@@ -980,6 +1008,17 @@
     <span class="md-ellipsis">
       
         Launch a command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remove-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove a shortcut
       
     </span>
   </a>
@@ -1670,6 +1709,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2271,6 +2394,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#remove-a-shortcut" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove a shortcut
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#key-names" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2362,6 +2496,17 @@ Add the examples to <code>~/.config/gnoblin/init.lua</code>; both reload on save
 string. Spaces inside a string stay in that argument.</p>
 <p>Names use letters, numbers, <code>_</code> and <code>-</code>. Up to 256 command shortcuts are allowed.
 Removing one releases its binding; it does not stop a launched program.</p>
+<h2 id="remove-a-shortcut">Remove a shortcut<a class="headerlink" href="#remove-a-shortcut" title="Permanent link">&para;</a></h2>
+<p><code>remove_shortcut</code> excludes a named <code>gnoblin.shortcut</code> entry added earlier in
+the same config load. Use it when a shell's config supplies a shortcut you do
+not want:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">gnoblin</span><span class="p">.</span><span class="nf">remove_shortcut</span><span class="p">(</span><span class="s2">"my-terminal"</span><span class="p">)</span>
+</code></pre></div>
+<p>The config is rebuilt on every reload. This releases that entry's binding;
+it does not change GNOME's built-in keybindings or shortcuts belonging to
+other programs. An unknown name does nothing. Put the removal after the file
+that adds the shortcut;
+<a href="../configuration-loading/#override-or-append">load order</a> matters.</p>
 <h2 id="key-names">Key names<a class="headerlink" href="#key-names" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2402,15 +2547,20 @@ Command shortcuts are inactive on the lock and login screens.</p>
 <span class="p">}</span>
 </code></pre></div>
 <p>Here <code>wm</code> selects window-management actions and <code>close</code> names the action.
-To see its available actions and current bindings:</p>
-<div class="highlight"><pre><span></span><code>gsettings<span class="w"> </span>list-recursively<span class="w"> </span>org.gnome.desktop.wm.keybindings
+Action names use underscores in Gnoblin config. For example, GSettings' key
+<code>show-screenshot-ui</code> is <code>show_screenshot_ui</code> here.
+To see available action names in the GNOME catalogue:</p>
+<div class="highlight"><pre><span></span><code>gsettings<span class="w"> </span>list-keys<span class="w"> </span>org.gnome.desktop.wm.keybindings
 </code></pre></div>
-<p>Other groups are <code>shell</code>, <code>mutter</code>, <code>wayland</code> and <code>media</code>. See the
+<p>The values printed by <code>gsettings</code> are GNOME settings; Lua overrides are active
+in Gnoblin and do not appear there.</p>
+<p>Other groups are <code>shell</code>, <code>mutter</code> and <code>wayland</code>. See the
 <a href="../configuration-reference/#keybinding-groups">keybinding groups</a> for their
 GSettings schema names.</p>
 <p>Use an empty list to disable an action, for example <code>close = {}</code>.
-These overrides persist in GSettings: removing the Lua entry does not restore
-the former binding. Set the desired value explicitly.</p>
+These overrides live in Gnoblin's native keybinding table and persist in the
+Lua file. Removing an entry restores its built-in default on reload. Media keys
+handled by GNOME Settings Daemon are outside this table.</p>
 <h2 id="avoid-conflicts">Avoid conflicts<a class="headerlink" href="#avoid-conflicts" title="Permanent link">&para;</a></h2>
 <p>To override an imported shortcut, use the same <code>name</code>. Only supplied fields
 change. Different names must use different bindings. See the

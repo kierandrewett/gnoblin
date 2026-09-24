@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.">
+        <meta name="description" content="Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.">
       
       
       
@@ -663,6 +663,34 @@
     
   
     Configure Gnoblin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../build-a-desktop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build your desktop
   
 
     
@@ -1692,6 +1720,90 @@
   
   
     <li class="md-nav__item">
+      <a href="../bridge-examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bridge examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wayland-protocols/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wayland protocols
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User scripts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../background-effects/" class="md-nav__link">
         
   
@@ -2477,6 +2589,9 @@ read arbitrary files, run processes or load native modules.
 Use shortcuts or autostart to launch programs.</p>
 <p>Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.</p>
+<p>Lua configuration cannot run arbitrary JavaScript. For custom live automation,
+see <a href="../user-scripts/">user scripts</a>; most settings and desktop behavior should
+stay in the supported configuration API.</p>
 <h2 id="existing-configs">Existing configs<a class="headerlink" href="#existing-configs" title="Permanent link">&para;</a></h2>
 <p>Configs using <code>require("gnoblin")</code>, <code>g.set</code>, <code>g.config</code>, returned tables
 and TOML still work.
@@ -2524,7 +2639,37 @@ rewriting the included files.</p>
 <tr>
 <td>Built-in keybindings</td>
 <td>On reload</td>
-<td>Saved GSettings value stays</td>
+<td>Built-in default applies</td>
+</tr>
+<tr>
+<td>Window-management preferences</td>
+<td>On reload</td>
+<td>Gnoblin default applies</td>
+</tr>
+<tr>
+<td>Compositor interaction preferences</td>
+<td>On reload</td>
+<td>Gnoblin default applies</td>
+</tr>
+<tr>
+<td>Input preferences</td>
+<td>On reload</td>
+<td>GNOME/Mutter settings apply</td>
+</tr>
+<tr>
+<td>Input sources</td>
+<td>On reload</td>
+<td>GNOME session sources apply</td>
+</tr>
+<tr>
+<td>Orientation lock</td>
+<td>On reload</td>
+<td>GNOME orientation setting applies</td>
+</tr>
+<tr>
+<td>Cursor theme and size</td>
+<td>On reload</td>
+<td>Adwaita at 24 logical pixels</td>
 </tr>
 <tr>
 <td>Notifications and layout popup</td>
