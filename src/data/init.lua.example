@@ -154,18 +154,17 @@ gnoblin.configure {
         wm = {close = {"<Alt>F4"}},
     },
 
-    -- Replace or add custom command shortcuts by name. Accelerators use GTK
-    -- syntax, such as <Super>Return or <Alt>space.
-    shortcuts = {},
+    -- Use a named map to override imported command shortcuts; an empty list
+    -- would clear them. Accelerators use GTK syntax, such as <Super>Return.
+    -- shortcuts = {terminal = {command = {"ptyxis"}}},
 
     -- Start each named command once per login. Commands are argv arrays, not
     -- shell strings; use a script path if shell syntax is required.
-    autostart = {},
-    -- Example: autostart = {{name = "bar", command = {"waybar"}}},
+    -- autostart = {bar = {command = {"waybar"}}},
 
     -- Add ordered window rules here. Later matching rules override fields they
     -- specify. Match by type, focused, app_id, title, or layer.
-    window_rules = {},
+    -- window_rules = {}, -- uncomment to clear imported rules
 }
 
 -- Media keys are ordinary editable command shortcuts. These commands are
@@ -243,7 +242,10 @@ gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", '
 --     command = {"YOUR_TERMINAL", "--new-window"}, -- replace with an installed executable
 --     capture_input = false,
 -- }
--- gnoblin.remove_shortcut("terminal")
+-- Reuse an imported name to change only the fields you supply, or disable it.
+-- gnoblin.configure {shortcuts = {terminal = {command = {"ptyxis", "--new-window"}}}}
+-- gnoblin.configure {shortcuts = {terminal = {enable = false}}}
+-- Start a program once per login, unless a service already starts it.
 -- gnoblin.autostart {name = "bar", command = {"waybar"}}
 -- gnoblin.remove_autostart("bar")
 
