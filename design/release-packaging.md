@@ -24,9 +24,12 @@ release pipeline or COPR publication changes.
   Its release workflow is building Debian/Ubuntu packages. The first Fedora
   43/44 verification on that commit failed because the bridge resource patch
   duplicated entries already added by the overlay resource patch. Commit
-  `52982ab` removes that redundant patch and is on `main`; its fresh Fedora
-  matrix and other CI checks are running. No Fedora 43 RPM or fresh-host
-  runtime verification has yet been published.
+  `52982ab` removes that redundant patch and is on `main`. The verification
+  build on its descendant passed on Fedora 43; Fedora 44 stopped before source
+  compilation when GNOME GitLab returned HTTP 503 fetching Mutter. The rolling
+  openSUSE dependency job also failed on an unavailable package. A retry is
+  needed for Fedora 44. No Fedora 43 RPM or fresh-host runtime verification
+  has yet been published.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -81,6 +84,8 @@ options before source activation and default absent option arrays. The smoke
 fixture now creates its per-user script directory when no packaged
 integrations exist. A subsequent Fedora build exposed duplicate GResource
 entries because the bridge modules were included by two patches; the
-redundant later patch is removed in `52982ab`. The new verification run and a
-COPR installation check on Fedora 43 are still required before this
-compatibility change is complete.
+redundant later patch is removed in `52982ab`; the following Fedora 43 source
+build passed. Fedora 44's verification was blocked by a transient GitLab 503
+while fetching Mutter, so rerun it before treating the entire supported
+matrix as green. A COPR build and Fedora 43 installation check are still
+required before this compatibility change is complete.
