@@ -1,6 +1,6 @@
-From 3f0cd65a5951d52e6b3bb71928116c0baeac5848 Mon Sep 17 00:00:00 2001
+From e6d5937bf1429818cd6d6ebf2bb7326dadae7503 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Thu, 24 Sep 2026 21:02:16 +0100
+Date: Thu, 24 Sep 2026 21:27:25 +0100
 Subject: [PATCH] gnoblin-protocols: wire gnoblin's extra Wayland protocols
  into the build
 
@@ -15,15 +15,15 @@ patch by hand. Insertions are anchored on pristine-stable context so the
 patch applies cleanly to the pinned tag independently of the layer-shell and
 screencopy wiring patches.
 ---
- src/meson.build                    | 30 ++++++++++++++++++++++++++++++
+ src/meson.build                    | 32 ++++++++++++++++++++++++++++++
  src/wayland/meta-wayland-surface.c |  2 ++
- 2 files changed, 32 insertions(+)
+ 2 files changed, 34 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index 60970cefe..8e5d4dbb4 100644
+index 60970cefe..2c08a5255 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -581,2 +581,24 @@ mutter_sources += [
+@@ -581,2 +581,26 @@ mutter_sources += [
    'wayland/meta-wayland-shell-surface.h',
 +  # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
 +  # at build time; registered via meta_gnoblin_init_protocols)
@@ -47,8 +47,10 @@ index 60970cefe..8e5d4dbb4 100644
 +  'wayland/meta-wayland-data-control.h',
 +  'wayland/meta-wayland-session-lock.c',
 +  'wayland/meta-wayland-session-lock.h',
++  'wayland/meta-wayland-session-lock-surface.c',
++  'wayland/meta-wayland-session-lock-surface.h',
    'wayland/meta-wayland-single-pixel-buffer.c',
-@@ -1040,2 +1062,10 @@ wayland_protocols = [
+@@ -1040,2 +1064,10 @@ wayland_protocols = [
    ['xdg-toplevel-tag', 'staging', 1, ],
 +  # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)
 +  ['ext-idle-notify-v1', 'private', ],
