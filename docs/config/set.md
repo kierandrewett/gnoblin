@@ -1,9 +1,9 @@
 # gnoblin.set
 
-Merge a settings table into the current config document, merging maps recursively and replacing supplied lists. `gnoblin.configure` additionally converts public `snake_case` setting names to internal names; `gnoblin.set` accepts internal setting names.
+Compatibility function for configs that use Gnoblin's internal setting names. It merges maps and replaces supplied lists. Use [`gnoblin.configure`](/config/configure) for new config files; that function accepts public `snake_case` names.
 
 ```lua
-gnoblin.set {shell = {minimize_duration = 150}}
+gnoblin.set {shell = {["minimize-duration"] = 150}}
 ```
 
-For ordinary config files, use [`gnoblin.configure`](/config/configure), which accepts public `snake_case` names.
+Existing files can also use `require("gnoblin")` to get the same API table and edit its raw `config` table. Raw keys use internal names.

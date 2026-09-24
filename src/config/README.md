@@ -32,6 +32,6 @@ empty document. A missing file named by `gnoblin.load()` is an error.
 
 When `init.lua` is absent, the loader checks legacy `gnoblin.toml`, then
 `gnoblin.conf`. New configurations should use Lua. See the
-[user guide](../../docs/configuration.md) for selection, merge and reload behavior.
+[user guide](../../docs/config.md) for selection, merge and reload behavior.
 
 Run `./tests/test-config.sh` for the native Lua and glob tests.
