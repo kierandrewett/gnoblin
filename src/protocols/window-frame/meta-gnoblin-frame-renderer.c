@@ -343,20 +343,17 @@ static guint resize_action(Frame* frame, float x, float y) {
 }
 
 static void frame_cursor(Frame* frame, guint action) {
-    static const MetaCursor cursors[] = {
-        META_CURSOR_N_RESIZE,  META_CURSOR_NE_RESIZE, META_CURSOR_E_RESIZE,
-        META_CURSOR_SE_RESIZE, META_CURSOR_S_RESIZE,  META_CURSOR_SW_RESIZE,
-        META_CURSOR_W_RESIZE,  META_CURSOR_NW_RESIZE,
+    static const ClutterCursorType cursors[] = {
+        CLUTTER_CURSOR_N_RESIZE,  CLUTTER_CURSOR_NE_RESIZE, CLUTTER_CURSOR_E_RESIZE,
+        CLUTTER_CURSOR_SE_RESIZE, CLUTTER_CURSOR_S_RESIZE,  CLUTTER_CURSOR_SW_RESIZE,
+        CLUTTER_CURSOR_W_RESIZE,  CLUTTER_CURSOR_NW_RESIZE,
     };
-    MetaDisplay* display = meta_window_get_display(frame->window);
-    /* Animated frame actors can emit crossing events after the display has
-     * lost its compositor during shutdown. */
-    if (!display || !meta_display_get_compositor(display))
-        return;
-    if (!meta_display_is_grabbed(display))
-        meta_display_set_cursor(display, action >= 5 && action <= 12
-                                            ? cursors[action - 5]
-                                            : META_CURSOR_DEFAULT);
+    /* Mutter 51 resolves a pointer cursor from the picked actor.  Keeping it
+     * on this frame root means children inherit the resize cursor, while a
+     * pointer outside the frame resumes normal Wayland cursor selection. */
+    clutter_actor_set_cursor_type(frame->root, action >= 5 && action <= 12
+                                                   ? cursors[action - 5]
+                                                   : CLUTTER_CURSOR_DEFAULT);
 }
 
 static guint hit_action(Frame* frame, float x, float y) {
