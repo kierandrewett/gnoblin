@@ -39,10 +39,12 @@ export function validate(value) {
                 typeof v === "object" &&
                 !Array.isArray(v) &&
                 Object.entries(v).every(([k, n]) =>
-                    k === "duration"
-                        ? number(n, 0, 2000)
-                        : k === "easing" &&
-                          ["linear", "ease-out-cubic", "ease-out-quad", "ease-in-out-cubic"].includes(n),
+                    k === "animation"
+                        ? typeof n === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(n)
+                        : k === "duration"
+                          ? number(n, 0, 2000)
+                          : k === "easing" &&
+                            ["linear", "ease-out-cubic", "ease-out-quad", "ease-in-out-cubic"].includes(n),
                 );
         } else if (key === "shadow") {
             const layer = (item) =>
@@ -70,7 +72,7 @@ export function validate(value) {
                     "remove-csd": "true or false",
                     "border-width": "a number from -40 to 40",
                     "border-color": "a #RRGGBB or #RRGGBBAA color",
-                    "shadow-animation": "a duration from 0 to 2000 and a supported easing",
+                    "shadow-animation": "an animation name, duration from 0 to 2000, and supported easing",
                     shadow: "false, a shadow table, or a list of shadow tables",
                 }[key] ?? "a boolean";
             throw new Error(`invalid corners.${key}: expected ${expected}; got ${JSON.stringify(v)}`);

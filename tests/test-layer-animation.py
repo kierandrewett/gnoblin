@@ -17,6 +17,7 @@ probe.write_text(
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Config from 'resource:///org/gnome/shell/ui/components/gnoblinConfig.js';
 export default function () {
     if (Main.wm._layerTestInstalled) return;
     Main.wm._layerTestInstalled = true;
@@ -25,21 +26,29 @@ export default function () {
         const anchor = Meta.gnoblin_layer_anchor(actor.meta_window);
         if (anchor >= 0 && !actor._layerTestInstalled) {
             actor._layerTestInstalled = true;
-            const ease = actor.ease;
-            actor.ease = function (params) {
-                GLib.file_set_contents(REPORT, JSON.stringify({anchor,
-                    x: this.translation_x, y: this.translation_y,
-                    duration: params.duration, mode: params.mode,
-                    endX: params.translation_x, endY: params.translation_y}));
-                return ease.call(this, params);
+            let x = actor.translation_x, y = actor.translation_y, opacity = actor.opacity;
+            const publish = () => {
+                const config = Config.layerAnimation(Config.windowProperties(actor.meta_window), true);
+                GLib.file_set_contents(REPORT, JSON.stringify({anchor, x, y, opacity,
+                    duration: config.duration, animation: config.animation}));
             };
+            for (const [property, read, write] of [
+                ['translation_x', () => x, value => { x = value; }],
+                ['translation_y', () => y, value => { y = value; }],
+                ['opacity', () => opacity, value => { opacity = value; }],
+            ]) {
+                Object.defineProperty(actor, property, {
+                    configurable: true, get: read,
+                    set(value) { write(value); publish(); },
+                });
+            }
         }
         return original.call(this, actor, types);
     };
 }
 """.replace("REPORT", json.dumps(str(report)))
 )
-subprocess.run(["gnoblinctl", "script", "reload"], check=True)
+subprocess.run(["gnoblinctl", "reload"], check=True)
 qml = root / "layer.qml"
 qml.write_text("""import Quickshell
 import Quickshell.Wayland
@@ -63,16 +72,27 @@ g.set({{shell = {{
     proc = subprocess.Popen(["qs", "-p", str(qml)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         deadline = time.monotonic() + 5
-        while not report.exists() and time.monotonic() < deadline:
+        data = None
+        while time.monotonic() < deadline:
             time.sleep(0.05)
-        data = json.loads(report.read_text())
+            if report.exists():
+                data = json.loads(report.read_text())
+                if data["x"] > 0 and data["y"] > 0:
+                    break
+        assert data is not None, "animation engine did not write an initial frame"
         assert data["anchor"] == 10, data
         assert data["x"] > 0 and data["y"] > 0, data
-        assert data["endX"] == 0 and data["endY"] == 0, data
         assert data["duration"] == duration, data
-        time.sleep(0.3)
+        assert data["animation"] == "slide", data
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            data = json.loads(report.read_text())
+            if data["x"] == 0 and data["y"] == 0 and data["opacity"] == 255:
+                break
+            time.sleep(0.03)
+        assert data["x"] == 0 and data["y"] == 0 and data["opacity"] == 255, data
         assert proc.poll() is None, "client disconnected during animation"
-        print(f"PASS: corner layer slides from bottom-right with live duration {duration}")
+        print(f"PASS: corner layer uses shared slide frames and live duration {duration}")
     finally:
         proc.terminate()
         proc.wait(timeout=5)

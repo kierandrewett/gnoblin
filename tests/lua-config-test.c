@@ -30,6 +30,11 @@ int main(void) {
         "local g=require('gnoblin'); local a=require('module'); local b=require('module')\n"
         "if a~=b then error('require cache') end\n"
         "g.set { shell={osd=false}, shortcuts={} }; g.config.autostart={}\n"
+        "g.animation { name='test-open', event='open', duration=240, from={scale_x=0.8}, "
+        "to={scale_x=1} }\n"
+        "g.animation { name='test-open', duration=260 }\n"
+        "g.animation { name='removed', event='close', from={opacity=1}, to={opacity=0} }\n"
+        "g.remove_animation('removed')\n"
         "g.config.keybindings={shell={show_screenshot_ui={}}}\n"
         "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));
@@ -51,6 +56,22 @@ int main(void) {
     g_autoptr(GVariant) shortcuts =
         g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
     g_assert_cmpuint(g_variant_n_children(shortcuts), ==, 1);
+    g_autoptr(GVariant) animations =
+        g_variant_lookup_value(document, "animations", G_VARIANT_TYPE("av"));
+    g_assert_cmpuint(g_variant_n_children(animations), ==, 1);
+    g_autoptr(GVariant) animation_box = g_variant_get_child_value(animations, 0);
+    g_autoptr(GVariant) animation = g_variant_get_variant(animation_box);
+    g_autoptr(GVariant) animation_name =
+        g_variant_lookup_value(animation, "name", G_VARIANT_TYPE_STRING);
+    g_autoptr(GVariant) animation_duration =
+        g_variant_lookup_value(animation, "duration", G_VARIANT_TYPE_INT64);
+    g_autoptr(GVariant) animation_from =
+        g_variant_lookup_value(animation, "from", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) animation_scale =
+        g_variant_lookup_value(animation_from, "scale-x", G_VARIANT_TYPE_DOUBLE);
+    g_assert_cmpstr(g_variant_get_string(animation_name, NULL), ==, "test-open");
+    g_assert_cmpint(g_variant_get_int64(animation_duration), ==, 260);
+    g_assert_cmpfloat(g_variant_get_double(animation_scale), ==, 0.8);
     g_autoptr(GVariant) keybindings =
         g_variant_lookup_value(document, "keybindings", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) shell_bindings =

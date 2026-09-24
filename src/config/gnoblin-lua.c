@@ -20,10 +20,10 @@ typedef struct {
 } LuaConfig;
 
 static gboolean append_array_key(const char* key) {
-    return key &&
-           (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-            !strcmp(key, "shortcuts") || !strcmp(key, "rules") || !strcmp(key, "workspace-names") ||
-            !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
+    return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
+                   !strcmp(key, "shortcuts") || !strcmp(key, "animations") ||
+                   !strcmp(key, "rules") || !strcmp(key, "workspace-names") ||
+                   !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
@@ -448,7 +448,6 @@ static int lua_legacy_set(lua_State* state) {
               "gnoblin.configure with public snake_case setting names");
     return lua_set(state);
 }
-
 
 static gboolean is_keybinding_action_name(const char* key) {
     if (!key || !*key)
@@ -917,8 +916,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
         {"window_rule", "", "window-rules", FALSE, FALSE},
         {"permission_rule", "permissions", "rules", FALSE, FALSE},
         {"shortcut", "", "shortcuts", TRUE, FALSE},
+        {"animation", "", "animations", TRUE, FALSE},
         {"autostart", "", "autostart", TRUE, FALSE},
         {"remove_shortcut", "", "shortcuts", TRUE, TRUE},
+        {"remove_animation", "", "animations", TRUE, TRUE},
         {"remove_autostart", "", "autostart", TRUE, TRUE},
     };
     for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {
@@ -928,7 +929,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_pushstring(
             state, !strcmp(declarations[i].name, "shortcut")           ? "gnoblin.shortcut"
                    : !strcmp(declarations[i].name, "autostart")        ? "gnoblin.autostart"
+                   : !strcmp(declarations[i].name, "animation")        ? "gnoblin.animation"
                    : !strcmp(declarations[i].name, "remove_shortcut")  ? "gnoblin.remove_shortcut"
+                   : !strcmp(declarations[i].name, "remove_animation") ? "gnoblin.remove_animation"
                    : !strcmp(declarations[i].name, "remove_autostart") ? "gnoblin.remove_autostart"
                                                                        : "");
         lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 4);

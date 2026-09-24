@@ -254,6 +254,32 @@ def parser():
     begin.add_argument("milliseconds", nargs="?", default=3000, type=number(1, 60000))
     end = add(launch_actions, "end", "End a busy-cursor request")
     end.add_argument("token")
+
+    animation = add(commands, "animation", "Inspect and preview compositor animations")
+    animation_actions = animation.add_subparsers(dest="action")
+    add(animation_actions, "list", "List configured animations")
+    add(animation_actions, "surfaces", "List layer-shell animation targets")
+    for name in ("inspect", "preview"):
+        action = add(animation_actions, name, f"{name.capitalize()} a configured animation")
+        action.add_argument("name")
+        action.add_argument("--event", help="Select an event if the animation name is ambiguous")
+        target = action.add_mutually_exclusive_group()
+        target.add_argument("--window", help="Window ID, or active")
+        target.add_argument("--layer", help="Layer-shell surface ID from animation surfaces")
+        target.add_argument("--namespace", help="Layer-shell namespace; must match one surface")
+        if name == "preview":
+            action.add_argument("--autoplay", action="store_true", help="Start playing immediately")
+    for name, help_text in (("seek", "Seek a preview to a percentage"), ("step", "Advance a preview by milliseconds")):
+        action = add(animation_actions, name, help_text)
+        action.add_argument("session")
+        action.add_argument(
+            "value",
+            type=number(0 if name == "seek" else 1, 100 if name == "seek" else 60000),
+            help="0-100 percent" if name == "seek" else "Milliseconds",
+        )
+    for name in ("play", "pause", "stop"):
+        action = add(animation_actions, name, f"{name.capitalize()} a preview session")
+        action.add_argument("session")
     return root
 
 
@@ -284,20 +310,6 @@ def dbus(method, signature="", arguments=(), service="org.gnoblin.Shell", timeou
         raise CommandError("Invalid response from busctl") from None
 
 
-def input_call(method, signature="", arguments=(), timeout=5, call=dbus):
-    try:
-        return call(method, signature, arguments, timeout=timeout)
-    except CommandError as error:
-        # Fall back only when the interface is absent, never after an uncertain mutation.
-        text = str(error)
-        if not re.match(
-            r"^(?:Call failed: )?(?:Unknown method|Unknown interface|Unknown object|The name \S+ (?:was not provided by any \.service|is not activatable))",
-            text,
-        ):
-            raise
-        return call(method, signature, arguments, service="org.gnoblin.InputSources", timeout=timeout)
-
-
 def user_config_path():
     override = os.environ.get("GNOBLIN_CONFIG")
     if override:
@@ -319,7 +331,7 @@ def compositor(request, path, timeout=5):
             connection.connect(path)
         except OSError as error:
             raise CommandError(
-                f"Cannot connect to compositor socket {path}: {error.strerror}. Check gnoblinctl script list."
+                f"Cannot connect to compositor socket {path}: {error.strerror}. Check that a Gnoblin session is running and that the socket path is correct."
             ) from None
         connection.sendall((json.dumps(dict(request, op="command", id=identity)) + "\n").encode())
         buffer = b""
@@ -406,6 +418,31 @@ def dispatch(args, cli):
             if hasattr(args, field):
                 request[field] = getattr(args, field)
         return rpc(request)
+    if cmd == "animation":
+        request = {"command": "animation", "action": args.action}
+        if args.action in ("inspect", "preview"):
+            request.update(name=args.name)
+            if args.event is not None:
+                request["event"] = args.event
+            if args.window is not None:
+                request.update(targetType="window", target=args.window)
+            elif args.layer is not None:
+                request.update(targetType="layer", target=args.layer)
+            elif args.namespace is not None:
+                request.update(targetType="namespace", target=args.namespace)
+            else:
+                request.update(targetType="window", target="active")
+            if args.action == "preview":
+                request["autoplay"] = args.autoplay
+        elif args.action in ("seek", "step"):
+            request.update(session=args.session)
+            request["progress" if args.action == "seek" else "milliseconds"] = (
+                args.value / 100 if args.action == "seek" else args.value
+            )
+        else:
+            if args.action in ("play", "pause", "stop"):
+                request["session"] = args.session
+        return rpc(request)
     if cmd == "layer" and args.action == "list":
         return rpc({"command": "layers"})
     if cmd == "monitor":
@@ -442,10 +479,10 @@ def dispatch(args, cli):
     if cmd == "input":
         fields = ["type", "id", "shortName", "name"]
         if args.action == "list":
-            return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
+            return {"sources": keyed(call("ListInputSources", timeout=args.timeout)[0], fields)}
         if args.action == "current":
-            return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
-        input_call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
+            return dict(zip(fields, call("GetCurrentInputSource", timeout=args.timeout)))
+        call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
         return {"ok": True, "type": args.type, "id": args.id}
     if cmd == "privacy":
         return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))

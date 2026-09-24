@@ -101,12 +101,8 @@ gnoblin.configure {
 
     -- Shell transitions and built-in shell features.
     shell = {
-        minimize_animation = "zoom", -- "zoom", "fade", "none", "gnome"
-        minimize_duration = 200, -- milliseconds, 0..5000
-        minimize_target = nil, -- {x, y} logical desktop coordinates; nil uses dock/bottom centre
-        layer_animation = "slide", -- "slide", "fade", "none"
-        layer_duration = 220, -- milliseconds, 0..5000
-        layer_easing = "ease-out-cubic", -- "linear", "ease-out-quad", "ease-out-cubic", "ease-in-out-cubic"
+        minimize_animation = {minimize = "gnome-minimize", restore = "gnome-restore"},
+        layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
         window_menu = gnoblin.array {}, -- argv for your shell's window-menu handler
         window_switcher = false,
         -- The feature keys below are opt-in GSettings-backed controls. Leave
@@ -173,6 +169,16 @@ gnoblin.configure {
     -- specify. Match by type, focused, app_id, title, or layer.
     -- window_rules = {}, -- uncomment to clear imported rules
 }
+
+-- Register custom transitions once and reuse them in shell settings or rules.
+-- gnoblin.animation {
+--     name = "soft-open",
+--     event = "open",
+--     duration = 280,
+--     ease = "ease-out-cubic",
+--     from = {y = 18, scale = 0.94, opacity = 0},
+--     to = {y = 0, scale = 1, opacity = 1},
+-- }
 
 -- A complete effect rule. Uncomment or add individual fields as needed.
 -- gnoblin.window_rule {

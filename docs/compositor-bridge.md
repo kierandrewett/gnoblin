@@ -73,6 +73,17 @@ The [CLI reference](gnoblinctl.md) lists window actions and arguments. Only
 because other events can arrive first. A reply with `pending: true` means the
 action was accepted; observe later state to confirm completion.
 
+Animations are registered in Lua with `gnoblin.animation` and previewed with
+`gnoblinctl animation`. Shell clients should own motion inside their own
+surface content; use a matching `animation = "none"` layer rule to avoid
+compositor motion on top of a shell's own transition.
+
+The `layer-animation-policy` operation returns the configured enter and exit
+animation policies for a layer namespace. Bingux can use that policy to decide
+whether to animate its surface content. See the
+[animation guide](/guides/animations) for layer lifecycle events and target
+selection.
+
 `capture-windows` returns visible, non-minimised windows in stacking order
 with title, app name, frame position and size, and `bufferWidth` and
 `bufferHeight` for capture. These IDs come from Mutter's window ID, whereas

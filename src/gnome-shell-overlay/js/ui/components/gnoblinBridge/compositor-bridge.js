@@ -14,6 +14,7 @@ import { FullscreenReturnGuard } from "./lib/fullscreen-return-guard.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
 import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
+import * as Animation from "resource:///org/gnome/shell/ui/components/gnoblinAnimation.js";
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
 
@@ -56,6 +57,7 @@ export class CompositorBridge {
         this.modifierCheck = 0;
         this.modifierPoll = 0;
         this.windows = new Map();
+        this.animationPreviews = new Map();
         this.setupPrivacy();
         this.windowSnap = new WindowSnap(this);
         const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), "gnoblin"]);
@@ -86,6 +88,7 @@ export class CompositorBridge {
             if (SessionLock.isLocked(Main.sessionMode.isLocked)) {
                 this.windowSnap.cancel();
                 this.end("cancelled");
+                this.cancelAnimationPreviews();
             }
         });
         // Native lock state is read synchronously from Mutter. Poll it only at
@@ -827,6 +830,7 @@ export class CompositorBridge {
         signals.push(
             window.connect("unmanaged", () => {
                 this.windowSnap.forget(id);
+                this.cancelPreviewsForTarget(id);
                 this.windows.delete(id);
                 for (const signal of signals) window.disconnect(signal);
                 this.publishWindows();
@@ -849,7 +853,7 @@ export class CompositorBridge {
                 return {
                     id,
                     title: window.title || "",
-                    appId: app && !app.is_window_backed() ? app.get_id() : wmClass,
+                    appId: app && !app.is_window_backed() ? app.get_id() : window.get_wm_class() || "",
                     gtkAppId,
                     wmClass,
                     ruleAppId: gtkAppId || wmClass,
@@ -869,17 +873,8 @@ export class CompositorBridge {
             });
     }
 
-    layerRecords() {
-        return [...this.windows]
-            .map(([id, { window }]) => ({
-                id,
-                namespace: Meta.gnoblin_layer_namespace(window),
-                title: window.title || "",
-            }))
-            .filter(({ namespace }) => namespace !== null);
-    }
-
     control(record) {
+        if (record.command === "animation") return this.animationCommand(record);
         if (record.command === "layers") return { surfaces: this.layerRecords() };
         if (record.command === "capture-windows") {
             if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("Session is locked.");
@@ -1098,6 +1093,258 @@ export class CompositorBridge {
         return { ok: true, pending: true, window: String(window.get_stable_sequence()), action: record.action };
     }
 
+    layerRecords() {
+        return [...this.windows]
+            .map(([id, { window }]) => ({
+                id,
+                namespace: Meta.gnoblin_layer_namespace(window),
+                title: window.title || "",
+            }))
+            .filter(({ namespace }) => namespace !== null);
+    }
+
+    animationCommand(record) {
+        if (SessionLock.isLocked(Main.sessionMode.isLocked))
+            throw new Error("animation previews are unavailable while the session is locked");
+        const action = record.action;
+        if (action === "list") {
+            const internalEvents = new Set([
+                "console-open",
+                "console-close",
+                "shadow-change",
+                "tile-preview-open",
+                "tile-preview-close",
+                "dialog-dim",
+                "dialog-undim",
+                "layer-companion-close",
+                "workspace-switch",
+            ]);
+            const animations = Animation.presets().map((preset) => ({
+                ...preset,
+                previewable: preset.name !== "none" && !internalEvents.has(preset.event),
+            }));
+            animations.push(
+                ...(Config.settings.animations ?? []).map(({ name, event, duration, ease }) => ({
+                    name,
+                    event,
+                    duration,
+                    ease,
+                    previewable: duration !== 0 && !internalEvents.has(event),
+                })),
+            );
+            const unique = new Map(
+                animations.map((animation) => [`${animation.name}\0${animation.event ?? ""}`, animation]),
+            );
+            return { animations: [...unique.values()] };
+        }
+        if (action === "surfaces") return { surfaces: this.layerRecords() };
+        if (action === "inspect" || action === "preview") {
+            if (
+                typeof record.name !== "string" ||
+                !/^[a-zA-Z0-9_-]{1,80}$/.test(record.name) ||
+                (record.event !== undefined &&
+                    (typeof record.event !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(record.event)))
+            )
+                throw new Error("invalid animation name or event");
+            const targetType = record.targetType ?? "window";
+            let window = null;
+            let actor = null;
+            if (targetType === "window") {
+                window =
+                    record.target === "active" ? global.display.focus_window : this.windows.get(record.target)?.window;
+            } else if (targetType === "layer" || targetType === "namespace") {
+                const candidates = [...this.windows.values()]
+                    .map(({ window: candidate }) => candidate)
+                    .filter((candidate) => {
+                        const namespace = Meta.gnoblin_layer_namespace(candidate);
+                        return (
+                            namespace !== null &&
+                            (targetType === "layer"
+                                ? String(candidate.get_stable_sequence()) === String(record.target)
+                                : namespace === record.target)
+                        );
+                    });
+                if (candidates.length !== 1)
+                    throw new Error(
+                        candidates.length
+                            ? `layer namespace matches multiple surfaces (${candidates.map((candidate) => candidate.get_stable_sequence()).join(", ")}); use --layer ID`
+                            : "layer surface not found",
+                    );
+                window = candidates[0];
+            } else {
+                throw new Error("invalid animation target type");
+            }
+            if (!window) throw new Error("animation target window no longer available");
+            const isLayer = Meta.gnoblin_layer_namespace(window) !== null;
+            if (window.is_override_redirect() || (window.skip_taskbar && !isLayer))
+                throw new Error("animation target window no longer available");
+            actor = window.get_compositor_private();
+            if (!actor) throw new Error("animation target has no compositor actor");
+            const namespace = Meta.gnoblin_layer_namespace(window);
+            const properties = Config.windowProperties(window);
+            const monitor = Main.layoutManager.monitors[window.get_monitor()] ?? null;
+            const frame = window.get_frame_rect();
+            const custom = (Config.settings.animations ?? []).find(
+                (animation) =>
+                    animation.name === record.name && (record.event === undefined || animation.event === record.event),
+            );
+            const preset = Animation.presets().find((candidate) => candidate.name === record.name);
+            if (!custom && !preset) throw new Error(`animation not found: ${record.name}`);
+            const supportedEvents = new Set([
+                ...Animation.presets()
+                    .map((candidate) => candidate.event)
+                    .filter(Boolean),
+                ...(Config.settings.animations ?? []).map((animation) => animation.event),
+            ]);
+            const context = {
+                ...properties,
+                actor,
+                window,
+                monitor,
+                targetGeom: [false, null],
+                rtl: Clutter.get_default_text_direction() === Clutter.TextDirection.RTL,
+                offset: [0, 0],
+            };
+            const requestedEvent =
+                record.event ?? custom?.event ?? preset?.event ?? (namespace !== null ? "layer-open" : "open");
+            if (requestedEvent === "minimize" || requestedEvent === "restore")
+                context.targetGeom = Config.minimizeTarget(window, monitor);
+            if (namespace !== null && (requestedEvent === "layer-open" || requestedEvent === "layer-close"))
+                context.offset = Config.layerOffset(Meta.gnoblin_layer_anchor(window), frame, monitor);
+            const spec = Animation.resolve(record.name, requestedEvent, context, custom);
+            if (!spec) throw new Error(`animation not found: ${record.name}`);
+            const event = spec.event;
+            if (!supportedEvents.has(event)) throw new Error(`unsupported animation event: ${event}`);
+            if (!Config.animationNameSupports(record.name, [event]))
+                throw new Error(`${record.name} does not support ${event}`);
+            const exactPreset = Animation.presets().find(
+                (candidate) => candidate.name === record.name && candidate.event !== null,
+            );
+            if (exactPreset && exactPreset.event !== event)
+                throw new Error(`${record.name} is for the ${exactPreset.event} event; requested ${event}`);
+            if ((event === "layer-open" || event === "layer-close") && namespace === null)
+                throw new Error(`${event} requires a layer-shell surface target`);
+            if (namespace !== null && (event === "minimize" || event === "restore" || event === "workspace-switch"))
+                throw new Error(`${event} previews require a window target`);
+            const internalEvents = new Set([
+                "console-open",
+                "console-close",
+                "shadow-change",
+                "tile-preview-open",
+                "tile-preview-close",
+                "dialog-dim",
+                "dialog-undim",
+                "layer-companion-close",
+                "workspace-switch",
+            ]);
+            if (internalEvents.has(event))
+                throw new Error(
+                    `${event} targets an internal shell actor and cannot be previewed on a window or layer surface`,
+                );
+            const matchProperties = { ...properties };
+            const publicContext = {
+                ...matchProperties,
+                actor: {
+                    x: actor.x,
+                    y: actor.y,
+                    width: actor.width,
+                    height: actor.height,
+                },
+                monitor: monitor ? { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height } : null,
+                targetGeom:
+                    context.targetGeom[0] && context.targetGeom[1]
+                        ? [
+                              true,
+                              {
+                                  x: context.targetGeom[1].x,
+                                  y: context.targetGeom[1].y,
+                                  width: context.targetGeom[1].width,
+                                  height: context.targetGeom[1].height,
+                              },
+                          ]
+                        : [false, null],
+                offset: [...context.offset],
+                rtl: context.rtl,
+            };
+            if (action === "inspect")
+                return {
+                    name: record.name,
+                    event,
+                    target: String(window.get_stable_sequence()),
+                    properties: matchProperties,
+                    context: publicContext,
+                    spec,
+                };
+            if (spec.duration <= 0) throw new Error("animation has zero duration and cannot be stepped");
+            if (window.minimized || !actor.visible || !window.showing_on_its_workspace())
+                throw new Error("animation preview target must be visible and unminimized");
+            for (const [sessionId, current] of this.animationPreviews) {
+                if (current.actor === actor) {
+                    current.controller.cancel({ restore: true });
+                    this.animationPreviews.delete(sessionId);
+                }
+            }
+            const session = GLib.uuid_string_random();
+            let entry;
+            let controller = null;
+            let completed = false;
+            controller = Animation.run(actor, spec, {
+                paused: !record.autoplay,
+                onFrame: () => {},
+                onComplete: (finished) => {
+                    completed = finished;
+                    if (entry && this.animationPreviews.get(session) === entry) this.animationPreviews.delete(session);
+                    if (finished) {
+                        controller?.cancel({ restore: true });
+                        this.sendToSubscribers({ event: "animation-preview-finished", session }, () => true);
+                    }
+                },
+            });
+            entry = { controller, actor, target: String(window.get_stable_sequence()), name: record.name, event };
+            if (completed) controller.cancel({ restore: true });
+            else this.animationPreviews.set(session, entry);
+            return { session, target: entry.target, name: record.name, event, paused: !record.autoplay, spec };
+        }
+        if (typeof record.session !== "string" || !this.animationPreviews.has(record.session))
+            throw new Error("animation preview session not found");
+        const entry = this.animationPreviews.get(record.session);
+        if (action === "seek") {
+            if (
+                typeof record.progress !== "number" ||
+                !Number.isFinite(record.progress) ||
+                record.progress < 0 ||
+                record.progress > 1
+            )
+                throw new Error("progress must be between 0 and 1");
+            entry.controller.seek(record.progress);
+        } else if (action === "step") {
+            if (!Number.isInteger(record.milliseconds) || record.milliseconds < 1 || record.milliseconds > 60000)
+                throw new Error("step milliseconds out of range");
+            entry.controller.step(record.milliseconds);
+        } else if (action === "play") entry.controller.play();
+        else if (action === "pause") entry.controller.pause();
+        else if (action === "stop") {
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(record.session);
+        } else throw new Error("unknown animation action");
+        return { ok: true, session: record.session, action };
+    }
+
+    cancelPreviewsForTarget(target) {
+        for (const [session, entry] of this.animationPreviews) {
+            if (entry.target !== target) continue;
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(session);
+        }
+    }
+
+    cancelAnimationPreviews() {
+        for (const [session, entry] of this.animationPreviews) {
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(session);
+        }
+    }
+
     showWindowMenu(window, x, y) {
         if (SessionLock.isLocked(Main.sessionMode.isLocked) || !window || !this.eligible(window)) return;
         const command = Config.settings["window-menu"];
@@ -1191,6 +1438,7 @@ export class CompositorBridge {
     destroy() {
         global.window_manager.disconnect(this.windowMenu);
         this.windowSnap.destroy();
+        this.cancelAnimationPreviews();
         this.end("cancelled");
         global.__gnoblinPublishPrivacy = null;
         if (this.remoteSignal) this.remoteController.disconnect(this.remoteSignal);

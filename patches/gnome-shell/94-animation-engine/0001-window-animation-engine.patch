@@ -1,0 +1,500 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 12:00:00 +0000
+Subject: [PATCH] shell: route Gnoblin window effects through animation engine
+
+Use the shared animation engine for Gnoblin window and layer lifecycle effects,
+resize feedback, tile previews, and dialog dimming. Register the engine module
+as a GNOME Shell resource.
+
+---
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index d6bca4d..2c8b33a 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -11,6 +11,12 @@
+ import * as AltTab from './altTab.js';
+ import * as GnoblinConfig from './components/gnoblinConfig.js';
+ import * as GnoblinLayerAnimation from './components/gnoblinLayerAnimation.js';
++import {
++    resolve as resolveGnoblinAnimation,
++    sample as sampleGnoblinAnimation,
++    run as runGnoblinAnimation,
++    runValues as runGnoblinValues,
++} from './components/gnoblinAnimation.js';
+ import * as AppFavorites from './appFavorites.js';
+ import * as Dialog from './dialog.js';
+ import * as WorkspaceSwitcherPopup from './workspaceSwitcherPopup.js';
+@@ -137,10 +143,50 @@
+     _syncEnabled(dimmed) {
+         const animating = this.actor.get_transition(`@effects.${this.name}.brightness`) !== null;
+ 
+-        this.enabled = Meta.prefs_get_attach_modal_dialogs() && (animating || dimmed);
++        this.enabled = Meta.prefs_get_attach_modal_dialogs() &&
++            (animating || this._gnoblinAnimating || dimmed);
+     }
+ 
+     setDimmed(dimmed, animate) {
++        if (global.session_mode === 'gnoblin') {
++            this._gnoblinDimController?.cancel();
++            const from = this._gnoblinDimProgress ?? (this._gnoblinDimmed ? 1 : 0);
++            const event = dimmed ? 'dialog-dim' : 'dialog-undim';
++            const window = this.actor.meta_window;
++            const properties = window ? GnoblinConfig.windowProperties(window) : null;
++            const rule = properties ? GnoblinConfig.windowAnimation?.(properties, event) : null;
++            const registered = GnoblinConfig.getAnimationForEvent?.(event);
++            const ruleName = typeof rule === 'string' ? rule : rule?.name;
++            const name = ruleName ?? registered?.name ?? `gnome-${event}`;
++            const custom = (typeof rule === 'object' ? rule : null) ??
++                GnoblinConfig.getAnimation?.(name, event) ??
++                (name === registered?.name ? registered : null);
++            const spec = resolveGnoblinAnimation(name, event, { actor: this.actor, window }, custom);
++            spec.from = { progress: from, ...custom?.from };
++            spec.to = { progress: dimmed ? 1 : 0, ...custom?.to };
++            if (custom?.duration !== undefined) spec.duration = custom.duration;
++            if (!animate || !St.Settings.get().enable_animations) spec.duration = 0;
++            if (custom?.ease !== undefined) spec.ease = custom.ease;
++            this._gnoblinDimmed = dimmed;
++            this._gnoblinAnimating = spec.duration > 0 && St.Settings.get().enable_animations;
++            const controller = runGnoblinValues(spec, {
++                actor: this.actor,
++                onFrame: values => {
++                    this._gnoblinDimProgress = values.progress;
++                    const val = 127 * (1 + values.progress * DIM_BRIGHTNESS);
++                    this.brightness = new Cogl.Color({
++                        red: val, green: val, blue: val, alpha: 255,
++                    });
++                },
++                onComplete: () => {
++                    this._gnoblinAnimating = false;
++                    this._syncEnabled(dimmed);
++                },
++            });
++            this._gnoblinDimController = controller;
++            this._syncEnabled(dimmed);
++            return;
++        }
+         const val = 127 * (1 + (dimmed ? 1 : 0) * DIM_BRIGHTNESS);
+         const color = new Cogl.Color({
+             red: val,
+@@ -391,6 +437,8 @@
+ 
+         this._reset();
+         this._showing = false;
++        this._gnoblinPreviewController = null;
++        this._gnoblinPreviewToken = null;
+     }
+ 
+     open(window, tileRect, monitorIndex) {
+@@ -398,10 +446,14 @@
+         if (!windowActor)
+             return;
+ 
++        if (this._showing && this._rect && this._rect.equal(tileRect))
++            return;
++        const interruptedClose = global.session_mode === 'gnoblin' && !this._showing &&
++            this._gnoblinPreviewController && !this._gnoblinPreviewController.finished;
++        if (global.session_mode === 'gnoblin')
++            this._gnoblinPreviewController?.cancel();
++
+         global.window_group.set_child_below_sibling(this, windowActor);
+-
+-        if (this._rect && this._rect.equal(tileRect))
+-            return;
+ 
+         const changeMonitor = this._monitorIndex === -1 ||
+                              this._monitorIndex !== monitorIndex;
+@@ -413,7 +465,7 @@
+ 
+         this._updateStyle(monitor);
+ 
+-        if (!this._showing || changeMonitor) {
++        if ((!this._showing && !interruptedClose) || changeMonitor) {
+             const monitorRect = new Mtk.Rectangle({
+                 x: monitor.x,
+                 y: monitor.y,
+@@ -428,6 +480,31 @@
+ 
+         this._showing = true;
+         this.show();
++        if (global.session_mode === 'gnoblin') {
++            const token = {};
++            this._gnoblinPreviewToken = token;
++            const from = {
++                x: this.x, y: this.y, width: this.width, height: this.height,
++                opacity: this.opacity / 255,
++            };
++            const to = {
++                x: tileRect.x, y: tileRect.y,
++                width: tileRect.width, height: tileRect.height,
++                opacity: 1,
++            };
++            const spec = Main.wm._resolveGnoblinAnimation('tile-preview-open', null, {
++                actor: this, window, from, to,
++            }, { from, to, duration: WINDOW_ANIMATION_TIME, ease: 'ease-out-quad' });
++            this._gnoblinPreviewController = Main.wm._runGnoblinValues(this, spec, values => {
++                this.set_position(values.x, values.y);
++                this.set_size(values.width, values.height);
++                this.opacity = Math.round(values.opacity * 255);
++            }, () => {
++                if (this._gnoblinPreviewToken === token)
++                    this._gnoblinPreviewController = null;
++            });
++            return;
++        }
+         this.ease({
+             x: tileRect.x,
+             y: tileRect.y,
+@@ -444,6 +521,30 @@
+             return;
+ 
+         this._showing = false;
++        if (global.session_mode === 'gnoblin') {
++            this._gnoblinPreviewController?.cancel();
++            const token = {};
++            this._gnoblinPreviewToken = token;
++            const from = {
++                x: this.x, y: this.y, width: this.width, height: this.height,
++                opacity: this.opacity / 255,
++            };
++            const to = { ...from, opacity: 0 };
++            const spec = Main.wm._resolveGnoblinAnimation('tile-preview-close', null, {
++                actor: this, from, to,
++            }, { from, to, duration: WINDOW_ANIMATION_TIME, ease: 'ease-out-quad' });
++            this._gnoblinPreviewController = Main.wm._runGnoblinValues(this, spec, values => {
++                this.set_position(values.x, values.y);
++                this.set_size(values.width, values.height);
++                this.opacity = Math.round(values.opacity * 255);
++            }, finished => {
++                if (this._gnoblinPreviewToken === token) {
++                    this._gnoblinPreviewController = null;
++                    if (finished) this._reset();
++                }
++            });
++            return;
++        }
+         this.ease({
+             opacity: 0,
+             duration: WINDOW_ANIMATION_TIME,
+@@ -507,6 +608,7 @@
+         this._resizing = new Set();
+         this._resizePending = new Set();
+         this._destroying = new Set();
++        this._gnoblinAnimationControllers = new Map();
+ 
+         this._skippedActors = new Set();
+ 
+@@ -517,6 +619,8 @@
+         this._blockCount = 0;
+ 
+         this._shellwm.connect('kill-window-effects', (shellwm, actor) => {
++            GnoblinLayerAnimation.cancel(actor);
++            this._cancelGnoblinAnimation(actor);
+             this._minimizeWindowDone(shellwm, actor);
+             this._mapWindowDone(shellwm, actor);
+             this._destroyWindowDone(shellwm, actor);
+@@ -1158,7 +1262,107 @@
+         return types.includes(type);
+     }
+ 
++    _cancelGnoblinAnimation(actor) {
++        const active = this._gnoblinAnimationControllers.get(actor);
++        if (active && !active.controller.finished)
++            active.controller.cancel();
++    }
++
++    _runGnoblinAnimation(actor, event, name, context, onComplete, options = {}) {
++        const spec = this._resolveGnoblinAnimation(event, name, context, options);
++        const token = {};
++        const finish = (completed) => {
++            if (this._gnoblinAnimationControllers.get(actor)?.token === token)
++                this._gnoblinAnimationControllers.delete(actor);
++            onComplete(completed);
++        };
++        if (spec.duration <= 0 || !St.Settings.get().enable_animations) {
++            onComplete(true);
++            return null;
++        }
++        const controller = runGnoblinAnimation(actor, spec, {
++            paused: options.paused,
++            onComplete: finish,
++        });
++        this._gnoblinAnimationControllers.set(actor, { token, controller, spec });
++        return controller;
++    }
++
++    _resolveGnoblinAnimation(event, name, context, options = {}) {
++        const registered = GnoblinConfig.getAnimationForEvent?.(event);
++        const windowRule = context.window
++            ? GnoblinConfig.windowAnimation?.(GnoblinConfig.windowProperties(context.window), event)
++            : null;
++        const ruleName = typeof windowRule === 'string' ? windowRule : windowRule?.name;
++        const selectedName = ruleName ?? name ?? registered?.name ?? `gnome-${event}`;
++        const custom = (typeof windowRule === 'object' ? windowRule : null) ??
++            GnoblinConfig.getAnimation?.(selectedName, event) ??
++            (selectedName === registered?.name ? registered : null);
++        const spec = resolveGnoblinAnimation(selectedName, event, context, custom);
++        if (options.from || custom?.from) spec.from = { ...spec.from, ...options.from, ...custom?.from };
++        if (options.to || custom?.to) spec.to = { ...spec.to, ...options.to, ...custom?.to };
++        if (custom?.duration !== undefined) spec.duration = custom.duration;
++        if (options.duration !== undefined && custom?.duration === undefined && selectedName !== 'none')
++            spec.duration = options.duration;
++        if (custom?.ease !== undefined) spec.ease = custom.ease;
++        return spec;
++    }
++
++    _runGnoblinValues(actor, spec, onFrame, onComplete) {
++        const token = {};
++        const finish = (completed) => {
++            if (this._gnoblinAnimationControllers.get(actor)?.token === token)
++                this._gnoblinAnimationControllers.delete(actor);
++            onComplete?.(completed);
++        };
++        if (spec.duration <= 0 || !St.Settings.get().enable_animations) {
++            onFrame?.(sampleGnoblinAnimation(spec, 1), 1);
++            finish(true);
++            return null;
++        }
++        const controller = runGnoblinValues(spec, {
++            actor,
++            onFrame,
++            onComplete: finish,
++        });
++        this._gnoblinAnimationControllers.set(actor, { token, controller, spec });
++        return controller;
++    }
++
+     _minimizeWindow(shellwm, actor) {
++        if (global.session_mode === 'gnoblin') {
++            const types = [Meta.WindowType.NORMAL, Meta.WindowType.MODAL_DIALOG, Meta.WindowType.DIALOG];
++            if (!this._shouldAnimateActor(actor, types)) {
++                shellwm.completed_minimize(actor);
++                return;
++            }
++            const event = 'minimize';
++            const registered = GnoblinConfig.getAnimationForEvent?.(event);
++            const windowRule = GnoblinConfig.windowAnimation?.(
++                GnoblinConfig.windowProperties(actor.meta_window), event);
++            const minimizeSetting = GnoblinConfig.settings['minimize-animation'];
++            const eventSelection = typeof minimizeSetting === 'string' ? undefined :
++                GnoblinConfig.animationSelection?.(minimizeSetting, event);
++            const name = (typeof windowRule === 'string' ? windowRule : windowRule?.name) ??
++                eventSelection ?? registered?.name ??
++                (typeof minimizeSetting === 'string' ? minimizeSetting : undefined) ?? 'zoom';
++            const monitor = Main.layoutManager.monitors[actor.meta_window.get_monitor()];
++            const targetGeom = name === 'zoom'
++                ? GnoblinConfig.minimizeTarget(actor.meta_window, monitor)
++                : actor.meta_window.get_icon_geometry();
++            this._minimizing.add(actor);
++            this._runGnoblinAnimation(actor, event, name, {
++                actor,
++                window: actor.meta_window,
++                monitor,
++                rtl: Clutter.get_default_text_direction() === Clutter.TextDirection.RTL,
++                targetGeom,
++            }, () => this._minimizeWindowDone(shellwm, actor),
++            ['zoom', 'fade', 'gnome'].includes(name)
++                ? { duration: GnoblinConfig.settings['minimize-duration'] }
++                : {});
++            return;
++        }
+         const animation = global.session_mode === 'gnoblin'
+             ? GnoblinConfig.settings['minimize-animation'] : 'gnome';
+         const duration = global.session_mode === 'gnoblin'
+@@ -1232,12 +1436,54 @@
+             actor.set_scale(1.0, 1.0);
+             actor.set_opacity(255);
+             actor.set_pivot_point(0, 0);
++            if (global.session_mode === 'gnoblin') {
++                actor.translation_x = 0;
++                actor.translation_y = 0;
++                if ('rotation_angle_z' in actor)
++                    actor.rotation_angle_z = 0;
++                else
++                    actor.rotation_angle = 0;
++            }
+ 
+             shellwm.completed_minimize(actor);
+         }
+     }
+ 
+     _unminimizeWindow(shellwm, actor) {
++        if (global.session_mode === 'gnoblin') {
++            const types = [Meta.WindowType.NORMAL, Meta.WindowType.MODAL_DIALOG, Meta.WindowType.DIALOG];
++            if (!this._shouldAnimateActor(actor, types)) {
++                shellwm.completed_unminimize(actor);
++                return;
++            }
++            const event = 'restore';
++            const registered = GnoblinConfig.getAnimationForEvent?.(event);
++            const windowRule = GnoblinConfig.windowAnimation?.(
++                GnoblinConfig.windowProperties(actor.meta_window), event);
++            const minimizeSetting = GnoblinConfig.settings['minimize-animation'];
++            const eventSelection = typeof minimizeSetting === 'string' ? undefined :
++                GnoblinConfig.animationSelection?.(minimizeSetting, event);
++            const name = (typeof windowRule === 'string' ? windowRule : windowRule?.name) ??
++                eventSelection ?? registered?.name ??
++                (typeof minimizeSetting === 'string' ? minimizeSetting : undefined) ?? 'zoom';
++            const monitor = Main.layoutManager.monitors[actor.meta_window.get_monitor()];
++            const targetGeom = name === 'zoom'
++                ? GnoblinConfig.minimizeTarget(actor.meta_window, monitor)
++                : actor.meta_window.get_icon_geometry();
++            this._unminimizing.add(actor);
++            actor.show();
++            this._runGnoblinAnimation(actor, event, name, {
++                actor,
++                window: actor.meta_window,
++                monitor,
++                rtl: Clutter.get_default_text_direction() === Clutter.TextDirection.RTL,
++                targetGeom,
++            }, () => this._unminimizeWindowDone(shellwm, actor),
++            ['zoom', 'fade', 'gnome'].includes(name)
++                ? { duration: GnoblinConfig.settings['minimize-duration'] }
++                : {});
++            return;
++        }
+         const animation = global.session_mode === 'gnoblin'
+             ? GnoblinConfig.settings['minimize-animation'] : 'gnome';
+         const duration = global.session_mode === 'gnoblin'
+@@ -1313,6 +1559,14 @@
+             actor.set_scale(1.0, 1.0);
+             actor.set_opacity(255);
+             actor.set_pivot_point(0, 0);
++            if (global.session_mode === 'gnoblin') {
++                actor.translation_x = 0;
++                actor.translation_y = 0;
++                if ('rotation_angle_z' in actor)
++                    actor.rotation_angle_z = 0;
++                else
++                    actor.rotation_angle = 0;
++            }
+ 
+             shellwm.completed_unminimize(actor);
+         }
+@@ -1380,6 +1634,39 @@
+         this._resizing.add(actor);
+ 
+         Main.uiGroup.add_child(actorClone);
++
++        if (global.session_mode === 'gnoblin') {
++            const spec = this._resolveGnoblinAnimation('resize', null, {
++                actor,
++                window: actor.meta_window,
++                from: { progress: 0 },
++                to: { progress: 1 },
++            }, {
++                from: { progress: 0 },
++                to: { progress: 1 },
++                duration: WINDOW_ANIMATION_TIME,
++            });
++            this._runGnoblinValues(actor, spec, values => {
++                const progress = values.progress;
++                actorClone.set_position(
++                    sourceRect.x + (targetRect.x - sourceRect.x) * progress,
++                    sourceRect.y + (targetRect.y - sourceRect.y) * progress);
++                actorClone.set_scale(
++                    1 + (scaleX - 1) * progress,
++                    1 + (scaleY - 1) * progress);
++                actorClone.opacity = Math.round(255 * (1 - progress));
++                actor.translation_x = (sourceRect.x - targetRect.x) * (1 - progress);
++                actor.translation_y = (sourceRect.y - targetRect.y) * (1 - progress);
++                actor.scale_x = (1 / scaleX) + (1 - (1 / scaleX)) * progress;
++                actor.scale_y = (1 / scaleY) + (1 - (1 / scaleY)) * progress;
++            }, () => this._sizeChangeWindowDone(shellwm, actor));
++
++            if (!actor.__animationInfo)
++                return;
++            actor.thaw();
++            actor.__animationInfo.frozen = false;
++            return;
++        }
+ 
+         // Now scale and fade out the clone
+         actorClone.ease({
+@@ -1520,6 +1807,26 @@
+ 
+         if (GnoblinLayerAnimation.animate(this, shellwm, actor, true))
+             return;
++
++        if (global.session_mode === 'gnoblin') {
++            const type = this._getAnimationWindowType(actor);
++            const types = [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG];
++            if (!this._shouldAnimateActor(actor, types)) {
++                shellwm.completed_map(actor);
++                return;
++            }
++            const dialog = type === Meta.WindowType.DIALOG || type === Meta.WindowType.MODAL_DIALOG;
++            const event = dialog ? 'dialog-open' : 'open';
++            this._mapping.add(actor);
++            actor.show();
++            const controller = this._runGnoblinAnimation(actor, event, null, {
++                actor,
++                window: actor.meta_window,
++            }, () => this._mapWindowDone(shellwm, actor), { paused: true });
++            await this._waitForOverviewToHide();
++            controller?.play();
++            return;
++        }
+ 
+         const types = [
+             Meta.WindowType.NORMAL,
+@@ -1589,6 +1896,12 @@
+             actor.scale_x = 1;
+             actor.translation_y = 0;
+             actor.translation_x = 0;
++            if (global.session_mode === 'gnoblin') {
++                if ('rotation_angle_z' in actor)
++                    actor.rotation_angle_z = 0;
++                else
++                    actor.rotation_angle = 0;
++            }
+             shellwm.completed_map(actor);
+         }
+     }
+@@ -1602,6 +1915,30 @@
+ 
+         if (GnoblinLayerAnimation.animate(this, shellwm, actor, false))
+             return;
++
++        if (global.session_mode === 'gnoblin') {
++            const type = this._getAnimationWindowType(actor);
++            const types = [Meta.WindowType.NORMAL, Meta.WindowType.DIALOG, Meta.WindowType.MODAL_DIALOG];
++            if (!this._shouldAnimateActor(actor, types)) {
++                shellwm.completed_destroy(actor);
++                return;
++            }
++            const dialog = type === Meta.WindowType.DIALOG || type === Meta.WindowType.MODAL_DIALOG;
++            const event = dialog ? 'dialog-close' : 'close';
++            this._destroying.add(actor);
++            if (dialog && window.is_attached_dialog()) {
++                const parent = window.get_transient_for();
++                parent?.connectObject('unmanaged', () => {
++                    this._cancelGnoblinAnimation(actor);
++                    this._destroyWindowDone(shellwm, actor);
++                }, actor);
++            }
++            this._runGnoblinAnimation(actor, event, null, {
++                actor,
++                window,
++            }, () => this._destroyWindowDone(shellwm, actor));
++            return;
++        }
+ 
+         const types = [
+             Meta.WindowType.NORMAL,
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 809c980..436bf63 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -148,6 +148,7 @@
+     <file>ui/components/gnoblinConfig.js</file>
+     <file>ui/components/gnoblinPermissions.js</file>
+     <file>ui/components/gnoblinLayerAnimation.js</file>
++    <file>ui/components/gnoblinAnimation.js</file>
+     <file>ui/components/gnoblinRules.js</file>
+     <file>ui/components/gnoblinBackgroundEffects.js</file>
+     <file>ui/components/gnoblinBackdropRedraw.js</file>
+
+-- 
+2.45.0

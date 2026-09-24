@@ -55,6 +55,38 @@ gnoblinctl layer list
 ```
 
 Use a listed `namespace` as the rule's `layer` value.
+The `animation surfaces` command reports these targets for layer previews.
+
+## Animations
+
+Use `gnoblinctl` to inspect and step through a named animation on a window or
+layer-shell surface. A preview starts paused and changes only the target's
+visual transform; it does not minimize or close the target.
+
+```sh
+gnoblinctl animation list
+gnoblinctl animation surfaces
+gnoblinctl animation inspect gnome-open --window active
+session=$(gnoblinctl animation preview gnome-open --window active --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["session"])')
+gnoblinctl animation seek "$session" 50
+gnoblinctl animation step "$session" 16
+gnoblinctl animation play "$session"
+gnoblinctl animation pause "$session"
+gnoblinctl animation stop "$session"
+```
+
+Omitting `--window` uses the active window. For layer surfaces, choose
+`--layer ID` or `--namespace NAME`; a namespace must resolve to exactly one
+visible surface. `seek` accepts a percentage from 0 to 100; `step` advances by
+milliseconds. `stop` restores the target's original visual state.
+
+`animation list` marks entries that can be previewed against a window or layer
+surface. Workspace, console, shadow, tile-preview, dialog-dimming, and
+layer-companion animations run on internal compositor actors and effects, so
+they cannot be previewed against an external target.
+
+See the [animation guide](/guides/animations) for custom curves, events, and
+the GNOME and Gnoblin presets.
 
 ## Move and resize
 

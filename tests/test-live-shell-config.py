@@ -40,6 +40,7 @@ def check(expected):
         """
 import * as Config from 'resource:///org/gnome/shell/ui/components/gnoblinConfig.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import Clutter from 'gi://Clutter';
 export default function () {
     const expected = EXPECTED;
     for (const [key, value] of Object.entries(expected)) {
@@ -50,34 +51,41 @@ export default function () {
     if (!expected['window-switcher'])
         Main.wm._startSwitcher(null, null, null, {get_name: () => 'switch-applications'});
     for (const action of ['minimize', 'unminimize']) {
-        let transition;
         let completed = false;
-        const actor = {
-            meta_window: {
-                is_monitor_sized: () => false,
-                get_monitor: () => 0,
-                get_icon_geometry: () => [true, {x: 400, y: 700, width: 40, height: 40}],
-                get_buffer_rect: () => ({x: 100, y: 100}),
-            },
-            width: 800, height: 600,
-            set_scale() {}, set_position() {}, show() {},
-            ease(params) { transition = params; },
+        const actor = new Clutter.Actor();
+        actor.set_size(800, 600);
+        actor.meta_window = {
+            is_monitor_sized: () => false,
+            get_monitor: () => 0,
+            get_icon_geometry: () => [true, {x: 400, y: 700, width: 40, height: 40}],
+            get_buffer_rect: () => ({x: 100, y: 100}),
         };
         const wm = {
             _shouldAnimateActor: () => true,
             _minimizing: new Set(), _unminimizing: new Set(),
+            _gnoblinAnimationControllers: new Map(),
+        };
+        // The configuration API's window-rule matcher requires a real Meta.Window.
+        // Keep this test's target lightweight while exercising the actual engine resolver.
+        wm._resolveGnoblinAnimation = function (event, name, context, options) {
+            return Main.wm._resolveGnoblinAnimation.call(this, event, name,
+                {...context, window: null}, options);
         };
         Main.wm[`_${action}Window`].call(wm, {
             [`completed_${action}`]() { completed = true; },
         }, actor);
+        const entry = wm._gnoblinAnimationControllers.get(actor);
         if (expected['minimize-animation'] === 'none') {
-            if (!completed || transition)
+            if (!completed || entry)
                 throw new Error(`${action}: none must complete without animation`);
         } else {
-            if (!transition || transition.duration !== expected['minimize-duration'])
+            if (!entry || entry.spec.duration !== expected['minimize-duration'])
                 throw new Error(`${action}: configured duration`);
-            if (action === 'minimize' && (transition.x !== 400 || transition.y !== 700))
+            if (entry.spec.event !== (action === 'minimize' ? 'minimize' : 'restore'))
+                throw new Error(`${action}: lifecycle event ${entry?.spec.event}`);
+            if (action === 'minimize' && (entry.spec.to.x !== 400 || entry.spec.to.y !== 700))
                 throw new Error('zoom must target the icon rectangle');
+            entry.controller.cancel({restore: true});
         }
     }
 }
