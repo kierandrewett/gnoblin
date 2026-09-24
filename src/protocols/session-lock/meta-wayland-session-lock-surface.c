@@ -356,6 +356,11 @@ meta_wayland_session_lock_surface_new (MetaWaylandSurface *surface,
   lock_surface->resource = wl_resource_create (client,
                                                 &ext_session_lock_surface_v1_interface,
                                                 1, id);
+  if (!lock_surface->resource)
+    {
+      wl_client_post_no_memory (client);
+      return NULL;
+    }
   wl_resource_set_implementation (lock_surface->resource, &surface_interface,
                                   lock_surface, resource_destroyed);
   lock_surface->output_destroyed_id = g_signal_connect (lock_surface->output,

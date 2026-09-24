@@ -65,6 +65,8 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("reset_presentation_barrier (controller)", source)
         self.assertIn("global_frame_counter", source)
         self.assertIn("frame_info->global_frame_counter <= *minimum_frame", source)
+        self.assertIn("controller->presentation_confirmed = FALSE", source)
+        self.assertIn("controller->presentation_confirmed = TRUE", source)
         self.assertIn("before-paint", source)
         self.assertIn("clutter_actor_get_last_child", source)
 
@@ -80,18 +82,21 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("clutter_actor_remove_child", source)
         self.assertIn("clutter_actor_set_position", source)
         self.assertIn("meta_window_move_resize_frame", source)
+        self.assertIn("wl_client_post_no_memory", source)
 
     def test_manager_rejects_duplicate_outputs_and_precommitted_roles(self):
         source = SOURCE.read_text()
         self.assertIn("EXT_SESSION_LOCK_V1_ERROR_DUPLICATE_OUTPUT", source)
         self.assertIn("meta_wayland_surface_has_initial_commit", source)
         self.assertIn("meta_wayland_session_lock_surface_new", source)
+        self.assertIn("wl_client_post_no_memory", source)
         self.assertIn("finished_lock_interface", source)
         self.assertIn("ext_session_lock_v1_send_finished", source)
         self.assertIn("a finished session lock cannot unlock", source)
         self.assertIn("META_WAYLAND_SESSION_LOCK_FAILSAFE", source)
         self.assertIn("close_lock_surfaces", source)
         self.assertIn("g_hash_table_remove_all (controller->surfaces)", source)
+        self.assertIn("owner was already notified", source)
 
     def test_surface_role_is_installed_and_built(self):
         manifest = MANIFEST.read_text()

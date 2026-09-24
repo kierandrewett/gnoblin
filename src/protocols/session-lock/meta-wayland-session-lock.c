@@ -73,6 +73,9 @@ typedef struct
   ClutterActor *scene;
   ClutterActor *cover;
   MetaWaylandEventHandler *input_handler;
+  /* This is independent from state: a client can die while COVERING, which
+   * must enter FAILSAFE for access control but has not yet proven a frame. */
+  gboolean presentation_confirmed;
   /* MetaWaylandStageView* -> minimum global frame counter that is allowed to
    * prove this particular cover generation.  A mere view pointer is not
    * enough: a presentation notification queued before the cover/restack can
@@ -233,6 +236,7 @@ session_lock_unlock_and_destroy (struct wl_client   *client,
       controller->unredirect_inhibited = FALSE;
     }
   controller->lock = NULL;
+  controller->presentation_confirmed = FALSE;
   set_state (controller, META_WAYLAND_SESSION_LOCK_UNLOCKED);
   wl_resource_destroy (resource);
 }
@@ -382,6 +386,11 @@ session_lock_manager_lock (struct wl_client   *client,
       struct wl_resource *finished =
         wl_resource_create (client, &ext_session_lock_v1_interface, 1, id);
 
+      if (!finished)
+        {
+          wl_client_post_no_memory (client);
+          return;
+        }
       wl_resource_set_implementation (finished, &finished_lock_interface,
                                       NULL, NULL);
       ext_session_lock_v1_send_finished (finished);
@@ -392,6 +401,12 @@ session_lock_manager_lock (struct wl_client   *client,
   lock->compositor = compositor;
   lock->client = client;
   lock->resource = wl_resource_create (client, &ext_session_lock_v1_interface, 1, id);
+  if (!lock->resource)
+    {
+      g_free (lock);
+      wl_client_post_no_memory (client);
+      return;
+    }
   wl_resource_set_implementation (lock->resource, &session_lock_interface,
                                   lock, session_lock_destroy);
   controller->lock = lock;
@@ -479,6 +494,7 @@ reset_presentation_barrier (MetaWaylandSessionLockController *controller)
   int64_t minimum_fresh_frame;
 
   g_hash_table_remove_all (controller->unpresented_stage_views);
+  controller->presentation_confirmed = FALSE;
   /* Present notifications can be delivered after a transition that queued a
    * cover redraw.  Require a strictly newer stage frame, so only a frame
    * submitted after this barrier may establish locked presentation. */
@@ -560,7 +576,8 @@ on_stage_presented (ClutterStage                         *stage,
 {
   int64_t *minimum_frame;
 
-  if (controller->state != META_WAYLAND_SESSION_LOCK_COVERING ||
+  if ((controller->state != META_WAYLAND_SESSION_LOCK_COVERING &&
+       controller->state != META_WAYLAND_SESSION_LOCK_FAILSAFE) ||
       !clutter_actor_is_effectively_on_stage_view (controller->cover,
                                                     stage_view))
     return;
@@ -573,12 +590,20 @@ on_stage_presented (ClutterStage                         *stage,
   g_hash_table_remove (controller->unpresented_stage_views, stage_view);
   if (g_hash_table_size (controller->unpresented_stage_views) == 0)
     {
+      controller->presentation_confirmed = TRUE;
       if (controller->lock && !controller->lock->locked_sent)
         {
           /* The opaque compositor cover is the presentation proof.  Lock
            * surfaces may refine it afterwards, but can never delay safety. */
           controller->lock->locked_sent = TRUE;
           ext_session_lock_v1_send_locked (controller->lock->resource);
+          set_state (controller, META_WAYLAND_SESSION_LOCK_LOCKED);
+        }
+      else if (controller->lock)
+        {
+          /* Output hotplug/reset starts a new presentation generation. The
+           * owner was already notified, so restore the stable LOCKED state
+           * only after every current view has presented the fresh cover. */
           set_state (controller, META_WAYLAND_SESSION_LOCK_LOCKED);
         }
       else if (!controller->lock)
@@ -867,11 +892,13 @@ gboolean
 meta_wayland_session_lock_is_presentation_confirmed (
   MetaWaylandCompositor *compositor)
 {
-  MetaWaylandSessionLockState state =
-    meta_wayland_session_lock_get_state (compositor);
+  MetaWaylandSessionLockController *controller;
 
-  return state == META_WAYLAND_SESSION_LOCK_LOCKED ||
-         state == META_WAYLAND_SESSION_LOCK_FAILSAFE;
+  g_return_val_if_fail (compositor != NULL, FALSE);
+
+  controller = g_object_get_data (G_OBJECT (compositor),
+                                  SESSION_LOCK_CONTROLLER_KEY);
+  return controller && controller->presentation_confirmed;
 }
 
 ClutterActor *
