@@ -1,0 +1,182 @@
+name: Gnoblin application E2E
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - ".github/workflows/application-e2e.yml"
+      - ".github/workflows/compositor-fuzz.yml"
+      - "build.sh"
+      - "scripts/**"
+      - "src/**"
+      - "tests/**"
+      - "subprojects/mutter"
+      - "subprojects/gnome-shell"
+      - "subprojects/gnome-control-center"
+      - "subprojects/xdg-desktop-portal-gnome"
+  schedule:
+    - cron: "18 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      full_sweep:
+        description: Run all 40 shards (the complete 800-app catalog)
+        type: boolean
+        default: true
+        required: true
+      shard:
+        description: Shard number 0-39 when full_sweep is false
+        type: string
+        default: "0"
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-catalog:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 150
+    outputs:
+      shards: ${{ steps.matrix.outputs.shards }}
+    steps:
+      - name: Install checkout tool
+        run: dnf -y install git
+
+      - name: Checkout Gnoblin and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Gnoblin and fetch Fedora software-store metadata
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+          dnf -y install appstream-data
+          useradd --create-home builder
+          builder_uid="$(id -u builder)"
+          install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            ./build.sh
+          mkdir -p e2e-ci-artifacts
+          python3 tests/e2e/app-catalog.test.py
+          python3 tests/e2e/app-catalog.py --output e2e-ci-artifacts/app-catalog.json
+
+      - name: Select requested app shards
+        id: matrix
+        env:
+          FULL_SWEEP: ${{ inputs.full_sweep || contains(github.event.pull_request.labels.*.name, 'gnoblin-full-e2e') }}
+          REQUESTED_SHARD: ${{ inputs.shard }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          full_sweep = os.environ.get("FULL_SWEEP", "").lower() == "true"
+          if os.environ["GITHUB_EVENT_NAME"] == "pull_request" and not full_sweep:
+              shards = [0]
+          elif os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and os.environ["FULL_SWEEP"] != "true":
+              shard = int(os.environ["REQUESTED_SHARD"])
+              if not 0 <= shard < 40:
+                  raise SystemExit("shard must be in the range 0..39")
+              shards = [shard]
+          else:
+              shards = list(range(40))
+          print("shards=" + json.dumps(shards))
+          PY
+
+      - name: Upload the build and live catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            install/
+            e2e-ci-artifacts/app-catalog.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 2
+
+  app-shard:
+    needs: build-and-catalog
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: ${{ fromJSON(needs.build-and-catalog.outputs.shards) }}
+    steps:
+      - name: Install Git and desktop runtime dependencies
+        run: |
+          dnf -y install git flatpak gtk3 gtk4 wayland-devel wayland-protocols \
+            gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon
+
+      - name: Checkout test drivers
+        uses: actions/checkout@v4
+
+      - name: Download Gnoblin build and app catalog
+        uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}
+
+      - name: Add Flathub and select this shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
+        run: |
+          flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          mkdir -p "$ARTIFACT_DIR"
+          python3 tests/e2e/app-catalog.py \
+            --catalog-in "$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
+            --shard-index "$SHARD_INDEX" --shard-count 40 \
+            --shard-output "$ARTIFACT_DIR/shard.json"
+
+      - name: Install the shard's RPM and Flatpak applications
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
+        run: |
+          python3 tests/e2e/install-shard.py \
+            "$ARTIFACT_DIR/shard.json" "$ARTIFACT_DIR/installation-report.json"
+
+      - name: Run real Gnoblin Wayland app sessions
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
+        run: |
+          useradd --create-home e2e
+          e2e_uid="$(id -u e2e)"
+          extra_monitor=""
+          if ((SHARD_INDEX % 2 == 0)); then
+            extra_monitor="1024x768"
+          fi
+          install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
+          chown -R e2e:e2e "$ARTIFACT_DIR"
+          runuser -u e2e -- env \
+            XDG_RUNTIME_DIR="/run/user/$e2e_uid" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
+            GNOBLIN_E2E_PREPARED_SHARD="$ARTIFACT_DIR/shard.json" \
+            GNOBLIN_E2E_SHARD_INDEX="$SHARD_INDEX" \
+            GNOBLIN_E2E_SHARD_COUNT=40 \
+            GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor" \
+            GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json" \
+            GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
+            GNOBLIN_E2E_TIMEOUT=3300 \
+            python3 tests/e2e/app-e2e.py
+
+      - name: Upload events, screenshots, install results and shell logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-app-e2e-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 14

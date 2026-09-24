@@ -1,0 +1,85 @@
+name: Gnoblin compositor fuzz
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lifecycle-fuzz:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    timeout-minutes: 120
+    steps:
+      - name: Install checkout tool
+        run: dnf -y install git
+
+      - name: Checkout Gnoblin and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build a private Gnoblin prefix
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+          useradd --create-home builder
+          builder_uid="$(id -u builder)"
+          install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            ./build.sh
+
+      - name: Run deterministic plan checks
+        run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
+
+      - name: Run varied seeded lifecycle sessions
+        run: |
+          builder_uid="$(id -u builder)"
+          artifact_root="$RUNNER_TEMP/lifecycle-fuzz"
+          install -d -o builder -g builder -m 700 "$artifact_root"
+          seeds=(1738 99173 4294967 20260924)
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+            seeds+=(51 1701 884422 314159265)
+          fi
+          failed=0
+          for seed in "${seeds[@]}"; do
+            artifact_dir="$artifact_root/seed-$seed"
+            install -d -o builder -g builder -m 700 "$artifact_dir"
+            extra_monitor=()
+            if ((seed % 2 == 0)); then
+              extra_monitor=(EXTRA_MONITOR=1024x768)
+            fi
+            echo "== lifecycle seed $seed =="
+            if ! runuser -u builder -- env \
+              XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+              "${extra_monitor[@]}" \
+              GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+              python3 tests/window-lifecycle-fuzz.py \
+                --seed "$seed" --steps 250 --timeout 900 \
+                --artifact-dir "$artifact_dir"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Keep fuzz plans, logs and crash reproducers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-lifecycle-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lifecycle-fuzz/
+          if-no-files-found: warn
+          retention-days: 30

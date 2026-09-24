@@ -26,6 +26,7 @@ Run against the prefix built from your current source:
 | `just test-protocols`       | Wayland object and geometry contracts      |
 | `just test-control-api`     | Control API                                |
 | `just test-preview`         | Devkit environment and connectivity        |
+| `just fuzz-lifecycle`       | Seeded window and frame lifecycle stress   |
 | `just test-native-chrome`   | Removed native UI stays absent             |
 | `just test-scripting`       | User script load/reload lifecycle          |
 | `just test-notifications`   | Notification service ownership             |
@@ -55,6 +56,81 @@ Ubuntu and openSUSE. It does not prove a complete desktop installation.
 Run `python3 tests/build-deps.test.py` and `python3 tests/private-deps.test.py`
 to check command planning, checksums and private library links.
 Graphical login and interactive checks still need a host.
+
+## Window lifecycle fuzzing
+
+`just fuzz-lifecycle` runs a seeded state-machine fuzzer in a private headless
+Gnoblin session. It opens real GTK Wayland windows, enables native Gnoblin
+frames, then mixes pointer crossing/click/resize, window state changes, and
+graceful, compositor-requested, and abrupt client closes. Every run finishes by
+exiting Gnoblin while a native frame is under the pointer. The run fails if the
+shell stops responding unexpectedly or logs a fatal compositor diagnostic.
+
+Use `just fuzz-lifecycle SEED=1738 STEPS=1000` to control a run. Every run keeps
+its seed, action plan, executed action prefix, runner output, and shell log under
+`$XDG_STATE_HOME/gnoblin/lifecycle-fuzz/` (normally
+`~/.local/state/gnoblin/lifecycle-fuzz/`). Replay a failure with the command
+printed by the runner, or run:
+
+```sh
+python3 tests/window-lifecycle-fuzz.py --replay /path/to/repro.json
+```
+
+The harness reports failures and prepares a repair request alongside the exact
+replay. A generated patch still needs to pass that replay and the relevant
+compositor checks before it is accepted.
+
+## Broad application E2E
+
+`.github/workflows/application-e2e.yml` is the app-compatibility workflow;
+`.github/workflows/compositor-fuzz.yml` is the separate seeded state-machine
+workflow. The fuzz workflow runs for pull requests, pushes to `main`, nightly,
+and manual dispatch. The app sweep runs one shard on a pull request, all shards
+weekly, or a selected/full set on manual dispatch. Add the
+`gnoblin-full-e2e` label to a pull request to run all 40 shards (the complete
+800-app catalog) immediately.
+
+At workflow start, `tests/e2e/app-catalog.py` refreshes two independent sources:
+
+- The first 500 unique desktop apps in Flathub's Popular collection.
+- 300 launchable Fedora RPM applications from `appstream-data`, balanced over
+  the metadata categories and excluding duplicate desktop IDs from Flathub.
+
+That makes an 800-application catalog without committing a stale popularity
+snapshot. The workflow divides it into 40 shards. Each app is installed or its
+installation failure is recorded, then launched in a disposable user session
+on the built Gnoblin Mutter compositor. A real `zwlr-layer-shell` panel stays
+mapped for the duration. The driver records whether the app maps a window,
+captures a screenshot, tests activation, native frames, repeated move/resize,
+titlebar dragging, resize handles, maximize/minimize/fullscreen and close,
+and saves the app's stdout/stderr. A failure to install or map any catalog
+entry, a rejected supported window operation, a failed close, or a compositor
+failure makes that shard fail. The artifacts distinguish those outcomes.
+Flathub apps keep their Flatpak sandbox and run without network access, so this
+suite measures desktop-window behavior rather than online service behavior.
+
+The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
+virtual 1280x800 monitors and software rendering. This exercises real Flatpak
+and RPM clients against real Gnoblin windows without requiring a physical GPU
+or a logged-in desktop. GPU drivers, physical input devices and a hardware
+login still need separate coverage using the [hardware verification](real-hardware-verification.md)
+checklist.
+
+Each shard artifact contains its exact catalog slice, installation report,
+per-app logs and screenshots, JSONL operation trace, summary, shell log and a
+reproduction/repair request when it fails. Re-run a shard locally after
+installing its recorded apps with:
+
+```sh
+GNOBLIN_PREFIX="$PWD/install" \
+GNOBLIN_E2E_CATALOG=/path/to/app-catalog.json \
+GNOBLIN_E2E_SHARD_INDEX=0 GNOBLIN_E2E_SHARD_COUNT=40 \
+python3 tests/e2e/app-e2e.py
+```
+
+The test workflows produce machine-readable repair packets and exact replays.
+Source patching still needs a configured repair worker that can run the replay,
+check the fix and open a reviewable change.
 
 ## Environment failures
 
