@@ -10,4 +10,4 @@ gnoblin.configure {
 }
 ```
 
-See the [autostart guide](/guides/autostart) for launch timing and examples. The older [`gnoblin.autostart`](/config/autostart) declaration form is also available.
+See the [autostart guide](/guides/autostart) for launch timing and examples.

@@ -13,10 +13,6 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
 
-## Compatibility functions
-
-Older configs can still use [`gnoblin.shortcut`](/config/shortcut), [`gnoblin.autostart`](/config/autostart), [`gnoblin.remove_shortcut`](/config/remove_shortcut), [`gnoblin.remove_autostart`](/config/remove_autostart) and [`gnoblin.set`](/config/set). New configs can edit named shortcuts and autostart entries through `gnoblin.configure`.
-
 ## First config
 
 On first login, `gnoblin-session` copies the packaged reference config to `~/.config/gnoblin/init.lua` when no Lua or legacy config exists. It does not replace an existing config. Edit that file to configure Gnoblin.

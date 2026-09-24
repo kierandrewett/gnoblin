@@ -88,9 +88,8 @@ change an imported entry; omitted fields keep their earlier values. Set
 `enable = false` to disable an imported shortcut or autostart entry. Disabling
 autostart does not stop a process that is already running.
 
-The older `gnoblin.shortcut`, `gnoblin.autostart`, `gnoblin.remove_shortcut`
-and `gnoblin.remove_autostart` calls remain available. Prefer the named maps
-under `gnoblin.configure`; see the [function reference](/config#functions).
+Named shortcuts and autostart entries belong under `gnoblin.configure`; see
+the [function reference](/config#functions).
 
 ## Use a Lua module
 

@@ -13,7 +13,7 @@ gnoblin.configure {
 }
 ```
 
-See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior. The older [`gnoblin.shortcut`](/config/shortcut) declaration form is also available.
+See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
 
 The bundled config supplies these names:
 

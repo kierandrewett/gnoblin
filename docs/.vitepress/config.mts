@@ -77,17 +77,6 @@ export default defineConfig({
                     { text: "gnoblin.load", link: "/config/load" },
                     { text: "gnoblin.snapshot", link: "/config/snapshot" },
                     { text: "gnoblin.array", link: "/config/array" },
-                    {
-                        text: "Compatibility functions",
-                        collapsed: true,
-                        items: [
-                            { text: "gnoblin.shortcut", link: "/config/shortcut" },
-                            { text: "gnoblin.autostart", link: "/config/autostart" },
-                            { text: "gnoblin.remove_shortcut", link: "/config/remove_shortcut" },
-                            { text: "gnoblin.remove_autostart", link: "/config/remove_autostart" },
-                            { text: "gnoblin.set", link: "/config/set" },
-                        ],
-                    },
                 ],
             },
             {
