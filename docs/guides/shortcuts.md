@@ -78,7 +78,7 @@ The values printed by `gsettings` are GNOME settings; Lua overrides are active
 in Gnoblin and do not appear there.
 
 Other groups are `shell`, `mutter` and `wayland`. See the
-[keybinding groups](/config/configure#keybinding-groups) for their
+[keybinding groups](/config/configure/keybindings) for their
 GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
