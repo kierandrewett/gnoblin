@@ -9,6 +9,7 @@
 #include "backends/meta-monitor-private.h"
 #include "backends/meta-monitor-manager-private.h"
 #include "core/meta-context-private.h"
+#include "core/display-private.h"
 #include "core/window-private.h"
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
@@ -16,6 +17,7 @@
 #include "wayland/meta-wayland-surface-private.h"
 #include "wayland/meta-wayland-window-configuration.h"
 #include "wayland/meta-wayland-actor-surface.h"
+#include "wayland/meta-window-wayland.h"
 
 #include "ext-session-lock-v1-server-protocol.h"
 
@@ -68,6 +70,32 @@ get_output_layout (MetaWaylandSessionLockSurface *lock_surface)
 
   return logical_monitor ? meta_logical_monitor_get_layout (logical_monitor) :
     (MtkRectangle) { 0, 0, 1, 1 };
+}
+
+static MetaDisplay *
+display_from_surface (MetaWaylandSurface *surface)
+{
+  MetaContext *context = meta_wayland_compositor_get_context (surface->compositor);
+
+  return meta_context_get_display (context);
+}
+
+static void
+place_actor_on_output (MetaWaylandSessionLockSurface *lock_surface,
+                       MetaSurfaceActor              *actor)
+{
+  MtkRectangle layout = get_output_layout (lock_surface);
+  MetaWaylandSurface *surface =
+    meta_wayland_session_lock_surface_get_wayland_surface (lock_surface);
+  MetaWindow *window = meta_wayland_surface_get_window (surface);
+
+  /* The private lock scene is stage-relative. MetaSurfaceActor coordinates are
+   * normally relative to MetaWindowActor, so preserve the assigned output's
+   * logical origin while it is parented directly under the lock scene. */
+  clutter_actor_set_position (CLUTTER_ACTOR (actor), layout.x, layout.y);
+  if (window)
+    meta_window_move_resize_frame (window, FALSE, layout.x, layout.y,
+                                   layout.width, layout.height);
 }
 
 static void
@@ -228,8 +256,23 @@ post_apply_state (MetaWaylandSurfaceRole  *surface_role,
 
   actor = meta_wayland_actor_surface_get_actor (META_WAYLAND_ACTOR_SURFACE (lock_surface));
   scene = meta_wayland_session_lock_get_scene (surface->compositor);
-  if (actor && scene && clutter_actor_get_parent (CLUTTER_ACTOR (actor)) != scene)
-    clutter_actor_add_child (scene, CLUTTER_ACTOR (actor));
+  if (!actor || !scene)
+    return;
+
+  if (clutter_actor_get_parent (CLUTTER_ACTOR (actor)) != scene)
+    {
+      ClutterActor *parent = clutter_actor_get_parent (CLUTTER_ACTOR (actor));
+
+      /* Clutter deliberately rejects add_child() for a parented actor. Hold a
+       * reference across remove_child(): removing the last child can otherwise
+       * release the surface actor before it is added to the lock scene. */
+      g_object_ref (actor);
+      if (parent)
+        clutter_actor_remove_child (parent, CLUTTER_ACTOR (actor));
+      clutter_actor_add_child (scene, CLUTTER_ACTOR (actor));
+      g_object_unref (actor);
+    }
+  place_actor_on_output (lock_surface, actor);
 }
 
 static MetaWaylandSurface *
@@ -242,8 +285,15 @@ static void
 configure (MetaWaylandShellSurface        *shell_surface,
            MetaWaylandWindowConfiguration *configuration)
 {
+  MetaWaylandSessionLockSurface *lock_surface =
+    META_WAYLAND_SESSION_LOCK_SURFACE (shell_surface);
+  MetaSurfaceActor *actor = meta_wayland_actor_surface_get_actor (
+    META_WAYLAND_ACTOR_SURFACE (lock_surface));
+
+  if (actor && lock_surface->mapped)
+    place_actor_on_output (lock_surface, actor);
   meta_wayland_session_lock_surface_send_configure (
-    META_WAYLAND_SESSION_LOCK_SURFACE (shell_surface));
+    lock_surface);
 }
 
 static void
@@ -312,6 +362,14 @@ meta_wayland_session_lock_surface_new (MetaWaylandSurface *surface,
                                                          "output-destroyed",
                                                          G_CALLBACK (output_destroyed),
                                                          lock_surface);
+  {
+    MetaWindow *window = meta_window_wayland_new (display_from_surface (surface), surface);
+
+    window->type = META_WINDOW_DOCK;
+    window->input = TRUE;
+    meta_wayland_shell_surface_set_window (META_WAYLAND_SHELL_SURFACE (lock_surface),
+                                           window);
+  }
   send_configure (lock_surface);
   return lock_surface;
 }
@@ -351,8 +409,17 @@ meta_wayland_session_lock_surface_is_mapped (MetaWaylandSessionLockSurface *surf
 void
 meta_wayland_session_lock_surface_close (MetaWaylandSessionLockSurface *surface)
 {
+  MetaWaylandSurface *wayland_surface;
+  MetaSurfaceActor *actor;
+  ClutterActor *scene;
+
   if (surface->closed)
     return;
   surface->closed = TRUE;
+  wayland_surface = meta_wayland_session_lock_surface_get_wayland_surface (surface);
+  actor = wayland_surface ? meta_wayland_surface_get_actor (wayland_surface) : NULL;
+  scene = wayland_surface ? meta_wayland_session_lock_get_scene (wayland_surface->compositor) : NULL;
+  if (actor && scene && clutter_actor_get_parent (CLUTTER_ACTOR (actor)) == scene)
+    clutter_actor_remove_child (scene, CLUTTER_ACTOR (actor));
   meta_wayland_shell_surface_destroy_window (META_WAYLAND_SHELL_SURFACE (surface));
 }
