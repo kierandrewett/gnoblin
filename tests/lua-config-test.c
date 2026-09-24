@@ -34,7 +34,7 @@ int main(void) {
         "to={scale_x=1} }\n"
         "g.animation { name='test-open', duration=260 }\n"
         "g.animation { name='removed', event='close', from={opacity=1}, to={opacity=0} }\n"
-        "g.remove_animation('removed')\n"
+        "g.animation { name='removed', enable=false }\n"
         "g.config.keybindings={shell={show_screenshot_ui={}}}\n"
         "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));

@@ -7,13 +7,14 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 - [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
 - [`gnoblin.animation`](/config/animation) — register a named animation for one event.
-- [`gnoblin.remove_animation`](/config/remove_animation) — remove a named animation declaration.
 - [`gnoblin.permission_rule`](/config/permission_rule) — add a portal permission rule.
 - [`gnoblin.load`](/config/load) — load another Lua config file.
 - [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
 - [`gnoblin.array`](/config/array) — mark a Lua table as a list.
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
+
+Disable an imported animation by name with `gnoblin.animation {name = "soft-open", enable = false}`.
 
 ## Migrate older config calls
 

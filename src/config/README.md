@@ -8,11 +8,11 @@ an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
 `gnoblin.window_rule { ... }` and `gnoblin.permission_rule { ... }` for ordered
 rules. `gnoblin.shortcut { ... }` and `gnoblin.autostart { ... }` merge entries
 by name. `remove_shortcut(name)` and `remove_autostart(name)` remove them.
-`gnoblin.animation { ... }` registers reusable transitions; use
-`remove_animation(name)` to remove one. Animation declarations merge by name
-and accept `duration`, `ease`, `origin`, `from`, `to`, `keyframes`, and an
-optional `target`. See the [animation guide](../../docs/guides/animations.md)
-for supported events, properties, presets, and preview controls.
+`gnoblin.animation { ... }` registers reusable transitions. Declarations merge
+by name; set `enable = false` to disable an earlier registration. Animations
+accept `duration`, `ease`, `origin`, `from`, `to`, `keyframes`, and an optional
+`target`. See the [animation guide](../../docs/guides/animations.md) for
+supported events, properties, presets, and preview controls.
 For named overrides, `gnoblin.configure {shortcuts = {terminal = {command = {...}}}}`
 merges fields, and `terminal = {enable = false}` disables that entry. The same
 form works for autostart. The removal functions remain for older configs.

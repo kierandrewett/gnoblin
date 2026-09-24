@@ -29,6 +29,7 @@ gnoblin.animation {
 | `keyframes`  | Alternative | 2–128 ordered frames from `at = 0` to `at = 1`         |
 | `origin`     | No          | Named pivot or normalized two-number array from 0 to 1 |
 | `target`     | No          | Label of up to 80 letters, digits, `_` or `-`          |
+| `enable`     | No          | Set `false` to disable an earlier registration by name |
 
 An animation needs `from`, `to`, or `keyframes`. Each keyframe has an `at`
 position and one or more properties; its optional `ease` controls the segment
@@ -47,3 +48,11 @@ Names may be used in [`gnoblin.configure.shell`](/config/configure/shell) and
 events need a map if the selected custom animations are event-specific. See
 the [animation guide](/guides/animations) for built-in names, practical
 examples, easing choices and preview commands.
+
+Load the registration first, then disable it by name:
+
+```lua
+gnoblin.animation {name = "soft-open", enable = false}
+```
+
+`enable = false` removes the earlier declaration from the assembled config.

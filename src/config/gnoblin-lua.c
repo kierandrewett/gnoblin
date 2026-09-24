@@ -743,7 +743,7 @@ static void finish_named_entries(lua_State* state, int config, const char* key) 
 /* Named commands merge in place; ordered rules always append. */
 static int lua_declare(lua_State* state) {
     const char* api = lua_tostring(state, lua_upvalueindex(4));
-    if (api && *api) {
+    if (api && (!strcmp(api, "gnoblin.shortcut") || !strcmp(api, "gnoblin.autostart"))) {
         const char* migration = !strcmp(api, "gnoblin.shortcut")
                                     ? "migrate to gnoblin.configure {shortcuts = {[\"<name>\"] = "
                                       "{binding = ..., command = ...}}}"
@@ -804,7 +804,7 @@ static int lua_remove_declaration(lua_State* state) {
                       "gnoblin.configure.shortcuts or set "
                       "gnoblin.configure.shortcuts[\"%s\"].enable = false",
                       api, name, name);
-        else
+        else if (!strcmp(api, "gnoblin.remove_autostart"))
             g_warning("%s is deprecated and may be removed at any time; remove key \"%s\" from "
                       "gnoblin.configure.autostart or set "
                       "gnoblin.configure.autostart[\"%s\"].enable = false",
@@ -919,7 +919,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
         {"animation", "", "animations", TRUE, FALSE},
         {"autostart", "", "autostart", TRUE, FALSE},
         {"remove_shortcut", "", "shortcuts", TRUE, TRUE},
-        {"remove_animation", "", "animations", TRUE, TRUE},
         {"remove_autostart", "", "autostart", TRUE, TRUE},
     };
     for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {
@@ -931,7 +930,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
                    : !strcmp(declarations[i].name, "autostart")        ? "gnoblin.autostart"
                    : !strcmp(declarations[i].name, "animation")        ? "gnoblin.animation"
                    : !strcmp(declarations[i].name, "remove_shortcut")  ? "gnoblin.remove_shortcut"
-                   : !strcmp(declarations[i].name, "remove_animation") ? "gnoblin.remove_animation"
                    : !strcmp(declarations[i].name, "remove_autostart") ? "gnoblin.remove_autostart"
                                                                        : "");
         lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 4);
