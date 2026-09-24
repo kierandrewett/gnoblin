@@ -65,6 +65,27 @@ the main key after them. This is [GTK accelerator syntax](https://docs.gtk.org/g
 Held keys do not repeatedly launch commands.
 Command shortcuts are inactive on the lock and login screens.
 
+## Run a command on release
+
+Command shortcuts run when the key combination is pressed. Set `trigger` to
+`"release"` to launch after the combination is released:
+
+```lua
+gnoblin.configure {
+    shortcuts = {
+        launcher = {
+            binding = "<Super>space",
+            command = {"my-launcher"},
+            trigger = "release",
+        },
+    },
+}
+```
+
+This lets a launcher start after the shortcut chord is complete. Bare `"Super"`
+already runs on release; Mutter waits to see whether another key joins the
+chord before emitting its overlay-key event.
+
 ## Change a built-in action
 
 ```lua
@@ -126,10 +147,11 @@ gnoblin.configure {
 
 This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
-## Popups that capture typing
+## Buffer typing while a popup opens
 
-A shortcut can set `capture_input = true` to buffer typing while a popup
-starts. The popup must implement the [input handoff protocol](/compositor-bridge).
-Do not enable it for ordinary terminal or application launch commands.
+A shortcut can set `capture_input = true` to buffer typing between activation
+and popup focus. The popup must implement the
+[input handoff protocol](/compositor-bridge). This is separate from choosing
+whether the command runs on press or release.
 
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

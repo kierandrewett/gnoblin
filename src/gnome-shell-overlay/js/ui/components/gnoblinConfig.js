@@ -939,7 +939,7 @@ export function validateShortcuts(document) {
             typeof entry !== "object" ||
             Array.isArray(entry) ||
             Object.keys(entry).some(
-                (key) => !["name", "binding", "command", "action", "capture-input"].includes(key),
+                (key) => !["name", "binding", "command", "action", "capture-input", "trigger"].includes(key),
             ) ||
             (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean") ||
             typeof entry.name !== "string" ||
@@ -948,8 +948,11 @@ export function validateShortcuts(document) {
             (entry.action === undefined) === (entry.command === undefined)
         )
             throw new Error("shortcut requires a unique name and exactly one of action or command");
+        if (entry.trigger !== undefined && !["press", "release"].includes(entry.trigger))
+            throw new Error('shortcut trigger must be "press" or "release"');
         names.add(entry.name);
         if (entry.action !== undefined) {
+            if (entry.trigger !== undefined) throw new Error("trigger is only supported for command shortcuts");
             const parsedAction = parseShortcutAction(entry.action);
             if (!parsedAction || !Array.isArray(entry.binding))
                 throw new Error(
@@ -979,6 +982,8 @@ export function validateShortcuts(document) {
             )
                 throw new Error("command shortcut requires a nonempty command array");
             const identity = acceleratorIdentity(entry.binding);
+            if (identity === "overlay-key" && entry.trigger === "press")
+                throw new Error('the bare "Super" shortcut can only trigger on release');
             if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
             accelerators.add(identity);
             shortcuts.push(entry);
@@ -1154,7 +1159,7 @@ export class CommandShortcuts {
         this.bindings = new Map();
         this.overlaySignal = display.connect("overlay-key", () => {
             const binding = this.bindings.get("overlay-key");
-            if (!binding) return;
+            if (!binding || binding.entry.trigger === "press") return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
@@ -1162,16 +1167,18 @@ export class CommandShortcuts {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
         });
-        this.signal = display.connect("accelerator-activated", (_display, action) => {
+        const run = (action, trigger) => {
             const binding = [...this.bindings.values()].find((item) => item.action === action);
-            if (!binding) return;
+            if (!binding || (binding.entry.trigger ?? "press") !== trigger) return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
             } catch (error) {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
-        });
+        };
+        this.signal = display.connect("accelerator-activated", (_display, action) => run(action, "press"));
+        this.releaseSignal = display.connect("accelerator-deactivated", (_display, action) => run(action, "release"));
     }
 
     apply(entries) {
@@ -1210,6 +1217,7 @@ export class CommandShortcuts {
 
     destroy() {
         this.display.disconnect(this.signal);
+        this.display.disconnect(this.releaseSignal);
         this.display.disconnect(this.overlaySignal);
         for (const binding of this.bindings.values()) this.release(binding.action);
         this.bindings.clear();

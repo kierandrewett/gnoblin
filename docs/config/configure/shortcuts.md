@@ -24,11 +24,20 @@ Use `command` for a program shortcut or `action` for a built-in GNOME or
 Mutter action. An action has a `schema` and `key`; `schema` must be one of the
 four schema IDs below, and `key` must be a key in that schema. Built-in actions
 require a list of bindings; use an empty list to disable the action. Command
-shortcuts use one binding string and an argv array. Set `capture_input = true`
-only when the launched popup implements Gnoblin's keyboard input handoff; it
-defaults to `false`. See [Bare Super and buffered typing](/compositor-bridge#bare-super-and-buffered-typing)
-and the [shortcuts guide](/guides/shortcuts) for key names, conflicts and
-command behavior.
+shortcuts use one binding string and an argv array. They run on key press by
+default; set `trigger = "release"` to run when the accelerator is released.
+Bare `"Super"` bindings always run on release because Mutter resolves them
+after checking that no other key joined the chord.
+
+| Field           | Values                   | Default   |
+| --------------- | ------------------------ | --------- |
+| `trigger`       | `"press"` or `"release"` | `"press"` |
+| `capture_input` | Boolean                  | `false`   |
+
+`trigger` applies to command shortcuts. `capture_input = true` separately
+buffers typing until an integrated popup reports focus through the
+[compositor bridge](/compositor-bridge#bare-super-and-buffered-typing). See
+the [shortcuts guide](/guides/shortcuts) for key names, conflicts and examples.
 
 GNOME passes a GSettings object and a key name separately when registering a
 keybinding. Gnoblin's `action` table follows that shape. See the
