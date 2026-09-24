@@ -1,62 +1,269 @@
--- Copy to ~/.config/gnoblin/init.lua.
--- Load component settings before your overrides.
+-- Gnoblin's complete Lua configuration reference.
+-- This file is copied to ~/.config/gnoblin/init.lua on first login only when
+-- no init.lua, gnoblin.toml, or gnoblin.conf already exists. Edit and save it;
+-- Gnoblin reloads valid changes automatically.
+-- Full reference: https://kierandrewett.github.io/gnoblin/configuration-reference/
+
+-- Load shell/component defaults first. Files are evaluated in sorted order;
+-- your values below then override imported values.
 gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
-    -- GTK apps usually draw their own titlebars and read GNOME settings.
-    -- These settings control Mutter and Gnoblin's fallback SSD; custom SSD
-    -- renderers handle titlebar clicks themselves.
+    -- Cursor changes are optional. Uncomment the theme only when it is
+    -- installed; this example theme is not included in every package.
+    cursor = {},
+    -- cursor = {theme = "Adwaita-Hyprcursor", size = 24}, -- size: 1..256
+
+    -- Window focus, placement, workspaces and titlebar actions.
     window_management = {
-        focus_mode = "click",
+        focus_mode = "click", -- "click", "sloppy", "mouse"
+        focus_new_windows = "smart", -- "smart", "strict"
+        raise_on_click = true,
+        auto_raise = false,
+        auto_raise_delay = 500, -- milliseconds, 0..10000
+        focus_change_on_pointer_rest = false,
+        dynamic_workspaces = false,
+        num_workspaces = 4, -- 1..36; used when dynamic_workspaces is false
+        workspace_names = {}, -- up to 36 strings, in workspace order
+        workspaces_only_on_primary = false,
+        edge_tiling = false,
+        center_new_windows = false,
+        attach_modal_dialogs = false,
+        constrain_drag_to_work_area = true,
+
+        -- GTK apps often draw their own titlebars and read GNOME settings.
+        -- These Lua actions control Mutter's titlebar handling and Gnoblin's
+        -- built-in fallback SSD, which implements the actions. A custom SSD
+        -- must implement titlebar controls itself.
         action_double_click_titlebar = "toggle-maximize",
         action_middle_click_titlebar = "lower",
         action_right_click_titlebar = "menu",
-        workspace_names = {},
+        -- Actions: "toggle-maximize", "toggle-maximize-horizontally",
+        -- "toggle-maximize-vertically", "minimize", "lower", "menu", "none".
     },
+
+    -- General compositor interaction preferences. Accessibility settings are
+    -- managed separately.
     compositor = {
         enable_animations = true,
         locate_pointer = false,
         visual_bell = false,
         audible_bell = true,
-        visual_bell_type = "fullscreen-flash",
+        visual_bell_type = "fullscreen-flash", -- or "frame-flash"
     },
+
+    -- Input overrides are optional. Omitted values continue to use GNOME's
+    -- setting for that device/group. Device overrides use vendor:product IDs.
     input = {
-        mouse = { speed = 0.0, accel_profile = "adaptive" },
-        touchpad = { tap_to_click = true, natural_scroll = true },
-        keyboard = {
-            repeat = true,
-            delay = 500,
-            repeat_interval = 30,
-            xkb_options = {},
+        mouse = {
+            -- speed = 0.0, -- -1..1
+            -- left_handed = false,
+            -- natural_scroll = false,
+            -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
         },
-        orientation_lock = false,
+        touchpad = {
+            -- speed = 0.0, -- -1..1
+            -- left_handed = "mouse", -- "right", "left", "mouse"
+            -- natural_scroll = true,
+            -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
+            -- tap_to_click = false,
+            -- tap_button_map = "default", -- "default", "lrm", "lmr"
+            -- tap_and_drag = true,
+            -- tap_and_drag_lock = false,
+            -- disable_while_typing = true,
+            -- edge_scrolling_enabled = false,
+            -- two_finger_scrolling_enabled = true,
+            -- click_method = "default", -- "default", "none", "areas", "fingers"
+        },
+        keyboard = {
+            -- ["repeat"] = true,
+            -- delay = 500, -- milliseconds, 1..10000
+            -- repeat_interval = 30, -- milliseconds, 1..10000
+            -- remember_numlock_state = true,
+            -- numlock_state = false, -- in-memory while this config is active
+            -- xkb_options = {"caps:escape"}, -- overrides the current XKB options
+        },
+        -- Tablet mapping: "absolute" or "relative"; optional handedness/aspect.
+        -- tablets = {
+        --     ["1234:5678"] = {mapping = "absolute", left_handed = false, keep_aspect = true},
+        -- },
+        -- Stylus keys are a hex serial or default-vvvv:pppp. Actions may be
+        -- "default", "middle", "right", "back", "forward", "switch-monitor",
+        -- or "keybinding". Each button can also specify a keybinding string.
+        -- styluses = {
+        --     ["default-1234:5678"] = {
+        --         button_action = "default",
+        --         secondary_button_action = "default",
+        --         tertiary_button_action = "default",
+        --         button_keybinding = "",
+        --         secondary_button_keybinding = "",
+        --         tertiary_button_keybinding = "",
+        --     },
+        -- },
+        -- orientation_lock = true, -- omit to use GNOME's orientation setting
     },
-    input_sources = {
-        sources = {{ type = "xkb", id = "us" }},
-        per_window = false,
-    },
+
+    -- Keep the GNOME session's configured sources unless you intentionally
+    -- replace them. IDs come from the input-source catalogue on your system.
+    -- This table replaces the active source list in memory on reload.
+    -- input_sources = {
+    --     sources = {
+    --         {type = "xkb", id = "us"},
+    --         {type = "ibus", id = "anthy"},
+    --     },
+    --     per_window = false,
+    -- },
+
+    -- Shell transitions and built-in shell features.
     shell = {
+        minimize_animation = "zoom", -- "zoom", "fade", "none", "gnome"
+        minimize_duration = 200, -- milliseconds, 0..5000
+        minimize_target = nil, -- {x, y} logical desktop coordinates; nil uses dock/bottom centre
+        layer_animation = "slide", -- "slide", "fade", "none"
+        layer_duration = 220, -- milliseconds, 0..5000
+        layer_easing = "ease-out-cubic", -- "linear", "ease-out-quad", "ease-out-cubic", "ease-in-out-cubic"
+        window_menu = gnoblin.array {}, -- argv for your shell's window-menu handler
         window_switcher = false,
-        minimize_animation = "zoom",
-        minimize_duration = 150,
+        -- The feature keys below are opt-in GSettings-backed controls. Leave
+        -- them unset to preserve their current state.
+        -- osd = true,
+        -- osd_volume = true,
+        -- osd_microphone = true,
+        -- osd_brightness = true,
+        -- osd_keyboard_brightness = true,
+        -- osd_pad = true,
+        -- screenshot = true,
+        -- notifications = true,
+        -- input_source_switcher = true,
     },
+
+    -- Portal policy. The global fallback may be "default", "ask", or "deny";
+    -- global "allow" is refused. Rules can scope screen/remote desktop access.
+    permissions = {
+        default = "default",
+        rules = {}, -- up to 256 rules; see the example below
+    },
+
+    -- These take effect at the next login. Use an empty table to keep the
+    -- compositor's built-in protocol defaults.
+    protocols = {},
+    -- Protocol switches are booleans. Available names:
+    -- wlr_layer_shell, wlr_screencopy, ext_foreign_toplevel_list,
+    -- wlr_foreign_toplevel_management, ext_data_control, ext_idle_notify,
+    -- wlr_gamma_control, wlr_output_power_management, ext_background_effect_v1.
+
+    -- Layer-shell clients can preserve the active app when they appear.
+    layer_shell = {
+        preserve_active_window = true,
+    },
+
+    -- Frame renderers are named argv commands. The built-in renderer is
+    -- "native" and cannot be replaced by a service registration.
+    frame_renderers = {},
+    -- Example: frame_renderers = {my_frame = {"/usr/local/bin/my-frame"}},
+
+    -- Built-in Mutter/Shell bindings. Group names are shell, wm, mutter,
+    -- wayland. Action keys use underscores; use an empty list to disable one.
+    keybindings = {
+        shell = {show_screenshot_ui = {"Print"}},
+        wm = {close = {"<Alt>F4"}},
+    },
+
+    -- Replace or add custom command shortcuts by name. Accelerators use GTK
+    -- syntax, such as <Super>Return or <Alt>space.
+    shortcuts = {},
+
+    -- Start each named command once per login. Commands are argv arrays, not
+    -- shell strings; use a script path if shell syntax is required.
+    autostart = {},
+    -- Example: autostart = {{name = "bar", command = {"waybar"}}},
+
+    -- Add ordered window rules here. Later matching rules override fields they
+    -- specify. Match by type, focused, app_id, title, or layer.
+    window_rules = {},
 }
 
--- Rules apply in declaration order.
-gnoblin.window_rule {
-    match = {type = "window", focused = false},
-    opacity = 0.95,
-}
+-- Media keys are ordinary editable command shortcuts. These commands are
+-- provided by WirePlumber, playerctl, and brightnessctl runtime dependencies.
+gnoblin.shortcut {name = "volume-up", binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}}
+gnoblin.shortcut {name = "volume-down", binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}}
+gnoblin.shortcut {name = "volume-mute", binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}}
+gnoblin.shortcut {name = "microphone-mute", binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}}
+gnoblin.shortcut {name = "brightness-up", binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}}
+gnoblin.shortcut {name = "brightness-down", binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}}
+gnoblin.shortcut {name = "media-play-pause", binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}}
+gnoblin.shortcut {name = "media-next", binding = "XF86AudioNext", command = {"playerctl", "next"}}
+gnoblin.shortcut {name = "media-previous", binding = "XF86AudioPrev", command = {"playerctl", "previous"}}
 
--- Reuse an imported shortcut's name to override only the fields you supply.
--- gnoblin.shortcut {name = "terminal", command = {"ptyxis", "--new-window"}}
+-- GNOME's GLib utilities provide gio; open the user's home folder.
+gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", 'gio open "$HOME"'}}
+
+-- A complete effect rule. Uncomment or add individual fields as needed.
+-- gnoblin.window_rule {
+--     match = {type = "window", app_id = "^org\\.example\\.App$", focused = false},
+--     blur = 0, -- integer 0..100; zero disables blur
+--     blur_ignore_shadows = false,
+--     opacity = 0.95, -- 0..1
+--     animation = "slide", -- "slide", "fade", "none", or { ["in"] = ..., out = ..., duration = ..., easing = ... }
+--     shader = "", -- GLSL path; empty string clears a shader
+--     shader_uniforms = {strength = 0.5}, -- finite floats; gnoblin_ names are reserved
+--     corners = {
+--         radius = 12, -- 0..200 logical pixels
+--         smoothing = 0.5, -- 0..1
+--         mode = "auto", -- "auto", "force", "off"
+--         padding = {0, 0, 0, 0}, -- top, right, bottom, left; -128..128
+--         keep_maximized = true,
+--         keep_fullscreen = false,
+--         keep_tiled = false,
+--         skip_libadwaita = true,
+--         skip_libhandy = false,
+--         remove_csd = false,
+--         shadow = false, -- or a shadow table/list
+--         keep_shadow = false,
+--         shadow_animation = {duration = 0, easing = "ease-out-cubic"},
+--     },
+--     borders = {
+--         inner_width = 0, outer_width = 0, -- 0..40 logical pixels
+--         inner_color = "#ffffff", outer_color = "#00000080",
+--         radius = 12, smoothing = 0.5, padding = {0, 0, 0, 0},
+--         keep_maximized = false, keep_fullscreen = false, keep_tiled = false,
+--     },
+--     frame = {
+--         mode = "off", -- "off", "auto", "prefer-server", "replace"
+--         extents = {32, 1, 1, 1}, -- top, right, bottom, left; 0..256
+--         crop = {0, 0, 0, 0},
+--         renderer = "native", style = "default",
+--         background = "#242424", foreground = "#eeeeee",
+--         inactive_background = "#303030",
+--         button_layout = {"minimize", "maximize", "close"},
+--     },
+-- }
+
+-- Portal permission rules match verified identities such as app-id:org.example.App
+-- or host-exe:/usr/bin/example. A matching deny always wins.
+-- gnoblin.permission_rule {
+--     name = "example-screen-share",
+--     match = "^app-id:org\\.example\\.App$",
+--     capabilities = {"screen-cast"}, -- screen-cast, remote-desktop, input-capture, screenshot, access
+--     level = "ask", -- default, ask, allow, deny
+--     monitors = {"primary"}, -- screen-cast/remote-desktop only
+--     devices = {"keyboard", "pointer", "touchscreen"}, -- remote-desktop only
+--     clipboard = false, -- remote-desktop only
+-- }
+
+-- Named declarations can be edited from later-loaded config files.
+-- gnoblin.shortcut {
+--     name = "terminal",
+--     binding = "<Super>Return",
+--     command = {"YOUR_TERMINAL", "--new-window"}, -- replace with an installed executable
+--     capture_input = false,
+-- }
 -- gnoblin.remove_shortcut("terminal")
-
--- Start a program once per login, unless a service already starts it.
 -- gnoblin.autostart {name = "bar", command = {"waybar"}}
+-- gnoblin.remove_autostart("bar")
 
--- Split your configuration into ordinary Lua files when needed.
+-- Split this file into modules as the config grows. Paths are relative to the
+-- Lua file making the load call; globs are sorted and recursive.
 -- gnoblin.load("appearance.lua")
 -- gnoblin.configure(require("bindings"))
--- Reference: https://kierandrewett.github.io/gnoblin/configuration-reference/

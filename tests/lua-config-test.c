@@ -10,6 +10,7 @@ int main(void) {
     g_autofree char* dir = g_dir_make_tmp("gnoblin-lua-test-XXXXXX", &error);
     g_autofree char* conf = g_build_filename(dir, "conf.d", NULL);
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
+    g_autofree char* example_root = g_build_filename(dir, "example.lua", NULL);
     g_autofree char* explicit_root = g_build_filename(dir, "personal.lua", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
     g_autofree char* nested = g_build_filename(dir, "nested.lua", NULL);
@@ -29,7 +30,7 @@ int main(void) {
         "local g=require('gnoblin'); local a=require('module'); local b=require('module')\n"
         "if a~=b then error('require cache') end\n"
         "g.set { shell={osd=false}, shortcuts={} }; g.config.autostart={}\n"
-        "g.config.keybindings={shell={['show-screenshot-ui']={}}}\n"
+        "g.config.keybindings={shell={show_screenshot_ui={}}}\n"
         "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));
     g_assert_no_error(error);
@@ -55,9 +56,28 @@ int main(void) {
     g_autoptr(GVariant) shell_bindings =
         g_variant_lookup_value(keybindings, "shell", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) screenshot_actions =
-        g_variant_lookup_value(shell_bindings, "show-screenshot-ui", G_VARIANT_TYPE("av"));
+        g_variant_lookup_value(shell_bindings, "show_screenshot_ui", G_VARIANT_TYPE("av"));
     g_assert_cmpuint(g_variant_n_children(screenshot_actions), ==, 0);
     g_assert_cmpuint(paths->len, >=, 4);
+
+    const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
+    if (source_root) {
+        g_autofree char* example = g_build_filename(source_root, "src", "data",
+                                                     "init.lua.example", NULL);
+        g_autofree char* example_source = NULL;
+        g_assert_true(g_file_get_contents(example, &example_source, NULL, &error));
+        g_assert_no_error(error);
+        g_assert_true(g_file_set_contents(example_root, example_source, -1, &error));
+        g_assert_no_error(error);
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(example_root, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+        g_autoptr(GVariant) example_shortcuts =
+            g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
+        g_assert_nonnull(example_shortcuts);
+        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 10);
+    }
 
     g_assert_true(g_file_set_contents(explicit_root, "return { shell={osd=true} }\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);

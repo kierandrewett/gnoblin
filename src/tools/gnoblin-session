@@ -34,6 +34,21 @@ BASE_XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 source "$PREFIX/libexec/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 
+# Give a first-time user a complete editable config before gnome-session starts
+# Gnoblin Shell, so its initial config load reads the same file as later reloads.
+example="$PREFIX/share/gnoblin/init.lua.example"
+if [[ ! -r "$example" ]]; then
+    IFS=: read -r -a data_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    for data_dir in "${data_dirs[@]}"; do
+        candidate="$data_dir/gnoblin/init.lua.example"
+        if [[ -r "$candidate" ]]; then
+            example="$candidate"
+            break
+        fi
+    done
+fi
+"$PREFIX/libexec/gnoblin-seed-config" "$example"
+
 # D-Bus activation and systemd --user keep their own environment snapshot.
 # Update both before gnome-session can cause any session services to activate;
 # otherwise a service can inherit the previous desktop's session identity and

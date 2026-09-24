@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Seed a new user's default Gnoblin config without replacing any existing file.
+set -euo pipefail
+
+example="${1:-}"
+if [[ -z "$example" || ! -r "$example" ]]; then
+    echo "gnoblin-seed-config: example config is not readable: $example" >&2
+    exit 0
+fi
+
+# An explicit config path belongs to the caller. Do not create another config
+# that will not be used by this session.
+if [[ -n "${GNOBLIN_CONFIG:-}" ]]; then
+    exit 0
+fi
+
+if [[ -n "${XDG_CONFIG_HOME:-}" && "$XDG_CONFIG_HOME" == /* ]]; then
+    config_home="$XDG_CONFIG_HOME"
+else
+    : "${HOME:?HOME is required to seed Gnoblin config}"
+    config_home="$HOME/.config"
+fi
+config_dir="$config_home/gnoblin"
+
+# Keep legacy configs intact: the config loader selects them when init.lua is
+# absent. The final link below is atomic and refuses to replace a racing file.
+for name in init.lua gnoblin.toml gnoblin.conf; do
+    if [[ -e "$config_dir/$name" || -L "$config_dir/$name" ]]; then
+        exit 0
+    fi
+done
+
+if ! mkdir -p -- "$config_dir"; then
+    echo "gnoblin-seed-config: could not create $config_dir" >&2
+    exit 0
+fi
+temporary="$(mktemp "$config_dir/.init.lua.example.XXXXXX")" || {
+    echo "gnoblin-seed-config: could not create temporary config in $config_dir" >&2
+    exit 0
+}
+trap 'rm -f -- "$temporary"' EXIT
+if ! cat -- "$example" >"$temporary" || ! chmod 600 "$temporary"; then
+    echo "gnoblin-seed-config: could not prepare the example config" >&2
+    exit 0
+fi
+
+if ln -- "$temporary" "$config_dir/init.lua" 2>/dev/null; then
+    echo "gnoblin-seed-config: created $config_dir/init.lua from the packaged example"
+fi
