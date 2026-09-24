@@ -22,6 +22,14 @@ assert fuzz.window_operation_expression({"op": "maximize"}, "window").endswith("
 assert fuzz.window_operation_expression(
     {"op": "resize", "x": 10, "y": 20, "width": 300, "height": 200}, "window"
 ).endswith(".move_resize_frame(false,10,20,300,200)")
+assert fuzz.frame_button_center(
+    {
+        "x": 100,
+        "y": 50,
+        "layout": {"presentation": {"regions": [[2, 300, 10, 20, 16]]}},
+    },
+    2,
+) == (410, 68)
 
 live = set()
 peak = 0

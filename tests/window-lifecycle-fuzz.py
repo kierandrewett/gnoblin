@@ -103,6 +103,18 @@ def window_operation_expression(action: dict, window_expr: str) -> str:
     raise ValueError(f"unsupported operation: {op}")
 
 
+def frame_button_center(state: dict, action: int) -> tuple[int, int]:
+    """Get a frame button's actual input region from the compositor layout."""
+    regions = state["layout"]["presentation"]["regions"]
+    region = next((item for item in regions if item[0] == action), None)
+    if region is None:
+        raise RuntimeError(f"frame button action {action} has no input region")
+    return (
+        state["x"] + region[1] + region[3] // 2,
+        state["y"] + region[2] + region[4] // 2,
+    )
+
+
 def validate_plan(value: object) -> dict:
     if not isinstance(value, dict) or value.get("schema") != 1:
         raise ValueError("fuzz plan must be an object with schema=1")
@@ -458,7 +470,10 @@ def run_inside() -> int:
             return
         if op == "frame_click":
             state = prepare_frame(window_id)
-            send_pointer("click", state["x"] + state["width"] - 20, state["y"] + 18)
+            x, y = frame_button_center(state, 2)
+            send_pointer("move", x, y)
+            time.sleep(0.05)
+            send_pointer("click", x, y)
             wait_window(window_id, False)
             processes[window_id].wait(timeout=3)
             return
