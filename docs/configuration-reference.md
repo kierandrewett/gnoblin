@@ -12,18 +12,20 @@ can change them. Sizes are [logical pixels](configuration.md#sizes-and-window-ty
 `gnoblin` is available in each config file without an import. Call its functions
 with a settings table, for example `gnoblin.configure {shell = {minimize_duration = 150}}`.
 Setting names use underscores (`snake_case`). String values are used as written.
+Each reload builds the config afresh; these functions describe that config,
+not one-off commands to change the running desktop.
 
-| Function                  | Input                      | Behaviour                                                                  |
-| ------------------------- | -------------------------- | -------------------------------------------------------------------------- |
-| `configure { ... }`       | Settings table             | Merge maps; replace supplied lists; later values win                       |
-| `window_rule { ... }`     | Match and effect fields    | Append a rule; later matching fields win                                   |
-| `permission_rule { ... }` | Identity and policy fields | Append a policy rule; any matching deny wins                               |
-| `shortcut { ... }`        | Named command              | Add or update by name; omitted fields stay unchanged                       |
-| `autostart { ... }`       | Named command              | Add or update by name; run once per name per login                         |
-| `remove_shortcut(name)`   | String                     | Remove a named shortcut; missing names do nothing                          |
-| `remove_autostart(name)`  | String                     | Remove an entry; does not stop its process                                 |
-| `load(path)`              | File or glob               | Evaluate now, relative to the calling file                                 |
-| `require(name)`           | Local module name          | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| Function | Input | Behaviour |
+| --- | --- | --- |
+| [`configure { ... }`](configuration.md#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
+| [`window_rule { ... }`](window-rules.md#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
+| [`permission_rule { ... }`](permissions.md#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
+| [`shortcut { ... }`](shortcuts.md#launch-a-command) | Named command | Add or update by name; omitted fields stay unchanged |
+| [`autostart { ... }`](autostart.md#add-a-program) | Named command | Add or update by name; run once per name per login |
+| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | Shortcut name | Exclude an earlier named shortcut from this config load |
+| [`remove_autostart(name)`](autostart.md#remove-an-entry) | String | Remove an entry; does not stop its process |
+| [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
+| [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
 
 Call functions as `gnoblin.window_rule { ... }`, for example.
 Tables passed to declarations are copied. Later changes to your table do not
@@ -308,9 +310,10 @@ Inside `gnoblin.configure {...}`.
 
 Protocol keys: `wlr_layer_shell`, `wlr_screencopy`, `ext_foreign_toplevel_list`,
 `wlr_foreign_toplevel_management`, `ext_data_control`, `ext_idle_notify`,
-`wlr_gamma_control`, `wlr_output_power_management`, `ext_background_effect_v1`.
+`wlr_gamma_control`, `wlr_output_power_management`, `ext_background_effect_v1`,
+`xdg_decoration`, `window_frame_renderer`, `blur_fade`.
 
-Guide: [session settings](session-settings.md).
+Guides: [session settings](session-settings.md), [protocol catalog](wayland-protocols.md).
 
 ## Cursor
 

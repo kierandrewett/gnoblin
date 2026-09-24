@@ -24,6 +24,22 @@ string. Spaces inside a string stay in that argument.
 Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
 Removing one releases its binding; it does not stop a launched program.
 
+## Remove a shortcut
+
+`remove_shortcut` excludes a named `gnoblin.shortcut` entry added earlier in
+the same config load. Use it when a shell's config supplies a shortcut you do
+not want:
+
+```lua
+gnoblin.remove_shortcut("my-terminal")
+```
+
+The config is rebuilt on every reload. This releases that entry's binding;
+it does not change GNOME's built-in keybindings or shortcuts belonging to
+other programs. An unknown name does nothing. Put the removal after the file
+that adds the shortcut;
+[load order](configuration-loading.md#override-or-append) matters.
+
 ## Key names
 
 | Binding             | Keys                                         |

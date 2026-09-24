@@ -33,32 +33,38 @@ See [drag boundaries](session-settings.md#window-drag-boundary) for overlap poli
 
 ## Shell integration
 
-The [compositor bridge](compositor-bridge.md) accepts:
+Use the [bridge socket](compositor-bridge.md) to supply a picker. Rectangles
+use logical desktop pixels. Read the work area from Gnoblin; it excludes space
+reserved by panels.
 
-| Request          | Purpose                                                       |
-| ---------------- | ------------------------------------------------------------- |
-| `window-drag`    | Subscribe to serial, window, pointer, modifiers and work area |
-| `snap-offer`     | Offer hit/target rectangles for the current drag              |
-| `snap-context`   | Get the focused window and work area                          |
-| `snap-window`    | Apply a rectangle to a window                                 |
-| `snap-completed` | Receive the committed layout                                  |
+| Step | Message | What Gnoblin returns or does |
+| --- | --- | --- |
+| Watch drags | `{"op":"window-drag"}` | `window-drag` events with `active`, `serial`, `window`, pointer `x`/`y`, `modifiers`, `monitor` and `area` |
+| Offer regions | `snap-offer` | Tests the pointer against `hit` rectangles on release, then applies the matching `target` |
+| Ask about focus | `{"op":"snap-context"}` | `snap-context` with focused `window`, `monitor` and `area` |
+| Apply keyboard choice | `snap-window` | Moves and resizes the chosen window |
 
-Only one client can own a drag. The compositor rechecks the pointer at release
-and rejects stale serials or out-of-work-area targets.
+For example, after receiving an active drag with `serial: 7`, a shell can
+offer the left half of a 1920 × 1048 work area starting at `(0, 32)`:
 
-Escape, disconnect, script reload and drag completion clear offers.
-The picker does not take an input grab during a mouse drag.
-
-## Test
-
-From Gnoblin, with the sibling Bingux checkout:
-
-```sh
-GNOBLIN_PREFIX="$PWD/install" GNOBLIN_CONFIG='' \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-window-snapping.py" \
-bash scripts/run-gnome-shell.sh
+```json
+{"op":"snap-offer","serial":7,"regions":[{"hit":{"x":0,"y":32,"width":80,"height":1048},"target":{"x":0,"y":32,"width":960,"height":1048},"layout":"left-half"}]}
 ```
 
-Set `BINGUX_SOURCE` for another checkout location and `GNOBLIN_QS` for a
-specific Quickshell wrapper. Add `GNOBLIN_TEST_XWAYLAND=1 SNAP_TEST_BACKEND=x11`
-for X11. Geometry tests also run with `node tests/snap-layouts.test.cjs` in Bingux.
+Build both rectangles from the current event's `area` and `monitor`; the
+numbers above only show the message shape. At most 128 regions may be offered.
+Each rectangle needs finite `x`, `y`, `width` and `height`; sizes must be 1–32768.
+Optional `control: true` requires Ctrl at release. Optional `maximize: true`
+maximizes the window instead of using `target` as its final size. On success the
+owner receives `{"event":"snap-completed","layout":"left-half"}`.
+
+For a keyboard picker, request `snap-context`, let the user choose a rectangle
+inside its `area`, then send:
+
+```json
+{"op":"snap-window","window":"42","monitor":0,"target":{"x":0,"y":32,"width":960,"height":1048}}
+```
+
+Use the returned window ID and monitor ID. Only one client owns a drag. Gnoblin
+rejects stale serials and targets outside the work area. Escape, disconnect or
+drag completion clears offers; the picker does not grab input during a drag.

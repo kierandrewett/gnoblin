@@ -6,7 +6,8 @@ The window menu contains actions such as Minimise, Maximise and Close. Your
 desktop shell draws it; Gnoblin tells the shell which window it is for and
 which actions are available.
 
-Bingux's integration config sets this up automatically.
+Bingux is one separate shell project with a ready-made menu handler. Other
+shells can supply their own.
 
 ## Configure the command
 

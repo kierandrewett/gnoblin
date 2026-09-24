@@ -1,5 +1,5 @@
 site_name: Gnoblin
-site_description: Configure your Gnoblin desktop — Lua, window rules, shortcuts and effects.
+site_description: Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.
 site_url: https://kierandrewett.github.io/gnoblin/
 repo_url: https://github.com/kierandrewett/gnoblin
 repo_name: kierandrewett/gnoblin
@@ -58,6 +58,7 @@ nav:
           - Build from source: install-source.md
       - Choose a shell: bring-your-own-shell.md
       - Configure Gnoblin: configuration.md
+      - Build your desktop: build-a-desktop.md
       - Troubleshooting: troubleshooting.md
   - Configuration:
       - All settings: configuration-reference.md
@@ -83,6 +84,9 @@ nav:
   - Shell development:
       - Integration: shell-integration.md
       - Compositor bridge: compositor-bridge.md
+      - Bridge examples: bridge-examples.md
+      - Wayland protocols: wayland-protocols.md
+      - User scripts: user-scripts.md
       - Background blur: background-effects.md
       - Blur fades: blur-fades.md
       - Effect rendering: effects-rendering.md

@@ -6,6 +6,13 @@ Choose which GNOME controls to keep, how launchers affect window focus, and
 whether tools can use particular Wayland interfaces. Add the examples to
 `~/.config/gnoblin/init.lua`.
 
+![Gnoblin Settings showing Shell Features and Screen Recording in a clean devkit session](images/gnoblin-devkit-desktop.png)
+
+*The Gnoblin settings panel in a fresh nested devkit session. Bingux, a
+separate example shell, supplies the bar and dock visible around it. The
+switches and grant list belong to Gnoblin. The dock pins stock Files, Firefox
+and Terminal applications.*
+
 ## Native features
 
 Enable GNOME's notifications if your shell does not provide a notification
@@ -104,7 +111,12 @@ interfaces when the session starts and cannot remove them during config reload.
 | `wlr_gamma_control`               | Gamma and colour temperature     |
 | `wlr_output_power_management`     | Display power                    |
 | `ext_background_effect_v1`        | Client-requested background blur |
+| `xdg_decoration`                  | Client/server titlebar negotiation |
+| `window_frame_renderer`          | External frame renderer service |
+| `blur_fade`                      | Per-item blur fade metadata |
 
 This does not block all screen sharing: apps using the desktop portal follow
 [portal permissions](permissions.md) instead.
 Disabling protocols your shell uses can prevent its features from working.
+See the [protocol catalog](wayland-protocols.md) for the advertised interface
+names, related guides and interfaces that are not yet supported.
