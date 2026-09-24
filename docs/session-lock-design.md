@@ -31,8 +31,7 @@ client replaces `ScreenShield`.
 | Component | Owns |
 | --- | --- |
 | Gnoblin's Mutter fork | Lock state, opaque fallback on every output, input and capture isolation, lock surface placement, and the `ext-session-lock-v1` server |
-| Gnoblin lock coordinator | Manual, idle, logind and sleep requests; timeout and inhibitor policy; launching one configured lock client; compatibility D-Bus APIs; reporting actual locked state |
-| Bingux lock client | One lock surface per output, visual design, accessible prompts, authentication, and `unlock_and_destroy` after successful authentication |
+| Bingux lock client and policy | Manual, idle, logind and sleep requests; timeout and inhibitor policy; compatibility D-Bus APIs; one lock surface per output, visual design, accessible prompts, authentication, and `unlock_and_destroy` after successful authentication |
 | GDM and logind | Login/greeter and system session management; both remain installed |
 
 The Bingux desktop shell process is separate from its lock client. Reloading
@@ -71,14 +70,14 @@ ordinary surfaces do not get special treatment.
 
 ## Policy and system integration
 
-The coordinator serializes `loginctl lock-session`, the lock shortcut, desktop
-controls, idle timeout and pre-suspend lock into one request path. It preserves
+Bingux serializes `loginctl lock-session`, the lock shortcut, desktop controls,
+idle timeout and pre-suspend lock into one request path. It preserves
 the useful `org.gnome.ScreenSaver` and `org.freedesktop.ScreenSaver` methods for
 applications and existing idle inhibitors. An idle inhibitor can defer an idle
 lock; it cannot cancel an explicit manual or logind lock. `SetLockedHint` tells
 logind the result, but does not itself lock anything.
 
-For suspend, the coordinator holds a logind **delay inhibitor** before sleep is
+For suspend, Bingux holds a logind **delay inhibitor** before sleep is
 requested, requests a lock on `PrepareForSleep(true)`, and releases that delay
 only after secure presentation is confirmed. It renews the inhibitor after
 wake. A timeout is a failure to report, not permission to expose the desktop.
@@ -94,48 +93,40 @@ that `Main.sessionMode.isLocked` currently protects.
 
 ## Shell cutover contract
 
-The first implementation keeps GNOME Shell's path by default. A developer can
-set `GNOBLIN_SESSION_LOCK_CUTOVER=1` only for a fresh Gnoblin Shell process.
-At startup, Shell reads Mutter's native
-`get_gnoblin_session_lock_capability()` accessor. It does not synchronously
-query D-Bus: Mutter and the Shell JavaScript share one process, so a startup
-call into a service owned by that process can deadlock. Shell skips constructing
-`ScreenShield` only when the native accessor reports all of the following:
+GNOME Shell keeps its normal path whenever the compositor has not proved a
+secure lock protocol. In the Gnoblin session, Shell reads Mutter's native
+`get_gnoblin_session_lock_capability()` accessor at startup and skips
+constructing `ScreenShield` only when it reports:
 
 1. `CapabilityVersion >= 1`;
-2. Mutter's `get_gnoblin_session_lock_launcher_ready()` confirms the fixed
-   trusted Bingux lock-client path is executable;
-3. a server with compositor-enforced `unlocked`, `covering`, `locked`, and
+2. a server with compositor-enforced `unlocked`, `covering`, `locked`, and
    `failsafe` states is installed; and
-4. the coordinator already owns `org.gnome.ScreenSaver` and
-   `org.gnome.Shell.ScreenShield` compatibility names.
+3. all presentation, input isolation, client-death, and capture gates are
+   secure.
 
-Shell obtains the last condition from the external broker, never from the
-in-process compositor endpoint. It makes bounded 1-second session-bus calls to
-`org.gnoblin.Lock` at `/org/gnoblin/Lock`, reads its `CompatibilityReady`
-property, then verifies that `org.gnoblin.Lock`, `org.gnome.ScreenSaver`, and
-`org.gnome.Shell.ScreenShield` all have the same D-Bus owner. The broker keeps
-`CompatibilityReady` false until logind and idle forwarding run and it owns
-both names. Any timeout, error, missing name, or owner mismatch retains GNOME
-ScreenShield.
+The native capability defaults to zero while the protocol global is hidden. A
+missing accessor or false result retains GNOME ScreenShield. The regular GNOME
+session always retains its own ScreenShield.
 
-The native seam also supplies `get_gnoblin_session_lock_active()` and
-`request_gnoblin_session_lock(reason)`. Its future coordinator exposes `State`
-(`unavailable`, `unlocked`, `covering`, `locked`, or `failsafe`), `Active`,
-`StateChanged`, and `RequestLock(reason)` on `org.gnoblin.SessionLock` for
-external clients. The native active accessor is true from `covering` through
-`failsafe`, so Shell's bridge stops work as soon as Mutter installs its input
-embargo rather than waiting for presentation confirmation.
-`RequestLock` only confirms that acquisition began; it does not substitute for
-the compositor presentation confirmation. The coordinator owns logind and the
-two compatibility D-Bus names during cutover, while GNOME Shell owns all of
-them during fallback. This single-owner rule prevents competing ScreenSaver
-methods and sleep listeners.
+The native manager will advertise the standard `ext-session-lock-v1` global to
+any client in the same session. Bingux is the default client, while compatible
+clients such as hyprlock may acquire the same protocol role directly. Native
+lock transitions from any such client update Bingux's logind and idle
+state; this is not tied to a fixed PID or a Bingux-only process. The global
+remains hidden in the current build until the compositor has passed the secure
+coverage, input isolation, client-death, and presentation checks in this
+document. No runtime compatibility claim is made before those tests pass.
+
+The native seam supplies `get_gnoblin_session_lock_active()`, which is true
+from `covering` through `failsafe`. Shell's bridge stops work as soon as Mutter
+installs its input embargo rather than waiting for presentation confirmation.
+Bingux supplies manual and idle policy, compatibility APIs, and any logind
+integration. Gnoblin neither launches a locker nor owns session policy.
 
 Gnoblin's bridge and developer console use the same adapter for their locked
-state. It combines stock `sessionMode.isLocked` with the coordinator's active
+state. It combines stock `sessionMode.isLocked` with the compositor's active
 state, cancels bridge interaction when the compositor becomes active, and
-refuses screenshots, previews and window operations while locked. A coordinator
+refuses screenshots, previews and window operations while locked. A compositor
 which is absent, too old, `covering`, or `unavailable` leaves GNOME's normal
 ScreenShield untouched.
 
@@ -147,10 +138,10 @@ compositor's capture isolation and prevents Shell-owned screenshot paths from
 leaking a frame during the handover.
 
 The Shell suppresses GNOME's “Screen Lock disabled” warning only after that
-authority check. Switch User remains unavailable during the first cutover
-revision because its old path locks `ScreenShield` and the native request
-acknowledges covering before presentation. Enable it only when the coordinator
-can make a presentation-confirmed lock-before-switch guarantee.
+authority check. Until Bingux explicitly integrates a Lock Screen action, the
+Shell hides it in cutover rather than routing a lock request to an unspecified
+native policy owner. Switch User is likewise unavailable in cutover because its
+old path locks `ScreenShield`.
 
 ## Release gates
 

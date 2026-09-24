@@ -1,14 +1,14 @@
-From 1f834cc02bd8615cf2e455f35921bb90068c3a3e Mon Sep 17 00:00:00 2001
+From 45adecb68c48e05f5cea4fea6d1f48d6d0ab2e0f Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Thu, 24 Sep 2026 21:35:49 +0100
-Subject: [PATCH] gnoblin: gate session lock cutover on compositor authority
+Date: Thu, 24 Sep 2026 21:40:50 +0100
+Subject: [PATCH] gnoblin: gate session lock cutover on secure protocol
 
 ---
  js/js-resources.gresource.xml |  1 +
- js/misc/systemActions.js      | 11 +++++++++--
+ js/misc/systemActions.js      | 10 +++++++++-
  js/ui/main.js                 |  5 +++--
  js/ui/screenshot.js           | 28 ++++++++++++++++++++++++++++
- 4 files changed, 41 insertions(+), 4 deletions(-)
+ 4 files changed, 41 insertions(+), 3 deletions(-)
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index fbf21b6af..4055b91fb 100644
@@ -23,7 +23,7 @@ index fbf21b6af..4055b91fb 100644
      <file>ui/components/gnoblinConsole.js</file>
      <file>ui/components/gnoblinConsoleEvaluator.js</file>
 diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
-index 483ff6a43..7584cd673 100644
+index 483ff6a43..2ae4a6eac 100644
 --- a/js/misc/systemActions.js
 +++ b/js/misc/systemActions.js
 @@ -10,6 +10,7 @@ import * as GnomeSession from './gnomeSession.js';
@@ -34,27 +34,27 @@ index 483ff6a43..7584cd673 100644
  
  const LOCKDOWN_SCHEMA = 'org.gnome.desktop.lockdown';
  const LOGIN_SCREEN_SCHEMA = 'org.gnome.login-screen';
-@@ -417,7 +418,7 @@ const SystemActions = GObject.registerClass({
-         let multiUser = this._userManager.can_switch() && this._userManager.has_multiple_users;
-         let shouldShowInMode = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+@@ -365,7 +366,8 @@ const SystemActions = GObject.registerClass({
+     _updateLockScreen() {
+         let showLock = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+         let allowLockScreen = !this._lockdownSettings.get_boolean(DISABLE_LOCK_SCREEN_KEY);
+-        this._actions.get(LOCK_SCREEN_ACTION_ID).available = showLock && allowLockScreen && LoginManager.canLock();
++        this._actions.get(LOCK_SCREEN_ACTION_ID).available =
++            showLock && allowLockScreen && LoginManager.canLock() && !GnoblinSessionLock.isAuthoritative();
+         this.notify('can-lock-screen');
+     }
  
--        let visible = allowSwitch && multiUser && shouldShowInMode;
-+        let visible = allowSwitch && multiUser && shouldShowInMode && !GnoblinSessionLock.isAuthoritative();
-         this._actions.get(SWITCH_USER_ACTION_ID).available = visible;
-         this.notify('can-switch-user');
- 
-@@ -454,13 +455,19 @@ const SystemActions = GObject.registerClass({
+@@ -454,6 +456,9 @@ const SystemActions = GObject.registerClass({
          if (!this._actions.get(LOCK_SCREEN_ACTION_ID).available)
              throw new Error('The lock-screen action is not available!');
  
--        Main.screenShield.lock(true);
 +        if (GnoblinSessionLock.isAuthoritative())
-+            GnoblinSessionLock.requestLock('system-actions');
-+        else
-+            Main.screenShield?.lock(true);
++            return;
++
+         Main.screenShield.lock(true);
      }
  
-     activateSwitchUser() {
+@@ -461,6 +466,9 @@ const SystemActions = GObject.registerClass({
          if (!this._actions.get(SWITCH_USER_ACTION_ID).available)
              throw new Error('The switch-user action is not available!');
  
