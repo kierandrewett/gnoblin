@@ -36,8 +36,8 @@ index 483ff6a43..2ae4a6eac 100644
  const LOGIN_SCREEN_SCHEMA = 'org.gnome.login-screen';
 @@ -365,7 +366,8 @@ const SystemActions = GObject.registerClass({
      _updateLockScreen() {
-         let showLock = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
-         let allowLockScreen = !this._lockdownSettings.get_boolean(DISABLE_LOCK_SCREEN_KEY);
+         const showLock = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+         const allowLockScreen = !this._lockdownSettings.get_boolean(DISABLE_LOCK_SCREEN_KEY);
 -        this._actions.get(LOCK_SCREEN_ACTION_ID).available = showLock && allowLockScreen && LoginManager.canLock();
 +        this._actions.get(LOCK_SCREEN_ACTION_ID).available =
 +            showLock && allowLockScreen && LoginManager.canLock() && !GnoblinSessionLock.isAuthoritative();
@@ -177,4 +177,3 @@ index 78d815932..5a1829e6b 100644
          } catch (e) {
 -- 
 2.55.0
-
