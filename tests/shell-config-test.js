@@ -12,7 +12,38 @@ function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-assert(JSON.stringify(parseDocument({})) === JSON.stringify(DEFAULTS), "missing Lua keys use defaults");
+assert(Object.entries(DEFAULTS).every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
+    "missing Lua keys use defaults");
+const windowPrefs = parseDocument({ "window-management": {
+    "focus-mode": "sloppy", "action-middle-click-titlebar": "minimize", "edge-tiling": true,
+    "workspace-names": ["Main", "Chat"],
+} })["window-management"];
+assert(windowPrefs["focus-mode"] === "sloppy" && windowPrefs["action-middle-click-titlebar"] === "minimize" &&
+    windowPrefs["edge-tiling"] && windowPrefs["num-workspaces"] === 4 &&
+    windowPrefs["workspace-names"].join(",") === "Main,Chat",
+    "window policy merges configured values with Gnoblin defaults");
+const compositor = parseDocument({ compositor: {
+    "enable-animations": false, "locate-pointer": true, "visual-bell": true,
+    "audible-bell": false, "visual-bell-type": "frame-flash",
+} }).compositor;
+assert(!compositor["enable-animations"] && compositor["locate-pointer"] && compositor["visual-bell"] &&
+    !compositor["audible-bell"] && compositor["visual-bell-type"] === "frame-flash",
+    "compositor interaction preferences accept supported values");
+const input = parseDocument({
+    input: {
+        mouse: { speed: -0.25, "left-handed": true, "accel-profile": "flat" },
+        touchpad: { "tap-to-click": true, "click-method": "fingers", "left-handed": "mouse" },
+        keyboard: { repeat: true, delay: 500, "repeat-interval": 30, "xkb-options": ["caps:escape"] },
+        "orientation-lock": true,
+        tablets: { "1234:5678": { mapping: "absolute", "keep-aspect": true } },
+        styluses: { "default-1234:5678": { "button-action": "keybinding", "button-keybinding": "<Super>p" } },
+    },
+    "input-sources": { sources: [{ type: "xkb", id: "us" }, { type: "ibus", id: "anthy" }], "per-window": true },
+});
+assert(input.input.keyboard["xkb-options"][0] === "caps:escape" && input.input["orientation-lock"] &&
+    input.input.tablets["1234:5678"].mapping === "absolute" &&
+    input["input-sources"].sources[1].id === "anthy" && input["input-sources"]["per-window"],
+    "input preferences, XKB options, orientation lock, and input sources parse");
 assert(
     parseDocument({ shell: { "window-menu": ["binguxctl", "ipc", "shell", "windowMenu"] } })["window-menu"].length ===
         4,
@@ -34,6 +65,22 @@ for (const document of [
     { shell: { "minimize-duration": 5001 } },
     { shell: { "minimize-target": [1] } },
     { autostart: [{ name: "dock", command: "qs" }] },
+    { "window-management": { "focus-mode": "follow" } },
+    { "window-management": { "auto-raise-delay": -1 } },
+    { "window-management": { "action-right-click-titlebar": "bad" } },
+    { "window-management": { "workspace-names": Array(37).fill("Workspace") } },
+    { "window-management": { "workspace-names": [4] } },
+    { compositor: { "visual-bell-type": "window-flash" } },
+    { compositor: { "locate-pointer": "true" } },
+    { input: { mouse: { speed: 1.1 } } },
+    { input: { touchpad: { "click-method": "invalid" } } },
+    { input: { keyboard: { delay: 0 } } },
+    { input: { keyboard: { "xkb-options": "caps:escape" } } },
+    { input: { "orientation-lock": "true" } },
+    { input: { tablets: { "1234": { mapping: "absolute" } } } },
+    { input: { styluses: { default: { "button-action": "invalid" } } } },
+    { "input-sources": { sources: [{ type: "invalid", id: "us" }] } },
+    { "input-sources": { sources: [{ type: "xkb", id: "" }] } },
 ]) {
     let rejected = false;
     try {
@@ -92,15 +139,15 @@ for (const document of [
 }
 
 const shortcuts = parseDocument({
-    keybindings: { shell: { "show-screenshot-ui": [] } },
+    keybindings: { shell: { show_screenshot_ui: [] } },
     shortcuts: [{ name: "capture", binding: "<Alt>s", command: ["qs", "ipc", "call", "capture", "open"] }],
 });
 assert(shortcuts.shortcuts[0].binding === "<Alt>s", "Lua shortcut record accepted");
-assert(shortcuts.keybindings.shell["show-screenshot-ui"].length === 0, "Lua built-in override accepted");
+assert(shortcuts.keybindings.shell.show_screenshot_ui.length === 0, "Lua built-in override accepted");
 for (const document of [
     { shell: { shortcuts: [] } },
     { shortcuts: [{ name: "missing-fields" }] },
-    { keybindings: { shell: { "show-screenshot-ui": "Print" } } },
+    { keybindings: { shell: { show_screenshot_ui: "Print" } } },
 ]) {
     let rejected = false;
     try {

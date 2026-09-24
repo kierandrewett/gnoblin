@@ -4,6 +4,38 @@ gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
+    -- GTK apps usually draw their own titlebars and read GNOME settings.
+    -- These settings control Mutter and Gnoblin's fallback SSD; custom SSD
+    -- renderers handle titlebar clicks themselves.
+    window_management = {
+        focus_mode = "click",
+        action_double_click_titlebar = "toggle-maximize",
+        action_middle_click_titlebar = "lower",
+        action_right_click_titlebar = "menu",
+        workspace_names = {},
+    },
+    compositor = {
+        enable_animations = true,
+        locate_pointer = false,
+        visual_bell = false,
+        audible_bell = true,
+        visual_bell_type = "fullscreen-flash",
+    },
+    input = {
+        mouse = { speed = 0.0, accel_profile = "adaptive" },
+        touchpad = { tap_to_click = true, natural_scroll = true },
+        keyboard = {
+            repeat = true,
+            delay = 500,
+            repeat_interval = 30,
+            xkb_options = {},
+        },
+        orientation_lock = false,
+    },
+    input_sources = {
+        sources = {{ type = "xkb", id = "us" }},
+        per_window = false,
+    },
     shell = {
         window_switcher = false,
         minimize_animation = "zoom",

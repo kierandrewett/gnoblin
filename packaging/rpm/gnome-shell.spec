@@ -46,6 +46,11 @@ Source9:        gnoblinctl
 Source10:       00_org.gnoblin.mutter.gschema.override
 Source11:       gnome-session@gnoblin.target.d.conf
 Source12:       gnoblin-scripts.tar.gz
+Source13:       gnoblin-lockd
+Source14:       gnoblin-lockctl
+Source15:       gnoblin-lockd.service
+Source16:       gnoblin-lock.conf.example
+Source17:       gnoblin-lock-policy.py
 
 # gnoblin patches (tooling, control, settings, reload, branding) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -200,6 +205,15 @@ install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
 mkdir -p %{buildroot}%{_datadir}/gnoblin/scripts
 tar -xzf %{SOURCE12} -C %{buildroot}%{_datadir}/gnoblin/scripts
+# The experimental lock broker is installed but deliberately not pulled into
+# any session target or enabled. GNOME ScreenShield remains the active owner.
+install -Dm755 %{SOURCE13} %{buildroot}%{_prefix}/libexec/gnoblin-lockd
+install -Dm644 %{SOURCE17} %{buildroot}%{_prefix}/libexec/policy.py
+install -Dm755 %{SOURCE14} %{buildroot}%{_bindir}/gnoblin-lockctl
+install -Dm644 %{SOURCE16} %{buildroot}%{_datadir}/gnoblin/lock.conf.example
+install -d %{buildroot}/usr/lib/systemd/user
+sed 's|@PREFIX@|%{_prefix}|g' %{SOURCE15} \
+  > %{buildroot}/usr/lib/systemd/user/gnoblin-lockd.service
 
 # Only Gnoblin-named entry points are installed outside the private runtime.
 install -Dm644 %{SOURCE3} %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
@@ -213,6 +227,7 @@ sed 's|@PREFIX@|%{_prefix}|g' %{SOURCE5} \
   > %{buildroot}/usr/lib/systemd/user/org.gnoblin.Shell@wayland.service
 mkdir -p %{buildroot}/usr/bin
 ln -s %{_bindir}/gnoblinctl %{buildroot}/usr/bin/gnoblinctl
+ln -s %{_bindir}/gnoblin-lockctl %{buildroot}/usr/bin/gnoblin-lockctl
 
 %posttrans
 /usr/bin/glib-compile-schemas %{_datadir}/glib-2.0/schemas
@@ -233,6 +248,7 @@ desktop-file-validate gnoblin-validation.desktop
 
 %files -n gnoblin-session
 /usr/bin/gnoblinctl
+/usr/bin/gnoblin-lockctl
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session
 /usr/lib/systemd/user/org.gnoblin.Shell.target

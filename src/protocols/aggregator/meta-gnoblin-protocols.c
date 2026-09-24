@@ -20,6 +20,7 @@
 #include "wayland/meta-wayland-gamma-control.h"
 #include "wayland/meta-wayland-idle-notify.h"
 #include "wayland/meta-wayland-output-power-management.h"
+#include "wayland/meta-wayland-session-lock.h"
 
 void meta_gnoblin_init_protocols(MetaWaylandCompositor* compositor) {
     meta_gnoblin_window_frame_init(compositor);
@@ -31,4 +32,5 @@ void meta_gnoblin_init_protocols(MetaWaylandCompositor* compositor) {
     meta_wayland_init_data_control(compositor);
     meta_wayland_init_blur_fade(compositor);
     meta_wayland_init_background_effect(compositor);
+    meta_wayland_init_session_lock(compositor);
 }

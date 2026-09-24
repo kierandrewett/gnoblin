@@ -1,6 +1,6 @@
-From f83224625cec8b43dcb3e1c205c593dc8eaff94a Mon Sep 17 00:00:00 2001
+From 3f0cd65a5951d52e6b3bb71928116c0baeac5848 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Fri, 10 Jul 2026 09:58:46 +0100
+Date: Thu, 24 Sep 2026 21:02:16 +0100
 Subject: [PATCH] gnoblin-protocols: wire gnoblin's extra Wayland protocols
  into the build
 
@@ -15,17 +15,15 @@ patch by hand. Insertions are anchored on pristine-stable context so the
 patch applies cleanly to the pinned tag independently of the layer-shell and
 screencopy wiring patches.
 ---
- src/meson.build                    | 27 +++++++++++++++++++++++++++
+ src/meson.build                    | 30 ++++++++++++++++++++++++++++++
  src/wayland/meta-wayland-surface.c |  2 ++
- 2 files changed, 29 insertions(+)
+ 2 files changed, 32 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index 9fa9f92ce..2960cc433 100644
+index 60970cefe..8e5d4dbb4 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -586,6 +586,26 @@ mutter_sources += [
-   'wayland/meta-wayland-seat.h',
-   'wayland/meta-wayland-shell-surface.c',
+@@ -581,2 +581,24 @@ mutter_sources += [
    'wayland/meta-wayland-shell-surface.h',
 +  # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
 +  # at build time; registered via meta_gnoblin_init_protocols)
@@ -47,12 +45,10 @@ index 9fa9f92ce..2960cc433 100644
 +  'wayland/meta-wayland-output-power-management.h',
 +  'wayland/meta-wayland-data-control.c',
 +  'wayland/meta-wayland-data-control.h',
++  'wayland/meta-wayland-session-lock.c',
++  'wayland/meta-wayland-session-lock.h',
    'wayland/meta-wayland-single-pixel-buffer.c',
-   'wayland/meta-wayland-single-pixel-buffer.h',
-   'wayland/meta-wayland-subsurface.c',
-@@ -1049,6 +1069,13 @@ wayland_protocols = [
-   ['xdg-system-bell', 'staging', 1, ],
-   ['xdg-toplevel-drag', 'staging', 1, ],
+@@ -1040,2 +1062,10 @@ wayland_protocols = [
    ['xdg-toplevel-tag', 'staging', 1, ],
 +  # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)
 +  ['ext-idle-notify-v1', 'private', ],
@@ -61,29 +57,20 @@ index 9fa9f92ce..2960cc433 100644
 +  ['wlr-gamma-control-unstable-v1', 'private', ],
 +  ['wlr-output-power-management-unstable-v1', 'private', ],
 +  ['ext-data-control-v1', 'private', ],
++  ['ext-session-lock-v1', 'private', ],
  ]
- 
- if have_xwayland
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
-index 568da5011..a0bfdcaf4 100644
+index ea7020687..83994e2b7 100644
 --- a/src/wayland/meta-wayland-surface.c
 +++ b/src/wayland/meta-wayland-surface.c
-@@ -39,6 +39,7 @@
- #include "wayland/meta-wayland-buffer.h"
- #include "wayland/meta-wayland-client-private.h"
+@@ -41,2 +41,3 @@
  #include "wayland/meta-wayland-color-representation.h"
 +#include "wayland/meta-gnoblin-protocols.h"
  #include "wayland/meta-wayland-fractional-scale.h"
- #include "wayland/meta-wayland-gtk-shell.h"
- #include "wayland/meta-wayland-layer-shell.h"
-@@ -1914,6 +1915,7 @@ void
- meta_wayland_shell_init (MetaWaylandCompositor *compositor)
- {
+@@ -1914,2 +1915,3 @@ meta_wayland_shell_init (MetaWaylandCompositor *compositor)
    meta_wayland_xdg_shell_init (compositor);
 +  meta_gnoblin_init_protocols (compositor);
    meta_wayland_init_gtk_shell (compositor);
-   meta_wayland_init_layer_shell (compositor);
-   meta_wayland_init_viewporter (compositor);
 -- 
 2.55.0
 

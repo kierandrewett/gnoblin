@@ -1,0 +1,6 @@
+# The ext-session-lock implementation is deliberately linked even while its
+# global is withheld.  This makes a request to enable it fail closed and keeps
+# the build boundary ready for the complete compositor lock controller.
+mutter meta-wayland-session-lock.c src/wayland/meta-wayland-session-lock.c
+mutter meta-wayland-session-lock.h src/wayland/meta-wayland-session-lock.h
+mutter ext-session-lock-v1.xml src/wayland/protocol/ext-session-lock-v1.xml

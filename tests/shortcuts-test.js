@@ -20,7 +20,7 @@ const media = new Gio.Settings({ schema_id: "org.gnome.settings-daemon.plugins.m
 const native = new Gio.Settings({ schema_id: "org.gnome.shell.keybindings" });
 const manager = new Shortcuts();
 const entry = { name: "capture", binding: "<Alt>s", command: ["qs", "-p", "/a path/with spaces", "quote'and$HOME"] };
-const config = { shortcuts: [entry], keybindings: { shell: { "show-screenshot-ui": [] } } };
+const config = { shortcuts: [entry], keybindings: { shell: { show_screenshot_ui: [] } } };
 media.set_strv("custom-keybindings", [`${base}user-owned/`]);
 native.set_strv("show-screenshot-ui", ["<Alt>s"]);
 manager.apply(config);
@@ -29,7 +29,8 @@ const settings = new Gio.Settings({
     schema_id: "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding",
     path,
 });
-assert(native.get_strv("show-screenshot-ui").length === 0, "release built-in Alt+S conflict");
+assert(JSON.stringify(native.get_strv("show-screenshot-ui")) === JSON.stringify(["<Alt>s"]),
+    "built-in override does not write GNOME settings");
 assert(settings.get_string("binding") === "<Alt>s", "register named shortcut");
 const [ok, argv] = GLib.shell_parse_argv(settings.get_string("command"));
 assert(
@@ -49,10 +50,10 @@ for (const invalid of [
     { shortcuts: [{ ...entry, binding: "<Alt>NotARealKey" }] },
     { shortcuts: [{ ...entry, command: "qs" }] },
     { shortcuts: [{ ...entry, name: "../escape" }] },
-    { keybindings: { shell: { typo: [] } } },
-    { keybindings: { media: { "custom-keybindings": [] } } },
-    { keybindings: { shell: { "show-screenshot-ui": "Print" } } },
-    { shortcuts: [entry], keybindings: { shell: { "show-screenshot-ui": ["<Alt>s"] } } },
+    { keybindings: { shell: { "show-screenshot-ui": [] } } },
+    { keybindings: { media: { custom_keybindings: [] } } },
+    { keybindings: { shell: { show_screenshot_ui: "Print" } } },
+    { shortcuts: [entry], keybindings: { shell: { show_screenshot_ui: ["<Alt>s"] } } },
 ]) {
     let rejected = false;
     try {
@@ -69,7 +70,8 @@ assert(
     "remove only config-owned shortcut",
 );
 assert(settings.get_user_value("command") === null, "remove stale owned settings");
-assert(native.get_strv("show-screenshot-ui").length === 0, "omitted native overrides retain persistent state");
+assert(JSON.stringify(native.get_strv("show-screenshot-ui")) === JSON.stringify(["<Alt>s"]),
+    "removing a built-in override leaves GNOME settings untouched");
 assert(validateShortcuts({}).shortcuts.length === 0, "empty defaults");
 print("PASS: shortcut registration, conflict release, quoting, reload, validation, ownership and removal");
 

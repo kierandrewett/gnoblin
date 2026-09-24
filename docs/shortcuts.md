@@ -50,19 +50,25 @@ gnoblin.configure {
 ```
 
 Here `wm` selects window-management actions and `close` names the action.
-To see its available actions and current bindings:
+Action names use underscores in Gnoblin config. For example, GSettings' key
+`show-screenshot-ui` is `show_screenshot_ui` here.
+To see available action names in the GNOME catalogue:
 
 ```sh
-gsettings list-recursively org.gnome.desktop.wm.keybindings
+gsettings list-keys org.gnome.desktop.wm.keybindings
 ```
 
-Other groups are `shell`, `mutter`, `wayland` and `media`. See the
+The values printed by `gsettings` are GNOME settings; Lua overrides are active
+in Gnoblin and do not appear there.
+
+Other groups are `shell`, `mutter` and `wayland`. See the
 [keybinding groups](configuration-reference.md#keybinding-groups) for their
 GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
-These overrides persist in GSettings: removing the Lua entry does not restore
-the former binding. Set the desired value explicitly.
+These overrides live in Gnoblin's native keybinding table and persist in the
+Lua file. Removing an entry restores its built-in default on reload. Media keys
+handled by GNOME Settings Daemon are outside this table.
 
 ## Avoid conflicts
 

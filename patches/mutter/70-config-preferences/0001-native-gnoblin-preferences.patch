@@ -1,0 +1,510 @@
+From: Codex <codex@openai.com>
+Date: Thu, 24 Sep 2026 20:30:00 +0000
+Subject: [PATCH] core: add Gnoblin native preferences
+
+Apply window, compositor, keyboard, and keybinding preferences from the
+Gnoblin session configuration without changing GNOME GSettings values.
+
+---
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -40,7 +40,11 @@
+ #include "core/util-private.h"
+ #include "meta/prefs.h"
+ #include "mtk/mtk.h"
+ 
++#ifdef HAVE_WAYLAND
++#include "wayland/gnoblin-config.h"
++#endif
++
+ /* If you add a key, it needs updating in init() and in the gsettings
+  * notify listener and of course in the .schemas file.
+  *
+@@ -75,6 +79,8 @@
+ static guint changed_idle;
+ static GList *listeners = NULL;
+ static GHashTable *settings_schemas;
++/* Gnoblin keeps configured bindings in memory; the Lua file is persistence. */
++static GHashTable *gnoblin_keybinding_overrides;
+ 
+ static ClutterModifierType mouse_button_mods = CLUTTER_MOD1_MASK;
+ static MetaKeyCombo overlay_key_combos[2] = { 0 };
+@@ -971,6 +977,284 @@
+     }
+ }
+ 
++static gboolean
++is_gnoblin_session (void)
++{
++  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
++}
++
++static gboolean
++gnoblin_owns_keybinding_settings (GSettings *settings)
++{
++  GSettingsSchema *schema = NULL;
++  const char *id;
++  gboolean owned;
++
++  g_object_get (settings, "settings-schema", &schema, NULL);
++  if (!schema)
++    return FALSE;
++  id = g_settings_schema_get_id (schema);
++  owned = g_str_equal (id, "org.gnome.shell.keybindings") ||
++          g_str_equal (id, "org.gnome.desktop.wm.keybindings") ||
++          g_str_equal (id, "org.gnome.mutter.keybindings") ||
++          g_str_equal (id, "org.gnome.mutter.wayland.keybindings");
++  g_settings_schema_unref (schema);
++  return owned;
++}
++
++static int
++gnoblin_enum (GVariant          *preferences,
++              const char        *key,
++              const char *const *names,
++              int                fallback)
++{
++  const char *value = NULL;
++
++  if (!preferences || !g_variant_lookup (preferences, key, "&s", &value))
++    return fallback;
++  for (int i = 0; names[i]; i++)
++    if (g_str_equal (value, names[i]))
++      return i;
++  return fallback; /* The shared config reader and shell reject bad values. */
++}
++
++static int
++gnoblin_int (GVariant   *preferences,
++             const char *key,
++             int         fallback)
++{
++  g_autoptr (GVariant) value = preferences ? g_variant_lookup_value (preferences, key, NULL) : NULL;
++  if (!value)
++    return fallback;
++  if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT64))
++    return (int) g_variant_get_int64 (value);
++  if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT32))
++    return g_variant_get_int32 (value);
++  return fallback;
++}
++
++static gboolean
++strv_equal_nullable (const char * const *a,
++                     const char * const *b)
++{
++  if (!a || !b)
++    return (!a || !*a) && (!b || !*b);
++  return g_strv_equal (a, b);
++}
++
++static char **
++variant_dup_strv_compat (GVariant *value)
++{
++  g_auto (GStrv) strings = NULL;
++  gsize n;
++
++  if (!value)
++    return NULL;
++  if (g_variant_is_of_type (value, G_VARIANT_TYPE_STRING_ARRAY))
++    return g_variant_dup_strv (value, NULL);
++  if (!g_variant_is_of_type (value, G_VARIANT_TYPE ("av")))
++    return NULL;
++
++  n = g_variant_n_children (value);
++  strings = g_new0 (char *, n + 1);
++  for (gsize i = 0; i < n; i++)
++    {
++      g_autoptr (GVariant) child = g_variant_get_child_value (value, i);
++      g_autoptr (GVariant) unboxed = NULL;
++
++      if (g_variant_is_of_type (child, G_VARIANT_TYPE_VARIANT))
++        unboxed = g_variant_get_variant (child);
++      else
++        unboxed = g_variant_ref (child);
++      if (!g_variant_is_of_type (unboxed, G_VARIANT_TYPE_STRING))
++        return NULL;
++      strings[i] = g_variant_dup_string (unboxed, NULL);
++    }
++  return g_steal_pointer (&strings);
++}
++
++/**
++ * meta_prefs_apply_gnoblin_window_preferences:
++ * @preferences: (nullable): configured window-management table
++ *
++ * Replace compositor policy from Gnoblin's Lua document. Omitted keys use
++ * Gnoblin defaults, so deleting a line restores the documented behaviour.
++ */
++void
++meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
++{
++  const char *const focus_modes[] = { "click", "sloppy", "mouse", NULL };
++  const char *const new_window_modes[] = { "smart", "strict", NULL };
++  const char *const titlebar_actions[] = {
++    "toggle-shade", "toggle-maximize", "toggle-maximize-horizontally",
++    "toggle-maximize-vertically", "minimize", "none", "lower", "menu", NULL
++  };
++  gboolean boolean_value;
++  gint integer_value;
++
++  if (!is_gnoblin_session ())
++    return;
++
++#define APPLY_BOOL(key, target, fallback, pref) G_STMT_START { \
++  boolean_value = fallback; \
++  if (preferences) g_variant_lookup (preferences, key, "b", &boolean_value); \
++  if (target != boolean_value) { target = boolean_value; queue_changed (pref); } \
++} G_STMT_END
++#define APPLY_INT(key, target, fallback, pref) G_STMT_START { \
++  integer_value = gnoblin_int (preferences, key, fallback); \
++  if (target != integer_value) { target = integer_value; queue_changed (pref); } \
++} G_STMT_END
++#define APPLY_ENUM(key, target, names, fallback, pref) G_STMT_START { \
++  integer_value = gnoblin_enum (preferences, key, names, fallback); \
++  if (target != integer_value) { target = integer_value; queue_changed (pref); } \
++} G_STMT_END
++
++  APPLY_ENUM ("focus-mode", focus_mode, focus_modes, G_DESKTOP_FOCUS_MODE_CLICK, META_PREF_FOCUS_MODE);
++  APPLY_ENUM ("focus-new-windows", focus_new_windows, new_window_modes, G_DESKTOP_FOCUS_NEW_WINDOWS_SMART, META_PREF_FOCUS_NEW_WINDOWS);
++  APPLY_ENUM ("action-double-click-titlebar", action_double_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE, META_PREF_ACTION_DOUBLE_CLICK_TITLEBAR);
++  APPLY_ENUM ("action-middle-click-titlebar", action_middle_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_LOWER, META_PREF_ACTION_MIDDLE_CLICK_TITLEBAR);
++  APPLY_ENUM ("action-right-click-titlebar", action_right_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_MENU, META_PREF_ACTION_RIGHT_CLICK_TITLEBAR);
++  APPLY_BOOL ("raise-on-click", raise_on_click, TRUE, META_PREF_RAISE_ON_CLICK);
++  APPLY_BOOL ("auto-raise", auto_raise, FALSE, META_PREF_AUTO_RAISE);
++  APPLY_INT ("auto-raise-delay", auto_raise_delay, 500, META_PREF_AUTO_RAISE_DELAY);
++  APPLY_BOOL ("focus-change-on-pointer-rest", focus_change_on_pointer_rest, FALSE, META_PREF_FOCUS_CHANGE_ON_POINTER_REST);
++  APPLY_BOOL ("dynamic-workspaces", dynamic_workspaces, FALSE, META_PREF_DYNAMIC_WORKSPACES);
++  APPLY_INT ("num-workspaces", num_workspaces, 4, META_PREF_NUM_WORKSPACES);
++  APPLY_BOOL ("workspaces-only-on-primary", workspaces_only_on_primary, FALSE, META_PREF_WORKSPACES_ONLY_ON_PRIMARY);
++  APPLY_BOOL ("edge-tiling", edge_tiling, FALSE, META_PREF_EDGE_TILING);
++  APPLY_BOOL ("center-new-windows", center_new_windows, FALSE, META_PREF_CENTER_NEW_WINDOWS);
++  APPLY_BOOL ("attach-modal-dialogs", attach_modal_dialogs, FALSE, META_PREF_ATTACH_MODAL_DIALOGS);
++  {
++    g_autoptr (GVariant) names = preferences
++      ? g_variant_lookup_value (preferences, "workspace-names", NULL)
++      : NULL;
++    char **new_names = variant_dup_strv_compat (names);
++
++    if (strv_equal_nullable ((const char * const *) workspace_names,
++                             (const char * const *) new_names))
++      g_strfreev (new_names);
++    else
++      {
++        g_strfreev (workspace_names);
++        workspace_names = new_names;
++        queue_changed (META_PREF_WORKSPACE_NAMES);
++      }
++  }
++
++#undef APPLY_BOOL
++#undef APPLY_INT
++#undef APPLY_ENUM
++}
++
++/**
++ * meta_prefs_apply_gnoblin_compositor_preferences:
++ * @preferences: (nullable): configured compositor preferences
++ *
++ * Replace compositor interaction preferences from Gnoblin's configuration.
++ * Omitted keys use Gnoblin defaults.
++ */
++void
++meta_prefs_apply_gnoblin_compositor_preferences (GVariant *preferences)
++{
++  const char *const visual_bell_types[] = {
++    "fullscreen-flash", "frame-flash", NULL
++  };
++  gboolean boolean_value;
++  gint integer_value;
++
++  if (!is_gnoblin_session ())
++    return;
++
++#define APPLY_BOOL(key, target, fallback, pref) G_STMT_START { \
++  boolean_value = fallback; \
++  if (preferences) g_variant_lookup (preferences, key, "b", &boolean_value); \
++  if (target != boolean_value) { target = boolean_value; queue_changed (pref); } \
++} G_STMT_END
++#define APPLY_ENUM(key, target, names, fallback, pref) G_STMT_START { \
++  integer_value = gnoblin_enum (preferences, key, names, fallback); \
++  if (target != integer_value) { target = integer_value; queue_changed (pref); } \
++} G_STMT_END
++
++  APPLY_BOOL ("enable-animations", gnome_animations, TRUE, META_PREF_GNOME_ANIMATIONS);
++  APPLY_BOOL ("locate-pointer", locate_pointer_is_enabled, FALSE, META_PREF_LOCATE_POINTER);
++  APPLY_BOOL ("visual-bell", bell_is_visible, FALSE, META_PREF_VISUAL_BELL);
++  APPLY_BOOL ("audible-bell", bell_is_audible, TRUE, META_PREF_AUDIBLE_BELL);
++  APPLY_ENUM ("visual-bell-type", visual_bell_type, visual_bell_types,
++              G_DESKTOP_VISUAL_BELL_FULLSCREEN_FLASH, META_PREF_VISUAL_BELL_TYPE);
++
++#undef APPLY_BOOL
++#undef APPLY_ENUM
++}
++
++static gboolean
++gnoblin_owns_window_preference (const char *key)
++{
++  static const char *const keys[] = {
++    "focus-mode", "focus-new-windows", "action-double-click-titlebar",
++    "action-middle-click-titlebar", "action-right-click-titlebar",
++    "raise-on-click", "auto-raise", "auto-raise-delay",
++    "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
++    "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
++    "attach-modal-dialogs", "workspace-names", NULL
++  };
++  for (int i = 0; keys[i]; i++)
++    if (g_str_equal (key, keys[i]))
++      return TRUE;
++  return FALSE;
++}
++
++static gboolean
++gnoblin_owns_compositor_preference (const char *key)
++{
++  static const char *const keys[] = {
++    "enable-animations", "locate-pointer", "visual-bell", "audible-bell",
++    "visual-bell-type", NULL
++  };
++  for (int i = 0; keys[i]; i++)
++    if (g_str_equal (key, keys[i]))
++      return TRUE;
++  return FALSE;
++}
++
++/**
++ * meta_prefs_apply_gnoblin_keyboard_preferences:
++ * @preferences: (nullable): configured keyboard table; currently accepts
++ *   @xkb-options as a string array
++ *
++ * Apply Gnoblin's XKB options. When omitted, use the schema default rather
++ * than a value written by another desktop settings client.
++ */
++void
++meta_prefs_apply_gnoblin_keyboard_preferences (GVariant *preferences)
++{
++  g_autoptr (GVariant) options = NULL;
++  g_autoptr (GVariant) default_options = NULL;
++  gpointer ignored = NULL;
++
++  if (!is_gnoblin_session ())
++    return;
++
++  if (preferences)
++    {
++      g_autoptr (GVariant) configured = g_variant_lookup_value (
++        preferences, "xkb-options", NULL);
++      g_auto (GStrv) values = variant_dup_strv_compat (configured);
++      if (values)
++        options = g_variant_ref_sink (g_variant_new_strv (
++          (const char * const *) values, -1));
++    }
++  if (!options)
++    {
++      default_options = g_settings_get_default_value (
++        SETTINGS (SCHEMA_INPUT_SOURCES), KEY_XKB_OPTIONS);
++      options = default_options ? g_variant_ref (default_options)
++                                : g_variant_new_strv (NULL, 0);
++    }
++
++  iso_next_group_handler (options, &ignored, NULL);
++}
++
++
+ 
+ /****************************************************************************/
+ /* Initialisation.                                                          */
+@@ -1024,7 +1308,43 @@
+   handle_preference_init_int ();
+   handle_preference_init_uint ();
+ 
++  if (is_gnoblin_session ())
++    {
++      g_autoptr (GVariant) super_key = g_variant_ref_sink (g_variant_new_string ("Super"));
++      gpointer ignored = NULL;
++      overlay_key_handler (super_key, &ignored, NULL);
++    }
++
++
+   init_bindings ();
++
++  if (is_gnoblin_session ())
++    {
++#ifdef HAVE_WAYLAND
++      g_autofree char *path = gnoblin_config_path ();
++      g_autoptr (GError) error = NULL;
++      g_autoptr (GVariant) document = gnoblin_config_load_document (path, NULL, NULL, &error);
++      g_autoptr (GVariant) window_management = document
++        ? g_variant_lookup_value (document, "window-management", G_VARIANT_TYPE_VARDICT)
++        : NULL;
++      meta_prefs_apply_gnoblin_window_preferences (window_management);
++      g_autoptr (GVariant) compositor = document
++        ? g_variant_lookup_value (document, "compositor", G_VARIANT_TYPE_VARDICT)
++        : NULL;
++      meta_prefs_apply_gnoblin_compositor_preferences (compositor);
++      g_autoptr (GVariant) input = document
++        ? g_variant_lookup_value (document, "input", G_VARIANT_TYPE_VARDICT)
++        : NULL;
++      g_autoptr (GVariant) keyboard = input
++        ? g_variant_lookup_value (input, "keyboard", G_VARIANT_TYPE_VARDICT)
++        : NULL;
++      meta_prefs_apply_gnoblin_keyboard_preferences (keyboard);
++#else
++      meta_prefs_apply_gnoblin_window_preferences (NULL);
++      meta_prefs_apply_gnoblin_compositor_preferences (NULL);
++      meta_prefs_apply_gnoblin_keyboard_preferences (NULL);
++#endif
++    }
+ }
+ 
+ static gboolean
+@@ -1069,6 +1389,17 @@
+   MetaEnumPreference *cursor;
+   gboolean found_enum;
+ 
++  if (is_gnoblin_session () && gnoblin_owns_window_preference (key))
++    return;
++  if (is_gnoblin_session () && gnoblin_owns_compositor_preference (key))
++    return;
++  if (is_gnoblin_session () && SETTINGS (SCHEMA_INPUT_SOURCES) == settings &&
++      g_str_equal (key, KEY_XKB_OPTIONS))
++    return;
++  if (is_gnoblin_session () && settings == SETTINGS (SCHEMA_MUTTER) &&
++      g_str_equal (key, "overlay-key"))
++    return;
++
+   value = g_settings_get_value (settings, key);
+   type = g_variant_get_type (value);
+ 
+@@ -1114,6 +1445,8 @@
+                   gpointer data)
+ {
+   gchar **strokes;
++  if (is_gnoblin_session () && gnoblin_owns_keybinding_settings (settings))
++    return;
+   strokes = g_settings_get_strv (settings, key);
+ 
+   if (update_key_binding (key, strokes))
+@@ -1862,6 +2195,77 @@
+     return FALSE;
+ }
+ 
++/**
++ * meta_prefs_apply_gnoblin_keybindings:
++ * @keybindings: an a{sv} of groups containing a{sv} action-to-string-array maps
++ *
++ * Rebuild native grabs from the Lua document. User GSettings values are never
++ * changed; an omitted action returns to its schema default on the next reload.
++ */
++void
++meta_prefs_apply_gnoblin_keybindings (GVariant *keybindings)
++{
++  GHashTable *next;
++  GVariantIter groups;
++  const char *group;
++  GVariant *entries;
++  GHashTableIter prefs;
++  gpointer value;
++  gboolean changed = FALSE;
++
++  if (!is_gnoblin_session ())
++    return;
++  g_return_if_fail (keybindings && g_variant_is_of_type (keybindings, G_VARIANT_TYPE_VARDICT));
++
++  next = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) g_strfreev);
++  g_variant_iter_init (&groups, keybindings);
++  while (g_variant_iter_next (&groups, "{&sv}", &group, &entries))
++    {
++      GVariantIter actions;
++      const char *name;
++      GVariant *bindings;
++
++      if (!g_variant_is_of_type (entries, G_VARIANT_TYPE_VARDICT))
++        { g_variant_unref (entries); continue; }
++      g_variant_iter_init (&actions, entries);
++      while (g_variant_iter_next (&actions, "{&sv}", &name, &bindings))
++        {
++          if (g_variant_is_of_type (bindings, G_VARIANT_TYPE_STRING_ARRAY))
++            g_hash_table_replace (next, g_strdup (name), g_variant_dup_strv (bindings, NULL));
++          g_variant_unref (bindings);
++        }
++      g_variant_unref (entries);
++    }
++
++  g_clear_pointer (&gnoblin_keybinding_overrides, g_hash_table_unref);
++  gnoblin_keybinding_overrides = next;
++  if (!key_bindings)
++    return;
++  g_hash_table_iter_init (&prefs, key_bindings);
++  while (g_hash_table_iter_next (&prefs, NULL, &value))
++    {
++      MetaKeyPref *pref = value;
++      char **configured;
++      g_autoptr (GVariant) default_value = NULL;
++      g_auto (GStrv) strokes = NULL;
++
++      if (!pref->settings || !gnoblin_owns_keybinding_settings (pref->settings))
++        continue;
++      configured = g_hash_table_lookup (next, pref->name);
++      if (configured)
++        strokes = g_strdupv (configured);
++      else
++        {
++          default_value = g_settings_get_default_value (pref->settings, pref->name);
++          strokes = default_value ? g_variant_dup_strv (default_value, NULL)
++                                  : g_settings_get_strv (pref->settings, pref->name);
++        }
++      changed |= update_binding (pref, strokes);
++    }
++  if (changed)
++    queue_changed (META_PREF_KEYBINDINGS);
++}
++
+ const char*
+ meta_prefs_get_workspace_name (int i)
+ {
+@@ -2004,7 +2408,22 @@
+       queue_changed (META_PREF_KEYBINDINGS);
+     }
+ 
+-  strokes = g_settings_get_strv (settings, name);
++  if (is_gnoblin_session () && gnoblin_owns_keybinding_settings (settings))
++    {
++      char **configured = gnoblin_keybinding_overrides
++        ? g_hash_table_lookup (gnoblin_keybinding_overrides, name) : NULL;
++      g_autoptr (GVariant) default_value = NULL;
++      if (configured)
++        strokes = g_strdupv (configured);
++      else
++        {
++          default_value = g_settings_get_default_value (settings, name);
++          strokes = default_value ? g_variant_dup_strv (default_value, NULL)
++                                  : g_settings_get_strv (settings, name);
++        }
++    }
++  else
++    strokes = g_settings_get_strv (settings, name);
+   update_binding (pref, strokes);
+   g_strfreev (strokes);
+ 
+--- a/src/meta/prefs.h
++++ b/src/meta/prefs.h
+@@ -109,6 +109,18 @@
+                                        gpointer       user_data);
+ 
+ META_EXPORT
++void meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences);
++
++META_EXPORT
++void meta_prefs_apply_gnoblin_compositor_preferences (GVariant *preferences);
++
++META_EXPORT
++void meta_prefs_apply_gnoblin_keyboard_preferences (GVariant *preferences);
++
++META_EXPORT
++void meta_prefs_apply_gnoblin_keybindings (GVariant *keybindings);
++
++META_EXPORT
+ void meta_prefs_add_listener    (MetaPrefsChangedFunc func,
+                                  gpointer             user_data);
+ 
