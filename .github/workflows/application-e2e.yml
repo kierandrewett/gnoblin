@@ -117,7 +117,7 @@ jobs:
     steps:
       - name: Install Git and desktop runtime dependencies
         run: |
-          dnf -y install git flatpak gtk3 gtk4 wayland-devel wayland-protocols \
+          dnf -y install git flatpak gtk3 gtk4 wayland-devel wayland-protocols-devel \
             gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon
 
       - name: Checkout test drivers
