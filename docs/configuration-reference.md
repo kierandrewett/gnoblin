@@ -203,9 +203,10 @@ Inside `gnoblin.configure {...}`.
 
 Protocol keys: `wlr_layer_shell`, `wlr_screencopy`, `ext_foreign_toplevel_list`,
 `wlr_foreign_toplevel_management`, `ext_data_control`, `ext_idle_notify`,
-`wlr_gamma_control`, `wlr_output_power_management`, `ext_background_effect_v1`.
+`wlr_gamma_control`, `wlr_output_power_management`, `ext_background_effect_v1`,
+`xdg_decoration`, `window_frame_renderer`, `blur_fade`.
 
-Guide: [session settings](session-settings.md).
+Guides: [session settings](session-settings.md), [protocol catalog](wayland-protocols.md).
 
 ## Cursor
 

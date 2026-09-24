@@ -45,8 +45,10 @@ import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 
-const socketPath = process.env.GNOBLIN_COMPOSITOR_SOCKET ??
-    path.join(process.env.XDG_RUNTIME_DIR, "gnoblin/compositor-v1.sock");
+const runtime = process.env.XDG_RUNTIME_DIR;
+const socketPath = process.env.GNOBLIN_COMPOSITOR_SOCKET ||
+    (runtime && path.join(runtime, "gnoblin/compositor-v1.sock"));
+if (!socketPath) throw new Error("XDG_RUNTIME_DIR is unset");
 const connection = net.createConnection(socketPath);
 const lines = readline.createInterface({ input: connection });
 connection.setTimeout(5000);
