@@ -24,10 +24,11 @@ index cfc4bebdb..f1e2f8aff 100644
    'wayland/meta-wayland-idle-notify.c',
    'wayland/meta-wayland-idle-notify.h',
    'wayland/meta-wayland-foreign-toplevel-common.c',
-@@ -1083,6 +1085,7 @@ wayland_protocols = [
+@@ -1083,7 +1085,8 @@ wayland_protocols = [
    ['wlr-gamma-control-unstable-v1', 'private', ],
    ['wlr-output-power-management-unstable-v1', 'private', ],
    ['ext-data-control-v1', 'private', ],
+   ['ext-session-lock-v1', 'private', ],
 +  ['gnoblin-blur-fade-v1', 'private', ],
  ]
  
@@ -63,4 +64,3 @@ index a0bfdcaf4..47a3de39c 100644
                   0);
 -- 
 2.55.0
-
