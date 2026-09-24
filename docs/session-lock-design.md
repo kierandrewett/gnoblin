@@ -108,6 +108,12 @@ call into a service owned by that process can deadlock. Shell skips constructing
 3. the coordinator already owns `org.gnome.ScreenSaver` and
    `org.gnome.Shell.ScreenShield` compatibility names.
 
+Mutter exposes the last condition separately through
+`get_gnoblin_session_lock_coordinator_ready()`. It remains false until the
+coordinator has logind and idle handling running and has acquired both names.
+This avoids a period with neither GNOME Shell nor the coordinator serving the
+ScreenSaver APIs.
+
 The native seam also supplies `get_gnoblin_session_lock_active()` and
 `request_gnoblin_session_lock(reason)`. Its future coordinator exposes `State`
 (`unavailable`, `unlocked`, `covering`, `locked`, or `failsafe`), `Active`,
@@ -127,6 +133,12 @@ state, cancels bridge interaction when the compositor becomes active, and
 refuses screenshots, previews and window operations while locked. A coordinator
 which is absent, too old, `covering`, or `unavailable` leaves GNOME's normal
 ScreenShield untouched.
+
+The Shell suppresses GNOME's “Screen Lock disabled” warning only after that
+authority check. Switch User remains unavailable during the first cutover
+revision because its old path locks `ScreenShield` and the native request
+acknowledges covering before presentation. Enable it only when the coordinator
+can make a presentation-confirmed lock-before-switch guarantee.
 
 ## Release gates
 

@@ -10,12 +10,13 @@ const source = readFileSync(
     .replace(/export function /g, "function ")
     .concat("\nthis.api = { shouldReplaceScreenShield, isLocked, isAuthoritative };\n");
 
-function load({ cutover = "", capability = 0, active = false } = {}) {
+function load({ cutover = "", capability = 0, coordinatorReady = false, active = false } = {}) {
     const context = vm.createContext({
         global: {
             session_mode: "gnoblin",
             backend: {
                 get_gnoblin_session_lock_capability: () => capability,
+                get_gnoblin_session_lock_coordinator_ready: () => coordinatorReady,
                 get_gnoblin_session_lock_active: () => active,
             },
         },
@@ -33,11 +34,17 @@ assert.equal(
     "an unavailable native capability cannot replace ScreenShield",
 );
 
-const coordinator = load({ cutover: "1", capability: 1, state: "unlocked" });
+assert.equal(
+    load({ cutover: "1", capability: 1 }).shouldReplaceScreenShield(),
+    false,
+    "the compositor capability cannot replace ScreenShield before the coordinator owns compatibility services",
+);
+
+const coordinator = load({ cutover: "1", capability: 1, coordinatorReady: true });
 assert.equal(coordinator.shouldReplaceScreenShield(), true);
 assert.equal(coordinator.isAuthoritative(), true);
 assert.equal(coordinator.isLocked(true), true, "stock GNOME lock state remains a guard during fallback");
-const covering = load({ cutover: "1", capability: 1, active: true });
+const covering = load({ cutover: "1", capability: 1, coordinatorReady: true, active: true });
 covering.shouldReplaceScreenShield();
 assert.equal(covering.isLocked(false), true, "the native active state blocks bridge work from covering onward");
 
@@ -50,6 +57,9 @@ const patch = readFileSync(
 );
 assert.match(patch, /!GnoblinSessionLock\.shouldReplaceScreenShield\(\)/);
 assert.match(patch, /GnoblinSessionLock\.requestLock\('system-actions'\)/);
+assert.match(patch, /screenShield !== null \|\| GnoblinSessionLock\.isAuthoritative\(\)/);
+assert.match(patch, /shouldShowInMode && !GnoblinSessionLock\.isAuthoritative\(\)/);
+assert.match(patch, /if \(GnoblinSessionLock\.isAuthoritative\(\)\)\n\+            return;/);
 assert.doesNotMatch(
     source,
     /DBusProxy\.new_sync/,

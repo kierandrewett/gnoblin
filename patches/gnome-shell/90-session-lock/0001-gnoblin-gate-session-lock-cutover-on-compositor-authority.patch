@@ -1,13 +1,13 @@
-From e1bbc394e8b3d8182b72573aac590273581ae24a Mon Sep 17 00:00:00 2001
+From cb6e2237cace89d5c83d32ea2b0255e6e5956e28 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Thu, 24 Sep 2026 21:19:12 +0100
+Date: Thu, 24 Sep 2026 21:25:26 +0100
 Subject: [PATCH] gnoblin: gate session lock cutover on compositor authority
 
 ---
- js/js-resources.gresource.xml | 1 +
- js/misc/systemActions.js      | 6 +++++-
- js/ui/main.js                 | 5 ++++-
- 3 files changed, 10 insertions(+), 2 deletions(-)
+ js/js-resources.gresource.xml |  1 +
+ js/misc/systemActions.js      | 14 ++++++++++++--
+ js/ui/main.js                 |  7 +++++--
+ 3 files changed, 18 insertions(+), 4 deletions(-)
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index 386609027..08d8671ac 100644
@@ -22,7 +22,7 @@ index 386609027..08d8671ac 100644
      <file>ui/components/gnoblinBridge/lib/blur-regions.js</file>
      <file>ui/components/gnoblinBridge/lib/clipboard-paste.js</file>
 diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
-index 483ff6a43..398c692fd 100644
+index 483ff6a43..cdf26192a 100644
 --- a/js/misc/systemActions.js
 +++ b/js/misc/systemActions.js
 @@ -10,6 +10,7 @@ import * as GnomeSession from './gnomeSession.js';
@@ -33,7 +33,16 @@ index 483ff6a43..398c692fd 100644
  
  const LOCKDOWN_SCHEMA = 'org.gnome.desktop.lockdown';
  const LOGIN_SCREEN_SCHEMA = 'org.gnome.login-screen';
-@@ -454,7 +455,10 @@ const SystemActions = GObject.registerClass({
+@@ -417,7 +418,7 @@ const SystemActions = GObject.registerClass({
+         let multiUser = this._userManager.can_switch() && this._userManager.has_multiple_users;
+         let shouldShowInMode = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+ 
+-        let visible = allowSwitch && multiUser && shouldShowInMode;
++        let visible = allowSwitch && multiUser && shouldShowInMode && !GnoblinSessionLock.isAuthoritative();
+         this._actions.get(SWITCH_USER_ACTION_ID).available = visible;
+         this.notify('can-switch-user');
+ 
+@@ -454,13 +455,22 @@ const SystemActions = GObject.registerClass({
          if (!this._actions.get(LOCK_SCREEN_ACTION_ID).available)
              throw new Error('The lock-screen action is not available!');
  
@@ -45,8 +54,20 @@ index 483ff6a43..398c692fd 100644
      }
  
      activateSwitchUser() {
+         if (!this._actions.get(SWITCH_USER_ACTION_ID).available)
+             throw new Error('The switch-user action is not available!');
+ 
++        // Switching users needs a presentation-confirmed lock. The native
++        // request API currently acknowledges covering only, so cutover keeps
++        // this action blocked until the coordinator supplies that guarantee.
++        if (GnoblinSessionLock.isAuthoritative())
++            return;
++
+         if (Main.screenShield)
+             Main.screenShield.lock(false);
+ 
 diff --git a/js/ui/main.js b/js/ui/main.js
-index 8b5adf43b..f6e6f29ed 100644
+index 8b5adf43b..8cbc73652 100644
 --- a/js/ui/main.js
 +++ b/js/ui/main.js
 @@ -33,6 +33,7 @@ import * as Layout from './layout.js';
@@ -68,6 +89,15 @@ index 8b5adf43b..f6e6f29ed 100644
          screenShield = new ScreenShield.ScreenShield();
  
      inputMethod = new InputMethod.InputMethod();
+@@ -411,7 +414,7 @@ async function _handleLockScreenWarning() {
+     const path = `${global.userdatadir}/lock-warning-shown`;
+     const file = Gio.File.new_for_path(path);
+ 
+-    const hasLockScreen = screenShield !== null;
++    const hasLockScreen = screenShield !== null || GnoblinSessionLock.isAuthoritative();
+     if (hasLockScreen) {
+         try {
+             await file.delete_async(0, null);
 -- 
 2.55.0
 

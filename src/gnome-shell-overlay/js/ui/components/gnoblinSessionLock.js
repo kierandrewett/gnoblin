@@ -20,7 +20,8 @@ export function shouldReplaceScreenShield() {
 
     try {
         const capability = global.backend.get_gnoblin_session_lock_capability?.() ?? 0;
-        authoritative = capability >= REQUIRED_CAPABILITY_VERSION;
+        const coordinatorReady = global.backend.get_gnoblin_session_lock_coordinator_ready?.() === true;
+        authoritative = capability >= REQUIRED_CAPABILITY_VERSION && coordinatorReady;
         return authoritative;
     } catch (error) {
         console.debug(`gnoblin-session-lock: retaining ScreenShield (${error.message})`);
