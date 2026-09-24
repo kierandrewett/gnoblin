@@ -4,7 +4,7 @@ Subject: [PATCH] input: apply Gnoblin device preferences from live config
 
 ---
 diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
-index 80ac0981d..11697529b 100644
+index 80ac0981d..efba1715f 100644
 --- a/src/backends/meta-input-settings.c
 +++ b/src/backends/meta-input-settings.c
 @@ -33,6 +33,8 @@
@@ -568,7 +568,7 @@ index 80ac0981d..11697529b 100644
  
    return numlock_state;
  }
-@@ -1989,6 +2185,54 @@ meta_input_settings_get_backend (MetaInputSettings *settings)
+@@ -1989,6 +2185,69 @@ meta_input_settings_get_backend (MetaInputSettings *settings)
    return priv->backend;
  }
  
@@ -581,6 +581,8 @@ index 80ac0981d..11697529b 100644
 +  MetaInputSettingsPrivate *priv;
 +  GHashTableIter iter;
 +  gpointer value;
++  gboolean had_gnoblin_config;
++  gboolean previous_numlock_state;
 +
 +  g_return_if_fail (META_IS_DISPLAY (display));
 +  g_return_if_fail (input == NULL || g_variant_is_of_type (input, G_VARIANT_TYPE_VARDICT));
@@ -591,17 +593,30 @@ index 80ac0981d..11697529b 100644
 +    return;
 +
 +  priv = meta_input_settings_get_instance_private (input_settings);
++  had_gnoblin_config = priv->gnoblin_config != NULL;
++  previous_numlock_state = priv->gnoblin_numlock_state;
 +  g_clear_pointer (&priv->gnoblin_config, g_variant_unref);
 +  if (input)
 +    priv->gnoblin_config = g_variant_ref_sink (g_variant_get_normal_form (input));
 +
-+  priv->gnoblin_numlock_state = FALSE;
++  priv->gnoblin_numlock_state = input_get_boolean (input_settings,
++                                                  priv->keyboard_settings,
++                                                  "numlock-state");
 +  if (priv->gnoblin_config)
 +    {
 +      GVariant *keyboard = g_variant_lookup_value (priv->gnoblin_config, "keyboard",
 +                                                   G_VARIANT_TYPE_VARDICT);
 +      if (keyboard)
-+        g_variant_lookup (keyboard, "numlock-state", "b", &priv->gnoblin_numlock_state);
++        {
++          gboolean has_numlock_state = g_variant_lookup (keyboard, "numlock-state", "b",
++                                                         &priv->gnoblin_numlock_state);
++          if (!has_numlock_state && had_gnoblin_config)
++            priv->gnoblin_numlock_state = previous_numlock_state;
++        }
++      else if (had_gnoblin_config)
++        {
++          priv->gnoblin_numlock_state = previous_numlock_state;
++        }
 +      g_clear_pointer (&keyboard, g_variant_unref);
 +    }
 +
@@ -623,7 +638,7 @@ index 80ac0981d..11697529b 100644
  GDesktopStylusButtonAction
  meta_input_settings_get_tool_button_action (MetaInputSettings       *input_settings,
                                              ClutterInputDevice      *device,
-@@ -2014,7 +2258,7 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
+@@ -2014,7 +2273,7 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
        gboolean mouse_is_left_handed;
  
        mouse_is_left_handed =
@@ -632,7 +647,7 @@ index 80ac0981d..11697529b 100644
  
        /* These tools are mouse-like, thus are not re-mappable and
         * follow mouse settings
-@@ -2061,11 +2305,16 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
+@@ -2061,11 +2320,16 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
  
        key = g_strdup_printf ("%s-action", prefix);
        settings = lookup_tool_settings (tool, device);
