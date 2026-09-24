@@ -29,6 +29,7 @@ INTROSPECTION = Gio.DBusNodeInfo.new_for_xml("""
   <interface name='org.gnoblin.Lock'>
     <method name='Lock'><arg name='reason' type='s' direction='in'/></method>
     <method name='GetState'><arg name='state' type='s' direction='out'/></method>
+    <method name='GetLastReason'><arg name='reason' type='s' direction='out'/></method>
     <method name='ReportPresented'><arg name='token' type='s' direction='in'/></method>
     <method name='ReportFailed'><arg name='token' type='s' direction='in'/><arg name='reason' type='s' direction='in'/></method>
     <method name='Inhibit'><arg name='application' type='s' direction='in'/><arg name='reason' type='s' direction='in'/><arg name='cookie' type='u' direction='out'/></method>
@@ -47,8 +48,6 @@ class Config:
         self.enabled = str(section.get("Enabled", "false")).lower() == "true"
         self.command = section.get("Command", "").strip()
         self.idle_timeout_seconds = max(0, int(section.get("IdleTimeoutSeconds", "0")))
-        # Compatibility names are unsafe while GNOME ScreenShield is active.
-        self.own_screensaver_names = str(section.get("OwnScreenSaverNames", "false")).lower() == "true"
 
 
 class LockBroker:
@@ -63,6 +62,7 @@ class LockBroker:
         self.presentation_timeout: int | None = None
         self.sleep_pending = False
         self.inhibitor_senders: dict[int, str] = {}
+        self.idle_watch_id: int | None = None
 
     def start(self) -> None:
         if not self.config.enabled:
@@ -108,9 +108,10 @@ class LockBroker:
         sleeping = params.unpack()[0]
         if sleeping:
             self.sleep_pending = True
-            self.request_lock("sleep")
-            if self.policy.state is State.PRESENTED:
+            if self.policy.state is State.COMPOSITOR_LOCKED:
                 self._drop_sleep_inhibitor()
+            else:
+                self.request_lock("sleep")
         else:
             # Re-establish the continuously held inhibitor after logind has
             # released its sleep transaction; the session must still be locked.
@@ -148,14 +149,15 @@ class LockBroker:
         return GLib.SOURCE_REMOVE
 
     def report_presented(self, token: str) -> bool:
-        if not self.policy.report_presented(token):
+        return self.policy.report_client_presented(token)
+
+    def compositor_lock_confirmed(self) -> bool:
+        """Reserved for a compositor-authoritative callback, never D-Bus."""
+        if not self.policy.compositor_locked():
             return False
         if self.presentation_timeout is not None:
             GLib.source_remove(self.presentation_timeout)
             self.presentation_timeout = None
-        # Prototype signal only.  A real compositor implementation must make
-        # `locked` attest full-output presentation before a pending sleep may
-        # proceed.  Keep the continuous inhibitor for ordinary/manual locks.
         if self.sleep_pending:
             self._drop_sleep_inhibitor()
         return True
@@ -172,6 +174,8 @@ class LockBroker:
             invocation.return_value(None)
         elif method == "GetState":
             invocation.return_value(GLib.Variant("(s)", (self.policy.state.value,)))
+        elif method == "GetLastReason":
+            invocation.return_value(GLib.Variant("(s)", (self.policy.active_reason or "",)))
         elif method == "ReportPresented":
             if not self.report_presented(parameters.unpack()[0]):
                 invocation.return_dbus_error("org.gnoblin.Lock.Error.InvalidPresentation", "unknown lock token")
@@ -197,7 +201,7 @@ class LockBroker:
 
     def get_property(self, _connection, _sender, _path, _interface, name):
         if name == "Active":
-            return GLib.Variant("b", self.policy.state is State.PRESENTED)
+            return GLib.Variant("b", self.policy.state is State.COMPOSITOR_LOCKED)
         return None
 
     def bus_acquired(self, connection, _name) -> None:
@@ -209,6 +213,42 @@ class LockBroker:
         connection.signal_subscribe("org.freedesktop.DBus", "org.freedesktop.DBus",
                                     "NameOwnerChanged", "/org/freedesktop/DBus", None,
                                     Gio.DBusSignalFlags.NONE, self._name_owner_changed)
+        self._start_idle_monitor()
+
+    def _idle_call(self, method: str, parameters: GLib.Variant, reply_type: str):
+        return self.session_connection.call_sync(
+            "org.gnome.Mutter.IdleMonitor", "/org/gnome/Mutter/IdleMonitor/Core",
+            "org.gnome.Mutter.IdleMonitor", method, parameters,
+            GLib.VariantType(reply_type), Gio.DBusCallFlags.NONE, 5000, None).unpack()
+
+    def _start_idle_monitor(self) -> None:
+        """Use compositor input time, never a broker wall-clock timer."""
+        timeout = self.config.idle_timeout_seconds
+        if timeout == 0:
+            return
+        threshold_ms = timeout * 1000
+        try:
+            self.session_connection.signal_subscribe(
+                "org.gnome.Mutter.IdleMonitor", "org.gnome.Mutter.IdleMonitor", "WatchFired",
+                "/org/gnome/Mutter/IdleMonitor/Core", None, Gio.DBusSignalFlags.NONE,
+                self._idle_watch_fired)
+            self.idle_watch_id = self._idle_call(
+                "AddIdleWatch", GLib.Variant("(t)", (threshold_ms,)), "(u)")[0]
+            idle_ms = self._idle_call("GetIdletime", GLib.Variant("()", ()), "(t)")[0]
+            if idle_ms >= threshold_ms:
+                self._request_idle_lock()
+        except GLib.Error as error:
+            # Failing closed here means no idle-triggered lock. Do not replace
+            # compositor time with a less reliable wall-clock approximation.
+            print(f"gnoblin-lockd: idle monitor unavailable: {error}", file=sys.stderr)
+
+    def _idle_watch_fired(self, _connection, _sender, _path, _iface, _signal, parameters) -> None:
+        if parameters.unpack()[0] == self.idle_watch_id:
+            self._request_idle_lock()
+
+    def _request_idle_lock(self) -> None:
+        if self.policy.idle_lock_allowed:
+            self.request_lock("idle")
 
     def _name_owner_changed(self, _connection, _sender, _path, _iface, _signal, parameters) -> None:
         name, _old_owner, new_owner = parameters.unpack()

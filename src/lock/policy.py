@@ -15,7 +15,7 @@ import time
 class State(str, Enum):
     UNLOCKED = "unlocked"
     REQUESTED = "requested"
-    PRESENTED = "presented"
+    COMPOSITOR_LOCKED = "compositor-locked"
     FAILED = "failed"
 
 
@@ -29,15 +29,16 @@ class LockRequest:
 class LockPolicy:
     """Tracks a single lock owner and fail-closed presentation lifecycle.
 
-    ``presented`` means only that the configured locker reported its received
-    ``ext_session_lock_v1.locked`` event.  It is *not* a compositor attestation;
-    callers must keep the feature opt-in until the compositor implementation is
-    validated on hardware.
+    A locker can provide diagnostic telemetry, but only an internal future
+    compositor callback may enter ``COMPOSITOR_LOCKED``. Session-bus clients do
+    not attest that pixels were presented or input was isolated.
     """
 
     state: State = State.UNLOCKED
     active_token: str | None = None
     active_since: float | None = None
+    active_reason: str | None = None
+    client_reported_presented: bool = False
     inhibitors: dict[int, tuple[str, str]] = field(default_factory=dict)
     _next_inhibitor: int = 1
 
@@ -45,13 +46,23 @@ class LockPolicy:
         if self.state not in (State.UNLOCKED, State.FAILED):
             return None
         self.active_token = secrets.token_urlsafe(32)
+        self.active_reason = reason
+        self.client_reported_presented = False
         self.state = State.REQUESTED
         return LockRequest(self.active_token, reason)
 
-    def report_presented(self, token: str, now: float | None = None) -> bool:
+    def report_client_presented(self, token: str) -> bool:
+        """Record diagnostic client telemetry; this cannot change lock state."""
         if self.state is not State.REQUESTED or token != self.active_token:
             return False
-        self.state = State.PRESENTED
+        self.client_reported_presented = True
+        return True
+
+    def compositor_locked(self, now: float | None = None) -> bool:
+        """Internal-only boundary for a future trusted compositor callback."""
+        if self.state is not State.REQUESTED:
+            return False
+        self.state = State.COMPOSITOR_LOCKED
         self.active_since = time.monotonic() if now is None else now
         return True
 
@@ -60,15 +71,18 @@ class LockPolicy:
         if self.state is not State.REQUESTED or token != self.active_token:
             return False
         self.active_token = None
+        self.active_reason = None
+        self.client_reported_presented = False
         self.state = State.FAILED
         return True
 
     def locker_disconnected(self) -> None:
-        """A presented lock may not transition to unlocked on client death."""
+        """Client death never proves the compositor restored the session."""
         if self.state is State.REQUESTED:
             self.active_token = None
-            self.state = State.UNLOCKED
-        # PRESENTED intentionally remains PRESENTED.  The compositor must keep
+            self.client_reported_presented = False
+            self.state = State.FAILED
+        # COMPOSITOR_LOCKED intentionally remains locked. The compositor must keep
         # a black fallback until a privileged recovery path is implemented.
 
     def compositor_unlocked(self) -> None:
@@ -76,6 +90,8 @@ class LockPolicy:
         self.state = State.UNLOCKED
         self.active_token = None
         self.active_since = None
+        self.active_reason = None
+        self.client_reported_presented = False
 
     def inhibit(self, application: str, reason: str) -> int:
         cookie = self._next_inhibitor
@@ -88,4 +104,4 @@ class LockPolicy:
 
     @property
     def idle_lock_allowed(self) -> bool:
-        return not self.inhibitors and self.state is State.UNLOCKED
+        return not self.inhibitors and self.state in (State.UNLOCKED, State.FAILED)
