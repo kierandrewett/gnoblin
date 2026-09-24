@@ -87,4 +87,4 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 | `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
 | `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
 
-`auto` supplies SSD only for explicit client requests. `replace` crops client pixels and adds a frame. Frame mode and extents are also described in the [window frames guide](/guides/window_frames). Register renderers with [`gnoblin.configure`](/config/configure#window-management).
+`auto` supplies SSD only for explicit client requests. `replace` crops client pixels and adds a frame. Frame mode and extents are also described in the [window frames guide](/guides/window_frames). Register renderers with [`gnoblin.configure`](/config/configure/window_management).

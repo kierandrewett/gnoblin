@@ -1,6 +1,6 @@
 # Gnoblin
 
-Gnoblin provides a Wayland compositor and desktop services. Use GNOME Shell or connect your own shell, bar, dock and launcher.
+Gnoblin is a fork of GNOME Shell with layer-shell support. Pair it with Bingux or build a desktop from your own shell, bar, dock and launcher.
 
 ## Get started
 

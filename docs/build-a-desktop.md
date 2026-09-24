@@ -33,6 +33,7 @@ of them with a component you prefer. Put this in a **new**
 
 ```lua
 gnoblin.configure {
+    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
     autostart = {
         bar = {command = {"waybar"}},
         notifications = {command = {"mako"}},
@@ -43,6 +44,22 @@ gnoblin.configure {
     },
 }
 ```
+
+![The Fuzzel launcher running in Gnoblin](images/gnoblin-build-a-desktop.png)
+
+*Fuzzel searching the installed applications. The pointer uses the configured
+Adwaita Hyprcursor theme.*
+
+![A Mako notification in Gnoblin](images/gnoblin-mako-notification.png)
+
+*Mako displaying a notification over the same desktop.*
+
+The cursor setting requires the Adwaita Hyprcursor theme; install it using the
+[cursor guide](/guides/cursors).
+
+Capture this example from the checkout with
+`scripts/capture-doc-examples.sh desktop`. It uses a disposable config and
+profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
 If your existing `init.lua` loads files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported
