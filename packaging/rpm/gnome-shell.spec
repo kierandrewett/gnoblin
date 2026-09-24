@@ -46,6 +46,8 @@ Source9:        gnoblinctl
 Source10:       00_org.gnoblin.mutter.gschema.override
 Source11:       gnome-session@gnoblin.target.d.conf
 Source12:       gnoblin-scripts.tar.gz
+Source13:       gnoblin-seed-config
+Source14:       init.lua.example
 
 # gnoblin patches (tooling, control, settings, reload, branding) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -195,6 +197,8 @@ install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin
 install -Dm644 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
 printf '%%s\n' '%{_lib}' > %{buildroot}%{_libexecdir}/gnoblin-libdir
 install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
+install -Dm755 %{SOURCE13} %{buildroot}%{_libexecdir}/gnoblin-seed-config
+install -Dm644 %{SOURCE14} %{buildroot}%{_datadir}/gnoblin/init.lua.example
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
@@ -232,6 +236,8 @@ desktop-file-validate gnoblin-validation.desktop
 
 %files -n gnoblin-session
 /usr/bin/gnoblinctl
+/usr/libexec/gnoblin-seed-config
+/usr/share/gnoblin/init.lua.example
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session
 /usr/lib/systemd/user/org.gnoblin.Shell.target

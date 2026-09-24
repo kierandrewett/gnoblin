@@ -32,6 +32,8 @@ case "$PROJECT" in
             "$OUTDIR/gnome-session@gnoblin.target.d.conf"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
+        install -m 0644 -- "$ROOT/src/tools/gnoblin-seed-config" "$OUTDIR/gnoblin-seed-config"
+        install -m 0644 -- "$ROOT/src/data/init.lua.example" "$OUTDIR/init.lua.example"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
         install -m 0644 -- "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
         tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \

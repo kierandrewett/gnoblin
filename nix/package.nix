@@ -19,6 +19,9 @@
   mutter,
   gnomeShell,
   gnomeSession,
+  wireplumber,
+  playerctl,
+  brightnessctl,
   gsettings-desktop-schemas,
   gnoblinSrc,
   mutterSrc,
@@ -194,6 +197,8 @@ let
       printf '%s\n' lib > "$out/libexec/gnoblin-libdir"
 
       install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
+      install -Dm755 src/tools/gnoblin-seed-config "$out/libexec/gnoblin-seed-config"
+      install -Dm644 src/data/init.lua.example "$out/share/gnoblin/init.lua.example"
       install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
       install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
       install -Dm644 gnoblin-version.json "$out/share/gnoblin/version.json"
@@ -232,6 +237,10 @@ let
       gnoblinShell
       gnoblinSchemas
       session
+      glib
+      wireplumber
+      playerctl
+      brightnessctl
     ];
     nativeBuildInputs = [
       glib

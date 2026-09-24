@@ -13,6 +13,10 @@ spec.loader.exec_module(package)
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_default_shortcut_command_dependencies_are_declared(self):
+        self.assertTrue({"wireplumber", "playerctl", "brightnessctl", "libglib2.0-bin"}
+                        .issubset(set(package.SERVICES)))
+
     def test_package_version_keeps_gnome_compatibility_and_gnoblin_semver(self):
         self.assertEqual(
             package.package_version("51.0", "0.1.0", "1", "debian", "13"),
@@ -28,6 +32,8 @@ class PackageLayoutTests(unittest.TestCase):
                 "bin/gnoblin-session",
                 "bin/gnoblinctl",
                 "share/gnoblin/version.json",
+                "share/gnoblin/init.lua.example",
+                "libexec/gnoblin-seed-config",
                 "share/gnome-shell/gnome-shell-theme.gresource",
                 "lib/systemd/user/org.gnome.Shell@wayland.service",
                 *package.PUBLIC_FILES,
@@ -44,6 +50,8 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertFalse((stage / "usr/bin/gnome-shell").exists())
             self.assertEqual((stage / "usr/bin/gnoblinctl").readlink(), Path("../lib/gnoblin/bin/gnoblinctl"))
             self.assertTrue((private / "share/gnoblin/version.json").is_file())
+            self.assertTrue((private / "libexec/gnoblin-seed-config").is_file())
+            self.assertEqual((stage / "usr/share/gnoblin/init.lua.example").read_text(), "fixture")
             self.assertFalse((stage / "usr/share/gnoblin/version.json").exists())
 
     def test_shared_gnome_files_are_rejected(self):

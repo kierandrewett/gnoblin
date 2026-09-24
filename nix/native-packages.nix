@@ -21,6 +21,9 @@ let
         "wayland-protocols";
     libinput = requirement "1.31.0" "libinput" "libinput10" "libinput";
     pipewire = requirement "1.6.0" "pipewire" "pipewire" "pipewire";
+    wireplumber = requirement null "wireplumber" "wireplumber" "wireplumber";
+    playerctl = requirement null "playerctl" "playerctl" "playerctl";
+    brightnessctl = requirement null "brightnessctl" "brightnessctl" "brightnessctl";
   };
 in
 {
@@ -92,7 +95,7 @@ in
       version = (component "gnome-shell").version;
       source = "gnome-shell";
       requiresSameMajor = [ "gnoblin-shell" ];
-      requires = [ "gnome-session" ];
+      requires = [ "gnome-session" "wireplumber" "playerctl" "brightnessctl" ];
     };
   };
 }

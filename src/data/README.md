@@ -17,7 +17,10 @@ treating them as passive examples.
   `org.gnoblin.Shell` control protocol: `disabled-features`, the runtime
   feature toggles above. Its `manifest` copies it into the patched GNOME
   Shell tree.
-- `init.lua.example` is the user-facing configuration example. The overlays
+- `init.lua.example` is the complete user-facing configuration reference. The
+  session launcher copies it to `~/.config/gnoblin/init.lua` only when no
+  supported user config exists; package installs ship it under
+  `/usr/share/gnoblin/`. The overlays
   read `$GNOBLIN_CONFIG` or `$XDG_CONFIG_HOME/gnoblin/init.lua`. Any override
   filename is evaluated as Lua. An unset key uses the caller's enabled default.
   Stock session modes register none of these globals.
