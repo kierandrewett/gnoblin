@@ -63,15 +63,20 @@ A new shortcut needs a binding and command. An override needs only its name and
 changed fields. Different shortcut names must not claim the same binding.
 
 Built-in bindings go in `configure {keybindings = {GROUP = {ACTION = {KEYS}}}}`.
-Groups: `shell`, `wm`, `mutter`, `wayland`, `media`. Empty action lists disable
-the binding. These values persist in GSettings.
+Use underscores in action names; hyphenated config names are rejected. For
+example, configure `show_screenshot_ui` for GSettings' `show-screenshot-ui`.
+Groups: `shell`, `wm`, `mutter`, `wayland`. Empty action lists disable the
+binding. Gnoblin applies these to Mutter's native keybinding table on reload;
+the Lua file owns persistence. Removing an override restores the built-in
+default. GNOME Settings Daemon media keys are a separate service and are not
+configured by this table.
 
 Guides: [shortcuts](shortcuts.md), [autostart](autostart.md),
 [restore or minimise](window-state-shortcuts.md).
 
 ### Keybinding groups
 
-Use these schemas to look up action names with `gsettings list-recursively SCHEMA`:
+Use these schemas to look up action names with `gsettings list-keys SCHEMA`:
 
 | Lua group | GSettings schema                               |
 | --------- | ---------------------------------------------- |
@@ -79,7 +84,107 @@ Use these schemas to look up action names with `gsettings list-recursively SCHEM
 | `wm`      | `org.gnome.desktop.wm.keybindings`             |
 | `mutter`  | `org.gnome.mutter.keybindings`                 |
 | `wayland` | `org.gnome.mutter.wayland.keybindings`         |
-| `media`   | `org.gnome.settings-daemon.plugins.media-keys` |
+
+These schemas still provide the built-in action catalogue and default bindings.
+Gnoblin does not save the configured overrides to them.
+
+## Window management
+
+Inside `gnoblin.configure {window_management = {...}}`. Values apply on reload
+and omitted fields return to the Gnoblin defaults below.
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `focus_mode` | `"click"`, `"sloppy"`, `"mouse"` | `"click"` |
+| `focus_new_windows` | `"smart"`, `"strict"` | `"smart"` |
+| `raise_on_click`, `auto_raise`, `focus_change_on_pointer_rest` | Boolean | `true`, `false`, `false` |
+| `auto_raise_delay` | 0–10000 ms | `500` |
+| `action_double_click_titlebar` | Titlebar action below | `"toggle-maximize"` |
+| `action_middle_click_titlebar` | Titlebar action below | `"lower"` |
+| `action_right_click_titlebar` | Titlebar action below | `"menu"` |
+| `dynamic_workspaces`, `workspaces_only_on_primary`, `edge_tiling` | Boolean | `false` |
+| `num_workspaces` | 1–36; used when dynamic workspaces are off | `4` |
+| `workspace_names` | Array of up to 36 strings, each at most 80 characters | `{}` |
+| `center_new_windows`, `attach_modal_dialogs` | Boolean | `false` |
+| `constrain_drag_to_work_area` | Boolean | `true` |
+
+Titlebar actions: `toggle-maximize`, `toggle-maximize-horizontally`,
+`toggle-maximize-vertically`, `minimize`, `lower`, `menu`, `none`.
+GTK apps usually draw their own titlebars and read GNOME's window-manager
+settings directly; this Lua section does not change those app settings. It
+controls Mutter policy and Gnoblin's built-in fallback SSD, which implements
+these actions. A custom SSD renderer must implement its own titlebar click
+behavior.
+See [titlebars](window-frames.md).
+
+## Compositor interaction
+
+Inside `gnoblin.configure {compositor = {...}}`. Values apply on reload.
+These settings cover compositor interaction preferences; accessibility
+settings remain separate.
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `enable_animations` | Boolean | `true` |
+| `locate_pointer` | Boolean | `false` |
+| `visual_bell`, `audible_bell` | Boolean | `false`, `true` |
+| `visual_bell_type` | `"fullscreen-flash"`, `"frame-flash"` | `"fullscreen-flash"` |
+
+Guide: [session settings](session-settings.md).
+
+## Input
+
+Input settings go in `gnoblin.configure {input = {...}}` and apply on reload.
+Each group is optional. Fields you omit continue to use the corresponding
+GNOME/Mutter setting. Global settings use `mouse`, `touchpad`, and `keyboard`;
+tablet and stylus overrides are selected by device identifier.
+
+| Group | Fields | Values |
+| --- | --- | --- |
+| `mouse` | `speed` | Number from -1 to 1 |
+| | `left_handed`, `natural_scroll` | Boolean |
+| | `accel_profile` | `"default"`, `"flat"`, `"adaptive"` |
+| `touchpad` | `speed` | Number from -1 to 1 |
+| | `left_handed` | `"right"`, `"left"`, `"mouse"` |
+| | `natural_scroll`, `tap_to_click`, `tap_and_drag`, `tap_and_drag_lock`, `disable_while_typing`, `edge_scrolling_enabled`, `two_finger_scrolling_enabled` | Boolean |
+| | `accel_profile` | `"default"`, `"flat"`, `"adaptive"` |
+| | `tap_button_map` | `"default"`, `"lrm"`, `"lmr"` |
+| | `click_method` | `"default"`, `"none"`, `"areas"`, `"fingers"` |
+| `keyboard` | `repeat`, `remember_numlock_state`, `numlock_state` | Boolean |
+| | `delay`, `repeat_interval` | 1–10000 ms |
+| | `xkb_options` | Array of XKB option strings |
+
+`numlock_state` is kept in memory while Gnoblin's config is active. Tablet keys
+use four-hex-digit vendor and product IDs such as `"1234:5678"`; their fields
+are `mapping` (`"absolute"` or `"relative"`), `left_handed`, and `keep_aspect`.
+Stylus keys use a device serial or `"default-1234:5678"`. Stylus fields are
+`button_action`, `secondary_button_action`, and `tertiary_button_action`
+(`"default"`, `"middle"`, `"right"`, `"back"`, `"forward"`,
+`"switch-monitor"`, or `"keybinding"`), plus the matching
+`*_button_keybinding` string fields.
+
+Orientation lock uses the boolean `input.orientation_lock` field. Removing it
+restores GNOME's orientation-lock setting.
+
+### Input sources
+
+Set sources with `gnoblin.configure {input_sources = {...}}`. This replaces the
+active source list in memory on reload; removing the table restores GNOME's
+session sources. `sources` is required and contains records with `type` set to
+`"xkb"` or `"ibus"` and a nonempty `id`. Set `per_window` to `true` to track
+the active source per window; it defaults to `false`.
+
+```lua
+gnoblin.configure {
+    input_sources = {
+        sources = {
+            {type = "xkb", id = "us"},
+            {type = "xkb", id = "gb"},
+        },
+        per_window = false,
+    },
+}
+```
 
 ## Window matches
 
@@ -209,9 +314,20 @@ Guide: [session settings](session-settings.md).
 
 ## Cursor
 
-GSettings schema: `org.gnome.desktop.interface`.
-Keys: `cursor-theme` (string), `cursor-size` (integer).
-These are GSettings, not Lua fields. Guide: [cursor themes](cursors.md).
+Configure the compositor cursor theme and size in Gnoblin's config:
+
+```lua
+gnoblin.configure {
+    cursor = {
+        theme = "Adwaita-Hyprcursor",
+        size = 24,
+    },
+}
+```
+
+`theme` is an installed cursor theme name. Gnoblin currently renders it with
+Hyprcursor. `size` is an integer from 1 to 256 logical pixels (default `24`).
+Changes apply on config reload. Guide: [cursor themes](cursors.md).
 
 ## Files and reload
 

@@ -133,6 +133,10 @@ Use shortcuts or autostart to launch programs.
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.
 
+Lua configuration cannot run arbitrary JavaScript. For custom live automation,
+see [user scripts](user-scripts.md); most settings and desktop behavior should
+stay in the supported configuration API.
+
 ## Existing configs
 
 Configs using `require("gnoblin")`, `g.set`, `g.config`, returned tables
@@ -169,7 +173,13 @@ If `gnoblin` or `configure` is reported as `nil`, see
 | Rules and animations           | On reload                                      | Earlier rules/defaults apply             |
 | Titlebar policy                | After reload and the app's next surface update | Earlier rules/defaults apply             |
 | Command shortcuts              | On reload                                      | Binding released; launched process stays |
-| Built-in keybindings           | On reload                                      | Saved GSettings value stays              |
+| Built-in keybindings           | On reload                                      | Built-in default applies                 |
+| Window-management preferences | On reload                                      | Gnoblin default applies                  |
+| Compositor interaction preferences | On reload                                  | Gnoblin default applies                  |
+| Input preferences              | On reload                                      | GNOME/Mutter settings apply              |
+| Input sources                  | On reload                                      | GNOME session sources apply              |
+| Orientation lock               | On reload                                      | GNOME orientation setting applies        |
+| Cursor theme and size          | On reload                                      | Adwaita at 24 logical pixels              |
 | Notifications and layout popup | On reload                                      | Saved GSettings value stays              |
 | Autostart                      | New names start on reload                      | Running process stays                    |
 | Renderer services              | Restart on reload                              | Enabled frames use native fallback       |
