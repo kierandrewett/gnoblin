@@ -17,7 +17,7 @@ hero:
     <strong>Bring your own desktop</strong>
     <span>Keep GNOME Shell or connect another shell</span>
   </a>
-  <a href="/gnoblin/configuration/">
+  <a href="/gnoblin/config">
     <span class="home-paths__step">03 / Make it yours</span>
     <strong>Configure Gnoblin</strong>
     <span>Set shortcuts, window rules and effects</span>
@@ -26,7 +26,7 @@ hero:
 
 ## Configuration reference
 
-[All settings](configuration-reference.md) · [Shortcuts](shortcuts.md) · [Window rules](window-rules.md) · [Effects](window-effects.md) · [Titlebars](window-frames.md) · [Animations](animations.md)
+[All settings](/config/reference) · [Shortcuts](/config/shortcuts) · [Window rules](/config/window_rules) · [Effects](/config/window_effects) · [Titlebars](/config/window_frames) · [Animations](/config/animations)
 
 ## Shell and compositor APIs
 

@@ -3,7 +3,7 @@
 Gnoblin owns decoration policy, geometry and input. An external process draws
 the frame. The private v1 protocol is experimental.
 
-For configuration, see [titlebars](window-frames.md).
+For configuration, see [titlebars](/config/window_frames).
 For implementation steps, see [write a renderer](frame-renderer-api.md).
 
 ## Ownership

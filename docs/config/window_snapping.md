@@ -1,6 +1,6 @@
-# Window snapping
+# window_snapping
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 With Bingux installed, drag a window toward an edge or press Super+Z to choose
 a layout. Bingux displays the picker; Gnoblin moves and resizes the window.
@@ -29,11 +29,11 @@ It imports Tiling Shell layouts once when available; otherwise it supplies defau
 
 Windows fill the usable part of the monitor, leaving room for panels that
 reserve space.
-See [drag boundaries](session-settings.md#window-drag-boundary) for overlap policy.
+See [drag boundaries](/config/session_settings#window-drag-boundary) for overlap policy.
 
 ## Shell integration
 
-Use the [bridge socket](compositor-bridge.md) to supply a picker. Rectangles
+Use the [bridge socket](/compositor-bridge) to supply a picker. Rectangles
 use logical desktop pixels. Read the work area from Gnoblin; it excludes space
 reserved by panels.
 

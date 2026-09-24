@@ -1,6 +1,6 @@
-# Cursor themes
+# cursors
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Gnoblin reads the compositor cursor theme and size from
 `~/.config/gnoblin/init.lua`. The config API is `cursor.theme` and
@@ -67,5 +67,5 @@ Run `tests/test-adwaita-artwork.py` and `tests/test-adwaita-hyprcursor.py`
 for artwork checks. They also need Pillow and `rsvg-convert`.
 
 For native testing, run `tests/test-hyprcursor.py` and
-`tests/test-launch-feedback.py` through the [private test harness](testing.md).
+`tests/test-launch-feedback.py` through the [private test harness](/testing).
 They cover sizes, hotspots, timing, missing shapes and launch cursor restoration.

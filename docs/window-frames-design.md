@@ -7,7 +7,7 @@ search: false
 **Archived record.** Superseded frame design proposal. Its illustrative GJS renderer settings are not valid configuration; use the current frame and renderer guides.
 
 For current instructions, see [installation](installation.md),
-[window frames](window-frames.md) or [testing](testing.md).
+[window frames](/config/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>

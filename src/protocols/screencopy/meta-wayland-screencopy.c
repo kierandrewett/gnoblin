@@ -30,6 +30,7 @@
 #include "wayland/meta-wayland-buffer.h"
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
+#include "wayland/meta-wayland-session-lock.h"
 #include "wayland/gnoblin-config.h"
 
 #include "wlr-screencopy-unstable-v1-server-protocol.h"
@@ -128,6 +129,15 @@ static void copy_frame_to_buffer(struct wl_client* client, struct wl_resource* r
         return;
     }
 
+    /* A manager can have created this frame immediately before the lock
+     * controller covers the stage.  Check again at the copy boundary so a
+     * pre-lock frame can never expose the previous desktop after COVERING. */
+    if (meta_wayland_session_lock_is_active(frame->compositor)) {
+        frame->copied = TRUE;
+        send_failed(frame);
+        return;
+    }
+
     frame->copied = TRUE;
     frame->with_damage = with_damage;
 
@@ -152,7 +162,7 @@ static void copy_frame_to_buffer(struct wl_client* client, struct wl_resource* r
 
     if (!clutter_stage_paint_to_buffer(
             stage, &frame->rect, frame->scale, data, wl_shm_buffer_get_stride(shm_buffer),
-            COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT, paint_flags, &error)) {
+            COGL_PIXEL_FORMAT_ARGB32_NATIVE, NULL, paint_flags, &error)) {
         wl_shm_buffer_end_access(shm_buffer);
         g_warning("screencopy failed: %s", error->message);
         send_failed(frame);
@@ -266,6 +276,14 @@ static void create_frame(struct wl_client* client, struct wl_resource* manager_r
     }
 
     wl_resource_set_implementation(frame->resource, &frame_interface, frame, destroy_frame);
+
+    /* Do not even advertise a usable buffer while the compositor-owned lock
+     * cover is pending.  This applies from COVERING through FAILSAFE. */
+    if (meta_wayland_session_lock_is_active(compositor)) {
+        send_failed(frame);
+        g_steal_pointer(&frame);
+        return;
+    }
 
     monitor = wayland_output ? meta_wayland_output_get_monitor(wayland_output) : NULL;
     logical_monitor = monitor ? meta_monitor_get_logical_monitor(monitor) : NULL;

@@ -1,6 +1,6 @@
 # Write a frame renderer
 
-[Configuration reference](configuration-reference.md#frames)
+[Configuration reference](/config/reference#frames)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
 window actions and input. Read the [architecture](window-frame-renderers.md)

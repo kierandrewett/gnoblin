@@ -1,6 +1,6 @@
-# Configure Gnoblin
+# config
 
-[Configuration reference](configuration-reference.md)
+[reference](/config/reference) · [recipes](/recipes)
 
 On first login, `gnoblin-session` copies the packaged reference config to
 `~/.config/gnoblin/init.lua` when there is no Lua or legacy config already
@@ -77,7 +77,7 @@ Try minimising a window. Invalid edits keep the last working configuration.
 Use `gnoblin.configure` for settings and named shortcuts, and
 `gnoblin.window_rule` for ordered rules. The outer braces belong to the
 function call; inner braces group related options. `gnoblin` is available in every config file;
-you do not need to import it. See the [recipes](configuration-recipes.md).
+you do not need to import it. See the [recipes](/recipes).
 
 ## Sizes and window types
 
@@ -91,17 +91,17 @@ use `type = "window"` or `type = "layer"` to distinguish them.
 
 ## Start from an example
 
-Use the [complete starter config](configuration-recipes.md#complete-starter-config)
+Use the [complete starter config](/recipes#complete-starter-config)
 for a small working file. The same page shows how to override imported shortcuts,
 combine window rules and split settings into files.
 
 ## What next?
 
-- [Shortcuts](shortcuts.md) and [autostart](autostart.md)
-- [Window rules](window-rules.md), [effects](window-effects.md) and [titlebars](window-frames.md)
-- [Animations](animations.md) and [session settings](session-settings.md)
-- [Split your config into files](configuration-loading.md)
-- [All settings](configuration-reference.md)
+- [Shortcuts](/config/shortcuts) and [autostart](/config/autostart)
+- [Window rules](/config/window_rules), [effects](/config/window_effects) and [titlebars](/config/window_frames)
+- [Animations](/config/animations) and [session settings](/config/session_settings)
+- [Split your config into files](/config/files_and_load_order)
+- [All settings](/config/reference)
 
 ## Reload or log out?
 
@@ -111,5 +111,5 @@ Most appearance settings and shortcuts reload on save.
 availability, or changing `layer_shell.preserve_active_window`.
 
 Some settings persist after you remove them from Lua. See
-[reload and persistence](configuration-loading.md#reload-and-persistence).
-If an edit does nothing, start with [troubleshooting](troubleshooting.md).
+[reload and persistence](/config/files_and_load_order#reload-and-persistence).
+If an edit does nothing, start with [troubleshooting](/troubleshooting).

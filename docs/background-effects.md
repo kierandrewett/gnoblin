@@ -3,7 +3,7 @@
 Gnoblin implements `ext-background-effect-v1` with the `blur` capability.
 A shell can use it to specify exactly which parts of a bar or popup need blur,
 without blurring transparent margins or shadows. This page is for client
-developers; desktop users can use [window effects](window-effects.md).
+developers; desktop users can use [window effects](/config/window_effects).
 
 The [protocol XML](https://wayland.app/protocols/ext-background-effect-v1)
 is from Wayland's staging specifications.

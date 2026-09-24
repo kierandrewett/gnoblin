@@ -1,6 +1,6 @@
-# Keyboard shortcuts
+# shortcuts
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Use the named `shortcuts` table to launch a program when you press a key combination.
 Use `keybindings` to change built-in actions such as closing a window.
@@ -52,7 +52,7 @@ gnoblin.configure.shortcuts.my_terminal.enable = false
 
 The config is rebuilt on every reload. Disabling releases that entry's binding;
 it does not stop a program already launched by the shortcut. Put this after
-the file that defines it; [load order](configuration-loading.md#override-or-append)
+the file that defines it; [load order](/config/files_and_load_order#override-or-append)
 matters. An unknown name raises a Lua error. The named map form,
 `gnoblin.configure {shortcuts = {my_terminal = {enable = false}}}`, also works;
 `gnoblin.remove_shortcut(name)` remains available for older configs.
@@ -95,7 +95,7 @@ The values printed by `gsettings` are GNOME settings; Lua overrides are active
 in Gnoblin and do not appear there.
 
 Other groups are `shell`, `mutter` and `wayland`. See the
-[keybinding groups](configuration-reference.md#keybinding-groups) for their
+[keybinding groups](/config/reference#keybinding-groups) for their
 GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
@@ -121,7 +121,7 @@ start GNOME Settings Daemon's media-key handler in its session.
 ## Inspect shortcuts loaded so far
 
 Use `pairs(gnoblin.configure.shortcuts)` to loop over command shortcuts loaded
-so far and edit them by name. The [example](configuration-loading.md#inspect-loaded-settings)
+so far and edit them by name. The [example](/config/files_and_load_order#inspect-loaded-settings)
 shows this. `gnoblin.snapshot()` copies the assembled config when you need a
 stable value. Built-in actions in `keybindings` are separate. Lua runs before
 the compositor registers keys, so neither view reports successful live grabs.
@@ -130,7 +130,7 @@ the compositor registers keys, so neither view reports successful live grabs.
 
 To override an imported shortcut, use the same `name`. Only supplied fields
 change. Different names must use different bindings. See the
-[override example](configuration-recipes.md#add-a-shortcut-without-losing-the-others).
+[override example](/recipes#add-a-shortcut-without-losing-the-others).
 
 An existing GNOME action can also own the key. Disable or rebind that action
 first. Invalid or conflicting edits keep the previous working registrations.
@@ -153,7 +153,7 @@ This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 ## Popups that capture typing
 
 A shortcut can set `capture_input = true` to buffer typing while a popup
-starts. The popup must implement the [input handoff protocol](compositor-bridge.md).
+starts. The popup must implement the [input handoff protocol](/compositor-bridge).
 Do not enable it for ordinary terminal or application launch commands.
 
-See also [restore-or-minimise bindings](window-state-shortcuts.md).
+See also [restore-or-minimise bindings](/config/window_state_shortcuts).

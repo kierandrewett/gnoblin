@@ -5,9 +5,11 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -22,6 +24,26 @@ loader.exec_module(ctl)
 
 
 class CliTests(unittest.TestCase):
+    def test_config_default_prints_installed_example_without_a_running_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = Path(temporary)
+            command = prefix / "bin/gnoblinctl"
+            example = prefix / "share/gnoblin/init.lua.example"
+            command.parent.mkdir()
+            example.parent.mkdir(parents=True)
+            command.write_bytes(Path(ctl.__file__).read_bytes())
+            example.write_text("-- bundled default\ngnoblin.configure {}\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(command), "config", "default"],
+                capture_output=True,
+                text=True,
+                env={**os.environ, "XDG_DATA_DIRS": str(prefix / "other-share")},
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, example.read_text(encoding="utf-8"))
+            self.assertEqual(result.stderr, "")
+
     def test_global_options_before_or_after_command(self):
         for words in (["--json", "window", "focus", "42"], ["window", "focus", "42", "--json"]):
             args = ctl.parser().parse_args(words)

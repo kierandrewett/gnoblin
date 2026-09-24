@@ -1,6 +1,6 @@
-# Session settings
+# session_settings
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Choose which GNOME controls to keep, how launchers affect window focus, and
 whether tools can use particular Wayland interfaces. Add the examples to
@@ -33,7 +33,7 @@ database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
 
 Removing `window_switcher` returns it to `false`. If your shell needs the same
-switching keys, also [release or rebind the built-in shortcuts](shortcuts.md#avoid-conflicts).
+switching keys, also [release or rebind the built-in shortcuts](/config/shortcuts#avoid-conflicts).
 
 Disabling the layout popup does not disable keyboard layouts.
 Volume/brightness popups and screenshot controls come from your desktop shell;
@@ -109,7 +109,7 @@ interfaces when the session starts and cannot remove them during config reload.
 | `blur_fade`                      | Per-item blur fade metadata |
 
 This does not block all screen sharing: apps using the desktop portal follow
-[portal permissions](permissions.md) instead.
+[portal permissions](/config/permissions) instead.
 Disabling protocols your shell uses can prevent its features from working.
-See the [protocol catalog](wayland-protocols.md) for the advertised interface
+See the [protocol catalog](/wayland-protocols) for the advertised interface
 names, related guides and interfaces that are not yet supported.

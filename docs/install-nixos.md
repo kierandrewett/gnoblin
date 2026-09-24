@@ -44,7 +44,7 @@ sudo nixos-rebuild switch --flake .
 ```
 
 [Install a shell](bring-your-own-shell.md), then log out and select **Gnoblin**.
-Continue with [configuration](configuration.md).
+Continue with [configuration](/config).
 
 ## Update or remove
 

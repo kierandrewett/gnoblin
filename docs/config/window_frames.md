@@ -1,6 +1,6 @@
-# Titlebars and window frames
+# window_frames
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Most apps draw their own titlebar and buttons. This is **client-side decoration
 (CSD)**. Gnoblin can draw them instead: **server-side decoration (SSD)**.
@@ -99,7 +99,7 @@ gnoblin.window_rule {
 ```
 
 Use an absolute executable path and separate arguments. `native` is reserved.
-[Bingux](bring-your-own-shell.md) supplies its own styled renderer.
+[Bingux](/bring-your-own-shell) supplies its own styled renderer.
 
 Config reload restarts external renderers, including rebuilt executables at
 unchanged paths. The native frame keeps controls available during replacement
@@ -113,4 +113,4 @@ Moving framed windows between displays with different scales and cropping apps
 with many popups have limited test coverage.
 
 For renderer implementation and tests, see
-[renderer architecture](window-frame-renderers.md) and the [author guide](frame-renderer-api.md).
+[renderer architecture](/window-frame-renderers) and the [author guide](/frame-renderer-api).

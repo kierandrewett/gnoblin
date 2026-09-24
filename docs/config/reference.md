@@ -1,11 +1,11 @@
-# Configuration reference
+# reference
 
 Use this page to look up names, values and defaults. For a first config, start
-with [Configure Gnoblin](configuration.md); for complete examples, see
-[Recipes](configuration-recipes.md).
+with [Configure Gnoblin](/config); for complete examples, see
+[Recipes](/recipes).
 
 Defaults apply before your config loads. Files supplied by your desktop shell
-can change them. Sizes are [logical pixels](configuration.md#sizes-and-window-types).
+can change them. Sizes are [logical pixels](/config#sizes-and-window-types).
 
 ## Lua API
 
@@ -17,18 +17,18 @@ not one-off commands to change the running desktop.
 
 | Function | Input | Behaviour |
 | --- | --- | --- |
-| [`configure { ... }`](configuration.md#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
-| [`window_rule { ... }`](window-rules.md#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
-| [`permission_rule { ... }`](permissions.md#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
-| [`shortcut { ... }`](shortcuts.md#function-form) | Named command | Add or update by name; `enable = false` disables it |
-| [`autostart { ... }`](autostart.md#function-form) | Named command | Add or update by name; `enable = false` disables it |
-| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | Shortcut name | Older form of disabling an earlier named shortcut |
-| [`remove_autostart(name)`](autostart.md#remove-an-entry) | Entry name | Older form of disabling an earlier named autostart |
-| [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
-| [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
-| [`snapshot()`](configuration-loading.md#inspect-loaded-settings) | None | Copy the config assembled so far |
-| [`configure.shortcuts.NAME`](shortcuts.md#remove-a-shortcut) | Existing shortcut name | Read or change a loaded command shortcut directly |
-| [`configure.autostart.NAME`](autostart.md#remove-an-entry) | Existing autostart name | Read or change a loaded login command directly |
+| [`configure { ... }`](/config#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
+| [`window_rule { ... }`](/config/window_rules#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
+| [`permission_rule { ... }`](/config/permissions#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
+| [`shortcut { ... }`](/config/shortcuts#function-form) | Named command | Add or update by name; `enable = false` disables it |
+| [`autostart { ... }`](/config/autostart#function-form) | Named command | Add or update by name; `enable = false` disables it |
+| [`configure.shortcuts.NAME`](/config/shortcuts#remove-a-shortcut) | Existing shortcut name | Read or change a loaded command shortcut directly |
+| [`configure.autostart.NAME`](/config/autostart#remove-an-entry) | Existing autostart name | Read or change a loaded login command directly |
+| [`remove_shortcut(name)`](/config/shortcuts#remove-a-shortcut) | Shortcut name | Older form of disabling an earlier named shortcut |
+| [`remove_autostart(name)`](/config/autostart#remove-an-entry) | Entry name | Older form of disabling an earlier named autostart |
+| [`load(path)`](/config/files_and_load_order#include-a-file) | File or glob | Evaluate now, relative to the calling file |
+| [`require(name)`](/config/files_and_load_order#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
+| [`snapshot()`](/config/files_and_load_order#inspect-loaded-settings) | None | Copy the config assembled so far |
 
 Call functions as `gnoblin.window_rule { ... }`, for example.
 Tables passed to declarations are copied. Later changes to your table do not
@@ -51,8 +51,8 @@ Inside `gnoblin.configure {shell = {...}}`.
 | `notifications`         | Boolean                                                                  | Initially disabled; persists in GSettings |
 | `input_source_switcher` | Boolean                                                                  | Initially disabled; persists in GSettings |
 
-Guides: [animations](animations.md), [native features](session-settings.md),
-[window menu](window-menu.md).
+Guides: [animations](/config/animations), [native features](/config/session_settings),
+[window menu](/config/window_menu).
 
 ## Commands
 
@@ -82,8 +82,8 @@ the Lua file owns persistence. Removing an override restores the built-in
 default. Media keys are [command shortcuts in Lua](shortcuts.md#media-keys),
 not built-in `keybindings` actions.
 
-Guides: [shortcuts](shortcuts.md), [autostart](autostart.md),
-[restore or minimise](window-state-shortcuts.md).
+Guides: [shortcuts](/config/shortcuts), [autostart](/config/autostart),
+[restore or minimise](/config/window_state_shortcuts).
 
 ### Keybinding groups
 
@@ -126,7 +126,7 @@ settings directly; this Lua section does not change those app settings. It
 controls Mutter policy and Gnoblin's built-in fallback SSD, which implements
 these actions. A custom SSD renderer must implement its own titlebar click
 behavior.
-See [titlebars](window-frames.md).
+See [titlebars](/config/window_frames).
 
 ## Compositor interaction
 
@@ -141,7 +141,7 @@ settings remain separate.
 | `visual_bell`, `audible_bell` | Boolean | `false`, `true` |
 | `visual_bell_type` | `"fullscreen-flash"`, `"frame-flash"` | `"fullscreen-flash"` |
 
-Guide: [session settings](session-settings.md).
+Guide: [session settings](/config/session_settings).
 
 ## Input
 
@@ -210,7 +210,7 @@ Inside `window_rule {match = {...}, ...}`. All specified conditions must match.
 | `layer`   | Layer-shell namespace matcher                                 |
 
 Use anchors for exact regex matches. Rules apply in order; later matching rules
-override only supplied fields. Guide: [window rules](window-rules.md).
+override only supplied fields. Guide: [window rules](/config/window_rules).
 
 ## Effects
 
@@ -228,7 +228,7 @@ Fields inside `window_rule {...}`.
 | `animation`           | `"slide"`, `"fade"`, `"none"`, or a per-phase table |
 | `frame`               | Frame fields below                                  |
 
-Guides: [effects](window-effects.md), [shaders](shaders.md).
+Guides: [effects](/config/window_effects), [shaders](/config/shaders).
 
 ### Corners
 
@@ -267,7 +267,7 @@ Guides: [effects](window-effects.md), [shaders](shaders.md).
 | `animation.easing`                 | Same easing values as shell animations |
 
 Omitted fields inherit shell settings. `in` needs brackets because it is a Lua
-keyword. Guide: [animations](animations.md).
+keyword. Guide: [animations](/config/animations).
 
 ## Frames
 
@@ -287,7 +287,7 @@ Inside a rule's `frame` table.
 
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame. Register services with
-`configure {frame_renderers = {NAME = {COMMAND}}}`. Guide: [frames](window-frames.md).
+`configure {frame_renderers = {NAME = {COMMAND}}}`. Guide: [frames](/config/window_frames).
 
 ## Permissions
 
@@ -305,7 +305,7 @@ Allowed fallbacks: `"default"`, `"ask"`, `"deny"`.
 | `clipboard`    | Boolean; default `false`                                                                 |
 
 Any matching deny wins. Otherwise the last matching rule wins as a whole.
-Guide: [portal permissions](permissions.md).
+Guide: [portal permissions](/config/permissions).
 
 ## Session and protocols
 
@@ -322,7 +322,7 @@ Protocol keys: `wlr_layer_shell`, `wlr_screencopy`, `ext_foreign_toplevel_list`,
 `wlr_gamma_control`, `wlr_output_power_management`, `ext_background_effect_v1`,
 `xdg_decoration`, `window_frame_renderer`, `blur_fade`.
 
-Guides: [session settings](session-settings.md), [protocol catalog](wayland-protocols.md).
+Guides: [session settings](/config/session_settings), [protocol catalog](/wayland-protocols).
 
 ## Cursor
 
@@ -339,7 +339,7 @@ gnoblin.configure {
 
 `theme` is an installed cursor theme name. Gnoblin currently renders it with
 Hyprcursor. `size` is an integer from 1 to 256 logical pixels (default `24`).
-Changes apply on config reload. Guide: [cursor themes](cursors.md).
+Changes apply on config reload. Guide: [cursor themes](/config/cursors).
 
 ## Files and reload
 
@@ -348,5 +348,5 @@ Inspect: `gnoblinctl config path`. Apply: `gnoblinctl config reload`.
 
 Valid edits reload automatically. A reload starts a fresh Lua state.
 Native library upgrades require a new session.
-See [load order](configuration-loading.md) and
-[reload and persistence](configuration-loading.md#reload-and-persistence).
+See [load order](/config/files_and_load_order) and
+[reload and persistence](/config/files_and_load_order#reload-and-persistence).

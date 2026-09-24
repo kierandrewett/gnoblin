@@ -1,6 +1,6 @@
-# Animations
+# animations
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Choose how windows minimise and how bars or launchers appear. Add these
 examples to `~/.config/gnoblin/init.lua`; changes reload on save.
@@ -84,5 +84,5 @@ Use `"none"` if your shell already animates that panel appearing and disappearin
 | `"ease-out-cubic"`    | Stronger slowdown; default |
 | `"ease-in-out-cubic"` | Accelerate, then slow down |
 
-Shell authors can supply [dock icon targets](shell-integration.md#dock-animation-targets)
+Shell authors can supply [dock icon targets](/shell-integration#dock-animation-targets)
 without animating application windows themselves.

@@ -1,10 +1,10 @@
-# Custom shaders
+# shaders
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 A fragment shader changes the colour of each pixel in a window. This example
 adds a subtle blue tint to application windows. It does not blur the background;
-use [window effects](window-effects.md#blur-and-opacity) for that.
+use [window effects](/config/window_effects#blur-and-opacity) for that.
 
 ## 1. Create the shader
 
@@ -57,4 +57,4 @@ Files reload after edits settle for 100 ms. Invalid or missing shader files
 keep the previous working effect and log a `gnoblin-shader` warning.
 Fix the file to retry.
 
-See [effect tests](effects-rendering.md#tests) for pixel and reload coverage.
+See [effect tests](/effects-rendering#tests) for pixel and reload coverage.
