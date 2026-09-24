@@ -20,12 +20,22 @@ export const FEATURE_KEYS = Object.freeze([
 ]);
 
 export const WINDOW_PREFERENCES = Object.freeze({
-    "focus-mode": "click", "focus-new-windows": "smart", "raise-on-click": true,
-    "auto-raise": false, "auto-raise-delay": 500, "focus-change-on-pointer-rest": false,
-    "action-double-click-titlebar": "toggle-maximize", "action-middle-click-titlebar": "lower",
-    "action-right-click-titlebar": "menu", "dynamic-workspaces": false,
-    "num-workspaces": 4, "workspaces-only-on-primary": false, "edge-tiling": false,
-    "center-new-windows": false, "attach-modal-dialogs": false, "workspace-names": [],
+    "focus-mode": "click",
+    "focus-new-windows": "smart",
+    "raise-on-click": true,
+    "auto-raise": false,
+    "auto-raise-delay": 500,
+    "focus-change-on-pointer-rest": false,
+    "action-double-click-titlebar": "toggle-maximize",
+    "action-middle-click-titlebar": "lower",
+    "action-right-click-titlebar": "menu",
+    "dynamic-workspaces": false,
+    "num-workspaces": 4,
+    "workspaces-only-on-primary": false,
+    "edge-tiling": false,
+    "center-new-windows": false,
+    "attach-modal-dialogs": false,
+    "workspace-names": [],
 });
 export const COMPOSITOR_PREFERENCES = Object.freeze({
     "enable-animations": true,
@@ -36,36 +46,71 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
 });
 const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [] });
 const TITLEBAR_ACTIONS = new Set([
-    "toggle-maximize", "toggle-maximize-horizontally",
-    "toggle-maximize-vertically", "minimize", "none", "lower", "menu",
+    "toggle-maximize",
+    "toggle-maximize-horizontally",
+    "toggle-maximize-vertically",
+    "minimize",
+    "none",
+    "lower",
+    "menu",
 ]);
 const INPUT_FIELDS = Object.freeze({
-    mouse: { speed: "number", "left-handed": "boolean", "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"] },
-    touchpad: { speed: "number", "left-handed": ["right", "left", "mouse"], "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"],
-        "tap-to-click": "boolean", "tap-button-map": ["default", "lrm", "lmr"], "tap-and-drag": "boolean", "tap-and-drag-lock": "boolean",
-        "disable-while-typing": "boolean", "edge-scrolling-enabled": "boolean", "two-finger-scrolling-enabled": "boolean",
-        "click-method": ["default", "none", "areas", "fingers"] },
-    keyboard: { repeat: "boolean", delay: "milliseconds", "repeat-interval": "milliseconds", "remember-numlock-state": "boolean",
-        "numlock-state": "boolean", "xkb-options": "strings" },
+    mouse: {
+        speed: "number",
+        "left-handed": "boolean",
+        "natural-scroll": "boolean",
+        "accel-profile": ["default", "flat", "adaptive"],
+    },
+    touchpad: {
+        speed: "number",
+        "left-handed": ["right", "left", "mouse"],
+        "natural-scroll": "boolean",
+        "accel-profile": ["default", "flat", "adaptive"],
+        "tap-to-click": "boolean",
+        "tap-button-map": ["default", "lrm", "lmr"],
+        "tap-and-drag": "boolean",
+        "tap-and-drag-lock": "boolean",
+        "disable-while-typing": "boolean",
+        "edge-scrolling-enabled": "boolean",
+        "two-finger-scrolling-enabled": "boolean",
+        "click-method": ["default", "none", "areas", "fingers"],
+    },
+    keyboard: {
+        repeat: "boolean",
+        delay: "milliseconds",
+        "repeat-interval": "milliseconds",
+        "remember-numlock-state": "boolean",
+        "numlock-state": "boolean",
+        "xkb-options": "strings",
+    },
     tablets: { mapping: ["absolute", "relative"], "left-handed": "boolean", "keep-aspect": "boolean" },
-    styluses: { "button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
+    styluses: {
+        "button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
         "secondary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
         "tertiary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
-        "button-keybinding": "string", "secondary-button-keybinding": "string", "tertiary-button-keybinding": "string" },
+        "button-keybinding": "string",
+        "secondary-button-keybinding": "string",
+        "tertiary-button-keybinding": "string",
+    },
 });
-const isTable = value => value !== null && typeof value === "object" && !Array.isArray(value);
+const isTable = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 function validateInputFields(group, values, path) {
     if (!isTable(values)) throw new Error(`${path}: expected a table`);
     for (const [key, value] of Object.entries(values)) {
         const kind = INPUT_FIELDS[group][key];
         if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
-        const valid = Array.isArray(kind) ? kind.includes(value) :
-            kind === "boolean" ? typeof value === "boolean" :
-            kind === "number" ? typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1 :
-            kind === "milliseconds" ? Number.isInteger(value) && value >= 1 && value <= 10000 :
-            kind === "strings" ? Array.isArray(value) && value.every(item => typeof item === "string" && !item.includes("\0")) :
-            typeof value === "string" && !value.includes("\0");
+        const valid = Array.isArray(kind)
+            ? kind.includes(value)
+            : kind === "boolean"
+              ? typeof value === "boolean"
+              : kind === "number"
+                ? typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1
+                : kind === "milliseconds"
+                  ? Number.isInteger(value) && value >= 1 && value <= 10000
+                  : kind === "strings"
+                    ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
+                    : typeof value === "string" && !value.includes("\0");
         if (!valid) throw new Error(`${path}.${key}: invalid value`);
     }
 }
@@ -78,7 +123,13 @@ function validateInput(input) {
         } else if (group === "tablets" || group === "styluses") {
             if (!isTable(values)) throw new Error(`input.${group}: expected a table`);
             for (const [device, fields] of Object.entries(values)) {
-                if (!(group === "tablets" ? /^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$/ : /^(?:[0-9a-fA-F]+|default-[0-9a-fA-F]{4}:[0-9a-fA-F]{4})$/).test(device))
+                if (
+                    !(
+                        group === "tablets"
+                            ? /^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$/
+                            : /^(?:[0-9a-fA-F]+|default-[0-9a-fA-F]{4}:[0-9a-fA-F]{4})$/
+                    ).test(device)
+                )
                     throw new Error(`input.${group}: invalid device identifier ${device}`);
                 validateInputFields(group, fields, `input.${group}.${device}`);
             }
@@ -89,13 +140,22 @@ function validateInput(input) {
 }
 
 function validateInputSources(value) {
-    if (!isTable(value) || Object.keys(value).some(key => !["sources", "per-window"].includes(key)))
+    if (!isTable(value) || Object.keys(value).some((key) => !["sources", "per-window"].includes(key)))
         throw new Error("input-sources must contain sources and per-window only");
     if (value["per-window"] !== undefined && typeof value["per-window"] !== "boolean")
         throw new Error("input-sources.per-window: expected a boolean");
-    if (!Array.isArray(value.sources) || !value.sources.every(source => isTable(source) &&
-        Object.keys(source).length === 2 && ["xkb", "ibus"].includes(source.type) &&
-        typeof source.id === "string" && source.id.length > 0 && !source.id.includes("\0")))
+    if (
+        !Array.isArray(value.sources) ||
+        !value.sources.every(
+            (source) =>
+                isTable(source) &&
+                Object.keys(source).length === 2 &&
+                ["xkb", "ibus"].includes(source.type) &&
+                typeof source.id === "string" &&
+                source.id.length > 0 &&
+                !source.id.includes("\0"),
+        )
+    )
         throw new Error("input-sources.sources: expected {type, id} records");
 }
 
@@ -116,9 +176,13 @@ export const DEFAULTS = Object.freeze({
     keybindings: {},
 });
 
-export let settings = { ...DEFAULTS,
-    "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
-    input: null, "input-sources": null };
+export let settings = {
+    ...DEFAULTS,
+    "window-management": windowDefaults(),
+    compositor: { ...COMPOSITOR_PREFERENCES },
+    input: null,
+    "input-sources": null,
+};
 
 const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
     "blur",
@@ -148,9 +212,13 @@ function compileWindowRuleMatchers(rules) {
 }
 
 export function parseDocument(document) {
-    const next = { ...DEFAULTS,
-        "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
-        input: null, "input-sources": null };
+    const next = {
+        ...DEFAULTS,
+        "window-management": windowDefaults(),
+        compositor: { ...COMPOSITOR_PREFERENCES },
+        input: null,
+        "input-sources": null,
+    };
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
     const windowManagement = document["window-management"] ?? {};
@@ -174,8 +242,11 @@ export function parseDocument(document) {
             if (!Number.isInteger(value) || value < 1 || value > 36)
                 throw new Error(`${key}: expected 1 to 36 workspaces`);
         } else if (key === "workspace-names") {
-            if (!Array.isArray(value) || value.length > 36 ||
-                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0")))
+            if (
+                !Array.isArray(value) ||
+                value.length > 36 ||
+                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0"))
+            )
                 throw new Error(`${key}: expected up to 36 names of at most 80 characters`);
         } else if (typeof value !== "boolean") {
             throw new Error(`${key}: expected a boolean`);
@@ -407,32 +478,69 @@ function acceleratorIdentity(value) {
 }
 
 export function validateShortcuts(document) {
-    const shortcuts = document.shortcuts ?? [];
-    const keybindings = document.keybindings ?? {};
-    if (!Array.isArray(shortcuts) || shortcuts.length > 256)
+    const declarations = document.shortcuts ?? [];
+    const shortcuts = [];
+    const keybindings = Object.fromEntries(
+        Object.entries(document.keybindings ?? {}).map(([group, entries]) => [
+            group,
+            entries && typeof entries === "object" && !Array.isArray(entries) ? { ...entries } : entries,
+        ]),
+    );
+    if (!Array.isArray(declarations) || declarations.length > 256)
         throw new Error("shortcuts must use [[shortcuts]] tables (maximum 256)");
     const names = new Set(),
         accelerators = new Set();
-    for (const entry of shortcuts) {
+    const declaredActions = new Set();
+    for (const entry of declarations) {
         if (
             !entry ||
             typeof entry !== "object" ||
             Array.isArray(entry) ||
-            Object.keys(entry).some((key) => !["name", "binding", "command", "capture-input"].includes(key)) ||
+            Object.keys(entry).some(
+                (key) => !["name", "binding", "command", "action", "capture-input"].includes(key),
+            ) ||
             (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean") ||
             typeof entry.name !== "string" ||
             !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.name) ||
             names.has(entry.name) ||
-            !Array.isArray(entry.command) ||
-            !entry.command.length ||
-            !entry.command[0] ||
-            !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0"))
+            (entry.action === undefined) === (entry.command === undefined)
         )
-            throw new Error("shortcut requires a unique name, binding and nonempty command array");
-        const identity = acceleratorIdentity(entry.binding);
-        if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
+            throw new Error("shortcut requires a unique name and exactly one of action or command");
         names.add(entry.name);
-        accelerators.add(identity);
+        if (entry.action !== undefined) {
+            const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(entry.action);
+            if (!match || !Array.isArray(entry.binding))
+                throw new Error('built-in shortcut requires action = "group.action" and a binding list');
+            const [, namespace, key] = match;
+            const group = namespace === "gnome:shell" ? "shell" : namespace;
+            const actionKey = `${group}.${key}`;
+            if (declaredActions.has(actionKey) || Object.hasOwn(keybindings[group] ?? {}, key))
+                throw new Error(`built-in shortcut action is configured more than once: ${entry.action}`);
+            declaredActions.add(actionKey);
+            const schema = Gio.SettingsSchemaSource.get_default().lookup(KEYBINDING_SCHEMAS[group], true);
+            const nativeKey = gsettingsKey(key);
+            if (!schema?.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
+                throw new Error(`unknown built-in shortcut action: ${entry.action}`);
+            for (const binding of entry.binding) {
+                const identity = acceleratorIdentity(binding);
+                if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);
+                accelerators.add(identity);
+            }
+            keybindings[group] ??= {};
+            keybindings[group][key] = entry.binding;
+        } else {
+            if (
+                !Array.isArray(entry.command) ||
+                !entry.command.length ||
+                !entry.command[0] ||
+                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0"))
+            )
+                throw new Error("command shortcut requires a nonempty command array");
+            const identity = acceleratorIdentity(entry.binding);
+            if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
+            accelerators.add(identity);
+            shortcuts.push(entry);
+        }
     }
     if (!keybindings || typeof keybindings !== "object" || Array.isArray(keybindings))
         throw new Error("keybindings must be a table");
@@ -442,6 +550,7 @@ export function validateShortcuts(document) {
         if (!schema || !entries || typeof entries !== "object" || Array.isArray(entries))
             throw new Error(`unknown keybinding group: ${group}`);
         for (const [key, bindings] of Object.entries(entries)) {
+            if (declaredActions.has(`${group}.${key}`)) continue;
             if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(key))
                 throw new Error(`invalid keybinding name: ${group}.${key}; use snake_case`);
             const nativeKey = gsettingsKey(key);
@@ -490,46 +599,88 @@ export class Shortcuts {
 }
 
 function keybindingVariant(groups) {
-    return new GLib.Variant("a{sv}", Object.fromEntries(
-        Object.entries(groups).map(([group, entries]) => [group, new GLib.Variant("a{sv}", Object.fromEntries(
-            Object.entries(entries).map(([key, bindings]) => [gsettingsKey(key), new GLib.Variant("as", bindings)]),
-        ))]),
-    ));
+    return new GLib.Variant(
+        "a{sv}",
+        Object.fromEntries(
+            Object.entries(groups).map(([group, entries]) => [
+                group,
+                new GLib.Variant(
+                    "a{sv}",
+                    Object.fromEntries(
+                        Object.entries(entries).map(([key, bindings]) => [
+                            gsettingsKey(key),
+                            new GLib.Variant("as", bindings),
+                        ]),
+                    ),
+                ),
+            ]),
+        ),
+    );
 }
 
 export function applyWindowPreferences(preferences) {
-    const values = Object.fromEntries(Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
-        key,
-        new GLib.Variant(Array.isArray(fallback) ? "as" : typeof fallback === "boolean" ? "b" : typeof fallback === "number" ? "i" : "s",
-            preferences[key] ?? fallback),
-    ]));
+    const values = Object.fromEntries(
+        Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
+            key,
+            new GLib.Variant(
+                Array.isArray(fallback)
+                    ? "as"
+                    : typeof fallback === "boolean"
+                      ? "b"
+                      : typeof fallback === "number"
+                        ? "i"
+                        : "s",
+                preferences[key] ?? fallback,
+            ),
+        ]),
+    );
     Meta.prefs_apply_gnoblin_window_preferences(new GLib.Variant("a{sv}", values));
 }
 
 export function applyCompositorPreferences(preferences) {
-    const values = Object.fromEntries(Object.entries(COMPOSITOR_PREFERENCES).map(([key, fallback]) => [
-        key, new GLib.Variant(typeof fallback === "boolean" ? "b" : "s", preferences[key] ?? fallback),
-    ]));
+    const values = Object.fromEntries(
+        Object.entries(COMPOSITOR_PREFERENCES).map(([key, fallback]) => [
+            key,
+            new GLib.Variant(typeof fallback === "boolean" ? "b" : "s", preferences[key] ?? fallback),
+        ]),
+    );
     Meta.prefs_apply_gnoblin_compositor_preferences(new GLib.Variant("a{sv}", values));
 }
 
 function inputVariant(group, values) {
-    return new GLib.Variant("a{sv}", Object.fromEntries(Object.entries(values).map(([key, value]) => {
-        if (group === "tablets" || group === "styluses")
-            return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
-        const type = Array.isArray(value) ? "as" : typeof value === "boolean" ? "b" :
-            typeof value === "number" ? key === "speed" ? "d" : "u" : "s";
-        return [key, new GLib.Variant(type, value)];
-    })));
+    return new GLib.Variant(
+        "a{sv}",
+        Object.fromEntries(
+            Object.entries(values).map(([key, value]) => {
+                if (group === "tablets" || group === "styluses")
+                    return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
+                const type = Array.isArray(value)
+                    ? "as"
+                    : typeof value === "boolean"
+                      ? "b"
+                      : typeof value === "number"
+                        ? key === "speed"
+                            ? "d"
+                            : "u"
+                        : "s";
+                return [key, new GLib.Variant(type, value)];
+            }),
+        ),
+    );
 }
 
 export function applyInputPreferences(input) {
-    const groups = Object.fromEntries(Object.entries(input ?? {})
-        .filter(([key]) => key !== "orientation-lock")
-        .map(([key, value]) => [key, inputVariant(key, value)]));
+    const groups = Object.fromEntries(
+        Object.entries(input ?? {})
+            .filter(([key]) => key !== "orientation-lock")
+            .map(([key, value]) => [key, inputVariant(key, value)]),
+    );
     global.display.apply_gnoblin_input_config(input === null ? null : new GLib.Variant("a{sv}", groups));
-    Meta.prefs_apply_gnoblin_keyboard_preferences(input?.keyboard?.["xkb-options"] !== undefined
-        ? inputVariant("keyboard", { "xkb-options": input.keyboard["xkb-options"] }) : null);
+    Meta.prefs_apply_gnoblin_keyboard_preferences(
+        input?.keyboard?.["xkb-options"] !== undefined
+            ? inputVariant("keyboard", { "xkb-options": input.keyboard["xkb-options"] })
+            : null,
+    );
     const orientationManager = global.backend.get_orientation_manager();
     if (input && Object.hasOwn(input, "orientation-lock"))
         orientationManager.set_orientation_locked(input["orientation-lock"]);
@@ -828,7 +979,18 @@ export class ConfigFile {
                     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)))
                     : item;
             });
-        const live = new Set(["cursor", "window-management", "compositor", "input", "input-sources", "shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
+        const live = new Set([
+            "cursor",
+            "window-management",
+            "compositor",
+            "input",
+            "input-sources",
+            "shell",
+            "window-rules",
+            "shortcuts",
+            "keybindings",
+            "permissions",
+        ]);
         for (const key of new Set([...Object.keys(previous), ...Object.keys(document)])) {
             if (!live.has(key) && stable(previous[key]) !== stable(document[key]))
                 throw new Error(`${key}: edit the config file and reload; protocol changes need a new session`);

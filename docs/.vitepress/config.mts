@@ -50,7 +50,6 @@ export default defineConfig({
                         link: "/config/configure",
                         items: [
                             { text: "shell", link: "/config/configure/shell" },
-                            { text: "keybindings", link: "/config/configure/keybindings" },
                             { text: "window_management", link: "/config/configure/window_management" },
                             { text: "compositor", link: "/config/configure/compositor" },
                             {

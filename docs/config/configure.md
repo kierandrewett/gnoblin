@@ -13,7 +13,6 @@ Defaults apply before your config loads. Files supplied by your desktop shell ca
 Each entry below is a real top-level key accepted by `gnoblin.configure`.
 
 - [`gnoblin.configure.shell`](/config/configure/shell)
-- [`gnoblin.configure.keybindings`](/config/configure/keybindings)
 - [`gnoblin.configure.window_management`](/config/configure/window_management)
 - [`gnoblin.configure.compositor`](/config/configure/compositor)
 - [`gnoblin.configure.input`](/config/configure/input)
@@ -23,7 +22,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
 - [`gnoblin.configure.frame_renderers`](/config/configure/frame_renderers)
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
-- [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
+- [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) (commands and built-in actions)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
 
 Use [`gnoblin.snapshot()`](/config/snapshot) to inspect a copy of the config assembled so far. See [recipes](/recipes/) for complete examples and [file loading](/guides/files_and_load_order) for include order and reload behavior.

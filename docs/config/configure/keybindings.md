@@ -1,31 +1,28 @@
-# gnoblin.configure.keybindings
+# Older keybindings configuration
 
-Configure this part of `gnoblin.configure` with the `keybindings` key.
+Existing configs can keep using `gnoblin.configure {keybindings = {...}}` to
+override built-in Shell, window-manager, Mutter, and Wayland actions. New
+shortcut settings belong in [`gnoblin.configure.shortcuts`](/config/configure/shortcuts),
+where command shortcuts and built-in actions use one named map.
 
-Override a built-in action by group and action name. For example, bind the
-window-manager `close` action to Super+Q:
+For example, change an older window-close override from:
 
 ```lua
 gnoblin.configure {
-    keybindings = {
-        wm = {close = {"<Super>q"}},
+    keybindings = {wm = {close = {"<Super>q"}}},
+}
+```
+
+to:
+
+```lua
+gnoblin.configure {
+    shortcuts = {
+        close_window = {action = "wm.close", binding = {"<Super>q"}},
     },
 }
 ```
 
-Group names are `shell`, `wm`, `mutter` and `wayland`. Use underscore names
-for actions. Give an action a list of accelerators; an empty list disables its
-binding. Gnoblin applies overrides on reload. Removing an override restores the
-built-in default.
-
-Use [`shortcuts`](/config/configure/shortcuts) to launch commands from keys,
-including media keys.
-
-| Group     | GSettings schema                       |
-| --------- | -------------------------------------- |
-| `shell`   | `org.gnome.shell.keybindings`          |
-| `wm`      | `org.gnome.desktop.wm.keybindings`     |
-| `mutter`  | `org.gnome.mutter.keybindings`         |
-| `wayland` | `org.gnome.mutter.wayland.keybindings` |
-
-Use `gsettings list-keys SCHEMA` to look up native action names. For example, `show_screenshot_ui` maps to GSettings' `show-screenshot-ui`. See the [shortcuts guide](/guides/shortcuts).
+The compatibility field remains supported. Do not configure the same built-in
+action in both fields. Use `gsettings list-keys` with the schema names in the
+[shortcut reference](/config/configure/shortcuts) to find action names.

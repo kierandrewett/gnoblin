@@ -69,35 +69,33 @@ Command shortcuts are inactive on the lock and login screens.
 
 ```lua
 gnoblin.configure {
-    keybindings = {
-        wm = {
-            close = {"<Super>q"},
+    shortcuts = {
+        close_window = {
+            action = "wm.close",
+            binding = {"<Super>q"},
         },
     },
 }
 ```
 
-Here `wm` selects window-management actions and `close` names the action.
-Action names use underscores in Gnoblin config. For example, GSettings' key
-`show-screenshot-ui` is `show_screenshot_ui` here.
-To see available action names in the GNOME catalogue:
+`action` uses a group and action name. Action names use underscores, even
+though GSettings displays hyphens. Use `gsettings list-keys SCHEMA` to find
+available names:
 
 ```sh
 gsettings list-keys org.gnome.desktop.wm.keybindings
+gsettings list-keys org.gnome.shell.keybindings
+gsettings list-keys org.gnome.mutter.keybindings
+gsettings list-keys org.gnome.mutter.wayland.keybindings
 ```
 
-The values printed by `gsettings` are GNOME settings; Lua overrides are active
-in Gnoblin and do not appear there.
-
-Other groups are `shell`, `mutter` and `wayland`. See the
-[keybinding groups](/config/configure/keybindings) for their
-GSettings schema names.
-
-Use an empty list to disable an action, for example `close = {}`.
-These overrides live in Gnoblin's native keybinding table and persist in the
-Lua file. Removing an entry restores its built-in default on reload. The
-bundled media-key commands are named entries in `shortcuts`, so you can change
-or disable them by name in the same file.
+The corresponding action names use the groups `wm`, `gnome:shell`, `mutter`
+and `wayland`. For example, `show-screenshot-ui` is
+`gnome:shell.show_screenshot_ui`. The values printed by `gsettings` list
+available actions; active Gnoblin overrides are in the Lua config. Use an
+empty binding list to disable an action. Removing the entry restores its
+built-in default on reload. Commands and built-in actions share the same
+`shortcuts` map.
 
 ## Avoid conflicts
 
