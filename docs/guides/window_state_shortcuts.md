@@ -12,11 +12,9 @@ then run `gnoblinctl config reload`:
 
 ```lua
 gnoblin.configure {
-    keybindings = {
-        wm = {
-            minimize = {},
-            unmaximize = {},
-        },
+    shortcuts = {
+        disable_minimize = {action = "wm.minimize", binding = {}},
+        disable_unmaximize = {action = "wm.unmaximize", binding = {}},
     },
 }
 ```

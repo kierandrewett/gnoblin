@@ -62,8 +62,8 @@ int main(void) {
 
     const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
     if (source_root) {
-        g_autofree char* example = g_build_filename(source_root, "src", "data",
-                                                     "init.lua.example", NULL);
+        g_autofree char* example =
+            g_build_filename(source_root, "src", "data", "init.lua.example", NULL);
         g_autofree char* example_source = NULL;
         g_assert_true(g_file_get_contents(example, &example_source, NULL, &error));
         g_assert_no_error(error);
@@ -76,8 +76,8 @@ int main(void) {
         g_autoptr(GVariant) example_shortcuts =
             g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
         g_assert_nonnull(example_shortcuts);
-        /* The seeded file keeps the shell fragment plus its ten own shortcuts. */
-        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 11);
+        /* The seed has ten commands, two built-in actions and one shell shortcut. */
+        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 13);
     }
 
     g_assert_true(g_file_set_contents(explicit_root, "return { shell={osd=true} }\n", -1, &error));

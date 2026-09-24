@@ -147,17 +147,12 @@ gnoblin.configure {
     frame_renderers = {},
     -- Example: frame_renderers = {my_frame = {"/usr/local/bin/my-frame"}},
 
-    -- Built-in Mutter/Shell bindings. Group names are shell, wm, mutter,
-    -- wayland. Action keys use underscores; use an empty list to disable one.
-    keybindings = {
-        shell = {show_screenshot_ui = {"Print"}},
-        wm = {close = {"<Alt>F4"}},
-    },
-
-    -- Command shortcuts, including media keys, live in this named map.
+    -- Command and built-in action shortcuts live in this named map.
     -- An entry with the same name overrides imported fields. Set enable =
     -- false to disable one. Accelerators use GTK syntax, such as <Super>Return.
     shortcuts = {
+        screenshot = {action = "gnome:shell.show_screenshot_ui", binding = {"Print"}},
+        close_window = {action = "wm.close", binding = {"<Alt>F4"}},
         ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
         ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
         ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
