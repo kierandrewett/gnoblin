@@ -13,6 +13,31 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
 
+## Migrate older config calls
+
+You can keep existing configs and migrate them a piece at a time. Replace the older named-entry calls with the matching `gnoblin.configure` map:
+
+These older functions are deprecated and may be removed at any time. Each config refresh that executes one prints a warning with its migration path. Move to the current forms below.
+
+| Older call                                  | Current form                                          |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `gnoblin.shortcut {name = "terminal", ...}` | `gnoblin.configure.shortcuts.terminal = {...}`        |
+| `gnoblin.autostart {name = "panel", ...}`   | `gnoblin.configure.autostart.panel = {...}`           |
+| `gnoblin.remove_shortcut("terminal")`       | `gnoblin.configure.shortcuts.terminal.enable = false` |
+| `gnoblin.remove_autostart("panel")`         | `gnoblin.configure.autostart.panel.enable = false`    |
+
+For `gnoblin.set`, move the values into `gnoblin.configure` and use the public keys from the reference. For example, change the internal `minimize-duration` key to `minimize_duration`:
+
+```lua
+-- Older form
+gnoblin.set {shell = {["minimize-duration"] = 150}}
+
+-- Current form
+gnoblin.configure {shell = {minimize_duration = 150}}
+```
+
+Disabling an autostart entry affects future launches; it does not stop a process that is already running.
+
 ## First config
 
 On first login, `gnoblin-session` copies the packaged reference config to `~/.config/gnoblin/init.lua` when no Lua or legacy config exists. It does not replace an existing config. Edit that file to configure Gnoblin.
@@ -22,25 +47,4 @@ gnoblinctl config path
 gnoblinctl config reload
 ```
 
-See [configuration recipes](/recipes) for complete examples and the [guides](/guides/window_rules) for task-based instructions.
-
-## Deprecated compatibility functions
-
-`gnoblin.shortcut`, `gnoblin.autostart`, `gnoblin.remove_shortcut`,
-`gnoblin.remove_autostart`, and `gnoblin.set` are deprecated. Older configs may
-continue to use them for now, but they may be removed at any time. Each config
-refresh that executes one prints a warning with its migration path. Migrate to
-`gnoblin.configure` now.
-
-- Replace `gnoblin.shortcut {name = "terminal", binding = ..., command = ...}`
-  with `gnoblin.configure {shortcuts = {terminal = {binding = ..., command = ...}}}`.
-- Replace `gnoblin.autostart {name = "panel", command = ...}` with
-  `gnoblin.configure {autostart = {panel = {command = ...}}}`.
-- Replace `gnoblin.remove_shortcut("terminal")` by removing `terminal` from
-  `gnoblin.configure.shortcuts`; to disable an imported shortcut, set
-  `gnoblin.configure.shortcuts.terminal.enable = false`.
-- Replace `gnoblin.remove_autostart("panel")` by removing `panel` from
-  `gnoblin.configure.autostart`; to disable an imported command, set
-  `gnoblin.configure.autostart.panel.enable = false`.
-- Replace `gnoblin.set { ... }` with `gnoblin.configure { ... }`, using public
-  `snake_case` setting names.
+See [configuration recipes](/recipes/) for complete examples and the [guides](/guides/window_rules) for task-based instructions.

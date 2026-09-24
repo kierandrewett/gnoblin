@@ -11,7 +11,7 @@ Gnoblin is a fork of GNOME Shell with layer-shell support. Pair it with Bingux o
 ## Configure
 
 - [Configuration API](/config)
-- [Configuration recipes](/recipes)
+- [Configuration recipes](/recipes/)
 - [Configuration guides](/guides/window_rules)
 
 ## Develop

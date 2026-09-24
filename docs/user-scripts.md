@@ -51,36 +51,39 @@ socket and other resource that must not survive a reload.
 
 ## Script API
 
-| Call | Result |
-| --- | --- |
-| `api.log(...values)` | Write a log message prefixed with the script name |
-| `api.version()` | Return Gnoblin Shell's version string |
-| `api.getFeature(id)` | Read a Shell feature switch |
-| `api.setFeature(id, enabled)` | Change a Shell feature switch |
-| `api.reloadShell()` | Soft-reload config, theme and scripts |
-| `api.on(event, callback)` | Subscribe to an event; return a function that unsubscribes |
-| `api.addCleanup(callback)` | Register cleanup for reload or unload; return a function that runs it early |
-| `api.handleCompositorOperation(name, handler)` | Register a namespaced bridge operation; return a cleanup function |
-| `api.onCompositorClientClosed(callback)` | Observe bridge clients disconnecting; return a cleanup function |
+| Call                                           | Result                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `api.log(...values)`                           | Write a log message prefixed with the script name                                                            |
+| `api.version()`                                | Return Gnoblin Shell's version string                                                                        |
+| `api.getFeature(id)`                           | Read a Shell feature switch                                                                                  |
+| `api.setFeature(id, enabled)`                  | Change a Shell feature switch                                                                                |
+| `api.reloadShell()`                            | Soft-reload config, theme and scripts                                                                        |
+| `api.on(event, callback)`                      | Subscribe to an event; return a function that unsubscribes                                                   |
+| `api.addCleanup(callback)`                     | Register cleanup for reload or unload; return a function that runs it early                                  |
+| `api.handleCompositorOperation(name, handler)` | Register a namespaced bridge operation; return a cleanup function                                            |
+| `api.onCompositorClientClosed(callback)`       | Observe bridge clients disconnecting; callback receives the client's opaque token; return a cleanup function |
 
 Find feature IDs with `gnoblinctl feature list`. Supported event names are:
 
-| Event | Callback argument |
-| --- | --- |
-| `window-opened` | A GNOME Shell `Meta.Window` object |
-| `workspace-changed` | Zero-based active workspace index |
+| Event               | Callback argument                  |
+| ------------------- | ---------------------------------- |
+| `window-opened`     | A GNOME Shell `Meta.Window` object |
+| `workspace-changed` | Zero-based active workspace index  |
 
 The `Meta.Window` argument is an in-process GNOME object, not the bridge's JSON
 window record. A script that calls GNOME internals may need adjustment when the
 underlying GNOME version changes. Use the bridge when an external shell needs a
 stable, serializable window record.
 
-Bridge operation names must be namespaced, such as `example.inspect`. The
-handler receives `(request, peer)`. `peer.client` is an opaque connection ID,
-`peer.pid` is the client's process ID, and `peer.send(record)` sends one event
-to that client. `peer.sendTo(clientId, record)` and
-`peer.broadcast(record, clientIds)` send to other active clients. The
-`peer.isOpen()` check is useful before completing asynchronous work. A handler
+Operation names have the form `namespace.operation`: each part starts with a
+lowercase letter and may continue with lowercase letters, digits or hyphens.
+The handler receives `(request, peer)`. `peer.client` is an opaque token and
+`peer.pid` is the client's process ID. `peer.send(record)` sends an event to
+the requesting client. `peer.sendTo(token, record)` sends to another active
+client, and `peer.broadcast(record[, tokens])` sends to all clients or the
+listed active clients. Tokens are only useful while their connection is open;
+`api.onCompositorClientClosed(callback)` reports a token when its connection
+closes. Check `peer.isOpen()` before completing asynchronous work. A handler
 can use GJS directly, but should validate each request and keep shell-specific
 policy in the package or script that owns it.
 
