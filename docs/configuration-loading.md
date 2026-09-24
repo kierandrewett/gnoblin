@@ -122,7 +122,9 @@ end
 
 This example disables imported command shortcuts whose names start with
 `shell-`. The snapshot contains only declarations loaded before the call.
-It does not query live key grabs or GNOME Settings Daemon bindings.
+`snapshot().keybindings` contains built-in action overrides declared so far,
+not the complete catalogue of defaults. Lua runs before the compositor grabs
+the keys, so neither table can report which grabs succeeded at runtime.
 
 ## Use a Lua module
 

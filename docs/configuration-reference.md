@@ -77,8 +77,8 @@ example, configure `show_screenshot_ui` for GSettings' `show-screenshot-ui`.
 Groups: `shell`, `wm`, `mutter`, `wayland`. Empty action lists disable the
 binding. Gnoblin applies these to Mutter's native keybinding table on reload;
 the Lua file owns persistence. Removing an override restores the built-in
-default. GNOME Settings Daemon media keys are a separate service and are not
-configured by this table.
+default. Media keys are [command shortcuts in Lua](shortcuts.md#media-keys),
+not built-in `keybindings` actions.
 
 Guides: [shortcuts](shortcuts.md), [autostart](autostart.md),
 [restore or minimise](window-state-shortcuts.md).

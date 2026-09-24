@@ -102,8 +102,31 @@ GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
 These overrides live in Gnoblin's native keybinding table and persist in the
-Lua file. Removing an entry restores its built-in default on reload. Media keys
-handled by GNOME Settings Daemon are outside this table.
+Lua file. Removing an entry restores its built-in default on reload.
+
+## Media keys
+
+Volume, brightness and playback keys are ordinary Gnoblin command shortcuts
+in the editable first-login `init.lua`. For example:
+
+```lua
+gnoblin.shortcut {
+    name = "volume-up",
+    binding = "XF86AudioRaiseVolume",
+    command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"},
+}
+```
+
+Change or disable them in Lua like any other named shortcut. Gnoblin does not
+start GNOME Settings Daemon's media-key handler in its session.
+
+## Inspect shortcuts loaded so far
+
+`gnoblin.snapshot().shortcuts` is a copy of command shortcuts declared before
+the call. You can [loop over it](configuration-loading.md#inspect-loaded-settings)
+while changing the config. Built-in actions in `keybindings` are a separate
+table. The snapshot is taken while Lua loads, before the compositor registers
+keys, so it is not a live list of successful key grabs.
 
 ## Avoid conflicts
 
