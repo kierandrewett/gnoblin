@@ -85,17 +85,14 @@ place_actor_on_output (MetaWaylandSessionLockSurface *lock_surface,
                        MetaSurfaceActor              *actor)
 {
   MtkRectangle layout = get_output_layout (lock_surface);
-  MetaWaylandSurface *surface =
-    meta_wayland_session_lock_surface_get_wayland_surface (lock_surface);
-  MetaWindow *window = meta_wayland_surface_get_window (surface);
 
   /* The private lock scene is stage-relative. MetaSurfaceActor coordinates are
    * normally relative to MetaWindowActor, so preserve the assigned output's
-   * logical origin while it is parented directly under the lock scene. */
+   * logical origin while it is parented directly under the lock scene. The
+   * buffer dimensions were already accepted against the configure; do not
+   * move/resize the MetaWindow here because it is not ready during its first
+   * mapped commit. */
   clutter_actor_set_position (CLUTTER_ACTOR (actor), layout.x, layout.y);
-  if (window)
-    meta_window_move_resize_frame (window, FALSE, layout.x, layout.y,
-                                   layout.width, layout.height);
 }
 
 static void
@@ -233,7 +230,10 @@ apply_state (MetaWaylandSurfaceRole  *surface_role,
                               "buffer must match acknowledged configure size");
       return;
     }
-  lock_surface->mapped = TRUE;
+  /* An empty commit carries no lock pixels. Do not admit this role to scene
+   * placement or input until an acknowledged, non-NULL buffer was applied. */
+  if (pending->newly_attached && pending->buffer)
+    lock_surface->mapped = TRUE;
 }
 
 static void
@@ -297,6 +297,22 @@ configure (MetaWaylandShellSurface        *shell_surface,
 }
 
 static void
+managed (MetaWaylandShellSurface *shell_surface,
+         MetaWindow              *window)
+{
+  /* Lock surfaces do not have shell-managed state to synchronize.  Mutter
+   * still calls this vfunc while constructing their MetaWindow. */
+}
+
+static void
+ping (MetaWaylandShellSurface *shell_surface,
+      uint32_t                 serial)
+{
+  /* ext-session-lock-v1 has no ping/pong request pair. Keep the vfunc valid
+   * because generic MetaWindow code may still request a shell ping. */
+}
+
+static void
 close_shell_surface (MetaWaylandShellSurface *shell_surface)
 {
   meta_wayland_session_lock_surface_close (
@@ -328,6 +344,8 @@ meta_wayland_session_lock_surface_class_init (MetaWaylandSessionLockSurfaceClass
   role_class->post_apply_state = post_apply_state;
   role_class->get_toplevel = get_toplevel;
   shell_class->configure = configure;
+  shell_class->managed = managed;
+  shell_class->ping = ping;
   shell_class->close = close_shell_surface;
 }
 

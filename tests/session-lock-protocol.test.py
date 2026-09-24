@@ -81,8 +81,12 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("meta_wayland_session_lock_get_scene", source)
         self.assertIn("clutter_actor_remove_child", source)
         self.assertIn("clutter_actor_set_position", source)
-        self.assertIn("meta_window_move_resize_frame", source)
+        self.assertNotIn("meta_window_move_resize_frame", source)
+        self.assertIn("not ready during its first", source)
+        self.assertIn("pending->newly_attached && pending->buffer", source)
         self.assertIn("wl_client_post_no_memory", source)
+        self.assertIn("shell_class->managed = managed", source)
+        self.assertIn("shell_class->ping = ping", source)
 
     def test_manager_rejects_duplicate_outputs_and_precommitted_roles(self):
         source = SOURCE.read_text()
