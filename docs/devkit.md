@@ -16,6 +16,11 @@ GNOBLIN_PREFIX="$PWD/install" just preview
 A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor.
 
+![A calculator window in a Gnoblin devkit desktop with a separate shell](images/gnoblin-example-desktop.png)
+
+*This capture shows Gnoblin managing the application window while Bingux,
+which is a separate project, provides the visible desktop shell.*
+
 To choose a terminal explicitly:
 
 ```sh
@@ -71,6 +76,20 @@ This creates disposable home, config, data, cache, state and runtime directories
 and removes them when the devkit closes. The viewer still connects to your host
 Wayland session and may use its PipeWire socket. Use a VM when the guest must be
 fully separate from host services. Check the image before publishing it.
+
+### Documentation captures
+
+The checked-in documentation scenes can be recaptured with:
+
+```sh
+scripts/capture-doc-examples.sh [desktop|console|all]
+```
+
+The script starts Gnoblin in a disposable profile, configures Waybar, Mako,
+Fuzzel and Foot for the desktop scene, and writes PNGs to `docs/images/`.
+Pass a second argument to choose another output directory. It needs a visible
+Wayland session, `grim`, the desktop applications used by the selected scene,
+and an installed Adwaita Hyprcursor theme (or a built theme in `build/`).
 
 The [private test harness](testing.md) is for automated checks.
 A devkit run does not verify the installed login session.

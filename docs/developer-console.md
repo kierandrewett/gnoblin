@@ -3,6 +3,11 @@
 Press **Alt+F2** to open the console in an unlocked Gnoblin session.
 Choose JavaScript or Lua using the tabs above the prompt.
 
+![Gnoblin's developer console open in JavaScript mode](images/gnoblin-developer-console.png)
+
+To capture it from a disposable devkit profile, run
+`scripts/capture-doc-examples.sh console`.
+
 Disable the Alt+F2 binding in `~/.config/gnoblin/init.lua` with:
 
 ```lua
