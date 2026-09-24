@@ -299,6 +299,12 @@ static int lua_set(lua_State* state) {
     lua_pop(state, 2);
     return 0;
 }
+static int lua_legacy_set(lua_State* state) {
+    g_warning("gnoblin.set is deprecated and may be removed at any time; migrate to "
+              "gnoblin.configure with public snake_case setting names");
+    return lua_set(state);
+}
+
 
 static gboolean is_keybinding_action_name(const char* key) {
     if (!key || !*key) return FALSE;
@@ -410,6 +416,15 @@ static void push_config_list(lua_State* state) {
 }
 
 /* Named commands merge in place; ordered rules always append. */
+    const char* api = lua_tostring(state, lua_upvalueindex(4));
+    if (api && *api) {
+        const char* migration =
+            !strcmp(api, "gnoblin.shortcut")
+                ? "migrate to gnoblin.configure {shortcuts = {{name = ..., binding = ..., command "
+                  "= ...}}}"
+                : "migrate to gnoblin.configure {autostart = {{name = ..., command = ...}}}";
+        g_warning("%s is deprecated and may be removed at any time; %s", api, migration);
+    }
 static int lua_declare(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     push_settings(state, 1, NULL, 0, 0);
@@ -441,6 +456,14 @@ static int lua_declare(lua_State* state) {
     return 0;
 }
 
+    const char* api = lua_tostring(state, lua_upvalueindex(4));
+    if (api && *api) {
+        const char* migration =
+            !strcmp(api, "gnoblin.remove_shortcut")
+                ? "migrate by removing that name from gnoblin.configure {shortcuts = {...}}"
+                : "migrate by removing that name from gnoblin.configure {autostart = {...}}";
+        g_warning("%s is deprecated and may be removed at any time; %s", api, migration);
+    }
 static int lua_remove_declaration(lua_State* state) {
     const char* name = luaL_checkstring(state, 1);
     push_config_list(state);
@@ -546,8 +569,7 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_newtable(state);
     lua_newtable(state);
     lua_setfield(state, -2, "config");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_set, 1);
+    lua_pushcfunction(state, lua_legacy_set);
     lua_setfield(state, -2, "set");
     lua_pushcfunction(state, lua_configure);
     lua_setfield(state, -2, "configure");
@@ -566,7 +588,13 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_pushstring(state, declarations[i].section);
         lua_pushstring(state, declarations[i].key);
         lua_pushboolean(state, declarations[i].named);
-        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 3);
+        lua_pushstring(
+            state, !strcmp(declarations[i].name, "shortcut")           ? "gnoblin.shortcut"
+                   : !strcmp(declarations[i].name, "autostart")        ? "gnoblin.autostart"
+                   : !strcmp(declarations[i].name, "remove_shortcut")  ? "gnoblin.remove_shortcut"
+                   : !strcmp(declarations[i].name, "remove_autostart") ? "gnoblin.remove_autostart"
+                                                                       : "");
+        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 4);
         lua_setfield(state, -2, declarations[i].name);
     }
     lua_pushlightuserdata(state, config);

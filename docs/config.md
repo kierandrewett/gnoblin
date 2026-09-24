@@ -113,3 +113,22 @@ availability, or changing `layer_shell.preserve_active_window`.
 Some settings persist after you remove them from Lua. See
 [reload and persistence](/config/files_and_load_order#reload-and-persistence).
 If an edit does nothing, start with [troubleshooting](/troubleshooting).
+
+## Deprecated compatibility functions
+
+`gnoblin.shortcut`, `gnoblin.autostart`, `gnoblin.remove_shortcut`,
+`gnoblin.remove_autostart`, and `gnoblin.set` are deprecated. They are retained
+for older configs and may be removed at any time. Every config refresh that
+executes one of these functions prints a warning with its migration path; move
+to the replacement API now.
+
+- Replace `gnoblin.shortcut {name = ..., ...}` with
+  `gnoblin.configure {shortcuts = {{name = ..., ...}}}`.
+- Replace `gnoblin.autostart {name = ..., ...}` with
+  `gnoblin.configure {autostart = {{name = ..., ...}}}`.
+- Replace `gnoblin.remove_shortcut(name)` by removing that named entry from the
+  `shortcuts` list passed to `gnoblin.configure`.
+- Replace `gnoblin.remove_autostart(name)` by removing that named entry from
+  the `autostart` list passed to `gnoblin.configure`.
+- Replace `gnoblin.set { ... }` with `gnoblin.configure { ... }`, using public
+  `snake_case` setting names.
