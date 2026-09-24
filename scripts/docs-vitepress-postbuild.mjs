@@ -74,4 +74,10 @@ for (const [oldSlug, newSlug] of Object.entries(movedConfigPages)) {
     }
 }
 
+for (const oldSlug of ["tablets", "styluses", "orientation_lock"]) {
+    const target = `${base}config/configure/input`;
+    await writeRedirect(path.join(output, "config/configure/input", oldSlug, "index.html"), target);
+    await writeRedirect(path.join(output, `config/configure/input/${oldSlug}.html`), target);
+}
+
 await writeFile(path.join(output, ".nojekyll"), "");
