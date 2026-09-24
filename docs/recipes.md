@@ -1,4 +1,4 @@
-# recipes
+# Configuration recipes
 
 [Configuration reference](/config/configure)
 

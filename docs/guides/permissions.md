@@ -1,4 +1,4 @@
-# permissions
+# Permissions
 
 [Configuration reference](/config/configure)
 

@@ -1,4 +1,4 @@
-# cursors
+# Cursors
 
 [Configuration reference](/config/configure)
 

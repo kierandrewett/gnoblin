@@ -1,4 +1,4 @@
-# window_state_shortcuts
+# Window state shortcuts
 
 [Configuration reference](/config/configure)
 

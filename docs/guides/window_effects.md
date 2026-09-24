@@ -1,4 +1,4 @@
-# window_effects
+# Window effects
 
 [Rule field reference](/config/window_rule)
 
