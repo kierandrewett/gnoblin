@@ -7,11 +7,18 @@ still draws the UI and decides how to group and order windows.
 For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
 connection for you.
 
-## Enable it
+## Availability
 
-Install or link `share/gnoblin/scripts/compositor-bridge.js` into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload`.
-Custom shells can use this directly; Bingux provides its own wiring.
+The bridge is a built-in Gnoblin compositor service. It starts with the
+Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
+not need to be installed under `~/.config/gnoblin/scripts/`. `gnoblinctl window
+list` uses the same socket. Check `gnoblinctl status` before debugging a client
+connection. Older installed builds may not include the built-in service yet;
+[check the running build](source-development.md#verify) when its behaviour
+differs from this reference.
+
+Bingux is a separate shell project that uses this interface. A custom shell can
+connect to it without installing Bingux.
 
 ## Connect
 
@@ -27,9 +34,55 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
+The `hello.version` field is the socket protocol version. Check `features`
+before using optional operations such as `ui-session`, bare Super, blur regions
+or layer animation policy. A validation error is
+`{"event":"error","message":"..."}`; if a valid `command` request fails,
+the error also carries its request `id`. Malformed JSON or excessive input
+closes the socket; ordinary validation errors leave it open.
+
+## Operation index
+
+| `op` | Required fields | Reply or stream |
+| --- | --- | --- |
+| `command` | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error` |
+| `windows` | None | Current `windows` snapshot, then changes |
+| `privacy` | None | Current `privacy` state, then changes |
+| `status` | None | One `status` with binding IDs and active session ID |
+| `bind` | `id`, `accelerator`, `hold` | `bound`, then activation and input events |
+| `activate` | `window` | Focus a window; no success reply |
+| `preview` | `window`, `width`, `height` | One `preview` event |
+| `input-anchor` | None | One `input-anchor` event |
+| `type-text` | `window`, `text` | `typed` or `error` |
+| `shortcut-input` | `name`, `state` | Input handoff; no success reply |
+| `ui-session` | `action`; other fields depend on action | `ui-state` or `ui-command` events |
+| `layer-animation-policy` | `namespace` | One policy event for that layer namespace |
+| `blur-region` | `namespace`, `screen`, `region` | No success reply |
+| `window-drag` | None | Current `window-drag` state, then changes |
+| `snap-offer` | `serial`, `regions` | No success reply; may later get `snap-completed` |
+| `snap-context` | None | One `snap-context` event |
+| `snap-window` | `window`, `monitor`, `target` | Applies a region; no success reply |
+| `stop-sharing`, `stop-recording` | None | Requests stop; no success reply |
+| `end` | Optional `session` for fallback switcher | Ends this client's input session |
+| `clear` | None | Removes this client's bindings and session |
+
+`command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
+`workspace-switch` and `window`. `workspace-switch` needs a one-based
+`workspace`; `window` needs an `action` and a stable window ID or `"active"`.
+The [CLI reference](gnoblinctl.md) lists window actions and arguments. Only
+`command` supplies a correlation ID: match `reply` or `error` by that ID
+because other events can arrive first. A reply with `pending: true` means the
+action was accepted; observe later state to confirm completion.
+
+`capture-windows` returns visible, non-minimised windows in stacking order
+with title, app name, frame position and size, and `bufferWidth` and
+`bufferHeight` for capture. These IDs come from Mutter's window ID, whereas
+`windows` snapshots use a stable sequence string. Obtain an action ID from
+`windows` or `gnoblinctl window list` before sending a `window` action.
+
 ## Example: watch the window list
 
-Run this Python program inside your Gnoblin session after enabling the bridge:
+Run this Python program inside your Gnoblin session:
 
 ```python
 import json
@@ -80,8 +133,9 @@ Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
 `activated` includes id, first, modifiers and time.
 Pointer coordinates are global logical pixels; button 1 is left.
 
-Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking, disconnecting, reloading the script or
-reaching the ten-second timeout also releases the captured input.
+Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking,
+disconnecting or reaching the ten-second timeout also releases the captured
+input.
 
 ## Bare Super and buffered typing
 
@@ -115,7 +169,8 @@ Window records contain id, title, appId, focused, minimized, lastUserTime,
 parent and monitor. IDs are strings, stable for the window's session lifetime.
 
 Skip-taskbar and override-redirect windows are excluded.
-The client chooses grouping and ordering. Stale IDs return an error.
+The client chooses grouping and ordering. Stale IDs return an error. `parent`
+links a transient dialog to its parent; `lastUserTime` is a recency hint.
 
 A subscription with no open windows produces:
 
@@ -163,8 +218,9 @@ Clipboard preparation is limited to 64 formats, 64 MiB and three seconds.
 Failed preparation leaves it unchanged. Native Wayland text input does not
 use the clipboard.
 
-The fallback needs Python, PyGObject, GTK 3 and both installed `scripts/lib/`
-helpers beside the bridge.
+On XWayland, text insertion uses the packaged `gnoblin-clipboard-paste` helper,
+which needs Python, PyGObject and GTK 3. Native Wayland text input does not use
+that helper.
 
 ## Recording and camera activity
 
@@ -172,16 +228,44 @@ helpers beside the bridge.
 recordingElapsed, cameraInUse and locationCaptures.
 
 Location captures list authorised GeoClue desktop IDs. Elapsed time is whole
-seconds and survives script reload; clients can advance it between updates.
+seconds; clients can advance it between updates.
 
 `stop-sharing` stops non-recording remote sessions.
 `stop-recording` stops recording sessions. An encoder owner should use its
 normal finalisation path to save output. These requests do not grant access.
 
+## Coordinate shell processes
+
+`ui-session` shares named state between UI processes. Names match
+`^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
+
+| Action | Fields | Event |
+| --- | --- | --- |
+| `watch` | None | `ui-state` for each owner and later changes |
+| `state` | `name`, `state` object | Publishes `ui-state` |
+| `command` | `name`, `command` | Sends `ui-command` to the owner |
+
+Use the envelope `{"op":"ui-session","action":"watch"}`. Owner disconnect
+publishes `state: null`. A visible layer can include `surface` (its namespace),
+`companions` (up to 16 namespaces), `revealCompanions: true`, and
+`companionsAbove: true` in its state to coordinate panel stacking.
+
+| Operation | Fields | Limit or effect |
+| --- | --- | --- |
+| `blur-region` | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
+| `layer-animation-policy` | `namespace` | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters |
+
+For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
+using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
+The [snapping guide](window-snapping.md#shell-integration) gives the request
+shapes and work-area checks.
+
 ## Limits and disconnects
 
 The socket directory is private to the user.
-Limits: eight clients, 32 bindings per client, 4 MiB output per connection.
+Limits: 32 clients, 32 bindings per client, 64 queued records and 4 MiB queued
+output per connection. An input buffer over 16 KiB or malformed JSON closes the
+connection. A slow reader can also be disconnected when its output queue fills.
 
 Invalid requests return errors. Malformed JSON or excessive input disconnects
 the client. Disconnect releases its bindings and other resources.

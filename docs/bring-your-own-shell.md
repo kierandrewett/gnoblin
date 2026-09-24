@@ -1,7 +1,8 @@
 # Choose a shell
 
 Choose a complete shell or combine a bar, launcher and notification daemon.
-Bingux is optional.
+Bingux is a separate project and one example of a shell built on Gnoblin.
+It is optional.
 
 | Setup                                             | What you get                                        |
 | ------------------------------------------------- | --------------------------------------------------- |
