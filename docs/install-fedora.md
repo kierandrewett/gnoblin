@@ -22,7 +22,7 @@ Use a complete shell or combine individual tools.
 Log out, select **Gnoblin** from the login screen's session selector, and log in.
 In GDM, select your user first, then use the gear menu.
 
-Continue with [configuration](configuration.md).
+Continue with [configuration](/config).
 
 ## Update
 

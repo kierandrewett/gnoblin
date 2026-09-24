@@ -1,6 +1,6 @@
 # gnoblinctl
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Control Gnoblin from a terminal or script. Configure shell panels with that
 shell's own tools.
@@ -113,7 +113,7 @@ gnoblinctl input select xkb us
 ```
 
 Use a capability from `permissions list` and a source from `input list`.
-See [permission policy](permissions.md) and [launch feedback](launch-feedback.md).
+See [permission policy](/config/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
 ## Output for scripts

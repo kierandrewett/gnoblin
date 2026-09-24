@@ -1,6 +1,6 @@
-# Files and load order
+# files_and_load_order
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Start with one `init.lua`. Split it into modules when that makes it easier
 to read.
@@ -124,7 +124,7 @@ and `require`.
 ## Available Lua functions
 
 `gnoblin` is available globally in every loaded file and module.
-See the [function reference](configuration-reference.md#lua-api).
+See the [function reference](/config/reference#lua-api).
 
 Setting names use `snake_case`. The API converts them to Gnoblin's internal
 hyphenated names. String values, shader uniform names and renderer names stay
@@ -139,7 +139,7 @@ Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.
 
 Lua configuration cannot run arbitrary JavaScript. For custom live automation,
-see [user scripts](user-scripts.md); most settings and desktop behavior should
+see [user scripts](/user-scripts); most settings and desktop behavior should
 stay in the supported configuration API.
 
 ## Existing configs
@@ -169,7 +169,7 @@ You can use `gnoblin.configure` after existing component includes without
 rewriting the included files.
 
 If `gnoblin` or `configure` is reported as `nil`, see
-[configuration compatibility](troubleshooting.md#gnoblin-or-configure-is-nil).
+[configuration compatibility](/troubleshooting#gnoblin-or-configure-is-nil).
 
 ## Reload and persistence
 

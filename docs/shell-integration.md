@@ -1,7 +1,7 @@
 # Integrate a desktop shell
 
 These APIs are for shell authors. Desktop configuration starts with
-[the configuration guide](configuration.md).
+[the configuration guide](/config).
 
 ## Dock animation targets
 
@@ -37,10 +37,10 @@ edge until the client submits the new buffer. The client must still set its
 Wayland anchors and margins correctly.
 
 Use a namespace rule with `animation = "none"` when the client owns its
-whole-surface transition. See [animations](animations.md).
+whole-surface transition. See [animations](/config/animations).
 
 ## Input and window control
 
 Use the [compositor bridge](compositor-bridge.md) for shortcuts and window state.
-Use the [window-menu contract](window-menu.md#write-a-handler) for titlebar menus
-and [snapping contract](window-snapping.md#shell-integration) for layout pickers.
+Use the [window-menu contract](/config/window_menu#write-a-handler) for titlebar menus
+and [snapping contract](/config/window_snapping#shell-integration) for layout pickers.

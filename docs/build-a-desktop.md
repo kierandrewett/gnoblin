@@ -18,7 +18,7 @@ Bingux is one separate project built on these interfaces.
 shell, supplies the bar, dock and wallpaper. The dock pins Files, Firefox and
 Terminal from installed desktop entries.*
 
-The [configuration reference](configuration-reference.md) describes the Lua
+The [configuration reference](/config/reference) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
 [compositor bridge](compositor-bridge.md) supplies subscriptions and shortcuts
 to a long-running shell. [Wayland protocols](wayland-protocols.md) serve native
@@ -49,7 +49,7 @@ gnoblin.shortcut {
 
 If your existing `init.lua` loads files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported
-shortcut's existing name when changing its command. [Load order and merging](configuration-loading.md)
+shortcut's existing name when changing its command. [Load order and merging](/config/files_and_load_order)
 explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
@@ -66,8 +66,8 @@ modules or write a module using [window data](compositor-bridge.md#windows-and-c
 Only one notification daemon should own notifications. If your shell handles
 them, leave `shell.notifications` disabled; if it does not, you can enable
 Gnoblin's native service. The same choice applies to a window switcher and
-keyboard-layout popup. See [native features](session-settings.md#native-features)
-and [shortcut conflicts](shortcuts.md#avoid-conflicts).
+keyboard-layout popup. See [native features](/config/session_settings#native-features)
+and [shortcut conflicts](/config/shortcuts#avoid-conflicts).
 
 A dock can use the foreign toplevel protocols for basic window handles or the
 bridge for records, previews, activation and shortcut sessions. Keep window IDs
@@ -88,7 +88,7 @@ several languages.
 | Supply an application titlebar | Frame rule and optional renderer service |
 
 The desktop portal has its own permission policy. Disabling a Wayland protocol
-does not replace [portal permissions](permissions.md) for screen sharing or
+does not replace [portal permissions](/config/permissions) for screen sharing or
 remote control.
 
 ## Work on the desktop in a nested session
@@ -105,7 +105,7 @@ login session.
 
 ## Continue from here
 
-- [Window rules](window-rules.md), [effects](window-effects.md) and [frames](window-frames.md)
-- [Shell integration](shell-integration.md), [window menus](window-menu.md) and [snapping](window-snapping.md)
+- [Window rules](/config/window_rules), [effects](/config/window_effects) and [frames](/config/window_frames)
+- [Shell integration](shell-integration.md), [window menus](/config/window_menu) and [snapping](/config/window_snapping)
 - [Protocol catalog](wayland-protocols.md) and [compositor bridge](compositor-bridge.md)
 - [Troubleshooting](troubleshooting.md) when a component does not appear

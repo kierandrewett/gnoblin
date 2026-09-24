@@ -1,6 +1,6 @@
-# Start programs at login
+# autostart
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Use `autostart` for simple commands. Use a systemd user service when a program
 needs automatic restarts.
@@ -60,4 +60,4 @@ Failed launches are logged and can be retried on a later reload.
 
 Use one string per argument. Commands run without shell expansion, so use
 absolute paths or programs on PATH. For pipes or redirection, explicitly
-invoke a shell; see [command syntax](shortcuts.md#commands-and-shell-syntax).
+invoke a shell; see [command syntax](/config/shortcuts#commands-and-shell-syntax).

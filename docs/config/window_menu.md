@@ -1,6 +1,6 @@
-# Window menu
+# window_menu
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 The window menu contains actions such as Minimise, Maximise and Close. Your
 desktop shell draws it; Gnoblin tells the shell which window it is for and

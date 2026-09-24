@@ -1,6 +1,6 @@
-# Recipes
+# recipes
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Add these snippets to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)`
 lines. Those lines load settings from other files; placing your changes last
@@ -36,7 +36,7 @@ gnoblin.window_rule {
 ```
 
 This adds a terminal shortcut and dims unfocused windows. It does not install or
-start a desktop shell; choose one in [shell setup](bring-your-own-shell.md).
+start a desktop shell; choose one in [shell setup](/bring-your-own-shell).
 If an imported shortcut already uses Super+Enter under another name, override
 that name instead.
 
@@ -89,7 +89,7 @@ gnoblin.window_rule {
 ```
 
 Radius uses logical pixels; smoothing is a 0–1 shape parameter. Automatic mode
-preserves existing client corners. See [corners](window-effects.md#rounded-window-corners)
+preserves existing client corners. See [corners](/config/window_effects#rounded-window-corners)
 for state exceptions and how to force a mask deliberately.
 
 ## Turn off compositor layer animations
@@ -116,7 +116,7 @@ gnoblin.window_rule {
 
 This draws a 36-pixel titlebar when an app asks Gnoblin to provide its frame.
 Apps that draw their own titlebars keep them. `extents` gives the top, right,
-bottom and left sizes in logical pixels. See [titlebar modes](window-frames.md).
+bottom and left sizes in logical pixels. See [titlebar modes](/config/window_frames).
 
 ## Combine rules
 
@@ -172,5 +172,5 @@ Files share the same API. No `require("gnoblin")` or return statement is needed.
 gnoblinctl config reload
 ```
 
-Check the affected window or shortcut. See [troubleshooting](troubleshooting.md)
+Check the affected window or shortcut. See [troubleshooting](/troubleshooting)
 if nothing changes.

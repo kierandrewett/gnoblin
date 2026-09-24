@@ -1,6 +1,6 @@
-# Window rules
+# window_rules
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 A rule has two parts: `match` selects the windows, and the other fields change
 their appearance. Add rules to `~/.config/gnoblin/init.lua` after any
@@ -62,7 +62,7 @@ backslashes unchanged. Replace the example ID with the app's GTK ID or WM class.
 
 `gnoblinctl window list --json` shows titles and window IDs. Its `appId` is a
 desktop-entry ID and can differ from the ID used by rules. To inspect both raw
-IDs, open the [JavaScript console](developer-console.md) with Alt+F2 and run:
+IDs, open the [JavaScript console](/developer-console) with Alt+F2 and run:
 
 ```javascript
 global.get_window_actors().map(({ meta_window: window }) => ({
@@ -82,13 +82,13 @@ a radius from an earlier all-window rule.
 
 Use `gnoblin.window_rule` to add rules without removing earlier ones. Passing
 a complete `window_rules` list to `gnoblin.configure` replaces the old list;
-see [load order](configuration-loading.md#override-or-append).
+see [load order](/config/files_and_load_order#override-or-append).
 
 ## What can a rule change?
 
-- [Effects](window-effects.md): blur, opacity, corners, borders, shadows and shaders.
-- [Titlebars](window-frames.md): decoration policy and renderer.
-- [Layer animations](animations.md#per-surface-animations): entry, exit and timing.
+- [Effects](/config/window_effects): blur, opacity, corners, borders, shadows and shaders.
+- [Titlebars](/config/window_frames): decoration policy and renderer.
+- [Layer animations](/config/animations#per-surface-animations): entry, exit and timing.
 
 Prefer general rules when a behavior should apply to all clients.
 Use app-name exceptions only when you intend different behavior for that app.

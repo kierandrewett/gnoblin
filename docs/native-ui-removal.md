@@ -11,7 +11,7 @@ An external shell owns the bar, dock, launcher and desktop popups.
 - Window-management menu
 - Notifications, unless GNOME's service is explicitly enabled
 
-See [choose a shell](bring-your-own-shell.md) and [native feature settings](session-settings.md#native-features).
+See [choose a shell](bring-your-own-shell.md) and [native feature settings](/config/session_settings#native-features).
 
 ## Kept in Gnoblin
 

@@ -1,6 +1,6 @@
-# Restore or minimise
+# window_state_shortcuts
 
-[Configuration reference](configuration-reference.md)
+[Configuration reference](/config/reference)
 
 Bind Super+Down to restore a maximised/snapped window first, then minimise it
 on a second press.
@@ -52,4 +52,4 @@ gnoblin.window_rule {
 Maximised borders become square. Sides touching the physical monitor edge are
 omitted; sides beside reserved panels remain visible.
 
-See [shortcuts](shortcuts.md) for conflicts and persistent bindings.
+See [shortcuts](/config/shortcuts) for conflicts and persistent bindings.

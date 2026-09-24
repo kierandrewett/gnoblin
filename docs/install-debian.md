@@ -55,7 +55,7 @@ stay under `/usr/lib/gnoblin`; your GNOME session remains installed separately.
 other desktop controls. Then log out, select **Gnoblin** in the login screen's
 session menu, and log in.
 
-Next: [configure Gnoblin](configuration.md).
+Next: [configure Gnoblin](/config).
 
 ## Update
 
