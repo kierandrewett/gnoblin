@@ -8,7 +8,6 @@ gnoblin.configure {
         terminal = {
             binding = "<Super>Return",
             command = {"ptyxis", "--new-window"},
-            capture_input = true,
         },
         screenshot = {
             action = {
@@ -26,9 +25,10 @@ Mutter action. An action has a `schema` and `key`; `schema` must be one of the
 four schema IDs below, and `key` must be a key in that schema. Built-in actions
 require a list of bindings; use an empty list to disable the action. Command
 shortcuts use one binding string and an argv array. Set `capture_input = true`
-to let the launched popup capture keyboard input immediately; it defaults to
-`false`. See the [shortcuts guide](/guides/shortcuts) for key names, conflicts
-and command behavior.
+only when the launched popup implements Gnoblin's keyboard input handoff; it
+defaults to `false`. See [Bare Super and buffered typing](/compositor-bridge#bare-super-and-buffered-typing)
+and the [shortcuts guide](/guides/shortcuts) for key names, conflicts and
+command behavior.
 
 GNOME passes a GSettings object and a key name separately when registering a
 keybinding. Gnoblin's `action` table follows that shape. See the

@@ -12,12 +12,15 @@ gnoblin.permission_rule {
 }
 ```
 
-| Field          | Values                                                                             |
-| -------------- | ---------------------------------------------------------------------------------- |
-| `name`         | Nonempty rule name                                                                 |
-| `match`        | JavaScript regular expression against `app-id:ID` or `host-exe:PATH`               |
-| `capabilities` | `"screen-cast"`, `"remote-desktop"`, `"input-capture"`, `"screenshot"`, `"access"` |
-| `level`        | `"default"`, `"ask"`, `"allow"`, `"deny"`                                          |
-| `monitors`     | Connector names or `"primary"`                                                     |
-| `devices`      | `"keyboard"`, `"pointer"`, `"touchscreen"`; default empty                          |
-| `clipboard`    | Boolean; default `false`                                                           |
+| Field          | Values                                                                                    |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| `name`         | Unique 1–80 character name using letters, digits, `_`, `.`, or `-`; max 256 rules         |
+| `match`        | JavaScript regular expression (max 512 characters) against `app-id:ID` or `host-exe:PATH` |
+| `capabilities` | `"screen-cast"`, `"remote-desktop"`, `"input-capture"`, `"screenshot"`, `"access"`        |
+| `level`        | `"default"`, `"ask"`, `"allow"`, `"deny"`                                                 |
+| `monitors`     | Nonempty connector names or `"primary"`; only for screen cast or remote desktop           |
+| `devices`      | `"keyboard"`, `"pointer"`, `"touchscreen"`; only for remote desktop                       |
+| `clipboard`    | Boolean; only for remote desktop; default `false`                                         |
+
+Rule names must be unique. Any matching deny wins; if none deny, the last
+matching rule decides the request.

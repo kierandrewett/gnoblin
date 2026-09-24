@@ -6,7 +6,7 @@ Evaluate another Lua config file in the current config state. Relative paths res
 gnoblin.load("conf.d/**/*.lua")
 ```
 
-A missing explicit file is an error. Config loading is limited to 32 nested files.
+A missing explicit file is an error. Config loading is limited to 32 active files at once, including the root config.
 
 ## Lua `require`
 

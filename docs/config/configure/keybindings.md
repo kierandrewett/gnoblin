@@ -1,4 +1,4 @@
-# Older keybindings configuration
+# gnoblin.configure.keybindings (legacy)
 
 Existing configs can keep using `gnoblin.configure {keybindings = {...}}` to
 override built-in Shell, window-manager, Mutter, and Wayland actions. New

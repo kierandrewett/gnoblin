@@ -50,6 +50,8 @@ Use `^` and `$` for exact regex matches.
 | `remove_csd`                    | `false`        | Reconstruct supported client corner gaps                      |
 | `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                           |
 | `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states |
+| `corners.border_width`          | `0`            | −40–40 logical pixels                                         |
+| `corners.border_color`          | `#808080ff`    | `#RRGGBB` or `#RRGGBBAA`                                      |
 
 ## Borders and shadows
 

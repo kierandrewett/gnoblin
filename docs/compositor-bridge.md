@@ -157,13 +157,15 @@ input.
 Requires the advertised `overlay-shortcut` feature. Only one bridge client can
 own bare Super; remove a duplicate Lua command binding first.
 
-Super activates on release, excluding chords. With capture enabled, send:
+Super activates on release, excluding chords. With capture enabled, report
+`prepared` once the popup exists. This releases the temporary keyboard grab
+while Gnoblin buffers typing. After the popup's text field receives focus,
+send `ready` so Gnoblin replays the buffered keys:
 
 ```json
 { "op": "shortcut-input", "name": "search", "state": "ready" }
 ```
 
-Send ready only after the layer and text field have keyboard focus.
 Send `state: "closed"` when dismissed. The binding ID is the handoff name.
 
 ## Windows and controls

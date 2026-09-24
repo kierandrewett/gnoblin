@@ -72,9 +72,11 @@ gnoblin.configure {shell = {minimize_duration = 150}}
 The result is a fade lasting 150 milliseconds. Changing the duration does not
 remove the animation choice.
 
-Lists behave differently: supplying `window_rules`, `shortcuts`, `autostart`
-or permission `rules` replaces that list. To add a window rule while keeping
-previous rules, use:
+Direct list settings replace earlier lists when supplied to `gnoblin.configure`.
+Examples include `window_rules`, `permissions.rules`, `input_sources.sources`,
+`window_management.workspace_names` and `input.keyboard.xkb_options`. Named
+`shortcuts` and `autostart` maps merge by entry name. To add a window rule while
+keeping previous rules, use:
 
 ```lua
 gnoblin.window_rule {
@@ -83,10 +85,11 @@ gnoblin.window_rule {
 }
 ```
 
-Named shortcuts and autostart entries merge by name. Use the same name to
-change an imported entry; omitted fields keep their earlier values. Set
-`enable = false` to disable an imported shortcut or autostart entry. Disabling
-autostart does not stop a process that is already running.
+Use the same shortcut or autostart name to change an imported entry; omitted
+fields keep their earlier values. Set `enable = false` to disable an imported
+shortcut or autostart entry. Disabling autostart does not stop a process that
+is already running. `gnoblin.window_rule` and `gnoblin.permission_rule` append
+entries to their respective lists.
 
 Named shortcuts and autostart entries belong under `gnoblin.configure`; see
 the [function reference](/config#functions).
@@ -131,7 +134,7 @@ read arbitrary files, run processes or load native modules.
 Use shortcuts or autostart to launch programs.
 
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
-32 nested files.
+32 active files, including the root config.
 
 Lua configuration cannot run arbitrary JavaScript. For custom live automation,
 see [user scripts](/user-scripts); most settings and desktop behavior should

@@ -1,6 +1,6 @@
 # gnoblin.configure
 
-Set Gnoblin's compositor, input, session and window-management options. Pass a Lua table; map values merge, lists replace, and later values win.
+Set Gnoblin's compositor, input, session and window-management options. Pass a Lua table; nested maps merge and later values win. Direct list values replace earlier lists. Named `shortcuts` and `autostart` entries merge by name. Use `gnoblin.window_rule` and `gnoblin.permission_rule` to append rules.
 
 ```lua
 gnoblin.configure {shell = {minimize_duration = 150}}
@@ -24,5 +24,6 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) (commands and built-in actions)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
+- [`gnoblin.configure.keybindings`](/config/configure/keybindings) (legacy compatibility)
 
 Use [`gnoblin.snapshot()`](/config/snapshot) to inspect a copy of the config assembled so far. See [recipes](/recipes/) for complete examples and [file loading](/guides/files_and_load_order) for include order and reload behavior.

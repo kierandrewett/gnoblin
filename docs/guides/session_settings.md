@@ -103,6 +103,7 @@ interfaces when the session starts and cannot remove them during config reload.
 | `ext_idle_notify`                 | Idle detection                     |
 | `wlr_gamma_control`               | Gamma and colour temperature       |
 | `wlr_output_power_management`     | Display power                      |
+| `ext_session_lock`                | Secure session locking             |
 | `ext_background_effect_v1`        | Client-requested background blur   |
 | `xdg_decoration`                  | Client/server titlebar negotiation |
 | `window_frame_renderer`           | External frame renderer service    |
