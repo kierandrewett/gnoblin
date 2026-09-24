@@ -1,4 +1,4 @@
-# files_and_load_order
+# Files and load order
 
 [Configuration reference](/config/configure)
 

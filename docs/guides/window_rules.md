@@ -1,4 +1,4 @@
-# window_rules
+# Window rules
 
 [Configuration API](/config)
 

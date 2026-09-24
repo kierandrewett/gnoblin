@@ -1,4 +1,4 @@
-# shortcuts
+# Shortcuts
 
 [Configuration reference](/config/configure)
 

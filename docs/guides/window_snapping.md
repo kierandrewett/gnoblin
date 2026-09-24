@@ -1,4 +1,4 @@
-# window_snapping
+# Window snapping
 
 [Configuration reference](/config/configure)
 

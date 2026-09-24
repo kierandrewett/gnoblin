@@ -1,4 +1,4 @@
-# window_frames
+# Window frames
 
 [Configuration API](/config)
 

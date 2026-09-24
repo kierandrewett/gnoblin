@@ -1,4 +1,4 @@
-# session_settings
+# Session settings
 
 [Configuration reference](/config/configure)
 

@@ -1,4 +1,4 @@
-# autostart
+# Autostart
 
 [Configuration reference](/config/configure)
 

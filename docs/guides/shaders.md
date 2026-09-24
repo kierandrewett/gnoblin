@@ -1,4 +1,4 @@
-# shaders
+# Shaders
 
 [Configuration API](/config)
 
