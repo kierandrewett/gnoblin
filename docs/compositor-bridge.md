@@ -65,7 +65,8 @@ closes the socket; ordinary validation errors leave it open.
 | `clear`                          | None                                     | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
-`workspace-switch` and `window`. `workspace-switch` needs a one-based
+`layers`, `workspace-switch` and `window`. `layers` returns the current
+layer-shell surfaces in a `surfaces` array. `workspace-switch` needs a one-based
 `workspace`; `window` needs an `action` and a stable window ID or `"active"`.
 The [CLI reference](gnoblinctl.md) lists window actions and arguments. Only
 `command` supplies a correlation ID: match `reply` or `error` by that ID
