@@ -104,14 +104,64 @@ export default defineConfig({
                 link: "/recipes/",
                 collapsed: true,
                 items: [
-                    { text: "Complete starter config", link: "/recipes/complete-starter-config" },
-                    { text: "Add a shortcut", link: "/recipes/add-a-shortcut" },
-                    { text: "Dim unfocused windows", link: "/recipes/dim-unfocused-windows" },
-                    { text: "Round application windows", link: "/recipes/round-application-windows" },
-                    { text: "Turn off layer animations", link: "/recipes/turn-off-layer-animations" },
-                    { text: "Request a Gnoblin titlebar", link: "/recipes/request-a-titlebar" },
-                    { text: "Combine window rules", link: "/recipes/combine-window-rules" },
-                    { text: "Split a config into files", link: "/recipes/split-config-into-files" },
+                    {
+                        text: "Start and organize a config",
+                        collapsed: true,
+                        items: [
+                            { text: "Complete starter config", link: "/recipes/complete-starter-config" },
+                            { text: "Split a config into files", link: "/recipes/split-config-into-files" },
+                        ],
+                    },
+                    {
+                        text: "Shortcuts and keyboards",
+                        collapsed: true,
+                        items: [
+                            { text: "Add a shortcut", link: "/recipes/add-a-shortcut" },
+                            { text: "Rebind close window", link: "/recipes/rebind-close-window" },
+                            { text: "Make Caps Lock an Escape key", link: "/recipes/caps-lock-as-escape" },
+                            {
+                                text: "Use a different keyboard layout per window",
+                                link: "/recipes/per-window-keyboard-layouts",
+                            },
+                        ],
+                    },
+                    {
+                        text: "Pointing devices",
+                        collapsed: true,
+                        items: [
+                            { text: "Enable touchpad tap-to-click", link: "/recipes/touchpad-tap-to-click" },
+                            { text: "Set up a left-handed mouse", link: "/recipes/left-handed-mouse" },
+                            { text: "Keep tablet drawing proportions", link: "/recipes/tablet-keep-aspect" },
+                            { text: "Switch monitors with a stylus button", link: "/recipes/stylus-switch-monitor" },
+                            { text: "Make the cursor larger", link: "/recipes/larger-cursor" },
+                        ],
+                    },
+                    {
+                        text: "Windows and compositor",
+                        collapsed: true,
+                        items: [
+                            { text: "Dim unfocused windows", link: "/recipes/dim-unfocused-windows" },
+                            { text: "Round application windows", link: "/recipes/round-application-windows" },
+                            { text: "Highlight the focused window", link: "/recipes/accent-focused-windows" },
+                            { text: "Fade one application's windows", link: "/recipes/fade-one-application" },
+                            { text: "Blur one application's background", link: "/recipes/blur-one-application" },
+                            { text: "Tint windows with a shader", link: "/recipes/tint-window-with-shader" },
+                            { text: "Turn off layer animations", link: "/recipes/turn-off-layer-animations" },
+                            { text: "Request a Gnoblin titlebar", link: "/recipes/request-a-titlebar" },
+                            { text: "Center windows and attach dialogs", link: "/recipes/center-windows-and-dialogs" },
+                            { text: "Name fixed workspaces", link: "/recipes/name-fixed-workspaces" },
+                            { text: "Combine window rules", link: "/recipes/combine-window-rules" },
+                            { text: "Disable compositor animations", link: "/recipes/disable-compositor-animations" },
+                        ],
+                    },
+                    {
+                        text: "Permissions and feedback",
+                        collapsed: true,
+                        items: [
+                            { text: "Ask before undecided portal access", link: "/recipes/ask-before-portal-access" },
+                            { text: "Use a visual bell", link: "/recipes/visual-bell" },
+                        ],
+                    },
                 ],
             },
             {
