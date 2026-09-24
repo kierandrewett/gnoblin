@@ -971,7 +971,10 @@ static void meta_wayland_layer_surface_apply_state(MetaWaylandSurfaceRole* surfa
         return;
     }
 
-    unmapping = pending->newly_attached && !pending->buffer;
+    /* A client may explicitly attach NULL for its required initial empty
+     * commit (Waybar does this). There is no mapped surface to unmap yet;
+     * still apply its pending state and send the first configure. */
+    unmapping = layer_surface->configured && pending->newly_attached && !pending->buffer;
     if (unmapping) {
         release_menu_keyboard(layer_surface);
         reset_layer_surface_state(layer_surface);
