@@ -878,7 +878,8 @@ export class Component {
         applyCompositorPreferences(next.compositor);
         applyInputPreferences(next.input);
         Keyboard.configureGnoblinInputSources(next["input-sources"]?.sources ?? null,
-            next["input-sources"]?.["per-window"] ?? false);
+            next["input-sources"]?.["per-window"] ?? false,
+            next.input?.keyboard?.["xkb-options"] ?? null);
         try {
             this._shortcuts.apply(next);
         } catch (error) {
