@@ -10,6 +10,12 @@ lifecycle events.
 
 ## Register a custom animation
 
+Put declarations in your Gnoblin Lua configuration file, usually
+`~/.config/gnoblin/init.lua`, or in a file loaded with `gnoblin.load`. The
+`gnoblin.animation { ... }` call registers a reusable name; a registration
+describes one event. Use that same name in a shell setting or window rule to
+choose where it runs.
+
 ```lua
 gnoblin.animation {
     name = "soft-open",
@@ -22,18 +28,29 @@ gnoblin.animation {
 }
 ```
 
-Later config fragments can replace a registration with the same name or remove
-it with `gnoblin.remove_animation("soft-open")`.
+`name` is a unique identifier (letters, digits, `_` and `-`, up to 80
+characters). `duration` is an integer number of milliseconds from 0 to 10,000.
+Provide `from` and `to`, or use `keyframes`; `ease`, `origin` and `target` are
+optional. Declarations with the same name merge when configuration files are
+loaded. Remove one with `gnoblin.remove_animation("soft-open")`.
 
-Events are `minimize`, `restore`, `open`, `close`, `dialog-open`,
-`dialog-close`, `layer-open`, `layer-close`, `workspace-switch`,
-`console-open`, `console-close`, `shadow-change`, `layer-companion-close`,
-`resize`, `tile-preview-open`, `tile-preview-close`, `dialog-dim`, and
-`dialog-undim`.
+Each declaration uses one event. Choose from this list:
 
-A declaration has one event. These cover Gnoblin-managed window lifecycle and
-resize motion, workspace transitions, layer surfaces and companion dismissal,
-the developer console, shadow changes, tile previews and dialog dimming.
+| Event                                     | Applies to                |
+| ----------------------------------------- | ------------------------- |
+| `minimize`                                | Minimize a window         |
+| `restore`                                 | Restore a window          |
+| `open`, `close`                           | Window lifecycle          |
+| `dialog-open`, `dialog-close`             | Dialog lifecycle          |
+| `dialog-dim`, `dialog-undim`              | Dialog dimming            |
+| `layer-open`, `layer-close`               | Layer surfaces            |
+| `layer-companion-close`                   | Layer companion dismissal |
+| `workspace-switch`                        | Workspace transitions     |
+| `console-open`, `console-close`           | Developer console         |
+| `shadow-change`                           | Window shadow progress    |
+| `resize`                                  | Window resizing           |
+| `tile-preview-open`, `tile-preview-close` | Tiling previews           |
+
 Bingux-owned UI transitions remain Bingux's responsibility.
 
 `from` and `to` describe endpoints; alternatively provide ordered `keyframes`
@@ -52,66 +69,141 @@ gnoblin.animation {
 }
 ```
 
-Animation properties depend on the event target:
+## Properties and keyframes
 
-- Windows, layers, the console and companions: `x`, `y`, `scale`, `scale_x`,
-  `scale_y`, `rotation` (degrees) and `opacity` (0 to 1).
-- Tile previews: `x`, `y`, `width`, `height` and `opacity`.
-- Workspace switching, resizing, shadow changes and dialog dimming: `progress`
-  from 0 to 1.
+Only use properties supported by the event. Values are numbers; lengths and
+translations are logical pixels. `opacity` and `progress` range from 0 to 1.
+Scale is a multiplier where 1 is the original size. `rotation` is in degrees.
 
-`scale` affects both axes. Use `scale_x` and `scale_y` separately for squash
-and stretch.
+| Events                                                                      | Properties                                                     |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Window, dialog, layer, console and companion events                         | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
+| `tile-preview-open`, `tile-preview-close`                                   | `x`, `y`, `width`, `height`, `opacity`                         |
+| `workspace-switch`, `resize`, `shadow-change`, `dialog-dim`, `dialog-undim` | `progress`                                                     |
 
-`origin` accepts a named position or a normalized `{x, y}` pivot:
+`scale` sets both axes; use `scale_x` and `scale_y` independently for squash
+or stretch. `origin` sets the transform pivot. It accepts `center`, `top-left`,
+`top-center`, `top-right`, `bottom-left`, `bottom-center`, `bottom-right`, or
+a normalized Lua pair such as `{0.5, 1}`. Translations move the actor without
+changing the window's underlying geometry.
 
-- Named positions: `center`, `top-left`, `top-center`, `top-right`,
-  `bottom-left`, `bottom-center` and `bottom-right`.
-- `ease` accepts:
-  `linear`, `ease-in-quad`, `ease-out-quad`, `ease-in-cubic`, `ease-out-cubic`,
-  `ease-in-out-cubic`, `ease-out-expo` or `ease-out-back`.
+`from` and `to` are sparse maps: a property omitted at one end keeps its current
+value there. Use keyframes when the motion needs an intermediate pose. `at` is
+normalized timeline time from 0 to 1, and the first and last frame must be at 0
+and 1. List frames in increasing time order. Each property interpolates between
+the frames that define it. A frame's optional `ease` controls the segment that
+ends at that frame; otherwise the declaration's `ease` applies.
 
-For a custom timing curve, use a cubic Bézier value:
+`ease` accepts `linear`, `ease-in-quad`, `ease-out-quad`, `ease-in-cubic`,
+`ease-out-cubic`, `ease-in-out-cubic`, `ease-out-expo` and `ease-out-back`.
+For another curve, use cubic Bézier control points:
 
 ```lua
-ease = {type = "cubic-bezier", x1 = 0.2, y1 = 0.8, x2 = 0.25, y2 = 1}
+gnoblin.animation {
+    name = "elastic-open",
+    event = "open",
+    duration = 420,
+    origin = "bottom-center",
+    ease = {type = "cubic-bezier", x1 = 0.2, y1 = 1.5, x2 = 0.35, y2 = 1},
+    from = {y = 20, scale = 0.88, opacity = 0},
+    to = {y = 0, scale = 1, opacity = 1},
+}
 ```
 
-You can also put `ease` on a keyframe to shape the segment ending there. The
-x control points represent time and must stay between 0 and 1. The y values may
-overshoot for a bounce.
+The x control points represent time and must be from 0 to 1. The y control
+points may range from -2 to 2, so they can overshoot for a bounce. This curve
+changes timing; it does not add spring physics. To make a bounce, add an
+overshooting value in an intermediate keyframe.
 
-Workspace transitions animate a scalar `progress` from 0 to 1. Custom
-`workspace-switch` keyframes can shape that progress.
+Workspace transitions, resize effects, shadow changes and dialog dimming expose
+`progress` from 0 to 1. For these events, animate `progress` and let the effect
+consume it; actor properties such as `x` and `scale` are not accepted.
 
-`target` labels a transition destination for inspection. GNOME minimize and
-restore presets calculate their endpoint from icon or monitor geometry. Custom
-`x` and `y` keyframes are actor translations in logical pixels.
+`target` is an optional label shown by inspection tools. Minimize and restore
+presets calculate their destination from dock/icon or monitor geometry. Custom
+animations should supply their own `x` and `y` values when they need to move
+toward a specific place.
 
-## GNOME presets
+## Recreate a preset
 
-GNOME-style presets use the `gnome-` prefix: `gnome-minimize`, `gnome-restore`,
-`gnome-open`, `gnome-close`, `gnome-dialog-open`, `gnome-dialog-close`, and
-`gnome-workspace-switch`. Gnoblin's layer presets are `gnoblin-layer-open` and
-`gnoblin-layer-close`; GNOME has no layer-shell animation to reproduce.
+For example, this gives a custom `open` animation the same duration, curve,
+pivot and endpoints as `gnome-open`. Register a second declaration for the
+close event, then select both names in one window rule:
 
-GNOME-style presets also include `gnome-resize`,
-`gnome-tile-preview-open`, `gnome-tile-preview-close`, `gnome-dialog-dim`,
-and `gnome-dialog-undim`. Aliases `gnome`, `zoom`, `fade`, `slide`, and
-`none` are also available.
+```lua
+gnoblin.animation {
+    name = "my-open",
+    event = "open",
+    duration = 150,
+    ease = "ease-out-expo",
+    origin = "bottom-center",
+    from = {scale_x = 0.01, scale_y = 0.05, opacity = 0},
+    to = {scale_x = 1, scale_y = 1, opacity = 1},
+}
 
-Gnoblin-specific transitions use `gnoblin-console-open`,
-`gnoblin-console-close`, and `gnoblin-shadow-change`. Console transitions
-animate the internal developer console; shadow changes drive the shadow
-effect's progress.
+gnoblin.animation {
+    name = "my-close",
+    event = "close",
+    duration = 150,
+    ease = "ease-out-quad",
+    from = {scale = 1, opacity = 1},
+    to = {scale = 0.8, opacity = 0},
+}
 
-Tile previews, window resizing, dialog dimming, and layer
-companion dismissal also use the shared registry and can be customized with
-their event names above; the corresponding built-ins include
-`gnoblin-layer-companion-close`.
+gnoblin.window_rule {
+    match = {type = "window", app_id = "^org.example.Editor$"},
+    animation = {open = "my-open", close = "my-close"},
+}
+```
 
-Use `gnoblinctl animation list` to see all registered and built-in names;
-`inspect` shows the resolved event and values.
+This is a literal copy of those preset values. You can now change the
+duration, curve, pivot, endpoints or intermediate keyframes without changing
+other windows. `gnome-minimize` and `gnome-restore` also calculate dynamic
+geometry from the dock icon or monitor. `target` only labels that destination
+for inspection; it does not make a custom animation follow the dock, so use
+those presets when you need their geometry-aware behavior.
+
+## Built-in animations
+
+Preset names are shortcuts for definitions in Gnoblin's shared animation
+registry. The `gnome-*` prefix identifies a profile family: Gnoblin follows
+GNOME Shell's timing and motion where those transitions correspond, and also
+uses the family for Gnoblin events without a direct GNOME Shell equivalent. The
+prefix does not mean GNOME itself provides layer-shell, console or shadow
+presets.
+
+| Preset                                                                | Default profile and motion                                                                                                                  |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnome-minimize`, `gnome-restore`                                     | 400 ms, ease-out expo; travel to/from dock icon geometry, or the monitor edge if no icon geometry is available. Monitor-sized windows fade. |
+| `gnome-open`                                                          | 150 ms, ease-out expo; scales from 0.01 × 0.05 and fades in around the bottom-center pivot.                                                 |
+| `gnome-close`                                                         | 150 ms, ease-out quad; scales to 0.8 and fades out.                                                                                         |
+| `gnome-dialog-open`, `gnome-dialog-close`                             | 100 ms, ease-out quad; vertically expands or collapses and fades on open.                                                                   |
+| `gnome-workspace-switch`                                              | 250 ms, ease-out cubic; eases the workspace transition's `progress`.                                                                        |
+| `gnome-resize`, `gnome-tile-preview-open`, `gnome-tile-preview-close` | 250 ms, ease-out quad; eases the resize or preview geometry supplied by the compositor.                                                     |
+| `gnome-dialog-dim`, `gnome-dialog-undim`                              | 500 ms / 250 ms, ease-out quad; eases dim `progress` in / out.                                                                              |
+| `gnoblin-layer-open`, `gnoblin-layer-close`                           | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
+| `gnoblin-console-open`, `gnoblin-console-close`                       | 140 ms, ease-out quad; slides the console vertically by its height.                                                                         |
+| `gnoblin-shadow-change`                                               | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
+| `gnoblin-layer-companion-close`                                       | 180 ms, ease-in quad; moves the companion actor by its dismissal offset.                                                                    |
+
+These are resolved defaults. Geometry-dependent destinations vary with the
+window, dock, monitor and layer anchors. Custom registrations can replace the
+profile for an event. To inspect resolved values on the current system, run
+`gnoblinctl animation list` and `gnoblinctl animation inspect NAME --window
+active`; use `--layer ID` or `--namespace NAME` for layer surfaces. To see the
+motion itself, start a paused preview and step or seek it as described below.
+
+Aliases `gnome`, `zoom`, `fade`, `slide` and `none` are also available. `none`
+completes immediately. `fade` changes opacity only. `zoom` minimizes toward the
+dock target. `slide` is the legacy default layer policy; layer surfaces slide
+from their anchor-derived offset.
+
+The definitions live in [`gnoblinAnimation.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinAnimation.js).
+Registry validation and selection are in
+[`gnoblinConfig.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js).
+GNOME Shell's corresponding window and workspace transitions are in
+[`windowManager.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/windowManager.js)
+and [`workspacesView.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/workspacesView.js).
 
 ## Select animations
 
