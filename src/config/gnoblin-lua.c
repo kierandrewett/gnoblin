@@ -569,6 +569,10 @@ static int lua_named_entry_index(lua_State* state) {
     g_strdelimit(internal, "_", '-');
     lua_pushstring(state, internal);
     lua_rawget(state, lua_upvalueindex(1));
+    if (!strcmp(key, "enable") && lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        lua_pushboolean(state, TRUE);
+    }
     return 1;
 }
 
@@ -596,6 +600,13 @@ static int lua_named_entry_pairs(lua_State* state) {
             lua_setfield(state, entries, public_key);
         }
         lua_pop(state, 1);
+    }
+    lua_getfield(state, entries, "enable");
+    gboolean has_enable = !lua_isnil(state, -1);
+    lua_pop(state, 1);
+    if (!has_enable) {
+        lua_pushboolean(state, TRUE);
+        lua_setfield(state, entries, "enable");
     }
     lua_getglobal(state, "next");
     lua_pushvalue(state, entries);

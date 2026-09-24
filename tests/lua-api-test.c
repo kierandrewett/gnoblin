@@ -114,6 +114,7 @@ int main(void) {
                        "assert(gnoblin.config.shortcuts[1].binding=='<Super>Return')\n"
                        "gnoblin.configure.shortcuts.keep.enable=false\n"
                        "gnoblin.autostart {name='waybar',command={'waybar'}}\n"
+                       "assert(gnoblin.configure.autostart.waybar.enable)\n"
                        "gnoblin.configure.autostart.waybar.enable=false\n"
                        "gnoblin.configure {shortcuts={terminal={command={'new'}}}}\n"
                        "gnoblin.configure.shortcuts.my_extra="
