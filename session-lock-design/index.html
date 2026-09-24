@@ -2444,6 +2444,11 @@ call into a service owned by that process can deadlock. Shell skips constructing
 <li>the coordinator already owns <code>org.gnome.ScreenSaver</code> and
    <code>org.gnome.Shell.ScreenShield</code> compatibility names.</li>
 </ol>
+<p>Mutter exposes the last condition separately through
+<code>get_gnoblin_session_lock_coordinator_ready()</code>. It remains false until the
+coordinator has logind and idle handling running and has acquired both names.
+This avoids a period with neither GNOME Shell nor the coordinator serving the
+ScreenSaver APIs.</p>
 <p>The native seam also supplies <code>get_gnoblin_session_lock_active()</code> and
 <code>request_gnoblin_session_lock(reason)</code>. Its future coordinator exposes <code>State</code>
 (<code>unavailable</code>, <code>unlocked</code>, <code>covering</code>, <code>locked</code>, or <code>failsafe</code>), <code>Active</code>,
@@ -2462,6 +2467,11 @@ state, cancels bridge interaction when the compositor becomes active, and
 refuses screenshots, previews and window operations while locked. A coordinator
 which is absent, too old, <code>covering</code>, or <code>unavailable</code> leaves GNOME's normal
 ScreenShield untouched.</p>
+<p>The Shell suppresses GNOME's “Screen Lock disabled” warning only after that
+authority check. Switch User remains unavailable during the first cutover
+revision because its old path locks <code>ScreenShield</code> and the native request
+acknowledges covering before presentation. Enable it only when the coordinator
+can make a presentation-confirmed lock-before-switch guarantee.</p>
 <h2 id="release-gates">Release gates<a class="headerlink" href="#release-gates" title="Permanent link">&para;</a></h2>
 <p>The replacement is ready to become the default only when a fresh installed
 Gnoblin session proves all of these paths:</p>
