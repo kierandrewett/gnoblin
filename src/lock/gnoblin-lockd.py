@@ -11,9 +11,8 @@ from __future__ import annotations
 import configparser
 import os
 from pathlib import Path
-import shlex
-import subprocess
 import sys
+import time
 
 from gi.repository import Gio, GLib
 
@@ -23,6 +22,10 @@ BUS_NAME = "org.gnoblin.Lock"
 OBJECT_PATH = "/org/gnoblin/Lock"
 INTERFACE = "org.gnoblin.Lock"
 LOGIN1 = "org.freedesktop.login1"
+NATIVE_NAME = "org.gnoblin.SessionLock"
+NATIVE_PATH = "/org/gnoblin/SessionLock"
+NATIVE_INTERFACE = "org.gnoblin.SessionLock"
+SCREENSAVER_PATH = "/org/gnome/ScreenSaver"
 
 INTROSPECTION = Gio.DBusNodeInfo.new_for_xml("""
 <node>
@@ -35,6 +38,20 @@ INTROSPECTION = Gio.DBusNodeInfo.new_for_xml("""
     <method name='Inhibit'><arg name='application' type='s' direction='in'/><arg name='reason' type='s' direction='in'/><arg name='cookie' type='u' direction='out'/></method>
     <method name='UnInhibit'><arg name='cookie' type='u' direction='in'/></method>
     <property name='Active' type='b' access='read'/>
+    <property name='CompatibilityReady' type='b' access='read'/>
+  </interface>
+</node>
+""")
+
+SCREENSAVER_INTROSPECTION = Gio.DBusNodeInfo.new_for_xml("""
+<node>
+  <interface name='org.gnome.ScreenSaver'>
+    <method name='Lock'/>
+    <method name='GetActive'><arg name='active' type='b' direction='out'/></method>
+    <method name='SetActive'><arg name='active' type='b' direction='in'/></method>
+    <method name='GetActiveTime'><arg name='seconds' type='u' direction='out'/></method>
+    <signal name='ActiveChanged'><arg name='active' type='b'/></signal>
+    <signal name='WakeUpScreen'/>
   </interface>
 </node>
 """)
@@ -46,8 +63,8 @@ class Config:
         parser.read(path)
         section = parser["Lock"] if parser.has_section("Lock") else {}
         self.enabled = str(section.get("Enabled", "false")).lower() == "true"
-        self.command = section.get("Command", "").strip()
         self.idle_timeout_seconds = max(0, int(section.get("IdleTimeoutSeconds", "0")))
+        self.own_compatibility_names = str(section.get("OwnCompatibilityNames", "false")).lower() == "true"
 
 
 class LockBroker:
@@ -58,17 +75,21 @@ class LockBroker:
         self.session_connection: Gio.DBusConnection | None = None
         self.sleep_inhibitor_fd: int | None = None
         self.session_path: str | None = None
-        self.locker: subprocess.Popen[str] | None = None
         self.presentation_timeout: int | None = None
         self.sleep_pending = False
         self.inhibitor_senders: dict[int, str] = {}
         self.idle_watch_id: int | None = None
+        self.native_state = "unavailable"
+        self.native_active = False
+        self.native_capability = 0
+        self.native_launcher_ready = False
+        self.native_active_since: float | None = None
+        self.compatibility_name_ids: list[int] = []
+        self.compatibility_owners: set[str] = set()
 
     def start(self) -> None:
         if not self.config.enabled:
             raise RuntimeError("[Lock] Enabled=true is required")
-        if not self.config.command:
-            raise RuntimeError("[Lock] Command is required")
         self.system_connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
         self.session_path = self._session_path()
         self._take_sleep_inhibitor()
@@ -122,24 +143,20 @@ class LockBroker:
         request = self.policy.request_lock(reason)
         if request is None:
             return False
-        env = os.environ.copy()
-        env["GNOBLIN_LOCK_TOKEN"] = request.token
-        env["GNOBLIN_LOCK_REASON"] = reason
         try:
-            self.locker = subprocess.Popen(shlex.split(self.config.command), env=env, text=True)
-        except (OSError, ValueError) as error:
+            accepted = self.session_connection.call_sync(
+                NATIVE_NAME, NATIVE_PATH, NATIVE_INTERFACE, "RequestLock",
+                GLib.Variant("(s)", (reason,)), GLib.VariantType("(b)"),
+                Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+        except GLib.Error as error:
             self.policy.report_failed(request.token)
-            print(f"gnoblin-lockd: locker launch failed: {error}", file=sys.stderr)
+            print(f"gnoblin-lockd: native lock request failed: {error}", file=sys.stderr)
             return False
-        GLib.child_watch_add(GLib.PRIORITY_DEFAULT, self.locker.pid, self._locker_exited)
+        if not accepted:
+            self.policy.report_failed(request.token)
+            return False
         self.presentation_timeout = GLib.timeout_add_seconds(5, self._presentation_timed_out)
         return True
-
-    def _locker_exited(self, _pid: int, _status: int) -> None:
-        if self.policy.state is State.REQUESTED and self.policy.active_token:
-            self.policy.report_failed(self.policy.active_token)
-        else:
-            self.policy.locker_disconnected()
 
     def _presentation_timed_out(self) -> bool:
         self.presentation_timeout = None
@@ -201,7 +218,9 @@ class LockBroker:
 
     def get_property(self, _connection, _sender, _path, _interface, name):
         if name == "Active":
-            return GLib.Variant("b", self.policy.state is State.COMPOSITOR_LOCKED)
+            return GLib.Variant("b", self.native_active)
+        if name == "CompatibilityReady":
+            return GLib.Variant("b", self.compatibility_ready)
         return None
 
     def bus_acquired(self, connection, _name) -> None:
@@ -214,6 +233,111 @@ class LockBroker:
                                     "NameOwnerChanged", "/org/freedesktop/DBus", None,
                                     Gio.DBusSignalFlags.NONE, self._name_owner_changed)
         self._start_idle_monitor()
+        self._watch_native_lock()
+
+    @property
+    def compatibility_ready(self) -> bool:
+        return (
+            self.config.own_compatibility_names
+            and self.native_capability >= 1
+            and self.native_launcher_ready
+            and {"org.gnome.ScreenSaver", "org.gnome.Shell.ScreenShield"} <= self.compatibility_owners
+        )
+
+    def _watch_native_lock(self) -> None:
+        self.session_connection.signal_subscribe(
+            NATIVE_NAME, NATIVE_INTERFACE, "StateChanged", NATIVE_PATH, None,
+            Gio.DBusSignalFlags.NONE, self._native_state_changed)
+        self.session_connection.signal_subscribe(
+            NATIVE_NAME, "org.freedesktop.DBus.Properties", "PropertiesChanged", NATIVE_PATH, None,
+            Gio.DBusSignalFlags.NONE, self._native_properties_changed)
+        try:
+            properties = self.session_connection.call_sync(
+                NATIVE_NAME, NATIVE_PATH, "org.freedesktop.DBus.Properties", "GetAll",
+                GLib.Variant("(s)", (NATIVE_INTERFACE,)), GLib.VariantType("(a{sv})"),
+                Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+            self._apply_native_properties(properties)
+        except GLib.Error:
+            # The native server is optional until protocol/capture validation.
+            return
+
+    def _native_properties_changed(self, _connection, _sender, _path, _iface, _signal, parameters) -> None:
+        interface, changed, _invalidated = parameters.unpack()
+        if interface == NATIVE_INTERFACE:
+            self._apply_native_properties(changed)
+
+    def _apply_native_properties(self, properties) -> None:
+        values = {key: value.unpack() for key, value in properties.items()}
+        state = values.get("State", self.native_state)
+        active = values.get("Active", self.native_active)
+        self.native_capability = values.get("Capability", self.native_capability)
+        self.native_launcher_ready = values.get("LauncherReady", self.native_launcher_ready)
+        self._apply_native_state(state, active)
+        self._maybe_own_compatibility_names()
+
+    def _native_state_changed(self, _connection, _sender, _path, _iface, _signal, parameters) -> None:
+        state, active, _presentation_confirmed = parameters.unpack()
+        self._apply_native_state(state, active)
+
+    def _apply_native_state(self, state: str, active: bool) -> None:
+        was_active = self.native_active
+        self.native_state = state
+        self.native_active = active
+        if active and not was_active:
+            self.native_active_since = time.monotonic()
+        elif not active:
+            self.native_active_since = None
+        if state == "unlocked":
+            self.policy.compositor_unlocked()
+        elif state == "covering":
+            self.policy.compositor_covering()
+        elif state in ("locked", "failsafe"):
+            self.policy.compositor_locked()
+        self._set_locked_hint(active)
+        if was_active != active and self.compatibility_owners:
+            self.session_connection.emit_signal(
+                None, SCREENSAVER_PATH, "org.gnome.ScreenSaver", "ActiveChanged",
+                GLib.Variant("(b)", (active,)))
+
+    def _set_locked_hint(self, active: bool) -> None:
+        if self.system_connection is None or self.session_path is None:
+            return
+        self.system_connection.call(
+            LOGIN1, self.session_path, LOGIN1 + ".Session", "SetLockedHint",
+            GLib.Variant("(b)", (active,)), None, Gio.DBusCallFlags.NONE, 5000, None, None, None)
+
+    def _maybe_own_compatibility_names(self) -> None:
+        if (not self.config.own_compatibility_names or self.native_capability < 1 or
+                not self.native_launcher_ready or self.compatibility_name_ids):
+            return
+        self.session_connection.register_object(
+            SCREENSAVER_PATH, SCREENSAVER_INTROSPECTION.interfaces[0],
+            self._screensaver_method_call, self._screensaver_get_property, None)
+        for name in ("org.gnome.ScreenSaver", "org.gnome.Shell.ScreenShield"):
+            self.compatibility_name_ids.append(Gio.bus_own_name_on_connection(
+                self.session_connection, name, Gio.BusNameOwnerFlags.DO_NOT_QUEUE,
+                lambda _connection, acquired, name=name: self._compatibility_name_acquired(name),
+                lambda _connection, _name: None))
+
+    def _compatibility_name_acquired(self, name: str) -> None:
+        self.compatibility_owners.add(name)
+
+    def _screensaver_method_call(self, _connection, _sender, _path, _interface, method, parameters, invocation):
+        if method == "Lock":
+            self.request_lock("compatibility")
+            invocation.return_value(None)
+        elif method == "SetActive":
+            if parameters.unpack()[0]:
+                self.request_lock("compatibility")
+            invocation.return_value(None)
+        elif method == "GetActive":
+            invocation.return_value(GLib.Variant("(b)", (self.native_active,)))
+        elif method == "GetActiveTime":
+            seconds = 0 if self.native_active_since is None else int(time.monotonic() - self.native_active_since)
+            invocation.return_value(GLib.Variant("(u)", (seconds,)))
+
+    def _screensaver_get_property(self, *_args):
+        return None
 
     def _idle_call(self, method: str, parameters: GLib.Variant, reply_type: str):
         return self.session_connection.call_sync(

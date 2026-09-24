@@ -7,10 +7,10 @@ It must stay that way until the compositor implements and hardware-validates
 
 The broker listens for the current logind session's `Lock` signal and
 `PrepareForSleep(true)`. It holds a logind `sleep` *delay* inhibitor from daemon
-startup and launches the configured locker once. It has no trusted compositor
-callback yet, so it never releases that FD based on a locker report. Logind's
-configured maximum delay eventually proceeds; this prototype therefore cannot
-make a suspend safety claim or replace GNOME ScreenShield.
+startup and sends every lock request to the compositor-owned
+`org.gnoblin.SessionLock` coordinator. The compositor owns the fixed trusted
+Bingux launcher and its PID admission. The broker consumes compositor state; it
+does not infer security state from the locker process or a client report.
 
 ## State contract
 
@@ -27,9 +27,9 @@ no completion method. A future compositor callback will update the broker.
 
 `ReportPresented` is diagnostic only. The token avoids accidental reports from
 unrelated applications but does not authenticate a hostile same-UID process and
-cannot advance the lock state or release the sleep inhibitor. Production
-confirmation must come from the compositor after it has blanked every output and
-isolated keyboard, pointer, touch and tablet input.
+cannot advance the lock state or release the sleep inhibitor. The trusted source
+is `org.gnoblin.SessionLock` at `/org/gnoblin/SessionLock`: its compositor-sent
+`StateChanged(state, active, presentationConfirmed)` signal and properties.
 
 ## Idle timeout and inhibitors
 
@@ -40,6 +40,19 @@ startup. `Inhibit(application, reason)` returns a cookie; it applies only to the
 calling D-Bus unique name, and is removed if that caller disconnects. `UnInhibit`
 only accepts cookies issued to the same caller. The resulting request reason is
 available through `GetLastReason` (`manual`, `idle`, `login1`, or `sleep`).
+
+## GNOME compatibility and readiness
+
+With `OwnCompatibilityNames=true`, the broker exports the GNOME-compatible
+`org.gnome.ScreenSaver` API at `/org/gnome/ScreenSaver` and owns both
+`org.gnome.ScreenSaver` and `org.gnome.Shell.ScreenShield`. It provides `Lock`,
+`SetActive`, `GetActive`, `GetActiveTime`, `ActiveChanged`, and `WakeUpScreen`.
+`SetActive(false)` never unlocks a session; only the compositor can do that.
+
+`org.gnoblin.Lock.CompatibilityReady` becomes true only after the broker owns
+both GNOME names and the compositor reports `Capability >= 1` and
+`LauncherReady = true`. It is intentionally false by default, so GNOME
+ScreenShield remains the active owner until explicit cutover validation.
 
 ## Required compositor gate
 

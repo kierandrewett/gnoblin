@@ -15,6 +15,7 @@ import time
 class State(str, Enum):
     UNLOCKED = "unlocked"
     REQUESTED = "requested"
+    COMPOSITOR_COVERING = "compositor-covering"
     COMPOSITOR_LOCKED = "compositor-locked"
     FAILED = "failed"
 
@@ -60,10 +61,17 @@ class LockPolicy:
 
     def compositor_locked(self, now: float | None = None) -> bool:
         """Internal-only boundary for a future trusted compositor callback."""
-        if self.state is not State.REQUESTED:
-            return False
+        if self.state is State.COMPOSITOR_LOCKED:
+            return True
         self.state = State.COMPOSITOR_LOCKED
         self.active_since = time.monotonic() if now is None else now
+        return True
+
+    def compositor_covering(self) -> bool:
+        """The compositor has hidden normal content but is not yet presented."""
+        if self.state is State.COMPOSITOR_LOCKED:
+            return False
+        self.state = State.COMPOSITOR_COVERING
         return True
 
     def report_failed(self, token: str) -> bool:
@@ -82,7 +90,8 @@ class LockPolicy:
             self.active_token = None
             self.client_reported_presented = False
             self.state = State.FAILED
-        # COMPOSITOR_LOCKED intentionally remains locked. The compositor must keep
+        # COMPOSITOR_COVERING and COMPOSITOR_LOCKED intentionally remain locked.
+        # The compositor must keep
         # a black fallback until a privileged recovery path is implemented.
 
     def compositor_unlocked(self) -> None:
