@@ -1,0 +1,17 @@
+# The broker is disabled by default.  Do not enable it until the compositor's
+# ext-session-lock-v1 implementation has passed the hardware checklist.
+[Lock]
+Enabled=false
+
+# A command owned by the selected desktop shell, e.g. Bingux.  It receives
+# GNOBLIN_LOCK_TOKEN and must call ReportPresented only after ext-session-lock's
+# `locked` event.  Do not put a shell pipeline here; arguments are parsed safely.
+Command=
+
+# 0 disables broker-side idle locking.  Input-idle integration is intentionally
+# deferred until it can use compositor ext-idle-notify rather than a timer proxy.
+IdleTimeoutSeconds=0
+
+# Set true only after the GNOME ScreenShield/screen-saver D-Bus owner is removed
+# from the Gnoblin session.  Duplicate owners race and are not supported.
+OwnScreenSaverNames=false
