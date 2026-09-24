@@ -1,8 +1,8 @@
-# shortcuts
+# Shortcuts
 
 [Configuration reference](/config/configure)
 
-Use `gnoblin.configure {shortcuts = {...}}` to launch a program with a key combination. Use `keybindings` to change built-in actions such as closing a window. Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
+Use `gnoblin.configure {shortcuts = {...}}` to launch a program with a key combination, including a media key. Use `keybindings` to change built-in actions such as closing a window. Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 
 ## Launch a command
 
@@ -23,9 +23,9 @@ Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
 Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
-Removing one releases its binding; it does not stop a launched program.
+Disabling one releases its binding; it does not stop a launched program.
 
-## Remove a shortcut
+## Disable a shortcut
 
 `enable = false` disables an imported shortcut for this config load. Use it when a shell's config supplies a shortcut you do not want:
 
@@ -39,6 +39,17 @@ The config is rebuilt on every reload. This releases that entry's binding;
 it does not change GNOME's built-in keybindings or shortcuts belonging to
 other programs. Put the setting after the file that adds the shortcut;
 [load order](/guides/files_and_load_order#override-or-append) matters.
+
+Lua can inspect the shortcuts declared so far. For example, this disables
+every named playback command in the bundled config:
+
+```lua
+for name, shortcut in pairs(gnoblin.configure.shortcuts) do
+    if name:match("^media%-") then
+        shortcut.enable = false
+    end
+end
+```
 
 ## Key names
 
@@ -83,8 +94,9 @@ GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
 These overrides live in Gnoblin's native keybinding table and persist in the
-Lua file. Removing an entry restores its built-in default on reload. Media keys
-handled by GNOME Settings Daemon are outside this table.
+Lua file. Removing an entry restores its built-in default on reload. The
+bundled media-key commands are named entries in `shortcuts`, so you can change
+or disable them by name in the same file.
 
 ## Avoid conflicts
 
