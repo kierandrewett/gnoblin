@@ -165,11 +165,11 @@ jobs:
             diagnostic_sections+="Seed $seed:"$'\n'"$seed_diagnostics"
           done
 
-          issue_title="[Gnoblin fuzz] Lifecycle regression detected"
+          issue_title="[Gnoblin fuzz] Lifecycle fuzz run failure"
           existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
           run_note="$(cat <<EOF
-          Seeded compositor lifecycle fuzzing failed again for seeds: $FAILED_SEEDS.
+          Seeded lifecycle fuzzing failed for seeds: $FAILED_SEEDS.
 
           Run: $run_url
           Commit: $GITHUB_SHA
@@ -185,7 +185,7 @@ jobs:
           fi
 
           issue_body="$(cat <<EOF
-          Automated seeded lifecycle fuzzing detected that the Gnoblin compositor/session did not survive one or more runs.
+          Automated seeded lifecycle fuzzing failed. The run evidence may indicate a Gnoblin defect, a test-harness bug, or a CI/environment failure; inspect the diagnostics and artifacts before classifying it.
 
           - Failed seeds: $FAILED_SEEDS
           - Commit: $GITHUB_SHA

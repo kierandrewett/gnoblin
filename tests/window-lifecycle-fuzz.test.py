@@ -18,6 +18,10 @@ assert first == second, "same seed must generate the same plan"
 assert len(first["actions"]) >= 201
 assert first["actions"][0]["op"] == "open"
 assert first["actions"][-1]["op"] == "shell_shutdown"
+assert fuzz.window_operation_expression({"op": "maximize"}, "window").endswith(".maximize()")
+assert fuzz.window_operation_expression(
+    {"op": "resize", "x": 10, "y": 20, "width": 300, "height": 200}, "window"
+).endswith(".move_resize_frame(false,10,20,300,200)")
 
 live = set()
 peak = 0

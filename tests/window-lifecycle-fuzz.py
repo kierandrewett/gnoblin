@@ -82,6 +82,27 @@ def write_frame_config(path: Path, policies: dict[int, list[int]]) -> None:
     temporary.replace(path)
 
 
+def window_operation_expression(action: dict, window_expr: str) -> str:
+    """Build the shell call for one lifecycle action without reading unrelated fields."""
+    op = action["op"]
+    operations = {
+        "activate": f"{window_expr}.activate(global.get_current_time())",
+        "minimize": f"{window_expr}.minimize()",
+        "unminimize": f"{window_expr}.unminimize()",
+        "maximize": f"{window_expr}.maximize()",
+        "unmaximize": f"{window_expr}.unmaximize()",
+        "fullscreen": f"{window_expr}.make_fullscreen()",
+        "unfullscreen": f"{window_expr}.unmake_fullscreen()",
+    }
+    if op == "resize":
+        return (
+            f"{window_expr}.move_resize_frame(false,{action['x']},{action['y']},{action['width']},{action['height']})"
+        )
+    if op in operations:
+        return operations[op]
+    raise ValueError(f"unsupported operation: {op}")
+
+
 def validate_plan(value: object) -> dict:
     if not isinstance(value, dict) or value.get("schema") != 1:
         raise ValueError("fuzz plan must be an object with schema=1")
@@ -487,19 +508,8 @@ def run_inside() -> int:
             )
             return
 
-        operations = {
-            "activate": f"{window_expr}.activate(global.get_current_time())",
-            "minimize": f"{window_expr}.minimize()",
-            "unminimize": f"{window_expr}.unminimize()",
-            "maximize": f"{window_expr}.maximize()",
-            "unmaximize": f"{window_expr}.unmaximize()",
-            "fullscreen": f"{window_expr}.make_fullscreen()",
-            "unfullscreen": f"{window_expr}.unmake_fullscreen()",
-            "resize": f"{window_expr}.move_resize_frame(false,{action['x']},{action['y']},{action['width']},{action['height']})",
-        }
-        if op not in operations:
-            raise ValueError(f"unsupported operation: {op}")
-        eval_shell(f"(()=>{{{operations[op]};return true;}})()")
+        expression = window_operation_expression(action, window_expr)
+        eval_shell(f"(()=>{{{expression};return true;}})()")
 
     failure = None
     event_path.write_text("")
