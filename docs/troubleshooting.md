@@ -81,6 +81,15 @@ Command arguments do not expand `~`, `$HOME` or pipes.
 Check for an existing binding in your component config or GNOME keybindings.
 See [shortcut conflicts](shortcuts.md#avoid-conflicts).
 
+## Shell integration errors
+
+| Symptom | Check |
+| --- | --- |
+| `gnoblinctl window list` cannot connect | Run `gnoblinctl status --json`. Check `windowControlError` and the active socket path. The bridge is built into current source builds; it does not appear in `script list`. See [connection details](gnoblinctl.md#connection-problems). |
+| A bridge request says a window is unavailable | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close. |
+| A Wayland client cannot bind a Gnoblin interface | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Gates take effect at login, not config reload. |
+| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display. |
+
 ## Removing a setting does not reset it
 
 Built-in bindings and native feature booleans persist in GSettings.

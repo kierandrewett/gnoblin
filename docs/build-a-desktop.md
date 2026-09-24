@@ -12,6 +12,11 @@ Bingux is one separate project built on these interfaces.
 | Surfaces | Layer-shell placement, exclusive zones and effects | Bar, dock, wallpaper and overlays |
 | Desktop services | Portals, permission policy and optional native features | Notification daemon and other visible controls |
 
+![Calculator on a fresh Gnoblin devkit desktop with a Bingux bar and dock](images/gnoblin-example-desktop.png)
+
+*Calculator in a clean Gnoblin devkit session. Bingux, a separate example
+shell, supplies the visible bar, dock and wallpaper.*
+
 The [configuration reference](configuration-reference.md) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
 [compositor bridge](compositor-bridge.md) supplies subscriptions and shortcuts

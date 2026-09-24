@@ -61,7 +61,18 @@ connections are not passed through.
 **Your HOME and runtime directory remain real.** Applications can still read
 or change your files and configuration. This is not a security sandbox.
 
-For disposable settings, use the [private test harness](testing.md).
+For a fresh profile, including screenshots and demos, run:
+
+```sh
+bash scripts/run-clean-devkit.sh
+```
+
+This creates disposable home, config, data, cache, state and runtime directories
+and removes them when the devkit closes. The viewer still connects to your host
+Wayland session and may use its PipeWire socket. Use a VM when the guest must be
+fully separate from host services. Check the image before publishing it.
+
+The [private test harness](testing.md) is for automated checks.
 A devkit run does not verify the installed login session.
 
 ## Troubleshooting
