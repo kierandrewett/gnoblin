@@ -23,9 +23,17 @@ to disable the action. Command shortcuts use one binding string and an argv
 array. See the [shortcuts guide](/guides/shortcuts) for key names, conflicts
 and command behavior.
 
-Action names use `group.action`. Groups are `wm`, `mutter`, `wayland`, and
-`gnome:shell` for GNOME Shell actions. Use `gsettings list-keys` with the
-matching schema to find action names:
+Action names use `group.action`. The group selects the GNOME keybinding schema:
+
+| Group         | GSettings schema                       | Example                          |
+| ------------- | -------------------------------------- | -------------------------------- |
+| `wm`          | `org.gnome.desktop.wm.keybindings`     | `wm.close`                       |
+| `gnome:shell` | `org.gnome.shell.keybindings`          | `gnome:shell.show_screenshot_ui` |
+| `mutter`      | `org.gnome.mutter.keybindings`         | `mutter.toggle_tiled_left`       |
+| `wayland`     | `org.gnome.mutter.wayland.keybindings` | `wayland.restore_shortcuts`      |
+
+The available actions depend on the installed GNOME version. List the keys in
+the matching schema to find actions:
 
 ```sh
 gsettings list-keys org.gnome.desktop.wm.keybindings
@@ -34,12 +42,19 @@ gsettings list-keys org.gnome.mutter.keybindings
 gsettings list-keys org.gnome.mutter.wayland.keybindings
 ```
 
-The schema order is `wm`, `gnome:shell`, `mutter`, then `wayland`.
+GSettings prints native keys with hyphens. Use underscores in the action name;
+for example, `show-screenshot-ui` becomes
+`gnome:shell.show_screenshot_ui`. To read an action's description, run
+`gsettings describe SCHEMA KEY`, such as:
 
-For example, `close` in the window-manager schema is `wm.close`; Shell's
-`show-screenshot-ui` key is `gnome:shell.show_screenshot_ui`. Gnoblin writes
-the configured bindings to its compositor; `gsettings get` does not show the
-active Gnoblin override.
+```sh
+gsettings describe org.gnome.desktop.wm.keybindings close
+gsettings describe org.gnome.shell.keybindings show-screenshot-ui
+```
+
+These commands list GNOME actions and descriptions; they do not show the
+binding currently configured by Gnoblin. Gnoblin applies active bindings from
+the Lua config.
 
 Existing configs can continue using the older `keybindings` field. See the
 [migration note](/config/configure/keybindings) to convert one to `shortcuts`.

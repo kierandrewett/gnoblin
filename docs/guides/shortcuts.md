@@ -80,22 +80,21 @@ gnoblin.configure {
 
 `action` uses a group and action name. Action names use underscores, even
 though GSettings displays hyphens. Use `gsettings list-keys SCHEMA` to find
-available names:
+available names and `gsettings describe SCHEMA KEY` to read what an action
+does. For example:
 
 ```sh
 gsettings list-keys org.gnome.desktop.wm.keybindings
-gsettings list-keys org.gnome.shell.keybindings
-gsettings list-keys org.gnome.mutter.keybindings
-gsettings list-keys org.gnome.mutter.wayland.keybindings
+gsettings describe org.gnome.desktop.wm.keybindings close
 ```
 
-The corresponding action names use the groups `wm`, `gnome:shell`, `mutter`
-and `wayland`. For example, `show-screenshot-ui` is
-`gnome:shell.show_screenshot_ui`. The values printed by `gsettings` list
-available actions; active Gnoblin overrides are in the Lua config. Use an
-empty binding list to disable an action. Removing the entry restores its
-built-in default on reload. Commands and built-in actions share the same
-`shortcuts` map.
+GSettings shows `close` with hyphens where needed; use underscores in the
+`group.action` name. Action catalogs vary by GNOME version. The
+[shortcut reference](/config/configure/shortcuts) maps all four groups to
+their schemas and gives examples. The listed actions are GNOME's available
+actions; the Lua config shows Gnoblin's active bindings. Use an empty binding
+list to disable an action. Removing the entry restores its built-in default
+on reload. Commands and built-in actions share the same `shortcuts` map.
 
 ## Avoid conflicts
 
