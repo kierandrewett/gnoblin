@@ -34,8 +34,12 @@ case "$PROJECT" in
         install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
         install -m 0644 -- "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
-        tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-            -czf "$OUTDIR/gnoblin-scripts.tar.gz" -C "$ROOT/src/scripts" .
+        install -m 0755 -- "$ROOT/src/tools/gnoblin-clipboard-paste" "$OUTDIR/gnoblin-clipboard-paste"
+        install -m 0755 -- "$ROOT/src/lock/gnoblin-lockd.py" "$OUTDIR/gnoblin-lockd"
+        install -m 0644 -- "$ROOT/src/lock/policy.py" "$OUTDIR/gnoblin-lock-policy.py"
+        install -m 0755 -- "$ROOT/src/lock/gnoblin-lockctl" "$OUTDIR/gnoblin-lockctl"
+        install -m 0644 -- "$ROOT/src/lock/gnoblin-lockd.service" "$OUTDIR/gnoblin-lockd.service"
+        install -m 0644 -- "$ROOT/src/lock/lock.conf.example" "$OUTDIR/gnoblin-lock.conf.example"
         ;;
     *)
         echo "unknown RPM source project: $PROJECT" >&2

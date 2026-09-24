@@ -115,14 +115,19 @@ install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
 glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
+install -Dm755 "$ROOT/src/tools/gnoblin-clipboard-paste" "$PREFIX/bin/gnoblin-clipboard-paste"
+# Installed for explicit development only. This unit is intentionally neither
+# enabled nor attached to the session while GNOME ScreenShield owns locking.
+install -Dm755 "$ROOT/src/lock/gnoblin-lockd.py" "$PREFIX/libexec/gnoblin-lockd"
+install -Dm644 "$ROOT/src/lock/policy.py" "$PREFIX/libexec/policy.py"
+install -Dm755 "$ROOT/src/lock/gnoblin-lockctl" "$PREFIX/bin/gnoblin-lockctl"
+install -Dm644 "$ROOT/src/lock/lock.conf.example" "$PREFIX/share/gnoblin/lock.conf.example"
+sed "s|@PREFIX@|$PREFIX|g" "$ROOT/src/lock/gnoblin-lockd.service" \
+    >"$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp"
+install -Dm644 "$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp" \
+    "$PREFIX/lib/systemd/user/gnoblin-lockd.service"
+rm -f "$PREFIX/lib/systemd/user/gnoblin-lockd.service.tmp"
 install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
-install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
-# Keep the bridge and its relative imports together as one installed bundle.
-install -d "$PREFIX/share/gnoblin/scripts/lib"
-for helper in "$ROOT/src/scripts/lib/"*.js "$ROOT/src/scripts/lib/"*.py; do
-    install -m644 "$helper" "$PREFIX/share/gnoblin/scripts/lib/${helper##*/}"
-done
-install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"
 
 echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"
@@ -135,5 +140,6 @@ echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrap
 echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"
 echo "     bin/gnoblinctl                           (control CLI)"
+echo "     bin/gnoblin-lockctl                      (disabled lock-broker CLI)"
 echo ">> not yet registered with your login manager / systemd --user instance."
 echo "   Run: ./scripts/register-session.sh $PREFIX"
