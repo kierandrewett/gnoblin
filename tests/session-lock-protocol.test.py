@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the fail-closed boundary around ext-session-lock-v1.
-
-This is deliberately a source-level test.  A real compositor session is still
-required before the protocol can be advertised; see the session-lock design
-document for that acceptance suite.
-"""
+"""Check ext-session-lock-v1 wiring and the compositor's fail-closed paths."""
 
 from pathlib import Path
 import unittest
@@ -40,12 +35,11 @@ class SessionLockProtocolTests(unittest.TestCase):
             interfaces["ext_session_lock_v1"].find("event[@name='locked']")
         )
 
-    def test_boundary_cannot_advertise_an_incomplete_lock_protocol(self):
+    def test_manager_is_advertised_only_for_gnoblin_sessions(self):
         source = SOURCE.read_text()
-        self.assertIn('gnoblin_config_get_bool ("protocols", "ext-session-lock", FALSE)', source)
-        self.assertIn("required fail-closed scene", source)
-        self.assertIn("output-hotplug, and client-death controller", source)
-        self.assertNotIn("wl_global_create", source)
+        self.assertIn('gnoblin_config_protocol_enabled ("ext-session-lock")', source)
+        self.assertIn("wl_global_create", source)
+        self.assertIn("controller->global ? 1 : 0", source)
         self.assertIn("session_lock_manager_interface", source)
 
     def test_failsafe_keeps_cover_and_input_embargo_in_compositor(self):

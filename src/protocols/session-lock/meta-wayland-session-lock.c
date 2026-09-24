@@ -1,16 +1,10 @@
 /*
- * Gnoblin session-lock protocol boundary.
+ * Gnoblin ext-session-lock-v1 controller.
  *
  * ext-session-lock-v1 requires the compositor to stop rendering and routing
- * input to normal clients before it emits `locked`.  Mutter has no native
- * session-lock controller: a layer-shell role only controls a window's layer
- * and keyboard focus, so it cannot meet that requirement for pointer, touch,
- * shortcuts, output hotplug, or client death.
- *
- * Keep the global unadvertised until MetaSessionLockController owns all of
- * those paths.  In particular, do not turn this into a cosmetic lock surface:
- * a global is an interoperability promise that a client may safely suspend
- * after receiving `locked`.
+ * input to normal clients before it emits `locked`. The controller owns the
+ * opaque scene, input route, output hotplug and client-death fallback; a
+ * layer-shell surface alone cannot enforce these guarantees.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -91,6 +85,7 @@ typedef struct
   MetaCursorTracker *cursor_tracker;
   gboolean unredirect_inhibited;
   gboolean cursor_visibility_inhibited;
+  struct wl_global *global;
   MetaWaylandSessionLock *lock;
   GHashTable *surfaces; /* MetaWaylandOutput* -> MetaWaylandSessionLockSurface* */
   GHashTable *state_changed_callbacks; /* gulong -> callback */
@@ -453,10 +448,31 @@ session_lock_manager_destroy (struct wl_client *client, struct wl_resource *reso
   wl_resource_destroy (resource);
 }
 
-static const struct ext_session_lock_manager_v1_interface session_lock_manager_interface G_GNUC_UNUSED = {
+static const struct ext_session_lock_manager_v1_interface session_lock_manager_interface = {
   .destroy = session_lock_manager_destroy,
   .lock = session_lock_manager_lock,
 };
+
+static void
+session_lock_manager_bind (struct wl_client *client,
+                           void             *data,
+                           uint32_t          version,
+                           uint32_t          id)
+{
+  MetaWaylandCompositor *compositor = data;
+  struct wl_resource *resource;
+
+  resource = wl_resource_create (client, &ext_session_lock_manager_v1_interface,
+                                 MIN (version, 1), id);
+  if (!resource)
+    {
+      wl_client_post_no_memory (client);
+      return;
+    }
+
+  wl_resource_set_implementation (resource, &session_lock_manager_interface,
+                                  compositor, NULL);
+}
 
 static gboolean
 consume_event (MetaWaylandEventHandler *handler,
@@ -664,6 +680,8 @@ destroy_controller (gpointer data)
   if (controller->scene)
     clutter_actor_destroy (controller->scene);
 
+  g_clear_pointer (&controller->global, wl_global_destroy);
+
   g_clear_pointer (&controller->unpresented_stage_views, g_hash_table_unref);
   g_clear_pointer (&controller->surfaces, g_hash_table_unref);
   g_clear_pointer (&controller->state_changed_callbacks, g_hash_table_unref);
@@ -780,7 +798,13 @@ meta_wayland_session_lock_get_state (MetaWaylandCompositor *compositor)
 guint
 meta_wayland_session_lock_get_capability (MetaWaylandCompositor *compositor)
 {
-  return 0;
+  MetaWaylandSessionLockController *controller;
+
+  g_return_val_if_fail (compositor != NULL, 0);
+
+  controller = g_object_get_data (G_OBJECT (compositor),
+                                  SESSION_LOCK_CONTROLLER_KEY);
+  return controller && controller->global ? 1 : 0;
 }
 
 gboolean
@@ -963,13 +987,25 @@ meta_wayland_session_lock_surface_destroyed (
 void
 meta_wayland_init_session_lock (MetaWaylandCompositor *compositor)
 {
+  MetaWaylandSessionLockController *controller;
+
   g_return_if_fail (compositor != NULL);
 
-  /* Unlike established protocol gates, this key defaults off.  Keeping the
-   * normal helper's default-true behaviour here would turn an omitted setting
-   * into a misleading startup warning on every Gnoblin session. */
-  if (gnoblin_config_get_bool ("protocols", "ext-session-lock", FALSE))
-    g_warning ("Gnoblin ext-session-lock is requested but remains disabled: "
-               "Mutter does not yet provide the required fail-closed scene, "
-               "input, output-hotplug, and client-death controller");
+  /* This standard global is a Gnoblin-session capability, never a replacement
+   * policy or launcher. The existing predicate defaults it on only for
+   * GNOME_SHELL_SESSION_MODE=gnoblin, preserving GNOME ScreenShield's normal
+   * session behaviour. A global cannot safely be retracted at config reload. */
+  if (!gnoblin_config_protocol_enabled ("ext-session-lock"))
+    return;
+
+  controller = get_controller (compositor);
+  if (controller->global)
+    return;
+
+  controller->global = wl_global_create (compositor->wayland_display,
+                                         &ext_session_lock_manager_v1_interface,
+                                         1, compositor,
+                                         session_lock_manager_bind);
+  if (!controller->global)
+    g_warning ("Failed to create Gnoblin ext-session-lock-v1 manager global");
 }
