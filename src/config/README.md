@@ -16,6 +16,8 @@ so Lua code can inspect it while declaring more settings.
 For an existing named entry, `gnoblin.configure.autostart.waybar.enable = false`
 or `gnoblin.configure.shortcuts.terminal.command = {"ptyxis"}` changes it
 directly. `pairs(gnoblin.configure.shortcuts)` iterates loaded command shortcuts.
+Assigning a table to `gnoblin.configure.shortcuts.NAME` or
+`gnoblin.configure.autostart.NAME` adds or merges that named entry.
 
 Declarations copy their input and convert snake_case setting names to the
 internal hyphenated form. Renderer names and shader uniform names stay literal.

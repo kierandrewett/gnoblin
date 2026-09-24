@@ -20,10 +20,10 @@ typedef struct {
 } LuaConfig;
 
 static gboolean append_array_key(const char* key) {
-    return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-                   !strcmp(key, "shortcuts") || !strcmp(key, "rules") ||
-                   !strcmp(key, "workspace-names") || !strcmp(key, "xkb-options") ||
-                   !strcmp(key, "sources"));
+    return key &&
+           (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
+            !strcmp(key, "shortcuts") || !strcmp(key, "rules") || !strcmp(key, "workspace-names") ||
+            !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
@@ -253,8 +253,8 @@ static void remove_named_entry(lua_State* state, int list, const char* name) {
     for (lua_Integer i = 1; i <= count; i++) {
         lua_rawgeti(state, list, i);
         lua_getfield(state, -1, "name");
-        gboolean matches = lua_type(state, -1) == LUA_TSTRING &&
-                           !strcmp(name, lua_tostring(state, -1));
+        gboolean matches =
+            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
         lua_pop(state, 1);
         if (matches)
             lua_pop(state, 1);
@@ -319,8 +319,8 @@ static void merge_named_entries(lua_State* state, int list, int entries) {
         for (lua_Integer i = 1; i <= count; i++) {
             lua_rawgeti(state, list, i);
             lua_getfield(state, -1, "name");
-            gboolean matches = lua_type(state, -1) == LUA_TSTRING &&
-                               !strcmp(name, lua_tostring(state, -1));
+            gboolean matches =
+                lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
             lua_pop(state, 1);
             if (matches) {
                 lua_pushnil(state);
@@ -445,11 +445,13 @@ static int lua_set(lua_State* state) {
 }
 
 static gboolean is_keybinding_action_name(const char* key) {
-    if (!key || !*key) return FALSE;
+    if (!key || !*key)
+        return FALSE;
     gboolean previous_underscore = TRUE;
     for (const unsigned char* p = (const unsigned char*)key; *p; p++) {
         if (*p == '_') {
-            if (previous_underscore) return FALSE;
+            if (previous_underscore)
+                return FALSE;
             previous_underscore = TRUE;
         } else if (g_ascii_islower(*p) || g_ascii_isdigit(*p))
             previous_underscore = FALSE;
@@ -496,8 +498,8 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
         lua_pop(state, 1);
         const char* key = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
         int child_keybinding_depth = key && !strcmp(key, "keybindings") ? 1
-                                     : keybinding_depth == 1               ? 2
-                                                                           : 0;
+                                     : keybinding_depth == 1            ? 2
+                                                                        : 0;
         push_settings(state, -2, key, depth + 1, child_keybinding_depth);
         lua_rawset(state, destination);
         lua_pop(state, 1);
@@ -625,8 +627,8 @@ static int lua_named_view_index(lua_State* state) {
     for (lua_Integer i = 1; i <= count; i++) {
         lua_rawgeti(state, list, i);
         lua_getfield(state, -1, "name");
-        gboolean matches = lua_type(state, -1) == LUA_TSTRING &&
-                           !strcmp(name, lua_tostring(state, -1));
+        gboolean matches =
+            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
         lua_pop(state, 1);
         if (matches) {
             push_named_entry_proxy(state, -1);
@@ -661,7 +663,16 @@ static int lua_named_view_pairs(lua_State* state) {
 }
 
 static int lua_named_view_assign(lua_State* state) {
-    return luaL_error(state, "add named entries with gnoblin.configure { ... } first");
+    const char* name = luaL_checkstring(state, 2);
+    luaL_checktype(state, 3, LUA_TTABLE);
+    push_settings(state, 3, NULL, 0, 0);
+    lua_newtable(state);
+    int entries = lua_gettop(state);
+    lua_pushvalue(state, -2);
+    lua_setfield(state, entries, name);
+    push_config_list(state);
+    merge_named_entries(state, -1, entries);
+    return 0;
 }
 
 static void install_named_view(lua_State* state, const char* key) {
@@ -675,7 +686,9 @@ static void install_named_view(lua_State* state, const char* key) {
     lua_pushstring(state, key);
     lua_pushcclosure(state, lua_named_view_pairs, 2);
     lua_setfield(state, -2, "__pairs");
-    lua_pushcfunction(state, lua_named_view_assign);
+    lua_pushstring(state, "");
+    lua_pushstring(state, key);
+    lua_pushcclosure(state, lua_named_view_assign, 2);
     lua_setfield(state, -2, "__newindex");
     lua_setmetatable(state, -2);
     lua_setfield(state, -2, key);

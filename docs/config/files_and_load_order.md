@@ -121,9 +121,9 @@ end
 ```
 
 You can also change an entry directly, for example
-`gnoblin.configure.autostart.waybar.enable = false`. The name must already
-exist. Use `gnoblin.configure {autostart = {waybar = {command = {"waybar"}}}}`
-to add one.
+`gnoblin.configure.autostart.waybar.enable = false`. For field edits, the name
+must already exist. Assign a table to a name to add or override an entry:
+`gnoblin.configure.autostart.waybar = {command = {"waybar"}}`.
 
 `gnoblin.snapshot()` returns a copy of the assembled settings when you need a
 stable value. Both views contain only declarations loaded before the call.
@@ -208,24 +208,24 @@ If `gnoblin` or `configure` is reported as `nil`, see
 
 ## Reload and persistence
 
-| Change                         | Applies                                        | When removed                             |
-| ------------------------------ | ---------------------------------------------- | ---------------------------------------- |
-| Rules and animations           | On reload                                      | Earlier rules/defaults apply             |
-| Titlebar policy                | After reload and the app's next surface update | Earlier rules/defaults apply             |
-| Command shortcuts              | On reload                                      | Binding released; launched process stays |
-| Built-in keybindings           | On reload                                      | Built-in default applies                 |
-| Window-management preferences | On reload                                      | Gnoblin default applies                  |
-| Compositor interaction preferences | On reload                                  | Gnoblin default applies                  |
-| Input preferences              | On reload                                      | GNOME/Mutter settings apply              |
-| Input sources                  | On reload                                      | GNOME session sources apply              |
-| Orientation lock               | On reload                                      | GNOME orientation setting applies        |
-| Cursor theme and size          | On reload                                      | Adwaita at 24 logical pixels              |
-| Notifications and layout popup | On reload                                      | Saved GSettings value stays              |
-| Autostart                      | New names start on reload                      | Running process stays                    |
-| Renderer services              | Restart on reload                              | Enabled frames use native fallback       |
-| Protocols                      | Next login                                     | Default on next login                    |
-| Launcher focus behaviour       | Next login                                     | Default on next login                    |
-| Drag boundary                  | Next drag after reload                         | Defaults to enabled                      |
+| Change                             | Applies                                        | When removed                             |
+| ---------------------------------- | ---------------------------------------------- | ---------------------------------------- |
+| Rules and animations               | On reload                                      | Earlier rules/defaults apply             |
+| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply             |
+| Command shortcuts                  | On reload                                      | Binding released; launched process stays |
+| Built-in keybindings               | On reload                                      | Built-in default applies                 |
+| Window-management preferences      | On reload                                      | Gnoblin default applies                  |
+| Compositor interaction preferences | On reload                                      | Gnoblin default applies                  |
+| Input preferences                  | On reload                                      | GNOME/Mutter settings apply              |
+| Input sources                      | On reload                                      | GNOME session sources apply              |
+| Orientation lock                   | On reload                                      | GNOME orientation setting applies        |
+| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels             |
+| Notifications and layout popup     | On reload                                      | Saved GSettings value stays              |
+| Autostart                          | New names start on reload                      | Running process stays                    |
+| Renderer services                  | Restart on reload                              | Enabled frames use native fallback       |
+| Protocols                          | Next login                                     | Default on next login                    |
+| Launcher focus behaviour           | Next login                                     | Default on next login                    |
+| Drag boundary                      | Next drag after reload                         | Defaults to enabled                      |
 
 An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file
