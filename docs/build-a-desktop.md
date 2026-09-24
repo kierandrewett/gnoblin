@@ -45,14 +45,9 @@ gnoblin.configure {
 }
 ```
 
-![The Fuzzel launcher running in Gnoblin](images/gnoblin-build-a-desktop.png)
+![Waybar and Files in a fresh Gnoblin session](images/gnoblin-build-a-desktop.png)
 
-*Fuzzel searching the installed applications. The pointer uses the configured
-Adwaita Hyprcursor theme.*
-
-![A Mako notification in Gnoblin](images/gnoblin-mako-notification.png)
-
-*Mako displaying a notification over the same desktop.*
+_Waybar above the stock Files app in a disposable Gnoblin profile._
 
 The cursor setting requires the Adwaita Hyprcursor theme; install it using the
 [cursor guide](/guides/cursors).
