@@ -1,9 +1,6 @@
 name: Gnoblin compositor fuzz
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
