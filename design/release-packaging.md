@@ -3,7 +3,7 @@
 This is internal release engineering material. Keep it current whenever the
 release pipeline or COPR publication changes.
 
-## Current state (2026-09-24)
+## Current state (2026-09-25)
 
 - `gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
 - The latest COPR release is Gnoblin 0.1.4, build 11021823, with Mutter
@@ -19,7 +19,14 @@ release pipeline or COPR publication changes.
   package-install smoke tests failed on input-source initialization; the
   Ubuntu 24.04 test also assumed a package script directory that is not
   installed when no integrations are shipped. No GitHub release or COPR build
-  was published from that tag. Fixes are being prepared for `0.1.6`.
+  was published from that tag.
+- Tag `gnoblin-v0.1.6` contains the keyboard-startup and smoke-fixture fixes.
+  Its release workflow is building Debian/Ubuntu packages. The first Fedora
+  43/44 verification on that commit failed because the bridge resource patch
+  duplicated entries already added by the overlay resource patch. Commit
+  `52982ab` removes that redundant patch and is on `main`; its fresh Fedora
+  matrix and other CI checks are running. No Fedora 43 RPM or fresh-host
+  runtime verification has yet been published.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -68,9 +75,12 @@ The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
 its resource entry made the notification patch stale. Both patches now apply
 in sequence. The follow-up run on commit `300190f` passed both Fedora source
-builds. The later release run found an XKB options initialization error in the
-headless smoke test; two ordered Shell patches initialize keyboard options
-before source activation and default absent option arrays. The smoke fixture
-now creates its per-user script directory when no packaged integrations
-exist. These fixes still need a fresh release build and COPR installation
-check on Fedora 43 before the compatibility change is complete.
+builds. The `0.1.6` release run found an XKB options initialization error in
+the headless smoke test; two ordered Shell patches initialize keyboard
+options before source activation and default absent option arrays. The smoke
+fixture now creates its per-user script directory when no packaged
+integrations exist. A subsequent Fedora build exposed duplicate GResource
+entries because the bridge modules were included by two patches; the
+redundant later patch is removed in `52982ab`. The new verification run and a
+COPR installation check on Fedora 43 are still required before this
+compatibility change is complete.
