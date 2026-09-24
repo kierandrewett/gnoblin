@@ -40,5 +40,5 @@ export default function (api) {
         file.replace_contents(JSON.stringify(rows), null, false, 0, null);
         return GLib.SOURCE_CONTINUE;
     });
-    api._disposers.push(() => GLib.source_remove(timer));
+    api.addCleanup(() => GLib.source_remove(timer));
 }

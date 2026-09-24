@@ -26,7 +26,7 @@ export class UiSessions {
             this.broadcast(record.name, record.state);
             this.reveal();
         } else if (record.action === "command") {
-            if (record.name === "search" && ["open", "toggle"].includes(record.command?.action))
+            if (owner?.state?.revealCompanions && ["open", "toggle"].includes(record.command?.action))
                 this.scene.cancelDismiss?.();
             if (owner) this.send(owner.client, { event: "ui-command", name: record.name, command: record.command });
         } else throw new Error("Invalid UI session action");

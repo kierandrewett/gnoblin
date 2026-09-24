@@ -5,7 +5,7 @@ import test from "node:test";
 
 function fixture(flags = 0) {
     const calls = [];
-    const source = readFileSync(new URL("../src/scripts/lib/window-snap.js", import.meta.url), "utf8")
+    const source = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/window-snap.js", import.meta.url), "utf8")
         .replace(/^import .*;\n/gm, "")
         .replace("export class WindowSnap", "class WindowSnap");
     const area = { x: 0, y: 32, width: 1280, height: 768 };

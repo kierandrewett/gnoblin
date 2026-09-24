@@ -1,18 +1,15 @@
-From 9844015dfde6f091ee9c4f7e684add938fc98d17 Mon Sep 17 00:00:00 2001
+From 4954d9d828fa0a3bf05df6d225dc07b01630010f Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Sat, 19 Sep 2026 22:02:26 +0100
+Date: Thu, 24 Sep 2026 21:32:57 +0100
 Subject: [PATCH] Commit client blur fade metadata with surface state
 
-Wire the optional blur fade protocol into the build and carry its state
-through transaction merging and application. Foreground buffers and their
-fade metadata must become visible in the same compositor transaction.
 ---
  src/meson.build                    | 3 +++
  src/wayland/meta-wayland-surface.c | 4 ++++
  2 files changed, 7 insertions(+)
 
 diff --git a/src/meson.build b/src/meson.build
-index cfc4bebdb..f1e2f8aff 100644
+index 525334d4b..ddaae02bd 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -599,6 +599,8 @@ mutter_sources += [
@@ -24,14 +21,14 @@ index cfc4bebdb..f1e2f8aff 100644
    'wayland/meta-wayland-idle-notify.c',
    'wayland/meta-wayland-idle-notify.h',
    'wayland/meta-wayland-foreign-toplevel-common.c',
-@@ -1083,6 +1085,7 @@ wayland_protocols = [
+@@ -1087,6 +1089,7 @@ wayland_protocols = [
    ['wlr-gamma-control-unstable-v1', 'private', ],
    ['wlr-output-power-management-unstable-v1', 'private', ],
    ['ext-data-control-v1', 'private', ],
 +  ['gnoblin-blur-fade-v1', 'private', ],
+   ['ext-session-lock-v1', 'private', ],
  ]
  
- if have_xwayland
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
 index a0bfdcaf4..47a3de39c 100644
 --- a/src/wayland/meta-wayland-surface.c

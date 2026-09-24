@@ -45,7 +45,6 @@ Source8:        gnoblin-shell-service
 Source9:        gnoblinctl
 Source10:       00_org.gnoblin.mutter.gschema.override
 Source11:       gnome-session@gnoblin.target.d.conf
-Source12:       gnoblin-scripts.tar.gz
 Source13:       gnoblin-seed-config
 Source14:       init.lua.example
 
@@ -202,8 +201,6 @@ install -Dm644 %{SOURCE14} %{buildroot}%{_datadir}/gnoblin/init.lua.example
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
-mkdir -p %{buildroot}%{_datadir}/gnoblin/scripts
-tar -xzf %{SOURCE12} -C %{buildroot}%{_datadir}/gnoblin/scripts
 # Only Gnoblin-named entry points are installed outside the private runtime.
 install -Dm644 %{SOURCE3} %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
 sed -i 's|^Exec=.*|Exec=%{_bindir}/gnoblin-session|' \

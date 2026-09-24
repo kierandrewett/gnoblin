@@ -8,21 +8,24 @@ import { WindowSwitcherFallback } from "./lib/window-switcher-fallback.js";
 import { UiSessions } from "./lib/ui-sessions.js";
 import { LayerCompanions } from "./lib/layer-companions.js";
 import { WindowSnap } from "./lib/window-snap.js";
-import { ClipboardPaste } from "./lib/clipboard-paste.js";
 import { BlurRegions } from "./lib/blur-regions.js";
 import { FullscreenReturnGuard } from "./lib/fullscreen-return-guard.js";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
+import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
 
 // Generic shortcut sessions and window management. Clients own presentation,
 // ordering and action semantics.
 // Newline-delimited JSON stays on one persistent, user-private Unix socket.
-class CompositorBridge {
+export class CompositorBridge {
     constructor() {
         this.clients = new Set();
+        this.clientTokens = new Map();
+        this.extensionOperations = new Map();
+        this.clientClosedHandlers = new Set();
         this.encoder = new TextEncoder();
         this.layerCompanions = new LayerCompanions();
         this.fullscreenReturnGuard = new FullscreenReturnGuard({
@@ -35,19 +38,17 @@ class CompositorBridge {
                 Clutter.EventType.SCROLL,
             ],
             pick: (event) => this.windowAtPointer(event),
-            dismiss: (done) => this.dismissSearchForOutsideClick(done),
+            dismiss: (name, done) => this.dismissUiSession(name, "hide", done),
             set: (armed) => Meta.gnoblin_fullscreen_return_guard_set(global.display, armed),
         });
         this.uiSessions = new UiSessions((client, record) => this.send(client, record), {
             update: (requests) => {
                 this.layerCompanions.update(requests);
-                const search = this.uiSessions.owners.get("search")?.state;
-                this.fullscreenReturnGuard.update(search, requests);
+                this.fullscreenReturnGuard.update([...this.uiSessions.owners], requests);
             },
             cancelDismiss: () => this.layerCompanions.cancelDismiss(),
         });
         this.blurRegions = new BlurRegions();
-        this.clipboardPaste = new ClipboardPaste(global.stage.context.get_backend().get_default_seat());
         this.actions = new Map();
         this.active = null;
         this.grab = null;
@@ -82,40 +83,71 @@ class CompositorBridge {
             this.fullscreenReturnGuard.handle(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE,
         );
         this.session = Main.sessionMode.connect("updated", () => {
-            if (Main.sessionMode.isLocked) {
-                this.caret = null;
+            if (SessionLock.isLocked(Main.sessionMode.isLocked)) {
                 this.windowSnap.cancel();
                 this.end("cancelled");
             }
         });
+        // Native lock state is read synchronously from Mutter. Poll it only at
+        // existing event boundaries; the compositor remains the enforcement
+        // point and the fallback is the stock Shell state until capability v1.
         this.map = global.window_manager.connect("map", (_manager, actor) => this.track(actor.meta_window));
         this.windowMenu = global.window_manager.connect("show-window-menu", (_manager, window, type, rect) => {
             if (type === Meta.WindowMenuType.WM && Config.settings["window-menu"].length)
                 this.showWindowMenu(window, rect.x, rect.y);
         });
-        this.caret = null;
         this.focus = global.display.connect("notify::focus-window", () => {
-            this.caret = null;
             this.publishWindows();
-        });
-        this.cursorLocation = Main.inputMethod.connect("cursor-location-changed", (_method, rect) => {
-            const window = global.display.focus_window;
-            const focus = Main.inputMethod.currentFocus;
-            if (!window || !focus || Main.sessionMode.isLocked) return;
-            const buffer = window.get_buffer_rect();
-            // Mutter supplies stage coordinates. Store the offset so moving
-            // the window does not leave the caret at its previous location.
-            this.caret = {
-                window,
-                focus,
-                x: rect.get_x() - buffer.x,
-                y: rect.get_y() - buffer.y,
-                width: rect.get_width(),
-                height: rect.get_height(),
-            };
         });
         for (const actor of global.get_window_actors()) this.track(actor.meta_window);
         this.switcherFallback = new WindowSwitcherFallback(this);
+    }
+
+    registerScriptOperation(operation, handler) {
+        if (
+            typeof operation !== "string" ||
+            !/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(operation) ||
+            typeof handler !== "function"
+        )
+            throw new Error("Compositor script operations must use a namespaced name and a function handler");
+        if (this.extensionOperations.has(operation)) throw new Error(`Compositor operation already registered: ${operation}`);
+        this.extensionOperations.set(operation, handler);
+        return () => {
+            if (this.extensionOperations.get(operation) === handler) this.extensionOperations.delete(operation);
+        };
+    }
+
+    onClientClosed(handler) {
+        if (typeof handler !== "function") throw new TypeError("client close handler must be a function");
+        this.clientClosedHandlers.add(handler);
+        return () => this.clientClosedHandlers.delete(handler);
+    }
+
+    extensionContext(client) {
+        if (client.extensionContext) return client.extensionContext;
+        client.token = Object.freeze({});
+        this.clientTokens.set(client.token, client);
+        client.extensionContext = Object.freeze({
+            client: client.token,
+            pid: client.connection.get_socket().get_credentials().get_unix_pid(),
+            isOpen: () => !client.closed,
+            send: (record) => this.send(client, record),
+            sendTo: (token, record) => {
+                const peer = this.clientTokens.get(token);
+                if (!peer || peer.closed) return false;
+                this.send(peer, record);
+                return true;
+            },
+            broadcast: (record, recipients = null) => {
+                if (recipients === null) {
+                    this.sendToSubscribers(record, () => true);
+                    return;
+                }
+                const targets = new Set(recipients);
+                this.sendToSubscribers(record, (peer) => targets.has(peer.token));
+            },
+        });
+        return client.extensionContext;
     }
 
     accept(connection) {
@@ -259,7 +291,7 @@ class CompositorBridge {
         }
         if (record.op === "shortcut-input") {
             if (
-                Main.sessionMode.isLocked ||
+                SessionLock.isLocked(Main.sessionMode.isLocked) ||
                 typeof record.name !== "string" ||
                 !["prepared", "ready", "closed"].includes(record.state)
             )
@@ -276,92 +308,13 @@ class CompositorBridge {
             this.send(client, { event: "reply", id: record.id, result: this.control(record) });
             return;
         }
-        if (record.op === "input-anchor") {
-            if (Main.sessionMode.isLocked) throw new Error("Session is locked.");
-            const window = global.display.focus_window;
-            const [x, y] = global.get_pointer();
-            const frame = window?.get_frame_rect();
-            const buffer = window?.get_buffer_rect();
-            const caret =
-                this.caret?.window === window &&
-                Main.inputMethod.currentFocus &&
-                this.caret.focus === Main.inputMethod.currentFocus
-                    ? this.caret
-                    : null;
-            this.send(client, {
-                event: "input-anchor",
-                x,
-                y,
-                caret: caret
-                    ? {
-                          x: buffer.x + caret.x,
-                          y: buffer.y + caret.y,
-                          width: caret.width,
-                          height: caret.height,
-                          source: "caret",
-                      }
-                    : null,
-                pid: window?.get_pid() || 0,
-                window: window ? String(window.get_stable_sequence()) : "",
-                buffer: buffer ? { x: buffer.x, y: buffer.y, width: buffer.width, height: buffer.height } : null,
-                frame: frame ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height } : null,
-            });
+        const extensionHandler = this.extensionOperations.get(record.op);
+        if (extensionHandler) {
+            extensionHandler(record, this.extensionContext(client));
             return;
         }
-        if (record.op === "type-text") {
-            const window = this.windows.get(record.window)?.window;
-            if (
-                Main.sessionMode.isLocked ||
-                !window ||
-                !this.eligible(window) ||
-                global.display.focus_window !== window
-            )
-                throw new Error("The original input window is no longer focused.");
-            if (
-                typeof record.text !== "string" ||
-                !record.text.length ||
-                record.text.length > 64 ||
-                /[\u0000-\u001f\u007f-\u009f]/.test(record.text)
-            )
-                throw new Error("Invalid text insertion.");
-            const modifiers = global.get_pointer()[2];
-            if (
-                modifiers &
-                (Clutter.ModifierType.CONTROL_MASK |
-                    Clutter.ModifierType.MOD1_MASK |
-                    Clutter.ModifierType.MOD4_MASK |
-                    Clutter.ModifierType.SUPER_MASK)
-            )
-                throw new Error("Release modifier keys before inserting an emoji.");
-            if (window.get_client_type() === Meta.WindowClientType.X11) {
-                this.clipboardPaste
-                    .paste(record.text, () => {
-                        if (client.closed || Main.sessionMode.isLocked || global.display.focus_window !== window)
-                            throw new Error("The original input window is no longer focused.");
-                        if (
-                            global.get_pointer()[2] &
-                            (Clutter.ModifierType.SHIFT_MASK |
-                                Clutter.ModifierType.CONTROL_MASK |
-                                Clutter.ModifierType.MOD1_MASK |
-                                Clutter.ModifierType.MOD4_MASK |
-                                Clutter.ModifierType.SUPER_MASK)
-                        )
-                            throw new Error("Release modifier keys before inserting an emoji.");
-                    })
-                    .then(
-                        () => this.send(client, { event: "typed", window: record.window }),
-                        (error) => this.send(client, { event: "error", message: error.message }),
-                    );
-                return;
-            }
-            if (!Main.inputMethod.currentFocus)
-                throw new Error("This app does not expose a text input. Focus its input field and try again.");
-            // Commit the complete Unicode sequence through the native input
-            // method, avoiding layout-dependent synthetic keycodes.
-            Main.inputMethod.commit(record.text);
-            this.send(client, { event: "typed", window: record.window });
-            return;
-        }
+        if (typeof record.op === "string" && record.op.includes("."))
+            throw new Error(`Unsupported compositor operation: ${record.op}`);
         if (record.op === "status") {
             this.send(client, {
                 event: "status",
@@ -380,7 +333,7 @@ class CompositorBridge {
         }
         if (record.op === "snap-context") {
             const window = global.display.focus_window;
-            if (Main.sessionMode.isLocked || !window || !this.eligible(window) || !window.allows_resize())
+            if (SessionLock.isLocked(Main.sessionMode.isLocked) || !window || !this.eligible(window) || !window.allows_resize())
                 throw new Error("Focus a resizable window to choose a snap region");
             const monitor = Main.layoutManager.monitors[window.get_monitor()];
             const area = window.get_workspace().get_work_area_for_monitor(monitor.index);
@@ -501,7 +454,7 @@ class CompositorBridge {
 
     activate(action) {
         const binding = this.actions.get(action);
-        if (!binding || Main.sessionMode.isLocked) return;
+        if (!binding || SessionLock.isLocked(Main.sessionMode.isLocked)) return;
         if (binding.captureInput)
             Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput?.begin(binding.id);
         if (this.active && this.active.client !== binding.client) this.end("cancelled");
@@ -643,7 +596,7 @@ class CompositorBridge {
             this.grab = null;
             Main.popModal(grab);
             if (
-                !Main.sessionMode.isLocked &&
+                !SessionLock.isLocked(Main.sessionMode.isLocked) &&
                 active.focusWindow?.get_compositor_private() &&
                 !active.focusWindow.minimized
             )
@@ -677,8 +630,9 @@ class CompositorBridge {
     }
 
     setupPrivacy() {
-        // The active handles and their start times survive script reloads. Only
-        // each handle's stopped callback persists, until that session ends.
+        // Active handles and their start times live on the session global, so
+        // replacing the bridge transport does not reset elapsed time. Each
+        // handle's stopped callback persists until that session ends.
         this.remoteHandles = global.__gnoblinRemoteAccessHandles ??= new Map();
         global.__gnoblinPublishPrivacy = () => this.publishPrivacy();
         this.remoteController = global.backend.get_remote_access_controller();
@@ -729,7 +683,7 @@ class CompositorBridge {
         client.previewBusy = true;
         const stream = Gio.MemoryOutputStream.new_resizable();
         try {
-            if (Main.sessionMode.isLocked) throw new Error("session locked");
+            if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("session locked");
             const window = this.windows.get(request.window)?.window;
             if (!this.eligible(window)) throw new Error("window no longer available");
             // Keep full-size pixels on the GPU. Only the small render target is
@@ -789,7 +743,7 @@ class CompositorBridge {
                 if (!visible) throw new Error("window image buffer unavailable");
             }
             stream.close(null);
-            if (client.closed || Main.sessionMode.isLocked || !this.windows.has(request.window)) return;
+            if (client.closed || SessionLock.isLocked(Main.sessionMode.isLocked) || !this.windows.has(request.window)) return;
             const bytes = stream.steal_as_bytes().toArray();
             this.send(client, {
                 event: "preview",
@@ -806,24 +760,24 @@ class CompositorBridge {
         }
     }
 
-    dismissSearchChrome() {
-        const search = this.uiSessions.owners.get("search")?.state;
-        if (!search?.revealCompanions) return;
-        this.layerCompanions.dismiss(search.surface, () => {
-            this.uiSessions.command(null, { action: "command", name: "search", command: { action: "close" } });
-        });
-    }
-
-    dismissSearchForOutsideClick(done) {
-        const search = this.uiSessions.owners.get("search")?.state;
-        if (!search?.revealCompanions) {
+    dismissUiSession(name, action, done = () => {}) {
+        const owner = this.uiSessions.owners.get(name);
+        const state = owner?.state;
+        if (!state?.revealCompanions || typeof state.surface !== "string") {
             done();
             return;
         }
-        this.layerCompanions.dismiss(search.surface, () => {
-            this.uiSessions.command(null, { action: "command", name: "search", command: { action: "hide" } });
+        this.layerCompanions.dismiss(state.surface, () => {
+            this.uiSessions.command(null, { action: "command", name, command: { action } });
             done();
         });
+    }
+
+    dismissRevealedUi() {
+        const [name, owner] = [...this.uiSessions.owners].find(([, candidate]) =>
+            candidate.state?.revealCompanions && typeof candidate.state.surface === "string",
+        ) ?? [];
+        if (name) this.dismissUiSession(name, "hide");
     }
 
     windowAtPointer(event) {
@@ -844,7 +798,7 @@ class CompositorBridge {
         );
         signals.push(
             window.connect("raised", () => {
-                if (!window.is_fullscreen() || this.uiSessions.owners.get("search")?.state.visible) return;
+                if (!window.is_fullscreen()) return;
                 const [x, y, modifiers] = global.get_pointer();
                 const buttons =
                     Clutter.ModifierType.BUTTON1_MASK |
@@ -853,12 +807,12 @@ class CompositorBridge {
                 if (!(modifiers & buttons)) return;
                 let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
                 while (actor && !actor.meta_window) actor = actor.get_parent();
-                if (actor?.meta_window === window) this.dismissSearchChrome();
+                if (actor?.meta_window === window) this.dismissRevealedUi();
             }),
         );
         signals.push(
             window.connect("notify::fullscreen", () => {
-                if (window.is_fullscreen() && this.eligible(window)) this.dismissSearchChrome();
+                if (window.is_fullscreen() && this.eligible(window)) this.dismissRevealedUi();
                 this.publishWindows();
             }),
         );
@@ -904,7 +858,7 @@ class CompositorBridge {
 
     control(record) {
         if (record.command === "capture-windows") {
-            if (Main.sessionMode.isLocked) throw new Error("Session is locked.");
+            if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("Session is locked.");
             const windows = global.display.sort_windows_by_stacking(
                 global.get_window_actors().map((actor) => actor.meta_window),
             );
@@ -914,11 +868,23 @@ class CompositorBridge {
                     .filter((window) => this.eligible(window) && !window.minimized && window.showing_on_its_workspace())
                     .map((window) => {
                         const frame = window.get_frame_rect();
+                        const actor = window.get_compositor_private();
+                        const paintBoxResult = actor?.get_paint_box();
+                        const paintBox = Array.isArray(paintBoxResult) ? paintBoxResult[1] : paintBoxResult;
+                        const paintWidth = paintBox && Number.isFinite(paintBox.x1) && Number.isFinite(paintBox.x2)
+                            ? Math.max(1, Math.ceil(paintBox.x2 - paintBox.x1))
+                            : 0;
+                        const paintHeight = paintBox && Number.isFinite(paintBox.y1) && Number.isFinite(paintBox.y2)
+                            ? Math.max(1, Math.ceil(paintBox.y2 - paintBox.y1))
+                            : 0;
                         const app = Shell.WindowTracker.get_default().get_window_app(window);
-                        const texture = window.get_compositor_private()?.get_texture()?.get_texture();
+                        const texture = actor?.get_texture()?.get_texture();
                         return {
-                            bufferWidth: texture?.get_width() || frame.width,
-                            bufferHeight: texture?.get_height() || frame.height,
+                            // Window capture follows the compositor paint box,
+                            // which includes Gnoblin decoration children such
+                            // as the shadow outside the client allocation.
+                            bufferWidth: paintWidth || texture?.get_width() || frame.width,
+                            bufferHeight: paintHeight || texture?.get_height() || frame.height,
                             id: String(window.get_id()),
                             title: window.title || app?.get_name() || "",
                             appId: app?.get_id() || "",
@@ -956,7 +922,7 @@ class CompositorBridge {
                     scale: global.display.get_monitor_scale(monitor.index),
                 })),
             };
-        if (Main.sessionMode.isLocked) throw new Error("window management is unavailable while the session is locked");
+        if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("window management is unavailable while the session is locked");
         const workspace = () => {
             if (!Number.isInteger(record.workspace) || record.workspace < 1 || record.workspace > manager.n_workspaces)
                 throw new Error("workspace not found; list workspaces first");
@@ -1106,7 +1072,7 @@ class CompositorBridge {
     }
 
     showWindowMenu(window, x, y) {
-        if (Main.sessionMode.isLocked || !window || !this.eligible(window)) return;
+        if (SessionLock.isLocked(Main.sessionMode.isLocked) || !window || !this.eligible(window)) return;
         const command = Config.settings["window-menu"];
         if (!command.length) throw new Error("No shell.window-menu command configured");
         const maximized = !!window.get_maximize_flags();
@@ -1170,6 +1136,16 @@ class CompositorBridge {
     close(client) {
         if (client.closed) return;
         client.closed = true;
+        if (client.token) {
+            for (const handler of this.clientClosedHandlers) {
+                try {
+                    handler(client.token);
+                } catch (error) {
+                    console.warn(`gnoblin-compositor client cleanup: ${error.message}`);
+                }
+            }
+            this.clientTokens.delete(client.token);
+        }
         this.uiSessions.close(client);
         this.windowSnap.close(client);
         this.blurRegions.close(client);
@@ -1188,7 +1164,6 @@ class CompositorBridge {
     destroy() {
         global.window_manager.disconnect(this.windowMenu);
         this.windowSnap.destroy();
-        this.clipboardPaste.destroy();
         this.end("cancelled");
         global.__gnoblinPublishPrivacy = null;
         if (this.remoteSignal) this.remoteController.disconnect(this.remoteSignal);
@@ -1205,17 +1180,13 @@ class CompositorBridge {
         Main.sessionMode.disconnect(this.session);
         global.window_manager.disconnect(this.map);
         global.display.disconnect(this.focus);
-        Main.inputMethod.disconnect(this.cursorLocation);
         for (const { window, signals } of this.windows.values())
             for (const signal of signals) window.disconnect(signal);
         this.windows.clear();
+        this.extensionOperations.clear();
+        this.clientClosedHandlers.clear();
         this.service.stop();
         this.service.close();
         this.path.delete(null);
     }
-}
-
-export default function enable(api) {
-    const bridge = new CompositorBridge();
-    api._disposers.push(() => bridge.destroy());
 }

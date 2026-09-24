@@ -87,7 +87,7 @@ export default function (api) {
         }
         return GLib.SOURCE_CONTINUE;
     });
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         if (GLib.MainContext.default().find_source_by_id(timer)) GLib.source_remove(timer);
     });
 }

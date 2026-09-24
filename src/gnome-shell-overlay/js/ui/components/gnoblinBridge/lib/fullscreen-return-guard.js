@@ -14,12 +14,15 @@ export class FullscreenReturnGuard {
         this.blockedButtons = new Set();
     }
 
-    update(search, requests) {
-        const revealed =
-            search?.revealCompanions === true &&
-            ["bingux-search", "bingux-search-chrome"].includes(search.surface) &&
-            requests.some((request) => request.surface === search.surface);
-        if (revealed) this.arm();
+    update(sessions, requests) {
+        const session = sessions.find(
+            ([, owner]) =>
+                owner.state?.revealCompanions === true &&
+                typeof owner.state.surface === "string" &&
+                requests.some((request) => request.surface === owner.state.surface),
+        );
+        this.sessionName = session?.[0] ?? null;
+        if (this.sessionName) this.arm();
         else this.disarm();
     }
 
@@ -53,7 +56,7 @@ export class FullscreenReturnGuard {
         if (type === this.buttonPress && button > 0) this.blockedButtons.add(button);
         if (type === this.buttonPress && button === 1 && !this.dismissing) {
             this.dismissing = true;
-            this.dismiss(() => {
+            this.dismiss(this.sessionName, () => {
                 this.dismissing = false;
                 this.disarm();
             });

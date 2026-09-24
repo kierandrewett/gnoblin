@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const source = readFileSync(
-    process.env.GNOBLIN_BLUR_REGIONS_SOURCE ?? new URL("../src/scripts/lib/blur-regions.js", import.meta.url),
+    process.env.GNOBLIN_BLUR_REGIONS_SOURCE ?? new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/blur-regions.js", import.meta.url),
     "utf8",
 )
     .replace(/^import .*;\n/gm, "")

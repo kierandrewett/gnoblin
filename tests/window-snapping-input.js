@@ -40,7 +40,7 @@ export default function enable(api) {
             );
         return GLib.SOURCE_CONTINUE;
     });
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         GLib.source_remove(timer);
         device.run_dispose();
         keyboard.run_dispose();
