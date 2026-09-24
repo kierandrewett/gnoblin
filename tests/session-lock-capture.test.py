@@ -48,13 +48,27 @@ class SessionLockCaptureTests(unittest.TestCase):
         self.assertIn("set_state (controller, META_WAYLAND_SESSION_LOCK_COVERING)", self.session_lock_source)
         self.assertIn("set_state (controller, META_WAYLAND_SESSION_LOCK_FAILSAFE)", self.session_lock_source)
 
-    def test_new_screencast_requests_and_remote_input_are_denied(self):
+    def test_only_presented_monitor_lock_scene_and_its_input_are_allowed(self):
         self.assertIn("src/backends/meta-screen-cast-session.c", self.patch)
         self.assertIn("check_capture_allowed", self.patch)
+        self.assertIn("is_session_lock_ready_for_lock_scene", self.patch)
+        self.assertIn("META_WAYLAND_SESSION_LOCK_LOCKED", self.patch)
+        self.assertIn("meta_wayland_session_lock_is_presentation_confirmed", self.patch)
+        self.assertIn("check_capture_allowed (session, invocation, TRUE)", self.patch)
+        self.assertGreaterEqual(
+            self.patch.count("check_capture_allowed (session, invocation, FALSE)"), 3)
         self.assertIn("Screen capture is unavailable while the session is locked", self.patch)
         self.assertIn("src/backends/meta-remote-desktop-session.c", self.patch)
         self.assertIn("meta_remote_desktop_session_check_can_notify", self.patch)
+        self.assertIn("is_session_lock_ready_for_remote_input", self.patch)
         self.assertIn("Remote input is unavailable while the session is locked", self.patch)
+
+    def test_only_monitor_streams_switch_from_black_to_the_lock_scene(self):
+        self.assertIn('#include "backends/meta-stream-monitor.h"', self.patch)
+        self.assertIn("is_session_lock_scene_stream", self.patch)
+        self.assertIn("META_IS_STREAM_MONITOR", self.patch)
+        self.assertIn("holds\n+   * direct scan-out off", self.patch)
+        self.assertIn("!is_session_lock_scene_stream (source)", self.patch)
 
     def test_screencast_helper_follows_its_private_session_struct(self):
         screen_cast_patch = self.patch.split("diff --git a/src/backends/meta-stream-source.c", 1)[0]

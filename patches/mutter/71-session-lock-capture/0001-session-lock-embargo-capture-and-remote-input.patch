@@ -1,16 +1,17 @@
-From fb87b97820ec67d23d893d6adc74c06df4690354 Mon Sep 17 00:00:00 2001
+From 3ebb311fedda7c76955c096e539a038974881c37 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
-Date: Thu, 24 Sep 2026 21:26:42 +0100
-Subject: [PATCH] session-lock: embargo capture and remote input
+Date: Thu, 24 Sep 2026 22:28:38 +0100
+Subject: [PATCH] session-lock: stream presented lock scene to authorised
+ remotes
 
 ---
- src/backends/meta-remote-desktop-session.c |  22 +++++
- src/backends/meta-screen-cast-session.c    |  49 ++++++++++++
- src/backends/meta-stream-source.c          | 127 ++++++++++++++++++++++++++++-
- 3 files changed, 196 insertions(+), 2 deletions(-)
+ src/backends/meta-remote-desktop-session.c |  42 ++++++
+ src/backends/meta-screen-cast-session.c    |  73 +++++++++++
+ src/backends/meta-stream-source.c          | 143 ++++++++++++++++++++-
+ 3 files changed, 256 insertions(+), 2 deletions(-)
 
 diff --git a/src/backends/meta-remote-desktop-session.c b/src/backends/meta-remote-desktop-session.c
-index 242509261..b0bf24565 100644
+index 242509261..7b08b11b0 100644
 --- a/src/backends/meta-remote-desktop-session.c
 +++ b/src/backends/meta-remote-desktop-session.c
 @@ -44,8 +44,10 @@
@@ -18,16 +19,16 @@ index 242509261..b0bf24565 100644
  #include "core/meta-sealed-fd.h"
  #include "meta/meta-backend.h"
 +#include "meta/meta-wayland-compositor.h"
-
+ 
  #include "meta-dbus-remote-desktop.h"
 +#include "wayland/meta-wayland-session-lock.h"
-
+ 
  #define META_REMOTE_DESKTOP_SESSION_DBUS_PATH "/org/gnome/Mutter/RemoteDesktop/Session"
-
-@@ -415,6 +417,18 @@ check_permission (MetaRemoteDesktopSession *session,
+ 
+@@ -415,6 +417,37 @@ check_permission (MetaRemoteDesktopSession *session,
                      g_dbus_method_invocation_get_sender (invocation)) == 0;
  }
-
+ 
 +static gboolean
 +is_session_lock_active (MetaRemoteDesktopSession *session)
 +{
@@ -40,14 +41,34 @@ index 242509261..b0bf24565 100644
 +  return compositor && meta_wayland_session_lock_is_active (compositor);
 +}
 +
++static gboolean
++is_session_lock_ready_for_remote_input (MetaRemoteDesktopSession *session)
++{
++  MetaBackend *backend =
++    meta_dbus_session_manager_get_backend (session->session_manager);
++  MetaContext *context = meta_backend_get_context (backend);
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (context);
++
++  /* The ScreenCast/RemoteDesktop portal has already authenticated and
++   * authorised this session.  Mutter supplies no new policy here: it merely
++   * makes that existing, authorised input reach the verified lock role after
++   * every output has presented the lock scene. */
++  return compositor &&
++    meta_wayland_session_lock_get_state (compositor) ==
++      META_WAYLAND_SESSION_LOCK_LOCKED &&
++    meta_wayland_session_lock_is_presentation_confirmed (compositor);
++}
++
  static gboolean
  meta_remote_desktop_session_check_can_notify (MetaRemoteDesktopSession *session,
                                                GDBusMethodInvocation    *invocation)
-@@ -435,6 +449,14 @@ meta_remote_desktop_session_check_can_notify (MetaRemoteDesktopSession *session,
+@@ -435,6 +468,15 @@ meta_remote_desktop_session_check_can_notify (MetaRemoteDesktopSession *session,
        return FALSE;
      }
-
-+  if (is_session_lock_active (session))
+ 
++  if (is_session_lock_active (session) &&
++      !is_session_lock_ready_for_remote_input (session))
 +    {
 +      g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
 +                                             G_DBUS_ERROR_ACCESS_DENIED,
@@ -57,9 +78,9 @@ index 242509261..b0bf24565 100644
 +
    return TRUE;
  }
-
+ 
 diff --git a/src/backends/meta-screen-cast-session.c b/src/backends/meta-screen-cast-session.c
-index 672b7fd8d..df2d37947 100644
+index 672b7fd8d..a1281f9a0 100644
 --- a/src/backends/meta-screen-cast-session.c
 +++ b/src/backends/meta-screen-cast-session.c
 @@ -34,8 +34,10 @@
@@ -67,16 +88,16 @@ index 672b7fd8d..df2d37947 100644
  #include "backends/meta-virtual-monitor.h"
  #include "core/display-private.h"
 +#include "meta/meta-wayland-compositor.h"
-
+ 
  #include "meta-private-enum-types.h"
 +#include "wayland/meta-wayland-session-lock.h"
-
+ 
  #define META_SCREEN_CAST_SESSION_DBUS_PATH "/org/gnome/Mutter/ScreenCast/Session"
-
-@@ -82,6 +84,31 @@ struct _MetaScreenCastSession
+ 
+@@ -82,6 +84,54 @@ struct _MetaScreenCastSession
    MetaRemoteDesktopSession *remote_desktop_session;
  };
-
+ 
 +static gboolean
 +is_session_lock_active (MetaScreenCastSession *session)
 +{
@@ -90,10 +111,33 @@ index 672b7fd8d..df2d37947 100644
 +}
 +
 +static gboolean
++is_session_lock_ready_for_lock_scene (MetaScreenCastSession *session)
++{
++  MetaBackend *backend =
++    meta_dbus_session_manager_get_backend (session->session_manager);
++  MetaContext *context = meta_backend_get_context (backend);
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (context);
++
++  return compositor &&
++    meta_wayland_session_lock_get_state (compositor) ==
++      META_WAYLAND_SESSION_LOCK_LOCKED &&
++    meta_wayland_session_lock_is_presentation_confirmed (compositor);
++}
++
++static gboolean
 +check_capture_allowed (MetaScreenCastSession  *session,
-+                       GDBusMethodInvocation *invocation)
++                       GDBusMethodInvocation *invocation,
++                       gboolean                lock_scene_only)
 +{
 +  if (!is_session_lock_active (session))
++    return TRUE;
++
++  /* A monitor stream paints the compositor stage.  Once the controller's
++   * presentation barrier has fired, that stage is fully covered by the
++   * verified session-lock scene.  Window, area and virtual streams never get
++   * this exception because they can bypass the covered stage. */
++  if (lock_scene_only && is_session_lock_ready_for_lock_scene (session))
 +    return TRUE;
 +
 +  g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
@@ -103,13 +147,14 @@ index 672b7fd8d..df2d37947 100644
 +}
 +
  static void initable_init_iface (GInitableIface *iface);
-
+ 
  static void
-@@ -143,6 +170,13 @@ meta_screen_cast_session_start (MetaScreenCastSession  *session,
+@@ -143,6 +193,14 @@ meta_screen_cast_session_start (MetaScreenCastSession  *session,
  {
    GList *l;
-
-+  if (is_session_lock_active (session))
+ 
++  if (is_session_lock_active (session) &&
++      !is_session_lock_ready_for_lock_scene (session))
 +    {
 +      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
 +                           "Screen capture is unavailable while the session is locked");
@@ -119,90 +164,92 @@ index 672b7fd8d..df2d37947 100644
    for (l = session->streams; l; l = l->next)
      {
        MetaScreenCastStream *screen_cast_stream = l->data;
-@@ -327,6 +361,9 @@ handle_start (MetaDBusScreenCastSession *skeleton,
+@@ -327,6 +385,9 @@ handle_start (MetaDBusScreenCastSession *skeleton,
        return TRUE;
      }
-
-+  if (!check_capture_allowed (session, invocation))
+ 
++  if (!check_capture_allowed (session, invocation, TRUE))
 +    return TRUE;
 +
    switch (session->session_type)
      {
      case META_SCREEN_CAST_SESSION_TYPE_NORMAL:
-@@ -459,6 +496,9 @@ handle_record_monitor (MetaDBusScreenCastSession *skeleton,
+@@ -459,6 +520,9 @@ handle_record_monitor (MetaDBusScreenCastSession *skeleton,
        return G_DBUS_METHOD_INVOCATION_HANDLED;
      }
-
-+  if (!check_capture_allowed (session, invocation))
+ 
++  if (!check_capture_allowed (session, invocation, TRUE))
 +    return G_DBUS_METHOD_INVOCATION_HANDLED;
 +
    interface_skeleton = G_DBUS_INTERFACE_SKELETON (skeleton);
    connection = g_dbus_interface_skeleton_get_connection (interface_skeleton);
-
-@@ -568,6 +608,9 @@ handle_record_window (MetaDBusScreenCastSession *skeleton,
+ 
+@@ -568,6 +632,9 @@ handle_record_window (MetaDBusScreenCastSession *skeleton,
        return G_DBUS_METHOD_INVOCATION_HANDLED;
      }
-
-+  if (!check_capture_allowed (session, invocation))
+ 
++  if (!check_capture_allowed (session, invocation, FALSE))
 +    return G_DBUS_METHOD_INVOCATION_HANDLED;
 +
    if (properties_variant)
      window_id_variant = g_variant_lookup_value (properties_variant,
                                                  "window-id",
-@@ -687,6 +730,9 @@ handle_record_area (MetaDBusScreenCastSession *skeleton,
+@@ -687,6 +754,9 @@ handle_record_area (MetaDBusScreenCastSession *skeleton,
        return G_DBUS_METHOD_INVOCATION_HANDLED;
      }
-
-+  if (!check_capture_allowed (session, invocation))
+ 
++  if (!check_capture_allowed (session, invocation, FALSE))
 +    return G_DBUS_METHOD_INVOCATION_HANDLED;
 +
    if (!g_variant_lookup (properties_variant, "cursor-mode", "u", &cursor_mode))
      {
        cursor_mode = META_SCREEN_CAST_CURSOR_MODE_HIDDEN;
-@@ -860,6 +906,9 @@ handle_record_virtual (MetaDBusScreenCastSession *skeleton,
+@@ -860,6 +930,9 @@ handle_record_virtual (MetaDBusScreenCastSession *skeleton,
        return G_DBUS_METHOD_INVOCATION_HANDLED;
      }
-
-+  if (!check_capture_allowed (session, invocation))
+ 
++  if (!check_capture_allowed (session, invocation, FALSE))
 +    return G_DBUS_METHOD_INVOCATION_HANDLED;
 +
    if (!g_variant_lookup (properties_variant, "cursor-mode", "u", &cursor_mode))
      {
        cursor_mode = META_SCREEN_CAST_CURSOR_MODE_HIDDEN;
 diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source.c
-index 263a05d4e..1a2bf543d 100644
+index 263a05d4e..f7c0768fd 100644
 --- a/src/backends/meta-stream-source.c
 +++ b/src/backends/meta-stream-source.c
-@@ -43,6 +43,7 @@
-
+@@ -42,7 +42,9 @@
+ #include <drm_fourcc.h>
+ 
  #include "backends/meta-stream.h"
++#include "backends/meta-stream-monitor.h"
  #include "core/meta-fraction.h"
 +#include "meta/meta-wayland-compositor.h"
-
+ 
  #include "backends/native/meta-device-pool.h"
  #include "backends/native/meta-drm-buffer.h"
-@@ -51,6 +52,7 @@
+@@ -51,6 +53,7 @@
  #include "backends/native/meta-renderer-native-private.h"
  #include "common/meta-drm-timeline.h"
  #include "mtk/mtk.h"
 +#include "wayland/meta-wayland-session-lock.h"
-
+ 
  #define CURSOR_META_SIZE(width, height) \
    (sizeof (struct spa_meta_cursor) + \
-@@ -160,6 +162,9 @@ typedef struct _MetaStreamSourcePrivate
-
+@@ -160,6 +163,9 @@ typedef struct _MetaStreamSourcePrivate
+ 
    gboolean must_drive;
    gboolean pending_process;
 +
 +  MetaWaylandCompositor *session_lock_compositor;
 +  gulong session_lock_state_changed_id;
  } MetaStreamSourcePrivate;
-
+ 
  typedef struct _MetaStreamBuffer
-@@ -1096,7 +1101,10 @@ do_record_frame (MetaStreamSource      *source,
+@@ -1096,7 +1102,10 @@ do_record_frame (MetaStreamSource      *source,
        damage = mtk_region_create_rectangle (&full_rect);
      }
-
+ 
 -  if (spa_data->data || spa_data->type == SPA_DATA_MemFd)
 +  /* A negotiated memfd must be mapped before it can be handed to a consumer.
 +   * Treat a missing mapping as a failure rather than dereferencing NULL or
@@ -211,10 +258,10 @@ index 263a05d4e..1a2bf543d 100644
      {
        int width = priv->video_format.size.width;
        int height = priv->video_format.size.height;
-@@ -1148,6 +1156,75 @@ do_record_frame (MetaStreamSource      *source,
+@@ -1148,6 +1157,93 @@ do_record_frame (MetaStreamSource      *source,
    return result;
  }
-
+ 
 +static gboolean
 +is_session_lock_active (MetaStreamSource *source)
 +{
@@ -226,6 +273,25 @@ index 263a05d4e..1a2bf543d 100644
 +    meta_context_get_wayland_compositor (context);
 +
 +  return compositor && meta_wayland_session_lock_is_active (compositor);
++}
++
++static gboolean
++is_session_lock_scene_stream (MetaStreamSource *source)
++{
++  MetaStreamSourcePrivate *priv =
++    meta_stream_source_get_instance_private (source);
++  MetaBackend *backend = meta_stream_get_backend (priv->stream);
++  MetaContext *context = meta_backend_get_context (backend);
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (context);
++
++  /* Monitor streams paint the compositor stage.  The lock controller holds
++   * direct scan-out off and keeps its scene topmost before it emits `locked`,
++   * so this paints only the lock UI. */
++  return compositor && META_IS_STREAM_MONITOR (priv->stream) &&
++    meta_wayland_session_lock_get_state (compositor) ==
++      META_WAYLAND_SESSION_LOCK_LOCKED &&
++    meta_wayland_session_lock_is_presentation_confirmed (compositor);
 +}
 +
 +static void
@@ -240,9 +306,8 @@ index 263a05d4e..1a2bf543d 100644
 +  if (state == META_WAYLAND_SESSION_LOCK_UNLOCKED)
 +    return;
 +
-+  /* The transition callback closes the idle-stream gap: a monitor or window
-+   * that has no desktop damage still gets a black PipeWire frame as COVERING
-+   * begins.  record_frame() applies the same guard for every later frame. */
++  /* This closes the idle-stream gap. COVERING and FAILSAFE get a black frame;
++   * only a subsequently presented monitor lock scene is allowed through. */
 +  meta_stream_source_record_frame (source,
 +                                   META_STREAM_RECORD_FLAG_NONE,
 +                                   META_STREAM_PAINT_PHASE_DETACHED);
@@ -287,7 +352,7 @@ index 263a05d4e..1a2bf543d 100644
  gboolean
  meta_stream_source_is_driving (MetaStreamSource *source)
  {
-@@ -1462,6 +1539,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+@@ -1462,6 +1558,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
    struct spa_buffer *spa_buffer;
    struct spa_meta_header *header;
    struct spa_data *spa_data;
@@ -295,34 +360,34 @@ index 263a05d4e..1a2bf543d 100644
 +  gboolean close_after_queue = FALSE;
    g_autoptr (MtkRegion) damage = NULL;
    g_autoptr (GError) error = NULL;
-
-@@ -1482,6 +1561,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+ 
+@@ -1482,6 +1580,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
        meta_topic (META_DEBUG_SCREEN_CAST,
                    "Couldn't dequeue a buffer from pipewire stream: %s",
                    error->message);
-+      if (is_session_lock_active (source))
++      if (is_session_lock_active (source) && !is_session_lock_scene_stream (source))
 +        meta_stream_source_close (source);
        meta_stream_source_queue_follow_up (source, flags);
        return record_result;
      }
-@@ -1500,6 +1581,11 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+@@ -1500,6 +1600,11 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
          header->flags = SPA_META_HEADER_FLAG_CORRUPTED;
-
+ 
        queue_pw_buffer (source, buffer, FALSE);
 +      /* An invalid PipeWire buffer cannot replace the unlocked frame. Close
 +       * the stream after returning this buffer so a locked session never
 +       * leaves an active capture peer showing frozen desktop content. */
-+      if (is_session_lock_active (source))
++      if (is_session_lock_active (source) && !is_session_lock_scene_stream (source))
 +        meta_stream_source_close (source);
        return record_result;
      }
-
-@@ -1510,7 +1596,23 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+ 
+@@ -1510,7 +1615,23 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
        else
          damage = mtk_region_create ();
-
+ 
 -      if (do_record_frame (source, flags, paint_phase, buffer, damage, &error))
-+      if (is_session_lock_active (source))
++      if (is_session_lock_active (source) && !is_session_lock_scene_stream (source))
 +        {
 +          frame_recorded = record_black_frame (source, spa_buffer);
 +          if (!frame_recorded)
@@ -341,20 +406,20 @@ index 263a05d4e..1a2bf543d 100644
 +      if (frame_recorded)
          {
            struct spa_meta_region *spa_meta_video_crop;
-
-@@ -1587,6 +1689,9 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+ 
+@@ -1587,6 +1708,9 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
                     buffer,
                     !(spa_data->chunk->flags & SPA_CHUNK_FLAG_CORRUPTED));
-
+ 
 +  if (close_after_queue)
 +    meta_stream_source_close (source);
 +
    return record_result;
  }
-
-@@ -3113,6 +3218,14 @@ meta_stream_source_constructed (GObject *object)
+ 
+@@ -3113,6 +3237,14 @@ meta_stream_source_constructed (GObject *object)
      meta_stream_source_get_instance_private (source);
-
+ 
    priv->render_device = get_render_device (source);
 +  priv->session_lock_compositor =
 +    meta_context_get_wayland_compositor (
@@ -364,13 +429,13 @@ index 263a05d4e..1a2bf543d 100644
 +      meta_wayland_session_lock_add_state_changed_callback (
 +        priv->session_lock_compositor, on_session_lock_state_changed,
 +        source, NULL);
-
+ 
    G_OBJECT_CLASS (meta_stream_source_parent_class)->constructed (object);
  }
-@@ -3129,6 +3242,13 @@ meta_stream_source_dispose (GObject *object)
+@@ -3129,6 +3261,13 @@ meta_stream_source_dispose (GObject *object)
    if (meta_stream_source_is_enabled (source))
      meta_stream_source_disable (source);
-
+ 
 +  if (priv->session_lock_state_changed_id)
 +    {
 +      meta_wayland_session_lock_remove_state_changed_callback (
@@ -381,6 +446,6 @@ index 263a05d4e..1a2bf543d 100644
    g_hash_table_iter_init (&modifierIter,
                            priv->modifiers);
    while (g_hash_table_iter_next (&modifierIter, &key, &value))
-
---
+-- 
 2.55.0
+
