@@ -4,10 +4,10 @@ Date: Thu, 24 Sep 2026 21:26:42 +0100
 Subject: [PATCH] session-lock: embargo capture and remote input
 
 ---
- src/backends/meta-remote-desktop-session.c | 22 +++++
- src/backends/meta-screen-cast-session.c    | 49 +++++++++++
- src/backends/meta-stream-source.c          | 98 +++++++++++++++++++++-
- 3 files changed, 168 insertions(+), 1 deletion(-)
+ src/backends/meta-remote-desktop-session.c |  22 +++++
+ src/backends/meta-screen-cast-session.c    |  49 ++++++++++++
+ src/backends/meta-stream-source.c          | 127 ++++++++++++++++++++++++++++-
+ 3 files changed, 196 insertions(+), 2 deletions(-)
 
 diff --git a/src/backends/meta-remote-desktop-session.c b/src/backends/meta-remote-desktop-session.c
 index 242509261..b0bf24565 100644
@@ -170,7 +170,7 @@ index 672b7fd8d..df2d37947 100644
      {
        cursor_mode = META_SCREEN_CAST_CURSOR_MODE_HIDDEN;
 diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source.c
-index 263a05d4e..2bafd70ed 100644
+index 263a05d4e..1a2bf543d 100644
 --- a/src/backends/meta-stream-source.c
 +++ b/src/backends/meta-stream-source.c
 @@ -43,6 +43,7 @@
@@ -199,7 +199,19 @@ index 263a05d4e..2bafd70ed 100644
  } MetaStreamSourcePrivate;
 
  typedef struct _MetaStreamBuffer
-@@ -1148,6 +1153,75 @@ do_record_frame (MetaStreamSource      *source,
+@@ -1096,7 +1101,10 @@ do_record_frame (MetaStreamSource      *source,
+       damage = mtk_region_create_rectangle (&full_rect);
+     }
+
+-  if (spa_data->data || spa_data->type == SPA_DATA_MemFd)
++  /* A negotiated memfd must be mapped before it can be handed to a consumer.
++   * Treat a missing mapping as a failure rather than dereferencing NULL or
++   * leaving the previous desktop frame current at the PipeWire peer. */
++  if (spa_data->type == SPA_DATA_MemFd && spa_data->data)
+     {
+       int width = priv->video_format.size.width;
+       int height = priv->video_format.size.height;
+@@ -1148,6 +1156,75 @@ do_record_frame (MetaStreamSource      *source,
    return result;
  }
 
@@ -244,7 +256,7 @@ index 263a05d4e..2bafd70ed 100644
 +    meta_stream_source_get_instance_private (source);
 +  struct spa_data *spa_data = &spa_buffer->datas[0];
 +
-+  if (spa_data->data || spa_data->type == SPA_DATA_MemFd)
++  if (spa_data->type == SPA_DATA_MemFd && spa_data->data)
 +    {
 +      memset (spa_data->data, 0, spa_data->maxsize);
 +      return TRUE;
@@ -275,21 +287,53 @@ index 263a05d4e..2bafd70ed 100644
  gboolean
  meta_stream_source_is_driving (MetaStreamSource *source)
  {
-@@ -1462,6 +1536,7 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+@@ -1462,6 +1539,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
    struct spa_buffer *spa_buffer;
    struct spa_meta_header *header;
    struct spa_data *spa_data;
 +  gboolean frame_recorded;
++  gboolean close_after_queue = FALSE;
    g_autoptr (MtkRegion) damage = NULL;
    g_autoptr (GError) error = NULL;
 
-@@ -1510,7 +1585,13 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+@@ -1482,6 +1561,8 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+       meta_topic (META_DEBUG_SCREEN_CAST,
+                   "Couldn't dequeue a buffer from pipewire stream: %s",
+                   error->message);
++      if (is_session_lock_active (source))
++        meta_stream_source_close (source);
+       meta_stream_source_queue_follow_up (source, flags);
+       return record_result;
+     }
+@@ -1500,6 +1581,11 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+         header->flags = SPA_META_HEADER_FLAG_CORRUPTED;
+
+       queue_pw_buffer (source, buffer, FALSE);
++      /* An invalid PipeWire buffer cannot replace the unlocked frame. Close
++       * the stream after returning this buffer so a locked session never
++       * leaves an active capture peer showing frozen desktop content. */
++      if (is_session_lock_active (source))
++        meta_stream_source_close (source);
+       return record_result;
+     }
+
+@@ -1510,7 +1596,23 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
        else
          damage = mtk_region_create ();
 
 -      if (do_record_frame (source, flags, paint_phase, buffer, damage, &error))
 +      if (is_session_lock_active (source))
-+        frame_recorded = record_black_frame (source, spa_buffer);
++        {
++          frame_recorded = record_black_frame (source, spa_buffer);
++          if (!frame_recorded)
++            {
++              /* A stale PipeWire frame is safer than a failed lock only if
++               * the stream is torn down. Do not leave a peer with an active
++               * stream whose last successful frame is the unlocked desktop. */
++              g_warning ("Closing screen-cast stream: cannot produce lock cover frame");
++              close_after_queue = TRUE;
++            }
++        }
 +      else
 +        frame_recorded = do_record_frame (source, flags, paint_phase, buffer,
 +                                          damage, &error);
@@ -298,7 +342,17 @@ index 263a05d4e..2bafd70ed 100644
          {
            struct spa_meta_region *spa_meta_video_crop;
 
-@@ -3113,6 +3194,14 @@ meta_stream_source_constructed (GObject *object)
+@@ -1587,6 +1689,9 @@ meta_stream_source_record_frame_with_timestamp (MetaStreamSource     *source,
+                    buffer,
+                    !(spa_data->chunk->flags & SPA_CHUNK_FLAG_CORRUPTED));
+
++  if (close_after_queue)
++    meta_stream_source_close (source);
++
+   return record_result;
+ }
+
+@@ -3113,6 +3218,14 @@ meta_stream_source_constructed (GObject *object)
      meta_stream_source_get_instance_private (source);
 
    priv->render_device = get_render_device (source);
@@ -313,7 +367,7 @@ index 263a05d4e..2bafd70ed 100644
 
    G_OBJECT_CLASS (meta_stream_source_parent_class)->constructed (object);
  }
-@@ -3129,6 +3218,13 @@ meta_stream_source_dispose (GObject *object)
+@@ -3129,6 +3242,13 @@ meta_stream_source_dispose (GObject *object)
    if (meta_stream_source_is_enabled (source))
      meta_stream_source_disable (source);
 
@@ -327,6 +381,6 @@ index 263a05d4e..2bafd70ed 100644
    g_hash_table_iter_init (&modifierIter,
                            priv->modifiers);
    while (g_hash_table_iter_next (&modifierIter, &key, &value))
+
 --
 2.55.0
-

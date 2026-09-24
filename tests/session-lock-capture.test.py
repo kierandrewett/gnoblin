@@ -36,6 +36,11 @@ class SessionLockCaptureTests(unittest.TestCase):
         self.assertIn("meta_wayland_session_lock_add_state_changed_callback", self.patch)
         self.assertIn("on_session_lock_state_changed", self.patch)
 
+    def test_pipewire_closes_when_a_black_frame_cannot_be_produced(self):
+        self.assertIn("spa_data->type == SPA_DATA_MemFd && spa_data->data", self.patch)
+        self.assertIn("cannot produce lock cover frame", self.patch)
+        self.assertIn("meta_stream_source_close (source)", self.patch)
+
     def test_capture_callbacks_follow_the_compositor_state_transition(self):
         self.assertIn("MetaWaylandSessionLockStateChangedFunc", self.session_lock_header)
         self.assertIn("meta_wayland_session_lock_add_state_changed_callback", self.session_lock_header)
