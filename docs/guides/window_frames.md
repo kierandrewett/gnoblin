@@ -98,7 +98,8 @@ gnoblin.window_rule {
 }
 ```
 
-Use an absolute executable path and separate arguments. `native` is reserved.
+Use an absolute executable path or a command name resolved through the
+compositor's `PATH`, followed by separate arguments. `native` is reserved.
 [Bingux](/bring-your-own-shell) supplies its own styled renderer.
 
 Config reload restarts external renderers, including rebuilt executables at

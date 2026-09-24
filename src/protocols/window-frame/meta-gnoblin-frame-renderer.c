@@ -77,33 +77,34 @@ static void apply_titlebar_action(Frame* frame, GDesktopTitlebarAction action, f
     MetaWindow* window = frame->window;
     MetaMaximizeFlags direction = META_MAXIMIZE_BOTH;
     switch (action) {
-        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_HORIZONTALLY:
-            direction = META_MAXIMIZE_HORIZONTAL;
-            G_GNUC_FALLTHROUGH;
-        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY:
-            if (action == G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY)
-                direction = META_MAXIMIZE_VERTICAL;
-            G_GNUC_FALLTHROUGH;
-        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE:
-            if (meta_window_can_maximize(window)) {
-                if ((meta_window_get_maximize_flags(window) & direction) == direction)
-                    meta_window_set_unmaximize_flags(window, direction);
-                else
-                    meta_window_set_maximize_flags(window, direction);
-            }
-            break;
-        case G_DESKTOP_TITLEBAR_ACTION_MINIMIZE:
-            if (meta_window_can_minimize(window)) meta_window_minimize(window);
-            break;
-        case G_DESKTOP_TITLEBAR_ACTION_LOWER:
-            meta_window_lower(window);
-            break;
-        case G_DESKTOP_TITLEBAR_ACTION_MENU:
-            meta_window_show_menu(window, META_WINDOW_MENU_WM, (int)x, (int)y);
-            break;
-        case G_DESKTOP_TITLEBAR_ACTION_NONE:
-        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_SHADE: /* Wayland has no shade state. */
-            break;
+    case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_HORIZONTALLY:
+        direction = META_MAXIMIZE_HORIZONTAL;
+        G_GNUC_FALLTHROUGH;
+    case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY:
+        if (action == G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY)
+            direction = META_MAXIMIZE_VERTICAL;
+        G_GNUC_FALLTHROUGH;
+    case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE:
+        if (meta_window_can_maximize(window)) {
+            if ((meta_window_get_maximize_flags(window) & direction) == direction)
+                meta_window_set_unmaximize_flags(window, direction);
+            else
+                meta_window_set_maximize_flags(window, direction);
+        }
+        break;
+    case G_DESKTOP_TITLEBAR_ACTION_MINIMIZE:
+        if (meta_window_can_minimize(window))
+            meta_window_minimize(window);
+        break;
+    case G_DESKTOP_TITLEBAR_ACTION_LOWER:
+        meta_window_lower(window);
+        break;
+    case G_DESKTOP_TITLEBAR_ACTION_MENU:
+        meta_window_show_menu(window, META_WINDOW_MENU_WM, (int)x, (int)y);
+        break;
+    case G_DESKTOP_TITLEBAR_ACTION_NONE:
+    case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_SHADE: /* Wayland has no shade state. */
+        break;
     }
 }
 
@@ -351,9 +352,8 @@ static void frame_cursor(Frame* frame, guint action) {
     /* Mutter 51 resolves a pointer cursor from the picked actor.  Keeping it
      * on this frame root means children inherit the resize cursor, while a
      * pointer outside the frame resumes normal Wayland cursor selection. */
-    clutter_actor_set_cursor_type(frame->root, action >= 5 && action <= 12
-                                                   ? cursors[action - 5]
-                                                   : CLUTTER_CURSOR_DEFAULT);
+    clutter_actor_set_cursor_type(
+        frame->root, action >= 5 && action <= 12 ? cursors[action - 5] : CLUTTER_CURSOR_DEFAULT);
 }
 
 static guint hit_action(Frame* frame, float x, float y) {
@@ -1021,10 +1021,24 @@ static void start_renderer(Renderer* renderer) {
         return;
     g_autoptr(GSubprocessLauncher) launcher = g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_NONE);
     g_autoptr(GError) error = NULL;
+    g_autofree char* path_program = NULL;
+    g_auto(GStrv) resolved_argv = NULL;
+    const char* const* argv = (const char* const*)renderer->argv;
     renderer->attempts++;
-    renderer->client =
-        meta_wayland_client_new_subprocess(meta_wayland_compositor_get_context(frame_compositor),
-                                           launcher, (const char* const*)renderer->argv, &error);
+    if (!strchr(renderer->argv[0], G_DIR_SEPARATOR)) {
+        path_program = g_find_program_in_path(renderer->argv[0]);
+        if (!path_program) {
+            g_warning("Frame renderer %s: command '%s' was not found on PATH", renderer->name,
+                      renderer->argv[0]);
+            return;
+        }
+        resolved_argv = g_strdupv(renderer->argv);
+        g_free(resolved_argv[0]);
+        resolved_argv[0] = g_steal_pointer(&path_program);
+        argv = (const char* const*)resolved_argv;
+    }
+    renderer->client = meta_wayland_client_new_subprocess(
+        meta_wayland_compositor_get_context(frame_compositor), launcher, argv, &error);
     if (!renderer->client) {
         g_warning("Frame renderer %s: %s", renderer->name, error->message);
         return;
@@ -1115,7 +1129,10 @@ gboolean meta_gnoblin_frame_renderers_configure(GVariant* services, gboolean res
                         g_ptr_array_add(argv, g_variant_dup_string(arg, NULL));
                     g_variant_unref(arg);
                 }
-            if (valid && strcmp(name, "native") && ((char*)argv->pdata[0])[0] == '/') {
+            const char* program = valid ? argv->pdata[0] : NULL;
+            gboolean has_path = program && *program &&
+                                (g_path_is_absolute(program) || !strchr(program, G_DIR_SEPARATOR));
+            if (valid && strcmp(name, "native") && has_path) {
                 Renderer* r = g_new0(Renderer, 1);
                 r->refs = 1;
                 r->name = g_strdup(name);
