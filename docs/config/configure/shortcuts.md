@@ -8,6 +8,7 @@ gnoblin.configure {
         terminal = {
             binding = "<Super>Return",
             command = {"ptyxis", "--new-window"},
+            capture_input = true,
         },
         screenshot = {
             action = "gnome:shell.show_screenshot_ui",
@@ -20,8 +21,9 @@ gnoblin.configure {
 Use `command` for a program shortcut or `action` for a built-in GNOME or
 Mutter action. Built-in actions require a list of bindings; use an empty list
 to disable the action. Command shortcuts use one binding string and an argv
-array. See the [shortcuts guide](/guides/shortcuts) for key names, conflicts
-and command behavior.
+array. Set `capture_input = true` to let the launched popup capture keyboard
+input immediately; it defaults to `false`. See the [shortcuts guide](/guides/shortcuts)
+for key names, conflicts and command behavior.
 
 Action names use `group.action`. The group selects the GNOME keybinding schema:
 

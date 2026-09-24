@@ -1,6 +1,6 @@
 # gnoblin.snapshot
 
-Return a copy of the configuration assembled so far. Changing the copy does not change Gnoblin's config. Snapshot keys use the internal hyphenated names, and named shortcuts and autostart entries are lists.
+Return a copy of the configuration assembled so far. Changing the copy does not change Gnoblin's config. Snapshot keys use the internal hyphenated names, and named shortcuts, autostart entries, and animations are lists.
 
 ```lua
 local settings = gnoblin.snapshot()
