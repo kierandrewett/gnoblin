@@ -32,6 +32,10 @@ of them with a component you prefer. Put this in a **new**
 `~/.config/gnoblin/init.lua`:
 
 ```lua
+gnoblin.configure {
+    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+}
+
 gnoblin.autostart {name = "bar", command = {"waybar"}}
 gnoblin.autostart {name = "notifications", command = {"mako"}}
 
@@ -47,9 +51,25 @@ gnoblin.shortcut {
 }
 ```
 
+![The Fuzzel launcher running in Gnoblin](images/gnoblin-build-a-desktop.png)
+
+*Fuzzel searching the installed applications. The pointer uses the configured
+Adwaita Hyprcursor theme.*
+
+![A Mako notification in Gnoblin](images/gnoblin-mako-notification.png)
+
+*Mako displaying a notification over the same desktop.*
+
+The cursor setting requires the Adwaita Hyprcursor theme; install it using the
+[cursor guide](/guides/cursors).
+
+Capture this example from the checkout with
+`scripts/capture-doc-examples.sh desktop`. It uses a disposable config and
+profile; see the [capture script](devkit.md#documentation-captures) for setup.
+
 If your existing `init.lua` loads files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported
-shortcut's existing name when changing its command. [Load order and merging](/config/files_and_load_order)
+shortcut's existing name when changing its command. [Load order and merging](/guides/files_and_load_order)
 explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
