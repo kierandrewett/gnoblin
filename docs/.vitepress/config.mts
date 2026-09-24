@@ -50,7 +50,6 @@ export default defineConfig({
           {
             text: 'gnoblin.configure',
             link: '/config/configure',
-            collapsed: true,
             items: [
               { text: 'shell', link: '/config/configure/shell' },
               { text: 'keybindings', link: '/config/configure/keybindings' },
