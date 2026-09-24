@@ -7,8 +7,10 @@
 #include "config.h"
 #include "core/window-private.h"
 #include "gnoblin-window-frame-v1-server-protocol.h"
+#include "meta/display.h"
 #include "meta/meta-wayland-client.h"
 #include "meta/meta-window-actor.h"
+#include "meta/prefs.h"
 #include "wayland/gnoblin-config.h"
 #include "wayland/meta-wayland-actor-surface.h"
 #include "wayland/meta-wayland-client-private.h"
@@ -70,6 +72,40 @@ static gboolean stopping;
 static void update_frame(Frame* frame);
 static void offer_frame(Frame* frame);
 static void start_renderer(Renderer* renderer);
+
+static void apply_titlebar_action(Frame* frame, GDesktopTitlebarAction action, float x, float y) {
+    MetaWindow* window = frame->window;
+    MetaMaximizeFlags direction = META_MAXIMIZE_BOTH;
+    switch (action) {
+        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_HORIZONTALLY:
+            direction = META_MAXIMIZE_HORIZONTAL;
+            G_GNUC_FALLTHROUGH;
+        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY:
+            if (action == G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE_VERTICALLY)
+                direction = META_MAXIMIZE_VERTICAL;
+            G_GNUC_FALLTHROUGH;
+        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE:
+            if (meta_window_can_maximize(window)) {
+                if ((meta_window_get_maximize_flags(window) & direction) == direction)
+                    meta_window_set_unmaximize_flags(window, direction);
+                else
+                    meta_window_set_maximize_flags(window, direction);
+            }
+            break;
+        case G_DESKTOP_TITLEBAR_ACTION_MINIMIZE:
+            if (meta_window_can_minimize(window)) meta_window_minimize(window);
+            break;
+        case G_DESKTOP_TITLEBAR_ACTION_LOWER:
+            meta_window_lower(window);
+            break;
+        case G_DESKTOP_TITLEBAR_ACTION_MENU:
+            meta_window_show_menu(window, META_WINDOW_MENU_WM, (int)x, (int)y);
+            break;
+        case G_DESKTOP_TITLEBAR_ACTION_NONE:
+        case G_DESKTOP_TITLEBAR_ACTION_TOGGLE_SHADE: /* Wayland has no shade state. */
+            break;
+    }
+}
 
 /* Dependency-free vector icons: no font glyphs, icon theme, GTK or image
  * files. */
@@ -307,16 +343,20 @@ static guint resize_action(Frame* frame, float x, float y) {
 }
 
 static void frame_cursor(Frame* frame, guint action) {
-    static const ClutterCursorType cursors[] = {
-        CLUTTER_CURSOR_N_RESIZE,  CLUTTER_CURSOR_NE_RESIZE, CLUTTER_CURSOR_E_RESIZE,
-        CLUTTER_CURSOR_SE_RESIZE, CLUTTER_CURSOR_S_RESIZE,  CLUTTER_CURSOR_SW_RESIZE,
-        CLUTTER_CURSOR_W_RESIZE,  CLUTTER_CURSOR_NW_RESIZE,
+    static const MetaCursor cursors[] = {
+        META_CURSOR_N_RESIZE,  META_CURSOR_NE_RESIZE, META_CURSOR_E_RESIZE,
+        META_CURSOR_SE_RESIZE, META_CURSOR_S_RESIZE,  META_CURSOR_SW_RESIZE,
+        META_CURSOR_W_RESIZE,  META_CURSOR_NW_RESIZE,
     };
     MetaDisplay* display = meta_window_get_display(frame->window);
+    /* Animated frame actors can emit crossing events after the display has
+     * lost its compositor during shutdown. */
+    if (!display || !meta_display_get_compositor(display))
+        return;
     if (!meta_display_is_grabbed(display))
-        clutter_actor_set_cursor_type(frame->root, action >= 5 && action <= 12
-                                                       ? cursors[action - 5]
-                                                       : CLUTTER_CURSOR_DEFAULT);
+        meta_display_set_cursor(display, action >= 5 && action <= 12
+                                            ? cursors[action - 5]
+                                            : META_CURSOR_DEFAULT);
 }
 
 static guint hit_action(Frame* frame, float x, float y) {
@@ -394,12 +434,17 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
             gnoblin_window_frame_v1_send_interaction(frame->resource, action, !!frame->pressed);
         frame->hover = action;
         redraw_buttons(frame);
-        return CLUTTER_EVENT_STOP;
+        return type == CLUTTER_ENTER ? CLUTTER_EVENT_PROPAGATE : CLUTTER_EVENT_STOP;
     }
-    if (type == CLUTTER_BUTTON_PRESS && action == 1 &&
-        clutter_event_get_button(event) == CLUTTER_BUTTON_SECONDARY && !frame->window->unmanaging) {
-        meta_window_show_menu(frame->window, META_WINDOW_MENU_WM, (int)sx, (int)sy);
-        return CLUTTER_EVENT_STOP;
+    if (type == CLUTTER_BUTTON_PRESS && action == 1 && !frame->window->unmanaging) {
+        if (clutter_event_get_button(event) == CLUTTER_BUTTON_SECONDARY) {
+            apply_titlebar_action(frame, meta_prefs_get_action_right_click_titlebar(), sx, sy);
+            return CLUTTER_EVENT_STOP;
+        }
+        if (clutter_event_get_button(event) == CLUTTER_BUTTON_MIDDLE) {
+            apply_titlebar_action(frame, meta_prefs_get_action_middle_click_titlebar(), sx, sy);
+            return CLUTTER_EVENT_STOP;
+        }
     }
     if (clutter_event_get_button(event) != CLUTTER_BUTTON_PRIMARY)
         return CLUTTER_EVENT_PROPAGATE;
@@ -416,12 +461,7 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
             frame->last_title_click_x = x;
             frame->last_title_click_y = y;
             if (double_click) {
-                if (meta_window_can_maximize(frame->window)) {
-                    if (meta_window_is_maximized(frame->window))
-                        meta_window_unmaximize(frame->window);
-                    else
-                        meta_window_maximize(frame->window);
-                }
+                apply_titlebar_action(frame, meta_prefs_get_action_double_click_titlebar(), sx, sy);
                 return CLUTTER_EVENT_STOP;
             }
         } else {
