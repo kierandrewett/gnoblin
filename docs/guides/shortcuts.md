@@ -91,10 +91,11 @@ gsettings describe org.gnome.desktop.wm.keybindings close
 GSettings shows `close` with hyphens where needed; use underscores in the
 `group.action` name. Action catalogs vary by GNOME version. The
 [shortcut reference](/config/configure/shortcuts) maps all four groups to
-their schemas and gives examples. The listed actions are GNOME's available
-actions; the Lua config shows Gnoblin's active bindings. Use an empty binding
-list to disable an action. Removing the entry restores its built-in default
-on reload. Commands and built-in actions share the same `shortcuts` map.
+their schemas and lists each GNOME 51 action with a description. The listed
+actions are GNOME's available actions; the Lua config shows Gnoblin's active
+bindings. Use an empty binding list to disable an action. Removing the entry
+restores its built-in default on reload. Commands and built-in actions share
+the same `shortcuts` map.
 
 ## Avoid conflicts
 
