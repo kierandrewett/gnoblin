@@ -73,8 +73,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_default_source_build_contains_only_required_runtime(self):
         script = (ROOT / "build.sh").read_text()
         self.assertIn("just build-source", script)
-        self.assertNotIn("just build-source dev-settings dev-portal", script)
-        self.assertIn("Optional Settings and portal builds", script)
+        self.assertNotIn("dev-settings", script)
+        self.assertIn("Optional portal backend build", script)
 
 
 if __name__ == "__main__":

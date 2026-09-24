@@ -22,8 +22,12 @@ const { EventBus, ScriptHost } = new Function(
 test("script cleanup unwinds nested wrappers and runs once", () => {
     const host = new ScriptHost({}, new EventBus());
     const events = [];
-    const a = { _disposers: [() => events.push("a1"), () => events.push("a2")] };
-    const b = { _disposers: [() => events.push("b1"), () => events.push("b2")] };
+    const a = host._api("a");
+    a.addCleanup(() => events.push("a1"));
+    a.addCleanup(() => events.push("a2"));
+    const b = host._api("b");
+    b.addCleanup(() => events.push("b1"));
+    b.addCleanup(() => events.push("b2"));
     host._loaded = [{ api: a }, { api: b }];
     host.unload();
     host._disposeApi(a);
@@ -53,7 +57,7 @@ test("rejected async script startup is cleaned up and later scripts load", async
     try {
         writeFileSync(
             join(dir, "broken.mjs"),
-            'export default async api=>{api._disposers.push(()=>globalThis.scriptDisposed=true);await Promise.resolve();throw new Error("startup failure");};',
+            'export default async api=>{api.addCleanup(()=>globalThis.scriptDisposed=true);await Promise.resolve();throw new Error("startup failure");};',
         );
         writeFileSync(join(dir, "good.mjs"), "export default api=>{globalThis.scriptSurvived=true;};");
         const host = new ScriptHost({}, new EventBus());

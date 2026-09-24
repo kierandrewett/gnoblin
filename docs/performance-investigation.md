@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # Desktop performance investigation
@@ -8,7 +7,7 @@ search:
 **Archived record.** September 2026 investigation of covered-window drawing and effect costs. Results describe private test workloads, not current desktop performance.
 
 For current instructions, see [installation](installation.md),
-[window frames](window-frames.md) or [testing](testing.md).
+[window frames](/config/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>

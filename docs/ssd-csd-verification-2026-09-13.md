@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # SSD/CSD regression verification — 13 September 2026
@@ -8,7 +7,7 @@ search:
 **Archived record.** 13 September 2026 private-session decoration tests. App behavior and installed-session status are historical, not current compatibility guarantees.
 
 For current instructions, see [installation](installation.md),
-[window frames](window-frames.md) or [testing](testing.md).
+[window frames](/config/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>

@@ -86,6 +86,8 @@ if [ -d "$PREFIX/deps" ]; then
     done
 fi
 install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
+install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$PREFIX/libexec/gnoblin-seed-config"
+install -Dm644 "$ROOT/src/data/init.lua.example" "$PREFIX/share/gnoblin/init.lua.example"
 install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
     "$PREFIX/share/wayland-sessions/gnoblin.desktop"
@@ -116,13 +118,6 @@ glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
 install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
-install -Dm644 "$ROOT/src/scripts/compositor-bridge.js" "$PREFIX/share/gnoblin/scripts/compositor-bridge.js"
-# Keep the bridge and its relative imports together as one installed bundle.
-install -d "$PREFIX/share/gnoblin/scripts/lib"
-for helper in "$ROOT/src/scripts/lib/"*.js "$ROOT/src/scripts/lib/"*.py; do
-    install -m644 "$helper" "$PREFIX/share/gnoblin/scripts/lib/${helper##*/}"
-done
-install -Dm644 "$ROOT/src/scripts/input-sources.js" "$PREFIX/share/gnoblin/scripts/input-sources.js"
 
 echo ">> installed gnoblin session data into $PREFIX:"
 echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"
@@ -131,6 +126,7 @@ echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/g
 echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
 echo "     libexec/gnoblin-libdir                  (installed library-directory contract)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
+echo "     share/gnoblin/init.lua.example           (first-login user config template)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
 echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"

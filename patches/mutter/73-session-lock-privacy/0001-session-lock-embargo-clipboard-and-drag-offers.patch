@@ -1,0 +1,88 @@
+From ea10b18ded944b0ff81401c239988a16bbfaa8c9 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:52:55 +0100
+Subject: [PATCH] session-lock: embargo clipboard and drag offers
+
+---
+ src/wayland/meta-wayland-data-device.c        | 17 +++++++++++++++++
+ src/wayland/meta-wayland-data-offer-primary.c |  9 +++++++++
+ src/wayland/meta-wayland-data-offer.c         | 15 +++++++++++++++
+ 3 files changed, 41 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-data-device.c b/src/wayland/meta-wayland-data-device.c
+index f4004d148..45edff716 100644
+--- a/src/wayland/meta-wayland-data-device.c
++++ b/src/wayland/meta-wayland-data-device.c
+@@ -50,2 +50,3 @@
+ #include "wayland/meta-wayland-seat.h"
++#include "wayland/meta-wayland-session-lock.h"
+ #include "wayland/meta-wayland-toplevel-drag.h"
+@@ -876,2 +877,18 @@ data_device_start_drag (struct wl_client  *client,
+ 
++  /* Never begin a DnD transfer beneath the compositor-owned cover.  The
++   * input embargo handles normal initiation, but this guard also covers
++   * protocol requests queued immediately before the transition. */
++  if (meta_wayland_session_lock_is_active (meta_wayland_seat_get_compositor (seat)))
++    {
++      if (source_resource)
++        {
++          MetaWaylandDataSource *source =
++            wl_resource_get_user_data (source_resource);
++
++          if (source)
++            meta_wayland_data_source_cancel (source);
++        }
++      return;
++    }
++
+   if (origin_resource)
+diff --git a/src/wayland/meta-wayland-data-offer-primary.c b/src/wayland/meta-wayland-data-offer-primary.c
+index 2efd83447..8477842bf 100644
+--- a/src/wayland/meta-wayland-data-offer-primary.c
++++ b/src/wayland/meta-wayland-data-offer-primary.c
+@@ -38,2 +38,3 @@
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-session-lock.h"
+ 
+@@ -74,2 +75,10 @@ primary_offer_receive (struct wl_client   *client,
+ 
++  /* Do not let a primary-selection offer created before lock remain a read
++   * capability after the focused client has been revoked. */
++  if (meta_wayland_session_lock_is_active (offer->compositor))
++    {
++      close (fd);
++      return;
++    }
++
+   mime_types = meta_selection_get_mimetypes (meta_display_get_selection (display),
+diff --git a/src/wayland/meta-wayland-data-offer.c b/src/wayland/meta-wayland-data-offer.c
+index 317526ada..3f52819a1 100644
+--- a/src/wayland/meta-wayland-data-offer.c
++++ b/src/wayland/meta-wayland-data-offer.c
+@@ -37,2 +37,3 @@
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-session-lock.h"
+ 
+@@ -51,2 +52,8 @@ display_from_offer (MetaWaylandDataOffer *offer)
+ 
++static gboolean
++session_lock_embargoes_offer (MetaWaylandDataOffer *offer)
++{
++  return meta_wayland_session_lock_is_active (offer->compositor);
++}
++
+ static void
+@@ -97,2 +104,10 @@ data_offer_receive (struct wl_client *client, struct wl_resource *resource,
+ 
++  /* Old offers are capabilities too: an unfocused client can retain one
++   * across the lock transition and ask it to write data into a new fd. */
++  if (session_lock_embargoes_offer (offer))
++    {
++      close (fd);
++      return;
++    }
++
+   selection_type = offer->selection_type;
+-- 
+2.55.0
+

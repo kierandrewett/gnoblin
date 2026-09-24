@@ -14,7 +14,7 @@ import * as Permissions from "./gnoblinPermissions.js";
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput } from "./gnoblinConfig.js";
+import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput, applyWindowPreferences, applyCompositorPreferences, applyInputPreferences } from "./gnoblinConfig.js";
 import { WindowRules } from "./gnoblinRules.js";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -26,6 +26,8 @@ import * as Location from "../status/location.js";
 import * as Main from "../main.js";
 import * as Volume from "../status/volume.js";
 import * as Config from "../../misc/config.js";
+import { CompositorBridge } from "./gnoblinBridge/compositor-bridge.js";
+import { LaunchFeedback } from "./gnoblinLaunchFeedback.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
@@ -38,8 +40,9 @@ const PORTAL_GRANT_VERSION = 1;
 const SUPER_RELEASE_PROTOCOL_VERSION = 1;
 const OSD_REQUEST_PROTOCOL_VERSION = 2;
 const TRIM_INTERVAL_SECONDS = 300;
+const BUILT_IN_SERVICE_SCRIPTS = new Set(["compositor-bridge.js", "input-sources.js", "launch-feedback.js"]);
 
-// The live ScriptHost, so the module-level softReload() can re-run user scripts.
+// The live ScriptHost, so the module-level softReload() can re-run scripts.
 let activeScriptHost = null;
 let activeConfig = null;
 const autostart = new Autostart();
@@ -201,13 +204,14 @@ export function consoleConfig() {
 // Soft, in-process reload — the Wayland-safe answer to "reload the shell without
 // logging out". mutter/Wayland is NEVER torn down, so windows and the external
 // chrome survive. We reload only the mutable JS layer: the shell theme/CSS and
-// the configured user scripts.
+// script modules. Core services, including the compositor bridge,
+// keep running across this reload.
 // gnoblin keeps almost nothing else in-process — the chrome lives in a separate
 // layer-shell client — so this covers the practical need. A true process re-exec
 // on Wayland cannot preserve clients (no handoff protocol), which is exactly why
 // this is a soft reload and not global.reexec_self().
 export async function softReload(reason = "manual") {
-    console.log(`gnoblin: soft-reload (${reason}) — reloading theme and user scripts in-process`);
+    console.log(`gnoblin: soft-reload (${reason}) — reloading theme and scripts in-process`);
     const failures = [];
     try {
         activeConfig?.reload();
@@ -235,8 +239,8 @@ export async function softReload(reason = "manual") {
     try {
         await activeScriptHost?.reload();
     } catch (e) {
-        failures.push("user scripts");
-        logError(e, "gnoblin: soft-reload user scripts failed");
+        failures.push("scripts");
+        logError(e, "gnoblin: soft-reload scripts failed");
     }
 
     if (failures.length > 0) throw new Error(`soft reload failed: ${failures.join(", ")}`);
@@ -297,16 +301,17 @@ class EventBus {
     }
 }
 
-// Loads lightweight GJS user scripts from $XDG_CONFIG_HOME/gnoblin/scripts/*.js.
-// Each script default-exports (api) => {...}: reactive glue over org.gnoblin.*,
-// lighter than an extension, hot-reloadable (cache-busted import). This is the
-// gnoblin answer to "a scripting language like Hyprland's Lua" — native GJS.
+// Loads GJS integrations and personal scripts from XDG data/config script
+// directories. Each entry default-exports (api) => {...}; package integrations
+// can register namespaced bridge operations without adding their policy to the
+// built-in compositor service.
 class ScriptHost {
     constructor(control, bus) {
         this._control = control;
         this._bus = bus;
         this._dir = GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin", "scripts"]);
         this._loaded = [];
+        this._apiDisposers = new WeakMap();
         this._generation = 0; // bumped on every load/unload to drop stale in-flight imports
         this._destroyed = false;
     }
@@ -355,43 +360,85 @@ class ScriptHost {
 
     _api(name) {
         const disposers = [];
-        return {
-            _disposers: disposers,
+        const addCleanup = (callback) => {
+            if (typeof callback !== "function") throw new TypeError("cleanup must be a function");
+            let active = true;
+            const dispose = () => {
+                if (!active) return;
+                active = false;
+                const index = disposers.indexOf(dispose);
+                if (index >= 0) disposers.splice(index, 1);
+                callback();
+            };
+            disposers.push(dispose);
+            return dispose;
+        };
+        const api = {
             log: (...a) => console.log(`gnoblin-script[${name}]:`, ...a),
             version: () => this._control.GetVersion(),
             getFeature: (id) => this._control.GetFeature(id),
             setFeature: (id, on) => this._control.SetFeature(id, on),
             reloadShell: () => softReload("script"),
+            addCleanup,
+            handleCompositorOperation: (operation, handler) => {
+                const bridge = this._control._compositorBridge;
+                if (!bridge) throw new Error("The compositor bridge is unavailable");
+                return addCleanup(bridge.registerScriptOperation(operation, handler));
+            },
+            onCompositorClientClosed: (handler) => {
+                const bridge = this._control._compositorBridge;
+                if (!bridge) throw new Error("The compositor bridge is unavailable");
+                return addCleanup(bridge.onClientClosed(handler));
+            },
             on: (event, cb) => {
                 const d = this._bus.subscribe(event, cb);
-                disposers.push(d);
-                return d;
+                return addCleanup(d);
             },
         };
+        this._apiDisposers.set(api, disposers);
+        return api;
     }
 
-    _scriptNames() {
-        const dir = Gio.File.new_for_path(this._dir);
-        if (!dir.query_exists(null)) return [];
-        let e;
-        try {
-            e = dir.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
-        } catch {
-            return [];
+    _scriptPaths() {
+        // Package integrations live in share/gnoblin/scripts; installed and
+        // personal scripts live in the user's data and config directories.
+        // Higher-precedence locations replace a same-named lower-precedence
+        // script, so a user can disable or override a package integration.
+        const directories = [
+            ...GLib.get_system_data_dirs().slice().reverse(),
+            GLib.get_user_data_dir(),
+            GLib.get_user_config_dir(),
+        ].map((base) => GLib.build_filenamev([base, "gnoblin", "scripts"]));
+        const scripts = new Map();
+        for (const directory of directories) {
+            const dir = Gio.File.new_for_path(directory);
+            if (!dir.query_exists(null)) continue;
+            let entries;
+            try {
+                entries = dir.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null);
+            } catch {
+                continue;
+            }
+            let entry;
+            while ((entry = entries.next_file(null)) !== null) {
+                const name = entry.get_name();
+                if (BUILT_IN_SERVICE_SCRIPTS.has(name)) {
+                    console.warn(`gnoblin-script: ignoring ${name}; its service is built in`);
+                    continue;
+                }
+                if (name.endsWith(".js")) scripts.set(name, GLib.build_filenamev([directory, name]));
+            }
+            entries.close(null);
         }
-        const names = [];
-        let info;
-        while ((info = e.next_file(null)) !== null) {
-            const n = info.get_name();
-            if (n.endsWith(".js")) names.push(n);
-        }
-        return names.sort();
+        return [...scripts].sort(([a], [b]) => a.localeCompare(b));
     }
 
     _disposeApi(api) {
         // Undo stacked wrappers in reverse installation order. Drain first so
         // a failed/async load and a concurrent unload cannot dispose twice.
-        for (const d of (api._disposers ?? []).splice(0).reverse()) {
+        const disposers = this._apiDisposers.get(api) ?? [];
+        this._apiDisposers.delete(api);
+        for (const d of disposers.splice(0).reverse()) {
             try {
                 d();
             } catch {
@@ -405,20 +452,20 @@ class ScriptHost {
         this._armRecovery();
         if (this._safeMode) {
             console.warn(
-                "gnoblin-script: previous session ended uncleanly; user scripts paused for recovery. Use gnoblinctl reload to retry explicitly.",
+                "gnoblin-script: previous session ended uncleanly; scripts paused for recovery. Use gnoblinctl reload to retry explicitly.",
             );
             return;
         }
 
         const gen = ++this._generation;
         const failures = [];
-        for (const name of this._scriptNames()) {
-            const path = GLib.build_filenamev([this._dir, name]);
+        for (const [name, path] of this._scriptPaths()) {
             // First import in the process uses the plain URI; every later (re)load
             // cache-busts so code edits take effect. Module-level seq so a re-enable
             // in the same process is still fresh.
             scriptImportSeq++;
-            const uri = scriptImportSeq > 1 ? `file://${path}?gnoblinScript=${scriptImportSeq}` : `file://${path}`;
+            const fileUri = Gio.File.new_for_path(path).get_uri();
+            const uri = scriptImportSeq > 1 ? `${fileUri}?gnoblinScript=${scriptImportSeq}` : fileUri;
 
             let mod;
             try {
@@ -456,7 +503,7 @@ class ScriptHost {
             }
         }
 
-        if (failures.length > 0) throw new Error(`failed to load user scripts: ${failures.join(", ")}`);
+        if (failures.length > 0) throw new Error(`failed to load scripts: ${failures.join(", ")}`);
     }
 
     unload() {
@@ -516,7 +563,7 @@ const IFACE = `
       <arg type="d" name="maxLevel"/>
       <arg type="as" name="outputNames"/>
     </signal>
-    <!-- Soft in-process reload (theme + user scripts). Wayland-safe: keeps windows. -->
+    <!-- Soft in-process reload (theme + scripts). Wayland-safe: keeps windows. -->
     <method name="Reload"/>
     <method name="ReloadConfig"/>
     <!-- Keyboard source state comes from GNOME Shell's InputSourceManager. -->
@@ -555,7 +602,7 @@ const IFACE = `
       <arg type="b" name="microphoneInUse"/>
       <arg type="b" name="locationInUse"/>
     </signal>
-    <!-- User scripts: names of the loaded ~/.config/gnoblin/scripts/*.js. -->
+    <!-- Loaded package integrations and personal scripts. -->
     <method name="ListScripts">
       <arg type="as" direction="out" name="scripts"/>
     </method>
@@ -621,6 +668,8 @@ export class Component {
         this._screenShareHandles = new Set();
         this._locationAgent = null;
         this._privacyState = null;
+        this._compositorBridge = null;
+        this._launchFeedback = null;
     }
 
     enable() {
@@ -665,6 +714,21 @@ export class Component {
         this._installOsdGate();
 
         this._setupDesktopState();
+
+        // The socket is a core compositor service used by external shells and
+        // gnoblinctl. It is not part of the optional, crash-quarantined user
+        // script collection.
+        try {
+            this._compositorBridge = new CompositorBridge();
+            global.__gnoblinCompositorBridge = this._compositorBridge;
+        } catch (error) {
+            logError(error, "gnoblin-control: compositor bridge startup failed");
+        }
+        try {
+            this._launchFeedback = new LaunchFeedback();
+        } catch (error) {
+            logError(error, "gnoblin-control: launch feedback startup failed");
+        }
 
         this._nameId = Gio.bus_own_name(
             Gio.BusType.SESSION,
@@ -714,6 +778,13 @@ export class Component {
             this._scripts = null;
             activeScriptHost = null;
         }
+        if (this._compositorBridge) {
+            this._compositorBridge.destroy();
+            if (global.__gnoblinCompositorBridge === this._compositorBridge) delete global.__gnoblinCompositorBridge;
+            this._compositorBridge = null;
+        }
+        this._launchFeedback?.destroy();
+        this._launchFeedback = null;
         this._shortcutInput?.destroy();
         this._shortcutInput = null;
         this._shortcuts?.destroy();
@@ -874,6 +945,12 @@ export class Component {
     }
 
     _applyConfig(next) {
+        applyWindowPreferences(next["window-management"]);
+        applyCompositorPreferences(next.compositor);
+        applyInputPreferences(next.input);
+        Keyboard.configureGnoblinInputSources(next["input-sources"]?.sources ?? null,
+            next["input-sources"]?.["per-window"] ?? false,
+            next.input?.keyboard?.["xkb-options"] ?? null);
         try {
             this._shortcuts.apply(next);
         } catch (error) {

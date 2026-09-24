@@ -45,10 +45,10 @@ export default function(api) {
  });
  impl.export(Gio.DBus.session, '/org/gnoblin/FocusTransferTest');
  const name = Gio.bus_own_name(Gio.BusType.SESSION,'org.gnoblin.FocusTransferTest',Gio.BusNameOwnerFlags.NONE,null,null,null);
- api._disposers.push(() => { impl.unexport(); Gio.bus_unown_name(name); keyboard.run_dispose(); });
+ api.addCleanup(() => { impl.unexport(); Gio.bus_unown_name(name); keyboard.run_dispose(); });
 }
 """)
-subprocess.run([str(root / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(root / "src/tools/gnoblinctl"), "reload"], check=True)
 
 
 def call(method, *args):

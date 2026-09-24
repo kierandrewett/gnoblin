@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # Custom window frames and client cropping
@@ -8,7 +7,7 @@ search:
 **Archived record.** Superseded frame design proposal. Its illustrative GJS renderer settings are not valid configuration; use the current frame and renderer guides.
 
 For current instructions, see [installation](installation.md),
-[window frames](window-frames.md) or [testing](testing.md).
+[window frames](/config/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>
@@ -69,7 +68,7 @@ of truth for the shell renderer and existing effects.
 Keep client geometry, visible content geometry, and managed outer geometry
 distinct. In logical coordinates:
 
-```
+```text
 visible size = client geometry size - crop margins
 managed outer size = visible size + SSD extents
 requested client size = requested outer size - SSD extents + crop margins
@@ -111,8 +110,14 @@ Do not promise browser CSS support: St supports its own CSS subset.
 
 Proposed renderer interface:
 
-```
-create(context) -> { actor, update(model), destroy() }
+```typescript
+interface FrameRenderer {
+  actor: Actor;
+  update(model: FrameModel): void;
+  destroy(): void;
+}
+
+function create(context: FrameRendererContext): FrameRenderer;
 ```
 
 `model` contains title, app identity, focus/state, allowed actions, committed

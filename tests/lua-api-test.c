@@ -53,7 +53,10 @@ int main(void) {
                          "gnoblin.load('component.lua')\n"
                          "gnoblin.configure {shell={minimize_duration=150},"
                          "layer_shell={preserve_active_window=true},"
-                         "window_management={constrain_drag_to_work_area=true},"
+                         "window_management={constrain_drag_to_work_area=true,workspace_names={'Main','Chat'}},"
+                         "compositor={enable_animations=false,visual_bell=true},"
+                         "input={orientation_lock=true,keyboard={xkb_options={'caps:escape'}}},"
+                         "input_sources={sources={{type='xkb',id='us'}},per_window=false},"
                          "frame_renderers={my_frame={'my_renderer'}}}\n"
                          "gnoblin.shortcut {name='terminal',command={'new'}}\n"
                          "gnoblin.shortcut {name='temporary',command={'unused'}}\n"
@@ -74,7 +77,11 @@ int main(void) {
     g_autoptr(GVariant) expected =
         evaluate(root, "return {shell={['minimize-duration']=150},"
                        "['layer-shell']={['preserve-active-window']=true},"
-                       "['window-management']={['constrain-drag-to-work-area']=true},"
+                       "['window-management']={['constrain-drag-to-work-area']=true,"
+                       "['workspace-names']={'Main','Chat'}},"
+                       "compositor={['enable-animations']=false,['visual-bell']=true},"
+                       "input={['orientation-lock']=true,keyboard={['xkb-options']={'caps:escape'}}},"
+                       "['input-sources']={sources={{type='xkb',id='us'}},['per-window']=false},"
                        "['frame-renderers']={my_frame={'my_renderer'}},"
                        "shortcuts={{name='terminal',binding='<Super>Return',command={'new'}},"
                        "{name='keep',binding='<Super>k',command={'keep'}}},"
@@ -94,7 +101,7 @@ int main(void) {
               "gnoblin.configure {shortcuts={},window_rules={}}\n"
               "assert(#gnoblin.config.shortcuts==0 and #gnoblin.config['window-rules']==0)\n"
               "gnoblin.configure {keybindings={shell={show_screenshot_ui={}}}}\n"
-              "assert(#gnoblin.config.keybindings.shell['show-screenshot-ui']==0)\n");
+              "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n");
     const char* invalid[] = {
         "gnoblin.window_rule(false)",
         "gnoblin.config=false; gnoblin.configure {shell={minimize_duration=150}}",

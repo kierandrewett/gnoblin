@@ -1,7 +1,8 @@
 # Choose a shell
 
 Choose a complete shell or combine a bar, launcher and notification daemon.
-Bingux is optional.
+Bingux is a separate project and one example of a shell built on Gnoblin.
+It is optional.
 
 | Setup                                             | What you get                                        |
 | ------------------------------------------------- | --------------------------------------------------- |
@@ -32,8 +33,8 @@ Hyprland modules need those compositors' own interfaces and do not work in Gnobl
 Run one notification daemon; leave Gnoblin's native notifications disabled when
 using Mako.
 
-Configure each tool in its own files. Gnoblin's [autostart](autostart.md) and
-[shortcuts](shortcuts.md) only control how you launch it.
+Configure each tool in its own files. Gnoblin's [autostart](/config/autostart) and
+[shortcuts](/config/shortcuts) only control how you launch it.
 
 ## Bingux
 
@@ -68,7 +69,7 @@ Gnoblin keeps window management, locking and desktop services. GNOME extensions,
 the Overview and native screenshot/OSD popups are not available in this session.
 
 Native notifications and the keyboard-layout popup are optional.
-See [session settings](session-settings.md#native-features).
+See [session settings](/config/session_settings#native-features).
 
 ## If the shell does not appear
 

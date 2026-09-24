@@ -5,7 +5,6 @@ import ast
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import time
 
@@ -13,7 +12,6 @@ assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"), "Use the
 repo = Path(__file__).resolve().parent.parent
 scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
 scripts.mkdir(parents=True, exist_ok=True)
-shutil.copy2(repo / "src/scripts/launch-feedback.js", scripts)
 (scripts / "launch-test-pointer.js").write_text("""
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
@@ -21,13 +19,13 @@ export default function enable(api) {
     const seat = global.stage.context.get_backend().get_default_seat();
     const device = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
     device.notify_absolute_motion(GLib.get_monotonic_time(), 200, 200);
-    api._disposers.push(() => device.run_dispose());
+    api.addCleanup(() => device.run_dispose());
 }
 """)
 
 
 def reload():
-    subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+    subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
 
 
 def call(method, *args):
@@ -81,6 +79,8 @@ call("Begin", "timeout", "__missing_app__", 200)
 wait_for(lambda value: not value["busy"] and value["pointerVisible"])
 call("Begin", "reload", "__missing_app__", 5000)
 reload()
+assert state()["pointerVisible"] and state()["busy"], "built-in service survives a soft reload"
+call("End", "reload")
 assert state()["pointerVisible"] and not state()["busy"]
 call("Begin", "window", "gnoblin-launch-feedback-test", 5000)
 started = time.monotonic()
@@ -97,4 +97,4 @@ finally:
     app.terminate()
     app.wait(timeout=3)
     call("End", "window")
-print("LAUNCH_FEEDBACK_PASSED: global cursor, overlap, timeout, reload, real application mapping")
+print("LAUNCH_FEEDBACK_PASSED: global cursor, overlap, timeout, reload continuity, real application mapping")

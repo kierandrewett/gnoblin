@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../src/scripts/lib/window-switcher-fallback.js", import.meta.url), "utf8")
+const source = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/window-switcher-fallback.js", import.meta.url), "utf8")
     .replace(/^import .*;\n/gm, "")
     .replace("export class WindowSwitcherFallback", "class WindowSwitcherFallback");
 const windows = Array.from({ length: 200 }, (_, index) => ({ index }));

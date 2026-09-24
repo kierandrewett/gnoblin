@@ -6,6 +6,7 @@
 # patches). The patch series only adds the resource/import seams needed to
 # bundle these files; enabling remains controlled by the `gnoblin` session mode.
 gnome-shell  js/ui/components/gnoblinControl.js  js/ui/components/gnoblinControl.js
+gnome-shell  js/ui/components/gnoblinSessionLock.js  js/ui/components/gnoblinSessionLock.js
 gnome-shell  js/ui/components/gnoblinNotificationBridge.js  js/ui/components/gnoblinNotificationBridge.js
 gnome-shell  js/ui/components/gnoblinRecovery.js  js/ui/components/gnoblinRecovery.js
 gnome-shell  js/ui/components/gnoblinConsole.js  js/ui/components/gnoblinConsole.js
@@ -26,3 +27,11 @@ gnome-shell js/ui/components/gnoblinPermissions.js js/ui/components/gnoblinPermi
 gnome-shell gnoblin-console.scss data/theme/gnome-shell-sass/widgets/_dev-console.scss
 
 gnome-shell js/ui/components/gnoblinBackgroundEffects.js js/ui/components/gnoblinBackgroundEffects.js
+gnome-shell js/ui/components/gnoblinBridge/compositor-bridge.js js/ui/components/gnoblinBridge/compositor-bridge.js
+gnome-shell js/ui/components/gnoblinBridge/lib/blur-regions.js js/ui/components/gnoblinBridge/lib/blur-regions.js
+gnome-shell js/ui/components/gnoblinBridge/lib/fullscreen-return-guard.js js/ui/components/gnoblinBridge/lib/fullscreen-return-guard.js
+gnome-shell js/ui/components/gnoblinBridge/lib/layer-companions.js js/ui/components/gnoblinBridge/lib/layer-companions.js
+gnome-shell js/ui/components/gnoblinBridge/lib/ui-sessions.js js/ui/components/gnoblinBridge/lib/ui-sessions.js
+gnome-shell js/ui/components/gnoblinBridge/lib/window-snap.js js/ui/components/gnoblinBridge/lib/window-snap.js
+gnome-shell js/ui/components/gnoblinBridge/lib/window-switcher-fallback.js js/ui/components/gnoblinBridge/lib/window-switcher-fallback.js
+gnome-shell js/ui/components/gnoblinLaunchFeedback.js js/ui/components/gnoblinLaunchFeedback.js

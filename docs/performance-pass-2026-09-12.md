@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # Compositor performance pass, 12 September 2026
@@ -8,7 +7,7 @@ search:
 **Archived record.** 12 September 2026 benchmark record: native caching, protocol updates and compositor CPU/memory. Figures exclude the full desktop shell.
 
 For current instructions, see [installation](installation.md),
-[window frames](window-frames.md) or [testing](testing.md).
+[window frames](/config/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>

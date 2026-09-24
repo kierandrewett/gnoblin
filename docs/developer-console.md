@@ -3,6 +3,18 @@
 Press **Alt+F2** to open the console in an unlocked Gnoblin session.
 Choose JavaScript or Lua using the tabs above the prompt.
 
+Disable the Alt+F2 binding in `~/.config/gnoblin/init.lua` with:
+
+```lua
+gnoblin.configure {
+    keybindings = {
+        shell = {
+            panel_run_dialog = {},
+        },
+    },
+}
+```
+
 Live edits affect the session but do not write your config file.
 
 ## Controls

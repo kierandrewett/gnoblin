@@ -33,11 +33,16 @@
 #include "meta/meta-selection-source.h"
 #include "meta/meta-selection.h"
 #include "wayland/meta-wayland-private.h"
+#include "wayland/meta-wayland-session-lock.h"
 #include "wayland/gnoblin-config.h"
 
 #include "ext-data-control-v1-server-protocol.h"
 
 #define META_EXT_DATA_CONTROL_VERSION 1
+
+typedef struct _MetaWaylandDataControl MetaWaylandDataControl;
+
+static gboolean data_control_is_embargoed (MetaWaylandDataControl *data_control);
 
 /* ------------------------------------------------------------------ */
 /* MetaSelectionSource subclass bridging a client ext_data_control_source */
@@ -53,6 +58,7 @@ struct _MetaDataControlSource {
     gboolean used;            /* assigned to a selection already */
     MetaSelection* selection; /* set while owning a selection, else NULL */
     MetaSelectionType sel_type;
+    MetaWaylandDataControl *data_control;
 };
 
 G_DEFINE_TYPE(MetaDataControlSource, meta_data_control_source, META_TYPE_SELECTION_SOURCE)
@@ -73,9 +79,10 @@ static void meta_data_control_source_read_async(MetaSelectionSource* source_base
     GTask* task;
     int pipe_fds[2];
 
-    if (!source->resource) {
+    if (!source->resource || data_control_is_embargoed(source->data_control)) {
         g_task_report_new_error(source, callback, user_data, meta_data_control_source_read_async,
-                                G_IO_ERROR, G_IO_ERROR_CLOSED, "data-control source is gone");
+                                G_IO_ERROR, G_IO_ERROR_CLOSED,
+                                "data-control source is unavailable while the session is locked");
         return;
     }
 
@@ -146,10 +153,15 @@ static void meta_data_control_source_init(MetaDataControlSource* source) {}
 
 /* ------------------------------------------------------------------ */
 
-typedef struct _MetaWaylandDataControl {
+struct _MetaWaylandDataControl {
     MetaWaylandCompositor* compositor;
     GList* devices; /* MetaWaylandDataControlDevice* */
-} MetaWaylandDataControl;
+    gulong session_lock_state_changed_id;
+};
+
+static gboolean data_control_is_embargoed(MetaWaylandDataControl* data_control) {
+    return data_control && meta_wayland_session_lock_is_active(data_control->compositor);
+}
 
 /* The MetaDisplay (and its MetaSelection) does not exist yet at shell-init
  * time, so resolve it lazily — every caller runs after a client has bound,
@@ -175,6 +187,35 @@ typedef struct _MetaWaylandDataControlOffer {
     MetaWaylandDataControl* data_control;
     MetaSelectionType selection_type;
 } MetaWaylandDataControlOffer;
+
+static void device_advertise_selection(MetaWaylandDataControlDevice* device,
+                                       MetaSelectionType type);
+
+static void on_session_lock_state_changed(MetaWaylandCompositor* compositor,
+                                          MetaWaylandSessionLockState state,
+                                          gpointer user_data) {
+    MetaWaylandDataControl* data_control = user_data;
+
+    if (state == META_WAYLAND_SESSION_LOCK_UNLOCKED) {
+        for (GList* link = data_control->devices; link; link = link->next) {
+            MetaWaylandDataControlDevice* device = link->data;
+
+            device_advertise_selection(device, META_SELECTION_CLIPBOARD);
+            device_advertise_selection(device, META_SELECTION_PRIMARY);
+        }
+        return;
+    }
+
+    /* Existing ext-data-control offers are out of focus and would otherwise
+     * remain usable during the lock.  Send NULL immediately; the underlying
+     * MetaSelection owner is deliberately kept so unlock restores it. */
+    for (GList* link = data_control->devices; link; link = link->next) {
+        MetaWaylandDataControlDevice* device = link->data;
+
+        ext_data_control_device_v1_send_selection(device->resource, NULL);
+        ext_data_control_device_v1_send_primary_selection(device->resource, NULL);
+    }
+}
 
 /* ---- source ---- */
 
@@ -230,6 +271,7 @@ static void manager_create_data_source(struct wl_client* client,
 
     source = g_object_new(META_TYPE_DATA_CONTROL_SOURCE, NULL);
     source->resource = resource;
+    source->data_control = wl_resource_get_user_data(manager_resource);
 
     wl_resource_set_implementation(resource, &source_interface, source,
                                    data_control_source_destroy);
@@ -250,6 +292,11 @@ static void data_control_offer_receive(struct wl_client* client, struct wl_resou
                                        const char* mime_type, int32_t fd) {
     MetaWaylandDataControlOffer* offer = wl_resource_get_user_data(resource);
     GOutputStream* stream;
+
+    if (data_control_is_embargoed(offer->data_control)) {
+        close(fd);
+        return;
+    }
 
     stream = g_unix_output_stream_new(fd, TRUE);
     meta_selection_transfer_async(data_control_selection(offer->data_control),
@@ -284,6 +331,14 @@ static void device_advertise_selection(MetaWaylandDataControlDevice* device,
     MetaWaylandDataControlOffer* offer;
     struct wl_resource* offer_resource;
     GList* l;
+
+    if (data_control_is_embargoed(device->data_control)) {
+        if (type == META_SELECTION_CLIPBOARD)
+            ext_data_control_device_v1_send_selection(device->resource, NULL);
+        else if (type == META_SELECTION_PRIMARY)
+            ext_data_control_device_v1_send_primary_selection(device->resource, NULL);
+        return;
+    }
 
     mimetypes = meta_selection_get_mimetypes(selection, type);
 
@@ -345,6 +400,12 @@ static void device_set_selection(MetaWaylandDataControlDevice* device, MetaSelec
                                  struct wl_resource* source_resource,
                                  MetaDataControlSource** tracked) {
     MetaSelection* selection = data_control_selection(device->data_control);
+
+    if (data_control_is_embargoed(device->data_control)) {
+        if (source_resource)
+            ext_data_control_source_v1_send_cancelled(source_resource);
+        return;
+    }
 
     if (source_resource) {
         MetaDataControlSource* source = wl_resource_get_user_data(source_resource);
@@ -469,6 +530,9 @@ void meta_wayland_init_data_control(MetaWaylandCompositor* compositor) {
     /* The display/selection is resolved lazily (see data_control_selection);
      * it does not exist yet at shell-init time. */
     data_control->compositor = compositor;
+    data_control->session_lock_state_changed_id =
+        meta_wayland_session_lock_add_state_changed_callback(
+            compositor, on_session_lock_state_changed, data_control, NULL);
 
     if (!wl_global_create(compositor->wayland_display, &ext_data_control_manager_v1_interface,
                           META_EXT_DATA_CONTROL_VERSION, data_control, bind_data_control_manager))

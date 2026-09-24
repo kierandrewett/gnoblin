@@ -7,7 +7,7 @@ Run checks from the repository root. Tools are pinned in
 
 ```sh
 just lint
-just format --files docs/configuration.md
+just format --files docs/config.md
 ```
 
 `lint` is read-only. `format` rewrites files.

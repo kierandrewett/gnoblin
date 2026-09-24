@@ -56,7 +56,7 @@ export default function (api) {
     });
     apply();
     const id = global.window_manager.connect("map", later);
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         monitor.cancel();
         if (pending) GLib.source_remove(pending);
         global.window_manager.disconnect(id);

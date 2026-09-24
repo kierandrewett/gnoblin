@@ -18,30 +18,26 @@ function assert(condition, message) {
 const base = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/";
 const media = new Gio.Settings({ schema_id: "org.gnome.settings-daemon.plugins.media-keys" });
 const native = new Gio.Settings({ schema_id: "org.gnome.shell.keybindings" });
-const manager = new Shortcuts();
 const entry = { name: "capture", binding: "<Alt>s", command: ["qs", "-p", "/a path/with spaces", "quote'and$HOME"] };
-const config = { shortcuts: [entry], keybindings: { shell: { "show-screenshot-ui": [] } } };
+const config = { shortcuts: [entry], keybindings: { shell: { show_screenshot_ui: [] } } };
 media.set_strv("custom-keybindings", [`${base}user-owned/`]);
 native.set_strv("show-screenshot-ui", ["<Alt>s"]);
+let registered = [];
+const prefs = { prefs_apply_gnoblin_keybindings() {} };
+const manager = new Shortcuts({
+    apply(entries) { registered = entries; },
+    destroy() {},
+}, prefs);
 manager.apply(config);
-const path = `${base}gnoblin-config-capture/`;
-const settings = new Gio.Settings({
-    schema_id: "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding",
-    path,
-});
-assert(native.get_strv("show-screenshot-ui").length === 0, "release built-in Alt+S conflict");
-assert(settings.get_string("binding") === "<Alt>s", "register named shortcut");
-const [ok, argv] = GLib.shell_parse_argv(settings.get_string("command"));
-assert(
-    ok && JSON.stringify(argv) === JSON.stringify(entry.command),
-    "argv survives spaces, quotes and literal variables",
-);
-let changes = 0;
-media.connect("changed::custom-keybindings", () => changes++);
+assert(JSON.stringify(native.get_strv("show-screenshot-ui")) === JSON.stringify(["<Alt>s"]),
+    "built-in override does not write GNOME settings");
+assert(registered.length === 1 && registered[0] === entry, "register shortcut through native command backend");
+let customBindingChanges = 0;
+media.connect("changed::custom-keybindings", () => customBindingChanges++);
 manager.apply(config);
-assert(changes === 0, "identical reload does not churn shortcut grabs");
+assert(customBindingChanges === 0, "Gnoblin never writes media-key custom shortcut settings");
 manager.apply({ ...config, shortcuts: [{ ...entry, binding: "<Super>s" }] });
-assert(settings.get_string("binding") === "<Super>s", "binding edits update in place");
+assert(registered[0].binding === "<Super>s", "binding edits update through native command backend");
 for (const invalid of [
     { shortcuts: [entry, entry] },
     { shortcuts: [entry, { ...entry, name: "other", binding: "<Mod1>S" }] },
@@ -49,10 +45,10 @@ for (const invalid of [
     { shortcuts: [{ ...entry, binding: "<Alt>NotARealKey" }] },
     { shortcuts: [{ ...entry, command: "qs" }] },
     { shortcuts: [{ ...entry, name: "../escape" }] },
-    { keybindings: { shell: { typo: [] } } },
-    { keybindings: { media: { "custom-keybindings": [] } } },
-    { keybindings: { shell: { "show-screenshot-ui": "Print" } } },
-    { shortcuts: [entry], keybindings: { shell: { "show-screenshot-ui": ["<Alt>s"] } } },
+    { keybindings: { shell: { "show-screenshot-ui": [] } } },
+    { keybindings: { media: { custom_keybindings: [] } } },
+    { keybindings: { shell: { show_screenshot_ui: "Print" } } },
+    { shortcuts: [entry], keybindings: { shell: { show_screenshot_ui: ["<Alt>s"] } } },
 ]) {
     let rejected = false;
     try {
@@ -61,17 +57,16 @@ for (const invalid of [
         rejected = true;
     }
     assert(rejected, `reject invalid settings: ${JSON.stringify(invalid)}`);
-    assert(settings.get_string("binding") === "<Super>s", "invalid config preserves registered shortcut");
+    assert(registered[0].binding === "<Super>s", "invalid config preserves registered shortcut");
 }
 manager.apply({});
-assert(
-    JSON.stringify(media.get_strv("custom-keybindings")) === JSON.stringify([`${base}user-owned/`]),
-    "remove only config-owned shortcut",
-);
-assert(settings.get_user_value("command") === null, "remove stale owned settings");
-assert(native.get_strv("show-screenshot-ui").length === 0, "omitted native overrides retain persistent state");
+assert(registered.length === 0, "empty config removes native command shortcuts");
+assert(JSON.stringify(media.get_strv("custom-keybindings")) === JSON.stringify([`${base}user-owned/`]),
+    "GNOME media-key custom shortcuts remain untouched");
+assert(JSON.stringify(native.get_strv("show-screenshot-ui")) === JSON.stringify(["<Alt>s"]),
+    "removing a built-in override leaves GNOME settings untouched");
 assert(validateShortcuts({}).shortcuts.length === 0, "empty defaults");
-print("PASS: shortcut registration, conflict release, quoting, reload, validation, ownership and removal");
+print("PASS: native shortcut registration, reload, validation, built-in overrides and removal");
 
 let activated, overlayReleased;
 let nextAction = 100;

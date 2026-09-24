@@ -20,7 +20,7 @@ Gnoblin installs alongside GNOME. Your existing GNOME session remains available.
 1. [Install a desktop shell](bring-your-own-shell.md).
 2. Log out. At the login screen, choose your user, open the session selector,
    and choose **Gnoblin**.
-3. Log in and [configure Gnoblin](configuration.md).
+3. Log in and [configure Gnoblin](/config).
 
 If there is no bar or launcher, right-click the desktop and choose **Open
 Terminal**. See [first-login troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).

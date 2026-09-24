@@ -56,21 +56,10 @@ With the patched portal backend installed:
 4. For an `allow` rule, test both permitted and broader device requests.
 5. Stop sharing and confirm the stream ends.
 
-See [portal permissions](permissions.md). Old custom grants and
+See [portal permissions](/config/permissions). Old custom grants and
 “remember forever” checkboxes are obsolete; do not use them as acceptance criteria.
 
-## 7. Settings
-
-If you built the optional Settings fork, open it. Confirm the Gnoblin panel appears,
-feature controls work, and reload completes.
-
-For a local source build:
-
-```sh
-./install/bin/gnome-control-center gnoblin
-```
-
-## 8. Return to GNOME
+## 7. Return to GNOME
 
 Log out and select GNOME. Confirm its desktop still works.
 For package-release testing, also remove Gnoblin using its documented uninstall

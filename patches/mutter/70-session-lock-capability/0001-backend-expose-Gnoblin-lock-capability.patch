@@ -1,0 +1,65 @@
+From 704ff2f3eab41a9186b44964c69eeac7361a668b Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:48:50 +0100
+Subject: [PATCH] backend: expose Gnoblin lock capability and active state
+
+---
+ src/backends/meta-backend.c | 28 ++++++++++++++++++++++++++++
+ src/meta/meta-backend.h     |  7 +++++++
+ 2 files changed, 35 insertions(+)
+
+diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
+index e6571aef9..a4430dba5 100644
+--- a/src/backends/meta-backend.c
++++ b/src/backends/meta-backend.c
+@@ -77,2 +77,4 @@
+ #include "meta/meta-context.h"
++#include "meta/meta-wayland-compositor.h"
++#include "wayland/meta-wayland-session-lock.h"
+ #include "meta/meta-enum-types.h"
+@@ -1666,2 +1668,28 @@ meta_backend_get_context (MetaBackend *backend)
+ 
++guint
++meta_backend_get_gnoblin_session_lock_capability (MetaBackend *backend)
++{
++#ifdef HAVE_WAYLAND
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (meta_backend_get_context (backend));
++
++  return compositor ? meta_wayland_session_lock_get_capability (compositor) : 0;
++#else
++  return 0;
++#endif
++}
++
++gboolean
++meta_backend_get_gnoblin_session_lock_active (MetaBackend *backend)
++{
++#ifdef HAVE_WAYLAND
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (meta_backend_get_context (backend));
++
++  return compositor && meta_wayland_session_lock_is_active (compositor);
++#else
++  return FALSE;
++#endif
++}
++
+ /**
+diff --git a/src/meta/meta-backend.h b/src/meta/meta-backend.h
+index fba51a560..689b70ab2 100644
+--- a/src/meta/meta-backend.h
++++ b/src/meta/meta-backend.h
+@@ -64,2 +64,9 @@ MetaContext * meta_backend_get_context (MetaBackend *backend);
+ 
++/* Gnoblin ext-session-lock state; capability is zero until the secure global exists. */
++META_EXPORT
++guint meta_backend_get_gnoblin_session_lock_capability (MetaBackend *backend);
++
++META_EXPORT
++gboolean meta_backend_get_gnoblin_session_lock_active (MetaBackend *backend);
++
+ META_EXPORT
+-- 
+2.55.0
+

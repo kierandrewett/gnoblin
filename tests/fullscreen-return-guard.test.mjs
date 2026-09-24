@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../src/scripts/lib/fullscreen-return-guard.js", import.meta.url), "utf8").replace(
+const source = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/fullscreen-return-guard.js", import.meta.url), "utf8").replace(
     "export class FullscreenReturnGuard",
     "this.FullscreenReturnGuard = class FullscreenReturnGuard",
 );

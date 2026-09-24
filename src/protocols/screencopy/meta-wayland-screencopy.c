@@ -30,6 +30,7 @@
 #include "wayland/meta-wayland-buffer.h"
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
+#include "wayland/meta-wayland-session-lock.h"
 #include "wayland/gnoblin-config.h"
 
 #include "wlr-screencopy-unstable-v1-server-protocol.h"
@@ -125,6 +126,15 @@ static void copy_frame_to_buffer(struct wl_client* client, struct wl_resource* r
     if (frame->copied) {
         wl_resource_post_error(resource, ZWLR_SCREENCOPY_FRAME_V1_ERROR_ALREADY_USED,
                                "screencopy frame already used");
+        return;
+    }
+
+    /* A manager can have created this frame immediately before the lock
+     * controller covers the stage.  Check again at the copy boundary so a
+     * pre-lock frame can never expose the previous desktop after COVERING. */
+    if (meta_wayland_session_lock_is_active(frame->compositor)) {
+        frame->copied = TRUE;
+        send_failed(frame);
         return;
     }
 
@@ -266,6 +276,14 @@ static void create_frame(struct wl_client* client, struct wl_resource* manager_r
     }
 
     wl_resource_set_implementation(frame->resource, &frame_interface, frame, destroy_frame);
+
+    /* Do not even advertise a usable buffer while the compositor-owned lock
+     * cover is pending.  This applies from COVERING through FAILSAFE. */
+    if (meta_wayland_session_lock_is_active(compositor)) {
+        send_failed(frame);
+        g_steal_pointer(&frame);
+        return;
+    }
 
     monitor = wayland_output ? meta_wayland_output_get_monitor(wayland_output) : NULL;
     logical_monitor = monitor ? meta_monitor_get_logical_monitor(monitor) : NULL;

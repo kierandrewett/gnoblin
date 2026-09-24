@@ -1,0 +1,145 @@
+From 438b9886bf879d4c474ce80383aad8747b9485a9 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:44:44 +0100
+Subject: [PATCH] session-lock: route verified lock surfaces only
+
+---
+ src/wayland/meta-wayland-pointer.c | 11 ++++++++++
+ src/wayland/meta-wayland-pointer.h |  3 +++
+ src/wayland/meta-wayland-seat.c    | 29 +++++++++++++++++++++++++-
+ src/wayland/meta-wayland-seat.h    |  3 ++-
+ src/wayland/meta-wayland-touch.c   | 33 ++++++++++++++++++++++++++++++
+ src/wayland/meta-wayland-touch.h   |  4 ++++
+ 6 files changed, 81 insertions(+), 2 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index 2026a1f8d..044b261f4 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -1247,2 +1247,13 @@ meta_wayland_pointer_focus_surface (MetaWaylandPointer *pointer,
+ 
++void
++meta_wayland_pointer_focus_session_lock_surface (MetaWaylandPointer *pointer,
++                                                 MetaWaylandSurface *surface)
++{
++  /* The session-lock controller has already checked that surface is a mapped
++   * role of its active lock.  Do not apply normal-window liveness policy here:
++   * lock roles do not participate in normal focus arbitration. */
++  meta_wayland_pointer_set_current (pointer, surface);
++  meta_wayland_pointer_set_focus (pointer, surface);
++}
++
+ void
+diff --git a/src/wayland/meta-wayland-pointer.h b/src/wayland/meta-wayland-pointer.h
+index 3b05e3ad5..6603d0214 100644
+--- a/src/wayland/meta-wayland-pointer.h
++++ b/src/wayland/meta-wayland-pointer.h
+@@ -106,2 +106,5 @@ void meta_wayland_pointer_focus_surface (MetaWaylandPointer *pointer,
+ 
++void meta_wayland_pointer_focus_session_lock_surface (MetaWaylandPointer *pointer,
++                                                      MetaWaylandSurface *surface);
++
+ MetaWaylandSurface * meta_wayland_pointer_get_implicit_grab_surface (MetaWaylandPointer *pointer);
+diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
+index 5794eb277..3333ad206 100644
+--- a/src/wayland/meta-wayland-seat.c
++++ b/src/wayland/meta-wayland-seat.c
+@@ -703,4 +703,9 @@ gboolean
+ meta_wayland_seat_handle_session_lock_event (MetaWaylandSeat    *seat,
+-                                             const ClutterEvent *event)
++                                             const ClutterEvent *event,
++                                             MetaWaylandSurface *surface)
+ {
++  ClutterEventType event_type = clutter_event_type (event);
++
++  g_return_val_if_fail (surface != NULL, FALSE);
++
+   /* A lock route must not chain into normal-session event handlers.  In
+@@ -709,2 +714,24 @@ meta_wayland_seat_handle_session_lock_event (MetaWaylandSeat    *seat,
+    * focus only to a mapped lock role before calling this entry point. */
++  meta_wayland_seat_set_input_focus (seat, surface);
++  meta_wayland_keyboard_set_focus (seat->keyboard, surface);
++  meta_wayland_text_input_set_focus (seat->text_input, surface);
++
++  if (event_type == CLUTTER_TOUCH_BEGIN ||
++      event_type == CLUTTER_TOUCH_UPDATE ||
++      event_type == CLUTTER_TOUCH_END)
++    meta_wayland_touch_update_session_lock (seat->touch, event, surface);
++  else if (event_type == CLUTTER_MOTION ||
++           event_type == CLUTTER_BUTTON_PRESS ||
++           event_type == CLUTTER_BUTTON_RELEASE ||
++           event_type == CLUTTER_SCROLL)
++    {
++      /* Update coordinates, then overwrite normal hit-test focus with the
++       * verified lock role before delivery. */
++      meta_wayland_seat_update (seat, event);
++      meta_wayland_pointer_focus_session_lock_surface (seat->pointer, surface);
++    }
++
++  if (is_tablet_event (seat, event))
++    return TRUE;
++
+   return meta_wayland_seat_handle_event_internal (seat, event);
+diff --git a/src/wayland/meta-wayland-seat.h b/src/wayland/meta-wayland-seat.h
+index 856ea1b6b..a2ff95a9e 100644
+--- a/src/wayland/meta-wayland-seat.h
++++ b/src/wayland/meta-wayland-seat.h
+@@ -81,3 +81,4 @@ gboolean meta_wayland_seat_handle_event (MetaWaylandSeat *seat,
+ gboolean meta_wayland_seat_handle_session_lock_event (MetaWaylandSeat    *seat,
+-                                                      const ClutterEvent *event);
++                                                      const ClutterEvent *event,
++                                                      MetaWaylandSurface *surface);
+ 
+diff --git a/src/wayland/meta-wayland-touch.c b/src/wayland/meta-wayland-touch.c
+index 4fdaec1db..6f36f96f3 100644
+--- a/src/wayland/meta-wayland-touch.c
++++ b/src/wayland/meta-wayland-touch.c
+@@ -292,2 +292,35 @@ meta_wayland_touch_update (MetaWaylandTouch   *touch,
+ 
++void
++meta_wayland_touch_update_session_lock (MetaWaylandTouch   *touch,
++                                        const ClutterEvent *event,
++                                        MetaWaylandSurface *surface)
++{
++  MetaWaylandTouchInfo *touch_info;
++  ClutterEventSequence *sequence = clutter_event_get_event_sequence (event);
++  ClutterEventType event_type = clutter_event_type (event);
++
++  touch_info = touch_get_info (touch, sequence, FALSE);
++  if (event_type == CLUTTER_TOUCH_BEGIN && !touch_info)
++    {
++      touch_info = touch_get_info (touch, sequence, TRUE);
++      touch_info->touch_surface = touch_surface_get (touch, surface);
++      clutter_event_get_coords (event, &touch_info->start_x, &touch_info->start_y);
++    }
++  if (!touch_info)
++    return;
++
++  if (event_type == CLUTTER_TOUCH_BEGIN || event_type == CLUTTER_TOUCH_END)
++    {
++      MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (touch);
++
++      touch_info->slot_serial = meta_wayland_input_device_next_serial (input_device);
++      if (event_type == CLUTTER_TOUCH_BEGIN)
++        touch->latest_touch_down_serial = touch_info->slot_serial;
++    }
++
++  touch_get_relative_coordinates (touch, surface, event,
++                                  &touch_info->x, &touch_info->y);
++  touch_info->updated = TRUE;
++}
++
+ static void
+diff --git a/src/wayland/meta-wayland-touch.h b/src/wayland/meta-wayland-touch.h
+index 96bb6cfc4..ded126c1c 100644
+--- a/src/wayland/meta-wayland-touch.h
++++ b/src/wayland/meta-wayland-touch.h
+@@ -56,2 +56,6 @@ void meta_wayland_touch_update (MetaWaylandTouch   *touch,
+ 
++void meta_wayland_touch_update_session_lock (MetaWaylandTouch   *touch,
++                                             const ClutterEvent *event,
++                                             MetaWaylandSurface *surface);
++
+ gboolean meta_wayland_touch_handle_event (MetaWaylandTouch   *touch,
+-- 
+2.55.0

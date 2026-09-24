@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:44
     timeout-minutes: 120
+    outputs:
+      failed_seeds: ${{ steps.lifecycle-fuzz.outputs.failed_seeds }}
     steps:
       - name: Install checkout tool
         run: dnf -y install git
@@ -27,10 +29,7 @@ jobs:
       - name: Checkout Gnoblin and submodules
         uses: actions/checkout@v4
         with:
-          submodules: false
-
-      - name: Fetch GNOME submodules with retry backoff
-        run: scripts/checkout-submodules-with-retry.sh
+          submodules: recursive
 
       - name: Build a private Gnoblin prefix
         run: |
@@ -49,6 +48,7 @@ jobs:
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
 
       - name: Run varied seeded lifecycle sessions
+        id: lifecycle-fuzz
         run: |
           builder_uid="$(id -u builder)"
           artifact_root="$RUNNER_TEMP/lifecycle-fuzz"
@@ -57,7 +57,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
             seeds+=(51 1701 884422 314159265)
           fi
-          failed=0
+          failed_seeds=()
           for seed in "${seeds[@]}"; do
             artifact_dir="$artifact_root/seed-$seed"
             install -d -o builder -g builder -m 700 "$artifact_dir"
@@ -73,10 +73,14 @@ jobs:
               python3 tests/window-lifecycle-fuzz.py \
                 --seed "$seed" --steps 250 --timeout 900 \
                 --artifact-dir "$artifact_dir"; then
-              failed=1
+              failed_seeds+=("$seed")
             fi
           done
-          exit "$failed"
+          failed_seed_output="$(IFS=,; echo "${failed_seeds[*]}")"
+          printf 'failed_seeds=%s\n' "$failed_seed_output" >> "$GITHUB_OUTPUT"
+          if ((${#failed_seeds[@]} > 0)); then
+            exit 1
+          fi
 
       - name: Keep fuzz plans, logs and crash reproducers
         if: always()
@@ -86,3 +90,104 @@ jobs:
           path: ${{ runner.temp }}/lifecycle-fuzz/
           if-no-files-found: warn
           retention-days: 30
+
+  report-lifecycle-fuzz:
+    needs: lifecycle-fuzz
+    concurrency:
+      group: gnoblin-fuzz-issue-report-${{ github.repository }}
+      cancel-in-progress: false
+    if: >-
+      always() && needs.lifecycle-fuzz.result == 'failure' &&
+      needs.lifecycle-fuzz.outputs.failed_seeds != '' &&
+      github.event_name != 'pull_request' &&
+      github.repository == 'kierandrewett/gnoblin'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout fuzzer source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download fuzz artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-lifecycle-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lifecycle-fuzz/
+
+      - name: Install Beads CLI and report each failing seed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_SEEDS: ${{ needs.lifecycle-fuzz.outputs.failed_seeds }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          install_root="$RUNNER_TEMP/beads-install"
+          install -d "$install_root"
+          curl -fsSL -o "$install_root/beads.tar.gz" \
+            https://github.com/steveyegge/beads/releases/download/v1.2.2/beads_1.2.2_linux_amd64.tar.gz
+          curl -fsSL -o "$install_root/checksums.txt" \
+            https://github.com/steveyegge/beads/releases/download/v1.2.2/checksums.txt
+          grep '  beads_1.2.2_linux_amd64.tar.gz$' "$install_root/checksums.txt" > "$install_root/checksum.txt"
+          (cd "$install_root" && sha256sum --check checksum.txt)
+          tar -xzf "$install_root/beads.tar.gz" -C "$install_root" bd
+          install -m 0755 "$install_root/bd" "$RUNNER_TEMP/bd"
+          export PATH="$RUNNER_TEMP:$PATH"
+
+          export GITHUB_REPOSITORY=kierandrewett/gnoblin
+          export BEADS_DIR="$RUNNER_TEMP/gnoblin-beads/.beads"
+          cd "$RUNNER_TEMP"
+          bd init --prefix gnoblin --non-interactive --skip-hooks --skip-agents
+
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          IFS=, read -r -a failed_seeds <<< "$FAILED_SEEDS"
+          diagnostic_sections=""
+          for seed in "${failed_seeds[@]}"; do
+            failure_file="$RUNNER_TEMP/lifecycle-fuzz/seed-$seed/failure.json"
+            seed_diagnostics="No fatal diagnostic lines were captured."
+            if [[ -f "$failure_file" ]]; then
+              captured="$(jq -r '.diagnostics[]? // empty' "$failure_file")"
+              if [[ -n "$captured" ]]; then
+                seed_diagnostics="$captured"
+              fi
+            fi
+            diagnostic_sections+=$'\n\n'
+            diagnostic_sections+="Seed $seed:"$'\n'"$seed_diagnostics"
+          done
+
+          issue_title="[Gnoblin fuzz] Lifecycle regression detected"
+          existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
+          run_note="$(cat <<EOF
+          Seeded compositor lifecycle fuzzing failed again for seeds: $FAILED_SEEDS.
+
+          Run: $run_url
+          Commit: $GITHUB_SHA
+          Artifact: gnoblin-lifecycle-fuzz-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
+          EOF
+          )"
+
+          if [[ -n "$existing_url" ]]; then
+            gh issue comment "$existing_url" --body "$run_note"
+            bd github pull "$existing_url"
+            exit 0
+          fi
+
+          issue_body="$(cat <<EOF
+          Automated seeded lifecycle fuzzing detected that the Gnoblin compositor/session did not survive one or more runs.
+
+          - Failed seeds: $FAILED_SEEDS
+          - Commit: $GITHUB_SHA
+          - Workflow run: $run_url
+          - Artifact: gnoblin-lifecycle-fuzz-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
+
+          Download the artifact and replay with: python3 tests/window-lifecycle-fuzz.py --replay repro.json
+
+          Failure diagnostics:$diagnostic_sections
+          EOF
+          )"
+          bead_id="$(bd create --silent --title "$issue_title" --type bug --priority 1 --description "$issue_body")"
+          echo "Created Beads issue $bead_id for fuzz seeds $FAILED_SEEDS"
+          bd github push "$bead_id"

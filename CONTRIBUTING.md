@@ -48,3 +48,19 @@ commit, and explain the user-visible result in the commit body.
 
 See [Code quality](docs/code-quality.md) for tool setup, language coverage,
 whole-repository checks and formatting selected files.
+
+## Issues and commit hooks
+
+Gnoblin uses Beads for its work queue and GitHub Issues as the shared record.
+Install `bd`, authenticate `gh` for the repository, then install the hook once
+per clone:
+
+```sh
+uv tool run --from pre-commit==4.6.2 pre-commit install
+```
+
+The hook syncs Beads and GitHub before each otherwise-valid commit. Commits
+require a working GitHub connection and issue-write access. To commit offline,
+explicitly skip this hook once with
+`SKIP=beads-github-sync git commit ...`, then sync before the next commit. See
+`.beads/README.md` for filing and importing issues.

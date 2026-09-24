@@ -11,7 +11,6 @@
   libepoxy,
   libglycin,
   python3,
-  gtk3,
   wrapGAppsHook3,
   systemd,
   makeWrapper,
@@ -19,6 +18,9 @@
   mutter,
   gnomeShell,
   gnomeSession,
+  wireplumber,
+  playerctl,
+  brightnessctl,
   gsettings-desktop-schemas,
   gnoblinSrc,
   mutterSrc,
@@ -33,7 +35,6 @@ let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
   gnomeVersion = versions.components.gnome-shell.version;
   gnoblinVersion = (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnoblin-version.json")).version;
-  clipboardPython = python3.withPackages (ps: [ ps.pygobject3 ]);
   patchesFor =
     project:
     lib.sort (left: right: builtins.lessThan (toString left) (toString right)) (
@@ -175,13 +176,6 @@ let
       makeWrapper
       wrapGAppsHook3
     ];
-    buildInputs = [ gtk3 ];
-    dontWrapGApps = true;
-    postFixup = ''
-      makeWrapper ${clipboardPython}/bin/python3 "$out/libexec/gnoblin-clipboard-paste" \
-          --add-flags "$out/share/gnoblin/scripts/lib/clipboard-paste.py" "''${gappsWrapperArgs[@]}"
-    '';
-
     installPhase = ''
       install -Dm644 src/data/session/modes/gnoblin.json \
           "$out/share/gnome-shell/modes/gnoblin.json"
@@ -194,24 +188,13 @@ let
       printf '%s\n' lib > "$out/libexec/gnoblin-libdir"
 
       install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
+      install -Dm755 src/tools/gnoblin-seed-config "$out/libexec/gnoblin-seed-config"
+      install -Dm644 src/data/init.lua.example "$out/share/gnoblin/init.lua.example"
       install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
       install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
       install -Dm644 gnoblin-version.json "$out/share/gnoblin/version.json"
       substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
       wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
-      install -Dm644 src/scripts/compositor-bridge.js "$out/share/gnoblin/scripts/compositor-bridge.js"
-      install -Dm644 src/scripts/lib/ui-sessions.js "$out/share/gnoblin/scripts/lib/ui-sessions.js"
-      install -Dm644 src/scripts/lib/layer-companions.js "$out/share/gnoblin/scripts/lib/layer-companions.js"
-      install -Dm644 src/scripts/lib/window-switcher-fallback.js "$out/share/gnoblin/scripts/lib/window-switcher-fallback.js"
-      install -Dm644 src/scripts/lib/clipboard-paste.js "$out/share/gnoblin/scripts/lib/clipboard-paste.js"
-      install -Dm644 src/scripts/lib/clipboard-paste.py "$out/share/gnoblin/scripts/lib/clipboard-paste.py"
-      substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.js" \
-          --replace-fail '["python3", helper]' '["'$out'/libexec/gnoblin-clipboard-paste"]'
-      substituteInPlace "$out/share/gnoblin/scripts/lib/clipboard-paste.py" \
-          --replace-fail '"libgtk-3.so.0"' '"${gtk3}/lib/libgtk-3.so.0"' \
-          --replace-fail '"libgdk-3.so.0"' '"${gtk3}/lib/libgdk-3.so.0"'
-
-
       install -Dm644 src/data/session/gnoblin.desktop \
           "$out/share/wayland-sessions/gnoblin.desktop"
 
@@ -232,6 +215,10 @@ let
       gnoblinShell
       gnoblinSchemas
       session
+      glib
+      wireplumber
+      playerctl
+      brightnessctl
     ];
     nativeBuildInputs = [
       glib

@@ -49,6 +49,8 @@ SOURCES=(
     meta-wayland-data-control.h
     meta-wayland-session-lock.c
     meta-wayland-session-lock.h
+    meta-wayland-session-lock-surface.c
+    meta-wayland-session-lock-surface.h
 )
 
 # Vendored protocol XML basenames (loaded as 'private' from overlay protocol/).

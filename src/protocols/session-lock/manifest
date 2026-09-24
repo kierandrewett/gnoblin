@@ -3,4 +3,6 @@
 # the build boundary ready for the complete compositor lock controller.
 mutter meta-wayland-session-lock.c src/wayland/meta-wayland-session-lock.c
 mutter meta-wayland-session-lock.h src/wayland/meta-wayland-session-lock.h
+mutter meta-wayland-session-lock-surface.c src/wayland/meta-wayland-session-lock-surface.c
+mutter meta-wayland-session-lock-surface.h src/wayland/meta-wayland-session-lock-surface.h
 mutter ext-session-lock-v1.xml src/wayland/protocol/ext-session-lock-v1.xml

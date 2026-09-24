@@ -1,6 +1,6 @@
 # Write a frame renderer
 
-[Configuration reference](configuration-reference.md#frames)
+[Configuration reference](/config/reference#frames)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
 window actions and input. Read the [architecture](window-frame-renderers.md)
@@ -31,7 +31,7 @@ adds a 48-pixel titlebar and one-pixel edges without removing existing rules.
 
 ## Implement the protocol
 
-Generate bindings from [the protocol XML](../src/protocols/window-frame/gnoblin-window-frame-v1.xml).
+Generate bindings from [the protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml).
 Gnoblin starts the configured command with a private Wayland connection.
 `WAYLAND_SOCKET` contains its file descriptor.
 Connect once; do not give that descriptor to a second toolkit display connection.
@@ -70,9 +70,9 @@ the native fallback until a matching buffer is ready.
 
 ## Small C helper
 
-[client.c](../src/tools/frame-renderer/client.c) owns the connection, bounded
+[client.c](https://github.com/kierandrewett/gnoblin/blob/main/src/tools/frame-renderer/client.c) owns the connection, bounded
 buffers, configure handling and lifetime. Implement the functions in
-[paint.h](../src/tools/frame-renderer/paint.h); link the helper and generated
+[paint.h](https://github.com/kierandrewett/gnoblin/blob/main/src/tools/frame-renderer/paint.h); link the helper and generated
 protocol code into your executable. No GNOME or JavaScript dependency is needed.
 
 ### Required hooks

@@ -11,6 +11,7 @@
 #      GNOBLIN_TEST_DBUS_CLIENT (optional D-Bus client invoked after startup),
 #      GNOBLIN_COMPOSITOR_SOCKET (defaults to a private socket in test state),
 #      GNOBLIN_TEST_EXTENSION_ROOT (optional directory of system extension fixtures),
+#      GNOBLIN_TEST_SCRIPT_ROOT (optional directory of Gnoblin script fixtures),
 #      GNOBLIN_TEST_GSETTINGS_BACKEND (default memory),
 #      GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 to seed that feature as disabled,
 #      GNOBLIN_TEST_UNSAFE_MODE=1 enables Eval on the private test bus only,
@@ -77,6 +78,16 @@ export XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1
 export GSETTINGS_BACKEND="${GNOBLIN_TEST_GSETTINGS_BACKEND:-memory}"
 export GTK_A11Y=none NO_AT_BRIDGE=1
+
+if [ -n "${GNOBLIN_TEST_SCRIPT_ROOT:-}" ]; then
+    if [ ! -d "$GNOBLIN_TEST_SCRIPT_ROOT" ]; then
+        echo "!! script fixture root is not a directory: $GNOBLIN_TEST_SCRIPT_ROOT" >&2
+        exit 1
+    fi
+    script_data="$XDG_DATA_HOME/gnoblin/scripts"
+    mkdir -p "$script_data"
+    cp -a -- "$GNOBLIN_TEST_SCRIPT_ROOT"/. "$script_data"/
+fi
 
 case "${GNOBLIN_TEST_DISABLE_NOTIFICATIONS:-0}" in
     0) ;;

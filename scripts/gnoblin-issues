@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v bd >/dev/null 2>&1; then
+    echo "Beads is required. Install the bd CLI, then run bd bootstrap or bd init." >&2
+    exit 127
+fi
+
+export GITHUB_REPOSITORY=kierandrewett/gnoblin
+
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Authenticate with GitHub CLI (gh auth login) or set GITHUB_TOKEN." >&2
+        exit 127
+    fi
+    GITHUB_TOKEN="$(gh auth token)"
+    export GITHUB_TOKEN
+fi
+
+exec bd github "$@"
