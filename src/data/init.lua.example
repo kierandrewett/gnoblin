@@ -50,8 +50,8 @@ gnoblin.window_rule {
 }
 
 -- Reuse an imported shortcut's name to override only the fields you supply.
--- gnoblin.shortcut {name = "terminal", command = {"ptyxis", "--new-window"}}
--- gnoblin.remove_shortcut("terminal")
+-- gnoblin.configure {shortcuts = {terminal = {command = {"ptyxis", "--new-window"}}}}
+-- gnoblin.configure {shortcuts = {terminal = {enable = false}}}
 
 -- Start a program once per login, unless a service already starts it.
 -- gnoblin.autostart {name = "bar", command = {"waybar"}}

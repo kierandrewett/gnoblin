@@ -8,6 +8,9 @@ an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
 `gnoblin.window_rule { ... }` and `gnoblin.permission_rule { ... }` for ordered
 rules. `gnoblin.shortcut { ... }` and `gnoblin.autostart { ... }` merge entries
 by name. `remove_shortcut(name)` and `remove_autostart(name)` remove them.
+For named overrides, `gnoblin.configure {shortcuts = {terminal = {command = {...}}}}`
+merges fields, and `terminal = {enable = false}` disables that entry. The same
+form works for autostart. The removal functions remain for older configs.
 
 Declarations copy their input and convert snake_case setting names to the
 internal hyphenated form. Renderer names and shader uniform names stay literal.

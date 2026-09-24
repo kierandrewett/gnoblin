@@ -70,8 +70,8 @@ Try minimising a window. Invalid edits keep the last working configuration.
 - Setting names use underscores: `minimize_duration`.
 - Comments begin with `--`.
 
-Use `gnoblin.configure` for settings, `gnoblin.window_rule` for rules,
-and `gnoblin.shortcut` for keyboard shortcuts. The outer braces belong to the
+Use `gnoblin.configure` for settings and named shortcuts, and
+`gnoblin.window_rule` for ordered rules. The outer braces belong to the
 function call; inner braces group related options. `gnoblin` is available in every config file;
 you do not need to import it. See the [recipes](configuration-recipes.md).
 

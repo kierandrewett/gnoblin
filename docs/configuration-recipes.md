@@ -60,10 +60,10 @@ gnoblin.shortcut {
 }
 ```
 
-To remove an imported shortcut:
+To disable an imported shortcut:
 
 ```lua
-gnoblin.remove_shortcut("terminal")
+gnoblin.configure {shortcuts = {terminal = {enable = false}}}
 ```
 
 ## Make unfocused windows slightly translucent

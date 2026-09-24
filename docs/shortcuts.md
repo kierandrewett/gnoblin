@@ -2,7 +2,7 @@
 
 [Configuration reference](configuration-reference.md)
 
-Use `gnoblin.shortcut` to launch a program when you press a key combination.
+Use the named `shortcuts` table to launch a program when you press a key combination.
 Use `keybindings` to change built-in actions such as closing a window.
 Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 
@@ -11,34 +11,53 @@ Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 Add this after any `gnoblin.load(...)` lines. It opens a terminal with Super+Enter:
 
 ```lua
-gnoblin.shortcut {
-    name = "my-terminal",
-    binding = "<Super>Return",
-    command = {"ptyxis", "--new-window"},
+gnoblin.configure {
+    shortcuts = {
+        my_terminal = {
+            binding = "<Super>Return",
+            command = {"ptyxis", "--new-window"},
+        },
+    },
 }
 ```
 
 Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
-Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
-Removing one releases its binding; it does not stop a launched program.
+The map key is the shortcut's name. Names use letters, numbers, `_` and `-`.
+Up to 256 command shortcuts are allowed.
+
+## Function form
+
+For an existing config that uses declarations, the same shortcut is:
+
+```lua
+gnoblin.shortcut {
+    name = "my_terminal",
+    binding = "<Super>Return",
+    command = {"ptyxis", "--new-window"},
+}
+```
+
+Use the same name to change only the fields you supply. Set `enable = false`
+with that name to disable it.
 
 ## Remove a shortcut
 
-`remove_shortcut` excludes a named `gnoblin.shortcut` entry added earlier in
-the same config load. Use it when a shell's config supplies a shortcut you do
-not want:
+Set `enable = false` under the same name to disable an imported shortcut:
 
 ```lua
-gnoblin.remove_shortcut("my-terminal")
+gnoblin.configure {
+    shortcuts = {
+        my_terminal = {enable = false},
+    },
+}
 ```
 
-The config is rebuilt on every reload. This releases that entry's binding;
-it does not change GNOME's built-in keybindings or shortcuts belonging to
-other programs. An unknown name does nothing. Put the removal after the file
-that adds the shortcut;
-[load order](configuration-loading.md#override-or-append) matters.
+The config is rebuilt on every reload. Disabling releases that entry's binding;
+it does not stop a program already launched by the shortcut. Put this after
+the file that defines it; [load order](configuration-loading.md#override-or-append)
+matters. `gnoblin.remove_shortcut(name)` remains available for older configs.
 
 ## Key names
 

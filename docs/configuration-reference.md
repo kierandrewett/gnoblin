@@ -20,10 +20,10 @@ not one-off commands to change the running desktop.
 | [`configure { ... }`](configuration.md#2-make-a-change) | Settings table | Merge maps; replace supplied lists; later values win |
 | [`window_rule { ... }`](window-rules.md#add-a-rule) | Match and effect fields | Append a rule; later matching fields win |
 | [`permission_rule { ... }`](permissions.md#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
-| [`shortcut { ... }`](shortcuts.md#launch-a-command) | Named command | Add or update by name; omitted fields stay unchanged |
-| [`autostart { ... }`](autostart.md#add-a-program) | Named command | Add or update by name; run once per name per login |
-| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | Shortcut name | Exclude an earlier named shortcut from this config load |
-| [`remove_autostart(name)`](autostart.md#remove-an-entry) | String | Remove an entry; does not stop its process |
+| [`shortcut { ... }`](shortcuts.md#function-form) | Named command | Add or update by name; `enable = false` disables it |
+| [`autostart { ... }`](autostart.md#function-form) | Named command | Add or update by name; `enable = false` disables it |
+| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | Shortcut name | Older form of disabling an earlier named shortcut |
+| [`remove_autostart(name)`](autostart.md#remove-an-entry) | Entry name | Older form of disabling an earlier named autostart |
 | [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
 | [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
 
@@ -55,14 +55,20 @@ Guides: [animations](animations.md), [native features](session-settings.md),
 
 | Field           | Used by             | Value                                                                |
 | --------------- | ------------------- | -------------------------------------------------------------------- |
-| `name`          | Shortcut, autostart | Required string; identifies the entry for overrides                  |
+| `name`          | Shortcut, autostart | Required in function calls; named maps use the map key instead        |
 | `command`       | Shortcut, autostart | Argument list, e.g. `{"ptyxis", "--new-window"}`; no shell expansion |
 | `binding`       | Shortcut            | GTK accelerator, e.g. `"<Super>Return"`                              |
 | `capture_input` | Shortcut            | Boolean; buffers popup typing; default `false`                       |
 
 Shortcut names use letters, digits, `_` and `-`. Limit: 256 command shortcuts.
-A new shortcut needs a binding and command. An override needs only its name and
-changed fields. Different shortcut names must not claim the same binding.
+A new shortcut needs a binding and command. Set `configure {shortcuts = {
+NAME = {binding = "...", command = {...}}}}` to define one, or set
+`NAME = {enable = false}` to disable an imported entry. Named map entries merge
+with earlier entries; omitted fields stay unchanged. Different shortcut names
+must not claim the same binding.
+
+`autostart` accepts the same named map form. Its entries run once per name per
+login; disabling one does not stop a process that already started.
 
 Built-in bindings go in `configure {keybindings = {GROUP = {ACTION = {KEYS}}}}`.
 Use underscores in action names; hyphenated config names are rejected. For

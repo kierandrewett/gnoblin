@@ -68,7 +68,8 @@ The result is a fade lasting 150 milliseconds. Changing the duration does not
 remove the animation choice.
 
 Lists behave differently: supplying `window_rules`, `shortcuts`, `autostart`
-or permission `rules` replaces that list. To add a window rule while keeping
+or permission `rules` through `gnoblin.configure` replaces that list. Returned
+config fragments append these lists. To add a window rule while keeping
 previous rules, use:
 
 ```lua
@@ -79,8 +80,15 @@ gnoblin.window_rule {
 ```
 
 `gnoblin.shortcut` and `gnoblin.autostart` merge entries with the same name.
-Use `gnoblin.remove_shortcut(name)` or `gnoblin.remove_autostart(name)` to
-remove an imported entry. Removing an autostart entry does not stop a process.
+Named maps in `gnoblin.configure` do the same. To disable an imported shortcut:
+
+```lua
+gnoblin.configure {shortcuts = {terminal = {enable = false}}}
+```
+
+The same form works for `autostart`. Disabling an autostart entry does not stop
+an already-running process. Older configs can still use
+`gnoblin.remove_shortcut(name)` and `gnoblin.remove_autostart(name)`.
 
 To remove every command shortcut loaded so far:
 

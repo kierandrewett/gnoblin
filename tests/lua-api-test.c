@@ -102,6 +102,16 @@ int main(void) {
               "assert(#gnoblin.config.shortcuts==0 and #gnoblin.config['window-rules']==0)\n"
               "gnoblin.configure {keybindings={shell={show_screenshot_ui={}}}}\n"
               "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n");
+    g_autoptr(GVariant) named = evaluate(
+        root, "gnoblin.load('component.lua')\n"
+              "gnoblin.configure {shortcuts={terminal={command={'new'}},"
+              "keep={enable=false},my_extra={binding='<Super>e',command={'extra'}}}}\n"
+              "gnoblin.shortcut {name='my_extra',command={'updated'}}\n");
+    g_autoptr(GVariant) named_expected = evaluate(
+        root, "return {shortcuts={{name='terminal',binding='<Super>Return',command={'new'}},"
+              "{name='my_extra',binding='<Super>e',command={'updated'}}},"
+              "['window-rules']={{match={type='window'},opacity=1}}}\n");
+    assert_equal(named, named_expected);
     const char* invalid[] = {
         "gnoblin.window_rule(false)",
         "gnoblin.config=false; gnoblin.configure {shell={minimize_duration=150}}",
