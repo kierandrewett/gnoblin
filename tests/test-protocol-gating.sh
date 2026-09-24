@@ -18,7 +18,9 @@ export GDK_BACKEND=wayland
 
 DK="$(mktemp -d /tmp/gnoblin-pg.XXXXXX)"
 mkdir -p "$DK"/{home,config,cache}
-export HOME="$DK/home" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
+mkdir -p "$DK/runtime"
+chmod 700 "$DK/runtime"
+export HOME="$DK/home" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache" XDG_RUNTIME_DIR="$DK/runtime"
 export GIO_USE_VFS=local GSETTINGS_BACKEND=memory GTK_A11Y=none
 export DISP="gnoblin-pg-$$" GS="$SHELL_BIN"
 
