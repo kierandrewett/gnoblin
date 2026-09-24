@@ -70,7 +70,7 @@ index 2dcc634a0..ca54f4591 100644
 +    }
 +
 +    get keyboardOptions() {
-+        return this._xkbOptions ?? this._sessionSettings.keyboardOptions;
++        return this._xkbOptions ?? this._sessionSettings.keyboardOptions ?? [];
 +    }
 +
 +    get keyboardModel() {
@@ -155,4 +155,3 @@ index 2dcc634a0..ca54f4591 100644
  
 -- 
 2.55.0
-

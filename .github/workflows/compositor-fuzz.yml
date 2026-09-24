@@ -134,13 +134,13 @@ jobs:
         run: |
           install_root="$RUNNER_TEMP/beads-install"
           install -d "$install_root"
-          curl -fsSL -o "$install_root/beads.tar.gz" \
+          curl -fsSL -o "$install_root/beads_1.2.2_linux_amd64.tar.gz" \
             https://github.com/steveyegge/beads/releases/download/v1.2.2/beads_1.2.2_linux_amd64.tar.gz
           curl -fsSL -o "$install_root/checksums.txt" \
             https://github.com/steveyegge/beads/releases/download/v1.2.2/checksums.txt
           grep '  beads_1.2.2_linux_amd64.tar.gz$' "$install_root/checksums.txt" > "$install_root/checksum.txt"
           (cd "$install_root" && sha256sum --check checksum.txt)
-          tar -xzf "$install_root/beads.tar.gz" -C "$install_root" bd
+          tar -xzf "$install_root/beads_1.2.2_linux_amd64.tar.gz" -C "$install_root" bd
           install -m 0755 "$install_root/bd" "$RUNNER_TEMP/bd"
           export PATH="$RUNNER_TEMP:$PATH"
 
