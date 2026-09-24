@@ -19,11 +19,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SM="$ROOT/subprojects/mutter"
 TAG="$($ROOT/scripts/gnome-versions.py get mutter version)"
 OUT="$ROOT/patches/mutter/40-gnoblin-protocols"
 TMP="$(mktemp -d /tmp/gnoblin-protocol-patch.XXXXXX)"
-trap 'rm -rf "$TMP"' EXIT
+WORKTREE="$TMP/mutter"
+trap 'git -C "$ROOT/subprojects/mutter" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
 SOURCES_FILE="$TMP/sources.txt"
 PROTOCOLS_FILE="$TMP/protocols.txt"
 
@@ -47,6 +47,8 @@ SOURCES=(
     meta-wayland-output-power-management.h
     meta-wayland-data-control.c
     meta-wayland-data-control.h
+    meta-wayland-session-lock.c
+    meta-wayland-session-lock.h
 )
 
 # Vendored protocol XML basenames (loaded as 'private' from overlay protocol/).
@@ -57,37 +59,37 @@ PROTOCOLS=(
     wlr-gamma-control-unstable-v1
     wlr-output-power-management-unstable-v1
     ext-data-control-v1
+    ext-session-lock-v1
 )
 
-"$ROOT/scripts/subproject-state.sh" check mutter "$TAG"
-
-git -C "$SM" am --abort >/dev/null 2>&1 || true
-git -C "$SM" checkout -qf "$TAG"
-git -C "$SM" reset -q --hard "$TAG"
-git -C "$SM" clean -qfd
+# This repository commonly carries in-progress Mutter work.  Build the wiring
+# patch in an isolated detached worktree so regeneration never resets, cleans,
+# or otherwise changes the developer's checkout.
+git -C "$ROOT/subprojects/mutter" worktree add --quiet --detach "$WORKTREE" "$TAG"
+SM="$WORKTREE"
 
 meson="$SM/src/meson.build"
 surface="$SM/src/wayland/meta-wayland-surface.c"
 
 # 1. meson sources block — anchored after meta-wayland-shell-surface.h.
 {
-    echo "    # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays"
-    echo "    # at build time; registered via meta_gnoblin_init_protocols)"
-    for s in "${SOURCES[@]}"; do echo "    'wayland/$s',"; done
+    echo "  # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays"
+    echo "  # at build time; registered via meta_gnoblin_init_protocols)"
+    for s in "${SOURCES[@]}"; do echo "  'wayland/$s',"; done
 } >"$SOURCES_FILE"
 GNOBLIN_SOURCES_FILE="$SOURCES_FILE" perl -0pi -e '
   local $/; open(my $f, "<", $ENV{"GNOBLIN_SOURCES_FILE"}); my $blk = <$f>; close($f);
-  s@(    '"'"'wayland/meta-wayland-shell-surface.h'"'"',\n)@$1$blk@;
+  s@(  '"'"'wayland/meta-wayland-shell-surface.h'"'"',\n)@$1$blk@ or die "Mutter source-list anchor not found\\n";
 ' "$meson"
 
 # 2. meson protocol list block — anchored after xdg-toplevel-tag.
 {
-    echo "    # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)"
-    for p in "${PROTOCOLS[@]}"; do echo "    ['$p', 'private', ],"; done
+    echo "  # gnoblin: vendored wlr-/ext- protocols (overlay src/wayland/protocol/)"
+    for p in "${PROTOCOLS[@]}"; do echo "  ['$p', 'private', ],"; done
 } >"$PROTOCOLS_FILE"
 GNOBLIN_PROTOCOLS_FILE="$PROTOCOLS_FILE" perl -0pi -e '
   local $/; open(my $f, "<", $ENV{"GNOBLIN_PROTOCOLS_FILE"}); my $blk = <$f>; close($f);
-  s@(    \['"'"'xdg-toplevel-tag'"'"', '"'"'staging'"'"', 1, \],\n)@$1$blk@;
+  s@(  \['"'"'xdg-toplevel-tag'"'"', '"'"'staging'"'"', 1, \],\n)@$1$blk@ or die "Mutter protocol-list anchor not found\\n";
 ' "$meson"
 
 # 3. surface.c — aggregator include + single init call.
@@ -111,11 +113,5 @@ screencopy wiring patches."
 mkdir -p "$OUT"
 rm -f "$OUT"/*.patch
 git -C "$SM" format-patch -1 HEAD --unified=1 -o "$OUT" >/dev/null
-
-git -C "$SM" checkout -qf "$TAG"
-git -C "$SM" reset -q --hard "$TAG"
-git -C "$SM" clean -qfd
-
-"$ROOT/scripts/subproject-state.sh" record mutter "$TAG"
 
 echo ">> regenerated $(ls "$OUT"/*.patch)"
