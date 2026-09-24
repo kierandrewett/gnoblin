@@ -28,12 +28,12 @@ client replaces `ScreenShield`.
 
 ## Responsibilities
 
-| Component | Owns |
-| --- | --- |
-| Gnoblin's Mutter fork | Lock state, opaque fallback on every output, input and capture isolation, lock surface placement, and the `ext-session-lock-v1` server |
-| Bingux lock client, current | Lock-screen appearance, accessible prompts, authentication flow, and `unlock_and_destroy` after successful authentication |
-| Bingux policy, future | Optional manual, idle, logind, sleep, timeout, inhibitor, and compatibility D-Bus integration |
-| GDM and logind | Login/greeter and system session management; both remain installed |
+| Component                   | Owns                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Gnoblin's Mutter fork       | Lock state, opaque fallback on every output, input and capture isolation, lock surface placement, and the `ext-session-lock-v1` server |
+| Bingux lock client, current | Lock-screen appearance, accessible prompts, authentication flow, and `unlock_and_destroy` after successful authentication              |
+| Bingux policy, future       | Optional manual, idle, logind, sleep, timeout, inhibitor, and compatibility D-Bus integration                                          |
+| GDM and logind              | Login/greeter and system session management; both remain installed                                                                     |
 
 The Bingux desktop shell process is separate from its lock client. Reloading
 the bar, dock or settings cannot dismiss a lock. The compositor owns the blank
