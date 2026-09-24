@@ -28,15 +28,21 @@ class SessionLockPrivacyTests(unittest.TestCase):
         self.assertIn("data-control source is unavailable while the session is locked", source)
         self.assertNotIn("meta_selection_unset_owner(selection, META_SELECTION_CLIPBOARD", source)
 
-    def test_native_clipboard_primary_and_drag_paths_are_embargoed(self):
+    def test_native_clipboard_primary_drag_and_xwayland_paths_are_embargoed(self):
         patch = "\n".join(path.read_text() for path in PRIVACY_PATCH.glob("*.patch"))
 
         self.assertIn("meta-wayland-data-offer.c", patch)
         self.assertIn("meta-wayland-data-offer-primary.c", patch)
         self.assertIn("meta-wayland-data-device.c", patch)
-        self.assertGreaterEqual(patch.count("meta_wayland_session_lock_is_active"), 3)
+        self.assertIn("meta-wayland-data-device-primary.c", patch)
+        self.assertIn("src/x11/meta-x11-selection.c", patch)
+        self.assertGreaterEqual(patch.count("meta_wayland_session_lock_is_active"), 6)
         self.assertIn("close (fd)", patch)
         self.assertIn("meta_wayland_data_source_cancel (source)", patch)
+        self.assertIn("data_device_set_selection", patch)
+        self.assertIn("primary_device_set_selection", patch)
+        self.assertIn("meta_x11_selection_handle_selection_request", patch)
+        self.assertIn("send_selection_notify (x11_display, event, FALSE)", patch)
 
     def test_lock_transition_ends_an_in_progress_drag(self):
         source = MANAGER.read_text()
