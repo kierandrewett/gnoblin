@@ -2,7 +2,7 @@
 
 Configure this part of `gnoblin.configure` with the `keybindings` key.
 
-Override Mutter's built-in keybindings with `keybindings = {GROUP = {ACTION = {KEYS}}}`. Use underscore names for actions. Empty action lists disable that binding. Gnoblin applies overrides to Mutter's native keybinding table on reload and keeps persistence in the Lua config. Removing an override restores the built-in default. GNOME Settings Daemon media keys use a separate service.
+Override Mutter's built-in keybindings with `keybindings = {GROUP = {ACTION = {KEYS}}}`. Use underscore names for actions. Empty action lists disable that binding. Gnoblin applies overrides to Mutter's native keybinding table on reload and keeps persistence in the Lua config. Removing an override restores the built-in default. Configure media-key commands through [`shortcuts`](/config/configure/shortcuts).
 
 | Group     | GSettings schema                       |
 | --------- | -------------------------------------- |

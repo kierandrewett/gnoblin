@@ -104,7 +104,9 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
 It prints the current list and subsequent snapshots as windows change. Stop it
 with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.
 
-## Register a shortcut
+## Temporary UI bindings
+
+Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
 
 ```json
 { "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8 }

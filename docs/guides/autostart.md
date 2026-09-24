@@ -32,9 +32,9 @@ gnoblin.configure {
 Replace the path with your own. If Waybar has already started, this command
 change takes effect at your next login.
 
-## Remove an entry
+## Disable an entry
 
-To prevent an imported program from starting next time, remove it by name
+To prevent an imported program from starting next time, disable it by name
 after the file that adds it:
 
 ```lua
@@ -43,7 +43,7 @@ gnoblin.configure {
 }
 ```
 
-An unknown name does nothing. Removing an entry does not stop an already
+An unknown name does nothing. Disabling an entry does not stop an already
 running process.
 
 ## When does it run?
@@ -53,7 +53,7 @@ running process.
 - Saving again or unlocking does not start a second copy.
 - An exited process is not automatically restarted.
 - Changing the command for a program already launched takes effect at the next login.
-- Removing the entry does not stop the running process.
+- Disabling the entry does not stop the running process.
 
 Failed launches are logged and can be retried on a later reload.
 
