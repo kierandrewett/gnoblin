@@ -27,12 +27,31 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
-from gnoblin_test_session import eval_shell, send_pointer, set_frame, shell_window, wait_for
+from gnoblin_test_session import (  # noqa: E402
+    eval_shell,
+    send_pointer,
+    shell_window,
+    wait_for,
+)
 
 VALID_OPERATIONS = {
-    "open", "activate", "minimize", "unminimize", "maximize", "unmaximize",
-    "fullscreen", "unfullscreen", "resize", "hover", "frame_click", "drag_resize",
-    "frame_policy", "wm_close", "graceful_close", "abrupt_close", "shell_shutdown",
+    "open",
+    "activate",
+    "minimize",
+    "unminimize",
+    "maximize",
+    "unmaximize",
+    "fullscreen",
+    "unfullscreen",
+    "resize",
+    "hover",
+    "frame_click",
+    "drag_resize",
+    "frame_policy",
+    "wm_close",
+    "graceful_close",
+    "abrupt_close",
+    "shell_shutdown",
 }
 FATAL_LOG = re.compile(
     r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
@@ -40,6 +59,27 @@ FATAL_LOG = re.compile(
     r"segmentation fault|runtime check failed|core dumped",
     re.IGNORECASE,
 )
+FRAME_MODES = {0: "off", 1: "auto", 2: "prefer-server", 3: "replace"}
+
+
+def write_frame_config(path: Path, policies: dict[int, list[int]]) -> None:
+    """Set fuzz-window frames through Gnoblin's normal window-rule config path."""
+    rules = [
+        '        {match = {title = "^Gnoblin Fuzz [0-9][0-9][0-9][0-9]$"}, '
+        'frame = {mode = "replace", extents = {36, 2, 2, 2}}},'
+    ]
+    for window_id, policy in sorted(policies.items()):
+        mode = FRAME_MODES[policy[0]]
+        crop = ", ".join(str(value) for value in policy[1:5])
+        extents = ", ".join(str(value) for value in policy[5:9])
+        rules.append(
+            f'        {{match = {{title = "^Gnoblin Fuzz {window_id:04d}$"}}, '
+            f'frame = {{mode = "{mode}", crop = {{{crop}}}, extents = {{{extents}}}}}}},'
+        )
+    contents = 'return { ["window-rules"] = {\n' + "\n".join(rules) + "\n    } }\n"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(contents)
+    temporary.replace(path)
 
 
 def validate_plan(value: object) -> dict:
@@ -76,33 +116,59 @@ def generate_plan(seed: int, steps: int, max_windows: int) -> dict:
 
     open_window()
     weights = [
-        ("open", 12), ("activate", 10), ("minimize", 4), ("unminimize", 4),
-        ("maximize", 4), ("unmaximize", 3), ("fullscreen", 2), ("unfullscreen", 2),
-        ("resize", 8), ("hover", 10), ("frame_click", 5), ("drag_resize", 4),
-        ("frame_policy", 5), ("wm_close", 4), ("graceful_close", 7), ("abrupt_close", 5),
+        ("open", 12),
+        ("activate", 10),
+        ("minimize", 4),
+        ("unminimize", 4),
+        ("maximize", 4),
+        ("unmaximize", 3),
+        ("fullscreen", 2),
+        ("unfullscreen", 2),
+        ("resize", 8),
+        ("hover", 10),
+        ("frame_click", 5),
+        ("drag_resize", 4),
+        ("frame_policy", 5),
+        ("wm_close", 4),
+        ("graceful_close", 7),
+        ("abrupt_close", 5),
     ]
     closes = {"wm_close", "graceful_close", "abrupt_close", "frame_click"}
 
     for _ in range(steps):
         choices = [item for item in weights if item[0] != "open" or len(active) < max_windows]
-        op = "open" if not active else rng.choices(
-            [item[0] for item in choices], weights=[item[1] for item in choices], k=1
-        )[0]
+        op = (
+            "open"
+            if not active
+            else rng.choices([item[0] for item in choices], weights=[item[1] for item in choices], k=1)[0]
+        )
         if op == "open":
             open_window()
             continue
         window = rng.choice(active)
         action: dict = {"op": op, "window": window, "delay_ms": rng.randrange(5, 100)}
         if op == "resize":
-            action.update(x=rng.randrange(20, 800), y=rng.randrange(20, 400),
-                          width=rng.randrange(220, 760), height=rng.randrange(180, 520))
+            action.update(
+                x=rng.randrange(20, 800),
+                y=rng.randrange(20, 400),
+                width=rng.randrange(220, 760),
+                height=rng.randrange(180, 520),
+            )
         elif op == "hover":
             action["point"] = rng.randrange(5)
         elif op == "frame_policy":
             mode = rng.choice([0, 2, 3])
-            action["policy"] = [mode, 8 if mode == 2 else 0, 0, 0, 0,
-                                36 if mode else 0, 2 if mode else 0,
-                                2 if mode else 0, 2 if mode else 0]
+            action["policy"] = [
+                mode,
+                8 if mode == 2 else 0,
+                0,
+                0,
+                0,
+                36 if mode else 0,
+                2 if mode else 0,
+                2 if mode else 0,
+                2 if mode else 0,
+            ]
         actions.append(action)
         if op in closes:
             active.remove(window)
@@ -111,8 +177,7 @@ def generate_plan(seed: int, steps: int, max_windows: int) -> dict:
         open_window()
     actions.append({"op": "shell_shutdown", "window": rng.choice(active), "delay_ms": rng.randrange(30, 100)})
 
-    return {"schema": 1, "seed": seed, "steps": steps,
-            "max_windows": max_windows, "actions": actions}
+    return {"schema": 1, "seed": seed, "steps": steps, "max_windows": max_windows, "actions": actions}
 
 
 def read_plan(path: Path) -> dict:
@@ -143,6 +208,8 @@ def run_parent(args: argparse.Namespace) -> int:
     if plan_path.exists():
         raise FileExistsError(f"refusing to overwrite existing run artifact: {plan_path}")
     save_json(plan_path, plan)
+    config_path = artifact_dir / "window-rules.lua"
+    write_frame_config(config_path, {})
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     monitor = "1280x800"
     extra_monitor = os.environ.get("EXTRA_MONITOR")
@@ -150,41 +217,52 @@ def run_parent(args: argparse.Namespace) -> int:
     if extra_monitor:
         replay_env += f"EXTRA_MONITOR={shlex.quote(extra_monitor)} "
     replay_command = f"{replay_env}python3 {shlex.quote(str(SCRIPT))} --replay {shlex.quote(str(plan_path))}"
-    save_json(artifact_dir / "run.json", {
-        "seed": seed,
-        "repo": str(ROOT),
-        "git_head": head.stdout.strip(),
-        "started_utc": datetime.now(timezone.utc).isoformat(),
-        "prefix": os.environ.get("GNOBLIN_PREFIX", str(ROOT / "install")),
-        "monitor": monitor,
-        "extra_monitor": extra_monitor,
-        "plan": str(plan_path),
-        "replay_command": replay_command,
-    })
+    save_json(
+        artifact_dir / "run.json",
+        {
+            "seed": seed,
+            "repo": str(ROOT),
+            "git_head": head.stdout.strip(),
+            "started_utc": datetime.now(timezone.utc).isoformat(),
+            "prefix": os.environ.get("GNOBLIN_PREFIX", str(ROOT / "install")),
+            "monitor": monitor,
+            "extra_monitor": extra_monitor,
+            "gnoblin_config": str(config_path),
+            "plan": str(plan_path),
+            "replay_command": replay_command,
+        },
+    )
     state_dir = artifact_dir / "private-state"
     state_dir.mkdir(mode=0o700)
     env = os.environ.copy()
-    env.update({
-        "GNOBLIN_TEST_UNSAFE_MODE": "1",
-        "GNOBLIN_TEST_CLIENT": str(SCRIPT),
-        "GNOBLIN_LIFECYCLE_FUZZ_INNER": "1",
-        "GNOBLIN_LIFECYCLE_FUZZ_PLAN": str(plan_path),
-        "GNOBLIN_LIFECYCLE_FUZZ_EVENTS": str(artifact_dir / "events.jsonl"),
-        "GNOBLIN_STATE_DIR": str(state_dir),
-        "GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT": "1"
-        if plan["actions"][-1]["op"] == "shell_shutdown" else "0",
-        "MONITOR": "1280x800",
-        "PYTHONUNBUFFERED": "1",
-    })
+    env.update(
+        {
+            "GNOBLIN_CONFIG": str(config_path),
+            "GNOBLIN_TEST_UNSAFE_MODE": "1",
+            "GNOBLIN_TEST_CLIENT": str(SCRIPT),
+            "GNOBLIN_LIFECYCLE_FUZZ_INNER": "1",
+            "GNOBLIN_LIFECYCLE_FUZZ_PLAN": str(plan_path),
+            "GNOBLIN_LIFECYCLE_FUZZ_EVENTS": str(artifact_dir / "events.jsonl"),
+            "GNOBLIN_STATE_DIR": str(state_dir),
+            "GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT": "1" if plan["actions"][-1]["op"] == "shell_shutdown" else "0",
+            "MONITOR": "1280x800",
+            "PYTHONUNBUFFERED": "1",
+        }
+    )
     print(f"Gnoblin lifecycle fuzzer: seed={seed}, actions={len(plan['actions'])}", flush=True)
     print(f"Artifacts: {artifact_dir}", flush=True)
     print(f"Replay: {replay_command}", flush=True)
 
     log_path = artifact_dir / "runner.log"
     with log_path.open("w") as log:
-        process = subprocess.Popen([str(ROOT / "scripts/run-gnome-shell.sh")], cwd=ROOT,
-                                   env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True)
+        process = subprocess.Popen(
+            [str(ROOT / "scripts/run-gnome-shell.sh")],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
 
         def stream_output() -> None:
             assert process.stdout is not None
@@ -211,11 +289,20 @@ def run_parent(args: argparse.Namespace) -> int:
     published_log = state_dir / "gnome-shell-last.log"
     if published_log.exists():
         shutil.copy2(published_log, artifact_dir / "shell.log")
-    shell_log = (artifact_dir / "shell.log").read_text(errors="replace") if (artifact_dir / "shell.log").exists() else ""
+    shell_log = (
+        (artifact_dir / "shell.log").read_text(errors="replace") if (artifact_dir / "shell.log").exists() else ""
+    )
     diagnostics = [line for line in shell_log.splitlines() if FATAL_LOG.search(line)]
     failed = return_code != 0 or timed_out or bool(diagnostics)
     if failed:
         executed = []
+        client_failure = None
+        client_failure_path = artifact_dir / "client-failure.json"
+        if client_failure_path.exists():
+            try:
+                client_failure = json.loads(client_failure_path.read_text())
+            except json.JSONDecodeError:
+                client_failure = {"error": "client-failure.json was not valid JSON"}
         events_path = artifact_dir / "events.jsonl"
         if events_path.exists():
             for line in events_path.read_text().splitlines():
@@ -225,13 +312,22 @@ def run_parent(args: argparse.Namespace) -> int:
                     continue
                 if event.get("phase") == "start":
                     executed.append(event["action"])
-        save_json(artifact_dir / "repro.json", {**plan, "actions": executed or plan["actions"],
-                                               "replay_of": str(plan_path)})
-        save_json(artifact_dir / "failure.json", {
-            "seed": seed, "return_code": return_code, "timed_out": timed_out,
-            "diagnostics": diagnostics[-40:], "repro": str(artifact_dir / "repro.json"),
-            "runner_log": str(log_path), "shell_log": str(artifact_dir / "shell.log"),
-        })
+        save_json(
+            artifact_dir / "repro.json", {**plan, "actions": executed or plan["actions"], "replay_of": str(plan_path)}
+        )
+        save_json(
+            artifact_dir / "failure.json",
+            {
+                "seed": seed,
+                "return_code": return_code,
+                "timed_out": timed_out,
+                "diagnostics": diagnostics[-40:],
+                "client_failure": client_failure,
+                "repro": str(artifact_dir / "repro.json"),
+                "runner_log": str(log_path),
+                "shell_log": str(artifact_dir / "shell.log"),
+            },
+        )
         (artifact_dir / "repair-request.md").write_text(
             "# Gnoblin lifecycle failure\n\n"
             f"Seed: `{seed}`\n\n"
@@ -252,6 +348,7 @@ def run_inside() -> int:
         raise RuntimeError("the lifecycle driver must run inside run-gnome-shell.sh")
     plan_path = Path(os.environ["GNOBLIN_LIFECYCLE_FUZZ_PLAN"])
     event_path = Path(os.environ["GNOBLIN_LIFECYCLE_FUZZ_EVENTS"])
+    config_path = Path(os.environ["GNOBLIN_CONFIG"])
     plan = read_plan(plan_path)
     fixture_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin-lifecycle-fuzz"
     fixture_dir.mkdir(parents=True, exist_ok=True)
@@ -259,12 +356,30 @@ def run_inside() -> int:
     flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "gtk4"], text=True).split()
     subprocess.run(["cc", str(ROOT / "tests/window-lifecycle-client.c"), "-o", str(fixture), *flags], check=True)
     processes: dict[int, subprocess.Popen] = {}
+    frame_policies: dict[int, list[int]] = {}
 
     def title_for(window_id: int) -> str:
         return f"Gnoblin Fuzz {window_id:04d}"
 
     def state_for(window_id: int) -> dict | None:
         return shell_window(title_for(window_id))
+
+    def set_frame_policy(window_id: int, policy: list[int]) -> None:
+        frame_policies[window_id] = policy
+        write_frame_config(config_path, frame_policies)
+        result = subprocess.run(["gnoblinctl", "config", "reload"], capture_output=True, text=True, timeout=15)
+        if result.returncode:
+            raise RuntimeError(f"could not apply window frame policy: {result.stderr.strip() or result.stdout.strip()}")
+
+    def wait_frame(window_id: int, top: int) -> dict:
+        deadline = time.monotonic() + 5
+        state = None
+        while time.monotonic() < deadline:
+            state = state_for(window_id)
+            if state and state["layout"]["border"][0] == top:
+                return state
+            time.sleep(0.04)
+        raise TimeoutError(f"timed out waiting for native frame on window {window_id}; last state={state!r}")
 
     def prepare_frame(window_id: int) -> dict:
         title = title_for(window_id)
@@ -275,17 +390,14 @@ def run_inside() -> int:
             "w.activate(global.get_current_time());return true;})()"
         )
         eval_shell(expression)
-        set_frame(title, [3, 0, 0, 0, 0, 36, 2, 2, 2])
-
-        def framed() -> dict | None:
-            state = state_for(window_id)
-            return state if state and state["layout"]["border"][0] == 36 else None
-
-        return wait_for(framed, f"native frame on window {window_id}")
+        set_frame_policy(window_id, [3, 0, 0, 0, 0, 36, 2, 2, 2])
+        return wait_frame(window_id, 36)
 
     def wait_window(window_id: int, present: bool) -> None:
-        wait_for(lambda: state_for(window_id) is not None if present else state_for(window_id) is None,
-                 f"window {window_id} {'to map' if present else 'to close'}")
+        wait_for(
+            lambda: state_for(window_id) is not None if present else state_for(window_id) is None,
+            f"window {window_id} {'to map' if present else 'to close'}",
+        )
 
     def close_client(window_id: int, op: str) -> None:
         process = processes[window_id]
@@ -306,13 +418,7 @@ def run_inside() -> int:
             process = subprocess.Popen([str(fixture), title], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             processes[window_id] = process
             wait_window(window_id, True)
-            set_frame(title, [3, 0, 0, 0, 0, 36, 2, 2, 2])
-
-            def framed() -> bool:
-                state = state_for(window_id)
-                return bool(state and state["layout"]["border"][0] == 36)
-
-            wait_for(framed, f"native frame on window {window_id}")
+            wait_frame(window_id, 36)
             return
 
         title = title_for(window_id)
@@ -352,6 +458,12 @@ def run_inside() -> int:
             marker["observed_exit"] = True
             save_json(plan_path.parent / "expected-shell-exit.json", marker)
             return
+        if op == "frame_policy":
+            policy = action["policy"]
+            set_frame_policy(window_id, policy)
+            if not state["minimized"] and not state["fullscreen"]:
+                wait_frame(window_id, policy[5] if policy[0] else 0)
+            return
         if op == "hover":
             state = prepare_frame(window_id)
             points = [
@@ -384,10 +496,6 @@ def run_inside() -> int:
             "fullscreen": f"{window_expr}.make_fullscreen()",
             "unfullscreen": f"{window_expr}.unmake_fullscreen()",
             "resize": f"{window_expr}.move_resize_frame(false,{action['x']},{action['y']},{action['width']},{action['height']})",
-            "frame_policy": (
-                "imports.gi.Meta.gnoblin_window_frame_set(" + window_expr + ","
-                f"new imports.gi.GLib.Variant('(iiiiiiiii)',{json.dumps(action['policy'])}))"
-            ),
         }
         if op not in operations:
             raise ValueError(f"unsupported operation: {op}")

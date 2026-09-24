@@ -156,7 +156,7 @@ jobs:
             failure_file="$RUNNER_TEMP/lifecycle-fuzz/seed-$seed/failure.json"
             seed_diagnostics="No fatal diagnostic lines were captured."
             if [[ -f "$failure_file" ]]; then
-              captured="$(jq -r '.diagnostics[]? // empty' "$failure_file")"
+              captured="$(jq -r '(.diagnostics[]? // empty), (.client_failure.error? // empty)' "$failure_file")"
               if [[ -n "$captured" ]]; then
                 seed_diagnostics="$captured"
               fi
@@ -176,6 +176,7 @@ jobs:
           Artifact: gnoblin-lifecycle-fuzz-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
           EOF
           )"
+          run_note+=$'\n\nFailure diagnostics:'"$diagnostic_sections"
 
           if [[ -n "$existing_url" ]]; then
             gh issue comment "$existing_url" --body "$run_note"
