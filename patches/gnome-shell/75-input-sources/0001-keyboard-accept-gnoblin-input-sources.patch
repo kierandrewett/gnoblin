@@ -45,9 +45,9 @@ index 2dcc634a0..ca54f4591 100644
 +        if (sources === null)
 +            this._mruSources = [];
 +        this._xkbOptions = xkbOptions;
++        this._emitKeyboardOptionsChanged();
 +        this._emitInputSourcesChanged();
 +        this._emitPerWindowChanged();
-+        this._emitKeyboardOptionsChanged();
 +    }
 +
 +    get mruSources() {
