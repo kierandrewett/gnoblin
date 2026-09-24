@@ -30,6 +30,16 @@ void meta_wayland_session_lock_enter_failsafe (MetaWaylandCompositor *compositor
 MetaWaylandSessionLockState
 meta_wayland_session_lock_get_state (MetaWaylandCompositor *compositor);
 
+/* Policy consumers (capture, clipboard, remote input) must deny access from
+ * COVERING onward.  This stays true after a locker crash in FAILSAFE. */
+gboolean
+meta_wayland_session_lock_is_active (MetaWaylandCompositor *compositor);
+
+/* True only after a compositor-owned covered frame reached every current
+ * stage view. Suspend coordinators must not treat COVERING as confirmation. */
+gboolean
+meta_wayland_session_lock_is_presentation_confirmed (MetaWaylandCompositor *compositor);
+
 /* Internal scene parent for lock-surface actors. It is NULL until the
  * fail-safe cover has been installed. Normal clients must never use it. */
 ClutterActor *
