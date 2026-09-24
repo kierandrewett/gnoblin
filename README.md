@@ -67,9 +67,20 @@ Added to Mutter's existing Wayland support, enabled by default:
 | `ext-idle-notify`                 | Idle detection                                                 |
 | `wlr-gamma-control`               | Display gamma and colour temperature                           |
 | `wlr-output-power-management`     | Display power control                                          |
+| `ext-session-lock`                | Compositor-enforced session locking                            |
 
-GNOME still handles locking and display configuration. `ext-session-lock`
-and `wlr-output-management` aren't implemented.
+Gnoblin exposes standard `ext-session-lock-v1` in its own session. It does not
+ship a built-in lock screen or choose a locker. Bingux supplies its lock client
+independently; hyprlock, swaylock, gtklock, waylock and other conforming
+clients can use the same protocol. A normal GNOME session continues to use
+GNOME's own lock screen. See [session locking](docs/session-lock.md).
+
+Existing authorised portal monitor streams remain subject to their established
+portal permission. While locked, those streams show the lock scene. Remote
+input is available only after `locked` and the lock
+scene has presented, and is routed to the active lock surface; it is refused
+during transitions and failsafe. No lock-specific portal setting or opt-in is
+required.
 
 ## Get started
 

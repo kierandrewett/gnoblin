@@ -107,6 +107,7 @@ export default defineConfig({
           { text: 'Compositor bridge', link: '/compositor-bridge' },
           { text: 'Bridge examples', link: '/bridge-examples' },
           { text: 'Wayland protocols', link: '/wayland-protocols' },
+          { text: 'Session locking', link: '/session-lock' },
           { text: 'User scripts', link: '/user-scripts' },
           { text: 'Background blur', link: '/background-effects' },
           { text: 'Blur fades', link: '/blur-fades' },

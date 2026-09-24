@@ -55,13 +55,27 @@ Screen capture through `wlr_screencopy` is separate from capture through the
 desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.
 
-## Interfaces not yet available
+## Session locking
 
-`ext_session_lock_v1` and `zwlr_output_manager_v1` have vendored XML but are
-not registered as supported Gnoblin globals. The session-lock startup boundary
-is compiled but deliberately advertises no global until it can enforce a lock.
-Do not build a shell that requires them yet. Gnoblin's existing lock and
-display configuration paths are separate from these two proposed interfaces.
+Gnoblin advertises the standard `ext-session-lock-v1` manager in the Gnoblin
+session. The first locker to acquire it owns the active lock; a second locker
+receives `finished`. The compositor covers every output, keeps the session
+locked if the client exits, and sends `locked` only after its covered frame has
+presented.
+
+Gnoblin deliberately has no built-in lock UI or locker policy. Bingux ships a
+separate lock client, and unmodified clients such as hyprlock, swaylock,
+gtklock and waylock can use the same protocol. The regular GNOME session never
+receives this global and retains GNOME ScreenShield.
+
+Portal permissions do not change when the session locks. An already authorised
+monitor stream sees the compositor lock scene instead of desktop content.
+Remote input is available after `locked` and lock-scene presentation, and goes
+only to the active lock surface; it is refused during transitions and failsafe.
+No lock-specific portal configuration is needed. See [session locking](session-lock.md).
+
+`zwlr_output_manager_v1` remains vendored XML only and is not an advertised
+Gnoblin global.
 
 ## Inspect a running session
 
