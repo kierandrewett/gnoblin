@@ -124,6 +124,9 @@ jobs:
       - name: Checkout test drivers
         uses: actions/checkout@v4
 
+      - name: Start test system D-Bus
+        run: ./tests/start-system-bus.sh
+
       - name: Download Gnoblin build and app catalog
         uses: actions/download-artifact@v4
         with:

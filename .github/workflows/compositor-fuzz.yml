@@ -31,6 +31,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Start test system D-Bus
+        run: ./tests/start-system-bus.sh
+
       - name: Build a private Gnoblin prefix
         run: |
           source scripts/build-deps.sh
