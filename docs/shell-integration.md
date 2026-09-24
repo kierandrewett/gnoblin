@@ -22,8 +22,10 @@ function updateTarget(toplevel) {
 Update after layout changes and when a window joins a group.
 Give each grouped window the same icon rectangle before minimising it.
 
-A zero-size rectangle clears the hint. The hint also clears when its surface
-or window handle disappears.
+The Wayland rectangle uses surface-local coordinates; Gnoblin converts it to
+desktop coordinates. Set both width and height to zero to clear the hint;
+negative dimensions are a protocol error. Gnoblin also clears the hint when
+its surface or toplevel handle disappears.
 
 ## Layer placement and animation
 
