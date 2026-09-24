@@ -59,8 +59,9 @@ explicit compositor-owned UI may be visible. The compositor rejects a second
 lock owner. New or resized outputs get an opaque cover before any normal frame;
 the client then receives a new `configure`. Destroying a lock surface or losing
 the client leaves the session locked and covered. Recovery starts another
-trusted client while the cover remains, or requires ending the session from a
-separate VT. The dead client's disappearance never counts as authentication.
+client connected to the same Wayland session while the cover remains, or
+requires ending the session from a separate VT. The dead client's
+disappearance never counts as authentication.
 
 Only the owning live lock object can send `unlock_and_destroy`, and only after
 `locked`. The client waits for a `wl_display.sync` round trip before exiting.
@@ -113,6 +114,15 @@ may acquire the same protocol role directly. The global remains hidden in the
 current build until the compositor has passed the secure coverage, input
 isolation, client-death, and presentation checks in this document. No runtime
 compatibility claim is made before those tests pass.
+
+The Wayland socket is the trust boundary for lock ownership. To support
+ordinary third-party lockers without a Gnoblin-specific launch token, any
+client already allowed on that socket may attempt a lock or take over after a
+locker dies. A replacement can then unlock through the protocol; Gnoblin
+cannot verify that client's password check. The lock protects against access
+at the seat while the compositor enforces it, but does not isolate mutually
+untrusted applications sharing one user's Wayland connection. Run untrusted
+applications with separate Wayland socket access if that distinction matters.
 
 The native seam supplies `get_gnoblin_session_lock_active()`, which is true
 from `covering` through `failsafe`. Shell's bridge stops work as soon as Mutter
