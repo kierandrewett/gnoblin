@@ -12,6 +12,8 @@ Run commands from a terminal inside Gnoblin:
 | Command                     | Use it to                              |
 | --------------------------- | -------------------------------------- |
 | `gnoblinctl window list`    | Find open windows and their IDs        |
+| `gnoblinctl window match`   | Show values available to window rules  |
+| `gnoblinctl layer list`     | Find layer-shell rule namespaces       |
 | `gnoblinctl config path`    | Find the config file your session uses |
 | `gnoblinctl config default` | Print the bundled default `init.lua`   |
 | `gnoblinctl config reload`  | Apply edits and report config errors   |
@@ -33,10 +35,26 @@ gnoblinctl window close 42
 Use an ID from `window list`, or `active` for the focused window.
 IDs last for the window's lifetime, not across logins.
 
+To see the values used by `gnoblin.window_rule`, run `gnoblinctl window match`
+for the focused window or pass an ID from `window list`. The output includes
+the desktop-entry ID, GTK application ID, WM class, and the effective rule
+`app_id`; use that `app_id` and the exact title in your rule. The desktop-entry
+ID shown by `window list` can differ from the rule value.
+
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.
 
 Filter the list with `--focused`, `--app-id ID` or `--title TEXT`.
+
+## Layer surfaces
+
+List layer-shell surfaces and the namespaces available to window rules with:
+
+```sh
+gnoblinctl layer list
+```
+
+Use a listed `namespace` as the rule's `layer` value.
 
 ## Move and resize
 
