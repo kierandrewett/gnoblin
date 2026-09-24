@@ -29,7 +29,7 @@ jobs:
           submodules: recursive
 
       - name: Start test system D-Bus
-        run: GNOBLIN_TEST_NO_LOGIND=1 ./tests/start-system-bus.sh
+        run: ./tests/start-system-bus.sh
 
       - name: Build a private Gnoblin prefix
         run: |

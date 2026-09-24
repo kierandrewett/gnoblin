@@ -36,6 +36,9 @@ MONITOR="${MONITOR:-1280x800}"
 SETTLE="${SETTLE:-25}"
 MODE="${GNOBLIN_TEST_MODE:-gnoblin}"
 ENV_MODE="${GNOBLIN_TEST_ENV_MODE:-$MODE}"
+# The headless test launcher exercises compositor behavior without requiring
+# a host login manager. Set GNOBLIN_TEST_NO_LOGIND=0 to cover the systemd path.
+export GNOBLIN_TEST_NO_LOGIND="${GNOBLIN_TEST_NO_LOGIND:-1}"
 if [ -n "${GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS:-}" ]; then
     EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
 elif [ "$MODE" = gnoblin ]; then
