@@ -3,10 +3,10 @@
 Show a busy cursor while an application starts. This API supplies feedback;
 it does not launch the application.
 
-## Enable the service
+## Availability
 
-Install or link `src/scripts/launch-feedback.js` into
-`~/.config/gnoblin/scripts/`, then run `gnoblinctl reload`.
+Launch feedback is built into the Gnoblin session. The CLI and shell clients
+can use it without installing a user script.
 
 It uses the compositor's themed wait cursor. Older runtimes use an
 input-transparent cursor overlay. Application focus is unchanged.
@@ -43,8 +43,8 @@ Object: `/org/gnoblin/LaunchFeedback`.
 Timeouts are bounded to 100–10000 ms. The app hint may be a desktop ID,
 WM class, GTK application ID or desktop name.
 
-Reload releases the current cursor override. A dead launcher cannot leave it
-busy forever because requests expire.
+Requests expire even if a launcher exits before sending `End`. The cursor
+override is also released when the Gnoblin session shuts down.
 
 ## Test
 

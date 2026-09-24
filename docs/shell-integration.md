@@ -12,7 +12,7 @@ With Quickshell, call
 [Toplevel.setRectangle](https://quickshell.org/docs/types/Quickshell.Wayland/Toplevel/)
 using coordinates relative to the dock's PanelWindow:
 
-```qml
+```javascript
 function updateTarget(toplevel) {
     const point = icon.mapToItem(dock.contentItem, 0, 0);
     toplevel.setRectangle(dock,

@@ -12,7 +12,7 @@ python3 scripts/build-private-deps.py --run just dev-mutter
 python3 scripts/build-private-deps.py --fix-runtime
 ```
 
-Replace `dev-mutter` with `dev-gnome-shell`, `dev-portal` or `dev-settings` as
+Replace `dev-mutter` with `dev-gnome-shell` or `dev-portal` as
 needed. For the complete runtime, use `./build.sh --no-deps`.
 
 Native compositor changes need a fresh session. A config reload does not load
@@ -39,14 +39,8 @@ These are not part of `./build.sh`. They need additional upstream development
 libraries. Build them only when those prerequisites are available:
 
 ```sh
-python3 scripts/build-private-deps.py --run just dev-settings dev-portal
+python3 scripts/build-private-deps.py --run just dev-portal
 python3 scripts/build-private-deps.py --fix-runtime
-```
-
-To run the local Settings panel:
-
-```sh
-./install/bin/gnome-control-center gnoblin
 ```
 
 To test the patched portal backend in your test session:

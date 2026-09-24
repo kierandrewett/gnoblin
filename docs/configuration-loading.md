@@ -17,8 +17,13 @@ If `init.lua` is absent, the loader checks `gnoblin.toml`, then
 `gnoblin.conf`. These are alternatives, not extra includes.
 Use a `.lua` suffix for Lua; other suffixes select TOML.
 
-If no config file exists, Gnoblin uses its defaults. Setting `GNOBLIN_CONFIG` in a terminal
-does not change the already-running compositor's environment.
+For packaged logins, `gnoblin-session` seeds `init.lua` from
+`/usr/share/gnoblin/init.lua.example` before starting gnome-session when no
+supported user config exists. The shell then loads that file on its first
+config load. The seed step preserves existing `init.lua`, TOML, and legacy
+config files. If the example is unavailable, or when running a build directly,
+Gnoblin uses its defaults. Setting `GNOBLIN_CONFIG` in a terminal does not
+change the already-running compositor's environment.
 
 ## Include a file
 

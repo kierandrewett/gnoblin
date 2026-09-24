@@ -15,8 +15,6 @@ history or the relevant guide.
       GNOME, rollback and removal.
 - [ ] Exercise persistent Screen Cast and Remote Desktop grants, including
       narrowing and revocation.
-- [ ] Use the Gnoblin Settings panel while the Shell D-Bus service starts,
-      stops and returns errors.
 - [ ] Re-measure memory, boot time and layer-shell latency on real hardware.
 
 ## Product work

@@ -34,7 +34,7 @@ The compositor excludes the app body from painting and input.
 Native resize regions take priority. The renderer never takes keyboard focus
 or requests arbitrary commands.
 
-See the [protocol XML](../src/protocols/window-frame/gnoblin-window-frame-v1.xml).
+See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml).
 
 ## Slow or failed renderers
 

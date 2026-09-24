@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # QEMU install test — 2026-09-13
@@ -52,7 +51,7 @@ unavailable on Fedora 43, so it was rerun with `--skip-unavailable`; Fedora's
 doctor also required Quickshell. Fedora 43's enabled repositories supplied
 `quickshell-0.3.1-2.fc43`, which made doctor pass:
 
-```
+```text
 Bingux prerequisites are ready.
 ```
 
@@ -75,7 +74,7 @@ ran successfully.
 GDM displayed the Gnoblin choice alongside GNOME and GNOME Classic. Selecting
 Gnoblin and logging in produced a real Wayland session:
 
-```
+```sh
 GNOME_SHELL_SESSION_MODE=gnoblin
 XDG_SESSION_DESKTOP=gnoblin
 XDG_SESSION_TYPE=wayland
@@ -108,7 +107,7 @@ distinguishes missing integration from the runtime failure.
 Bingux's visible shell did not render a bar, dock, or panels. `bingux.service`
 restarted with status `255/EXCEPTION` and logged:
 
-```
+```text
 ERROR: Failed to load configuration
 ERROR: caused by @shell.qml[41:5]: Type SnapAssist unavailable
 ERROR: caused by @SnapAssist.qml[232:5]: Type ShellPopup unavailable
@@ -117,7 +116,7 @@ ERROR: caused by @ShellPopup.qml[232:13]: BackgroundEffect can only be used as a
 
 `bingux-searchd.service` restarted with status `1/FAILURE` and logged:
 
-```
+```text
 [bingux-searchd] application launcher must be absolute
 ```
 

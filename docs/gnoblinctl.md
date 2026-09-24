@@ -89,13 +89,13 @@ Actions without extra arguments accept an optional window ID; they use
 | Command | Use |
 | --- | --- |
 | `ping`, `version`, `status` | Check the shell, build version and window bridge |
-| `reload` | Refresh the Shell, theme and user scripts while keeping windows |
+| `reload` | Refresh the Shell, theme and installed/personal scripts while keeping windows |
 | `config path`, `config reload` | Find or reload the active config |
 | `input list`, `input current` | Inspect configured and selected keyboard sources |
 | `input select TYPE ID` | Select an exact source from `input list` |
 | `feature list`, `feature show ID` | Inspect live Shell switches |
 | `feature enable ID`, `feature disable ID` | Change a switch |
-| `script list` | List loaded user scripts |
+| `script list` | List loaded package integrations and personal scripts |
 | `privacy` | Read screen-sharing, microphone and location indicators |
 | `permissions list` | Read portal rules and capabilities |
 | `permissions check CAPABILITY IDENTITY` | Explain a decision for `app-id:…` or `host-exe:…` |
@@ -208,6 +208,8 @@ The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
 Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
 
 The bridge is built into current Gnoblin source builds, so `script list` does
-not show it. Check `gnoblinctl status`, the running Gnoblin version and the
-session log. Older installed builds may not include the built-in service yet.
-See [CLI development](cli-development.md) for the transport contract.
+not show it. Package integrations that add namespaced operations do appear in
+`script list`; for example, Bingux installs its text-entry integration with
+Bingux. Check `gnoblinctl status`, the running Gnoblin version and the session
+log. Older installed builds may not include the built-in service yet. See
+[CLI development](cli-development.md) for the transport contract.

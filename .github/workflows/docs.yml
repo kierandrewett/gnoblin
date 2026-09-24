@@ -1,10 +1,10 @@
 name: Documentation
 on:
   pull_request:
-    paths: ["docs/**", "mkdocs.yml", "docs-requirements.txt", "scripts/docs-links.py", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "scripts/docs-vitepress-postbuild.mjs", "package.json", "package-lock.json", ".github/workflows/docs.yml"]
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml", "docs-requirements.txt", "scripts/docs-links.py", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "scripts/docs-vitepress-postbuild.mjs", "package.json", "package-lock.json", ".github/workflows/docs.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,17 +18,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: docs-requirements.txt
-      - run: pip install -r docs-requirements.txt
-      - run: mkdocs build --strict
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run docs:build
       - uses: actions/upload-artifact@v4
         with:
           name: documentation
-          path: site
+          path: docs/.vitepress/dist
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
@@ -40,13 +40,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
-      - run: pip install -r docs-requirements.txt
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run docs:build
       - name: Build documentation without replacing the APT archive
         run: |
-          mkdocs build --strict --site-dir "$RUNNER_TEMP/site"
+          cp -a docs/.vitepress/dist "$RUNNER_TEMP/site"
+          touch "$RUNNER_TEMP/site/.nojekyll"
           git fetch origin gh-pages
           git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
           rsync -a --delete --exclude=.git --exclude=apt "$RUNNER_TEMP/site/" "$RUNNER_TEMP/pages/"

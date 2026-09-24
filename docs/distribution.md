@@ -37,7 +37,7 @@ The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
 Build separately in each distribution's container; do not reuse a newer
 distribution's binary package on an older one.
 
-Follow the [container build instructions](../packaging/deb/README.md).
+Follow the [container build instructions](https://github.com/kierandrewett/gnoblin/blob/main/packaging/deb/README.md).
 The builder compiles the required newer libraries into `/usr/lib/gnoblin/deps`
 and produces a `.deb` with the remaining system dependencies recorded for APT.
 No Nix installation is required.

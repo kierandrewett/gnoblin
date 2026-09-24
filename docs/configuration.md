@@ -2,7 +2,11 @@
 
 [Configuration reference](configuration-reference.md)
 
-Edit `~/.config/gnoblin/init.lua` to change shortcuts, window rules and effects.
+On first login, `gnoblin-session` copies the packaged reference config to
+`~/.config/gnoblin/init.lua` when there is no Lua or legacy config already
+there. Gnoblin loads that file on the first shell start. The seed step never
+replaces an existing config. Edit the file to change shortcuts, window rules,
+effects and desktop preferences.
 Configure the bar, dock and launcher in your desktop shell.
 
 ## 1. Find your config

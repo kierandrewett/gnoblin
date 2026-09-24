@@ -1,3 +1,7 @@
+---
+search: false
+---
+
 # Archive
 
 Dated test records and superseded proposals. These are excluded from site search

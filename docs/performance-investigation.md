@@ -1,6 +1,5 @@
 ---
-search:
-    exclude: true
+search: false
 ---
 
 # Desktop performance investigation

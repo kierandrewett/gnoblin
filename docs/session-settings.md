@@ -6,13 +6,6 @@ Choose which GNOME controls to keep, how launchers affect window focus, and
 whether tools can use particular Wayland interfaces. Add the examples to
 `~/.config/gnoblin/init.lua`.
 
-![Gnoblin Settings showing Shell Features and Screen Recording in a clean devkit session](images/gnoblin-devkit-desktop.png)
-
-*The Gnoblin settings panel in a fresh nested devkit session. Bingux, a
-separate example shell, supplies the bar and dock visible around it. The
-switches and grant list belong to Gnoblin. The dock pins stock Files, Firefox
-and Terminal applications.*
-
 ## Native features
 
 Enable GNOME's notifications if your shell does not provide a notification

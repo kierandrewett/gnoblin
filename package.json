@@ -1,0 +1,17 @@
+{
+  "name": "gnoblin-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs && node scripts/docs-vitepress-postbuild.mjs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  },
+  "overrides": {
+    "vite": "6.4.3",
+    "esbuild": "^0.25.0"
+  }
+}
