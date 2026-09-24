@@ -3,7 +3,9 @@
 [Configuration reference](/config/configure/frame_renderers)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
-window actions and input. Read the [architecture](window-frame-renderers.md)
+window actions and input. Register its executable as an absolute path or a
+command name found on the compositor's `PATH`; pass remaining arguments as
+separate array entries. Read the [architecture](window-frame-renderers.md)
 for ownership and failure behavior.
 
 ## Register your executable

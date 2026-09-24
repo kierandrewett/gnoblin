@@ -3,6 +3,9 @@
 Gnoblin owns decoration policy, geometry and input. An external process draws
 the frame. The private v1 protocol is experimental.
 
+Register a renderer using an absolute executable path or a command name on the
+compositor's `PATH`; see the [configuration reference](/config/configure#frames).
+
 For configuration, see [titlebars](/guides/window_frames).
 For implementation steps, see [write a renderer](frame-renderer-api.md).
 
