@@ -39,11 +39,23 @@ class SessionLockProtocolTests(unittest.TestCase):
 
     def test_boundary_cannot_advertise_an_incomplete_lock_protocol(self):
         source = SOURCE.read_text()
-        self.assertIn('gnoblin_config_protocol_enabled ("ext-session-lock")', source)
+        self.assertIn('gnoblin_config_get_bool ("protocols", "ext-session-lock", FALSE)', source)
         self.assertIn("required fail-closed scene", source)
         self.assertIn("output-hotplug, and client-death controller", source)
         self.assertNotIn("wl_global_create", source)
         self.assertNotIn("ext_session_lock_manager_v1_interface", source)
+
+    def test_failsafe_keeps_cover_and_input_embargo_in_compositor(self):
+        source = SOURCE.read_text()
+        self.assertIn("CLUTTER_BIND_ALL", source)
+        self.assertIn("meta_wayland_input_attach_event_handler", source)
+        self.assertIn("CLUTTER_EVENT_STOP", source)
+        self.assertIn("meta_wayland_touch_cancel", source)
+        self.assertIn("META_WAYLAND_SESSION_LOCK_FAILSAFE", source)
+        self.assertIn('"presented"', source)
+        self.assertIn("clutter_stage_peek_stage_views", source)
+        self.assertIn("unpresented_stage_views", source)
+        self.assertIn("controller->scene", source)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "clutter/clutter.h"
 #include "wayland/meta-wayland-types.h"
 
 typedef enum
@@ -28,6 +29,11 @@ void meta_wayland_session_lock_enter_failsafe (MetaWaylandCompositor *compositor
 
 MetaWaylandSessionLockState
 meta_wayland_session_lock_get_state (MetaWaylandCompositor *compositor);
+
+/* Internal scene parent for lock-surface actors. It is NULL until the
+ * fail-safe cover has been installed. Normal clients must never use it. */
+ClutterActor *
+meta_wayland_session_lock_get_scene (MetaWaylandCompositor *compositor);
 
 /*
  * Register the session-lock implementation boundary.

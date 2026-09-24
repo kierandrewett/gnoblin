@@ -38,8 +38,14 @@
 typedef struct
 {
   MetaWaylandSessionLockState state;
+  MetaWaylandCompositor *compositor;
+  ClutterStage *stage;
+  ClutterActor *scene;
   ClutterActor *cover;
   MetaWaylandEventHandler *input_handler;
+  GHashTable *unpresented_stage_views;
+  gulong stage_presented_id;
+  gulong stage_views_changed_id;
 } MetaWaylandSessionLockController;
 
 #define SESSION_LOCK_CONTROLLER_KEY "gnoblin-session-lock-controller"
@@ -93,13 +99,60 @@ static const MetaWaylandEventInterface failsafe_input_interface = {
 };
 
 static void
+reset_presentation_barrier (MetaWaylandSessionLockController *controller)
+{
+  GList *l;
+
+  g_hash_table_remove_all (controller->unpresented_stage_views);
+  for (l = clutter_stage_peek_stage_views (controller->stage); l; l = l->next)
+    g_hash_table_add (controller->unpresented_stage_views, l->data);
+
+  /* A stage with no views cannot prove that a locked frame reached an output.
+   * Keep the controller in COVERING until a view appears and presents. */
+  controller->state = META_WAYLAND_SESSION_LOCK_COVERING;
+  clutter_actor_queue_redraw (CLUTTER_ACTOR (controller->stage));
+}
+
+static void
+on_stage_views_changed (ClutterActor                     *stage,
+                        MetaWaylandSessionLockController *controller)
+{
+  if (controller->state != META_WAYLAND_SESSION_LOCK_UNLOCKED)
+    reset_presentation_barrier (controller);
+}
+
+static void
+on_stage_presented (ClutterStage                         *stage,
+                    ClutterStageView                     *stage_view,
+                    ClutterFrameInfo                     *frame_info,
+                    MetaWaylandSessionLockController *controller)
+{
+  if (controller->state != META_WAYLAND_SESSION_LOCK_COVERING ||
+      !clutter_actor_is_effectively_on_stage_view (controller->cover,
+                                                    stage_view))
+    return;
+
+  g_hash_table_remove (controller->unpresented_stage_views, stage_view);
+  if (g_hash_table_size (controller->unpresented_stage_views) == 0)
+    controller->state = META_WAYLAND_SESSION_LOCK_FAILSAFE;
+}
+
+static void
 destroy_controller (gpointer data)
 {
   MetaWaylandSessionLockController *controller = data;
 
-  if (controller->cover)
-    clutter_actor_destroy (controller->cover);
+  g_clear_signal_handler (&controller->stage_presented_id, controller->stage);
+  g_clear_signal_handler (&controller->stage_views_changed_id, controller->stage);
 
+  if (controller->input_handler && controller->compositor->seat)
+    meta_wayland_input_detach_event_handler (
+      controller->compositor->seat->input_handler, controller->input_handler);
+
+  if (controller->scene)
+    clutter_actor_destroy (controller->scene);
+
+  g_clear_pointer (&controller->unpresented_stage_views, g_hash_table_unref);
   g_free (controller);
 }
 
@@ -115,6 +168,9 @@ get_controller (MetaWaylandCompositor *compositor)
 
   controller = g_new0 (MetaWaylandSessionLockController, 1);
   controller->state = META_WAYLAND_SESSION_LOCK_UNLOCKED;
+  controller->compositor = compositor;
+  controller->unpresented_stage_views = g_hash_table_new (g_direct_hash,
+                                                           g_direct_equal);
   g_object_set_data_full (G_OBJECT (compositor),
                           SESSION_LOCK_CONTROLLER_KEY,
                           controller, destroy_controller);
@@ -138,27 +194,44 @@ meta_wayland_session_lock_enter_failsafe (MetaWaylandCompositor *compositor)
   context = meta_wayland_compositor_get_context (compositor);
   backend = meta_context_get_backend (context);
   stage = meta_backend_get_stage (backend);
+  controller->stage = CLUTTER_STAGE (stage);
 
-  /* Appending to the stage puts the opaque actor above Mutter's window, top
-   * window, feedback, and Shell actors.  The stage actor is painted on every
-   * view, so a newly added or resized output is covered without a client
-   * round-trip. */
+  /* This private scene is the future parent of lock-surface actors.  Its opaque
+   * base always stays below those actors and above normal scene content.  The
+   * bind constraint follows changed stage allocation, so hotplug and output
+   * resize cannot expose an uncovered rectangle while the input embargo is in
+   * force. */
+  controller->scene = clutter_actor_new ();
+  clutter_actor_add_constraint (controller->scene,
+                                clutter_bind_constraint_new (stage,
+                                                             CLUTTER_BIND_ALL,
+                                                             0));
+  clutter_actor_set_reactive (controller->scene, FALSE);
+  clutter_actor_add_child (stage, controller->scene);
+
   controller->cover = clutter_actor_new ();
   clutter_actor_set_background_color (controller->cover,
                                       &COGL_COLOR_INIT (0, 0, 0, 255));
-  clutter_actor_set_size (controller->cover,
-                          clutter_actor_get_width (stage),
-                          clutter_actor_get_height (stage));
+  clutter_actor_add_constraint (controller->cover,
+                                clutter_bind_constraint_new (controller->scene,
+                                                             CLUTTER_BIND_ALL,
+                                                             0));
   clutter_actor_set_reactive (controller->cover, FALSE);
-  clutter_actor_add_child (stage, controller->cover);
+  clutter_actor_add_child (controller->scene, controller->cover);
+
+  controller->stage_presented_id =
+    g_signal_connect (stage, "presented", G_CALLBACK (on_stage_presented),
+                      controller);
+  controller->stage_views_changed_id =
+    g_signal_connect (stage, "stage-views-changed",
+                      G_CALLBACK (on_stage_views_changed), controller);
+  reset_presentation_barrier (controller);
 
   controller->input_handler =
     meta_wayland_input_attach_event_handler (compositor->seat->input_handler,
                                               &failsafe_input_interface,
                                               TRUE,
                                               compositor);
-  controller->state = META_WAYLAND_SESSION_LOCK_FAILSAFE;
-  clutter_actor_queue_redraw (stage);
 }
 
 MetaWaylandSessionLockState
@@ -170,12 +243,27 @@ meta_wayland_session_lock_get_state (MetaWaylandCompositor *compositor)
   return get_controller (compositor)->state;
 }
 
+ClutterActor *
+meta_wayland_session_lock_get_scene (MetaWaylandCompositor *compositor)
+{
+  MetaWaylandSessionLockController *controller;
+
+  g_return_val_if_fail (compositor != NULL, NULL);
+
+  controller = g_object_get_data (G_OBJECT (compositor),
+                                  SESSION_LOCK_CONTROLLER_KEY);
+  return controller ? controller->scene : NULL;
+}
+
 void
 meta_wayland_init_session_lock (MetaWaylandCompositor *compositor)
 {
   g_return_if_fail (compositor != NULL);
 
-  if (gnoblin_config_protocol_enabled ("ext-session-lock"))
+  /* Unlike established protocol gates, this key defaults off.  Keeping the
+   * normal helper's default-true behaviour here would turn an omitted setting
+   * into a misleading startup warning on every Gnoblin session. */
+  if (gnoblin_config_get_bool ("protocols", "ext-session-lock", FALSE))
     g_warning ("Gnoblin ext-session-lock is requested but remains disabled: "
                "Mutter does not yet provide the required fail-closed scene, "
                "input, output-hotplug, and client-death controller");
