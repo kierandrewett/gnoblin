@@ -42,7 +42,8 @@ Find it in that shell's documentation; it is not necessarily its executable name
 ## Match text
 
 Text matchers use **JavaScript regular expressions**, not Lua patterns or globs.
-Use `^` and `$` for an exact match.
+The [JavaScript regular-expression guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions)
+explains the syntax. Use `^` and `$` for an exact match.
 
 This example fades a window only while its title is exactly `Notes`:
 

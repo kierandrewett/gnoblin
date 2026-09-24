@@ -61,7 +61,8 @@ end
 | `"Super"`           | Super press and release, without another key |
 
 Super is usually the Windows-logo key. Put modifiers in angle brackets and
-the main key after them, as in the examples above (GTK accelerator syntax). Held keys do not repeatedly launch commands.
+the main key after them. This is [GTK accelerator syntax](https://docs.gtk.org/gtk4/func.accelerator_parse.html).
+Held keys do not repeatedly launch commands.
 Command shortcuts are inactive on the lock and login screens.
 
 ## Change a built-in action

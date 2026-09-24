@@ -31,13 +31,17 @@ gnoblin.configure {cursor = {theme = "Adwaita-Hyprcursor", size = 24}}
 
 ## Hyprcursor support
 
-Gnoblin loads compositor cursor themes through Hyprcursor. Install a compiled
-theme in `~/.local/share/icons/<theme>/` or `~/.icons/<theme>/`, then set
-`cursor.theme` to its name. The configured theme and size control compositor
-cursors and the launch wait cursor. Animated frames retain their hotspots and
-timing. Client applications that supply their own cursor surfaces continue to
-draw those surfaces themselves. Gnoblin does not look up Xcursor theme files as
-a fallback.
+Gnoblin loads compositor cursor themes through Hyprcursor. The upstream
+[theme guide](https://github.com/hyprwm/hyprcursor/blob/main/docs/MAKING_THEMES.md)
+describes theme files and cursor metadata.
+
+Install a compiled theme in `~/.local/share/icons/<theme>/` or
+`~/.icons/<theme>/`, then set `cursor.theme` to its name. The configured theme
+and size control compositor cursors and the launch wait cursor. Animated frames
+retain their hotspots and timing.
+
+Client applications that supply their own cursor surfaces continue to draw
+them themselves. Gnoblin does not look up Xcursor theme files as a fallback.
 
 ## Build Adwaita-Hyprcursor
 

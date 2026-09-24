@@ -61,6 +61,10 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - Make examples complete, runnable, and relevant. Say where they go and what
   the user should observe. Keep the primary workflow in the README and link to
   focused pages for detail instead of scattering or duplicating instructions.
+- When a setting, field, command argument, or protocol option may be unfamiliar,
+  state its accepted values and defaults where known. Include a short example
+  and link to an authoritative reference when the option set is too broad to
+  list. Do not leave users guessing what values they can supply.
 - Use screenshots to show the actual interface or outcome. Capture a clean,
   representative product state; screenshots should look like documentation,
   not smoke-test output. Do not put terminal text, status labels, or narration

@@ -2,7 +2,24 @@
 
 Configure this part of `gnoblin.configure` with the `keybindings` key.
 
-Override Mutter's built-in keybindings with `keybindings = {GROUP = {ACTION = {KEYS}}}`. Use underscore names for actions. Empty action lists disable that binding. Gnoblin applies overrides to Mutter's native keybinding table on reload and keeps persistence in the Lua config. Removing an override restores the built-in default. Configure media-key commands through [`shortcuts`](/config/configure/shortcuts).
+Override a built-in action by group and action name. For example, bind the
+window-manager `close` action to Super+Q:
+
+```lua
+gnoblin.configure {
+    keybindings = {
+        wm = {close = {"<Super>q"}},
+    },
+}
+```
+
+Group names are `shell`, `wm`, `mutter` and `wayland`. Use underscore names
+for actions. Give an action a list of accelerators; an empty list disables its
+binding. Gnoblin applies overrides on reload. Removing an override restores the
+built-in default.
+
+Use [`shortcuts`](/config/configure/shortcuts) to launch commands from keys,
+including media keys.
 
 | Group     | GSettings schema                       |
 | --------- | -------------------------------------- |
