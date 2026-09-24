@@ -43,6 +43,18 @@ struct state {
   uint32_t serial, width, height;
 };
 
+static void
+report_display_error (struct wl_display *display, const char *where)
+{
+  const struct wl_interface *interface = NULL;
+  uint32_t id = 0;
+  uint32_t code = wl_display_get_protocol_error (display, &interface, &id);
+  int error = wl_display_get_error (display);
+
+  fprintf (stderr, "%s: display error=%d protocol=%s#%u code=%u\n", where,
+           error, interface ? interface->name : "none", id, code);
+}
+
 static int
 wait_until (struct state *state, bool *condition, int seconds)
 {
@@ -52,7 +64,7 @@ wait_until (struct state *state, bool *condition, int seconds)
     {
       int result = wl_display_dispatch (state->display);
       if (result < 0)
-        return -1;
+        { report_display_error (state->display, "event dispatch"); return -1; }
       clock_gettime (CLOCK_MONOTONIC, &now);
       if (now.tv_sec - start.tv_sec >= seconds)
         return 0;
@@ -170,8 +182,10 @@ start_lock (struct state *state)
   state->lock_surface = ext_session_lock_v1_get_lock_surface (state->lock, state->surface,
                                                                state->output);
   ext_session_lock_surface_v1_add_listener (state->lock_surface, &surface_listener, state);
-  if (wl_display_roundtrip (state->display) < 0 || !state->configured)
-    return -1;
+  if (wl_display_roundtrip (state->display) < 0)
+    { report_display_error (state->display, "lock-surface roundtrip"); return -1; }
+  if (!state->configured)
+    { fputs ("lock surface received no configure\n", stderr); return -1; }
   return create_buffer (state);
 }
 
