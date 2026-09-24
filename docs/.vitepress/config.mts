@@ -83,7 +83,6 @@ export default defineConfig({
                 text: "Configuration guides",
                 collapsed: true,
                 items: [
-                    { text: "Recipes", link: "/recipes" },
                     { text: "Files and load order", link: "/guides/files_and_load_order" },
                     { text: "Shortcuts", link: "/guides/shortcuts" },
                     { text: "Autostart", link: "/guides/autostart" },
@@ -98,6 +97,21 @@ export default defineConfig({
                     { text: "Window menu", link: "/guides/window_menu" },
                     { text: "Window state shortcuts", link: "/guides/window_state_shortcuts" },
                     { text: "Window snapping", link: "/guides/window_snapping" },
+                ],
+            },
+            {
+                text: "Recipes",
+                link: "/recipes/",
+                collapsed: true,
+                items: [
+                    { text: "Complete starter config", link: "/recipes/complete-starter-config" },
+                    { text: "Add a shortcut", link: "/recipes/add-a-shortcut" },
+                    { text: "Dim unfocused windows", link: "/recipes/dim-unfocused-windows" },
+                    { text: "Round application windows", link: "/recipes/round-application-windows" },
+                    { text: "Turn off layer animations", link: "/recipes/turn-off-layer-animations" },
+                    { text: "Request a Gnoblin titlebar", link: "/recipes/request-a-titlebar" },
+                    { text: "Combine window rules", link: "/recipes/combine-window-rules" },
+                    { text: "Split a config into files", link: "/recipes/split-config-into-files" },
                 ],
             },
             {
