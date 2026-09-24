@@ -12,6 +12,8 @@ can change them. Sizes are [logical pixels](configuration.md#sizes-and-window-ty
 `gnoblin` is available in each config file without an import. Call its functions
 with a settings table, for example `gnoblin.configure {shell = {minimize_duration = 150}}`.
 Setting names use underscores (`snake_case`). String values are used as written.
+Each reload builds the config afresh; these functions describe that config,
+not one-off commands to change the running desktop.
 
 | Function | Input | Behaviour |
 | --- | --- | --- |
@@ -20,7 +22,7 @@ Setting names use underscores (`snake_case`). String values are used as written.
 | [`permission_rule { ... }`](permissions.md#example-allow-a-remote-desktop-app) | Identity and policy fields | Append a policy rule; any matching deny wins |
 | [`shortcut { ... }`](shortcuts.md#launch-a-command) | Named command | Add or update by name; omitted fields stay unchanged |
 | [`autostart { ... }`](autostart.md#add-a-program) | Named command | Add or update by name; run once per name per login |
-| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | String | Remove a named shortcut; missing names do nothing |
+| [`remove_shortcut(name)`](shortcuts.md#remove-a-shortcut) | Shortcut name | Exclude an earlier named shortcut from this config load |
 | [`remove_autostart(name)`](autostart.md#remove-an-entry) | String | Remove an entry; does not stop its process |
 | [`load(path)`](configuration-loading.md#include-a-file) | File or glob | Evaluate now, relative to the calling file |
 | [`require(name)`](configuration-loading.md#use-a-lua-module) | Local module name | Return a module result; once per reload; Lua global, not `gnoblin.require` |
