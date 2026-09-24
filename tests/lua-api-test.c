@@ -106,14 +106,23 @@ int main(void) {
         root, "gnoblin.load('component.lua')\n"
               "local snapshot=gnoblin.snapshot()\n"
               "assert(#snapshot.shortcuts==2)\n"
+              "assert(gnoblin.configure.shortcuts.terminal.binding=='<Super>Return')\n"
+              "local count=0; for name,entry in pairs(gnoblin.configure.shortcuts) do "
+              "assert(name==entry.name); count=count+1 end; assert(count==2)\n"
               "snapshot.shortcuts[1].binding='changed'\n"
               "assert(gnoblin.config.shortcuts[1].binding=='<Super>Return')\n"
+              "gnoblin.configure.shortcuts.keep.enable=false\n"
+              "gnoblin.autostart {name='waybar',command={'waybar'}}\n"
+              "gnoblin.configure.autostart.waybar.enable=false\n"
               "gnoblin.configure {shortcuts={terminal={command={'new'}},"
-              "keep={enable=false},my_extra={binding='<Super>e',command={'extra'}}}}\n"
+              "my_extra={binding='<Super>e',command={'extra'}}}}\n"
+              "gnoblin.configure.shortcuts.my_extra.capture_input=true\n"
               "gnoblin.shortcut {name='my_extra',command={'updated'}}\n");
     g_autoptr(GVariant) named_expected = evaluate(
         root, "return {shortcuts={{name='terminal',binding='<Super>Return',command={'new'}},"
-              "{name='my_extra',binding='<Super>e',command={'updated'}}},"
+              "{name='my_extra',binding='<Super>e',command={'updated'},"
+              "['capture-input']=true}},"
+              "autostart={},"
               "['window-rules']={{match={type='window'},opacity=1}}}\n");
     assert_equal(named, named_expected);
     const char* invalid[] = {
@@ -124,6 +133,8 @@ int main(void) {
         "gnoblin.configure {shell={minimize_duration=1,['minimize-duration']=2}}",
         "gnoblin.config.shortcuts=false; gnoblin.shortcut {name='x'}",
         "gnoblin.config.shortcuts={bad={}}; gnoblin.remove_shortcut('x')",
+        "gnoblin.shortcut {name='x',binding='<Super>x',command={'x'}}; "
+        "gnoblin.configure.shortcuts.x.name='renamed'",
         "gnoblin.config.permissions=false; gnoblin.permission_rule {}",
         "local t={};t.child=t;gnoblin.configure(t)",
         NULL,

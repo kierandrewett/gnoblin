@@ -323,6 +323,8 @@ static void merge_named_entries(lua_State* state, int list, int entries) {
                                !strcmp(name, lua_tostring(state, -1));
             lua_pop(state, 1);
             if (matches) {
+                lua_pushnil(state);
+                lua_setfield(state, -2, "enable");
                 merge_table(state, -1, entry, NULL, FALSE);
                 merged = TRUE;
             }
@@ -511,6 +513,11 @@ static int lua_configure(lua_State* state) {
     return lua_set(state);
 }
 
+static int lua_configure_call(lua_State* state) {
+    lua_remove(state, 1);
+    return lua_configure(state);
+}
+
 static void push_config_list(lua_State* state) {
     const char* section = lua_tostring(state, lua_upvalueindex(1));
     const char* key = lua_tostring(state, lua_upvalueindex(2));
@@ -552,6 +559,158 @@ static void push_config_list(lua_State* state) {
         luaL_error(state, "%s must be a dense list of tables", key);
 }
 
+/* Named views expose the actual loaded entries, while the stored document
+ * keeps the existing ordered-list representation. */
+static int lua_named_entry_index(lua_State* state) {
+    const char* key = luaL_checkstring(state, 2);
+    g_autofree char* internal = g_strdup(key);
+    g_strdelimit(internal, "_", '-');
+    lua_pushstring(state, internal);
+    lua_rawget(state, lua_upvalueindex(1));
+    return 1;
+}
+
+static int lua_named_entry_assign(lua_State* state) {
+    const char* key = luaL_checkstring(state, 2);
+    if (!strcmp(key, "name"))
+        return luaL_error(state, "named entry name cannot be changed");
+    g_autofree char* internal = g_strdup(key);
+    g_strdelimit(internal, "_", '-');
+    lua_pushstring(state, internal);
+    lua_pushvalue(state, 3);
+    lua_rawset(state, lua_upvalueindex(1));
+    return 0;
+}
+
+static int lua_named_entry_pairs(lua_State* state) {
+    lua_newtable(state);
+    int entries = lua_gettop(state);
+    lua_pushnil(state);
+    while (lua_next(state, lua_upvalueindex(1))) {
+        if (lua_type(state, -2) == LUA_TSTRING) {
+            g_autofree char* public_key = g_strdup(lua_tostring(state, -2));
+            g_strdelimit(public_key, "-", '_');
+            lua_pushvalue(state, -1);
+            lua_setfield(state, entries, public_key);
+        }
+        lua_pop(state, 1);
+    }
+    lua_getglobal(state, "next");
+    lua_pushvalue(state, entries);
+    lua_pushnil(state);
+    return 3;
+}
+
+static void push_named_entry_proxy(lua_State* state, int entry) {
+    entry = lua_absindex(state, entry);
+    lua_newtable(state);
+    lua_newtable(state);
+    lua_pushvalue(state, entry);
+    lua_pushcclosure(state, lua_named_entry_index, 1);
+    lua_setfield(state, -2, "__index");
+    lua_pushvalue(state, entry);
+    lua_pushcclosure(state, lua_named_entry_assign, 1);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushvalue(state, entry);
+    lua_pushcclosure(state, lua_named_entry_pairs, 1);
+    lua_setfield(state, -2, "__pairs");
+    lua_setmetatable(state, -2);
+}
+
+static int lua_named_view_index(lua_State* state) {
+    const char* name = luaL_checkstring(state, 2);
+    push_config_list(state);
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list);
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "name");
+        gboolean matches = lua_type(state, -1) == LUA_TSTRING &&
+                           !strcmp(name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        if (matches) {
+            push_named_entry_proxy(state, -1);
+            return 1;
+        }
+        lua_pop(state, 1);
+    }
+    lua_pushnil(state);
+    return 1;
+}
+
+static int lua_named_view_pairs(lua_State* state) {
+    push_config_list(state);
+    int list = lua_gettop(state);
+    lua_newtable(state);
+    int entries = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list);
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "name");
+        if (lua_type(state, -1) == LUA_TSTRING) {
+            const char* name = lua_tostring(state, -1);
+            push_named_entry_proxy(state, -2);
+            lua_setfield(state, entries, name);
+        }
+        lua_pop(state, 2);
+    }
+    lua_getglobal(state, "next");
+    lua_pushvalue(state, entries);
+    lua_pushnil(state);
+    return 3;
+}
+
+static int lua_named_view_assign(lua_State* state) {
+    return luaL_error(state, "add named entries with gnoblin.configure { ... } first");
+}
+
+static void install_named_view(lua_State* state, const char* key) {
+    lua_newtable(state);
+    lua_newtable(state);
+    lua_pushstring(state, "");
+    lua_pushstring(state, key);
+    lua_pushcclosure(state, lua_named_view_index, 2);
+    lua_setfield(state, -2, "__index");
+    lua_pushstring(state, "");
+    lua_pushstring(state, key);
+    lua_pushcclosure(state, lua_named_view_pairs, 2);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_named_view_assign);
+    lua_setfield(state, -2, "__newindex");
+    lua_setmetatable(state, -2);
+    lua_setfield(state, -2, key);
+}
+
+static void finish_named_entries(lua_State* state, int config, const char* key) {
+    config = lua_absindex(state, config);
+    lua_getfield(state, config, key);
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return;
+    }
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list), next = 1;
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "enable");
+        if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
+            luaL_error(state, "named entry enable must be a boolean");
+        gboolean disabled = lua_isboolean(state, -1) && !lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        lua_pushnil(state);
+        lua_setfield(state, -2, "enable");
+        if (disabled)
+            lua_pop(state, 1);
+        else
+            lua_rawseti(state, list, next++);
+    }
+    for (lua_Integer i = next; i <= count; i++) {
+        lua_pushnil(state);
+        lua_rawseti(state, list, i);
+    }
+    lua_pop(state, 1);
+}
+
 /* Named commands merge in place; ordered rules always append. */
 static int lua_declare(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
@@ -586,6 +745,8 @@ static int lua_declare(lua_State* state) {
             lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
         lua_pop(state, 1);
         if (matches) {
+            lua_pushnil(state);
+            lua_setfield(state, -2, "enable");
             merge_table(state, -1, entry, NULL, FALSE);
             return 0;
         }
@@ -688,7 +849,13 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_set, 1);
     lua_setfield(state, -2, "set");
-    lua_pushcfunction(state, lua_configure);
+    lua_newtable(state);
+    lua_newtable(state);
+    lua_pushcfunction(state, lua_configure_call);
+    lua_setfield(state, -2, "__call");
+    lua_setmetatable(state, -2);
+    install_named_view(state, "shortcuts");
+    install_named_view(state, "autostart");
     lua_setfield(state, -2, "configure");
     lua_pushcfunction(state, lua_snapshot);
     lua_setfield(state, -2, "snapshot");
@@ -829,6 +996,8 @@ static int protected_eval(lua_State* state) {
         return 0;
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
+    finish_named_entries(state, -1, "shortcuts");
+    finish_named_entries(state, -1, "autostart");
     run->result = variant_from_lua(state, -1, 0, FALSE, 0, &run->error);
     lua_pop(state, 2);
     return 0;

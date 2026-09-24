@@ -106,25 +106,30 @@ the others.
 
 ## Inspect loaded settings
 
-After loading a shell's config, `gnoblin.snapshot()` returns a copy of the
-settings assembled so far. You can loop over its named shortcuts without
-changing the underlying table while you iterate:
+After loading a shell's config, `gnoblin.configure.shortcuts` provides named
+access to command shortcuts loaded so far. For example, disable all imported
+shortcuts with a `shell-` name prefix:
 
 ```lua
 gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 
-for _, shortcut in ipairs(gnoblin.snapshot().shortcuts or {}) do
-    if shortcut.name:match("^shell%-") then
-        gnoblin.shortcut {name = shortcut.name, enable = false}
+for name, shortcut in pairs(gnoblin.configure.shortcuts) do
+    if name:match("^shell%-") then
+        shortcut.enable = false
     end
 end
 ```
 
-This example disables imported command shortcuts whose names start with
-`shell-`. The snapshot contains only declarations loaded before the call.
+You can also change an entry directly, for example
+`gnoblin.configure.autostart.waybar.enable = false`. The name must already
+exist. Use `gnoblin.configure {autostart = {waybar = {command = {"waybar"}}}}`
+to add one.
+
+`gnoblin.snapshot()` returns a copy of the assembled settings when you need a
+stable value. Both views contain only declarations loaded before the call.
 `snapshot().keybindings` contains built-in action overrides declared so far,
 not the complete catalogue of defaults. Lua runs before the compositor grabs
-the keys, so neither table can report which grabs succeeded at runtime.
+the keys, so neither view can report which grabs succeeded at runtime.
 
 ## Use a Lua module
 

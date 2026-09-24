@@ -44,20 +44,18 @@ with that name to disable it.
 
 ## Remove a shortcut
 
-Set `enable = false` under the same name to disable an imported shortcut:
+After loading the file that defines `my_terminal`, disable it directly:
 
 ```lua
-gnoblin.configure {
-    shortcuts = {
-        my_terminal = {enable = false},
-    },
-}
+gnoblin.configure.shortcuts.my_terminal.enable = false
 ```
 
 The config is rebuilt on every reload. Disabling releases that entry's binding;
 it does not stop a program already launched by the shortcut. Put this after
 the file that defines it; [load order](configuration-loading.md#override-or-append)
-matters. `gnoblin.remove_shortcut(name)` remains available for older configs.
+matters. An unknown name raises a Lua error. The named map form,
+`gnoblin.configure {shortcuts = {my_terminal = {enable = false}}}`, also works;
+`gnoblin.remove_shortcut(name)` remains available for older configs.
 
 ## Key names
 
@@ -122,11 +120,11 @@ start GNOME Settings Daemon's media-key handler in its session.
 
 ## Inspect shortcuts loaded so far
 
-`gnoblin.snapshot().shortcuts` is a copy of command shortcuts declared before
-the call. You can [loop over it](configuration-loading.md#inspect-loaded-settings)
-while changing the config. Built-in actions in `keybindings` are a separate
-table. The snapshot is taken while Lua loads, before the compositor registers
-keys, so it is not a live list of successful key grabs.
+Use `pairs(gnoblin.configure.shortcuts)` to loop over command shortcuts loaded
+so far and edit them by name. The [example](configuration-loading.md#inspect-loaded-settings)
+shows this. `gnoblin.snapshot()` copies the assembled config when you need a
+stable value. Built-in actions in `keybindings` are separate. Lua runs before
+the compositor registers keys, so neither view reports successful live grabs.
 
 ## Avoid conflicts
 

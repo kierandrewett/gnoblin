@@ -42,16 +42,17 @@ change takes effect at your next login.
 
 ## Remove an entry
 
-To prevent an imported program from starting next time, disable it by name
-after the file that adds it:
+After loading the file that defines `waybar`, disable it directly:
 
 ```lua
-gnoblin.configure {autostart = {waybar = {enable = false}}}
+gnoblin.configure.autostart.waybar.enable = false
 ```
 
-An unknown name does nothing. Removing an entry does not stop an already
-running process. `gnoblin.remove_autostart(name)` remains available for older
-configs.
+The name must already exist. If it does not, Lua reports an error instead of
+silently changing nothing. Disabling an entry does not stop an already running
+process. The named map form, `gnoblin.configure {autostart = {waybar =
+{enable = false}}}`, also works; `gnoblin.remove_autostart(name)` remains for
+older configs.
 
 ## When does it run?
 
