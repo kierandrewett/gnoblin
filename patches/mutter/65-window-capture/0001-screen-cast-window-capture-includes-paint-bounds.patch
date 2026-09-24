@@ -1,0 +1,326 @@
+From c025e976a8641cfbe9d3a734172ff13b8b9eb46e Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 21:35:07 +0100
+Subject: [PATCH] screen cast: include compositor paint bounds in window
+ capture
+
+---
+ src/compositor/meta-window-actor.c | 200 ++++++++++++++++++-----------
+ 1 file changed, 122 insertions(+), 78 deletions(-)
+
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index 208a09a68..00fb702cd 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -134,6 +134,11 @@ static void on_decloned (ClutterActor *actor,
+                          ClutterClone *clone);
+ 
+ static void screen_cast_window_iface_init (MetaScreenCastWindowInterface *iface);
++static CoglFramebuffer * create_framebuffer_from_window_actor (MetaWindowActor   *self,
++                                                                MtkRectangle      *clip,
++                                                                CoglPixelFormat    format,
++                                                                ClutterColorState *color_state,
++                                                                GError            **error);
+ 
+ G_DEFINE_ABSTRACT_TYPE_WITH_CODE (MetaWindowActor, meta_window_actor, CLUTTER_TYPE_ACTOR,
+                                   G_ADD_PRIVATE (MetaWindowActor)
+@@ -1334,10 +1339,26 @@ meta_window_actor_get_buffer_bounds (MetaScreenCastWindow *screen_cast_window,
+                                      MtkRectangle         *bounds)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (screen_cast_window);
++  ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+   MetaWindowActorPrivate *priv =
+     meta_window_actor_get_instance_private (window_actor);
++  ClutterActorBox paint_box;
+   MetaShapedTexture *stex;
+ 
++  /* Window capture must follow the actor's paint volume. Gnoblin's shadow is
++   * a compositor child positioned outside the client allocation, so the
++   * shaped texture dimensions cut it off at the window corners. The stream
++   * keeps the paint-box origin implicit at (0, 0); capture_into() and the
++   * GPU path translate the actor into that padded image. */
++  if (clutter_actor_get_paint_box (actor, &paint_box))
++    {
++      bounds->width = MAX (1, (int) ceilf (paint_box.x2 - paint_box.x1));
++      bounds->height = MAX (1, (int) ceilf (paint_box.y2 - paint_box.y1));
++      bounds->x = 0;
++      bounds->y = 0;
++      return;
++    }
++
+   stex = meta_surface_actor_get_texture (priv->surface);
+   *bounds = (MtkRectangle) {
+     .width = (int) floorf (meta_shaped_texture_get_unscaled_width (stex)),
+@@ -1357,16 +1378,32 @@ meta_window_actor_transform_relative_position (MetaScreenCastWindow *screen_cast
+   MetaWindowActorPrivate *priv =
+     meta_window_actor_get_instance_private (window_actor);
+   MtkRectangle bounds;
++  ClutterActorBox paint_box;
+   graphene_point3d_t v1 = { 0.f, }, v2 = { 0.f, };
+ 
+   meta_window_actor_get_buffer_bounds (screen_cast_window, &bounds);
+ 
+-  v1.x = CLAMP ((float) x,
+-                bounds.x,
+-                bounds.x + bounds.width);
+-  v1.y = CLAMP ((float) y,
+-                bounds.y,
+-                bounds.y + bounds.height);
++  if (clutter_actor_get_paint_box (CLUTTER_ACTOR (window_actor), &paint_box))
++    {
++      graphene_point_t paint_origin;
++
++      clutter_actor_transform_stage_point (CLUTTER_ACTOR (priv->surface),
++                                           paint_box.x1,
++                                           paint_box.y1,
++                                           &paint_origin.x,
++                                           &paint_origin.y);
++      v1.x = (float) x + paint_origin.x;
++      v1.y = (float) y + paint_origin.y;
++    }
++  else
++    {
++      v1.x = CLAMP ((float) x,
++                    bounds.x,
++                    bounds.x + bounds.width);
++      v1.y = CLAMP ((float) y,
++                    bounds.y,
++                    bounds.y + bounds.height);
++    }
+ 
+   clutter_actor_apply_transform_to_point (CLUTTER_ACTOR (priv->surface),
+                                           &v1,
+@@ -1401,6 +1438,7 @@ meta_window_actor_transform_cursor_position (MetaScreenCastWindow *screen_cast_w
+ 
+       int width = meta_shaped_texture_get_width (stex);
+       int height = meta_shaped_texture_get_height (stex);
++      ClutterActorBox paint_box;
+ 
+       clutter_actor_transform_stage_point (CLUTTER_ACTOR (priv->surface),
+                                            cursor_position->x,
+@@ -1412,6 +1450,22 @@ meta_window_actor_transform_cursor_position (MetaScreenCastWindow *screen_cast_w
+         out_relative_cursor_position->x *= unscaled_width / width;
+       if (height != 0)
+         out_relative_cursor_position->y *= unscaled_height / height;
++
++      if (clutter_actor_get_paint_box (CLUTTER_ACTOR (window_actor),
++                                       &paint_box))
++        {
++          graphene_point_t paint_origin;
++
++          clutter_actor_transform_stage_point (CLUTTER_ACTOR (priv->surface),
++                                               paint_box.x1,
++                                               paint_box.y1,
++                                               &paint_origin.x,
++                                               &paint_origin.y);
++          if (width != 0)
++            out_relative_cursor_position->x -= paint_origin.x * unscaled_width / width;
++          if (height != 0)
++            out_relative_cursor_position->y -= paint_origin.y * unscaled_height / height;
++        }
+     }
+ 
+   if (out_view_scale)
+@@ -1442,6 +1496,8 @@ meta_window_actor_capture_into (MetaScreenCastWindow *screen_cast_window,
+                                 uint8_t              *data)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (screen_cast_window);
++  ClutterActorBox paint_box;
++  MtkRectangle capture_box;
+   g_autoptr (CoglBitmap) bitmap = NULL;
+   uint8_t *image_data;
+   int image_width, image_height, image_stride;
+@@ -1450,8 +1506,22 @@ meta_window_actor_capture_into (MetaScreenCastWindow *screen_cast_window,
+   if (meta_window_actor_is_destroyed (window_actor))
+     return;
+ 
+-  bitmap = meta_window_actor_paint_to_bitmap (window_actor, bounds,
+-                                              COGL_PIXEL_FORMAT_ARGB32_NATIVE);
++  if (clutter_actor_get_paint_box (CLUTTER_ACTOR (window_actor), &paint_box))
++    {
++      capture_box = (MtkRectangle) {
++        .x = (int) floorf (paint_box.x1),
++        .y = (int) floorf (paint_box.y1),
++        .width = MAX (1, (int) ceilf (paint_box.x2 - paint_box.x1)),
++        .height = MAX (1, (int) ceilf (paint_box.y2 - paint_box.y1)),
++      };
++      bitmap = meta_window_actor_paint_to_bitmap (window_actor, &capture_box,
++                                                  COGL_PIXEL_FORMAT_ARGB32_NATIVE);
++    }
++  else
++    {
++      bitmap = meta_window_actor_paint_to_bitmap (window_actor, bounds,
++                                                  COGL_PIXEL_FORMAT_ARGB32_NATIVE);
++    }
+   if (!bitmap)
+     return;
+ 
+@@ -1504,85 +1574,65 @@ meta_window_actor_blit_to_framebuffer (MetaScreenCastWindow *screen_cast_window,
+                                        CoglFramebuffer      *framebuffer)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (screen_cast_window);
+-  MetaWindowActorPrivate *priv =
+-    meta_window_actor_get_instance_private (window_actor);
+   ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+-  ClutterPaintContext *paint_context;
+-  graphene_rect_t scaled_clip;
++  ClutterActorBox paint_box;
++  MtkRectangle capture_box;
++  CoglFramebuffer *capture_framebuffer;
++  CoglTexture *capture_texture;
++  CoglPipeline *pipeline;
+   CoglColor clear_color;
+-  MetaShapedTexture *stex;
+-  graphene_matrix_t transform, inverted_transform;
+-  float width, height;
+-  float unscaled_width, unscaled_height;
+ 
+   if (meta_window_actor_is_destroyed (window_actor))
+     return FALSE;
+ 
+-  if (!priv->surface)
++  if (!clutter_actor_get_paint_box (actor, &paint_box))
+     return FALSE;
+ 
+-  stex = meta_surface_actor_get_texture (priv->surface);
+-
+-  width = meta_shaped_texture_get_width (stex);
+-  height = meta_shaped_texture_get_height (stex);
+-
+-  if (width == 0 || height == 0)
+-    return FALSE;
++  (void) bounds;
+ 
+-  clutter_actor_get_relative_transformation_matrix (CLUTTER_ACTOR (priv->surface),
+-                                                    clutter_actor_get_stage (actor),
+-                                                    &transform);
++  capture_box = (MtkRectangle) {
++    .x = (int) floorf (paint_box.x1),
++    .y = (int) floorf (paint_box.y1),
++    .width = MAX (1, (int) ceilf (paint_box.x2 - paint_box.x1)),
++    .height = MAX (1, (int) ceilf (paint_box.y2 - paint_box.y1)),
++  };
+ 
+-  if (!graphene_matrix_inverse (&transform, &inverted_transform))
++  clutter_actor_inhibit_culling (actor);
++  capture_framebuffer = create_framebuffer_from_window_actor (window_actor,
++                                                               &capture_box,
++                                                               COGL_PIXEL_FORMAT_ANY,
++                                                               NULL,
++                                                               NULL);
++  clutter_actor_uninhibit_culling (actor);
++  if (!capture_framebuffer)
+     return FALSE;
+ 
+-  unscaled_width = meta_shaped_texture_get_unscaled_width (stex);
+-  unscaled_height = meta_shaped_texture_get_unscaled_height (stex);
+-
+-  clutter_actor_inhibit_culling (actor);
++  capture_texture = cogl_offscreen_get_texture (COGL_OFFSCREEN (capture_framebuffer));
+ 
+   cogl_color_init_from_4f (&clear_color, 0.0, 0.0, 0.0, 0.0);
+   cogl_framebuffer_clear (framebuffer, COGL_BUFFER_BIT_COLOR, &clear_color);
+   cogl_framebuffer_orthographic (framebuffer,
+                                  0, 0,
+-                                 unscaled_width, unscaled_height,
++                                 capture_box.width, capture_box.height,
+                                  0, 1.0);
+   cogl_framebuffer_set_viewport (framebuffer,
+                                  0, 0,
+-                                 unscaled_width, unscaled_height);
+-
+-  scaled_clip = mtk_rectangle_to_graphene_rect (bounds);
+-  graphene_rect_scale (&scaled_clip,
+-                       unscaled_width / width,
+-                       unscaled_height / height,
+-                       &scaled_clip);
+-  graphene_rect_intersection (&scaled_clip,
+-                              &GRAPHENE_RECT_INIT (0, 0, unscaled_width, unscaled_height),
+-                              &scaled_clip);
+-
+-  cogl_framebuffer_push_rectangle_clip (framebuffer,
+-                                        scaled_clip.origin.x, scaled_clip.origin.y,
+-                                        scaled_clip.origin.x + scaled_clip.size.width,
+-                                        scaled_clip.origin.y + scaled_clip.size.height);
+-
+-  cogl_framebuffer_push_matrix (framebuffer);
+-  cogl_framebuffer_scale (framebuffer,
+-                          unscaled_width / width,
+-                          unscaled_height / height,
+-                          1);
+-  cogl_framebuffer_transform (framebuffer, &inverted_transform);
+-
+-  paint_context =
+-    clutter_paint_context_new_for_framebuffer (framebuffer, NULL,
+-                                               CLUTTER_PAINT_FLAG_NONE,
+-                                               clutter_actor_get_color_state (actor));
+-  clutter_actor_paint (actor, paint_context);
+-  clutter_paint_context_destroy (paint_context);
+-
+-  cogl_framebuffer_pop_matrix (framebuffer);
+-  cogl_framebuffer_pop_clip (framebuffer);
+-
+-  clutter_actor_uninhibit_culling (actor);
++                                 capture_box.width, capture_box.height);
++
++  pipeline = cogl_pipeline_new (cogl_framebuffer_get_context (framebuffer));
++  cogl_pipeline_set_layer_texture (pipeline, 0, capture_texture);
++  cogl_pipeline_set_layer_filters (pipeline, 0,
++                                   COGL_PIPELINE_FILTER_LINEAR,
++                                   COGL_PIPELINE_FILTER_LINEAR);
++  cogl_framebuffer_draw_rectangle (framebuffer,
++                                   pipeline,
++                                   0, 0,
++                                   capture_box.width,
++                                   capture_box.height);
++  cogl_framebuffer_flush (framebuffer);
++
++  g_object_unref (pipeline);
++  g_object_unref (capture_framebuffer);
+ 
+   return TRUE;
+ }
+@@ -1742,9 +1792,9 @@ meta_window_actor_is_single_surface_actor (MetaWindowActor *self)
+ /**
+  * meta_window_actor_paint_to_bitmap:
+  * @self: A #MetaWindowActor
+- * @clip: (nullable): A clipping rectangle, to help prevent extra processing.
+- * In the case that the clipping rectangle is partially or fully
+- * outside the bounds of the actor, the rectangle will be clipped.
++ * @clip: (nullable): A clipping rectangle in actor coordinates, to help
++ * prevent extra processing. The rectangle may include the actor's paint box,
++ * including compositor decoration children outside its allocation.
+  * @format: The pixel format for the image data
+  *
+  * Flattens the layers of @self into an image by alpha blending
+@@ -1778,7 +1828,7 @@ meta_window_actor_paint_to_bitmap (MetaWindowActor *self,
+ #ifdef HAVE_WAYLAND
+   has_gnoblin_frame = meta_gnoblin_window_frame_is_active (priv->window);
+ #endif
+-  if (!has_gnoblin_frame && !meta_shaped_texture_should_get_via_offscreen (stex) &&
++  if (!clip && !has_gnoblin_frame && !meta_shaped_texture_should_get_via_offscreen (stex) &&
+       meta_window_actor_is_single_surface_actor (self))
+     {
+       MtkRectangle *surface_clip = NULL;
+@@ -1820,17 +1870,11 @@ meta_window_actor_paint_to_bitmap (MetaWindowActor *self,
+   if (clip)
+     {
+       MtkRectangle tmp_clip;
+-      MtkRectangle intersected_clip;
+ 
+       tmp_clip = *clip;
+       tmp_clip.x += (int) floorf (x);
+       tmp_clip.y += (int) floorf (y);
+-      if (!mtk_rectangle_intersect (&framebuffer_clip,
+-                                    &tmp_clip,
+-                                    &intersected_clip))
+-        goto out;
+-
+-      framebuffer_clip = intersected_clip;
++      framebuffer_clip = tmp_clip;
+     }
+ 
+   framebuffer = create_framebuffer_from_window_actor (self,
+-- 
+2.55.0
+
