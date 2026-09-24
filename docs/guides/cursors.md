@@ -1,6 +1,6 @@
 # cursors
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Gnoblin reads the compositor cursor theme and size from
 `~/.config/gnoblin/init.lua`. The config API is `cursor.theme` and

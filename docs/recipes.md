@@ -1,6 +1,6 @@
 # recipes
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Add these snippets to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)`
 lines. Those lines load settings from other files; placing your changes last
@@ -23,11 +23,7 @@ gnoblin.configure {
     },
 }
 
-gnoblin.shortcut {
-    name = "terminal",
-    binding = "<Super>Return",
-    command = {"ptyxis", "--new-window"},
-}
+gnoblin.configure {shortcuts = {terminal = {binding = "<Super>Return", command = {"ptyxis", "--new-window"}}}}
 
 gnoblin.window_rule {
     match = {type = "window", focused = false},
@@ -43,27 +39,26 @@ that name instead.
 ## Add a shortcut without losing the others
 
 ```lua
-gnoblin.shortcut {
-    name = "my-terminal",
-    binding = "<Super>Return",
-    command = {"ptyxis", "--new-window"},
-}
+gnoblin.configure {shortcuts = {my_terminal = {binding = "<Super>Return", command = {"ptyxis", "--new-window"}}}}
 ```
 
 Use an installed terminal. To change an imported shortcut, use its existing name.
 Only the fields you supply change; its binding stays the same:
 
 ```lua
-gnoblin.shortcut {
-    name = "terminal",
-    command = {"ptyxis", "--new-window"},
+gnoblin.configure {
+    shortcuts = {
+        terminal = {command = {"ptyxis", "--new-window"}},
+    },
 }
 ```
 
 To disable an imported shortcut:
 
 ```lua
-gnoblin.configure {shortcuts = {terminal = {enable = false}}}
+gnoblin.configure {
+    shortcuts = {terminal = {enable = false}},
+}
 ```
 
 ## Make unfocused windows slightly translucent
@@ -89,7 +84,7 @@ gnoblin.window_rule {
 ```
 
 Radius uses logical pixels; smoothing is a 0–1 shape parameter. Automatic mode
-preserves existing client corners. See [corners](/config/window_effects#rounded-window-corners)
+preserves existing client corners. See [corners](/guides/window_effects#rounded-window-corners)
 for state exceptions and how to force a mask deliberately.
 
 ## Turn off compositor layer animations
@@ -116,7 +111,7 @@ gnoblin.window_rule {
 
 This draws a 36-pixel titlebar when an app asks Gnoblin to provide its frame.
 Apps that draw their own titlebars keep them. `extents` gives the top, right,
-bottom and left sizes in logical pixels. See [titlebar modes](/config/window_frames).
+bottom and left sizes in logical pixels. See [titlebar modes](/guides/window_frames).
 
 ## Combine rules
 
@@ -157,11 +152,7 @@ gnoblin.configure {
 In `bindings.lua`:
 
 ```lua
-gnoblin.shortcut {
-    name = "launcher",
-    binding = "<Super>d",
-    command = {"fuzzel"},
-}
+gnoblin.configure {shortcuts = {launcher = {binding = "<Super>d", command = {"fuzzel"}}}}
 ```
 
 Files share the same API. No `require("gnoblin")` or return statement is needed.

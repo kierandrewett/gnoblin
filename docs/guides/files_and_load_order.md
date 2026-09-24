@@ -1,6 +1,6 @@
 # files_and_load_order
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Start with one `init.lua`. Split it into modules when that makes it easier
 to read.
@@ -73,8 +73,7 @@ The result is a fade lasting 150 milliseconds. Changing the duration does not
 remove the animation choice.
 
 Lists behave differently: supplying `window_rules`, `shortcuts`, `autostart`
-or permission `rules` through `gnoblin.configure` replaces that list. Returned
-config fragments append these lists. To add a window rule while keeping
+or permission `rules` replaces that list. To add a window rule while keeping
 previous rules, use:
 
 ```lua
@@ -84,52 +83,14 @@ gnoblin.window_rule {
 }
 ```
 
-`gnoblin.shortcut` and `gnoblin.autostart` merge entries with the same name.
-Named maps in `gnoblin.configure` do the same. To disable an imported shortcut:
+Named shortcuts and autostart entries merge by name. Use the same name to
+change an imported entry; omitted fields keep their earlier values. Set
+`enable = false` to disable an imported shortcut or autostart entry. Disabling
+autostart does not stop a process that is already running.
 
-```lua
-gnoblin.configure {shortcuts = {terminal = {enable = false}}}
-```
-
-The same form works for `autostart`. Disabling an autostart entry does not stop
-an already-running process. Older configs can still use
-`gnoblin.remove_shortcut(name)` and `gnoblin.remove_autostart(name)`.
-
-To remove every command shortcut loaded so far:
-
-```lua
-gnoblin.configure {shortcuts = {}}
-```
-
-Use `gnoblin.shortcut` to add or change individual shortcuts without clearing
-the others.
-
-## Inspect loaded settings
-
-After loading a shell's config, `gnoblin.configure.shortcuts` provides named
-access to command shortcuts loaded so far. For example, disable all imported
-shortcuts with a `shell-` name prefix:
-
-```lua
-gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
-
-for name, shortcut in pairs(gnoblin.configure.shortcuts) do
-    if name:match("^shell%-") then
-        shortcut.enable = false
-    end
-end
-```
-
-You can also change an entry directly, for example
-`gnoblin.configure.autostart.waybar.enable = false`. For field edits, the name
-must already exist. Assign a table to a name to add or override an entry:
-`gnoblin.configure.autostart.waybar = {command = {"waybar"}}`.
-
-`gnoblin.snapshot()` returns a copy of the assembled settings when you need a
-stable value. Both views contain only declarations loaded before the call.
-`snapshot().keybindings` contains built-in action overrides declared so far,
-not the complete catalogue of defaults. Lua runs before the compositor grabs
-the keys, so neither view can report which grabs succeeded at runtime.
+The older `gnoblin.shortcut`, `gnoblin.autostart`, `gnoblin.remove_shortcut`
+and `gnoblin.remove_autostart` calls remain available. Prefer the named maps
+under `gnoblin.configure`; see the [function reference](/config#functions).
 
 ## Use a Lua module
 
@@ -159,7 +120,7 @@ and `require`.
 ## Available Lua functions
 
 `gnoblin` is available globally in every loaded file and module.
-See the [function reference](/config/reference#lua-api).
+See the [function reference](/config#functions).
 
 Setting names use `snake_case`. The API converts them to Gnoblin's internal
 hyphenated names. String values, shader uniform names and renderer names stay

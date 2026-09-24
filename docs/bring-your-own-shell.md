@@ -19,12 +19,14 @@ Install [Waybar](https://github.com/Alexays/Waybar),
 Add this to `~/.config/gnoblin/init.lua`:
 
 ```lua
-gnoblin.autostart {name = "bar", command = {"waybar"}}
-gnoblin.autostart {name = "notifications", command = {"mako"}}
-gnoblin.shortcut {
-    name = "launcher",
-    binding = "<Super>d",
-    command = {"fuzzel"},
+gnoblin.configure {
+    autostart = {
+        bar = {command = {"waybar"}},
+        notifications = {command = {"mako"}},
+    },
+    shortcuts = {
+        launcher = {binding = "<Super>d", command = {"fuzzel"}},
+    },
 }
 ```
 
@@ -33,8 +35,8 @@ Hyprland modules need those compositors' own interfaces and do not work in Gnobl
 Run one notification daemon; leave Gnoblin's native notifications disabled when
 using Mako.
 
-Configure each tool in its own files. Gnoblin's [autostart](/config/autostart) and
-[shortcuts](/config/shortcuts) only control how you launch it.
+Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
+[shortcuts](/guides/shortcuts) only control how you launch it.
 
 ## Bingux
 
@@ -69,7 +71,7 @@ Gnoblin keeps window management, locking and desktop services. GNOME extensions,
 the Overview and native screenshot/OSD popups are not available in this session.
 
 Native notifications and the keyboard-layout popup are optional.
-See [session settings](/config/session_settings#native-features).
+See [session settings](/guides/session_settings#native-features).
 
 ## If the shell does not appear
 

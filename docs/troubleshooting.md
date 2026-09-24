@@ -42,7 +42,7 @@ gnoblinctl config reload
 
 Edit the printed path and read the reload error. Then check:
 
-- Does this setting need a [new session](/config/files_and_load_order#reload-and-persistence)?
+- Does this setting need a [new session](/guides/files_and_load_order#reload-and-persistence)?
 - Is a function missing? See [configuration compatibility](#gnoblin-or-configure-is-nil).
 - Did an unmatched include glob load nothing?
 - Did a later list replace your rules or shortcuts?
@@ -56,7 +56,7 @@ compositor predates the Lua functions used in these guides.
 If you have just updated Gnoblin, log out and back in. Reloading the config
 does not load an updated compositor. Otherwise, update through your
 [installation method](installation.md). If your package does not include these
-functions, keep using the [existing config syntax](/config/files_and_load_order#existing-configs)
+functions, keep using the [existing config syntax](/guides/files_and_load_order#existing-configs)
 or [build from source](install-source.md).
 
 On a build that supports these functions, check that your config has not
@@ -65,13 +65,13 @@ assigned another value to `gnoblin` or `gnoblin.configure`.
 ## My component's shortcuts or rules disappeared
 
 Nonempty lists in `gnoblin.configure` replace earlier lists.
-[Append to the existing list](/config/files_and_load_order#override-or-append)
+[Append to the existing list](/guides/files_and_load_order#override-or-append)
 or edit its entries after the component loads.
 
 ## A window rule does not match
 
 Every matcher must match. Text matchers use JavaScript regex, not Lua patterns.
-Check anchors, escaping and the raw app ID. See [window rules](/config/window_rules).
+Check anchors, escaping and the raw app ID. See [window rules](/guides/window_rules).
 
 ## A shortcut fails
 
@@ -79,16 +79,16 @@ Run its command in a terminal. Check that the executable is on PATH.
 Command arguments do not expand `~`, `$HOME` or pipes.
 
 Check for an existing binding in your component config or GNOME keybindings.
-See [shortcut conflicts](/config/shortcuts#avoid-conflicts).
+See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
 
 ## Shell integration errors
 
-| Symptom | Check |
-| --- | --- |
-| `gnoblinctl window list` cannot connect | Run `gnoblinctl status --json`. Check `windowControlError` and the active socket path. The bridge is built into current source builds; it does not appear in `script list`. See [connection details](gnoblinctl.md#connection-problems). |
-| A bridge request says a window is unavailable | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close. |
-| A Wayland client cannot bind a Gnoblin interface | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Gates take effect at login, not config reload. |
-| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display. |
+| Symptom                                                | Check                                                                                                                                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json`. Check `windowControlError` and the active socket path. The bridge is built into current source builds; it does not appear in `script list`. See [connection details](gnoblinctl.md#connection-problems). |
+| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                                                                                                              |
+| A Wayland client cannot bind a Gnoblin interface       | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Gates take effect at login, not config reload.                                                                                    |
+| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                                                                                                            |
 
 ## Removing a setting does not reset it
 
@@ -100,11 +100,11 @@ its running process.
 
 The application or panel must draw a translucent background.
 Rule opacity fades text too; it does not replace client background transparency.
-See [blur](/config/window_effects#blur-and-opacity).
+See [blur](/guides/window_effects#blur-and-opacity).
 
 ## There are two titlebars, or none
 
-Check your [frame mode](/config/window_frames#choose-a-mode).
+Check your [frame mode](/guides/window_frames#choose-a-mode).
 A renderer name alone does not enable SSD, and an unset protocol preference
 does not prove that the client draws a titlebar.
 

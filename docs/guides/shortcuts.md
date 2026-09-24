@@ -1,10 +1,8 @@
 # shortcuts
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
-Use the named `shortcuts` table to launch a program when you press a key combination.
-Use `keybindings` to change built-in actions such as closing a window.
-Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
+Use `gnoblin.configure {shortcuts = {...}}` to launch a program with a key combination. Use `keybindings` to change built-in actions such as closing a window. Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
 
 ## Launch a command
 
@@ -24,38 +22,23 @@ gnoblin.configure {
 Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
-The map key is the shortcut's name. Names use letters, numbers, `_` and `-`.
-Up to 256 command shortcuts are allowed.
-
-## Function form
-
-For an existing config that uses declarations, the same shortcut is:
-
-```lua
-gnoblin.shortcut {
-    name = "my_terminal",
-    binding = "<Super>Return",
-    command = {"ptyxis", "--new-window"},
-}
-```
-
-Use the same name to change only the fields you supply. Set `enable = false`
-with that name to disable it.
+Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
+Removing one releases its binding; it does not stop a launched program.
 
 ## Remove a shortcut
 
-After loading the file that defines `my_terminal`, disable it directly:
+`enable = false` disables an imported shortcut for this config load. Use it when a shell's config supplies a shortcut you do not want:
 
 ```lua
-gnoblin.configure.shortcuts.my_terminal.enable = false
+gnoblin.configure {
+    shortcuts = {my_terminal = {enable = false}},
+}
 ```
 
-The config is rebuilt on every reload. Disabling releases that entry's binding;
-it does not stop a program already launched by the shortcut. Put this after
-the file that defines it; [load order](/config/files_and_load_order#override-or-append)
-matters. An unknown name raises a Lua error. The named map form,
-`gnoblin.configure {shortcuts = {my_terminal = {enable = false}}}`, also works;
-`gnoblin.remove_shortcut(name)` remains available for older configs.
+The config is rebuilt on every reload. This releases that entry's binding;
+it does not change GNOME's built-in keybindings or shortcuts belonging to
+other programs. Put the setting after the file that adds the shortcut;
+[load order](/guides/files_and_load_order#override-or-append) matters.
 
 ## Key names
 
@@ -95,40 +78,17 @@ The values printed by `gsettings` are GNOME settings; Lua overrides are active
 in Gnoblin and do not appear there.
 
 Other groups are `shell`, `mutter` and `wayland`. See the
-[keybinding groups](/config/reference#keybinding-groups) for their
+[keybinding groups](/config/configure#keybinding-groups) for their
 GSettings schema names.
 
 Use an empty list to disable an action, for example `close = {}`.
 These overrides live in Gnoblin's native keybinding table and persist in the
-Lua file. Removing an entry restores its built-in default on reload.
-
-## Media keys
-
-Volume, brightness and playback keys are ordinary Gnoblin command shortcuts
-in the editable first-login `init.lua`. For example:
-
-```lua
-gnoblin.shortcut {
-    name = "volume-up",
-    binding = "XF86AudioRaiseVolume",
-    command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"},
-}
-```
-
-Change or disable them in Lua like any other named shortcut. Gnoblin does not
-start GNOME Settings Daemon's media-key handler in its session.
-
-## Inspect shortcuts loaded so far
-
-Use `pairs(gnoblin.configure.shortcuts)` to loop over command shortcuts loaded
-so far and edit them by name. The [example](/config/files_and_load_order#inspect-loaded-settings)
-shows this. `gnoblin.snapshot()` copies the assembled config when you need a
-stable value. Built-in actions in `keybindings` are separate. Lua runs before
-the compositor registers keys, so neither view reports successful live grabs.
+Lua file. Removing an entry restores its built-in default on reload. Media keys
+handled by GNOME Settings Daemon are outside this table.
 
 ## Avoid conflicts
 
-To override an imported shortcut, use the same `name`. Only supplied fields
+To override an imported shortcut, use the same map key. Only supplied fields
 change. Different names must use different bindings. See the
 [override example](/recipes#add-a-shortcut-without-losing-the-others).
 
@@ -141,10 +101,13 @@ Commands run directly. `$HOME`, `~`, pipes and redirection are not expanded.
 Use an absolute path, a program on PATH, or explicitly run a shell:
 
 ```lua
-gnoblin.shortcut {
-    name = "log-time",
-    binding = "<Super><Shift>t",
-    command = {"sh", "-c", "date >> \"$HOME/shortcut.log\""},
+gnoblin.configure {
+    shortcuts = {
+        log_time = {
+            binding = "<Super><Shift>t",
+            command = {"sh", "-c", "date >> \"$HOME/shortcut.log\""},
+        },
+    },
 }
 ```
 
@@ -156,4 +119,4 @@ A shortcut can set `capture_input = true` to buffer typing while a popup
 starts. The popup must implement the [input handoff protocol](/compositor-bridge).
 Do not enable it for ordinary terminal or application launch commands.
 
-See also [restore-or-minimise bindings](/config/window_state_shortcuts).
+See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

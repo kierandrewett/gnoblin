@@ -260,7 +260,7 @@ publishes `state: null`. A visible layer can include `surface` (its namespace),
 
 For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
 using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
-The [snapping guide](/config/window_snapping#shell-integration) gives the request
+The [snapping guide](/guides/window_snapping#shell-integration) gives the request
 shapes and work-area checks.
 
 ## Limits and disconnects

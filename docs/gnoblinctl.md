@@ -1,6 +1,6 @@
 # gnoblinctl
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Control Gnoblin from a terminal or script. Configure shell panels with that
 shell's own tools.
@@ -9,12 +9,12 @@ shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                    | Use it to                              |
-| -------------------------- | -------------------------------------- |
-| `gnoblinctl window list`   | Find open windows and their IDs        |
-| `gnoblinctl config path`   | Find the config file your session uses |
-| `gnoblinctl config default` | Print the bundled default `init.lua`  |
-| `gnoblinctl config reload` | Apply edits and report config errors   |
+| Command                     | Use it to                              |
+| --------------------------- | -------------------------------------- |
+| `gnoblinctl window list`    | Find open windows and their IDs        |
+| `gnoblinctl config path`    | Find the config file your session uses |
+| `gnoblinctl config default` | Print the bundled default `init.lua`   |
+| `gnoblinctl config reload`  | Apply edits and report config errors   |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -70,39 +70,39 @@ Moving a window does not follow it. Focus that window to switch to its workspace
 Actions without extra arguments accept an optional window ID; they use
 `active` if omitted. The geometry actions require the ID and numbers shown.
 
-| Action | Arguments after action | Effect |
-| --- | --- | --- |
-| `menu` | `[ID]` | Open the window menu |
-| `interactive-move`, `interactive-resize` | `[ID]` | Begin pointer-driven move or resize |
-| `above`, `unabove` | `[ID]` | Set or clear always-on-top |
-| `stick`, `unstick` | `[ID]` | Show on all workspaces or only its own |
-| `focus`, `close`, `minimize` | `[ID]` | Focus, request close, or minimize |
-| `restore-or-minimize` | `[ID]` | Restore a maximized/snapped window; otherwise minimize |
-| `restore`, `maximize`, `unmaximize` | `[ID]` | Change minimization or maximization |
-| `fullscreen`, `unfullscreen` | `[ID]` | Enter or leave fullscreen |
-| `move` | `ID X Y` | Set frame position; each coordinate: −100000–100000 |
-| `resize` | `ID WIDTH HEIGHT` | Set frame size; each dimension: 1–32768 |
-| `workspace` | `ID WORKSPACE` | Move to a one-based workspace: 1–1024 |
-| `monitor` | `ID MONITOR` | Move to a zero-based monitor: 0–1024 |
+| Action                                   | Arguments after action | Effect                                                 |
+| ---------------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `menu`                                   | `[ID]`                 | Open the window menu                                   |
+| `interactive-move`, `interactive-resize` | `[ID]`                 | Begin pointer-driven move or resize                    |
+| `above`, `unabove`                       | `[ID]`                 | Set or clear always-on-top                             |
+| `stick`, `unstick`                       | `[ID]`                 | Show on all workspaces or only its own                 |
+| `focus`, `close`, `minimize`             | `[ID]`                 | Focus, request close, or minimize                      |
+| `restore-or-minimize`                    | `[ID]`                 | Restore a maximized/snapped window; otherwise minimize |
+| `restore`, `maximize`, `unmaximize`      | `[ID]`                 | Change minimization or maximization                    |
+| `fullscreen`, `unfullscreen`             | `[ID]`                 | Enter or leave fullscreen                              |
+| `move`                                   | `ID X Y`               | Set frame position; each coordinate: −100000–100000    |
+| `resize`                                 | `ID WIDTH HEIGHT`      | Set frame size; each dimension: 1–32768                |
+| `workspace`                              | `ID WORKSPACE`         | Move to a one-based workspace: 1–1024                  |
+| `monitor`                                | `ID MONITOR`           | Move to a zero-based monitor: 0–1024                   |
 
 ## Shell and policy commands
 
-| Command | Use |
-| --- | --- |
-| `ping`, `version`, `status` | Check the shell, build version and window bridge |
-| `reload` | Refresh the Shell, theme and installed/personal scripts while keeping windows |
-| `config path`, `config default`, `config reload` | Find the active config, print the bundled example, or reload |
-| `input list`, `input current` | Inspect configured and selected keyboard sources |
-| `input select TYPE ID` | Select an exact source from `input list` |
-| `feature list`, `feature show ID` | Inspect live Shell switches |
-| `feature enable ID`, `feature disable ID` | Change a switch |
-| `script list` | List loaded package integrations and personal scripts |
-| `privacy` | Read screen-sharing, microphone and location indicators |
-| `permissions list` | Read portal rules and capabilities |
-| `permissions check CAPABILITY IDENTITY` | Explain a decision for `app-id:…` or `host-exe:…` |
-| `grant list`, `grant revoke KIND ID` | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop` |
-| `launch status` | List pending launch feedback |
-| `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN` | Start or end busy-cursor feedback; duration defaults to 3000 ms, range 1–60000 ms |
+| Command                                                     | Use                                                                                |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `ping`, `version`, `status`                                 | Check the shell, build version and window bridge                                   |
+| `reload`                                                    | Refresh the Shell, theme and installed/personal scripts while keeping windows      |
+| `config path`, `config default`, `config reload`            | Find the active config, print the bundled example, or reload                       |
+| `input list`, `input current`                               | Inspect configured and selected keyboard sources                                   |
+| `input select TYPE ID`                                      | Select an exact source from `input list`                                           |
+| `feature list`, `feature show ID`                           | Inspect live Shell switches                                                        |
+| `feature enable ID`, `feature disable ID`                   | Change a switch                                                                    |
+| `script list`                                               | List loaded package integrations and personal scripts                              |
+| `privacy`                                                   | Read screen-sharing, microphone and location indicators                            |
+| `permissions list`                                          | Read portal rules and capabilities                                                 |
+| `permissions check CAPABILITY IDENTITY`                     | Explain a decision for `app-id:…` or `host-exe:…`                                  |
+| `grant list`, `grant revoke KIND ID`                        | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop` |
+| `launch status`                                             | List pending launch feedback                                                       |
+| `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN` | Start or end busy-cursor feedback; duration defaults to 3000 ms, range 1–60000 ms  |
 
 For example, to inspect a portal decision and change keyboard source:
 
@@ -113,7 +113,7 @@ gnoblinctl input select xkb us
 ```
 
 Use a capability from `permissions list` and a source from `input list`.
-See [permission policy](/config/permissions) and [launch feedback](launch-feedback.md).
+See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
 ## Output for scripts

@@ -1,6 +1,6 @@
 # window_state_shortcuts
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Bind Super+Down to restore a maximised/snapped window first, then minimise it
 on a second press.
@@ -28,10 +28,13 @@ These empty lists release the built-in actions before the new command is bound.
 Append this and reload again:
 
 ```lua
-gnoblin.shortcut {
-    name = "restore-or-minimize",
-    binding = "<Super>Down",
-    command = {"gnoblinctl", "window", "restore-or-minimize", "active"},
+gnoblin.configure {
+    shortcuts = {
+        restore_or_minimize = {
+            binding = "<Super>Down",
+            command = {"gnoblinctl", "window", "restore-or-minimize", "active"},
+        },
+    },
 }
 ```
 
@@ -52,4 +55,4 @@ gnoblin.window_rule {
 Maximised borders become square. Sides touching the physical monitor edge are
 omitted; sides beside reserved panels remain visible.
 
-See [shortcuts](/config/shortcuts) for conflicts and persistent bindings.
+See [shortcuts](/guides/shortcuts) for conflicts and persistent bindings.

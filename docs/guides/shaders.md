@@ -1,10 +1,10 @@
 # shaders
 
-[Configuration reference](/config/reference)
+[Configuration API](/config)
 
 A fragment shader changes the colour of each pixel in a window. This example
 adds a subtle blue tint to application windows. It does not blur the background;
-use [window effects](/config/window_effects#blur-and-opacity) for that.
+use [window effects](/guides/window_effects#blur-and-opacity) for that.
 
 ## 1. Create the shader
 

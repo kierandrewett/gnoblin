@@ -1,6 +1,6 @@
 # session_settings
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 Choose which GNOME controls to keep, how launchers affect window focus, and
 whether tools can use particular Wayland interfaces. Add the examples to
@@ -33,7 +33,7 @@ database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
 
 Removing `window_switcher` returns it to `false`. If your shell needs the same
-switching keys, also [release or rebind the built-in shortcuts](/config/shortcuts#avoid-conflicts).
+switching keys, also [release or rebind the built-in shortcuts](/guides/shortcuts#avoid-conflicts).
 
 Disabling the layout popup does not disable keyboard layouts.
 Volume/brightness popups and screenshot controls come from your desktop shell;
@@ -93,23 +93,23 @@ gnoblin.configure {
 **Log out and back in** to apply protocol changes. Gnoblin exposes these
 interfaces when the session starts and cannot remove them during config reload.
 
-| Name                              | Used for                         |
-| --------------------------------- | -------------------------------- |
-| `wlr_layer_shell`                 | Bars, docks and launchers        |
-| `wlr_screencopy`                  | Screen capture                   |
-| `ext_foreign_toplevel_list`       | Window enumeration               |
-| `wlr_foreign_toplevel_management` | Window controls and dock targets |
-| `ext_data_control`                | Clipboard managers               |
-| `ext_idle_notify`                 | Idle detection                   |
-| `wlr_gamma_control`               | Gamma and colour temperature     |
-| `wlr_output_power_management`     | Display power                    |
-| `ext_background_effect_v1`        | Client-requested background blur |
+| Name                              | Used for                           |
+| --------------------------------- | ---------------------------------- |
+| `wlr_layer_shell`                 | Bars, docks and launchers          |
+| `wlr_screencopy`                  | Screen capture                     |
+| `ext_foreign_toplevel_list`       | Window enumeration                 |
+| `wlr_foreign_toplevel_management` | Window controls and dock targets   |
+| `ext_data_control`                | Clipboard managers                 |
+| `ext_idle_notify`                 | Idle detection                     |
+| `wlr_gamma_control`               | Gamma and colour temperature       |
+| `wlr_output_power_management`     | Display power                      |
+| `ext_background_effect_v1`        | Client-requested background blur   |
 | `xdg_decoration`                  | Client/server titlebar negotiation |
-| `window_frame_renderer`          | External frame renderer service |
-| `blur_fade`                      | Per-item blur fade metadata |
+| `window_frame_renderer`           | External frame renderer service    |
+| `blur_fade`                       | Per-item blur fade metadata        |
 
 This does not block all screen sharing: apps using the desktop portal follow
-[portal permissions](/config/permissions) instead.
+[portal permissions](/guides/permissions) instead.
 Disabling protocols your shell uses can prevent its features from working.
 See the [protocol catalog](/wayland-protocols) for the advertised interface
 names, related guides and interfaces that are not yet supported.

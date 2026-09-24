@@ -1,6 +1,6 @@
 # window_snapping
 
-[Configuration reference](/config/reference)
+[Configuration reference](/config/configure)
 
 With Bingux installed, drag a window toward an edge or press Super+Z to choose
 a layout. Bingux displays the picker; Gnoblin moves and resizes the window.
@@ -29,7 +29,7 @@ It imports Tiling Shell layouts once when available; otherwise it supplies defau
 
 Windows fill the usable part of the monitor, leaving room for panels that
 reserve space.
-See [drag boundaries](/config/session_settings#window-drag-boundary) for overlap policy.
+See [drag boundaries](/guides/session_settings#window-drag-boundary) for overlap policy.
 
 ## Shell integration
 
@@ -37,18 +37,28 @@ Use the [bridge socket](/compositor-bridge) to supply a picker. Rectangles
 use logical desktop pixels. Read the work area from Gnoblin; it excludes space
 reserved by panels.
 
-| Step | Message | What Gnoblin returns or does |
-| --- | --- | --- |
-| Watch drags | `{"op":"window-drag"}` | `window-drag` events with `active`, `serial`, `window`, pointer `x`/`y`, `modifiers`, `monitor` and `area` |
-| Offer regions | `snap-offer` | Tests the pointer against `hit` rectangles on release, then applies the matching `target` |
-| Ask about focus | `{"op":"snap-context"}` | `snap-context` with focused `window`, `monitor` and `area` |
-| Apply keyboard choice | `snap-window` | Moves and resizes the chosen window |
+| Step                  | Message                 | What Gnoblin returns or does                                                                               |
+| --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Watch drags           | `{"op":"window-drag"}`  | `window-drag` events with `active`, `serial`, `window`, pointer `x`/`y`, `modifiers`, `monitor` and `area` |
+| Offer regions         | `snap-offer`            | Tests the pointer against `hit` rectangles on release, then applies the matching `target`                  |
+| Ask about focus       | `{"op":"snap-context"}` | `snap-context` with focused `window`, `monitor` and `area`                                                 |
+| Apply keyboard choice | `snap-window`           | Moves and resizes the chosen window                                                                        |
 
 For example, after receiving an active drag with `serial: 7`, a shell can
 offer the left half of a 1920 × 1048 work area starting at `(0, 32)`:
 
 ```json
-{"op":"snap-offer","serial":7,"regions":[{"hit":{"x":0,"y":32,"width":80,"height":1048},"target":{"x":0,"y":32,"width":960,"height":1048},"layout":"left-half"}]}
+{
+    "op": "snap-offer",
+    "serial": 7,
+    "regions": [
+        {
+            "hit": { "x": 0, "y": 32, "width": 80, "height": 1048 },
+            "target": { "x": 0, "y": 32, "width": 960, "height": 1048 },
+            "layout": "left-half"
+        }
+    ]
+}
 ```
 
 Build both rectangles from the current event's `area` and `monitor`; the
@@ -62,7 +72,7 @@ For a keyboard picker, request `snap-context`, let the user choose a rectangle
 inside its `area`, then send:
 
 ```json
-{"op":"snap-window","window":"42","monitor":0,"target":{"x":0,"y":32,"width":960,"height":1048}}
+{ "op": "snap-window", "window": "42", "monitor": 0, "target": { "x": 0, "y": 32, "width": 960, "height": 1048 } }
 ```
 
 Use the returned window ID and monitor ID. Only one client owns a drag. Gnoblin

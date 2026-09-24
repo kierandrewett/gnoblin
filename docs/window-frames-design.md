@@ -7,7 +7,7 @@ search: false
 **Archived record.** Superseded frame design proposal. Its illustrative GJS renderer settings are not valid configuration; use the current frame and renderer guides.
 
 For current instructions, see [installation](installation.md),
-[window frames](/config/window_frames) or [testing](testing.md).
+[window frames](/guides/window_frames) or [testing](testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>
@@ -112,9 +112,9 @@ Proposed renderer interface:
 
 ```typescript
 interface FrameRenderer {
-  actor: Actor;
-  update(model: FrameModel): void;
-  destroy(): void;
+    actor: Actor;
+    update(model: FrameModel): void;
+    destroy(): void;
 }
 
 function create(context: FrameRendererContext): FrameRenderer;
