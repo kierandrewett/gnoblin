@@ -109,6 +109,19 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   plainly; do not imply runtime, packaging, hardware, or publishing success
   without evidence.
 
+## Release packaging
+
+- Before changing RPMs, release workflows, or COPR targets, read
+  `design/release-packaging.md` and verify the live COPR chroots, latest build
+  IDs, Fedora versions, and installed package versions. Old release notes are
+  context, not proof of current publication state.
+- Keep the Fedora build matrix, COPR project chroots, and package install
+  checks aligned. A source compile is not evidence that the RPM dependency
+  metadata permits installation on that Fedora release.
+- After packaging or publication work, update
+  `design/release-packaging.md` with the target matrix, exact build IDs/NVRs,
+  checks performed, and any remaining runtime or release gap.
+
 ## Scope, collaboration, and delivery
 
 - Keep changes reviewable and limited to the request. Do not commit, push,
