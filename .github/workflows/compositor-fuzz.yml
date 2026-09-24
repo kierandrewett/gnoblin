@@ -23,8 +23,8 @@ jobs:
     outputs:
       failed_seeds: ${{ steps.lifecycle-fuzz.outputs.failed_seeds }}
     steps:
-      - name: Install checkout tool
-        run: dnf -y install git
+      - name: Install checkout and session tools
+        run: dnf -y install git dbus-daemon
 
       - name: Checkout Gnoblin and submodules
         uses: actions/checkout@v4
@@ -43,6 +43,11 @@ jobs:
           runuser -u builder -- env \
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             ./build.sh
+
+      - name: Verify lifecycle session runtime
+        run: |
+          command -v dbus-run-session
+          test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 
       - name: Run deterministic plan checks
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
