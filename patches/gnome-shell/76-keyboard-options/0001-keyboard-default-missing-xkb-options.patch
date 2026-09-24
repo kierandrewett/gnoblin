@@ -1,0 +1,18 @@
+From 97c11ca110015b84a01f25c49625c9acfbb0136c Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 24 Sep 2026 23:10:59 +0100
+Subject: [PATCH] keyboard: default missing XKB options
+
+---
+ js/misc/keyboardManager.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/js/misc/keyboardManager.js b/js/misc/keyboardManager.js
+index 77dd6da0d..bed56aa69 100644
+--- a/js/misc/keyboardManager.js
++++ b/js/misc/keyboardManager.js
+@@ -263,3 +263,3 @@ class KeyboardManager extends Signals.EventEmitter {
+     setKeyboardOptions(options) {
+-        this._xkbOptions = options;
++        this._xkbOptions = options ?? [];
+     }
