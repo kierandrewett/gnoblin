@@ -87,5 +87,7 @@ entries because the bridge modules were included by two patches; the
 redundant later patch is removed in `52982ab`. The Fedora 43 source build
 passed on the first retry; Fedora 44 then hit a transient GitLab 503 while
 fetching Mutter, but a subsequent run on `835ca3b` passed both Fedora source
-builds. A COPR build and Fedora 43 installation check are still required
-before this compatibility change is complete.
+builds. Version `0.1.7` carries that fix and the synchronized RPM/Arch
+metadata. A tagged release must still pass its package builds, followed by a
+COPR build and Fedora 43 installation check, before this compatibility change
+is complete.
