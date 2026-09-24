@@ -1,1 +1,0 @@
-import{_ as o,o as n,c as i,a2 as a}from"./chunks/framework.BfI5QxtK.js";const h=JSON.parse('{"title":"Config API","description":"","frontmatter":{},"headers":[],"relativePath":"config.md","filePath":"config.md"}'),t={name:"config.md"};function s(r,e,c,l,d,g){return n(),i("div",null,[...e[0]||(e[0]=[a("",9)])])}const u=o(t,[["render",s]]);export{h as __pageData,u as default};
