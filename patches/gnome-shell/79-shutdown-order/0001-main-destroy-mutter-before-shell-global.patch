@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 03:40:00 +0100
+Subject: [PATCH] main: destroy Mutter before releasing ShellGlobal
+
+Mutter destroys Wayland clients while disposing its context. That unmanages
+their windows and invokes plugin callbacks, which still use ShellGlobal and
+ShellWM. Keep those objects and the GJS context alive until Mutter teardown
+has finished.
+---
+ src/main.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/main.c b/src/main.c
+index 0000000..0000000 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -722,12 +722,12 @@
+   _shell_global_notify_shutdown (shell_global_get ());
+   shell_profiler_shutdown ();
+ 
+-  g_debug ("Tearing down the gjs context");
+-  _shell_global_destroy_gjs_context (shell_global_get ());
+-  g_object_unref (shell_global_get ());
+-
+   g_debug ("Tearing down the mutter context");
+   meta_context_destroy (g_steal_pointer (&context));
+ 
++  g_debug ("Tearing down the gjs context");
++  _shell_global_destroy_gjs_context (shell_global_get ());
++  g_object_unref (shell_global_get ());
++
+   return ecode;
+ }
+-- 
+2.53.0
