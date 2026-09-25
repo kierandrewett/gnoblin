@@ -97,6 +97,50 @@
           gnomeShell = pkgs.gnome-shell;
           gnomeSession = pkgs.gnome-session;
         };
+      assessChannel =
+        system: channel:
+        let
+          pkgs = import channel.input { inherit system; };
+          hasGcc16Stdenv = pkgs ? gcc16Stdenv;
+          hasLibglycin = pkgs ? libglycin;
+          buildBlockers =
+            nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
+            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
+            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.85.90") "gjs-below-1.85.90"
+            ++ nixpkgs.lib.optional (
+              !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
+            ) "wayland-below-1.26"
+            ++ nixpkgs.lib.optional (
+              !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
+            ) "wayland-protocols-below-1.48"
+            ++ nixpkgs.lib.optional (
+              !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
+            ) "libinput-below-1.30";
+        in
+        {
+          inherit
+            pkgs
+            hasGcc16Stdenv
+            hasLibglycin
+            buildBlockers
+            ;
+        };
+      mkChannelPackage =
+        system: channel:
+        let
+          assessment = assessChannel system channel;
+        in
+        if assessment.buildBlockers == [ ] then
+          mkGnoblin assessment.pkgs
+        else
+          throw ''
+            Gnoblin does not currently provide an installable package for NixOS ${channel.release}.
+            This channel is blocked by: ${nixpkgs.lib.concatStringsSep ", " assessment.buildBlockers}.
+
+            Gnoblin GNOME 51 needs a separately tested private/backported dependency closure for
+            these integration libraries. See docs/install-nixos.md and
+            lib.nixChannelEvaluations for the exact pinned-channel assessment.
+          '';
       # These values evaluate a package and enabled NixOS module with the exact
       # release channel pinned in flake.lock. They do not build or run a
       # compositor, so a true result is not a session or coexistence claim.
@@ -105,8 +149,14 @@
         nixpkgs.lib.mapAttrs (
           _: channel:
           let
-            pkgs = import channel.input { inherit system; };
-            gnoblin = mkGnoblin pkgs;
+            assessment = assessChannel system channel;
+            inherit (assessment)
+              pkgs
+              hasGcc16Stdenv
+              hasLibglycin
+              buildBlockers
+              ;
+            gnoblin = if hasLibglycin then mkGnoblin pkgs else null;
             moduleTest = channel.input.lib.nixosSystem {
               inherit system;
               modules = [
@@ -120,8 +170,6 @@
                 }
               ];
             };
-            hasGcc16Stdenv = pkgs ? gcc16Stdenv;
-            hasLibglycin = pkgs ? libglycin;
             packageEvaluation = if hasLibglycin then builtins.tryEval gnoblin.drvPath else { success = false; };
             moduleEvaluation =
               if hasLibglycin then
@@ -130,19 +178,6 @@
                 )
               else
                 { success = false; };
-            buildBlockers =
-              nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
-              ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
-              ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.85.90") "gjs-below-1.85.90"
-              ++ nixpkgs.lib.optional (
-                !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
-              ) "wayland-below-1.26"
-              ++ nixpkgs.lib.optional (
-                !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
-              ) "wayland-protocols-below-1.48"
-              ++ nixpkgs.lib.optional (
-                !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
-              ) "libinput-below-1.30";
           in
           {
             inherit (channel) release;
@@ -153,6 +188,9 @@
             module.evaluates = moduleEvaluation.success;
           }
         ) nixpkgsChannels
+      );
+      nixChannelPackages = forAllSystems (
+        system: nixpkgs.lib.mapAttrs (_: channel: mkChannelPackage system channel) nixpkgsChannels
       );
     in
     {
@@ -240,7 +278,7 @@
       );
 
       lib = {
-        inherit nativePackages nixChannelEvaluations;
+        inherit nativePackages nixChannelEvaluations nixChannelPackages;
       };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };

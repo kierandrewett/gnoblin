@@ -3,6 +3,29 @@
 The flake provides a Gnoblin session for **x86_64 Linux**.
 Use Nixpkgs unstable for the current GNOME dependency stack.
 
+## Stable channels
+
+Gnoblin does not currently provide installable packages for NixOS 25.05,
+25.11, or 26.05. GNOME 51 requires newer integration libraries than those
+channels provide. In particular, 25.05 lacks `libglycin`; 25.11 has Wayland
+1.24; and 26.05 has Wayland 1.25, while Gnoblin requires Wayland 1.26.
+
+The flake exposes the exact pinned-channel assessment for integrators:
+
+```sh
+nix eval --json github:kierandrewett/gnoblin#lib.nixChannelEvaluations.x86_64-linux
+```
+
+`lib.nixChannelPackages` names each channel explicitly. For example, the
+following reports why 25.11 cannot be installed:
+
+```sh
+nix build github:kierandrewett/gnoblin#lib.nixChannelPackages.x86_64-linux.nixos_25_11
+```
+
+Each stable entry stops before installation and prints its recorded blockers.
+It does not fall back to the unstable package or replace your system libraries.
+
 ## 1. Add the flake input
 
 In your existing `flake.nix`:
