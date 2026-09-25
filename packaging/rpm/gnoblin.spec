@@ -1,16 +1,16 @@
 # Generated from nix/native-packages.nix; do not edit.
 Name:           gnoblin
-Version:        0.1.5
+Version:        0.1.7
 Epoch:          1
 Release:        1%{?dist}
 Summary:        Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kdrew7/gnoblin
 BuildArch:      noarch
-Requires:       gnoblin-gsettings-desktop-schemas >= 0.1.5
-Requires:       gnoblin-mutter >= 0.1.5
-Requires:       gnoblin-session >= 0.1.5
-Requires:       gnoblin-shell >= 0.1.5
+Requires:       gnoblin-gsettings-desktop-schemas >= 0.1.7
+Requires:       gnoblin-mutter >= 0.1.7
+Requires:       gnoblin-session >= 0.1.7
+Requires:       gnoblin-shell >= 0.1.7
 Requires:       gnoblin-gsettings-desktop-schemas < 52
 Requires:       gnoblin-mutter < 52
 Requires:       gnoblin-session < 52

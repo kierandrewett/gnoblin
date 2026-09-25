@@ -41,9 +41,9 @@ gnoblin.configure {
 }
 ```
 
-![Fuzzel searching for Firefox over GNOME Help in a Waybar session](../images/gnoblin-waybar-launcher.png)
+![Fuzzel searching for Firefox on a clean Waybar desktop, with the pointer visible](../images/gnoblin-waybar-launcher.png)
 
-_Fuzzel opens over Firefox from a Gnoblin shortcut._
+_The shortcut opens Fuzzel; Firefox is the selected search result._
 
 ## Remove a shortcut
 

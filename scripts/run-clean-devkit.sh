@@ -13,14 +13,17 @@ esac
 profile="$(mktemp -d /tmp/gnoblin-clean-devkit.XXXXXX)"
 cleanup() {
     # Shell children can briefly write their cache after the devkit exits.
-    for attempt in 1 2 3; do
-        rm -rf -- "$profile"
-        sleep 1
+    for _ in 1 2 3; do
+        rm -rf -- "$profile" 2>/dev/null || true
         if [ ! -e "$profile" ]; then return; fi
+        sleep 1
     done
-    rm -rf -- "$profile"
+    if [ -e "$profile" ]; then
+        printf 'run-clean-devkit: could not remove disposable profile %s\n' "$profile" >&2
+        return 1
+    fi
 }
-trap cleanup EXIT
+trap 'cleanup || exit 1' EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
 
@@ -37,6 +40,7 @@ export XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache"
 export XDG_STATE_HOME="$profile/state"
 export XDG_RUNTIME_DIR="$profile/runtime"
+export MESA_SHADER_CACHE_DISABLE=true
 export WAYLAND_DISPLAY="$host_display"
 export GNOBLIN_COMPOSITOR_SOCKET="$profile/runtime/gnoblin/compositor-v1.sock"
 export GNOBLIN_PREFIX="${GNOBLIN_PREFIX:-$root/install}"

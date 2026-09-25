@@ -31,7 +31,19 @@ gnoblin.configure {
 With Mako, set [`shell.notifications`](/config/configure/shell) to `false` so
 Gnoblin does not also own the notification service:
 
-![Mako notification displayed over Firefox in a Waybar session](../images/gnoblin-mako-notification.png)
+```lua
+gnoblin.configure {shell = {notifications = false}}
+```
+
+![GNOME notification settings open under Waybar in a clean Gnoblin session](../images/gnoblin-waybar-notifications.png)
+
+_GNOME Settings shows per-app notification controls in this Waybar session._
+
+With Mako running, notifications appear through its own layer-shell surface.
+
+![A Calendar reminder displayed by Mako above Firefox, with Waybar](../images/gnoblin-waybar-mako-notification.png)
+
+_Mako displays the notification while Waybar and Firefox remain separate clients._
 
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting

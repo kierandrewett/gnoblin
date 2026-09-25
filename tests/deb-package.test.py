@@ -13,6 +13,12 @@ spec.loader.exec_module(package)
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_distributed_copyright_keeps_company_and_upstream_attribution(self):
+        text = package.debian_copyright_text()
+        self.assertIn("Copyright © 2026 Working Directory Ltd.", text)
+        self.assertIn("GNOME-derived portions are Copyright ©", text)
+        self.assertIn("Copyright: GNOME Project", text)
+
     def test_default_shortcut_command_dependencies_are_declared(self):
         self.assertTrue({"wireplumber", "playerctl", "brightnessctl", "libglib2.0-bin"}.issubset(set(package.SERVICES)))
 

@@ -5,7 +5,7 @@
       "meta": true,
       "requires": [],
       "requiresSameMajor": ["gnoblin-session"],
-      "version": "0.1.5"
+      "version": "0.1.7"
     },
     "gnoblin-gsettings-desktop-schemas": {
       "requires": ["glib"],
@@ -38,7 +38,7 @@
     }
   },
   "release": {
-    "gnoblinVersion": "0.1.5",
+    "gnoblinVersion": "0.1.7",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
     "mutterApi": "51",

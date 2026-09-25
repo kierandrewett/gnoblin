@@ -1,8 +1,9 @@
 # Compositor bridge
 
 Use this socket API to build a dock, launcher or window switcher. It lets your
-shell read windows, register shortcuts and request window actions. Your shell
-still draws the UI and decides how to group and order windows.
+shell read windows, request window actions and take temporary input grabs for
+interactive UI. Put persistent shortcuts in the [Lua config](/config/configure/shortcuts).
+Your shell still draws the UI and decides how to group and order windows.
 
 For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
 connection for you.
@@ -36,11 +37,12 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
-The `hello.version` field is the socket protocol version. This bridge advertises
-`ui-sessions`, `switcher-fallback` and `overlay-shortcut`; it adds
-`blur-regions` and `layer-animation-policy` when the running build supports
-them. Check the exact feature name before using an optional capability. For
-example, bare Super requires `overlay-shortcut`.
+Read the socket protocol version from `hello.version`. Check `features` before
+using an optional capability:
+
+- Bare Super requires `overlay-shortcut`.
+- `blur-region` requires `blur-regions`.
+- `layer-animation-policy` requires the same-named feature.
 
 A validation error has an `error` event. If a valid `command` request fails,
 the response also carries its request `id`. Malformed JSON or excessive input
@@ -55,7 +57,7 @@ closes the socket; ordinary validation errors leave it open.
 | `privacy`                        | None                                                                     | Current `privacy` state, then changes               |
 | `status`                         | None                                                                     | One `status` with binding IDs and active session ID |
 | `bind`                           | `id`, `accelerator`, `hold`; optional `trigger`, `modal`, `captureInput` | `bound`, then activation and input events           |
-| `activate`                       | `window`                                                                 | Focus a window; no success reply                    |
+| `activate`                       | `window`; optional `session` for the built-in switcher fallback          | Focus a window; no success reply                    |
 | `preview`                        | `window`, `width`, `height`                                              | One `preview` event                                 |
 | `shortcut-input`                 | `name`, `state`                                                          | Input handoff; no success reply                     |
 | `ui-session`                     | `action`; other fields depend on action                                  | `ui-state` or `ui-command` events                   |
@@ -69,12 +71,31 @@ closes the socket; ordinary validation errors leave it open.
 | `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
 | `clear`                          | None                                                                     | Removes this client's bindings and session          |
 
-`command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
-`workspace-switch`, `workspace-next`, `workspace-previous`,
-`workspace-move-active`, `monitors`, `layers` and `window`. `layers` returns
-the current layer-shell surfaces in a `surfaces` array. `window` needs an
-`action` and a stable window ID or `"active"`. The [CLI reference](gnoblinctl.md)
-lists window actions and arguments.
+When a client claims a built-in switcher shortcut, pass the matching `session`
+from its `activated` event with `activate`. Gnoblin ignores an activation from
+an older switcher session.
+
+`command` supports these operations:
+
+- Window records: `windows`, `capture-windows`.
+- Workspaces: `workspaces`, `workspace-list`, `workspace-switch`,
+  `workspace-next`, `workspace-previous`, `workspace-move-active`.
+- `monitors` lists monitors; `layers` returns layer-shell surfaces.
+- `window` takes an `action` and a stable window ID or `"active"`.
+- `animation` lists, inspects and previews registered animations. See the
+  [animation CLI guide](gnoblinctl.md#animations).
+
+Successful `command` requests return an `event: "reply"` with the matching ID
+and a `result` object. Read-only results use these shapes:
+
+| Command           | Result field | Contents                                                                                                                 |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `windows`         | `windows[]`  | The same fields as [`gnoblinctl window list --json`](gnoblinctl.md#output-for-scripts).                                  |
+| `capture-windows` | `windows[]`  | `id`, `title`, `appId`, `appName`, frame `x`, `y`, `width`, `height`, and `bufferWidth`, `bufferHeight`.                 |
+| `monitors`        | `monitors[]` | `id`, `x`, `y`, `width`, `height`, `primary`, and `scale`; see [monitor records](gnoblinctl.md#workspaces-and-monitors). |
+| `layers`          | `surfaces[]` | Layer-shell `id`, `namespace`, and `title`; see [layer surfaces](gnoblinctl.md#layer-surfaces).                          |
+
+The [CLI reference](gnoblinctl.md) lists window actions and arguments.
 
 ### Workspace commands
 
@@ -125,9 +146,6 @@ Switch by stable ID or current number. Send exactly one selector:
 `workspace-next` and `workspace-previous` take no selector and wrap at the
 ends of the current workspace list.
 
-The older `workspaces` command keeps its legacy response: `id` is the current
-one-based position, and items do not include the display name.
-
 Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
 They also include the resolved workspace's `id`, `number`, `name`, `active`,
 and `windows` fields.
@@ -164,8 +182,8 @@ configured enter/exit policy for a namespace. See the [animation guide](/guides/
 for layer-shell lifecycle events and target selection.
 
 `capture-windows` returns visible, non-minimised windows in stacking order.
-Each entry includes the title, app name, frame position and size, plus
-`bufferWidth` and `bufferHeight` for capture.
+`bufferWidth` and `bufferHeight` follow the compositor paint box and can include
+decoration shadows outside the frame dimensions.
 
 Capture IDs come from Mutter; `windows` snapshots use a stable sequence
 string. Get an action ID from `windows` or `gnoblinctl window list` before
@@ -201,7 +219,9 @@ with Ctrl+C. Each snapshot replaces the previous list; it is not a list of chang
 
 Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
 
-Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
+- `trigger` is `"press"` by default or `"release"` to wait until the accelerator's main key is released.
+- Accelerator chords can include Alt, Control, Shift or Super. A held session supports Alt, Control or Super; Shift is not a valid `hold` value.
+- Bare `"Super"` activates on release because Mutter first checks whether another key joins the chord.
 
 ```json
 { "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
@@ -220,27 +240,36 @@ The server acknowledges:
 | `4`        | Hold Control   |
 | `67108864` | Hold Super     |
 
-The optional `modal` field defaults to `true`. A modal held shortcut captures
-key and pointer events before the popup appears; an Alt-held switcher can, for
-example, navigate and finish when Alt is released. Set `modal: false` for a
-passive modifier hold: Gnoblin leaves focus and input delivery with the current
-application, and reports when the modifier is released. This is useful for a
-shell that changes state while a modifier is held without opening an input UI.
-For example, this binding reports the `<Alt>F8` activation and later the Alt
-release while the focused application keeps receiving input:
+The optional `modal` field defaults to `true`:
+
+- Modal holds capture keyboard and pointer input for a popup. An Alt-held
+  switcher can continue until Alt is released.
+- `modal: false` leaves focus and input with the current app, while reporting
+  modifier release. Use it to change shell state without opening an input UI.
+
+This binding reports the `<Alt>F8` activation and later Alt release while the
+focused application keeps receiving input:
 
 ```json
 { "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }
 ```
 
-Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
+Events sent during a binding session are:
 
-`activated` includes id, first, modifiers and time.
-Pointer coordinates are global logical pixels; button 1 is left.
+| Event                   | Fields                                        | Meaning                                                                      |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
+| `activated`             | `id`, `first`, `session`, `modifiers`, `time` | Accelerator fired.                                                           |
+| `key`                   | `key`, `modifiers`                            | Key symbol and modifier mask for a captured key press.                       |
+| `pointer`               | `x`, `y`, `button`                            | Captured button press at global logical-pixel coordinates; button 1 is left. |
+| `released`, `cancelled` | `session`                                     | The modifier was released or the session ended early.                        |
 
-Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking,
-disconnecting or reaching the ten-second timeout also releases the captured
-input.
+- `first` is true when no binding session was already active.
+- `session` is `0` for ordinary bindings and nonzero for the built-in switcher fallback.
+- `modifiers` is a Clutter modifier mask; `time` is the event timestamp in milliseconds.
+- `key` is the Clutter key symbol.
+
+Hide the UI when `released` or `cancelled` arrives. Sending `{"op":"end"}`,
+locking, disconnecting or reaching the ten-second timeout cancels the session.
 
 ## Bare Super and buffered typing
 
@@ -281,8 +310,9 @@ The binding ID is the handoff name.
 | `{"op":"end"}`                     | Cancel this client's input session        |
 | `{"op":"clear"}`                   | Remove this client's bindings and session |
 
-Window records contain id, title, appId, focused, minimized, lastUserTime,
-parent and monitor. IDs are strings, stable for the window's session lifetime.
+`windows` records include the CLI fields plus `workspace`, `workspaceId`,
+`workspaceNumber`, `monitorIndex`, `maximized`, `fullscreen`, and `geometry`.
+Their IDs are stable strings for the window's session lifetime.
 
 Skip-taskbar and override-redirect windows are excluded.
 The client chooses grouping and ordering. Stale IDs return an error. `parent`
@@ -402,6 +432,14 @@ other shells can choose their own state and command objects.
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `blur-region`            | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
 | `layer-animation-policy` | `namespace`                                                                               | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters                                                                  |
+
+| Field    | Shape and accepted values                                                         | Meaning                                    |
+| -------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| `screen` | `[x, y]`; finite coordinates from −65,536 to 65,536                               | Monitor origin in desktop coordinates.     |
+| `region` | `null` or `[x, y, width, height]`; finite values from −65,536 to 65,536; size ≥ 0 | Local rectangle; `null` clears the region. |
+
+Gnoblin matches the namespace and monitor origin for layer surfaces from the
+requesting process. A matching blur window rule is still required.
 
 For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
 using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.

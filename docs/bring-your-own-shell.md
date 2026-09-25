@@ -43,9 +43,9 @@ Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) a
 
 _Firefox running under Waybar in a fresh Gnoblin profile._
 
-![A Mako notification above Firefox in a Waybar session](images/gnoblin-mako-notification.png)
+![GNOME Files open beneath Waybar](images/gnoblin-waybar-files.png)
 
-_Mako places a download notice above Firefox in a Waybar session._
+_A stock GNOME app running with Waybar and Mako as separate clients._
 
 ## Quickshell
 

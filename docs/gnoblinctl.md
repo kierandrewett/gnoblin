@@ -18,8 +18,8 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl config default` | Print the bundled default `init.lua`    |
 | `gnoblinctl config reload`  | Apply edits and report config errors    |
 
-Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
-`--help` for accepted arguments. A bare group lists its actions.
+Run `gnoblinctl --help` or `gnoblinctl window --help` for accepted
+arguments. A bare group lists its actions.
 
 ## Windows
 
@@ -156,9 +156,10 @@ Workspace numbers are one-based positions and may change when workspaces are
 removed or reordered. Configured IDs are assigned from initial positions, then
 stay with their workspace as order changes. Unconfigured workspaces receive
 generated IDs such as `@session-1` that last only for the session.
+
 Names are display labels and are not identifiers. Use `workspace list` to see
-each workspace's ID, number, name, active state and window count. Monitor IDs
-start at **0**.
+each workspace's ID, number, name, active state and window count.
+Monitor IDs start at **0**.
 
 Use `--number NUMBER` to select a workspace by its current one-based position.
 `workspace move-active` moves the focused window and switches workspaces only
@@ -230,11 +231,17 @@ gnoblinctl feature list --format table
 Structured results use tables in a terminal and JSON in a pipe.
 Options work before or after the command.
 
-| Option                            | Behavior                             |
-| --------------------------------- | ------------------------------------ |
-| `-j`, `--json`                    | Force JSON, including in a terminal  |
-| `--format auto`                   | Tables in a terminal; JSON in a pipe |
-| `--format json`, `--format table` | Force the selected output format     |
+| Option                            | Behavior                                                    |
+| --------------------------------- | ----------------------------------------------------------- |
+| `-j`, `--json`                    | Force JSON, including in a terminal                         |
+| `--format auto`                   | Tables in a terminal; JSON in a pipe                        |
+| `--format json`, `--format table` | Force the selected output format                            |
+| `--timeout SECONDS`               | Set the request timeout, 1–60 seconds; default 5            |
+| `--socket PATH`                   | Select the compositor socket for compositor-backed commands |
+
+By default, `--socket` uses `GNOBLIN_COMPOSITOR_SOCKET`, then
+`$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock` (or `/run/user/UID` when
+`XDG_RUNTIME_DIR` is unset). D-Bus-only commands do not use this option.
 
 For example, `gnoblinctl window list --focused --json` returns this shape.
 IDs, titles and geometry below are illustrative:
@@ -335,7 +342,6 @@ see its exact values.
 | 1         | Runtime failure; error on stderr |
 | 2         | Invalid arguments                |
 
-`--timeout SECONDS` accepts 1–60; default is 5.
 Uncertain actions are not retried automatically.
 
 A reply with `pending: true` means accepted, not finished.
@@ -351,6 +357,7 @@ eval "$(gnoblinctl completion bash)"
 eval "$(gnoblinctl completion zsh)"
 
 # Fish
+mkdir -p ~/.config/fish/completions
 gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
 ```
 
@@ -360,8 +367,8 @@ The CLI needs Python 3 and `busctl`.
 Settings use D-Bus; window commands use the
 [compositor bridge](compositor-bridge.md).
 
-The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
-Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
+On a compositor connection error, confirm Gnoblin is running and the selected
+socket belongs to this session.
 
 The bridge is built into current Gnoblin source builds, so `script list` does
 not show it. Package integrations that add namespaced operations do appear in

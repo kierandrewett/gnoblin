@@ -3,12 +3,12 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-example="${1:-desktop}"
+example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox | waybar-settings | bingux-files | quickshell-files) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
     *)
-        echo "Usage: $0 {desktop|waybar-firefox|waybar-launcher|mako-notification|bingux-firefox|quickshell-firefox|waybar-settings|bingux-files|quickshell-files} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -31,15 +31,21 @@ profile="$(mktemp -d /tmp/gnoblin-doc-example.XXXXXX)"
 ydotool_socket="$profile/runtime/ydotool.sock"
 ydotoold_pid=
 cleanup() {
-    [ -z "$ydotoold_pid" ] || kill "$ydotoold_pid" 2>/dev/null || true
+    if [ -n "$ydotoold_pid" ]; then
+        kill "$ydotoold_pid" 2>/dev/null || true
+        wait "$ydotoold_pid" 2>/dev/null || true
+    fi
     for _ in 1 2 3; do
-        rm -rf -- "$profile"
+        rm -rf -- "$profile" 2>/dev/null || true
         [ ! -e "$profile" ] && return
         sleep 1
     done
-    rm -rf -- "$profile"
+    if [ -e "$profile" ]; then
+        printf 'capture-doc-examples: could not remove disposable profile %s\n' "$profile" >&2
+        return 1
+    fi
 }
-trap cleanup EXIT
+trap 'cleanup || exit 1' EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
 ydotoold --socket-path="$ydotool_socket" --socket-perm=0600 >"$profile/ydotoold.log" 2>&1 &
@@ -54,7 +60,9 @@ unset GNOBLIN_CONFIG
 export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
+export XDG_CONFIG_DIRS=/etc/xdg
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
+export MESA_SHADER_CACHE_DISABLE=true
 export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
 GNOBLIN_MUTTER_API="$(python3 "$root/scripts/gnome-versions.py" get mutter api)"
@@ -69,6 +77,9 @@ if [ -S "$host_runtime/pipewire-0" ]; then
 fi
 
 source "$root/src/tools/gnoblin-env.sh"
+# Keep host-specific app and Gnoblin integration directories out of the scene.
+# gnoblin_env_apply prepends this build's share directory to /usr/share.
+export XDG_DATA_DIRS=/usr/share
 gnoblin_env_apply "$GNOBLIN_PREFIX"
 expected_version="$(python3 "$root/scripts/gnome-versions.py" get gnome-shell version)"
 installed_version="$("$GNOBLIN_PREFIX/bin/gnome-shell" --version)"
@@ -105,6 +116,26 @@ gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
 }
 LUA
+if [ "$example" = window-effects ]; then
+    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        radius = 20,
+        smoothing = 0.55,
+        mode = "force",
+        shadow = {x = 0, y = 12, blur = 32, spread = 0, opacity = 0.28},
+    },
+}
+LUA
+fi
+if [ "$example" = waybar-mako-notification ]; then
+    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    shell = {notifications = false},
+}
+LUA
+fi
 cat >"$XDG_CONFIG_HOME/waybar/config.jsonc" <<'JSON'
 {
   "layer": "top", "position": "top", "height": 42,
@@ -154,6 +185,7 @@ cat >"$XDG_CONFIG_HOME/fuzzel/fuzzel.ini" <<'FUZZEL'
 [main]
 font=monospace:size=13
 width=48
+lines=3
 horizontal-pad=22
 vertical-pad=16
 inner-pad=12
@@ -200,27 +232,16 @@ PanelWindow {
 QML
 fi
 
-capture_path="$output_dir/gnoblin-build-a-desktop.png"
 firefox_profile="$HOME/.mozilla/firefox/gnoblin-docs"
 firefox_command="firefox --no-remote --profile '$firefox_profile'"
 case "$example" in
-    desktop)
-        capture_path="$output_dir/gnoblin-build-a-desktop.png"
-        app_command='waybar & mako & sleep 2; nautilus --new-window'
-        ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
-        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
-        ;;
-    mako-notification)
-        capture_path="$output_dir/gnoblin-mako-notification.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
-        post_app_command="notify-send --app-name='Downloads' 'Download complete' 'The file is ready to open.' --icon=folder-download; sleep 2"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url' & sleep 5; fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
@@ -230,9 +251,26 @@ case "$example" in
         capture_path="$output_dir/gnoblin-quickshell-firefox.png"
         app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$firefox_url'"
         ;;
+    waybar-files)
+        capture_path="$output_dir/gnoblin-waybar-files.png"
+        app_command='waybar & mako & sleep 2; nautilus --new-window'
+        ;;
     waybar-settings)
         capture_path="$output_dir/gnoblin-waybar-settings.png"
         app_command='waybar & mako & sleep 2; gnome-control-center multitasking'
+        ;;
+    waybar-notifications)
+        capture_path="$output_dir/gnoblin-waybar-notifications.png"
+        app_command='waybar & mako & sleep 2; gnome-control-center notifications'
+        ;;
+    waybar-mako-notification)
+        capture_path="$output_dir/gnoblin-waybar-mako-notification.png"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url' & sleep 6; notify-send --expire-time=30000 --app-name='Calendar' --icon=appointment-soon 'Project review' 'Starts in 10 minutes'"
+        ;;
+    window-effects)
+        capture_path="$output_dir/gnoblin-window-effects.png"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
+        post_app_command='gnoblinctl window unmaximize active 2>/dev/null || true; gnoblinctl window resize active 1000 680; gnoblinctl window move active 140 60'
         ;;
     bingux-files)
         capture_path="$output_dir/gnoblin-bingux-files.png"
@@ -244,16 +282,8 @@ case "$example" in
         ;;
 esac
 
-if [ "$example" = mako-notification ]; then
-    command -v notify-send >/dev/null || {
-        echo "notify-send is required for this scene" >&2
-        exit 1
-    }
-fi
-
 case "$example" in
-    waybar-settings | bingux-files | quickshell-files) ;;
-    desktop) ;;
+    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files) ;;
     *)
         command -v firefox >/dev/null || {
             echo "firefox is required for this scene" >&2
@@ -272,9 +302,15 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 PREFS
         ;;
 esac
-if [ "$example" = waybar-settings ]; then
+if [ "$example" = waybar-settings ] || [ "$example" = waybar-notifications ]; then
     command -v gnome-control-center >/dev/null || {
         echo "gnome-control-center is required for this scene" >&2
+        exit 1
+    }
+fi
+if [ "$example" = waybar-mako-notification ]; then
+    command -v notify-send >/dev/null || {
+        echo "notify-send is required for this scene" >&2
         exit 1
     }
 fi
@@ -301,6 +337,17 @@ JSON
 fi
 
 pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
+if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
+    case "$example" in
+        waybar-launcher) pointer_position="1100 700" ;;
+        waybar-settings) pointer_position="900 450" ;;
+        waybar-files) pointer_position="1000 560" ;;
+        bingux-firefox) pointer_position="1120 650" ;;
+        quickshell-files | bingux-files) pointer_position="800 400" ;;
+        waybar-firefox | quickshell-firefox | waybar-mako-notification | window-effects) pointer_position="1100 700" ;;
+        *) pointer_position="900 700" ;;
+    esac
+fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
 desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"

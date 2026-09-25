@@ -6,7 +6,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const docs = path.join(root, "docs");
 const output = path.join(docs, ".vitepress", "dist");
 const entries = await readdir(docs, { withFileTypes: true });
-const base = "/gnoblin/";
+const base = "/";
 const movedConfigPages = {
     configuration: "config",
     "configuration-reference": "config/configure",

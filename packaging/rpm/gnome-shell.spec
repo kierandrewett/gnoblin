@@ -48,6 +48,7 @@ Source11:       gnome-session@gnoblin.target.d.conf
 Source12:       gnoblin-seed-config
 Source13:       init.lua.example
 Source14:       Adwaita-Hyprcursor.tar.xz
+Source15:       gnoblin-COPYING
 
 # gnoblin patches (tooling, control, settings, reload, branding) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -237,6 +238,7 @@ desktop-file-validate gnoblin-validation.desktop
 %{_prefix}/
 
 %files -n gnoblin-session
+%license %{SOURCE15}
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session

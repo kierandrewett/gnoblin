@@ -2,7 +2,7 @@
 -- This file is copied to ~/.config/gnoblin/init.lua on first login only when
 -- no init.lua, gnoblin.toml, or gnoblin.conf already exists. Edit and save it;
 -- Gnoblin reloads valid changes automatically.
--- Full reference: https://kierandrewett.github.io/gnoblin/configuration-reference/
+-- Full reference: https://gnoblin.org/configuration-reference/
 
 -- Load shell/component defaults first. Files are evaluated in sorted order;
 -- your values below then override imported values.
@@ -10,8 +10,8 @@ gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
-    -- Cursor changes are optional. Uncomment the theme only when it is
-    -- installed; this example theme is not included in every package.
+    -- Cursor changes are optional. Gnoblin includes this artwork; install
+    -- other Hyprcursor themes before selecting them.
     cursor = {},
     -- cursor = {theme = "Adwaita-Hyprcursor", size = 24}, -- size: 1..256
 
@@ -107,15 +107,8 @@ gnoblin.configure {
         layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
         window_menu = gnoblin.array {}, -- argv for your shell's window-menu handler
         window_switcher = false,
-        -- The feature keys below are opt-in GSettings-backed controls. Leave
-        -- them unset to preserve their current state.
-        -- osd = true,
-        -- osd_volume = true,
-        -- osd_microphone = true,
-        -- osd_brightness = true,
-        -- osd_keyboard_brightness = true,
-        -- osd_pad = true,
-        -- screenshot = true,
+        -- These supported saved preferences are opt-in. Leave them unset to
+        -- preserve their current state.
         -- notifications = true,
         -- input_source_switcher = true,
     },
@@ -132,8 +125,10 @@ gnoblin.configure {
     protocols = {},
     -- Protocol switches are booleans. Available names:
     -- wlr_layer_shell, wlr_screencopy, ext_foreign_toplevel_list,
-    -- wlr_foreign_toplevel_management, ext_data_control, ext_idle_notify,
-    -- wlr_gamma_control, wlr_output_power_management, ext_background_effect_v1.
+    -- wlr_foreign_toplevel_management, xdg_decoration, window_frame_renderer,
+    -- ext_data_control, ext_idle_notify, wlr_gamma_control,
+    -- wlr_output_power_management, ext_background_effect_v1, blur_fade,
+    -- ext_session_lock.
 
     -- Layer-shell clients can preserve the active app when they appear.
     layer_shell = {

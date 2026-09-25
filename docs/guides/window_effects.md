@@ -22,6 +22,10 @@ This gives windows a 14-pixel corner radius. Sizes use logical pixels, so the
 rounding scales with your display. `smoothing` ranges from 0 (circular corners)
 to 1 (a squarer curve).
 
+![Firefox with rounded corners and a Gnoblin shadow beneath Waybar](../images/gnoblin-window-effects.png)
+
+_The clean capture uses a real window rule for corners and shadow._
+
 By default, Gnoblin preserves corners an app already draws. Set
 `mode = "force"` inside `corners` to use Gnoblin's shape instead. Forced rounding
 also cuts off the app's original shadow outside that shape.

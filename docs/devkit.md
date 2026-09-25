@@ -33,6 +33,10 @@ waybar
 The bar should appear inside the viewer. Try its menus and launcher.
 Close the terminal to stop the devkit.
 
+![GNOME Settings beneath Waybar in a clean Gnoblin devkit session](images/gnoblin-waybar-settings.png)
+
+_The devkit can run stock desktop apps alongside independently launched shell clients._
+
 ## Options
 
 | Variable                   | Accepted value                 | Default    | Effect                                         |
@@ -81,22 +85,25 @@ fully separate from host services. Check the image before publishing it.
 The checked-in documentation scenes can be recaptured with:
 
 ```sh
-scripts/capture-doc-examples.sh desktop
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
-scripts/capture-doc-examples.sh mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
 scripts/capture-doc-examples.sh quickshell-firefox
+scripts/capture-doc-examples.sh waybar-files
 scripts/capture-doc-examples.sh waybar-settings
+scripts/capture-doc-examples.sh waybar-mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
 scripts/capture-doc-examples.sh quickshell-files
+scripts/capture-doc-examples.sh window-effects
 ```
 
 Each capture uses a disposable profile and removes it afterward. Scenes pair
 Firefox and stock GNOME apps with Waybar + Mako, Quickshell and Bingux. Bingux
-is one separate shell project using Gnoblin. Firefox opens GNOME Help in a fresh
-profile; set `GNOBLIN_DOC_FIREFOX_URL` to use another page. Network access is
-needed for the default page.
+is one separate shell project using Gnoblin.
+
+The Mako scene shows a Calendar reminder over Firefox. Firefox opens GNOME Help
+in a fresh profile; set `GNOBLIN_DOC_FIREFOX_URL` to use another page. Network
+access is needed for the default page.
 
 Captures need a visible Wayland session, a current build in `./install`, and
 the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is

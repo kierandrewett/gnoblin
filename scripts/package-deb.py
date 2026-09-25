@@ -53,6 +53,18 @@ def package_version(gnome_version, gnoblin_version, revision, distribution, rele
     return f"{gnome_version}+gnoblin{gnoblin_version}-{revision}~{distribution}{release}"
 
 
+def debian_copyright_text():
+    """Include Gnoblin ownership and preserved upstream license attribution."""
+    text = (ROOT / "COPYING").read_text()
+    return text + (
+        "\n\nFiles: src/cursor/adwaita/*\n"
+        "Copyright: GNOME Project\n"
+        "License: LGPL-3.0-or-later or CC-BY-SA-3.0\n"
+        " The Adwaita cursor artwork is available under either license.\n"
+        " Full license texts are installed with the Adwaita-Hyprcursor theme.\n"
+    )
+
+
 def elf_files(directory):
     for path in sorted(directory.rglob("*")):
         if path.is_file() and not path.is_symlink():
@@ -229,15 +241,7 @@ def main():
             )
             + "\n"
         )
-        copyright_text = (ROOT / "COPYING").read_text()
-        copyright_text += (
-            "\n\nFiles: src/cursor/adwaita/*\n"
-            "Copyright: GNOME Project\n"
-            "License: LGPL-3.0-or-later or CC-BY-SA-3.0\n"
-            " The Adwaita cursor artwork is available under either license.\n"
-            " Full license texts are installed with the Adwaita-Hyprcursor theme.\n"
-        )
-        (docs / "copyright").write_text(copyright_text)
+        (docs / "copyright").write_text(debian_copyright_text())
         for source in [
             *(ROOT / "subprojects").glob("*"),
             *(ROOT / "build/dependencies").glob("*/source"),

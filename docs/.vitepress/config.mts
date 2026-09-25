@@ -3,7 +3,8 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
     title: "Gnoblin",
     description: "Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.",
-    base: "/gnoblin/",
+    base: "/",
+    sitemap: { hostname: "https://gnoblin.org" },
     cleanUrls: true,
     themeConfig: {
         nav: [

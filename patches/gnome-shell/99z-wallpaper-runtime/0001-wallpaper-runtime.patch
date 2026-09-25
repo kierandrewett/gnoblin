@@ -9,48 +9,28 @@ Subject: [PATCH] gnoblin: make wallpaper configurable in GNOME 51
  2 files changed, 14 insertions(+)
 
 diff --git a/js/ui/layout.js b/js/ui/layout.js
-index 9871e0635..b1beef195 100644
+index 47cf50cf7..406f25d56 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -314,6 +314,7 @@
-         global.window_group.add_child(this._backgroundGroup);
-         global.window_group.set_child_below_sibling(this._backgroundGroup, null);
-         this._bgManagers = [];
+@@ -315,0 +316 @@ export const LayoutManager = GObject.registerClass({
 +        this._gnoblinWallpaperEnabled = true;
- 
-         this._interfaceSettings = new Gio.Settings({
-             schema_id: 'org.gnome.desktop.interface',
-@@ -532,6 +533,12 @@
-         return promise;
-     }
- 
+@@ -533,0 +535,6 @@ export const LayoutManager = GObject.registerClass({
 +    setGnoblinWallpaperEnabled(enabled) {
 +        this._gnoblinWallpaperEnabled = Boolean(enabled);
 +        if (Main.sessionMode.currentMode === 'gnoblin')
 +            this._updateBackgrounds().catch(logError);
 +    }
 +
-     async _updateBackgrounds() {
-         this._bgLoadCancellable?.cancel();
-         this._bgLoadCancellable = null;
-@@ -540,6 +547,9 @@
-             this._bgManagers[i].destroy();
- 
-         this._bgManagers = [];
-+
+@@ -542,0 +550,3 @@ export const LayoutManager = GObject.registerClass({
 +        if (Main.sessionMode.currentMode === 'gnoblin' && !this._gnoblinWallpaperEnabled)
 +            return Promise.resolve();
- 
-         if (Main.sessionMode.isGreeter)
-             return Promise.resolve();
++
 diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
-index 320bbd50d..1cdd14c36 100644
+index fcfda8a57..2a775d394 100644
 --- a/js/ui/workspaceAnimation.js
 +++ b/js/ui/workspaceAnimation.js
-@@ -235,2 +235,6 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
-     _createBackground() {
+@@ -176,0 +177,4 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
 +        if (Main.sessionMode.currentMode === 'gnoblin' &&
 +            !Main.layoutManager._gnoblinWallpaperEnabled)
 +            return;
 +
-         const background = new Meta.BackgroundGroup();

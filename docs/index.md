@@ -1,6 +1,12 @@
 # Gnoblin
 
-Gnoblin is a fork of GNOME Shell with layer-shell support. Pair it with Bingux or build a desktop from your own shell, bar, dock and launcher.
+Gnoblin is a fork of GNOME Shell with layer-shell support. Bingux is one
+separate shell project built on Gnoblin. You can also build a desktop from
+your own shell, bar, dock and launcher.
+
+![Firefox running with Waybar in a clean Gnoblin profile](images/gnoblin-waybar-firefox.png)
+
+_Waybar and Firefox are separate clients; the [shell guide](/bring-your-own-shell) compares Bingux, Quickshell and other shells._
 
 ## Get started
 

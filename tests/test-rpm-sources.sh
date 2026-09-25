@@ -27,6 +27,8 @@ assert_local_sources() {
 
 assert_local_sources mutter "$TMP/mutter"
 assert_local_sources gnome-shell "$TMP/gnome-shell"
+grep -Fq 'Copyright © 2026 Working Directory Ltd.' "$TMP/gnome-shell/gnoblin-COPYING"
+grep -Fq 'GNOME-derived portions are Copyright ©' "$TMP/gnome-shell/gnoblin-COPYING"
 
 "$ROOT/scripts/list-tarball-sources.sh" mutter >"$TMP/mutter.sources"
 "$ROOT/scripts/list-tarball-sources.sh" gnome-shell >"$TMP/gnome-shell.sources"

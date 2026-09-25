@@ -1503,6 +1503,10 @@ export class ConfigFile {
         }
     }
 
+    wantsEvent(event) {
+        return Boolean(this._events?.has(event) || this._events?.has("*"));
+    }
+
     applyRuntimeDocument(document) {
         try {
             document = document.recursiveUnpack();

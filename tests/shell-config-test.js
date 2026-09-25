@@ -6,6 +6,7 @@ import {
     minimizeTarget,
     layerOffset,
     windowEffects,
+    ConfigFile,
 } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js";
 
 function assert(condition, message) {
@@ -18,6 +19,12 @@ assert(
         .every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
     "missing Lua keys use defaults (autostart is loaded from the document)",
 );
+const eventFilter = Object.create(ConfigFile.prototype);
+eventFilter._events = new Set(["mutter.display.restacked"]);
+assert(eventFilter.wantsEvent("mutter.display.restacked"), "Lua event filter accepts a registered event");
+assert(!eventFilter.wantsEvent("mutter.window.unmanaged"), "Lua event filter rejects an unregistered event");
+eventFilter._events.add("*");
+assert(eventFilter.wantsEvent("mutter.window.unmanaged"), "Lua event filter accepts the wildcard subscription");
 const cursorDefaults = parseDocument({}).cursor;
 assert(
     cursorDefaults.theme === "Adwaita-Hyprcursor" && cursorDefaults.size === 24,
@@ -64,7 +71,12 @@ assert(
 const input = parseDocument({
     input: {
         mouse: { speed: -0.25, "left-handed": true, "accel-profile": "flat" },
-        touchpad: { "tap-to-click": true, "click-method": "fingers", "left-handed": "mouse" },
+        touchpad: {
+            "scroll-speed": 0.5,
+            "tap-to-click": true,
+            "click-method": "fingers",
+            "left-handed": "mouse",
+        },
         keyboard: { repeat: true, delay: 500, "repeat-interval": 30, "xkb-options": ["caps:escape"] },
         "orientation-lock": true,
         tablets: { "1234:5678": { mapping: "absolute", "keep-aspect": true } },
@@ -80,6 +92,7 @@ const input = parseDocument({
 });
 assert(
     input.input.keyboard["xkb-options"][0] === "caps:escape" &&
+        input.input.touchpad["scroll-speed"] === 0.5 &&
         input.input["orientation-lock"] &&
         input.input.tablets["1234:5678"].mapping === "absolute" &&
         input["input-sources"].sources[1].id === "anthy" &&
@@ -120,6 +133,8 @@ for (const document of [
     { cursor: { size: 257 } },
     { cursor: { unknown: true } },
     { input: { mouse: { speed: 1.1 } } },
+    { input: { touchpad: { "scroll-speed": -0.1 } } },
+    { input: { touchpad: { "scroll-speed": 2.1 } } },
     { input: { touchpad: { "click-method": "invalid" } } },
     { input: { keyboard: { delay: 0 } } },
     { input: { keyboard: { "xkb-options": "caps:escape" } } },

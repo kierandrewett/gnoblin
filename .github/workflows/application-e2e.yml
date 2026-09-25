@@ -111,11 +111,11 @@ jobs:
   app-shard:
     needs: build-and-catalog
     runs-on: ubuntu-latest
-    # Flatpak's bubblewrap backend creates nested user namespaces for each app.
-    # The disposable app-test container needs to permit those namespace calls.
+    # Flatpak's bubblewrap backend needs nested namespaces and mount operations
+    # inside the Fedora test container on the disposable GitHub-hosted VM.
     container:
       image: fedora:44
-      options: --security-opt seccomp=unconfined
+      options: --privileged
     timeout-minutes: 360
     strategy:
       fail-fast: false
