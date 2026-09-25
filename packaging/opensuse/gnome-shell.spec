@@ -36,6 +36,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  gettext-tools
 BuildRequires:  git
 BuildRequires:  meson
+BuildRequires:  sassc
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
 BuildRequires:  pkgconfig(gcr-4) >= 3.90.0
