@@ -339,9 +339,12 @@ fi
 pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
 if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
     case "$example" in
-        waybar-launcher) pointer_position="640 360" ;;
+        waybar-launcher) pointer_position="1100 700" ;;
         waybar-settings) pointer_position="900 450" ;;
+        waybar-files) pointer_position="1000 560" ;;
+        bingux-firefox) pointer_position="1120 650" ;;
         quickshell-files | bingux-files) pointer_position="800 400" ;;
+        waybar-firefox | quickshell-firefox | waybar-mako-notification | window-effects) pointer_position="1100 700" ;;
         *) pointer_position="900 700" ;;
     esac
 fi

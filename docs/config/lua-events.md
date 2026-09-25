@@ -129,9 +129,10 @@ shell, Gnoblin applies the updated document after the callback returns.
 
 ## Type definition
 
-Event names are open-ended: Gnoblin accepts a nonempty string, but only names
-dispatched by Mutter or the shell produce callbacks. The event fields depend
-on the event name; all callback values are Lua tables.
+Event names are open-ended: Gnoblin accepts a nonempty UTF-8 string of up to
+128 bytes with no NUL byte, but only names dispatched by Gnoblin, Mutter or
+the shell produce callbacks. The event fields depend on the event name; all
+callback values are Lua tables.
 
 ```lua
 gnoblin.on(event_name, function(event)
