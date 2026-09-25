@@ -16,7 +16,8 @@ mtdev, Lua, gnome-desktop and the PipeWire client libraries. Other development l
 
 Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
 The required library versions are checked during the build. If a base dependency
-is missing or too old, the build stops and reports it without changing host packages.
+does not meet the minimum version, the build stops and reports it without
+changing host packages.
 
 ## 1. Get the source
 
@@ -68,9 +69,6 @@ Registration only adds session files; it does not build a missing runtime.
 | `./build.sh --deps-only` | Build only the private dependencies      |
 | `./build.sh --no-deps`   | Reuse dependencies and rebuild Gnoblin   |
 | `./build.sh --dry-run`   | Show what will be built                  |
-
-`--yes` and `--install-deps` remain accepted for older scripts. Neither enables
-host package installation.
 
 ## How GNOME stays separate
 

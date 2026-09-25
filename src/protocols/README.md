@@ -24,19 +24,9 @@ All Gnoblin-owned globals are available only in the Gnoblin session. Each
 defaults on within that session and can be disabled through its `protocols`
 key in `init.lua`.
 
-`session-lock/` provides the standard `ext-session-lock-v1` global in the
-Gnoblin session. It is a compositor security boundary, rather than shell UI:
-Gnoblin covers and isolates the session, while Bingux or a compatible external
-client supplies the lock screen and authentication. Regular GNOME sessions do
-not receive the global and retain GNOME ScreenShield.
-
-The lock controller replaces normal desktop capture with its lock scene for
-already authorised portal monitor streams. After `locked` and lock-scene
-presentation, authorised remote input reaches the active lock surface; it is
-refused during transitions and failsafe. This is automatic; it does not add a
-protocol setting or portal opt-in.
-
-`output-management/` remains XML only.
+`session-lock/` and `output-management/` are not supported globals.
+The session-lock startup boundary is compiled but advertises no global until
+the compositor can enforce a secure lock. Output management remains XML only.
 
 ## Adding an aggregated protocol
 

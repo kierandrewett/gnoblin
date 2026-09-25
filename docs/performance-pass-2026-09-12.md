@@ -57,11 +57,14 @@ GNOME modes of the patched build is not an unpatched GNOME comparison.
 The native cache A/B used the same optimised build and Lua fixture. The red
 variant forced mask capture and uniform-location resolution on every effect
 paint, while retaining the counters and invalidation fixes. The Clutter variant
-restored the original region clone. Both variants rendered 300 sampled frames
-and built the blur cache once. Total mask captures were 413 before and 1 after;
+restored the original region clone.
+
+Both variants rendered 300 sampled frames and built the blur cache once. Total mask captures were 413 before and 1 after;
 300 versus 0 occurred within the five-second sample. Region counts include
-startup. Instrumented CPU was 27 versus 28 ticks, which establishes no CPU
-improvement in this short sample; the demonstrated saving is the removed work.
+startup.
+
+Instrumented CPU was 27 versus 28 ticks, which establishes no CPU
+improvement in this short sample. The demonstrated saving is the removed work.
 The exact green sources were restored and rebuilt before regression tests.
 
 The layer-shell change compares the effective window type, stacking layer,
@@ -71,10 +74,13 @@ work areas. The strut list is retained until its value changes.
 Rule dependencies and shader paths are cached per configuration. Event batches
 reuse their sets. Companion lookup reads each visible namespace once, with no
 window scan when there are no requests. Switcher liveness uses set membership.
+
 The bridge retains one unprocessed input suffix per read and limits slow-client
 queues to 64 records and 4 MiB. Foreign-toplevel list removal uses its stored
-list link. Last advertised strings are retained per handle and released on
-handle destruction; this trades a small bounded cache for fewer protocol events.
+list link.
+
+Last advertised strings are retained per handle and released when a
+handle is destroyed; this trades a small bounded cache for fewer protocol events.
 
 ## Native GNOME and Mutter work
 
@@ -127,7 +133,7 @@ UI-removal task owns changes to the retained GNOME components.
   reversal. The sampled pixels passed.
 - Native protocol boundaries passed, including 48 callbacks across 16 surfaces,
   repeated commits and destruction before callback delivery.
-- Sixteen focused Node tests and the GJS native/legacy redraw lifetime test passed.
+- Sixteen focused Node tests and the GJS redraw lifetime test passed.
 - Fresh `git am` replay passed for all 36 Shell and 33 Mutter patches present at
   that verification point. Ten existing malformed mail patches were repaired
   without changing their code. Source/replay differences outside this pass remain
@@ -145,10 +151,12 @@ process's proportional resident memory, in MiB.
 
 The before build used pinned Shell 49.6/Mutter 49.5 with optimisation disabled.
 The after build uses the same upstream versions with the changes above and
-optimisation level 2. It also includes the concurrent Lua configuration and
-GNOME UI-removal work. The effects fixture was translated from TOML to equivalent
-Lua, retaining all four rules. These measurements therefore describe the shared
-build, not an isolated attribution to the native patches.
+optimisation level 2.
+
+The after build also includes the concurrent Lua configuration and GNOME
+UI-removal work. The effects fixture uses Lua and retains all four rules. These
+measurements describe the shared build, not an isolated attribution to the
+native patches.
 
 Stock is official Fedora Shell 49.9/Mutter 49.7, extracted from signed RPMs and
 run in a private mount namespace with its own libraries and resources. The
@@ -179,9 +187,10 @@ reference, not a controlled comparison of identical rendering features.
 The visible-animation sample used about 29% less compositor CPU than the
 previous Gnoblin build. Empty-session PSS was about 29% below stock GNOME and
 about 4% below the previous Gnoblin build. With eight static windows it was
-about 13% below stock. Gnoblin was not faster in every stock comparison, and
-one covered-window memory sample increased relative to the previous build.
-Repeated hardware measurements are needed before treating these small timings
+about 13% below stock.
+
+Gnoblin was not faster in every stock comparison, and
+one covered-window memory sample increased relative to the previous build. Repeated hardware measurements are needed before treating these small timings
 as stable percentages.
 
 All three runs rendered about 240 client frames per four-second visible phase,

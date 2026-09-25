@@ -13,9 +13,7 @@ The bridge is a built-in Gnoblin compositor service. It starts with the
 Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
 not need to be installed under `~/.config/gnoblin/scripts/`.
 `gnoblinctl window list` uses the same socket. Check `gnoblinctl status` before
-debugging a client connection. Older installed builds may not include the
-built-in service yet; [check the running build](source-development.md#verify)
-when its behaviour differs from this reference.
+debugging a client connection.
 
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.
@@ -64,25 +62,92 @@ closes the socket; ordinary validation errors leave it open.
 | `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
 | `clear`                          | None                                            | Removes this client's bindings and session          |
 
-`command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
-`layers`, `workspace-switch` and `window`. `layers` returns the current
-layer-shell surfaces in a `surfaces` array. `workspace-switch` needs a one-based
-`workspace`; `window` needs an `action` and a stable window ID or `"active"`.
-The [CLI reference](gnoblinctl.md) lists window actions and arguments. Only
-`command` supplies a correlation ID: match `reply` or `error` by that ID
+`command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
+`workspace-switch`, `workspace-next`, `workspace-previous`,
+`workspace-move-active`, `monitors`, `layers` and `window`. `layers` returns
+the current layer-shell surfaces in a `surfaces` array. `window` needs an
+`action` and a stable window ID or `"active"`. The [CLI reference](gnoblinctl.md)
+lists window actions and arguments.
+
+### Workspace commands
+
+Use `workspace-list` to get the workspace ID, current one-based number, display
+name, active state and eligible window count:
+
+```json
+{ "op": "command", "id": "request-1", "command": "workspace-list" }
+```
+
+The reply's `result` is shaped like this:
+
+```json
+{
+    "workspaces": [
+        { "id": "code", "number": 1, "name": "Code", "active": true, "windows": 2 },
+        { "id": "web", "number": 2, "name": "Web", "active": false, "windows": 0 }
+    ]
+}
+```
+
+The request `id` correlates its reply. Workspace IDs are separate: configured
+IDs persist by position, while unconfigured workspaces receive session-only
+IDs such as `@session-N`.
+
+Each item from `workspaces` has these fields:
+
+| Field     | Meaning                                                                  |
+| --------- | ------------------------------------------------------------------------ |
+| `id`      | Stable workspace ID, or the one-based position when no ID is configured. |
+| `number`  | Current one-based position.                                              |
+| `name`    | Display label.                                                           |
+| `active`  | Whether this workspace is selected.                                      |
+| `windows` | Number of eligible windows on the workspace.                             |
+
+Switch by stable ID or current number. Send exactly one selector:
+
+```json
+{"op":"command","id":"request-2","command":"workspace-switch","workspaceId":"code"}
+{"op":"command","id":"request-3","command":"workspace-switch","workspaceNumber":2}
+```
+
+`workspace-switch` also accepts a numeric `workspace` selector.
+`workspace-next` and `workspace-previous` take no selector and wrap at the
+ends of the current workspace list.
+
+Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
+They also include the resolved workspace's `id`, `number`, `name`, `active`,
+and `windows` fields.
+
+Move the focused window with `workspace-move-active`. It accepts the same
+`workspaceId` or `workspaceNumber` selector, plus an optional `follow` boolean.
+The default is `false`; set it to `true` to activate the destination after
+moving.
+
+For an explicit window, use `command: "window"`, `action: "workspace"`, and
+the `window` ID with `workspaceId` or `workspaceNumber`. The one-based numeric
+`workspace` selector is also accepted.
+
+Successful move replies include the resolved workspace fields, `follow`, the
+stable window `window` ID, and the selected `workspace` number, `workspaceId`,
+and `workspaceNumber`.
+
+Numbers can change when dynamic workspaces are removed. Use IDs in shell
+integrations that need to keep addressing a configured workspace. The
+[workspace CLI examples](gnoblinctl.md#workspaces-and-monitors) show equivalent
+terminal commands.
+
+Only `command` supplies a correlation ID: match `reply` or `error` by that ID
 because other events can arrive first. A reply with `pending: true` means the
 action was accepted; observe later state to confirm completion.
 
-Animations are registered in Lua with `gnoblin.animation` and previewed with
-`gnoblinctl animation`. Shell clients should own motion inside their own
-surface content; use a matching `animation = "none"` layer rule to avoid
-compositor motion on top of a shell's own transition.
+Animations are registered in Lua with `gnoblin.animation` and are previewed
+through `gnoblinctl animation`. Shell clients should continue to own their
+surface content motion; use a matching `animation = "none"` layer rule to
+avoid applying compositor motion twice.
 
-The `layer-animation-policy` operation returns the configured enter and exit
-animation policies for a layer namespace. Bingux can use that policy to decide
-whether to animate its surface content. See the
-[animation guide](/guides/animations) for layer lifecycle events and target
-selection.
+The bridge's `layer-animation-policy` operation lets a shell read the
+configured enter/exit policy for a namespace. See the [animation guide](/guides/animations)
+for layer-shell lifecycle events and target selection.
 
 `capture-windows` returns visible, non-minimised windows in stacking order
 with title, app name, frame position and size, and `bufferWidth` and
@@ -157,15 +222,13 @@ input.
 Requires the advertised `overlay-shortcut` feature. Only one bridge client can
 own bare Super; remove a duplicate Lua command binding first.
 
-Super activates on release, excluding chords. With capture enabled, report
-`prepared` once the popup exists. This releases the temporary keyboard grab
-while Gnoblin buffers typing. After the popup's text field receives focus,
-send `ready` so Gnoblin replays the buffered keys:
+Super activates on release, excluding chords. With capture enabled, send:
 
 ```json
 { "op": "shortcut-input", "name": "search", "state": "ready" }
 ```
 
+Send ready only after the layer and text field have keyboard focus.
 Send `state: "closed"` when dismissed. The binding ID is the handoff name.
 
 ## Windows and controls

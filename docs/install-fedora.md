@@ -48,7 +48,5 @@ Your shell and personal configuration are separate. Remove your desktop shell se
   the repository above. Do not use another Fedora release's RPMs.
 - **Missing dependency:** keep DNF's exact error when reporting it. Do not use
   `--skip-broken` to produce a partial desktop install.
-- **Old experimental packages:** builds that replaced stock GNOME need a
-  separate migration. These instructions cover the side-by-side packages.
 
 See [login troubleshooting](troubleshooting.md) if the session does not start.

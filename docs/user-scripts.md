@@ -45,23 +45,23 @@ workspaces and inspect the Shell log for `gnoblin-script[workspace-log.js]`.
 The callback index comes from GNOME Shell's workspace manager and is
 **zero-based**. `gnoblinctl workspace` uses **one-based** positions.
 
-The entry function runs once per load. `gnoblinctl reload` unloads the old
-module before importing it again, so register cleanup for every signal, timer,
+The entry function runs once per load. `gnoblinctl reload` unloads the module
+state before importing it again, so register cleanup for every signal, timer,
 socket and other resource that must not survive a reload.
 
 ## Script API
 
-| Call                                           | Result                                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `api.log(...values)`                           | Write a log message prefixed with the script name                                                            |
-| `api.version()`                                | Return Gnoblin Shell's version string                                                                        |
-| `api.getFeature(id)`                           | Read a Shell feature switch                                                                                  |
-| `api.setFeature(id, enabled)`                  | Change a Shell feature switch                                                                                |
-| `api.reloadShell()`                            | Soft-reload config, theme and scripts                                                                        |
-| `api.on(event, callback)`                      | Subscribe to an event; return a function that unsubscribes                                                   |
-| `api.addCleanup(callback)`                     | Register cleanup for reload or unload; return a function that runs it early                                  |
-| `api.handleCompositorOperation(name, handler)` | Register a namespaced bridge operation; return a cleanup function                                            |
-| `api.onCompositorClientClosed(callback)`       | Observe bridge clients disconnecting; callback receives the client's opaque token; return a cleanup function |
+| Call                                           | Result                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `api.log(...values)`                           | Write a log message prefixed with the script name                           |
+| `api.version()`                                | Return Gnoblin Shell's version string                                       |
+| `api.getFeature(id)`                           | Read a Shell feature switch                                                 |
+| `api.setFeature(id, enabled)`                  | Change a Shell feature switch                                               |
+| `api.reloadShell()`                            | Soft-reload config, theme and scripts                                       |
+| `api.on(event, callback)`                      | Subscribe to an event; return a function that unsubscribes                  |
+| `api.addCleanup(callback)`                     | Register cleanup for reload or unload; return a function that runs it early |
+| `api.handleCompositorOperation(name, handler)` | Register a namespaced bridge operation; return a cleanup function           |
+| `api.onCompositorClientClosed(callback)`       | Observe bridge clients disconnecting; return a cleanup function             |
 
 Find feature IDs with `gnoblinctl feature list`. Supported event names are:
 
@@ -75,16 +75,16 @@ window record. A script that calls GNOME internals may need adjustment when the
 underlying GNOME version changes. Use the bridge when an external shell needs a
 stable, serializable window record.
 
-Operation names have the form `namespace.operation`: each part starts with a
-lowercase letter and may continue with lowercase letters, digits or hyphens.
-The handler receives `(request, peer)`. `peer.client` is an opaque token and
-`peer.pid` is the client's process ID. `peer.send(record)` sends an event to
-the requesting client. `peer.sendTo(token, record)` sends to another active
-client, and `peer.broadcast(record[, tokens])` sends to all clients or the
-listed active clients. Tokens are only useful while their connection is open;
-`api.onCompositorClientClosed(callback)` reports a token when its connection
-closes. Check `peer.isOpen()` before completing asynchronous work. A handler
-can use GJS directly, but should validate each request and keep shell-specific
+Bridge operation names must be namespaced, such as `example.inspect`. The
+handler receives `(request, peer)`. `peer.client` is an opaque connection ID,
+`peer.pid` is the client's process ID, and `peer.send(record)` sends one event
+to that client.
+
+`peer.sendTo(clientId, record)` and
+`peer.broadcast(record, clientIds)` send to other active clients. The
+`peer.isOpen()` check is useful before completing asynchronous work.
+
+A handler can use GJS directly. Validate each request, and keep shell-specific
 policy in the package or script that owns it.
 
 For example, a package can register a bridge operation without adding that
@@ -121,10 +121,7 @@ export default function (api) {
 ```
 
 Do not use a script to replace a compositor service. In current source
-builds the bridge starts as a core service. A file named
-`compositor-bridge.js` in the user script directory is ignored. An older
-installed build may still have used that file; check the running version when
-migrating.
+builds the bridge starts as a core service. A file named `compositor-bridge.js` in the user script directory is ignored.
 
 ## Reload and recovery
 

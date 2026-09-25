@@ -37,13 +37,15 @@ other machine activity. Visible-animation CPU did not improve in these samples.
 `meta-cullable.c` previously discarded visibility information for every actor
 with active effects. That is necessary for partial redraw clips because an
 offscreen effect needs a complete texture. It is unnecessary when the visibility
-region is already empty. The patch preserves that empty region for the
+region is already empty.
+
+The patch preserves that empty region for the
 unobscured pass only. It leaves redraw clips, partial visibility and mapped-clone
 handling unchanged. This allows Wayland frame callbacks to be throttled again.
 
-The change is built and installed. The running desktop retains its old library
-until the next compositor session. Do not interpret current live CPU as a test
-of the new build.
+The change is built and installed. The running desktop keeps the library
+loaded at session start until the next compositor session. Current live CPU
+does not measure the newly installed build.
 
 ## What remains expensive
 
@@ -61,8 +63,7 @@ The previous effect-enabled run measured 17.99% visible CPU. This is a local
 sample improvement, not a hardware-independent guarantee. No extra render pass
 was removed in this change; that remains a separate optimisation.
 
-WindowRules now updates the old and new focused actors only when a rule depends
-on focus. Title events do no rule work unless a title matcher exists. Duplicate
+WindowRules updates focus-dependent rules only when focus changes. Title events do no rule work unless a title matcher exists. Duplicate
 width, height, corner and border updates coalesce by actor. Regression tests
 cover focus loss, focus-independent rules, repeated events and destroyed actors.
 
@@ -74,24 +75,29 @@ readback is primarily first-map and geometry-state work for ambiguous clients;
 this pass does not make that path asynchronous.
 
 Bingux now bounds unused icon records to 256 entries and 4 MiB of estimated
-UTF-16 string data. Active images are reference-counted and are not evicted.
-Late responses for evicted requests are ignored. The native QML lifecycle test
+UTF-16 string data. Active images are reference-counted and are not evicted. Late responses for evicted requests are ignored.
+
+The native QML lifecycle test
 verified shared retention, last-user eviction and successful reloading. The
 `shell status` IPC response reports active/unused counts and unused string bytes.
+
 This does not bound decoded GPU textures or all shell memory; a total footprint
 reduction is not implied by the cache limit.
 
 A fresh-process comparison showed that reload accumulation was not the main
 memory cost: the process still used 589.3 MiB PSS after restart. Its 149 saved
-notifications all had card delegates despite history being closed. The history
-surface now supplies those cards only while preparing, showing or closing
+notifications all had card delegates despite history being closed.
+
+The history surface now supplies those cards only while preparing, showing or closing
 history; closed history retains data rather than UI objects. Fresh-process PSS
 then measured 387.6 MiB with the same 149 saved notifications (201.7 MiB lower).
+
 This is a startup comparison, not a claim that the allocator immediately returns
 all pages after each close. A 200-notification QML test verifies disposal only
 after the closing slide, preserved data and reopening. Native sidebar motion,
-interrupted closing and reopening tests also pass. A live open/close preserved
-all 149 notifications and the viewport geometry. The first open IPC took 344 ms
+interrupted closing and reopening tests also pass.
+
+A live open/close preserved all 149 notifications and the viewport geometry. The first open IPC took 344 ms
 including client startup and card creation; cold-opening latency remains a target
 for card virtualisation, rather than retaining the entire closed history again.
 
@@ -103,26 +109,33 @@ but need a new compositor session; the Bingux cache changes can reload live.
 1. **Visible window effects.** A live native stack profile repeatedly crossed
    GJS/FFI while painting offscreen window effects. The native geometry migration
    above addresses that repeated call path. Continue measuring CPU per frame.
-   A later single-pass corner/border implementation should preserve accurate
-   opaque regions and avoid an extra full-window texture where possible. Do not
-   remove Mutter's effect-culling guard globally: that can corrupt cached images.
+
+    A later single-pass corner/border implementation should preserve accurate
+    opaque regions and avoid an extra full-window texture where possible. Do not
+    remove Mutter's effect-culling guard globally; that can corrupt cached images.
+
 2. **Shell memory.** The live compositor used about 196 MiB PSS. The main Bingux
    process used 666 MiB; Search, Capture, Emoji and Switcher used another 491 MiB
-   combined. These figures cover Quickshell processes, excluding their Python
-   worker subprocesses. The open Settings process added 190 MiB. PSS apportions shared pages,
-   so it is more useful than adding RSS. These are session snapshots after use
-   and reloads, not minimum footprints or proven leaks. Compare a fresh shell
-   with repeated open/close/reload cycles, and inspect cache bytes and retained
-   QML objects before changing process boundaries.
-3. **Synchronous GPU readback.** `windowGeometry()` still calls `actor.get_image()`
-   when detecting client shadow edges. It is cached and outside paint callbacks,
-   but a first map or geometry-state change can still stall the compositor on the
-   GPU. Measure map/resize latency with readback timing; prefer authoritative
-   client geometry or a deferred bounded analysis path without losing correctness.
-4. **Rule matching.** The focus and geometry changes above reduce refresh counts.
-   Matching still constructs regular expressions while evaluating rules. Consider
-   compiling matchers when a new validated configuration is installed, with tests
-   for configuration replacement and title-dependent rules.
+   combined. The open Settings process added 190 MiB. These figures cover
+   Quickshell processes, excluding Python workers.
+
+    PSS apportions shared pages, so it is more useful than adding RSS. These are
+    session snapshots, not minimum footprints or evidence of a leak. Compare a
+    fresh shell across repeated open/close/reload cycles, and inspect cache bytes
+    and retained QML objects before changing process boundaries.
+
+3. **Synchronous GPU readback.** `windowGeometry()` still calls
+   `actor.get_image()` to detect client shadow edges. The result is cached and
+   readback happens outside paint callbacks, but a first map or geometry change
+   can still stall the compositor on the GPU. Measure map and resize latency;
+   prefer authoritative client geometry or deferred bounded analysis without
+   losing correctness.
+
+4. **Rule matching.** The focus and geometry changes above reduce refresh
+   counts, but matching still constructs regular expressions while evaluating
+   rules. Consider compiling matchers when a validated configuration is
+   installed, with coverage for replacement and title-dependent rules.
+
 5. **Inherited shell services.** Gnoblin already uses a dummy Overview and an
    empty GNOME panel. Other objects are still constructed in `main.js`, including
    screenshot UI, notifications and keyboard management. Measure their retained
@@ -142,11 +155,12 @@ GNOME starts in Overview; the harness dismisses it before measurements because
 Overview's live window clones correctly keep clients drawing.
 
 The verified four-second GNOME-mode run passed the same visibility assertions:
-240 visible draws, 240 partly covered, zero covered and 241 after reveal. Its
-visible-animation CPU was 11.74%, versus 17.99% in the effect-enabled Gnoblin
-repeat. This is an indication of the remaining effect overhead, not a claim
-about identical visual workloads or stock GNOME. Both modes were nearly idle
-with eight static windows (0.25% and 0.00% respectively).
+240 visible draws, 240 partly covered, zero covered and 241 after reveal. Both
+modes were nearly idle with eight static windows (0.25% and 0.00% respectively).
+
+Visible-animation CPU was 11.74% in GNOME mode, versus 17.99% in the
+effect-enabled Gnoblin repeat. This indicates remaining effect overhead; it does
+not establish identical visual workloads or a comparison with stock GNOME.
 
 The native build, patch application check, Python syntax check and both mode
 benchmarks passed. The before/after covered screenshots were pixel-identical.

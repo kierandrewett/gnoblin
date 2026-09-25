@@ -1,6 +1,10 @@
 # gnoblin.configure.shortcuts
 
-Define command shortcuts and change built-in actions by name. Entries merge with the same name; fields you omit keep their previous values. Set `enable = false` to disable an imported shortcut.
+Define named command shortcuts or change a built-in GNOME action. Entries
+merge by name; omitted fields keep their earlier values. Set `enable = false`
+to disable an imported shortcut. Put this in `~/.config/gnoblin/init.lua`;
+changes apply on config reload. Up to 256 entries are allowed. Names must be
+unique and contain 1–80 letters, numbers, `_` or `-`.
 
 ```lua
 gnoblin.configure {
@@ -9,80 +13,40 @@ gnoblin.configure {
             binding = "<Super>Return",
             command = {"ptyxis", "--new-window"},
         },
-        screenshot = {
+        close_window = {
             action = {
-                schema = "org.gnome.shell.keybindings",
-                key = "show-screenshot-ui",
+                schema = "org.gnome.desktop.wm.keybindings",
+                key = "close",
             },
-            binding = {"Print"},
+            binding = {"<Super>q"},
         },
     },
 }
 ```
 
-Use `command` for a program shortcut or `action` for a built-in GNOME or
-Mutter action. An action has a `schema` and `key`; `schema` must be one of the
-four schema IDs below, and `key` must be a key in that schema. Built-in actions
-require a list of bindings; use an empty list to disable the action. Command
-shortcuts use one binding string and an argv array. They run on key press by
-default; set `trigger = "release"` to run when the accelerator is released.
-Bare `"Super"` bindings always run on release because Mutter resolves them
-after checking that no other key joined the chord. Release triggering works
-with any supported command accelerator, including Alt, Control, Shift and
-Super combinations.
+Use exactly one of `command` or `action`. A command uses one GTK accelerator
+and a nonempty argument array; Gnoblin runs it directly, without shell
+expansion. An action uses a GSettings schema and key, plus a list of
+accelerators. It can also use a short name such as `"wm.close"` or
+`"gnome:shell.show_screenshot_ui"`. The groups are `wm`, `gnome:shell`,
+`mutter` and `wayland`. An empty binding list disables that action. Find keys
+with `gsettings list-keys SCHEMA` and read a description with
+`gsettings describe SCHEMA KEY`; available keys vary by GNOME version.
 
-| Field           | Values                   | Default   |
-| --------------- | ------------------------ | --------- |
-| `trigger`       | `"press"` or `"release"` | `"press"` |
-| `capture_input` | Boolean                  | `false`   |
+| Field           | Accepted values                                                      | Default and effect                                                                       |
+| --------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `binding`       | GTK accelerator string for a command; array of strings for an action | Required. The key or keys that invoke the entry.                                         |
+| `command`       | Nonempty array of strings                                            | Required when `action` is absent. Runs the first item with remaining items as arguments. |
+| `action`        | `"group.key"` or `{schema = "…", key = "…"}`                         | Required when `command` is absent. Selects a built-in GNOME keybinding.                  |
+| `trigger`       | `"press"` or `"release"`                                             | `"press"`; command shortcuts only. Bare `"Super"` runs on release.                       |
+| `capture_input` | Boolean                                                              | `false`; buffers typing until an integrated popup reports focus.                         |
+| `enable`        | Boolean                                                              | `true`; set to `false` to disable an imported entry.                                     |
 
-`trigger` applies to command shortcuts. `capture_input = true` separately
-buffers typing until an integrated popup reports focus through the
-[compositor bridge](/compositor-bridge#bare-super-and-buffered-typing). See
-the [shortcuts guide](/guides/shortcuts) for key names, conflicts and examples.
-
-GNOME passes a GSettings object and a key name separately when registering a
-keybinding. Gnoblin's `action` table follows that shape. See the
-[Mutter keybinding API](https://gnome.pages.gitlab.gnome.org/mutter/meta/method.Display.add_keybinding.html).
-
-| GSettings schema                       | Purpose           | Example key          |
-| -------------------------------------- | ----------------- | -------------------- |
-| `org.gnome.desktop.wm.keybindings`     | Window management | `close`              |
-| `org.gnome.shell.keybindings`          | GNOME Shell       | `show-screenshot-ui` |
-| `org.gnome.mutter.keybindings`         | Mutter            | `toggle-tiled-left`  |
-| `org.gnome.mutter.wayland.keybindings` | Wayland           | `restore-shortcuts`  |
-
-Use the exact schema ID and key spelling shown by GSettings. The old string
-form, such as `action = "wm.close"`, remains supported for existing configs.
-
-The available actions depend on the installed GNOME version. List the keys in
-the matching schema to find actions:
-
-```sh
-gsettings list-keys org.gnome.desktop.wm.keybindings
-gsettings list-keys org.gnome.shell.keybindings
-gsettings list-keys org.gnome.mutter.keybindings
-gsettings list-keys org.gnome.mutter.wayland.keybindings
-```
-
-GSettings prints native key names. Copy the schema and key into the `action`
-table. To read a key's description, run `gsettings describe SCHEMA KEY`, such
-as:
-
-```sh
-gsettings describe org.gnome.desktop.wm.keybindings close
-gsettings describe org.gnome.shell.keybindings show-screenshot-ui
-```
-
-These commands list GNOME actions and descriptions; they do not show the
-binding currently configured by Gnoblin. Gnoblin applies active bindings from
-the Lua config.
-
-## Built-in action catalog
-
-This catalog lists the keys in the GNOME 51 schemas shipped with Gnoblin. Use a
-key with the schema ID in the `action` table. Other GNOME versions can add,
-remove, or rename keys; use the commands above to check your system.
+`trigger` applies to command shortcuts. Bare `"Super"` runs on release. Set
+`capture_input = true` to buffer typing until an integrated popup reports
+focus through the [compositor bridge](/compositor-bridge#bare-super-and-buffered-typing).
+See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and
+examples.
 
 ### Window management — `org.gnome.desktop.wm.keybindings`
 

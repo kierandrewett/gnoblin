@@ -1,4 +1,4 @@
-# Window menu
+# window_menu
 
 [Configuration reference](/config/configure)
 

@@ -1,4 +1,4 @@
-# Permissions
+# permissions
 
 [Configuration reference](/config/configure)
 
@@ -126,12 +126,6 @@ Frontend-cached permissions may bypass the backend.
 
 `access` cannot distinguish camera, microphone and location requests.
 [Protocol settings](/guides/session_settings#protocol-settings) are separate.
-
-## Older grants
-
-Old `portal-grants` files no longer grant access. Inspect or remove them with
-`gnoblinctl grant list` and `gnoblinctl grant revoke`.
-There is no automatic conversion to regex rules.
 
 Developer checks: `node tests/permissions.test.mjs` and
 `tests/test-permissions-live.py` in a private session with the patched backend.

@@ -1,9 +1,16 @@
 # gnoblin.configure.layer_shell
 
-Settings for Gnoblin's layer-shell session behavior.
+Configure how Gnoblin handles an active window when a layer-shell client opens.
+Changes apply at the next login.
 
-| Setting                  | Value   | Default | Applies    |
-| ------------------------ | ------- | ------- | ---------- |
-| `preserve_active_window` | Boolean | `true`  | Next login |
+| Setting                  | Values  | Default | Effect                                                                                                              |
+| ------------------------ | ------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `preserve_active_window` | Boolean | `true`  | Keeps the active application window focused when a layer-shell surface opens. Set `false` to allow focus to change. |
+
+```lua
+gnoblin.configure {
+    layer_shell = {preserve_active_window = true},
+}
+```
 
 See the [layer-shell protocol catalog](/wayland-protocols).

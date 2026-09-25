@@ -1,38 +1,25 @@
-# Window state shortcuts
+# window_state_shortcuts
 
 [Configuration reference](/config/configure)
 
 Bind Super+Down to restore a maximised/snapped window first, then minimise it
 on a second press.
 
-## 1. Release the existing binding
+## Configure the binding
 
-Add this to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)` lines,
-then run `gnoblinctl config reload`:
+`keybindings.wm` selects Mutter's window-manager action group. `minimize` and
+`unmaximize` are GSettings action names. Empty lists clear their bindings.
+Action names depend on the installed GNOME version; list them with
+`gsettings list-keys org.gnome.desktop.wm.keybindings`. See the
+[keybinding reference](/config/configure/keybindings#find-an-action).
+
+Add this to `~/.config/gnoblin/init.lua` after any `gnoblin.load(...)` lines:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {
-        disable_minimize = {
-            action = {schema = "org.gnome.desktop.wm.keybindings", key = "minimize"},
-            binding = {},
-        },
-        disable_unmaximize = {
-            action = {schema = "org.gnome.desktop.wm.keybindings", key = "unmaximize"},
-            binding = {},
-        },
+    keybindings = {
+        wm = {minimize = {}, unmaximize = {}},
     },
-}
-```
-
-These empty lists release the built-in actions before the new command is bound.
-
-## 2. Add the shortcut
-
-Append this and reload again:
-
-```lua
-gnoblin.configure {
     shortcuts = {
         restore_or_minimize = {
             binding = "<Super>Down",
@@ -41,6 +28,8 @@ gnoblin.configure {
     },
 }
 ```
+
+Run `gnoblinctl config reload` to apply the change.
 
 Press Super+Down on a maximised or snapped window to return it to its previous
 size. Press it again to minimise. On an ordinary floating window, the first

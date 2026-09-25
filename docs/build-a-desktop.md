@@ -49,8 +49,8 @@ gnoblin.configure {
 
 _Waybar above the stock Files app in a disposable Gnoblin profile._
 
-The cursor setting requires the Adwaita Hyprcursor theme; install it using the
-[cursor guide](/guides/cursors).
+Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cursors)
+to select it or use another installed theme.
 
 Capture this example from the checkout with
 `scripts/capture-doc-examples.sh desktop`. It uses a disposable config and
@@ -62,10 +62,9 @@ shortcut's existing name when changing its command. [Load order and merging](/gu
 explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
-file. `gnoblinctl config reload` reports errors and applies a valid edit.
-Autostart launches each named command once per login. Adding a new name during
-a reload starts it, while disabling or removing one does not stop a running
-process. See the [autostart guide](/guides/autostart) for details.
+file. Run `gnoblinctl config reload` to apply edits; Gnoblin reports any
+configuration errors. See the [autostart guide](/guides/autostart) for launch
+timing and named entries.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic

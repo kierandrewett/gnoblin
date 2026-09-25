@@ -8,8 +8,7 @@ it does not launch the application.
 Launch feedback is built into the Gnoblin session. The CLI and shell clients
 can use it without installing a user script.
 
-It uses the compositor's themed wait cursor. Older runtimes use an
-input-transparent cursor overlay. Application focus is unchanged.
+It uses the compositor's themed wait cursor. Application focus is unchanged.
 
 ## Use the CLI
 

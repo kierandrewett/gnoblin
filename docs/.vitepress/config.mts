@@ -50,6 +50,7 @@ export default defineConfig({
                         link: "/config/configure",
                         items: [
                             { text: "shell", link: "/config/configure/shell" },
+                            { text: "keybindings", link: "/config/configure/keybindings" },
                             { text: "window_management", link: "/config/configure/window_management" },
                             { text: "compositor", link: "/config/configure/compositor" },
                             {
@@ -72,12 +73,13 @@ export default defineConfig({
                         ],
                     },
                     { text: "gnoblin.window_rule", link: "/config/window_rule" },
-                    { text: "gnoblin.animation", link: "/config/animation" },
                     { text: "gnoblin.permission_rule", link: "/config/permission_rule" },
+                    { text: "gnoblin.animation", link: "/config/animation" },
                     { text: "gnoblin.config", link: "/config/config" },
                     { text: "gnoblin.load", link: "/config/load" },
                     { text: "gnoblin.snapshot", link: "/config/snapshot" },
                     { text: "gnoblin.array", link: "/config/array" },
+                    { text: "Lua events", link: "/config/lua-events" },
                 ],
             },
             {
@@ -106,35 +108,14 @@ export default defineConfig({
                 link: "/recipes/",
                 collapsed: true,
                 items: [
-                    {
-                        text: "Desktop setup",
-                        collapsed: true,
-                        items: [
-                            { text: "Build a small desktop", link: "/recipes/small-desktop" },
-                            { text: "Organize a growing config", link: "/recipes/organize-config-files" },
-                        ],
-                    },
-                    {
-                        text: "Input workflows",
-                        collapsed: true,
-                        items: [
-                            { text: "Set up a laptop for two keyboard layouts", link: "/recipes/laptop-input" },
-                            { text: "Set up a pen display", link: "/recipes/pen-display-workflow" },
-                        ],
-                    },
-                    {
-                        text: "Windows and workspaces",
-                        collapsed: true,
-                        items: [{ text: "Set up a focused writing workspace", link: "/recipes/writing-workspace" }],
-                    },
-                    {
-                        text: "Privacy and accessibility",
-                        collapsed: true,
-                        items: [
-                            { text: "Prepare remote support access", link: "/recipes/remote-support" },
-                            { text: "Make pointer feedback easier to see", link: "/recipes/pointer-feedback" },
-                        ],
-                    },
+                    { text: "Complete starter config", link: "/recipes/complete-starter-config" },
+                    { text: "Add a shortcut", link: "/recipes/add-a-shortcut" },
+                    { text: "Dim unfocused windows", link: "/recipes/dim-unfocused-windows" },
+                    { text: "Round application windows", link: "/recipes/round-application-windows" },
+                    { text: "Turn off layer animations", link: "/recipes/turn-off-layer-animations" },
+                    { text: "Request a Gnoblin titlebar", link: "/recipes/request-a-titlebar" },
+                    { text: "Combine window rules", link: "/recipes/combine-window-rules" },
+                    { text: "Split a config into files", link: "/recipes/split-config-into-files" },
                 ],
             },
             {

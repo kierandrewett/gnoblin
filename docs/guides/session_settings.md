@@ -1,4 +1,4 @@
-# Session settings
+# session_settings
 
 [Configuration reference](/config/configure)
 
@@ -53,8 +53,9 @@ Default: `true`. **Requires logout and login.**
 
 When a launcher requests exclusive keyboard focus, typing goes to the launcher.
 With this setting enabled, the application underneath keeps its active
-appearance, so its titlebar and effects do not switch to their unfocused style.
-Typing still goes only to the launcher.
+appearance: its titlebar and effects do not switch to their unfocused style.
+
+The launcher still receives all typing.
 
 Set `false` to let exclusive layers deactivate the application beneath them.
 On-demand focus, passive bars and normal application menus are unchanged.
@@ -103,7 +104,6 @@ interfaces when the session starts and cannot remove them during config reload.
 | `ext_idle_notify`                 | Idle detection                     |
 | `wlr_gamma_control`               | Gamma and colour temperature       |
 | `wlr_output_power_management`     | Display power                      |
-| `ext_session_lock`                | Secure session locking             |
 | `ext_background_effect_v1`        | Client-requested background blur   |
 | `xdg_decoration`                  | Client/server titlebar negotiation |
 | `window_frame_renderer`           | External frame renderer service    |

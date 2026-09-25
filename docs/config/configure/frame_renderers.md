@@ -1,10 +1,14 @@
 # gnoblin.configure.frame_renderers
 
-Register a frame renderer by name, then select it in a window rule. Names can
-contain up to 64 letters, numbers, `_` or `-`; `native` is reserved. Each value
-is an array of 1–32 strings: the first item is the executable, and later items
-are passed to it unchanged. Gnoblin accepts an absolute executable path or a
-command found on the compositor's `PATH`.
+Register a frame renderer by name, then select it in a window rule.
+
+| Field         | Accepted values                                                 | Default and effect                                                                                                                    |
+| ------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Renderer name | 1–64 letters, numbers, `_` or `-`; unique; `native` is reserved | User-defined name referenced by a window rule.                                                                                        |
+| Command       | Array of 1–32 strings                                           | Required. First item is an absolute executable path or a command on the compositor's `PATH`; remaining items are passed as arguments. |
+
+Gnoblin starts the configured renderer when the config loads. Updating a
+renderer restarts it during config reload.
 
 ```lua
 gnoblin.configure {

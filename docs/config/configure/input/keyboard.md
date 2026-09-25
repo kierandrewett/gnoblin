@@ -13,15 +13,17 @@ gnoblin.configure {
 }
 ```
 
-| Field                                               | Values                                   |
-| --------------------------------------------------- | ---------------------------------------- |
-| `repeat`, `remember_numlock_state`, `numlock_state` | Boolean                                  |
-| `delay`, `repeat_interval`                          | Integer from `1` to `10000` milliseconds |
-| `xkb_options`                                       | Array of XKB option strings              |
+| Field                    | Values                      | Default                    | Effect                                                               |
+| ------------------------ | --------------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `repeat`                 | Boolean                     | Current GNOME/Mutter value | Enables or disables key repeat.                                      |
+| `delay`                  | Integer, 1–10000 ms         | Current GNOME/Mutter value | Time a key must be held before repeating starts.                     |
+| `repeat_interval`        | Integer, 1–10000 ms         | Current GNOME/Mutter value | Time between repeated key presses.                                   |
+| `remember_numlock_state` | Boolean                     | Current GNOME/Mutter value | Remembers the Num Lock LED state between sessions.                   |
+| `numlock_state`          | Boolean                     | Current GNOME/Mutter value | Temporarily sets the Num Lock LED state while this config is active. |
+| `xkb_options`            | Array of XKB option strings | Current option list        | Replaces the active option list.                                     |
 
-`delay` is how long a key must be held before it starts repeating;
-`repeat_interval` is the time between repeats. Set `repeat = false` to turn
-repeat off.
+Changes apply on configuration reload. Set `repeat = false` to turn repeat
+off; the delay fields then have no effect.
 
 `xkb_options` replaces the active option list, so include every option you want
 to keep. Common values include:
