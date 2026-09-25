@@ -745,10 +745,17 @@ export class Component {
             ),
         );
         this._permissionPolicy = { default: "deny", rules: [] };
-        this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
-        this._mutterEvents = new MutterEventForwarder(this._config);
+        this._config = new ConfigFile(
+            undefined,
+            (next) => this._applyConfig(next),
+            () => {
+                this._mutterEvents?.destroy();
+                this._mutterEvents = new MutterEventForwarder(this._config);
+            },
+        );
         activeConfig = this._config;
         this._config.start();
+        this._mutterEvents = new MutterEventForwarder(this._config);
         this._configFocusId = global.display.connect("notify::focus-window", () => {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
             this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);

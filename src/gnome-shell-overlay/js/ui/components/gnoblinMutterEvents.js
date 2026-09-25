@@ -125,25 +125,28 @@ export class MutterEventForwarder {
         for (const id of signalIds) {
             const query = GObject.signal_query(id);
             if (!query?.signal_name || query.signal_name === "gnoblin-config-event") continue;
+            if (!this._config.wantsEvent(`${source}.${query.signal_name}`)) continue;
             this._watchSignal(source, object, query);
         }
 
         // GObject's inherited notify signal is not returned by signal_list_ids().
-        this._connect(object, "notify", (_object, property) => {
-            const name = property?.name ?? "";
-            let value;
-            try {
-                value = name ? object.get_property(name.replaceAll("_", "-")) : undefined;
-            } catch {
-                value = undefined;
-            }
-            this._dispatch(source, "notify", object, [value], [property?.value_type]);
-        });
+        if (this._config.wantsEvent(`${source}.notify`))
+            this._connect(object, "notify", (_object, property) => {
+                const name = property?.name ?? "";
+                let value;
+                try {
+                    value = name ? object.get_property(name.replaceAll("_", "-")) : undefined;
+                } catch {
+                    value = undefined;
+                }
+                this._dispatch(source, "notify", object, [value], [property?.value_type]);
+            });
     }
 
     _watchSignal(source, object, query) {
         const signal = query.signal_name;
         const event = `${source}.${signal}`;
+        if (!this._config.wantsEvent(event)) return;
         const parameterTypes = query.param_types ?? [];
         if (query.return_type?.name === "void") {
             this._connect(object, signal, (emitter, ...args) => {

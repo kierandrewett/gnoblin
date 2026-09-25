@@ -507,9 +507,9 @@ def run_inside() -> int:
                 lambda: frame_button_is_pickable(window_id, x, y),
                 f"close button hit target on window {window_id}",
             )
-            # Force a pointer enter even when a resize or unminimize moved the
-            # frame underneath the virtual pointer without changing its coords.
-            send_pointer("move", 0, 0)
+            # Move from the titlebar into the button so Clutter sees a real
+            # action transition even if the pointer was already over the button.
+            send_pointer("move", state["x"] + state["width"] // 2, y)
             time.sleep(0.05)
             send_pointer("move", x, y)
             try:
