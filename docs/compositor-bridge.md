@@ -241,11 +241,22 @@ own bare Super; remove a duplicate Lua command binding first.
 Super activates on release, excluding chords. With capture enabled, send:
 
 ```json
+{ "op": "shortcut-input", "name": "search", "state": "prepared" }
 { "op": "shortcut-input", "name": "search", "state": "ready" }
 ```
 
-Send ready only after the layer and text field have keyboard focus.
-Send `state: "closed"` when dismissed. The binding ID is the handoff name.
+Use these states in order for an overlay that accepts typing:
+
+| State      | Send it when                                                 | Effect                                                |
+| ---------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| `prepared` | The overlay exists and its text field has focus.             | Releases the compositor grab; input stays buffered.   |
+| `ready`    | Its Wayland window is active and can receive keyboard input. | Replays buffered keys to the focused client in order. |
+| `closed`   | The overlay closes or stops accepting input.                 | Cancels pending handoff and clears the ready state.   |
+
+The buffer expires after three seconds if the handoff never becomes ready.
+Do not send these states while the session is locked. Bingux uses this
+handoff for its search overlay; another shell can send the same operations.
+The binding ID is the handoff name.
 
 ## Windows and controls
 
