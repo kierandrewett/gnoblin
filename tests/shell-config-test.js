@@ -13,8 +13,10 @@ function assert(condition, message) {
 }
 
 assert(
-    Object.entries(DEFAULTS).every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
-    "missing Lua keys use defaults",
+    Object.entries(DEFAULTS)
+        .filter(([key]) => key !== "autostart")
+        .every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
+    "missing Lua keys use defaults (autostart is loaded from the document)",
 );
 const cursorDefaults = parseDocument({}).cursor;
 assert(
