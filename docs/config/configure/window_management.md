@@ -28,7 +28,9 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 ## Focus behavior
 
-`focus_mode` controls how pointer movement changes focus:
+`focus_mode` controls how pointer movement changes focus. See
+[GNOME's focus-mode schema entry](https://github.com/GNOME/gsettings-desktop-schemas/blob/main/schemas/org.gnome.desktop.wm.preferences.gschema.xml.in#L809-L828)
+for the upstream setting description.
 
 - `"click"` focuses a window when you click it. Moving the pointer does not
   change focus.
@@ -41,7 +43,8 @@ Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
 
 Mutter applies `focus_new_windows` when a new window opens. Its standard
-policy has two choices:
+policy has two choices. The [GNOME Shell team's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
+explains why the modes differ.
 
 - `"smart"` lets an eligible new window take focus if no newer user input has
   gone to the currently focused window since the app started it. For example,
@@ -50,9 +53,10 @@ policy has two choices:
   descendant of the focused window, such as a dialog opened by that app.
   Other new windows stay unfocused.
 
-In a Gnoblin session, Gnoblin's Mutter patch bypasses this policy to honor
-application activation requests. As a result, `"smart"` and `"strict"` do not
-currently change new-window focus in that session.
+In a Gnoblin session, [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
+bypasses this policy to honor application activation requests. As a result,
+`"smart"` and `"strict"` do not currently change new-window focus in that
+session.
 
 Workspace IDs must be unique and match
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Gnoblin generates a session-only ID for
