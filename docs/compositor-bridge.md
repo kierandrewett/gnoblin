@@ -36,9 +36,11 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
-The `hello.version` field is the socket protocol version. Check `features`
-before using optional operations. These include `ui-session`, bare Super, blur
-regions and layer animation policy.
+The `hello.version` field is the socket protocol version. This bridge advertises
+`ui-sessions`, `switcher-fallback` and `overlay-shortcut`; it adds
+`blur-regions` and `layer-animation-policy` when the running build supports
+them. Check the exact feature name before using an optional capability. For
+example, bare Super requires `overlay-shortcut`.
 
 A validation error has an `error` event. If a valid `command` request fails,
 the response also carries its request `id`. Malformed JSON or excessive input
