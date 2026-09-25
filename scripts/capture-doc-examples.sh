@@ -6,9 +6,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | bingux-files | quickshell-files | window-effects) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -119,6 +119,13 @@ gnoblin.window_rule {
         mode = "force",
         shadow = {x = 0, y = 12, blur = 32, spread = 0, opacity = 0.28},
     },
+}
+LUA
+fi
+if [ "$example" = waybar-mako-notification ]; then
+    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    shell = {notifications = false},
 }
 LUA
 fi
@@ -245,6 +252,10 @@ case "$example" in
         capture_path="$output_dir/gnoblin-waybar-notifications.png"
         app_command='waybar & mako & sleep 2; gnome-control-center notifications'
         ;;
+    waybar-mako-notification)
+        capture_path="$output_dir/gnoblin-waybar-mako-notification.png"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url' & sleep 6; notify-send --expire-time=30000 --app-name='Calendar' --icon=appointment-soon 'Project review' 'Starts in 10 minutes'"
+        ;;
     window-effects)
         capture_path="$output_dir/gnoblin-window-effects.png"
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
@@ -283,6 +294,12 @@ esac
 if [ "$example" = waybar-settings ] || [ "$example" = waybar-notifications ]; then
     command -v gnome-control-center >/dev/null || {
         echo "gnome-control-center is required for this scene" >&2
+        exit 1
+    }
+fi
+if [ "$example" = waybar-mako-notification ]; then
+    command -v notify-send >/dev/null || {
+        echo "notify-send is required for this scene" >&2
         exit 1
     }
 fi

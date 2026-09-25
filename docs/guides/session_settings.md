@@ -41,6 +41,10 @@ _GNOME Settings shows per-app notification controls in this Waybar session._
 
 With Mako running, notifications appear through its own layer-shell surface.
 
+![A Calendar reminder displayed by Mako above Firefox, with Waybar](../images/gnoblin-waybar-mako-notification.png)
+
+_Mako displays the notification while Waybar and Firefox remain separate clients._
+
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
