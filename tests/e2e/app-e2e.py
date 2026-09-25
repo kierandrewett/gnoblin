@@ -290,7 +290,7 @@ def app_environment() -> dict[str, str]:
         5000,
         None,
     )
-    compositor_environment = reply.unpack()[0].unpack()
+    compositor_environment = reply.unpack()[0]
     display = compositor_environment.get("DISPLAY")
     xauthority = compositor_environment.get("XAUTHORITY")
     if not display or not xauthority:
