@@ -5,10 +5,19 @@ Use Nixpkgs unstable for the current GNOME dependency stack.
 
 ## Stable channels
 
-Gnoblin does not currently provide installable packages for NixOS 25.05,
-25.11, or 26.05. GNOME 51 requires newer integration libraries than those
-channels provide. In particular, 25.05 lacks `libglycin`; 25.11 has Wayland
-1.24; and 26.05 has Wayland 1.25, while Gnoblin requires Wayland 1.26.
+The default flake package follows Nixpkgs unstable. NixOS 25.05 and 25.11 do
+not currently have installable packages: 25.05 lacks `libglycin` and multiple
+GNOME 51 dependencies, while 25.11 also lacks several required dependency
+floors.
+
+NixOS 26.05 has an experimental package and module. It builds Wayland 1.26 and
+the matching scanner privately for Gnoblin's Mutter; neither package replaces
+the host Wayland or stock GNOME. The pinned private Mutter build passes.
+
+The full Shell/runtime build, login, coexistence, and removal have not passed.
+Treat this as a test path, not supported session installation. Its separate
+module is `inputs.gnoblin.nixosModules.nixos_26_05` and selects
+`inputs.gnoblin.packages.x86_64-linux.gnoblin-nixos-26_05`.
 
 The flake exposes the exact pinned-channel assessment for integrators:
 

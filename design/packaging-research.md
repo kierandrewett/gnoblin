@@ -18,12 +18,12 @@ session services, and update lifecycle.
   dependency or package-splitting changes that create runtime failures. KDE
   neon is a separate Ubuntu-LTS-based channel; it is not one binary package
   working unchanged on every distribution.
-- Hyprland's install matrix is deliberately honest about dependency limits:
-  Fedora offers distro packages for recent versions and a COPR for faster
-  updates; openSUSE packages it in Tumbleweed but not Leap because Leap's
-  dependencies are too old; Debian Bookworm is unavailable and its packaged
-  version is described as outdated; Arch users use pacman/AUR; NixOS has a
-  native module; other systems can build from source.
+- Hyprland explicitly says it officially runs and tests Arch and NixOS; the
+  remaining distribution instructions are community-maintained and carry no
+  support guarantee. Its recommended installation path is the distribution's
+  package manager because the compositor and its dependencies are tightly
+  coupled. This is a useful support-policy model: keep an honest tested target
+  set rather than implying that build instructions equal support.
 - openSUSE Build Service (OBS) is an upstream-facing option for native package
   builds. It builds and publishes distribution-specific binary packages in
   clean build environments for several RPM and DEB distributions. It shares
@@ -32,6 +32,10 @@ session services, and update lifecycle.
 - NixOS uses a separate package/module path. Nixpkgs stable channels are
   released twice a year, while `nixos-unstable` is a rolling channel; a flake
   pinned only to unstable does not establish compatibility with stable releases.
+- Flatpak solves application distribution against a shared runtime, but a
+  compositor still needs a native session entry, display-manager integration,
+  device access, host session services, and package coexistence. It is not a
+  replacement for native desktop-session packages.
 
 ### Research sources
 
@@ -39,6 +43,7 @@ session services, and update lifecycle.
 - [KDE packaging recommendations](https://community.kde.org/Distributions/Packaging_Recommendations)
 - [KDE distribution list](https://community.kde.org/Distributions)
 - [Hyprland installation guidance](https://wiki.hypr.land/Getting-Started/Installation)
+- [GNOME platform components and runtimes](https://developer.gnome.org/documentation/introduction/components.html)
 - [Open Build Service](https://openbuildservice.org/)
 - [Nixpkgs channel model](https://wiki.nixos.org/wiki/Nixpkgs)
 - [Fedora release lifecycle](https://fedoraproject.org/wiki/User:Jkurik/Fedora_Release_Life_Cycle)
@@ -51,14 +56,14 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                                               | Missing coverage                                                                 |
-| -------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Fedora   | COPR; Fedora 43, 44, 45                                                    | EL adapter; complete release install/coexistence and graphical-session proof     |
-| Debian   | Signed APT archive; Debian 13                                              | Debian 11/12 host runtime and package compatibility                              |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                 | Ubuntu 22.04 host runtime compatibility                                          |
-| Arch     | Self-contained PKGBUILD, deterministic release source bundle, release gate | First release-gate run, graphical-session proof, repository publication          |
-| openSUSE | Tumbleweed RPM specs and clean-image dependency resolver                   | Internal RPM build chain, OBS publication, install/coexistence and session proof |
-| NixOS    | Pinned package/module evaluation for 25.05, 25.11, 26.05 and unstable      | Stable-channel host floors; build, graphical-session and coexistence proof       |
+| Family   | Present path                                                               | Missing coverage                                                                                                          |
+| -------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Fedora   | COPR; Fedora 43, 44, 45                                                    | EL adapter; complete release install/coexistence and graphical-session proof                                              |
+| Debian   | Signed APT archive; Debian 13                                              | Debian 11/12 host runtime and package compatibility                                                                       |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                 | Ubuntu 22.04 host runtime compatibility                                                                                   |
+| Arch     | Self-contained PKGBUILD, deterministic release source bundle, release gate | First release-gate run, graphical-session proof, repository publication                                                   |
+| openSUSE | Tumbleweed RPM specs, clean-image resolver and private package-chain build | Install/coexistence retry after private typelib dependency fix; OBS publication and session proof                         |
+| NixOS    | Pinned package/module paths for 25.05, 25.11, 26.05 and unstable           | 26.05 private Wayland/Mutter slice builds; full Shell/session and coexistence proof; older stable channels remain blocked |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical
@@ -104,24 +109,27 @@ removes Gnoblin, then checks stock GNOME remains. Nix's
 to stock Nix packages, but it is an evaluation/composition check rather than a
 graphical login/removal test.
 
-The Nix flake has isolated, lock-file-pinned evaluation inputs for
-`nixos-25.05`, `nixos-25.11`, `nixos-26.05`, and `nixos-unstable`, still only
-on x86_64 Linux. Its `gcc16Stdenv` argument falls back to a stable channel's
-default `stdenv`: hyprcursor and its C++ closure come from that same channel,
-so this keeps Mutter and hyprcursor in one compiler ABI rather than mixing
-GCC releases.
+The Nix flake has isolated, lock-file-pinned inputs for `nixos-25.05`,
+`nixos-25.11`, `nixos-26.05`, and `nixos-unstable`, still only on x86_64 Linux.
+Its `gcc16Stdenv` argument falls back to a stable channel's default `stdenv`:
+hyprcursor and its C++ closure come from that same channel, so Mutter and
+hyprcursor use one compiler ABI. NixOS 26.05 now has a separate experimental
+package and module. A private Wayland 1.26 and matching scanner feed only its
+private Mutter build; the default rolling package and host package set are
+unchanged.
 
 On 2026-09-25, 25.05 cannot evaluate because it lacks `libglycin`; it also
-falls below the GNOME 51 floors for GLib, GJS, Wayland, Wayland Protocols, and
-libinput. The 25.11 and 26.05 package/module evaluations pass with their
-channel compiler, but builds remain blocked by Wayland 1.24 and 1.25,
-respectively, where Gnoblin requires 1.26. Version floors also block 25.11's
-Wayland Protocols and libinput. Unstable is the only evaluated target without
-one of these recorded host-floor blockers. A real 25.11 build was attempted
-and Mutter stopped at the Wayland 1.26 requirement, confirming the preflight.
-These results do not prove a graphical session or GNOME coexistence. The
-workflow records the exact evaluation and floor results so a channel change
-cannot silently turn a known blocker into an unexamined result.
+falls below the GNOME 51 floors for GLib, GJS, Wayland, Wayland Protocols,
+libinput, and PipeWire. NixOS 25.11 misses GJS, Wayland, Wayland Protocols,
+libinput, and PipeWire floors. Its pinned package build stopped at Wayland
+1.26. NixOS 26.05 meets the other recorded floors but ships Wayland 1.25.
+The separate adapter now builds pinned Wayland 1.26, its matching scanner, and
+Gnoblin's private Mutter 51 package on 26.05; its full Shell/runtime derivation
+has not yet been built. The rolling output remains unchanged. Unstable is the
+only target without a recorded host-floor blocker. None of these results prove
+a graphical session, stock GNOME coexistence, or removal. The workflow records
+channel evaluations and builds the small private-compositor slice so channel
+changes cannot hide blockers or broaden overrides accidentally.
 
 Fedora packaging supports Fedora COPR chroots but has no EL publication target.
 Its `%rhel` condition only omits an optional portal helper; it does not adapt
@@ -129,9 +137,11 @@ the Fedora package names, macros, or dependency versions for EL. Arch now has
 a single-package source recipe and a deterministic release bundle; its release
 workflow gates publication on `makepkg` and install/remove checks, pending the
 first release run. Tumbleweed now has SUSE-native specs and clean-image
-dependency-resolution CI. Specs parse and Zypper resolves both build and host
-requirements, but no internal RPM chain has been built or installed yet, so
-coexistence, graphical login, and removal remain unverified.
+dependency-resolution CI. The complete RPM chain builds and passes private
+path isolation. Its first GNOME co-install attempt exposed an automatically
+generated dependency on Gnoblin's private `GnomeQR` typelib; the spec now filters
+that private requirement, and the install/coexistence/removal gate is rerunning.
+Graphical login remains unverified.
 
 This means coexistence is a package-layout invariant, not yet a demonstrated
 cross-distro guarantee. Each target gate should install the stock desktop

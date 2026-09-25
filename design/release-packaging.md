@@ -139,6 +139,22 @@ release pipeline or COPR publication changes.
 - Arch's generated `PKGBUILD` now stages the privately built Mutter into a temporary build prefix before configuring Shell. It feeds staged pkg-config, GIR, and typelib paths to Shell and checks that headers and libraries resolve from that private stage. This addresses the exact `mutter-clutter-51` configure failure from Verify run `36148646223`; the corrected full Arch package run is still required.
 - Stable NixOS channel package attributes now fail early with recorded dependency blockers instead of implying support through `nixpkgs-unstable`. The 25.05, 25.11, and 26.05 channels remain unsupported for GNOME 51 pending viable dependency/runtime boundaries and package/install/coexistence evidence.
 
+- Commit `c54e3d4b` corrects the pinned GNOME 51 host floors to GJS 1.87.1
+  and Wayland Protocols 1.48, sourced directly from the exact Shell and Mutter
+  Meson commits. Its Tumbleweed job built the full private RPM chain and passed
+  the package-isolation check. Stock-GNOME co-install then found a generated
+  `typelib(GnomeQR)` dependency escaping from Gnoblin's private Shell tree;
+  commit `87bf1b61` filters that private typelib from Fedora and SUSE RPM
+  metadata and the co-install/removal job is rerunning. The Fedora 43, 44, and
+  45 clean source builds passed on `c54e3d4b`; Arch's release-style package
+  build is still running. These package checks do not cover graphical login.
+- The 26.05 Nix adapter now pins Wayland 1.26 and its matching scanner only in
+  the private Mutter closure, with a separate `gnoblin-nixos-26_05` package and
+  `nixosModules.nixos_26_05`. The default rolling package/module stays on its
+  existing channel. Nix flake evaluation, module selection, and the private
+  Mutter build pass; full Shell/runtime, GNOME coexistence, and graphical login
+  remain unverified. The public install guide labels this path experimental.
+
 ## Release flow
 
 1. Set the intended GNOME source pins in `gnome-versions.json` and the

@@ -13,6 +13,13 @@
     nixpkgs_25_11.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs_26_05.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+    # Keep the only 26.05 backport in Gnoblin's private compositor closure.
+    # The source and its content hash are pinned in flake.lock.
+    wayland-src = {
+      url = "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz";
+      flake = false;
+    };
+
     mutter-src = {
       url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
       flake = false;
@@ -84,18 +91,47 @@
         };
       };
       mkGnoblin =
-        pkgs:
-        pkgs.callPackage ./nix/package.nix {
-          gnoblinSrc = self.outPath;
-          mutterSrc = inputs.mutter-src.outPath;
-          gnomeShellSrc = inputs.gnome-shell-src.outPath;
-          gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
-          gvdbSrc = inputs.gvdb.outPath;
-          gvcSrc = inputs.gvc.outPath;
-          libshewSrc = inputs.libshew.outPath;
-          jasmineGjsSrc = inputs.jasmineGjs.outPath;
-          gnomeShell = pkgs.gnome-shell;
-          gnomeSession = pkgs.gnome-session;
+        pkgs: overrides:
+        pkgs.callPackage ./nix/package.nix (
+          {
+            gnoblinSrc = self.outPath;
+            mutterSrc = inputs.mutter-src.outPath;
+            gnomeShellSrc = inputs.gnome-shell-src.outPath;
+            gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
+            gvdbSrc = inputs.gvdb.outPath;
+            gvcSrc = inputs.gvc.outPath;
+            libshewSrc = inputs.libshew.outPath;
+            jasmineGjsSrc = inputs.jasmineGjs.outPath;
+            gnomeShell = pkgs.gnome-shell;
+            gnomeSession = pkgs.gnome-session;
+          }
+          // overrides
+        );
+      mkNixos26_05Gnoblin =
+        system:
+        let
+          pkgs = import nixpkgs_26_05 { inherit system; };
+          # Do not overlay the host package set. Only the private Mutter
+          # derivation receives this Wayland server/client implementation.
+          gnoblinWaylandSource = pkgs.wayland.overrideAttrs (_: {
+            version = "1.26.0";
+            src = inputs.wayland-src.outPath;
+          });
+          gnoblinWaylandScanner = pkgs.wayland-scanner.override {
+            wayland = gnoblinWaylandSource;
+          };
+          gnoblinWayland =
+            (pkgs.wayland.override {
+              wayland-scanner = gnoblinWaylandScanner;
+            }).overrideAttrs
+              (_: {
+                version = "1.26.0";
+                src = inputs.wayland-src.outPath;
+              });
+        in
+        mkGnoblin pkgs {
+          wayland = gnoblinWayland;
+          waylandScanner = gnoblinWaylandScanner;
         };
       assessChannel =
         system: channel:
@@ -106,7 +142,7 @@
           buildBlockers =
             nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
             ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
-            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.85.90") "gjs-below-1.85.90"
+            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.87.1") "gjs-below-1.87.1"
             ++ nixpkgs.lib.optional (
               !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
             ) "wayland-below-1.26"
@@ -114,8 +150,11 @@
               !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
             ) "wayland-protocols-below-1.48"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
-            ) "libinput-below-1.30";
+              !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.31.0"
+            ) "libinput-below-1.31"
+            ++ nixpkgs.lib.optional (
+              !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.6.0"
+            ) "pipewire-below-1.6";
         in
         {
           inherit
@@ -131,7 +170,7 @@
           assessment = assessChannel system channel;
         in
         if assessment.buildBlockers == [ ] then
-          mkGnoblin assessment.pkgs
+          mkGnoblin assessment.pkgs { }
         else
           throw ''
             Gnoblin does not currently provide an installable package for NixOS ${channel.release}.
@@ -156,7 +195,7 @@
               hasLibglycin
               buildBlockers
               ;
-            gnoblin = if hasLibglycin then mkGnoblin pkgs else null;
+            gnoblin = if hasLibglycin then mkGnoblin pkgs { } else null;
             moduleTest = channel.input.lib.nixosSystem {
               inherit system;
               modules = [
@@ -200,7 +239,8 @@
           pkgs = import nixpkgs { inherit system; };
         in
         rec {
-          gnoblin = mkGnoblin pkgs;
+          gnoblin = mkGnoblin pkgs { };
+          gnoblin-nixos-26_05 = mkNixos26_05Gnoblin system;
           default = gnoblin;
         }
       );
@@ -282,5 +322,10 @@
       };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };
+      nixosModules.nixos_26_05 = import ./nix/module.nix {
+        inherit self;
+        defaultPackage = system: self.packages.${system}.gnoblin-nixos-26_05;
+        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-26_05";
+      };
     };
 }
