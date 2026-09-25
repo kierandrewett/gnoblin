@@ -3,6 +3,7 @@
 %global _prefix /usr/lib/gnoblin
 %global _datadir %{_prefix}/share
 %global _includedir %{_prefix}/include
+%global debug_package %{nil}
 
 Name:           gnoblin-gsettings-desktop-schemas
 Version:        51.0

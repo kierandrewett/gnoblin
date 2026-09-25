@@ -4,6 +4,16 @@
 # dependency order and supplied by the eventual OBS project, not Tumbleweed.
 set -euo pipefail
 
+install=0
+case "${1:-}" in
+    "") ;;
+    --install) install=1 ;;
+    *)
+        echo "Usage: $0 [--install]" >&2
+        exit 2
+        ;;
+esac
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SPECS=(
     "$ROOT/packaging/opensuse/gsettings-desktop-schemas.spec"
@@ -30,7 +40,12 @@ if [[ -s "$requirements" ]]; then
     # zypper understands RPM capabilities such as pkgconfig(gtk4), including
     # their version constraints.  Do not turn this into a package-name list:
     # those names vary across Tumbleweed snapshots.
-    xargs -r -d '\n' zypper --non-interactive install --dry-run --no-recommends <"$requirements"
+    if ((install)); then
+        xargs -r -d '\n' zypper --non-interactive install --no-recommends <"$requirements"
+    else
+        xargs -r -d '\n' zypper --non-interactive install --dry-run --no-recommends <"$requirements"
+    fi
 fi
 
-printf 'PASS: openSUSE Tumbleweed repository BuildRequires resolve\n'
+printf 'PASS: openSUSE Tumbleweed repository BuildRequires %s\n' \
+    "$([[ $install == 1 ]] && echo installed || echo resolve)"

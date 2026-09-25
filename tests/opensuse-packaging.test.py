@@ -41,6 +41,18 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("--without gnoblin_stack", check)
         self.assertIn("install --dry-run --no-recommends", check)
 
+    def test_build_chain_respects_internal_dependency_order(self):
+        chain = (SPECS / "build-chain.sh").read_text()
+        self.assertLess(
+            chain.index("build gsettings-desktop-schemas.spec"),
+            chain.index("build mutter.spec --with gnoblin_stack"),
+        )
+        self.assertLess(
+            chain.index("build mutter.spec --with gnoblin_stack"),
+            chain.index("build gnome-shell.spec --with gnoblin_stack"),
+        )
+        self.assertIn("--allow-unsigned-rpm", chain)
+
 
 if __name__ == "__main__":
     unittest.main()
