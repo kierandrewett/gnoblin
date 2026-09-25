@@ -45,6 +45,11 @@ import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
+const CLUTTER_EVENT_NAMES = new Map(
+    Object.entries(Clutter.EventType)
+        .filter(([key]) => Number.isNaN(Number(key)))
+        .map(([key, value]) => [value, key]),
+);
 const SCHEMA_ID = "org.gnoblin.shell";
 const DISABLED_KEY = "disabled-features";
 const PORTAL_GRANT_KINDS = ["screen-cast", "remote-desktop"];
@@ -810,11 +815,6 @@ export class Component {
         });
         this._dispatchWindowEvent("focus_changed", global.display.focus_window);
         this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
-        try {
-            this._mutterEvents = new MutterEventForwarder(this._config);
-        } catch (error) {
-            logError(error, "gnoblin-control: Mutter event forwarding startup failed");
-        }
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -881,6 +881,24 @@ export class Component {
 
     disable() {
         this._finishAcceleratorCapture(null, "Shortcut capture cancelled because the shell is reloading");
+        if (this._configFocusId) {
+            global.display.disconnect(this._configFocusId);
+            this._configFocusId = 0;
+        }
+        if (this._configWindowId) {
+            global.display.disconnect(this._configWindowId);
+            this._configWindowId = 0;
+        }
+        if (this._configEventId) {
+            global.display.disconnect(this._configEventId);
+            this._configEventId = 0;
+        }
+        if (this._configInputId) {
+            global.stage.disconnect(this._configInputId);
+            this._configInputId = 0;
+        }
+        for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
+        this._eventWindows?.clear();
         // Script disposers can still use window rules, config and the event bus.
         if (this._scripts) {
             this._scripts.destroy();
@@ -1102,6 +1120,25 @@ export class Component {
         autostart.apply(next.autostart);
         this._permissionPolicy = next.permissions;
         Meta.prefs_set_gnoblin_cursor_config(next.cursor.theme, next.cursor.size);
+    }
+
+    _dispatchWindowEvent(event, window) {
+        if (!this._config) return;
+        this._config.dispatchEvent(event, {
+            app_id: window?.get_gtk_application_id() || "",
+            wm_class: window?.get_wm_class() || "",
+            title: window?.get_title() || "",
+        });
+    }
+
+    _watchEventWindow(window) {
+        if (this._eventWindows.has(window)) return;
+        const id = window.connect("unmanaged", () => {
+            this._dispatchWindowEvent("window_unmanaged", window);
+            this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
+            this._eventWindows.delete(window);
+        });
+        this._eventWindows.set(window, id);
     }
 
     // --- feature toggles ---
