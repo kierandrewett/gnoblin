@@ -312,7 +312,7 @@ let
         lgpl3Plus
         cc-by-sa-30
       ];
-      platforms = lib.platforms.x86_64;
+      platforms = [ "x86_64-linux" ];
     };
   };
 in
