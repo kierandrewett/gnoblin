@@ -1,0 +1,1 @@
+import{_ as o,o as i,c as a,a2 as n}from"./chunks/framework.D7WGirly.js";const h=JSON.parse('{"title":"Config API","description":"","frontmatter":{},"headers":[],"relativePath":"config.md","filePath":"config.md"}'),t={name:"config.md"};function s(c,e,r,d,l,g){return i(),a("div",null,[...e[0]||(e[0]=[n("",10)])])}const p=o(t,[["render",s]]);export{h as __pageData,p as default};
