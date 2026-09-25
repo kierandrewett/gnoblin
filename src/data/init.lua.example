@@ -62,16 +62,14 @@ gnoblin.configure {
             -- speed = 0.0, -- -1..1
             -- left_handed = false,
             -- natural_scroll = false,
-            -- accel_profile = "adaptive", -- "default", "flat", "adaptive", "custom"
-            -- accel_curve = {step = 1.0, points = {0.0, 1.0, 2.0, 4.0}},
+            -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
         },
         touchpad = {
             -- speed = 0.0, -- -1..1
             -- scroll_speed = 1.0, -- 0..2; 1 is the default, 0.5 is half speed
             -- left_handed = "mouse", -- "right", "left", "mouse"
             -- natural_scroll = true,
-            -- accel_profile = "adaptive", -- "default", "flat", "adaptive", "custom"
-            -- accel_curve = {step = 1.0, points = {0.0, 1.0, 2.0, 4.0}},
+            -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
             -- tap_to_click = false,
             -- tap_button_map = "default", -- "default", "lrm", "lmr"
             -- tap_and_drag = true,

@@ -8,7 +8,6 @@ import re
 from pathlib import Path
 import shutil
 import socket
-import subprocess
 import sys
 import time
 import uuid
@@ -54,12 +53,11 @@ def default_lua_config():
     raise CommandError("Default Lua config not found; install the Gnoblin session config package")
 
 
-def capture_accelerator(wait_seconds, command_runner=None):
+def capture_accelerator(wait_seconds, socket_path):
     """Ask Gnoblin to capture a key and return its GTK accelerator name."""
-    command_runner = subprocess.run if command_runner is None else command_runner
     print("Press a shortcut now; Escape cancels.", file=sys.stderr, flush=True)
-    result = dbus("CaptureAccelerator", "u", [wait_seconds], timeout=wait_seconds + 2, run=command_runner)
-    return result[0]
+    result = api_call("shortcut.capture", {"timeout": wait_seconds}, socket_path, wait_seconds + 2)
+    return result["accelerator"]
 
 
 def version_record(shell_version):
@@ -105,7 +103,7 @@ def parser():
         type=number(1, 60),
         default=argparse.SUPPRESS,
         metavar="SECONDS",
-        help="Request timeout (default: 5)",
+        help="Request timeout (default: 5; 30 for shortcut capture)",
     )
     common.add_argument("--socket", default=argparse.SUPPRESS, metavar="PATH", help="Compositor socket path")
     root = argparse.ArgumentParser(
@@ -219,6 +217,19 @@ def parser():
     workspace = commands.choices["workspace"]
     workspace_actions = workspace.add_subparsers(dest="action")
     add(workspace_actions, "list", "List workspaces")
+    create_workspace = add(workspace_actions, "create", "Create a workspace")
+    create_workspace.add_argument("--name", required=True, help="Display name")
+    create_workspace.add_argument("--id", help="Stable workspace ID")
+    create_workspace.add_argument("--activate", action="store_true", help="Switch to the new workspace")
+    rename_workspace = add(workspace_actions, "rename", "Rename a workspace")
+    rename_target = rename_workspace.add_mutually_exclusive_group(required=True)
+    rename_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    rename_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    rename_workspace.add_argument("--name", required=True, help="New display name")
+    remove_workspace = add(workspace_actions, "remove", "Remove a workspace")
+    remove_target = remove_workspace.add_mutually_exclusive_group(required=True)
+    remove_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    remove_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
     switch = add(workspace_actions, "switch", "Switch to an existing workspace")
     switch_target = switch.add_mutually_exclusive_group(required=True)
     switch_target.add_argument("workspace", nargs="?", type=number(1, 1024), help="Legacy shorthand for --number")
@@ -302,33 +313,6 @@ def parser():
     return root
 
 
-def dbus(method, signature="", arguments=(), service="org.gnoblin.Shell", timeout=5, run=subprocess.run):
-    path = "/" + service.replace(".", "/")
-    command = [
-        os.environ.get("GNOBLIN_BUSCTL", "busctl"),
-        "--user",
-        "--json=short",
-        f"--timeout={timeout}s",
-        "call",
-        service,
-        path,
-        service,
-        method,
-    ]
-    if signature:
-        command += [signature, *map(str, arguments)]
-    result = run(command, capture_output=True, text=True, timeout=timeout + 1)
-    if result.returncode:
-        raise CommandError(result.stderr.strip() or "D-Bus request failed")
-    if not result.stdout.strip():
-        return []
-    try:
-        value = json.loads(result.stdout)
-        return value["data"]
-    except (ValueError, KeyError, TypeError):
-        raise CommandError("Invalid response from busctl") from None
-
-
 def user_config_path():
     override = os.environ.get("GNOBLIN_CONFIG")
     if override:
@@ -344,6 +328,9 @@ def user_config_path():
 def compositor(request, path, timeout=5):
     identity = uuid.uuid4().hex
     deadline = time.monotonic() + timeout
+    payload = dict(request)
+    payload.setdefault("op", "command")
+    payload["id"] = identity
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
         try:
@@ -352,7 +339,7 @@ def compositor(request, path, timeout=5):
             raise CommandError(
                 f"Cannot connect to compositor socket {path}: {error.strerror}. Check that a Gnoblin session is running and that the socket path is correct."
             ) from None
-        connection.sendall((json.dumps(dict(request, op="command", id=identity)) + "\n").encode())
+        connection.sendall((json.dumps(payload) + "\n").encode())
         buffer = b""
         while True:
             remaining = deadline - time.monotonic()
@@ -383,8 +370,13 @@ def compositor(request, path, timeout=5):
                     return response["result"]
 
 
-def keyed(rows, fields):
-    return [dict(zip(fields, row)) for row in rows]
+def api_call(method, arguments, path, timeout=5):
+    """Call a canonical Gnoblin session API operation through the bridge."""
+    return compositor(
+        {"op": "api", "method": method, "arguments": arguments},
+        path,
+        timeout,
+    )
 
 
 def dispatch(args, cli):
@@ -392,169 +384,163 @@ def dispatch(args, cli):
     if cmd == "config" and args.action == "path":
         return str(user_config_path())
     if cmd == "shortcut" and args.action == "capture":
-        return capture_accelerator(args.timeout)
+        return capture_accelerator(args.timeout, args.socket)
 
-    def call(method, signature="", arguments=(), service="org.gnoblin.Shell"):
-        return dbus(method, signature, arguments, service, args.timeout)
-
-    def rpc(request):
-        return compositor(request, args.socket, args.timeout)
+    def workspace_selector(workspace_id=None, workspace_number=None):
+        if workspace_id is not None:
+            return {"id": workspace_id}
+        return {"number": workspace_number}
 
     if cmd == "window" and args.action == "list":
-        result = rpc({"command": "windows"})
-        result["windows"] = [
-            window
-            for window in result["windows"]
-            if (not args.app_id or window["appId"] == args.app_id)
-            and (not args.title or args.title.casefold() in window["title"].casefold())
-            and (not args.focused or window["focused"])
-        ]
-        return result
-    if cmd == "window" and args.action == "match":
-        windows = rpc({"command": "windows"})["windows"]
-        candidates = (
-            (entry for entry in windows if entry["focused"])
-            if args.id == "active"
-            else (entry for entry in windows if entry["id"] == args.id)
-        )
-        window = next(candidates, None)
-        if window is None:
-            raise CommandError(f"Window not found: {args.id}")
-        match = {"type": "window", "title": window["title"], "focused": window["focused"]}
-        if window["ruleAppId"]:
-            match["app_id"] = window["ruleAppId"]
-        return {
-            "id": window["id"],
-            "identity": {
-                "desktop_app_id": window["appId"],
-                "gtk_app_id": window["gtkAppId"],
-                "wm_class": window["wmClass"],
-                "rule_app_id": window["ruleAppId"],
+        return api_call(
+            "window.list",
+            {
+                key: value
+                for key, value in {"app_id": args.app_id, "title": args.title, "focused": args.focused}.items()
+                if value
             },
-            "match": match,
-        }
+            args.socket,
+            args.timeout,
+        )
+    if cmd == "window" and args.action == "match":
+        return api_call("window.match", {"window": args.id}, args.socket, args.timeout)
     if cmd == "window":
-        request = {"command": "window", "action": args.action, "window": args.id}
+        arguments = {"action": args.action, "window": args.id}
         for field in ("x", "y", "width", "height", "monitor"):
             if hasattr(args, field):
-                request[field] = getattr(args, field)
+                arguments[field] = getattr(args, field)
         if args.action == "workspace":
-            if args.workspace_id is not None:
-                request["workspaceId"] = args.workspace_id
-            else:
-                request["workspaceNumber"] = args.number if args.number is not None else args.workspace
-        return rpc(request)
+            return api_call(
+                "workspace.move_window",
+                {
+                    "window": args.id,
+                    "workspace": workspace_selector(
+                        args.workspace_id,
+                        args.number if args.number is not None else args.workspace,
+                    ),
+                },
+                args.socket,
+                args.timeout,
+            )
+        return api_call("window.action", arguments, args.socket, args.timeout)
     if cmd == "animation":
-        request = {"command": "animation", "action": args.action}
+        arguments = {}
         if args.action in ("inspect", "preview"):
-            request.update(name=args.name)
+            arguments["name"] = args.name
             if args.event is not None:
-                request["event"] = args.event
+                arguments["event"] = args.event
             if args.window is not None:
-                request.update(targetType="window", target=args.window)
+                arguments.update(targetType="window", target=args.window)
             elif args.layer is not None:
-                request.update(targetType="layer", target=args.layer)
+                arguments.update(targetType="layer", target=args.layer)
             elif args.namespace is not None:
-                request.update(targetType="namespace", target=args.namespace)
+                arguments.update(targetType="namespace", target=args.namespace)
             else:
-                request.update(targetType="window", target="active")
+                arguments.update(targetType="window", target="active")
             if args.action == "preview":
-                request["autoplay"] = args.autoplay
+                arguments["autoplay"] = args.autoplay
         elif args.action in ("seek", "step"):
-            request.update(session=args.session)
-            request["progress" if args.action == "seek" else "milliseconds"] = (
+            arguments["session"] = args.session
+            arguments["progress" if args.action == "seek" else "milliseconds"] = (
                 args.value / 100 if args.action == "seek" else args.value
             )
-        else:
-            if args.action in ("play", "pause", "stop"):
-                request["session"] = args.session
-        return rpc(request)
+        elif args.action in ("play", "pause", "stop"):
+            arguments["session"] = args.session
+        return api_call(f"animation.{args.action}", arguments, args.socket, args.timeout)
     if cmd == "layer" and args.action == "list":
-        return rpc({"command": "layers"})
+        return api_call("layer.list", {}, args.socket, args.timeout)
     if cmd == "monitor":
-        return rpc({"command": "monitors"})
+        return api_call("monitor.list", {}, args.socket, args.timeout)
     if cmd == "workspace":
         if args.action == "list":
-            return rpc({"command": "workspace-list"})
+            return api_call("workspace.list", {}, args.socket, args.timeout)
+        if args.action == "create":
+            arguments = {"name": args.name, "activate": args.activate}
+            if args.id is not None:
+                arguments["id"] = args.id
+            return api_call("workspace.create", arguments, args.socket, args.timeout)
+        if args.action == "rename":
+            return api_call(
+                "workspace.rename",
+                {**workspace_selector(args.workspace_id, args.number), "name": args.name},
+                args.socket,
+                args.timeout,
+            )
+        if args.action == "remove":
+            return api_call(
+                "workspace.remove",
+                workspace_selector(args.workspace_id, args.number),
+                args.socket,
+                args.timeout,
+            )
         if args.action == "switch":
-            selector = (
-                {"workspaceId": args.workspace_id}
-                if args.workspace_id is not None
-                else {"workspaceNumber": args.number if args.number is not None else args.workspace}
+            selector = workspace_selector(
+                args.workspace_id,
+                args.number if args.number is not None else args.workspace,
             )
-            return rpc({"command": "workspace-switch", **selector})
+            return api_call("workspace.switch", selector, args.socket, args.timeout)
         if args.action in ("next", "previous"):
-            return rpc({"command": f"workspace-{args.action}"})
-        selector = (
-            {"workspaceId": args.workspace_id} if args.workspace_id is not None else {"workspaceNumber": args.number}
+            return api_call(f"workspace.{args.action}", {}, args.socket, args.timeout)
+        selector = workspace_selector(args.workspace_id, args.number)
+        return api_call(
+            "workspace.move_active",
+            {"workspace": selector, "follow": args.follow},
+            args.socket,
+            args.timeout,
         )
-        return rpc({"command": "workspace-move-active", **selector, "follow": args.follow})
     if cmd == "status":
-        result = {**version_record(call("GetVersion")[0]), "connected": call("Ping")[0] == "pong"}
-        try:
-            windows = rpc({"command": "windows"})["windows"]
-            result.update(
-                windows=len(windows), focused=next((window["id"] for window in windows if window["focused"]), None)
-            )
-        except (CommandError, TimeoutError) as error:
-            result["windowControlError"] = str(error)
-        return result
+        result = api_call("shell.status", {}, args.socket, args.timeout)
+        shell_version = result.pop("version")
+        return {**version_record(shell_version), **result}
     if cmd == "ping":
-        return call("Ping")[0]
+        return api_call("shell.ping", {}, args.socket, args.timeout)["pong"]
     if cmd == "version":
-        return version_record(call("GetVersion")[0])
+        return version_record(api_call("shell.version", {}, args.socket, args.timeout)["version"])
     if cmd == "feature":
         if args.action == "list":
-            return {"features": keyed(call("ListFeatures")[0], ["id", "description", "enabled"])}
+            return api_call("feature.list", {}, args.socket, args.timeout)
         if args.action == "show":
-            return {"id": args.id, "enabled": call("GetFeature", "s", [args.id])[0]}
-        call("SetFeature", "sb", [args.id, str(args.action == "enable").lower()])
-        return {"ok": True, "id": args.id, "enabled": args.action == "enable"}
+            return api_call("feature.show", {"id": args.id}, args.socket, args.timeout)
+        return api_call(f"feature.{args.action}", {"id": args.id}, args.socket, args.timeout)
     if cmd == "script":
-        return {"scripts": call("ListScripts")[0]}
+        return api_call("script.list", {}, args.socket, args.timeout)
     if cmd == "input":
-        fields = ["type", "id", "shortName", "name"]
         if args.action == "list":
-            return {"sources": keyed(call("ListInputSources", timeout=args.timeout)[0], fields)}
+            return api_call("input.list", {}, args.socket, args.timeout)
         if args.action == "current":
-            return dict(zip(fields, call("GetCurrentInputSource", timeout=args.timeout)))
-        call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
-        return {"ok": True, "type": args.type, "id": args.id}
+            return api_call("input.current", {}, args.socket, args.timeout)
+        return api_call("input.select", {"type": args.type, "id": args.id}, args.socket, args.timeout)
     if cmd == "privacy":
-        return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
+        return api_call("privacy.get", {}, args.socket, args.timeout)
     if cmd == "permissions":
         if args.action in (None, "list"):
-            return json.loads(call("GetPermissions")[0])
+            return api_call("permissions.list", {}, args.socket, args.timeout)
         if args.action == "check":
-            return dict(
-                zip(
-                    ["level", "rule", "monitors", "devices", "clipboard"],
-                    call("CheckPermission", "ss", [args.capability, args.identity]),
-                )
+            return api_call(
+                "permissions.check",
+                {"capability": args.capability, "identity": args.identity},
+                args.socket,
+                args.timeout,
             )
     if cmd == "grant":
         if args.action == "list":
-            return {
-                "grants": keyed(
-                    call("ListPortalGrants")[0], ["id", "kind", "requester", "devices", "clipboard", "screenStreams"]
-                )
-            }
-        call("RevokePortalGrant", "ss", [args.kind, args.id])
-        return {"ok": True, "id": args.id}
+            return api_call("grant.list", {}, args.socket, args.timeout)
+        return api_call("grant.revoke", {"kind": args.kind, "id": args.id}, args.socket, args.timeout)
     if cmd == "launch":
-        service = "org.gnoblin.LaunchFeedback"
         if args.action == "status":
-            result = call("GetState", service=service)[0]
-            return json.loads(result) if isinstance(result, str) else result
+            return api_call("launch.status", {}, args.socket, args.timeout)
         if args.action == "begin":
-            call("Begin", "ssu", [args.token, args.application, args.milliseconds], service)
-        else:
-            call("End", "s", [args.token], service)
-        return {"ok": True, "token": args.token}
-    operations = {"reload": ("Reload", "", []), "config": ("ReloadConfig", "", [])}
-    method, signature, values = operations[cmd]
-    call(method, signature, values)
-    return {"ok": True, "action": "config reload" if cmd == "config" else cmd}
+            return api_call(
+                "launch.begin",
+                {"token": args.token, "application": args.application, "milliseconds": args.milliseconds},
+                args.socket,
+                args.timeout,
+            )
+        return api_call("launch.end", {"token": args.token}, args.socket, args.timeout)
+    if cmd == "reload":
+        return api_call("shell.reload", {}, args.socket, args.timeout)
+    if cmd == "config" and args.action == "reload":
+        return api_call("runtime.reload_config", {}, args.socket, args.timeout)
 
 
 def text(value):
@@ -744,9 +730,9 @@ def main(argv=None):
         return 0
     except BrokenPipeError:
         return 0
-    except (CommandError, OSError, subprocess.TimeoutExpired, TimeoutError) as error:
+    except (CommandError, OSError, TimeoutError) as error:
         message = str(error)
-        if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+        if isinstance(error, TimeoutError):
             message = "Request timed out; it was not retried. Check current state before repeating an action."
         print(f"gnoblinctl: {message}", file=sys.stderr)
         return 1

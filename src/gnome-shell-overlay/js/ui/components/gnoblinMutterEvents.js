@@ -1,4 +1,9 @@
 import GObject from "gi://GObject";
+import * as Workspaces from "./gnoblinWorkspaces.js";
+
+function canonicalSignalName(signal) {
+    return signal.replaceAll("_", "-");
+}
 
 function objectType(object) {
     try {
@@ -17,6 +22,24 @@ function windowDetails(window, prefix, payload) {
             payload[`${prefix}stable_sequence`] = window.get_stable_sequence();
     } catch {
         // Signal arguments can outlive a window while Mutter is tearing it down.
+    }
+}
+
+function workspaceDetails(workspace, prefix, payload, snapshot = null) {
+    try {
+        const details = Workspaces.describe(workspace);
+        payload[`${prefix}id`] = details.id;
+        payload[`${prefix}number`] = details.number;
+        payload[`${prefix}name`] = details.name;
+        payload[`${prefix}active`] = details.active;
+        payload[`${prefix}window_count`] = details.windows;
+    } catch {
+        if (!snapshot) return;
+        payload[`${prefix}id`] = snapshot.id;
+        payload[`${prefix}number`] = snapshot.number;
+        payload[`${prefix}name`] = snapshot.name;
+        payload[`${prefix}active`] = snapshot.active;
+        payload[`${prefix}window_count`] = snapshot.windows;
     }
 }
 
@@ -48,12 +71,16 @@ function argumentValue(value, index, typeName, payload) {
 
     if (typeof value.name === "string") payload[`${key}_name`] = value.name;
     if (typeof value.get_gtk_application_id === "function") windowDetails(value, `${key}_`, payload);
+    else if (typeof value.list_windows === "function" && typeof value.activate === "function")
+        workspaceDetails(value, `${key}_workspace_`, payload);
     else payload[`${key}_type`] ??= objectType(value);
 }
 
-function describeWindow(window, source, signal, args, parameterTypes) {
+function describeEvent(emitter, source, signal, args, parameterTypes, workspace = null, snapshot = null) {
     const payload = { source, signal };
-    if (source === "mutter.window") windowDetails(window, "window_", payload);
+    if (source === "mutter.window") windowDetails(emitter, "window_", payload);
+    if (source === "mutter.workspace") workspaceDetails(emitter, "workspace_", payload, snapshot);
+    else if (workspace) workspaceDetails(workspace, "workspace_", payload, snapshot);
     args.forEach((value, index) => argumentValue(value, index, parameterTypes[index]?.name, payload));
     return payload;
 }
@@ -66,6 +93,8 @@ export class MutterEventForwarder {
         this._hooks = new Map();
         this._windows = new Set();
         this._workspaces = new Set();
+        this._workspaceOrder = [];
+        this._workspaceSnapshots = new Map();
 
         const display = global.display;
         const workspaceManager = global.workspace_manager;
@@ -77,14 +106,22 @@ export class MutterEventForwarder {
         this._watchObject("mutter.backend", backend);
         this._watchObject("mutter.monitor-manager", monitorManager);
         this._watchObject("mutter.cursor-tracker", cursorTracker);
-        for (let index = 0; index < workspaceManager.n_workspaces; index++)
-            this._watchWorkspace(workspaceManager.get_workspace_by_index(index));
+        this._refreshWorkspaceSnapshots();
+        for (const workspace of this._workspaceOrder) this._watchWorkspace(workspace);
 
         this._connect(display, "window-created", (_display, window) => this._watchWindow(window));
-        this._connect(workspaceManager, "workspace-added", (_manager, workspace) => this._watchWorkspace(workspace));
-        this._connect(workspaceManager, "workspace-removed", (_manager, workspace) =>
-            this._unwatchObject(workspace, this._workspaces),
-        );
+        this._connect(workspaceManager, "workspace-added", (_manager, number) => {
+            this._watchWorkspace(workspaceManager.get_workspace_by_index(number));
+            this._refreshWorkspaceSnapshots();
+        });
+        this._connect(workspaceManager, "workspace-removed", (_manager, number) => {
+            const removed = this._workspaceOrder[number];
+            if (removed) {
+                this._unwatchObject(removed, this._workspaces);
+                this._workspaceSnapshots.delete(removed);
+            }
+            this._refreshWorkspaceSnapshots();
+        });
 
         for (const window of display.list_all_windows()) this._watchWindow(window);
     }
@@ -108,7 +145,24 @@ export class MutterEventForwarder {
     _watchWorkspace(workspace) {
         if (!workspace || this._workspaces.has(workspace)) return;
         this._workspaces.add(workspace);
+        this._snapshotWorkspace(workspace);
         this._watchObject("mutter.workspace", workspace);
+    }
+
+    _snapshotWorkspace(workspace) {
+        try {
+            this._workspaceSnapshots.set(workspace, Workspaces.describe(workspace));
+        } catch {
+            // A workspace that has already been removed has no current record.
+        }
+    }
+
+    _refreshWorkspaceSnapshots() {
+        const manager = global.workspace_manager;
+        this._workspaceOrder = Array.from({ length: manager.n_workspaces }, (_, index) =>
+            manager.get_workspace_by_index(index),
+        );
+        for (const workspace of this._workspaceOrder) this._snapshotWorkspace(workspace);
     }
 
     _watchObject(source, object) {
@@ -144,7 +198,7 @@ export class MutterEventForwarder {
     }
 
     _watchSignal(source, object, query) {
-        const signal = query.signal_name;
+        const signal = canonicalSignalName(query.signal_name);
         const event = `${source}.${signal}`;
         if (!this._config.wantsEvent(event)) return;
         const parameterTypes = query.param_types ?? [];
@@ -173,9 +227,30 @@ export class MutterEventForwarder {
     }
 
     _dispatch(source, signal, emitter, args, parameterTypes) {
+        signal = canonicalSignalName(signal);
+        if (source === "mutter.workspace-manager" && signal !== "workspace-removed") this._refreshWorkspaceSnapshots();
         const event = `${source}.${signal}`;
         if (!this._config.wantsEvent(event)) return;
-        this._config.dispatchEvent(event, describeWindow(emitter, source, signal, args, parameterTypes));
+        let workspace = null;
+        if (source === "mutter.workspace") workspace = emitter;
+        else if (source === "mutter.workspace-manager" && Number.isInteger(args[0])) {
+            workspace =
+                signal === "workspace-removed"
+                    ? this._workspaceOrder[args[0]]
+                    : global.workspace_manager.get_workspace_by_index(args[0]);
+        }
+        this._config.dispatchEvent(
+            event,
+            describeEvent(
+                emitter,
+                source,
+                signal,
+                args,
+                parameterTypes,
+                workspace,
+                workspace ? this._workspaceSnapshots.get(workspace) : null,
+            ),
+        );
     }
 
     _unwatchObject(object, tracked) {
@@ -213,5 +288,7 @@ export class MutterEventForwarder {
         this._objects.clear();
         this._windows.clear();
         this._workspaces.clear();
+        this._workspaceOrder = [];
+        this._workspaceSnapshots.clear();
     }
 }

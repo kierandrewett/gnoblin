@@ -16,10 +16,57 @@ The user reference is [gnoblinctl](gnoblinctl.md).
 
 ## Transport
 
-Settings use D-Bus through `busctl`. Input-source reads can use the dedicated
-service when the Shell interface is absent. Failed mutations do not fall back.
+`gnoblinctl` sends session operations through the compositor socket. Shortcut
+capture waits for a keypress in the terminal and returns a GTK accelerator.
 
-Window commands use the private bridge socket:
+Session API operations use the compositor socket with a canonical method name
+and a JSON object of arguments:
+
+```json
+{ "op": "api", "id": "REQUEST_ID", "method": "workspace.list", "arguments": {} }
+```
+
+Lua calls the same methods with the same argument objects. The public session
+methods are:
+
+| Group         | Methods                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window` |
+| `window`      | `list`, `match`, `action`                                                                        |
+| `layer`       | `list`                                                                                           |
+| `monitor`     | `list`                                                                                           |
+| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                |
+| `feature`     | `list`, `show`, `enable`, `disable`                                                              |
+| `script`      | `list`                                                                                           |
+| `input`       | `list`, `current`, `select`                                                                      |
+| `privacy`     | `get`                                                                                            |
+| `permissions` | `list`, `check`                                                                                  |
+| `grant`       | `list`, `revoke`                                                                                 |
+| `launch`      | `status`, `begin`, `end`                                                                         |
+| `shell`       | `ping`, `version`, `status`, `reload`                                                            |
+| `config`      | `reload`                                                                                         |
+| `shortcut`    | `capture`                                                                                        |
+
+`shortcut.capture` accepts `timeout`, an integer from 1 to 60 seconds. The
+CLI defaults to 30 seconds and gives the socket request two extra seconds to
+receive the result. Lua receives an operation ticket and handles completion
+through `gnoblin.api.operation-completed`; see the [Lua runtime API](/config/runtime-api).
+
+Methods use the `domain.method` form on the socket. Pass either
+`{ "id": "code" }` or `{ "number": 2 }` to select a workspace. Replies
+retain the request ID and return a structured result:
+
+```json
+{ "event": "reply", "id": "REQUEST_ID", "result": { "workspaces": [] } }
+```
+
+Errors use `event: "error"`, retain the request ID and include a `message`.
+Do not retry a state-changing call after a timeout; check the current state
+first.
+
+The bridge also retains its lower-level `command` protocol for integrations
+that need compositor records directly. For example, `windows` returns window
+records:
 
 ```json
 { "op": "command", "id": "REQUEST_ID", "command": "windows" }

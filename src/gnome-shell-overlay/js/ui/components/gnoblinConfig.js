@@ -21,7 +21,6 @@ export const FEATURE_KEYS = Object.freeze([
     "wallpaper",
 ]);
 
-const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 export const WINDOW_PREFERENCES = Object.freeze({
     "focus-mode": "click",
     "focus-new-windows": "smart",
@@ -32,13 +31,10 @@ export const WINDOW_PREFERENCES = Object.freeze({
     "action-double-click-titlebar": "toggle-maximize",
     "action-middle-click-titlebar": "lower",
     "action-right-click-titlebar": "menu",
-    "dynamic-workspaces": false,
-    "num-workspaces": 4,
     "workspaces-only-on-primary": false,
     "edge-tiling": false,
     "center-new-windows": false,
     "attach-modal-dialogs": false,
-    "workspace-names": [],
 });
 export const COMPOSITOR_PREFERENCES = Object.freeze({
     "enable-animations": true,
@@ -47,7 +43,14 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [], "workspace-ids": [] });
+const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
+const windowDefaults = () => ({
+    ...WINDOW_PREFERENCES,
+    "dynamic-workspaces": false,
+    "num-workspaces": 4,
+    "workspace-names": [],
+    "workspace-ids": [],
+});
 const TITLEBAR_ACTIONS = new Set([
     "toggle-maximize",
     "toggle-maximize-horizontally",
@@ -62,16 +65,14 @@ const INPUT_FIELDS = Object.freeze({
         speed: "number",
         "left-handed": "boolean",
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive", "custom"],
-        "accel-curve": "accel-curve",
+        "accel-profile": ["default", "flat", "adaptive"],
     },
     touchpad: {
         speed: "number",
         "scroll-speed": "number",
         "left-handed": ["right", "left", "mouse"],
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive", "custom"],
-        "accel-curve": "accel-curve",
+        "accel-profile": ["default", "flat", "adaptive"],
         "tap-to-click": "boolean",
         "tap-button-map": ["default", "lrm", "lmr"],
         "tap-and-drag": "boolean",
@@ -101,6 +102,25 @@ const INPUT_FIELDS = Object.freeze({
 });
 const isTable = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
+function variantForEvent(value) {
+    if (typeof value === "boolean") return new GLib.Variant("b", value);
+    if (typeof value === "number") return new GLib.Variant("d", value);
+    if (typeof value === "string") return new GLib.Variant("s", value);
+    if (Array.isArray(value)) {
+        return new GLib.Variant(
+            "av",
+            value.map((item) => new GLib.Variant("v", variantForEvent(item))),
+        );
+    }
+    if (isTable(value)) return new GLib.Variant("a{sv}", eventVariantDictionary(value));
+    if (value === null || value === undefined) return new GLib.Variant("s", "");
+    throw new Error("Lua event payload contains an unsupported value");
+}
+
+function eventVariantDictionary(value) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, variantForEvent(item)]));
+}
+
 function validateInputFields(group, values, path) {
     if (!isTable(values)) throw new Error(`${path}: expected a table`);
     for (const [key, value] of Object.entries(values)) {
@@ -108,25 +128,17 @@ function validateInputFields(group, values, path) {
         if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
         const valid = Array.isArray(kind)
             ? kind.includes(value)
-            : kind === "accel-curve"
-              ? isTable(value) &&
-                Object.keys(value).length === 2 &&
-                Number.isFinite(value.step) &&
-                value.step > 0 &&
-                Array.isArray(value.points) &&
-                value.points.length >= 2 &&
-                value.points.every((point) => typeof point === "number" && Number.isFinite(point) && point >= 0)
-              : kind === "boolean"
-                ? typeof value === "boolean"
-                : kind === "number"
-                  ? typeof value === "number" &&
-                    Number.isFinite(value) &&
-                    (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
-                  : kind === "milliseconds"
-                    ? Number.isInteger(value) && value >= 1 && value <= 10000
-                    : kind === "strings"
-                      ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
-                      : typeof value === "string" && !value.includes("\0");
+            : kind === "boolean"
+              ? typeof value === "boolean"
+              : kind === "number"
+                ? typeof value === "number" &&
+                  Number.isFinite(value) &&
+                  (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
+                : kind === "milliseconds"
+                  ? Number.isInteger(value) && value >= 1 && value <= 10000
+                  : kind === "strings"
+                    ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
+                    : typeof value === "string" && !value.includes("\0");
         if (!valid) throw new Error(`${path}.${key}: invalid value`);
     }
 }
@@ -517,6 +529,17 @@ function compileWindowRuleMatchers(rules) {
     for (const rule of rules) windowRuleMatchers(rule);
 }
 
+function windowRuleMatches(rule, properties) {
+    for (const [key, matcher] of windowRuleMatchers(rule)) {
+        if (key === "type" || key === "focused" || key === "workspace-id" || key === "workspace-number") {
+            if (properties[key] !== matcher) return false;
+        } else if (properties[key] === null || !matcher.test(properties[key] ?? "")) {
+            return false;
+        }
+    }
+    return true;
+}
+
 export function parseDocument(document) {
     const next = {
         ...DEFAULTS,
@@ -526,10 +549,36 @@ export function parseDocument(document) {
         input: null,
         "input-sources": null,
     };
+    const configuredWorkspaces = document.workspaces;
+    if (configuredWorkspaces !== undefined) {
+        if (!Array.isArray(configuredWorkspaces) || configuredWorkspaces.length < 1)
+            throw new Error("workspaces must be a nonempty array");
+        const ids = new Set();
+        next.workspaces = configuredWorkspaces.map((workspace, index) => {
+            if (
+                !isTable(workspace) ||
+                Object.keys(workspace).some((key) => !["id", "name"].includes(key)) ||
+                typeof workspace.id !== "string" ||
+                !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(workspace.id) ||
+                typeof workspace.name !== "string" ||
+                !workspace.name.trim() ||
+                workspace.name.includes("\0")
+            )
+                throw new Error(`workspaces[${index + 1}] must have a valid id and name`);
+            if (ids.has(workspace.id)) throw new Error(`duplicate workspace ID: ${workspace.id}`);
+            ids.add(workspace.id);
+            return { id: workspace.id, name: workspace.name };
+        });
+        next["window-management"]["num-workspaces"] = next.workspaces.length;
+        next["window-management"]["workspace-ids"] = next.workspaces.map(({ id }) => id);
+        next["window-management"]["workspace-names"] = next.workspaces.map(({ name }) => name);
+    } else {
+        next.workspaces = [];
+    }
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
     const cursor = document.cursor ?? {};
-    if (!cursor || Array.isArray(cursor) || typeof cursor !== "object") throw new Error("cursor must be a table");
+    if (!isTable(cursor)) throw new Error("cursor must be a table");
     for (const [key, value] of Object.entries(cursor)) {
         if (key === "theme") {
             if (typeof value !== "string" || !value.trim() || value.includes("\0"))
@@ -548,14 +597,6 @@ export function parseDocument(document) {
     for (const [key, value] of Object.entries(windowManagement)) {
         if (key === "constrain-drag-to-work-area") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
-        } else if (key === "workspace-ids") {
-            if (
-                !Array.isArray(value) ||
-                value.length > 36 ||
-                !value.every((id) => typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)) ||
-                new Set(value).size !== value.length
-            )
-                throw new Error(`${key}: expected up to 36 unique workspace IDs`);
         } else if (!Object.hasOwn(WINDOW_PREFERENCES, key)) {
             throw new Error(`unknown window-management setting: ${key}`);
         } else if (key === "focus-mode") {
@@ -567,16 +608,6 @@ export function parseDocument(document) {
         } else if (key === "auto-raise-delay") {
             if (!Number.isInteger(value) || value < 0 || value > 10000)
                 throw new Error(`${key}: expected 0 to 10000 milliseconds`);
-        } else if (key === "num-workspaces") {
-            if (!Number.isInteger(value) || value < 1 || value > 36)
-                throw new Error(`${key}: expected 1 to 36 workspaces`);
-        } else if (key === "workspace-names") {
-            if (
-                !Array.isArray(value) ||
-                value.length > 36 ||
-                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0"))
-            )
-                throw new Error(`${key}: expected up to 36 names of at most 80 characters`);
         } else if (typeof value !== "boolean") {
             throw new Error(`${key}: expected a boolean`);
         }
@@ -676,7 +707,7 @@ export function parseDocument(document) {
             !entry ||
             typeof entry !== "object" ||
             Array.isArray(entry) ||
-            Object.keys(entry).some((key) => !["name", "command", "when", "restart"].includes(key)) ||
+            Object.keys(entry).some((key) => !["name", "command", "when"].includes(key)) ||
             typeof entry.name !== "string" ||
             !entry.name.trim() ||
             names.has(entry.name) ||
@@ -687,16 +718,12 @@ export function parseDocument(document) {
         )
             throw new Error("autostart requires a unique name and a nonempty command array");
         if (when !== "on_login") throw new Error('autostart.when: expected "on_login"');
-        const restart = entry.restart ?? "never";
-        if (!["never", "on_failure", "always"].includes(restart))
-            throw new Error('autostart.restart: expected "never", "on_failure", or "always"');
         names.add(entry.name);
-        normalizedEntries.push({ name: entry.name, command: entry.command, when, restart });
+        normalizedEntries.push({ name: entry.name, command: entry.command, when });
     }
     next.autostart = normalizedEntries;
     const rules = document["window-rules"] ?? [];
     if (!Array.isArray(rules)) throw new Error("window-rules must use [[window-rules]] tables");
-    const configuredWorkspaceIds = new Set(next["window-management"]["workspace-ids"]);
     for (const rule of rules) {
         if (
             !rule ||
@@ -728,11 +755,9 @@ export function parseDocument(document) {
             } else if (key === "workspace-id") {
                 if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value))
                     throw new Error("workspace-id match must be a valid workspace ID");
-                if (!configuredWorkspaceIds.has(value))
-                    throw new Error(`workspace-id match references unknown workspace ID: ${value}`);
             } else if (key === "workspace-number") {
-                if (!Number.isInteger(value) || value < 1 || value > 36)
-                    throw new Error("workspace-number match must be from 1 to 36");
+                if (!Number.isInteger(value) || value < 1 || value > 1024)
+                    throw new Error("workspace-number match must be from 1 to 1024");
             } else if (["app-id", "title", "layer"].includes(key)) {
                 if (typeof value !== "string" || value.length > 512)
                     throw new Error("rule matcher must be a regex string");
@@ -748,12 +773,10 @@ export function parseDocument(document) {
                 (Object.hasOwn(target, "id") &&
                     (typeof target.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(target.id))) ||
                 (Object.hasOwn(target, "number") &&
-                    (!Number.isInteger(target.number) || target.number < 1 || target.number > 36)) ||
+                    (!Number.isInteger(target.number) || target.number < 1 || target.number > 1024)) ||
                 (!Object.hasOwn(target, "id") && !Object.hasOwn(target, "number"))
             )
                 throw new Error("workspace effect must contain exactly one valid id or number");
-            if (Object.hasOwn(target, "id") && !configuredWorkspaceIds.has(target.id))
-                throw new Error(`workspace effect references unknown workspace ID: ${target.id}`);
         }
         if (rule.corners !== undefined) Corners.validate(rule.corners);
         if (rule.borders !== undefined) Corners.validateBorders(rule.borders);
@@ -920,7 +943,41 @@ export const KEYBINDING_SCHEMAS = Object.freeze({
     mutter: "org.gnome.mutter.keybindings",
     wayland: "org.gnome.mutter.wayland.keybindings",
 });
+const KEYBINDING_SCHEMA_GROUPS = Object.freeze(
+    Object.fromEntries(Object.entries(KEYBINDING_SCHEMAS).map(([group, schema]) => [schema, group])),
+);
 const gsettingsKey = (key) => key.replaceAll("_", "-");
+
+function parseShortcutAction(action) {
+    if (typeof action === "string") {
+        const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(action);
+        if (!match) return null;
+        const [, namespace, key] = match;
+        const group = namespace === "gnome:shell" ? "shell" : namespace;
+        return { group, key, nativeKey: gsettingsKey(key), label: action };
+    }
+
+    if (
+        !action ||
+        typeof action !== "object" ||
+        Array.isArray(action) ||
+        Object.keys(action).length !== 2 ||
+        Object.keys(action).some((key) => !["schema", "key"].includes(key)) ||
+        typeof action.schema !== "string" ||
+        typeof action.key !== "string" ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(action.key)
+    )
+        return null;
+
+    const group = KEYBINDING_SCHEMA_GROUPS[action.schema];
+    if (!group) return null;
+    return {
+        group,
+        key: action.key.replaceAll("-", "_"),
+        nativeKey: action.key,
+        label: `${action.schema} ${action.key}`,
+    };
+}
 
 function acceleratorIdentity(value) {
     if (value === "Super") return "overlay-key";
@@ -944,6 +1001,7 @@ function acceleratorIdentity(value) {
 
 export function validateShortcuts(document) {
     const declarations = document.shortcuts ?? [];
+    const shortcuts = [];
     const keybindings = Object.fromEntries(
         Object.entries(document.keybindings ?? {}).map(([group, entries]) => [
             group,
@@ -954,7 +1012,6 @@ export function validateShortcuts(document) {
         throw new Error("shortcuts must use [[shortcuts]] tables (maximum 256)");
     const names = new Set(),
         accelerators = new Set();
-    const shortcuts = [];
     const declaredActions = new Set();
     for (const entry of declarations) {
         if (
@@ -962,7 +1019,7 @@ export function validateShortcuts(document) {
             typeof entry !== "object" ||
             Array.isArray(entry) ||
             Object.keys(entry).some(
-                (key) => !["name", "binding", "command", "action", "capture-input"].includes(key),
+                (key) => !["name", "binding", "command", "action", "capture-input", "trigger"].includes(key),
             ) ||
             (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean") ||
             typeof entry.name !== "string" ||
@@ -971,22 +1028,24 @@ export function validateShortcuts(document) {
             (entry.action === undefined) === (entry.command === undefined)
         )
             throw new Error("shortcut requires a unique name and exactly one of action or command");
+        if (entry.trigger !== undefined && !["press", "release"].includes(entry.trigger))
+            throw new Error('shortcut trigger must be "press" or "release"');
         names.add(entry.name);
         if (entry.action !== undefined) {
-            const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(entry.action);
-            if (!match || !Array.isArray(entry.binding))
+            if (entry.trigger !== undefined) throw new Error("trigger is only supported for command shortcuts");
+            const parsedAction = parseShortcutAction(entry.action);
+            if (!parsedAction || !Array.isArray(entry.binding))
                 throw new Error(
-                    'built-in shortcut requires a namespaced shell action or action = "group.action" and a binding list',
+                    'built-in shortcut requires action = {schema = "org.gnome.shell.keybindings", key = "show-screenshot-ui"} and a binding list',
                 );
-            const [, namespace, key] = match;
-            const group = namespace === "gnome:shell" ? "shell" : namespace;
+            const { group, key, nativeKey, label } = parsedAction;
             const actionKey = `${group}.${key}`;
-            if (declaredActions.has(actionKey)) throw new Error(`duplicate built-in shortcut action: ${entry.action}`);
+            if (declaredActions.has(actionKey) || Object.hasOwn(keybindings[group] ?? {}, key))
+                throw new Error(`built-in shortcut action is configured more than once: ${label}`);
             declaredActions.add(actionKey);
             const schema = Gio.SettingsSchemaSource.get_default().lookup(KEYBINDING_SCHEMAS[group], true);
-            const nativeKey = gsettingsKey(key);
-            if (!schema.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
-                throw new Error(`unknown built-in shortcut action: ${entry.action}`);
+            if (!schema?.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
+                throw new Error(`unknown built-in shortcut action: ${label}`);
             for (const binding of entry.binding) {
                 const identity = acceleratorIdentity(binding);
                 if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);
@@ -999,11 +1058,12 @@ export function validateShortcuts(document) {
                 !Array.isArray(entry.command) ||
                 !entry.command.length ||
                 !entry.command[0] ||
-                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0")) ||
-                (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean")
+                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0"))
             )
                 throw new Error("command shortcut requires a nonempty command array");
             const identity = acceleratorIdentity(entry.binding);
+            if (identity === "overlay-key" && entry.trigger === "press")
+                throw new Error('the bare "Super" shortcut can only trigger on release');
             if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
             accelerators.add(identity);
             shortcuts.push(entry);
@@ -1086,8 +1146,14 @@ function keybindingVariant(groups) {
 }
 
 export function applyWindowPreferences(preferences) {
+    const derived = {
+        ...WINDOW_PREFERENCES,
+        "dynamic-workspaces": false,
+        "num-workspaces": preferences["num-workspaces"] ?? 4,
+        "workspace-names": preferences["workspace-names"] ?? [],
+    };
     const values = Object.fromEntries(
-        Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
+        Object.entries(derived).map(([key, fallback]) => [
             key,
             new GLib.Variant(
                 Array.isArray(fallback)
@@ -1121,15 +1187,12 @@ function inputVariant(group, values) {
             Object.entries(values).map(([key, value]) => {
                 if (group === "tablets" || group === "styluses")
                     return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
-                if (isTable(value)) return [key, inputVariant(key, value)];
                 const type = Array.isArray(value)
-                    ? key === "points"
-                        ? "ad"
-                        : "as"
+                    ? "as"
                     : typeof value === "boolean"
                       ? "b"
                       : typeof value === "number"
-                        ? ["speed", "scroll-speed", "step"].includes(key)
+                        ? key === "speed" || key === "scroll-speed"
                             ? "d"
                             : "u"
                         : "s";
@@ -1182,7 +1245,7 @@ export class CommandShortcuts {
         this.bindings = new Map();
         this.overlaySignal = display.connect("overlay-key", () => {
             const binding = this.bindings.get("overlay-key");
-            if (!binding) return;
+            if (!binding || binding.entry.trigger === "press") return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
@@ -1190,16 +1253,18 @@ export class CommandShortcuts {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
         });
-        this.signal = display.connect("accelerator-activated", (_display, action) => {
+        const run = (action, trigger) => {
             const binding = [...this.bindings.values()].find((item) => item.action === action);
-            if (!binding) return;
+            if (!binding || (binding.entry.trigger ?? "press") !== trigger) return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
             } catch (error) {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
-        });
+        };
+        this.signal = display.connect("accelerator-activated", (_display, action) => run(action, "press"));
+        this.releaseSignal = display.connect("accelerator-deactivated", (_display, action) => run(action, "release"));
     }
 
     apply(entries) {
@@ -1238,6 +1303,7 @@ export class CommandShortcuts {
 
     destroy() {
         this.display.disconnect(this.signal);
+        this.display.disconnect(this.releaseSignal);
         this.display.disconnect(this.overlaySignal);
         for (const binding of this.bindings.values()) this.release(binding.action);
         this.bindings.clear();
@@ -1349,45 +1415,27 @@ export function minimizeTarget(window, monitor) {
 export class Autostart {
     constructor() {
         this._started = new Set();
-        this._entries = new Map();
     }
 
     apply(entries) {
-        this._entries = new Map(entries.map((entry) => [entry.name, entry]));
-        for (const { name, command, when = "on_login", restart = "never" } of entries) {
+        for (const { name, command, when = "on_login" } of entries) {
             if (when !== "on_login") throw new Error(`unsupported autostart trigger: ${when}`);
             if (this._started.has(name)) continue;
-            this._launch({ name, command, when, restart });
-        }
-    }
-
-    _scheduleRestart(name) {
-        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
-            const entry = this._entries.get(name);
-            if (entry && ["on_failure", "always"].includes(entry.restart)) this._launch(entry);
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    _launch({ name, command, restart }) {
-        try {
-            const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
-            this._started.add(name);
-            child.wait_async(null, (process, result) => {
-                let successful = false;
-                try {
-                    process.wait_finish(result);
-                    successful = process.get_successful();
-                } catch (e) {
-                    console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
-                }
-                if (!successful) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
-                if (restart === "always" || (restart === "on_failure" && !successful)) this._scheduleRestart(name);
-            });
-            console.log(`gnoblin-autostart: started ${name}`);
-        } catch (e) {
-            console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
-            if (restart !== "never") this._scheduleRestart(name);
+            try {
+                const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
+                this._started.add(name);
+                child.wait_async(null, (process, result) => {
+                    try {
+                        process.wait_finish(result);
+                        if (!process.get_successful()) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
+                    } catch (e) {
+                        console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
+                    }
+                });
+                console.log(`gnoblin-autostart: started ${name}`);
+            } catch (e) {
+                console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
+            }
         }
     }
 }
@@ -1418,6 +1466,11 @@ export class ConfigFile {
         this._watchedFiles = new Set();
         this._watchedDirectories = new Set();
         this._timeout = 0;
+        this._events = new Set();
+        this._applyingReload = false;
+        this._runtimeEventSignal = global.display.connect("gnoblin-config-event", (_display, _event, document) =>
+            this.applyRuntimeDocument(document),
+        );
     }
 
     get path() {
@@ -1431,6 +1484,7 @@ export class ConfigFile {
 
     reload() {
         const path = this.path;
+        this._applyingReload = true;
         try {
             // Mutter and Shell evaluate the same Lua files, in the same order.
             // Keep failed dependencies watched so fixing a module retries it.
@@ -1463,15 +1517,16 @@ export class ConfigFile {
                 }
             }
             this._liveUndo = [];
-            this.dispatchEvent("gnoblin.config.reloaded", {
-                path,
-                file_count: (loaded.paths ?? [path]).length,
-            });
+            this._applyingReload = false;
+            this.dispatchEvent("gnoblin.config.reloaded", { path });
             this.dispatchPointerWindowAtPointer();
         } catch (error) {
             Meta.gnoblin_finish_config_load(false);
-            this.dispatchEvent("gnoblin.config.reload_failed", { path, error: error.message });
+            this._applyingReload = false;
+            this.dispatchEvent("gnoblin.config.reload-failed", { path, error: error.message });
             throw new Error(`${path}: ${error.message}`);
+        } finally {
+            this._applyingReload = false;
         }
     }
 
@@ -1492,32 +1547,49 @@ export class ConfigFile {
     }
 
     dispatchEvent(event, payload = {}) {
+        if (this._applyingReload) return;
         if (!this.wantsEvent(event)) return;
         try {
-            const variants = Object.fromEntries(
-                Object.entries(payload).map(([key, value]) => {
-                    const type = typeof value === "boolean" ? "b" : typeof value === "number" ? "d" : "s";
-                    return [key, new GLib.Variant(type, value == null ? "" : value)];
-                }),
-            );
             const result = Meta.gnoblin_dispatch_config_event(
                 event,
-                new GLib.Variant("a{sv}", variants),
+                new GLib.Variant("a{sv}", eventVariantDictionary(payload)),
             ).recursiveUnpack();
             if (result.error) throw new Error(result.error);
             const next = parseDocument(result.document);
             if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            Meta.gnoblin_finish_config_event(true);
             settings = next;
             this._document = cloneDocument(result.document);
-            Meta.gnoblin_finish_config_event(true);
+            this.drainRuntimeOperations();
         } catch (error) {
             Meta.gnoblin_finish_config_event(false);
             console.warn(`gnoblin config event ${event}: ${error.message}`);
         }
     }
 
+    drainRuntimeOperations() {
+        let operations;
+        try {
+            operations = Meta.gnoblin_drain_config_runtime_operations().recursiveUnpack();
+        } catch (error) {
+            console.warn(`gnoblin config runtime operations: ${error.message}`);
+            return;
+        }
+        const bridge = global.__gnoblinCompositorBridge;
+        for (const operation of operations ?? []) {
+            try {
+                if (!bridge) throw new Error("compositor API is unavailable");
+                bridge.dispatchApiOperation(operation.method, operation.arguments, operation.request_id);
+            } catch (error) {
+                if (bridge)
+                    bridge.apiOperationCompleted(operation.request_id, operation.method, false, undefined, error);
+                else console.warn(`gnoblin config runtime operation ${operation.method}: ${error.message}`);
+            }
+        }
+    }
+
     wantsEvent(event) {
-        return Boolean(this._events?.has(event) || this._events?.has("*"));
+        return Boolean(this._events.has(event) || this._events.has("*"));
     }
 
     applyRuntimeDocument(document) {
@@ -1525,6 +1597,7 @@ export class ConfigFile {
             document = document.recursiveUnpack();
             const next = parseDocument(document);
             if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            Meta.gnoblin_finish_config_event(true);
             settings = next;
             this._document = cloneDocument(document);
         } catch (error) {
@@ -1669,6 +1742,10 @@ export class ConfigFile {
     }
 
     destroy() {
+        if (this._runtimeEventSignal) {
+            global.display.disconnect(this._runtimeEventSignal);
+            this._runtimeEventSignal = 0;
+        }
         if (this._timeout) GLib.source_remove(this._timeout);
         this._timeout = 0;
         for (const monitor of this._monitors.values()) monitor.cancel();
@@ -1690,17 +1767,6 @@ export function layerOffset(anchor, rect, monitor) {
     const x = left === right ? 0 : left ? monitor.x - rect.x - rect.width : monitor.x + monitor.width - rect.x;
     const y = top === bottom ? 0 : top ? monitor.y - rect.y - rect.height : monitor.y + monitor.height - rect.y;
     return [x, y];
-}
-
-function windowRuleMatches(rule, properties) {
-    for (const [key, matcher] of windowRuleMatchers(rule)) {
-        if (key === "type" || key === "focused" || key === "workspace-id" || key === "workspace-number") {
-            if (properties[key] !== matcher) return false;
-        } else if (properties[key] === null || !matcher.test(properties[key] ?? "")) {
-            return false;
-        }
-    }
-    return true;
 }
 
 // Later matching rules override individual effects, leaving others intact.

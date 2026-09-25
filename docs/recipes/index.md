@@ -22,8 +22,9 @@ After editing the file, apply the changes with `gnoblinctl config reload`.
   override selected values for matching windows.
 - [Split a config into files](/recipes/split-config-into-files): load separate
   files for appearance and shortcuts.
-- [Set up a writing workspace](/recipes/writing-workspace): assign stable
-  workspace IDs, place editor windows, and control workspaces from the CLI.
+- [Set up a writing workspace](/recipes/writing-workspace): declare stable
+  workspace IDs, route editor windows, and create a temporary workspace from a
+  Lua event callback.
 - [Build a small desktop](/recipes/small-desktop): start a bar, notifications,
   launcher and terminal.
 - [Set up a laptop for two keyboard layouts](/recipes/laptop-input): configure
