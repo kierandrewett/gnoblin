@@ -73,11 +73,12 @@ corrects the generator and regenerated outputs.
 The platform package models remain different. Debian bundles the runtime in
 one package; RPM divides it into Gnoblin-named runtime packages; Arch now has a
 self-contained single-package recipe with a deterministic release source
-bundle. The release workflow now gates publication on `makepkg`, stock-GNOME
-co-install, and removal checks, but no release run has exercised that gate yet.
-The RPM and Debian layouts keep files under `/usr/lib/gnoblin` and do not
-replace GNOME, but this must be demonstrated by installing and removing the
-complete package set on each target with stock GNOME already installed.
+bundle. The exact-main Arch release-style gate passed `makepkg`, stock-GNOME
+co-install, and removal in run `36157414890`. Tumbleweed passed its native RPM
+chain, package-isolation, co-install, and removal checks in run `36158322082`.
+Neither result proves graphical session login or session switching. Other RPM
+and Debian layouts keep files under `/usr/lib/gnoblin` and do not replace
+GNOME; each target still needs its own clean install/removal evidence.
 
 Gnoblin pins GNOME 51 and currently requires host GLib 2.86, GJS 1.87.1,
 Wayland 1.26, Wayland Protocols 1.48, libinput 1.30, and PipeWire 1.4. Fedora
