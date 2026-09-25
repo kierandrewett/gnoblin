@@ -51,27 +51,28 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                                         | Missing coverage                                                         |
-| -------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Fedora   | COPR; Fedora 43, 44, 45                                              | Enterprise Linux targets; install/coexistence gates per target           |
-| Debian   | Signed APT archive; Debian 13                                        | Debian 11 and 12 build, dependency, install and coexistence gates        |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                           | Ubuntu 22.04 and per-LTS install/coexistence gates                       |
-| Arch     | Generated metapackage only                                           | Runtime packages, a buildable PKGBUILD/AUR submission, and install tests |
-| openSUSE | Source-build instructions                                            | RPM package, OBS build targets, and install/coexistence tests            |
-| NixOS    | Flake package/module evaluation for 25.05, 25.11, 26.05 and unstable | Package builds plus graphical-session/coexistence tests                  |
+| Family   | Present path                                                            | Missing coverage                                                                      |
+| -------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Fedora   | COPR; Fedora 43, 44, 45                                                 | Enterprise Linux targets; install/coexistence gates per target                        |
+| Debian   | Signed APT archive; Debian 13                                           | Debian 11 and 12 build, dependency, install and coexistence gates                     |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                              | Ubuntu 22.04 and per-LTS install/coexistence gates                                    |
+| Arch     | Self-contained runtime PKGBUILD and deterministic release source bundle | `makepkg`, installed package/coexistence/removal tests, and binary or AUR publication |
+| openSUSE | Source-build instructions                                               | RPM package, OBS build targets, and install/coexistence tests                         |
+| NixOS    | Flake package/module evaluation for 25.05, 25.11, 26.05 and unstable    | Package builds plus graphical-session/coexistence tests                               |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical
 `https://github.com/kierandrewett/gnoblin` returns HTTP 200. Commit `e1472bb8`
 corrects the generator and regenerated outputs.
 
-The candidate's platform package models are not consistent yet. Debian bundles
-the runtime in one package; RPM divides it into Gnoblin-named runtime packages;
-Arch currently emits only a metapackage whose runtime dependencies are not
-published. The existing RPM and Debian layouts keep files under
-`/usr/lib/gnoblin` and do not replace GNOME, but this must be demonstrated by
-installing and removing the complete package set on each target with stock
-GNOME already installed.
+The platform package models remain different. Debian bundles the runtime in
+one package; RPM divides it into Gnoblin-named runtime packages; Arch now has a
+self-contained single-package recipe with a deterministic release source
+bundle. The release workflow now gates publication on `makepkg`, stock-GNOME
+co-install, and removal checks, but no release run has exercised that gate yet.
+The RPM and Debian layouts keep files under `/usr/lib/gnoblin` and do not
+replace GNOME, but this must be demonstrated by installing and removing the
+complete package set on each target with stock GNOME already installed.
 
 Gnoblin pins GNOME 51 and currently requires host GLib 2.86, GJS 1.85.90,
 Wayland 1.26, Wayland Protocols 1.48, libinput 1.30, and PipeWire 1.4. Fedora
@@ -89,13 +90,16 @@ and COPR while the target matrix and packaging recipes are audited.
 
 ### Coexistence and delivery audit
 
-The current package isolation is a useful base, but the test evidence is
-uneven. Fedora's RPM check uses `fakeroot`, so it checks file ownership and
-package metadata without running DNF dependency solving or RPM scriptlets.
-The COPR smoke test installs Gnoblin into a clean Fedora container without
-stock GNOME installed. Debian has the strongest package-level proof: it starts
-with stock GNOME installed, installs Gnoblin, checks session files and package
-ownership, removes Gnoblin, then checks stock GNOME remains. Nix's
+The current package isolation is a useful base, but test evidence is uneven.
+The RPM `fakeroot` check validates file ownership and package metadata without
+running DNF dependency solving or scriptlets. The Fedora 44 COPR smoke test
+now installs stock GNOME first, installs and removes Gnoblin, and verifies
+stock package versions and binary ownership before and after; run
+`36139101542` passed. The release COPR workflow has the same co-install and
+removal gate across Fedora 43, 44, and 45, pending a release that exercises
+it. Debian has the strongest package-level proof: it starts with stock GNOME
+installed, installs Gnoblin, checks session files and package ownership,
+removes Gnoblin, then checks stock GNOME remains. Nix's
 `combinedProfile` asserts that stock `gnome-shell` and `mutter` still resolve
 to stock Nix packages, but it is an evaluation/composition check rather than a
 graphical login/removal test.
@@ -112,12 +116,12 @@ cannot silently turn a known blocker into an unexamined result.
 
 Fedora packaging supports Fedora COPR chroots but has no EL publication target.
 Its `%rhel` condition only omits an optional portal helper; it does not adapt
-the Fedora package names, macros, or dependency versions for EL. Arch's
-generated `any` metapackage depends on Gnoblin runtime packages that are not
-published, so it cannot provide a complete installation. openSUSE currently
-has dependency-provisioning and source-build support, but no openSUSE-native
-spec or tested OBS project; Fedora RPM specs are not portable to SUSE as
-written.
+the Fedora package names, macros, or dependency versions for EL. Arch now has
+a single-package source recipe and a deterministic release bundle; its release
+workflow gates publication on `makepkg` and install/remove checks, pending the
+first release run. openSUSE dependency planning
+works on Tumbleweed, but it still needs a SUSE-native spec and package test;
+Fedora RPM specs are not portable to SUSE as written.
 
 This means coexistence is a package-layout invariant, not yet a demonstrated
 cross-distro guarantee. Each target gate should install the stock desktop
@@ -143,11 +147,15 @@ to remain real constraints.
 | openSUSE Leap 15.6 and 16.0      | GLib/GJS are 2.78/1.78 and 2.84/1.84; both miss the 51 floors. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                                                                                                                                                          | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
 | openSUSE Tumbleweed              | Core host floors are met: GLib 2.88, GJS 1.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. Dependency planning resolved, but an 844-package install was stopped before building.                                                                                                                              | The best openSUSE candidate. It still needs a SUSE-native spec/adapter, actual RPM build, and co-install/install/remove checks. Fedora names and paths differ, including Mesa, libxcvt, GCR, libadwaita, and GNOME Desktop packages.                                                                                         |
 
-The same limitation shows up on Arch in a different form: there is no complete
-package to test. The published standalone PKGBUILD depends on unpublished
-Gnoblin runtime package names and refers to a repository-relative example file
-that is absent from the release asset. It must become a real source-addressable
-runtime package set before Arch can be counted as covered.
+The Arch placeholder is now replaced by a source-addressable single-package
+recipe. Commit `6e377de6` adds a deterministic release bundle containing the
+tracked Gnoblin source and materialised, patch-applied schemas, Mutter, and
+Shell archives; commit `25cd6d54` generates a SHA-pinned release PKGBUILD
+without requiring Nix in the release builder. It removes the old
+unpublished-runtime-dependency and checkout-relative-path failures. Commit
+`7c1bfa15` makes a real `makepkg` build, stock-GNOME install, Gnoblin install,
+and removal checks a pre-publication release gate. That gate has not yet run
+for a release tag, and graphical login is still a separate support gate.
 
 ### Host and private runtime boundary
 

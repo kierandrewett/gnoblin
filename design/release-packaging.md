@@ -45,9 +45,10 @@ release pipeline or COPR publication changes.
   targets. EL 8/9/10 and openSUSE Leap 15.6/16.0 miss GNOME 51 host GLib/GJS
   floors; Debian 11/12 and Ubuntu 22.04 lack build/runtime pieces absent from
   the private bundle. Tumbleweed meets the core floors but needs a SUSE-native
-  spec and an actual package/coexistence test. Arch remains a metadata-only
-  unusable package. Keep these targets unsupported until their specific
-  compatibility work and gates exist.
+  spec and an actual package/coexistence test. Arch now has a source-build
+  package recipe, but the package and install path remain unverified. Keep
+  these targets unsupported until their specific compatibility work and gates
+  exist.
 - Fedora workflow run `36139101542` passed the first RPM-side stock-GNOME
   install/coexist/remove gate, along with Fedora 43/44/45 builds and the
   existing Arch source-build/dependency checks. The RPM gate does not prove
@@ -56,9 +57,11 @@ release pipeline or COPR publication changes.
   source-build PKGBUILD and a deterministic release source bundle containing
   Gnoblin plus materialised patched schemas, Mutter, and Shell sources.
   Commit `25cd6d54` makes the release recipe generator independent of Nix.
+  Commit `7c1bfa15` adds a pre-publication `makepkg`, stock-GNOME co-install,
+  and Gnoblin removal gate and publishes the resulting Arch package asset.
   Bundle determinism, source inventory, release checksum generation, and
-  recipe syntax pass; full `makepkg`, GNOME co-install, graphical login, and
-  removal remain release gates.
+  recipe syntax pass; the new release gate has not yet run for a tag, and
+  graphical login remains unverified.
 - Commit `6ea70e32` adds pinned NixOS 25.05, 25.11, 26.05, and unstable
   package/module evaluations. CI confirms 25.05 and 25.11 are blocked because
   their package sets lack `gcc16Stdenv`, while 26.05 and unstable evaluate.
