@@ -87,6 +87,38 @@ The `0.1.7` release workflow was cancelled at run `36136202878` before package
 install or publication. This keeps the candidate out of GitHub Releases, APT,
 and COPR while the target matrix and packaging recipes are audited.
 
+### Coexistence and delivery audit
+
+The current package isolation is a useful base, but the test evidence is
+uneven. Fedora's RPM check uses `fakeroot`, so it checks file ownership and
+package metadata without running DNF dependency solving or RPM scriptlets.
+The COPR smoke test installs Gnoblin into a clean Fedora container without
+stock GNOME installed. Debian has the strongest package-level proof: it starts
+with stock GNOME installed, installs Gnoblin, checks session files and package
+ownership, removes Gnoblin, then checks stock GNOME remains. Nix's
+`combinedProfile` asserts that stock `gnome-shell` and `mutter` still resolve
+to stock Nix packages, but it is an evaluation/composition check rather than a
+graphical login/removal test.
+
+The existing Nix flake pins only `nixos-unstable`, checks only x86_64 Linux,
+and has no stable-channel target matrix. Fedora packaging supports Fedora
+COPR chroots but has no EL publication target. Its `%rhel` condition only
+omits an optional portal helper; it does not adapt the Fedora package names,
+macros, or dependency versions for EL. Arch's generated `any` metapackage
+depends on Gnoblin runtime packages that are not published, so it cannot
+provide a complete installation. openSUSE currently has dependency-provisioning
+and source-build support, but no openSUSE-native spec or tested OBS project;
+Fedora RPM specs are not portable to SUSE as written.
+
+This means coexistence is a package-layout invariant, not yet a demonstrated
+cross-distro guarantee. Each target gate should install the stock desktop
+first, solve/install the exact Gnoblin package set, verify stock session
+executables and package ownership remain intact, select and log in to both
+sessions where a graphical runner exists, remove Gnoblin, and verify GNOME
+still logs in. Where CI cannot provide a graphical runner, report that gap
+separately instead of treating metadata or a successful package transaction as
+full coexistence proof.
+
 ## Recommended support contract
 
 Treat supported releases as native package targets, not just source-build
