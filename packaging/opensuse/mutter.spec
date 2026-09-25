@@ -76,6 +76,7 @@ BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
 BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(xwayland)
 BuildRequires:  python3dist(argcomplete)
+BuildRequires:  python3dist(docutils)
 %if %{with gnoblin_stack}
 BuildRequires:  gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 %endif
