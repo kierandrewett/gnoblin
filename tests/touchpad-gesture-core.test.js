@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -11,6 +12,15 @@ const rightThenDown = [
     { x: 1, y: 0 },
     { x: 1, y: 1 },
 ];
+
+test("Shell controller imports the gesture router only once", () => {
+    const controller = readFileSync(
+        new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinControl.js", import.meta.url),
+        "utf8",
+    );
+    const imports = controller.match(/import \{ TouchpadGestureRouter \} from "\.\/gnoblinTouchpadGestures\.js";/g);
+    assert.equal(imports?.length, 1);
+});
 
 test("matches the same path with different scale and event sampling", () => {
     assert.equal(

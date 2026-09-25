@@ -43,7 +43,6 @@ import * as Config from "../../misc/config.js";
 import { CompositorBridge } from "./gnoblinBridge/compositor-bridge.js";
 import { LaunchFeedback } from "./gnoblinLaunchFeedback.js";
 import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
-import { TouchpadGestureRouter } from "./gnoblinTouchpadGestures.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
