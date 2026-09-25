@@ -55,6 +55,13 @@ jobs:
       - name: Run deterministic plan checks
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
 
+      - name: Test Lua shell event registration
+        run: |
+          runuser -u builder -- env \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -c 'cd "$GNOBLIN_WORKSPACE"; source src/tools/gnoblin-env.sh; gnoblin_env_apply "$GNOBLIN_PREFIX"; gjs -m tests/lua-shell-config-test.js'
+
       - name: Run varied seeded lifecycle sessions
         id: lifecycle-fuzz
         run: |

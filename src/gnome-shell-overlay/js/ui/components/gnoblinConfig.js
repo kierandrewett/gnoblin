@@ -1461,8 +1461,12 @@ export class ConfigFile {
         });
     }
 
+    wantsEvent(event) {
+        return this._events?.has(event) || this._events?.has("*") || false;
+    }
+
     dispatchEvent(event, payload = {}) {
-        if (!this._events?.has(event) && !this._events?.has("*")) return;
+        if (!this.wantsEvent(event)) return;
         try {
             const variants = Object.fromEntries(
                 Object.entries(payload).map(([key, value]) => {

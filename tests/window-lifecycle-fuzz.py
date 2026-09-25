@@ -420,6 +420,15 @@ def run_inside() -> int:
         if result.returncode:
             raise RuntimeError(f"could not apply window frame policy: {result.stderr.strip() or result.stdout.strip()}")
 
+    def wait_frame_disabled(window_id: int) -> dict:
+        def disabled_state() -> dict | None:
+            state = state_for(window_id)
+            if state and not state["layout"]["presentation"]["visible"] and not any(state["layout"]["border"]):
+                return state
+            return None
+
+        return wait_for(disabled_state, f"native frame to be disabled on window {window_id}")
+
     def wait_frame(window_id: int, top: int) -> dict:
         deadline = time.monotonic() + 5
         state = None
@@ -548,7 +557,10 @@ def run_inside() -> int:
             policy = action["policy"]
             set_frame_policy(window_id, policy)
             if not state["minimized"] and not state["fullscreen"]:
-                wait_frame(window_id, policy[5] if policy[0] else 0)
+                if policy[0]:
+                    wait_frame(window_id, policy[5])
+                else:
+                    wait_frame_disabled(window_id)
             return
         if op == "hover":
             state = prepare_frame(window_id)
