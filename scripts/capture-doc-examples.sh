@@ -31,15 +31,21 @@ profile="$(mktemp -d /tmp/gnoblin-doc-example.XXXXXX)"
 ydotool_socket="$profile/runtime/ydotool.sock"
 ydotoold_pid=
 cleanup() {
-    [ -z "$ydotoold_pid" ] || kill "$ydotoold_pid" 2>/dev/null || true
+    if [ -n "$ydotoold_pid" ]; then
+        kill "$ydotoold_pid" 2>/dev/null || true
+        wait "$ydotoold_pid" 2>/dev/null || true
+    fi
     for _ in 1 2 3; do
-        rm -rf -- "$profile"
+        rm -rf -- "$profile" 2>/dev/null || true
         [ ! -e "$profile" ] && return
         sleep 1
     done
-    rm -rf -- "$profile"
+    if [ -e "$profile" ]; then
+        printf 'capture-doc-examples: could not remove disposable profile %s\n' "$profile" >&2
+        return 1
+    fi
 }
-trap cleanup EXIT
+trap 'cleanup || exit 1' EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
 ydotoold --socket-path="$ydotool_socket" --socket-perm=0600 >"$profile/ydotoold.log" 2>&1 &
@@ -56,6 +62,7 @@ export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
 export XDG_CONFIG_DIRS=/etc/xdg
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
+export MESA_SHADER_CACHE_DISABLE=true
 export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
 GNOBLIN_MUTTER_API="$(python3 "$root/scripts/gnome-versions.py" get mutter api)"
