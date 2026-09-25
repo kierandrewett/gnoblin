@@ -201,12 +201,22 @@ set pagination off
 set confirm off
 set breakpoint pending on
 handle SIGTERM nostop noprint pass
+break g_warn_message
+commands 1
+  silent
+  printf "GNOBLIN_GDB_WARNING: line=%d domain=%p file=%p function=%p expression=%p\n", $edx, $rdi, $rsi, $rcx, $r8
+  if $r8
+    x/s $r8
+  end
+  bt 30
+  continue
+end
 break g_log
-condition 1 ($esi & 8) != 0
+condition 2 ($esi & 8) != 0
 set $gnoblin_color_source = (void *) 0
 set $gnoblin_color_handler = (unsigned long) 0
 break subprojects/mutter/src/wayland/meta-wayland-color-management.c:1974
-commands 2
+commands 3
   silent
   set $gnoblin_color_source = meta_color_manager
   set $gnoblin_color_handler = color_manager->color_state_changed_handler_id
@@ -215,8 +225,8 @@ commands 2
   continue
 end
 break g_signal_handler_disconnect
-condition 3 $rdi == $gnoblin_color_source && $rsi == $gnoblin_color_handler
-commands 3
+condition 4 $rdi == $gnoblin_color_source && $rsi == $gnoblin_color_handler
+commands 4
   silent
   printf "GNOBLIN_GDB_COLOR_DISCONNECT: source=%p handler=%lu\n", $rdi, $rsi
   x/8gx $rdi
@@ -224,34 +234,34 @@ commands 3
   continue
 end
 catch signal SIGABRT
-commands 4
+commands 5
   silent
   printf "\nGNOBLIN_GDB_ABORT: SIGABRT\n"
   bt full 40
   quit 1
 end
 catch signal SIGSEGV
-commands 5
+commands 6
   silent
   printf "\nGNOBLIN_GDB_FATAL: SIGSEGV\n"
   bt full 40
   quit 1
 end
 catch signal SIGBUS
-commands 6
+commands 7
   silent
   printf "\nGNOBLIN_GDB_FATAL: SIGBUS\n"
   bt full 40
   quit 1
 end
 catch signal SIGILL
-commands 7
+commands 8
   silent
   printf "\nGNOBLIN_GDB_FATAL: SIGILL\n"
   bt full 40
   quit 1
 end
-commands 1
+commands 2
   silent
   printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx
   bt 40

@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
 from gnoblin_test_session import (  # noqa: E402
+    application_window_candidates,
     compile_minimal_testing_shell,
     eval_shell,
     send_pointer,
@@ -387,6 +388,7 @@ def run_one_app(
     console_dir: Path,
     launch_timeout: float,
     client_environment: dict[str, str],
+    splashscreen_type: int,
 ) -> dict:
     baseline = {window["sequence"] for window in shell_windows()}
     if app["source"] == "flathub-popular":
@@ -424,10 +426,7 @@ def run_one_app(
         try:
 
             def app_windows() -> list[dict]:
-                candidates = [
-                    window for window in shell_windows() if window["sequence"] not in baseline and window["title"]
-                ]
-                return [window for window in candidates if window["ready"] and window["mapped"]]
+                return application_window_candidates(shell_windows(), baseline, splashscreen_type)
 
             try:
                 new_windows = wait_for(
@@ -745,6 +744,7 @@ def run_inside() -> int:
                 result["app_id"]: result for result in json.loads(Path(install_report).read_text()).get("apps", [])
             }
         launch_timeout = float(os.environ.get("GNOBLIN_E2E_LAUNCH_TIMEOUT", "25"))
+        splashscreen_type = eval_shell("imports.gi.Meta.WindowType.SPLASHSCREEN")
         for index, app in enumerate(shard["apps"], start=1):
             print(f"app E2E [{index}/{len(shard['apps'])}] {app['source']} {app['app_id']}", flush=True)
             installation = install_results.get(app["app_id"])
@@ -759,7 +759,15 @@ def run_inside() -> int:
                 outcomes.append(outcome)
                 write_event(events_path, {"phase": "application-complete", **outcome})
                 continue
-            outcome = run_one_app(app, events_path, screenshot_dir, console_dir, launch_timeout, client_environment)
+            outcome = run_one_app(
+                app,
+                events_path,
+                screenshot_dir,
+                console_dir,
+                launch_timeout,
+                client_environment,
+                splashscreen_type,
+            )
             outcomes.append(outcome)
             write_event(events_path, {"phase": "application-complete", **outcome})
             if index % 10 == 0:
