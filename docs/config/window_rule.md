@@ -71,7 +71,7 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 | `keep_fullscreen`, `keep_tiled` | `false`        | Keep rounding in those states                                 |
 | `skip_libadwaita`               | `true`         | Preserve libadwaita corners in auto mode                      |
 | `skip_libhandy`                 | `false`        | Skip libhandy windows in auto mode                            |
-| `remove_csd`                    | `false`        | Reconstruct supported client corner gaps                      |
+| `remove_csd`                    | `false`        | Detect and replace client-drawn rounded corners               |
 | `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                           |
 | `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states |
 
@@ -117,3 +117,35 @@ pixels and adds a frame.
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
 [`gnoblin.configure`](/config/configure#window-management).
+
+### `remove_csd`
+
+Enable `remove_csd` when an application draws its own rounded corners and you
+want Gnoblin's configured shape to control the result. Gnoblin inspects the
+window's rendered pixels to detect the corner cutouts, then fills those gaps
+from the app's nearby background before applying the configured corners.
+
+Gnoblin adapts to each window's actual content instead of assuming a
+particular toolkit, corner radius, or background colour.
+
+It also handles the narrow antialiased edge around the detected curve while
+preserving opaque content.
+
+```lua
+gnoblin.window_rule {
+    match = {type = "window", app_id = "^org.example.App$"},
+    corners = {
+        radius = 12,
+        mode = "force",
+        remove_csd = true,
+    },
+}
+```
+
+This is opt-in because detecting and sampling the window image has a cost. Use
+it on rules for apps whose own rounded corners conflict with Gnoblin's shape;
+leave it off for other windows. The option changes corner rendering only. It
+does not remove client-side titlebars or other decorations.
+
+If the app's corner background varies sharply near the edge, Gnoblin may not
+find a safe fill, so the original corner can remain visible.

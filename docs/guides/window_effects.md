@@ -39,9 +39,15 @@ Rounding is already disabled for fullscreen and tiled windows by default.
 See the [corner reference](/config/window_rule#corners) for padding and
 exceptions for particular toolkits.
 
-`remove_csd` fills corner gaps left by supported apps so Gnoblin can draw a
-replacement curve. It does not remove titlebars. Leave it off unless those gaps
-are a problem; see [titlebars](/guides/window_frames) to change window decorations.
+For apps that draw their own rounded corners, set `remove_csd = true` in the
+`corners` table of that app's rule. Gnoblin detects the rendered cutouts and
+samples nearby pixels to fill them before drawing its configured shape. This
+lets the same rule work across different corner radii and background colours.
+
+The option has a per-window image sampling cost, so enable it only for apps
+whose corners conflict with Gnoblin's. It does not remove titlebars. See the
+[`remove_csd` reference](/config/window_rule#remove-csd) for the example and
+limitations.
 
 ## Blur behind translucent windows {#blur-and-opacity}
 
