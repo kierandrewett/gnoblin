@@ -580,7 +580,7 @@ def run_inside() -> int:
         if op == "drag_resize":
             state = prepare_frame(window_id)
             if state["maximized"]:
-                eval_shell(f"{window_expr}.unmaximize();return true;")
+                eval_shell(f"(()=>{{{window_expr}.unmaximize();return true;}})()")
                 wait_for(
                     lambda: current if (current := state_for(window_id)) and not current["maximized"] else None,
                     f"window {window_id} to leave maximized state before resizing",

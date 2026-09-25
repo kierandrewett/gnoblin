@@ -186,12 +186,29 @@ if [[ "${GNOBLIN_TEST_UNSAFE_MODE:-0}" == 1 ]]; then debug_args=(--unsafe-mode);
 if [[ "${GNOBLIN_TEST_XWAYLAND:-0}" == 1 ]]; then x11_args=(); fi
 monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
+shell_command=("$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE"
+    "${monitor_args[@]}" --wayland-display "$DISP")
+if [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
+    command -v gdb >/dev/null 2>&1 || {
+        echo "!! GNOBLIN_TEST_GDB_CRITICALS=1 requires gdb" >&2
+        exit 1
+    }
+    shell_command=(gdb --nx --batch --quiet
+        -ex "set debuginfod enabled off"
+        -ex "set pagination off"
+        -ex "set breakpoint pending on"
+        -ex "break g_log"
+        -ex 'condition 1 ($rsi & 8) != 0'
+        -ex run
+        -ex 'x/s $rdx'
+        -ex "bt 30"
+        --args "${shell_command[@]}")
+fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
     bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
     gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
-    "$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE" \
-    "${monitor_args[@]}" --wayland-display "$DISP" \
+    "${shell_command[@]}" \
     >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
 

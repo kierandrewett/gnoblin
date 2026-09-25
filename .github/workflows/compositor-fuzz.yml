@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
+    inputs:
+      trace_first_critical:
+        description: Stop in GDB at the first GLib critical (diagnostic run)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,6 +28,10 @@ jobs:
     steps:
       - name: Install checkout and session tools
         run: dnf -y install git dbus-daemon
+
+      - name: Install GDB for a critical backtrace
+        if: ${{ inputs.trace_first_critical }}
+        run: dnf -y install gdb
 
       - name: Checkout Gnoblin and submodules
         uses: actions/checkout@v4
@@ -72,6 +82,9 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
             seeds+=(51 1701 884422 314159265)
           fi
+          if [[ "${{ inputs.trace_first_critical }}" == "true" ]]; then
+            seeds=(1738)
+          fi
           failed_seeds=()
           for seed in "${seeds[@]}"; do
             artifact_dir="$artifact_root/seed-$seed"
@@ -81,7 +94,12 @@ jobs:
               extra_monitor=(EXTRA_MONITOR=1024x768)
             fi
             echo "== lifecycle seed $seed =="
+            debug_env=()
+            if [[ "${{ inputs.trace_first_critical }}" == "true" && "$seed" == "1738" ]]; then
+              debug_env+=(GNOBLIN_TEST_GDB_CRITICALS=1)
+            fi
             if ! runuser -u builder -- env \
+              "${debug_env[@]}" \
               XDG_RUNTIME_DIR="/run/user/$builder_uid" \
               "${extra_monitor[@]}" \
               GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
