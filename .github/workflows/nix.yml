@@ -29,13 +29,13 @@ jobs:
             package_evaluates: "false"
             module_evaluates: "false"
             evaluation_blocker: '"missing-libglycin"'
-            build_blockers: '["missing-libglycin","glib-below-2.86","gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.31","pipewire-below-1.6"]'
+            build_blockers: '["missing-libglycin","glib-below-2.86","gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
           - attribute: nixos_25_11
             release: "25.11"
             package_evaluates: "true"
             module_evaluates: "true"
             evaluation_blocker: "null"
-            build_blockers: '["gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.31","pipewire-below-1.6"]'
+            build_blockers: '["gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
           - attribute: nixos_26_05
             release: "26.05"
             package_evaluates: "true"
