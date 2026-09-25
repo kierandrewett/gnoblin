@@ -1,7 +1,11 @@
 From 16a09db174775a54de0ef79f70ab2beefb0494f0 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 01:47:25 +0100
-Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
+Subject: [PATCH] gnoblin: keep config runtime hooks active on pinned Mutter
+
+The pinned Wayland build does not define HAVE_WAYLAND. These runtime and event
+entry points are only used by Gnoblin's Wayland compositor, so compile them
+directly instead of silently replacing config finalization with no-ops.
 
 ---
  src/core/display.c                 |  9 ++++
@@ -9,7 +13,7 @@ Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
  src/meta/display.h                 |  5 +++
  src/meta/util.h                    |  8 ++++
  src/wayland/meta-wayland-pointer.c | 27 +++++++++++++++
- 5 files changed, 115 insertions(+), 1 deletion(-)
+ 5 files changed, 104 insertions(+), 1 deletion(-)
 
 diff --git a/src/core/display.c b/src/core/display.c
 index 45b860eb8..91c4769b9 100644
@@ -63,7 +67,7 @@ index 5b89e5ce2..06accd2fb 100644
    g_variant_builder_add (&result, "{sv}", "paths",
                           g_variant_new_strv (
                             paths ? (const char * const *) paths->pdata : NULL,
-@@ -793,3 +797,64 @@ meta_encode_hex (gpointer data,
+@@ -793,3 +797,53 @@ meta_encode_hex (gpointer data,
  
    return g_string_free_and_steal (encoded);
  }
@@ -71,9 +75,7 @@ index 5b89e5ce2..06accd2fb 100644
 +void
 +meta_gnoblin_finish_config_load (gboolean commit)
 +{
-+#ifdef HAVE_WAYLAND
 +  gnoblin_config_finish_load (commit);
-+#endif
 +}
 +
 +GVariant *
@@ -85,14 +87,9 @@ index 5b89e5ce2..06accd2fb 100644
 +  g_autoptr (GVariant) document = NULL;
 +
 +  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
-+#ifdef HAVE_WAYLAND
 +  document = gnoblin_config_dispatch_event (event, payload, &error);
 +  if (document)
 +    g_variant_builder_add (&result, "{sv}", "document", document);
-+#else
-+  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-+                       "Gnoblin config events require Wayland support");
-+#endif
 +  if (error)
 +    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
@@ -101,9 +98,7 @@ index 5b89e5ce2..06accd2fb 100644
 +void
 +meta_gnoblin_finish_config_event (gboolean commit)
 +{
-+#ifdef HAVE_WAYLAND
 +  gnoblin_config_finish_event (commit);
-+#endif
 +}
 +
 +void
@@ -111,7 +106,6 @@ index 5b89e5ce2..06accd2fb 100644
 +                                     const char  *event,
 +                                     GVariant    *payload)
 +{
-+#ifdef HAVE_WAYLAND
 +  g_autoptr (GError) error = NULL;
 +  g_autoptr (GVariant) document =
 +    gnoblin_config_dispatch_event (event, payload, &error);
@@ -126,7 +120,6 @@ index 5b89e5ce2..06accd2fb 100644
 +      g_signal_emit_by_name (display, "gnoblin-config-event", event, document);
 +      gnoblin_config_finish_event (TRUE);
 +    }
-+#endif
 +}
 diff --git a/src/meta/display.h b/src/meta/display.h
 index 8773263e0..d40d2ca75 100644

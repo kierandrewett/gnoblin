@@ -25,7 +25,7 @@ Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 
 If a Lua configuration reload is already in progress, API commands retry that
 temporary response until their `--timeout` expires. Other compositor errors are
-reported immediately.
+reported immediately, and uncertain actions are not retried.
 
 ## Windows
 
