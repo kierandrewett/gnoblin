@@ -159,6 +159,26 @@ release pipeline or COPR publication changes.
   under the absolute temporary build-prefix path. Commit `187e95cc` packages
   only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the full
   build/co-install/removal gate is rerunning. Do not count Arch as passing yet.
+- Commit `ac70ae2b` corrects NixOS host-floor reporting against Gnoblin's
+  Mutter compatibility patches: libinput's required floor is 1.30, while
+  PipeWire 1.4 is accepted, so neither should be reported at raw upstream
+  Mutter's higher floor. `nix flake check --no-build -L` passes, and channel
+  evaluation still reports Wayland 1.26/GJS/GLib blockers on stable channels.
+  Only the pinned 26.05 private Mutter closure has built; full Shell, install,
+  coexistence, and graphical login remain unverified.
+- The first private Debian 12 source-closure attempt now reaches GLib 2.90's
+  Meson configure step and records the concrete bootstrap blocker:
+  `/usr/bin/g-ir-scanner` 1.74 is below the required 1.80. The builder can
+  order and select declared dependency subgraphs and safely extract archives
+  under Python 3.10/3.11, but this does not add GTK/GCR to the production
+  manifest. Debian 12 and Ubuntu 22.04 remain unsupported pending a separate
+  GLib-without-introspection -> private scanner -> final GLib/GIRepository 2 ->
+  GTK 4.14/GCR4 compatibility closure.
+- On the exact `4b3e5daf` workflow run, the Tumbleweed private RPM chain has
+  built and passed package isolation; stock-GNOME co-install/removal is still
+  in progress. The Arch package/co-install gate and Fedora 43/44/45 source
+  builds are also still running. Record their results only after the jobs
+  finish; package build alone does not establish graphical session support.
 
 ## Release flow
 
