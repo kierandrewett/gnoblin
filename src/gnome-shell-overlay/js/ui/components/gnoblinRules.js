@@ -63,15 +63,15 @@ export class WindowRules {
         this._pendingId = 0;
         this._backgroundEffects = new BackgroundEffects((actor) => this._apply(actor));
         this._updateRuleDependencies(this._config);
-        this._map = global.window_manager.connect("map", (_wm, actor) => this._apply(actor));
+        this._map = global.window_manager.connect("map", (_wm, actor) => {
+            this._assignInitialWorkspace(actor.meta_window);
+            this._apply(actor);
+        });
         this._workspaceRemoved = global.workspace_manager.connect("workspace-removed", () =>
             this._workspaceNumbersChanged(),
         );
         this._workspacesReordered = global.workspace_manager.connect("workspaces-reordered", () =>
             this._workspaceNumbersChanged(),
-        );
-        this._windowCreated = global.display.connect("window-created", (_display, window) =>
-            this._assignInitialWorkspace(window),
         );
         this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
         this._focus = global.display.connect("notify::focus-window", () => {
@@ -112,9 +112,9 @@ export class WindowRules {
             this._initialWorkspaceHandled.add(window);
             return;
         }
-        // Both Mutter creation paths assign the initial or active workspace
-        // before emitting window-created. Override-redirect windows have no
-        // workspace and cannot receive a workspace placement rule.
+        // Evaluate placement once the actor maps, after the client has sent
+        // its initial title and application ID. Override-redirect windows
+        // have no workspace and cannot receive a workspace placement rule.
         if (!window.get_workspace()) return;
         this._initialWorkspaceHandled.add(window);
         try {
@@ -343,7 +343,6 @@ export class WindowRules {
         global.window_manager.disconnect(this._map);
         global.workspace_manager.disconnect(this._workspaceRemoved);
         global.workspace_manager.disconnect(this._workspacesReordered);
-        global.display.disconnect(this._windowCreated);
         global.display.disconnect(this._focus);
         for (const entry of this._sources.values()) {
             entry.monitor?.cancel();
