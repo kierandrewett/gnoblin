@@ -1,19 +1,38 @@
 # Arch Linux packaging
 
-`PKGBUILD` is the generated `gnoblin` metapackage. Its version, private-runtime
-major bounds, GNOME capability dependencies, and Arch package-name mappings
-come from `nix/native-packages.nix`. Refresh it with
-`just package-manifest write`.
+Gnoblin is one `gnoblin` package on Arch. It builds the patched GNOME Shell,
+Mutter, schemas, and private dependencies together under `/usr/lib/gnoblin`.
+It never replaces, provides, or conflicts with Arch's `mutter` or
+`gnome-shell` packages. The only files outside that prefix are Gnoblin's login
+entry, `gnoblinctl`, and its `org.gnoblin.*` systemd user units.
 
-- Use `gnoblin-mutter`, `gnoblin-shell` and `gnoblin-session` package names.
-- Install the runtime under `/usr/lib/gnoblin`; set its library directory to
-  `lib` and record that in `libexec/gnoblin-libdir`.
-- Depend on the matching `gnoblin-*` runtime. Do not replace, conflict with,
-  or provide Arch's `mutter` or `gnome-shell` packages.
-- Export only Gnoblin's login entry, control command, user units and separately
-  named backlight policy. Follow the [RPM layout](../rpm/README.md).
+## Release source and integrity
 
-The `gnoblin-mutter`, `gnoblin-shell`, and `gnoblin-session` Arch runtime
-packages and pacman repository are not published yet. Until they are, use the
-[source build](../../docs/installation.md#build-from-source). Do not publish
-the metapackage by itself: all dependencies must resolve in the same repository.
+Each release publishes these paired assets:
+
+- `gnoblin-<version>-gnome-<gnome-version>-arch-source.tar.xz`
+- `gnoblin-<version>-gnome-<gnome-version>.PKGBUILD`
+
+The source archive includes the tracked Gnoblin tree and the three
+materialised, patch-applied component source archives for GSettings desktop
+schemas, Mutter, and GNOME Shell. It does not depend on Git submodules being
+present on the machine running `makepkg`.
+
+The release PKGBUILD contains the source archive SHA-256. Download the two
+assets from the same release, place `PKGBUILD` beside the archive, then run:
+
+```bash
+makepkg -si
+```
+
+The repository copy of `PKGBUILD` uses `SKIP` only as a generated development
+template. Do not use it to install a release: use the checked release asset.
+
+## Current status
+
+The recipe is designed for a clean Arch build environment with stock GNOME
+installed. It has no dependencies on unpublished `gnoblin-*` packages.
+Publishing an Arch repository or AUR package requires separate evidence that a
+stock GNOME installation, a Gnoblin login, and Gnoblin removal all work on the
+same target. Until those checks run for a release, this is a source packaging
+path rather than a supported binary distribution channel.
