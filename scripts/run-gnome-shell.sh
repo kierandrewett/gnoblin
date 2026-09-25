@@ -230,6 +230,27 @@ commands 4
   bt full 40
   quit 1
 end
+catch signal SIGSEGV
+commands 5
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGSEGV\n"
+  bt full 40
+  quit 1
+end
+catch signal SIGBUS
+commands 6
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGBUS\n"
+  bt full 40
+  quit 1
+end
+catch signal SIGILL
+commands 7
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGILL\n"
+  bt full 40
+  quit 1
+end
 commands 1
   silent
   printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx

@@ -1,0 +1,34 @@
+From a79fa8256ff74882f814d0358f171d17db0f80f6 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 20:27:00 +0000
+Subject: [PATCH] window: skip stack raises for unstacked windows
+
+meta_window_raise() may run while a transient parent or child is not yet in
+MetaStack. Do not pass those windows to meta_stack_raise(), which requires a
+valid stack position.
+
+---
+ src/core/window.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/window.c b/src/core/window.c
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -5565,14 +5565,15 @@
+    * constraints in stack.c then magically take care of raising all
+    * the child windows appropriately.
+    */
+-  meta_stack_raise (window->display->stack, ancestor);
++  if (meta_window_is_in_stack (ancestor))
++    meta_stack_raise (window->display->stack, ancestor);
+ 
+   /* Okay, so stacking constraints misses one case: If a window has
+    * two children and we want to raise one of those children, then
+    * raising the ancestor isn't enough; we need to also raise the
+    * correct child.  See bug 307875.
+    */
+-  if (window != ancestor)
++  if (window != ancestor && meta_window_is_in_stack (window))
+     meta_stack_raise (window->display->stack, window);
+ 
+   g_signal_emit (window, window_signals[RAISED], 0);
