@@ -454,6 +454,51 @@ static bool test_foreign_toplevel_stop(struct wl_display* display, struct protoc
     return true;
 }
 
+static bool test_disconnect_unconfigured_toplevel(struct wl_display* display) {
+    struct protocols protocols = {0};
+    struct wl_display* disconnect_display = wl_display_connect(NULL);
+    struct wl_registry* registry;
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+
+    if (!disconnect_display) {
+        fprintf(stderr, "FAIL: unconfigured toplevel client could not connect\n");
+        return false;
+    }
+
+    registry = wl_display_get_registry(disconnect_display);
+    wl_registry_add_listener(registry, &registry_listener, &protocols);
+    if (wl_display_roundtrip(disconnect_display) < 0 || !protocols.compositor ||
+        !protocols.xdg_wm_base) {
+        fprintf(stderr, "FAIL: unconfigured toplevel client missed required globals\n");
+        wl_display_disconnect(disconnect_display);
+        return false;
+    }
+
+    surface = wl_compositor_create_surface(protocols.compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.UnconfiguredDisconnect");
+
+    /* Role creation gives Mutter an unready MetaWindow, but we deliberately do
+     * not commit a buffer or acknowledge the initial configure. Disconnecting
+     * now exercises wl_resource cleanup with the toplevel still unconfigured. */
+    if (wl_display_roundtrip(disconnect_display) < 0) {
+        fprintf(stderr, "FAIL: unconfigured toplevel setup failed\n");
+        wl_display_disconnect(disconnect_display);
+        return false;
+    }
+
+    wl_display_disconnect(disconnect_display);
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: compositor did not survive unconfigured toplevel disconnect\n");
+        return false;
+    }
+
+    return true;
+}
+
 static bool test_layer_frame_callback_queue(struct wl_display* display,
                                             struct protocols* protocols) {
     enum { N_SURFACES = 16, CALLBACKS_PER_SURFACE = 3 };
@@ -788,6 +833,9 @@ int main(void) {
     }
 
     if (!test_screencopy_boundaries(display, &protocols))
+        return 1;
+
+    if (!test_disconnect_unconfigured_toplevel(display))
         return 1;
 
     wl_display_disconnect(display);

@@ -75,6 +75,14 @@ jobs:
       - name: Verify Gnoblin JavaScript resources
         run: python3 tests/gnome-shell-overlay-resources.test.py
 
+      - name: Exercise unconfigured xdg toplevel disconnect
+        run: |
+          builder_uid="$(id -u builder)"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            bash tests/test-protocol-boundaries.sh
+
       - name: Verify fatal log diagnostics
         run: bash tests/test-log-diagnostics.sh
 
