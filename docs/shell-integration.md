@@ -25,6 +25,10 @@ Give each grouped window the same icon rectangle before minimising it.
 A zero-size rectangle clears the hint. The hint also clears when its surface
 or window handle disappears.
 
+![GNOME Files beneath the Bingux dock in a Gnoblin session](images/gnoblin-bingux-files.png)
+
+_Bingux is one separate shell project using Gnoblin; its dock can provide icon targets._
+
 ## Layer placement and animation
 
 During entry and exit animations, Gnoblin moves the displayed panel without

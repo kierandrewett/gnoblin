@@ -43,7 +43,7 @@ With Mako running, notifications appear through its own layer-shell surface:
 
 ![Mako notification over Firefox in a clean Waybar session](../images/gnoblin-waybar-mako.png)
 
-_Mako displays a calendar reminder above Firefox._
+_Mako owns the reminder; Firefox remains an ordinary app window._
 
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting
