@@ -6,24 +6,22 @@ an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
 
 `gnoblin` is available globally. Its main declarations are:
 
-| Declaration                       | Input                                 | Purpose and reference                                                                     |
-| --------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `gnoblin.configure { ... }`       | Settings table                        | Sets runtime options. See the [configuration API](/config/configure).                     |
-| `gnoblin.window_rule { ... }`     | Match and effect tables               | Adds an ordered window rule. See the [window rules guide](/guides/window_rules).          |
-| `gnoblin.permission_rule { ... }` | Match, capabilities, and decision     | Adds an ordered permission rule. See the [permission rule API](/config/permission_rule).  |
-| `gnoblin.animation { ... }`       | Name, event, timing, and keyframes    | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
-| `gnoblin.shortcut { ... }`        | Named shortcut and binding or command | Adds or updates a shortcut. See [shortcuts](/config/configure/shortcuts).                 |
-| `gnoblin.autostart { ... }`       | Name, command, and launch time        | Adds an application launch. See [autostart](/config/configure/autostart).                 |
+| Declaration                       | Input                              | Purpose and reference                                                                     |
+| --------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| `gnoblin.configure { ... }`       | Settings table                     | Sets runtime options. See the [configuration API](/config/configure).                     |
+| `gnoblin.window_rule { ... }`     | Match and effect tables            | Adds an ordered window rule. See the [window rules guide](/guides/window_rules).          |
+| `gnoblin.permission_rule { ... }` | Match, capabilities, and decision  | Adds an ordered permission rule. See the [permission rule API](/config/permission_rule).  |
+| `gnoblin.animation { ... }`       | Name, event, timing, and keyframes | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
 
-This page names the Lua entry points. The linked references define each
-declaration's required fields, accepted values, and defaults.
+Use `gnoblin.configure.shortcuts` and `gnoblin.configure.autostart` for named
+entries. The older `gnoblin.shortcut`, `gnoblin.autostart`,
+`gnoblin.remove_shortcut`, and `gnoblin.remove_autostart` functions remain for
+compatibility and are deprecated.
 
 The first animation registered for an event supplies its default. Settings and
 window rules can select another registered name. Set `enable = false` on a
 named animation declaration to disable it:
 
-- `gnoblin.remove_shortcut(name)` removes the shortcut with that name.
-- `gnoblin.remove_autostart(name)` removes the launch entry with that name.
 - `gnoblin.animation {name = "soft-open", enable = false}` disables that animation.
 
 For example, a settings declaration and a window rule use this shape:
