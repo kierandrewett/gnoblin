@@ -33,14 +33,31 @@ or after the timeout. Overlapping requests keep the cursor busy until all end.
 Name/interface: `org.gnoblin.LaunchFeedback`.
 Object: `/org/gnoblin/LaunchFeedback`.
 
-| Method     | Arguments                      | Result                                    |
-| ---------- | ------------------------------ | ----------------------------------------- |
-| `Begin`    | Token, app hint, timeout in ms | Start feedback                            |
-| `End`      | Token                          | End feedback; unknown token is harmless   |
-| `GetState` | None                           | JSON count, visibility and artwork source |
+| Method     | Signature    | Result                                                         |
+| ---------- | ------------ | -------------------------------------------------------------- |
+| `Begin`    | `(ssu) → ()` | Start feedback for `(token, app hint, timeout in ms)`.         |
+| `End`      | `s → ()`     | End the request with this token; an unknown token is harmless. |
+| `GetState` | `() → s`     | Return a JSON state record.                                    |
 
-Timeouts are bounded to 100–10000 ms. The app hint may be a desktop ID,
-WM class, GTK application ID or desktop name.
+`Begin` requires a nonempty token of at most 128 characters and an app hint of
+at most 512 characters. Up to 64 distinct requests can be pending. The timeout
+is clamped to 100–10000 ms. Reusing a token replaces its earlier request.
+
+The app hint is matched case-insensitively against a window's GTK application
+ID, WM class, WM class instance, desktop ID or desktop name. A trailing
+`.desktop` is ignored. Windows marked skip-taskbar do not complete a request.
+
+`GetState` returns these JSON fields:
+
+| Field            | Meaning                                                      |
+| ---------------- | ------------------------------------------------------------ |
+| `busy`           | Whether the wait cursor is currently active.                 |
+| `pending`        | Number of launch requests still pending.                     |
+| `nativeCursor`   | Whether this Mutter build provides Gnoblin's cursor support. |
+| `pointerVisible` | Whether the pointer is visible.                              |
+| `spinnerVisible` | Whether the themed wait cursor is active.                    |
+| `cursorSource`   | Cursor theme source, or `null` before feedback has started.  |
+| `position`       | Reserved; currently `null`.                                  |
 
 Requests expire even if a launcher exits before sending `End`. The cursor
 override is also released when the Gnoblin session shuts down.
