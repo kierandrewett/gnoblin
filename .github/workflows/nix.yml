@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: nix-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # GNOME's private runtime build is long. Keep the pinned package evidence
+  # alive while newer commits queue, instead of cancelling it mid-build.
+  cancel-in-progress: false
 
 jobs:
   evaluate-target-channels:
