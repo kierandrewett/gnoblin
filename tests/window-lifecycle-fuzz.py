@@ -397,6 +397,10 @@ def run_inside() -> int:
     def state_for(window_id: int) -> dict | None:
         return shell_window(title_for(window_id))
 
+    def frame_interaction(window_id: int, field: str) -> int | None:
+        state = state_for(window_id)
+        return state["layout"]["presentation"][field] if state else None
+
     def set_frame_policy(window_id: int, policy: list[int]) -> None:
         frame_policies[window_id] = policy
         write_frame_config(config_path, frame_policies)
@@ -472,10 +476,18 @@ def run_inside() -> int:
             state = prepare_frame(window_id)
             x, y = frame_button_center(state, 2)
             send_pointer("move", x, y)
-            time.sleep(0.05)
+            wait_for(
+                lambda: frame_interaction(window_id, "hover") == 2,
+                f"close button hover on window {window_id}",
+            )
             send_pointer("press", x, y)
-            time.sleep(0.05)
+            wait_for(
+                lambda: frame_interaction(window_id, "pressed") == 2,
+                f"close button press on window {window_id}",
+            )
+            time.sleep(0.12)
             send_pointer("release", x, y)
+            time.sleep(0.3)
             wait_window(window_id, False)
             processes[window_id].wait(timeout=3)
             return
