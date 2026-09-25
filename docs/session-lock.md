@@ -19,6 +19,11 @@ set a timeout or launch a locker for you.
 The regular GNOME session is separate. It does not advertise this protocol and
 continues to use GNOME ScreenShield.
 
+The protocol is enabled by default in Gnoblin. To hide its global, set
+`ext_session_lock = false` under `gnoblin.configure.protocols`, then log out and
+back in; protocol globals are registered at compositor startup. See the
+[protocol setting reference](/config/configure/protocols).
+
 ## Portal and remote access while locked
 
 Existing portal permission remains in force. A monitor stream already

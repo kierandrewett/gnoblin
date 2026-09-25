@@ -18,10 +18,10 @@ sequence:
 5. killing the owner does not unlock the compositor, and a policy-supported
    replacement can take over.
 
-The runner exits 77 (and prints `SKIP`) when the installed Gnoblin has no
-advertised `ext_session_lock_manager_v1`. That is expected while the protocol
-is intentionally fail-closed. A skipped run proves only that the test harness
-compiled; it is not runtime evidence for session locking.
+The runner exits 77 (and prints `SKIP`) when the installed Gnoblin does not
+advertise `ext_session_lock_manager_v1`, for example when using an older build
+or a configuration with the protocol disabled. A skipped run proves only that
+the test harness compiled; it is not runtime evidence for session locking.
 
 Run it after installing a build which advertises the protocol:
 

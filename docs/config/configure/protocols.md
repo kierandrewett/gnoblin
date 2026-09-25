@@ -16,7 +16,7 @@ Use one of the protocol names below as the `NAME` key:
 - **Capture and effects:** `wlr_screencopy`, `ext_background_effect_v1`,
   `blur_fade`.
 - **Session controls:** `ext_data_control`, `ext_idle_notify`,
-  `wlr_gamma_control`, `wlr_output_power_management`.
+  `wlr_gamma_control`, `wlr_output_power_management`, `ext_session_lock`.
 
 For example, disable screen capture protocol advertisement:
 
@@ -45,6 +45,7 @@ gnoblin.configure {
         ext_idle_notify = boolean?,
         wlr_gamma_control = boolean?,
         wlr_output_power_management = boolean?,
+        ext_session_lock = boolean?,
     },
 }
 ```

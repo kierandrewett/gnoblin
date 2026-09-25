@@ -40,6 +40,7 @@ globals.
 | `xdg_decoration`                  | `zxdg_decoration_manager_v1`                                                                                    | Negotiate client or server titlebars                 | [Window frames](/guides/window_frames)       |
 | `window_frame_renderer`           | `gnoblin_window_frame_manager_v1`                                                                               | External frame renderer service                      | [Frame renderer API](frame-renderer-api.md)  |
 | `blur_fade`                       | `gnoblin_blur_fade_manager_v1`                                                                                  | Per-item blur fade metadata                          | [Blur fades](blur-fades.md)                  |
+| `ext_session_lock`                | `ext_session_lock_manager_v1`                                                                                   | Session locking for third-party lockers              | [Session locking](session-lock.md)           |
 
 Bind a version no higher than the one the compositor advertises. For
 Gnoblin-owned protocols, the XML under `src/protocols/` is the wire-level
@@ -63,13 +64,13 @@ Screen capture through `wlr_screencopy` is separate from capture through the
 desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.
 
-## Interfaces not yet available
+## Interface not yet available
 
-`ext_session_lock_v1` and `zwlr_output_manager_v1` have vendored XML but are
-not registered as supported Gnoblin globals. The session-lock startup boundary
-is compiled but deliberately advertises no global until it can enforce a lock.
-Do not build a shell that requires them yet. Gnoblin's existing lock and
-display configuration paths are separate from these two proposed interfaces.
+`zwlr_output_manager_v1` has vendored XML but is not registered as a supported
+Gnoblin global. Display configuration is available through Gnoblin's existing
+interfaces. Session locking is supported through `ext_session_lock_manager_v1`;
+see [Session locking](session-lock.md) for locker requirements and security
+behavior.
 
 ## Inspect a running session
 
