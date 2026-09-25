@@ -44,6 +44,7 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
+const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [] });
 const TITLEBAR_ACTIONS = new Set([
     "toggle-maximize",
@@ -179,6 +180,7 @@ export const DEFAULTS = Object.freeze({
 
 export let settings = {
     ...DEFAULTS,
+    cursor: { ...DEFAULT_CURSOR },
     "window-management": windowDefaults(),
     compositor: { ...COMPOSITOR_PREFERENCES },
     input: null,
@@ -514,6 +516,7 @@ function compileWindowRuleMatchers(rules) {
 export function parseDocument(document) {
     const next = {
         ...DEFAULTS,
+        cursor: { ...DEFAULT_CURSOR },
         "window-management": windowDefaults(),
         compositor: { ...COMPOSITOR_PREFERENCES },
         input: null,
@@ -521,6 +524,20 @@ export function parseDocument(document) {
     };
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
+    const cursor = document.cursor ?? {};
+    if (!isTable(cursor)) throw new Error("cursor must be a table");
+    for (const [key, value] of Object.entries(cursor)) {
+        if (key === "theme") {
+            if (typeof value !== "string" || !value.trim() || value.includes("\0"))
+                throw new Error("cursor.theme: expected a nonempty theme name");
+        } else if (key === "size") {
+            if (!Number.isInteger(value) || value < 1 || value > 256)
+                throw new Error("cursor.size: expected 1 to 256 logical pixels");
+        } else {
+            throw new Error(`unknown cursor setting: ${key}`);
+        }
+        next.cursor[key] = value;
+    }
     const windowManagement = document["window-management"] ?? {};
     if (!windowManagement || Array.isArray(windowManagement) || typeof windowManagement !== "object")
         throw new Error("window-management must be a table");

@@ -12,23 +12,53 @@ function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-assert(Object.entries(DEFAULTS).every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
-    "missing Lua keys use defaults");
-const windowPrefs = parseDocument({ "window-management": {
-    "focus-mode": "sloppy", "action-middle-click-titlebar": "minimize", "edge-tiling": true,
-    "workspace-names": ["Main", "Chat"],
-} })["window-management"];
-assert(windowPrefs["focus-mode"] === "sloppy" && windowPrefs["action-middle-click-titlebar"] === "minimize" &&
-    windowPrefs["edge-tiling"] && windowPrefs["num-workspaces"] === 4 &&
-    windowPrefs["workspace-names"].join(",") === "Main,Chat",
-    "window policy merges configured values with Gnoblin defaults");
-const compositor = parseDocument({ compositor: {
-    "enable-animations": false, "locate-pointer": true, "visual-bell": true,
-    "audible-bell": false, "visual-bell-type": "frame-flash",
-} }).compositor;
-assert(!compositor["enable-animations"] && compositor["locate-pointer"] && compositor["visual-bell"] &&
-    !compositor["audible-bell"] && compositor["visual-bell-type"] === "frame-flash",
-    "compositor interaction preferences accept supported values");
+assert(
+    Object.entries(DEFAULTS).every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
+    "missing Lua keys use defaults",
+);
+const cursorDefaults = parseDocument({}).cursor;
+assert(
+    cursorDefaults.theme === "Adwaita-Hyprcursor" && cursorDefaults.size === 24,
+    "cursor settings use the documented theme and size defaults",
+);
+const cursor = parseDocument({ cursor: { theme: "Example-Hyprcursor", size: 48 } }).cursor;
+assert(
+    cursor.theme === "Example-Hyprcursor" && cursor.size === 48,
+    "cursor theme and logical size parse from Lua configuration",
+);
+const windowPrefs = parseDocument({
+    "window-management": {
+        "focus-mode": "sloppy",
+        "action-middle-click-titlebar": "minimize",
+        "edge-tiling": true,
+        "workspace-names": ["Main", "Chat"],
+    },
+})["window-management"];
+assert(
+    windowPrefs["focus-mode"] === "sloppy" &&
+        windowPrefs["action-middle-click-titlebar"] === "minimize" &&
+        windowPrefs["edge-tiling"] &&
+        windowPrefs["num-workspaces"] === 4 &&
+        windowPrefs["workspace-names"].join(",") === "Main,Chat",
+    "window policy merges configured values with Gnoblin defaults",
+);
+const compositor = parseDocument({
+    compositor: {
+        "enable-animations": false,
+        "locate-pointer": true,
+        "visual-bell": true,
+        "audible-bell": false,
+        "visual-bell-type": "frame-flash",
+    },
+}).compositor;
+assert(
+    !compositor["enable-animations"] &&
+        compositor["locate-pointer"] &&
+        compositor["visual-bell"] &&
+        !compositor["audible-bell"] &&
+        compositor["visual-bell-type"] === "frame-flash",
+    "compositor interaction preferences accept supported values",
+);
 const input = parseDocument({
     input: {
         mouse: { speed: -0.25, "left-handed": true, "accel-profile": "flat" },
@@ -38,12 +68,22 @@ const input = parseDocument({
         tablets: { "1234:5678": { mapping: "absolute", "keep-aspect": true } },
         styluses: { "default-1234:5678": { "button-action": "keybinding", "button-keybinding": "<Super>p" } },
     },
-    "input-sources": { sources: [{ type: "xkb", id: "us" }, { type: "ibus", id: "anthy" }], "per-window": true },
+    "input-sources": {
+        sources: [
+            { type: "xkb", id: "us" },
+            { type: "ibus", id: "anthy" },
+        ],
+        "per-window": true,
+    },
 });
-assert(input.input.keyboard["xkb-options"][0] === "caps:escape" && input.input["orientation-lock"] &&
-    input.input.tablets["1234:5678"].mapping === "absolute" &&
-    input["input-sources"].sources[1].id === "anthy" && input["input-sources"]["per-window"],
-    "input preferences, XKB options, orientation lock, and input sources parse");
+assert(
+    input.input.keyboard["xkb-options"][0] === "caps:escape" &&
+        input.input["orientation-lock"] &&
+        input.input.tablets["1234:5678"].mapping === "absolute" &&
+        input["input-sources"].sources[1].id === "anthy" &&
+        input["input-sources"]["per-window"],
+    "input preferences, XKB options, orientation lock, and input sources parse",
+);
 assert(
     parseDocument({ shell: { "window-menu": ["binguxctl", "ipc", "shell", "windowMenu"] } })["window-menu"].length ===
         4,
@@ -72,12 +112,17 @@ for (const document of [
     { "window-management": { "workspace-names": [4] } },
     { compositor: { "visual-bell-type": "window-flash" } },
     { compositor: { "locate-pointer": "true" } },
+    { cursor: "Adwaita-Hyprcursor" },
+    { cursor: { theme: "" } },
+    { cursor: { theme: "bad\0theme" } },
+    { cursor: { size: 257 } },
+    { cursor: { unknown: true } },
     { input: { mouse: { speed: 1.1 } } },
     { input: { touchpad: { "click-method": "invalid" } } },
     { input: { keyboard: { delay: 0 } } },
     { input: { keyboard: { "xkb-options": "caps:escape" } } },
     { input: { "orientation-lock": "true" } },
-    { input: { tablets: { "1234": { mapping: "absolute" } } } },
+    { input: { tablets: { 1234: { mapping: "absolute" } } } },
     { input: { styluses: { default: { "button-action": "invalid" } } } },
     { "input-sources": { sources: [{ type: "invalid", id: "us" }] } },
     { "input-sources": { sources: [{ type: "xkb", id: "" }] } },
