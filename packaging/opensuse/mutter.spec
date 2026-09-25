@@ -1,6 +1,7 @@
 # Tumbleweed uses capability BuildRequires because package names change more
 # often than the pkg-config interfaces consumed by Mutter.
 %global _prefix /usr/lib/gnoblin
+%global __meson /usr/bin/meson
 %global _libdir %{_prefix}/%{_lib}
 %global _sysconfdir %{_prefix}/etc
 %global _localstatedir %{_prefix}/var

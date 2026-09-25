@@ -1,4 +1,5 @@
 %global _prefix /usr/lib/gnoblin
+%global __meson /usr/bin/meson
 %global _libdir %{_prefix}/%{_lib}
 %global _sysconfdir %{_prefix}/etc
 %global _localstatedir %{_prefix}/var
