@@ -27,7 +27,7 @@ jobs:
       - name: Install checkout and RPM tools
         run: |
           zypper --non-interactive refresh
-          zypper --non-interactive install git inkscape patch rpm-build tar xz python3
+          zypper --non-interactive install git hyprcursor inkscape patch rpm-build tar xz python3
       - uses: actions/checkout@v4
         with:
           submodules: recursive
