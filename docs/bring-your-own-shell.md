@@ -38,10 +38,18 @@ using Mako.
 Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
 [shortcuts](/guides/shortcuts) only control how you launch it.
 
+![Firefox running with an independent Waybar session](images/gnoblin-waybar-firefox.png)
+
+_Firefox under Waybar in a fresh Gnoblin profile._
+
 ## Bingux
 
 Bingux provides the desktop controls, notifications,
 search and window switcher.
+
+![Firefox running in a Bingux session with Files, Firefox and Foot in the dock](images/gnoblin-bingux-firefox.png)
+
+_Bingux is one separate shell project that uses Gnoblin. Files, Firefox and Foot are pinned in its dock._
 
 Install the dependencies in the
 [Bingux installation guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md),

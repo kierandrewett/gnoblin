@@ -41,7 +41,9 @@ gnoblin.configure {
 }
 ```
 
-![Fuzzel searching installed applications in Gnoblin](../images/gnoblin-build-a-desktop.png)
+![Fuzzel's application launcher open over Firefox in a Waybar session](../images/gnoblin-waybar-launcher.png)
+
+_Fuzzel opens over Firefox from a Gnoblin shortcut._
 
 ## Remove a shortcut
 

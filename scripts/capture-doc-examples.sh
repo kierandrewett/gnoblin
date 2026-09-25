@@ -6,17 +6,19 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-desktop}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop) ;;
+    desktop | waybar-firefox | waybar-launcher | bingux-firefox) ;;
     *)
         echo "Usage: $0 [desktop] [output-directory]" >&2
         exit 2
         ;;
 esac
+docs_url="${GNOBLIN_DOCS_URL:-http://127.0.0.1:5180/gnoblin}"
+bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
     exit 1
 fi
-required=(grim swaybg waybar nautilus fuzzel mako foot)
+required=(grim swaybg waybar nautilus fuzzel mako foot python3 ydotool ydotoold)
 for program in "${required[@]}"; do
     command -v "$program" >/dev/null || {
         echo "$program is required to capture the $example scene" >&2
@@ -26,7 +28,10 @@ done
 mkdir -p "$output_dir"
 
 profile="$(mktemp -d /tmp/gnoblin-doc-example.XXXXXX)"
+ydotool_socket="$profile/runtime/ydotool.sock"
+ydotoold_pid=
 cleanup() {
+    [ -z "$ydotoold_pid" ] || kill "$ydotoold_pid" 2>/dev/null || true
     for _ in 1 2 3; do
         rm -rf -- "$profile"
         [ ! -e "$profile" ] && return
@@ -37,9 +42,11 @@ cleanup() {
 trap cleanup EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
+ydotoold --socket-path="$ydotool_socket" --socket-perm=0600 >"$profile/ydotoold.log" 2>&1 &
+ydotoold_pid=$!
 
 host_runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-host_home="$HOME"
+host_xdisplay="${DISPLAY:-:0}"
 host_display="${WAYLAND_DISPLAY:-}"
 case "$host_display" in /* | "") ;; *) host_display="$host_runtime/$host_display" ;; esac
 
@@ -48,11 +55,18 @@ export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
+export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
 GNOBLIN_MUTTER_API="$(python3 "$root/scripts/gnome-versions.py" get mutter api)"
 export GNOBLIN_MUTTER_API
 unset GNOBLIN_LIBDIR
 export GNOBLIN_COMPOSITOR_SOCKET="$profile/runtime/gnoblin/compositor-v1.sock"
+
+# The visible devkit viewer may use the host PipeWire daemon, while all persistent
+# state remains in the disposable profile.
+if [ -S "$host_runtime/pipewire-0" ]; then
+    ln -s "$host_runtime/pipewire-0" "$XDG_RUNTIME_DIR/pipewire-0"
+fi
 
 source "$root/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$GNOBLIN_PREFIX"
@@ -70,13 +84,10 @@ mkdir -p "$XDG_CONFIG_HOME/gnoblin" "$XDG_CONFIG_HOME/waybar" \
     "$XDG_CONFIG_HOME/mako" "$XDG_CONFIG_HOME/foot" "$XDG_CONFIG_HOME/fuzzel"
 mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures"
 
-# Make an installed vector cursor theme visible inside the disposable profile.
-cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$root/install/share/icons/Adwaita-Hyprcursor}"
+# Make the packaged vector cursor theme available in the disposable profile.
+cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$GNOBLIN_PREFIX/share/icons/Adwaita-Hyprcursor}"
 if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$root/build/Adwaita-Hyprcursor/hyprcursors" ]; then
     cursor_theme="$root/build/Adwaita-Hyprcursor"
-fi
-if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$host_home/.local/share/icons/Adwaita-Hyprcursor/hyprcursors" ]; then
-    cursor_theme="$host_home/.local/share/icons/Adwaita-Hyprcursor"
 fi
 if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d /usr/share/icons/Adwaita-Hyprcursor/hyprcursors ]; then
     cursor_theme=/usr/share/icons/Adwaita-Hyprcursor
@@ -85,27 +96,28 @@ if [ ! -d "$cursor_theme/hyprcursors" ]; then
     echo "Adwaita-Hyprcursor is required; see docs/guides/cursors.md" >&2
     exit 1
 fi
-if [ -d "$cursor_theme/hyprcursors" ]; then
-    mkdir -p "$XDG_DATA_HOME/icons"
-    ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
-    # Hyprcursor resolves user themes through ~/.local/share/icons.
-    mkdir -p "$HOME/.local/share/icons"
-    ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
-fi
+mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
+ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
+ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
 
 cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+}
+LUA
+if [ "$example" != bingux-firefox ]; then
+    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
     autostart = {
         bar = {command = {"waybar"}},
         notifications = {command = {"mako"}},
     },
     shortcuts = {
         launcher = {binding = "<Super>d", command = {"fuzzel"}},
-        terminal = {binding = "<Super>Return", command = {"foot"}},
     },
 }
 LUA
+fi
 
 cat >"$XDG_CONFIG_HOME/waybar/config.jsonc" <<'JSON'
 {
@@ -166,7 +178,58 @@ selection-text=edf0f7ff
 border=9ccfd8ff
 FUZZEL
 
-waybar_log="$profile/waybar.log"
-desktop_command="swaybg -c '#111520' & sleep 2; waybar > '$waybar_log' 2>&1 & for attempt in {1..40}; do if grep -q 'Bar configured' '$waybar_log'; then break; fi; sleep 0.25; done; grep -q 'Bar configured' '$waybar_log' || { cat '$waybar_log' >&2; exit 1; }; nautilus --new-window & sleep 6; grim -c '$output_dir/gnoblin-build-a-desktop.png'"
+capture_path="$output_dir/gnoblin-build-a-desktop.png"
+case "$example" in
+    desktop)
+        capture_path="$output_dir/gnoblin-build-a-desktop.png"
+        app_command='nautilus --new-window'
+        ;;
+    waybar-firefox)
+        capture_path="$output_dir/gnoblin-waybar-firefox.png"
+        app_command="firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        ;;
+    waybar-launcher)
+        capture_path="$output_dir/gnoblin-waybar-launcher.png"
+        app_command="firefox --new-window '$docs_url/guides/shortcuts.html'"
+        post_app_command='fuzzel & sleep 3'
+        ;;
+    bingux-firefox)
+        capture_path="$output_dir/gnoblin-bingux-firefox.png"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        ;;
+esac
+
+if [ "$example" != desktop ]; then
+    command -v firefox >/dev/null || {
+        echo "firefox is required for this scene" >&2
+        exit 1
+    }
+fi
+if [ "$example" = bingux-firefox ]; then
+    command -v gnoblin-quickshell >/dev/null || {
+        echo "gnoblin-quickshell is required for this scene" >&2
+        exit 1
+    }
+    [ -d "$bingux_config" ] || {
+        echo "Bingux shell config not found at $bingux_config" >&2
+        exit 1
+    }
+    mkdir -p "$XDG_CONFIG_HOME/bingux"
+    cat >"$XDG_CONFIG_HOME/bingux/settings.json" <<'JSON'
+{
+  "desktop": {
+    "dockApps": {
+      "pinnedApps": ["org.gnome.Nautilus.desktop", "org.mozilla.firefox.desktop", "foot.desktop"],
+      "order": []
+    }
+  }
+}
+JSON
+fi
+
+pointer_position="${GNOBLIN_DOC_POINTER:-$(python3 -c 'import ctypes; x=ctypes.CDLL("libX11.so.6"); x.XOpenDisplay.restype=ctypes.c_void_p; x.XOpenDisplay.argtypes=[ctypes.c_char_p]; x.XDefaultScreen.argtypes=[ctypes.c_void_p]; x.XDefaultScreen.restype=ctypes.c_int; x.XDisplayWidth.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayWidth.restype=ctypes.c_int; x.XDisplayHeight.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayHeight.restype=ctypes.c_int; d=x.XOpenDisplay(None); s=x.XDefaultScreen(d); print(x.XDisplayWidth(d,s)//2, x.XDisplayHeight(d,s)//2)')}"
+pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
+post_app_command="${post_app_command:-:}"
+desktop_command="swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim -c '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
-exec bash "$root/scripts/run-gnome-devkit.sh"
+bash "$root/scripts/run-gnome-devkit.sh"

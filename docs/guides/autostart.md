@@ -21,7 +21,8 @@ A new entry starts when the config reloads. The optional `when` field defaults
 to `"on_login"`, currently the only supported trigger. A command that was
 already launched uses its updated arguments at the next login.
 
-Do not add a program already started by a service, such as Bingux.
+Do not add a program already started by your chosen shell. Bingux is one
+separate shell project that starts its own services.
 
 ## Override an imported command
 
@@ -63,10 +64,6 @@ stop a process that is already running.
 - Changing the command for an entry that already launched takes effect at the
   next login.
 - Disabling or removing an entry does not stop its running process.
-
-![A Mako notification displayed in a Gnoblin session](../images/gnoblin-mako-notification.png)
-
-_A notification daemon such as Mako runs as a separate autostarted client._
 
 See [command syntax](/guides/shortcuts#commands-and-shell-syntax) for shell
 commands and [configuration loading](/guides/files_and_load_order) for how
