@@ -44,11 +44,11 @@ release pipeline or COPR publication changes.
 - Probe results rule out unchanged package recipes as a solution for the older
   targets. EL 8/9/10 and openSUSE Leap 15.6/16.0 miss GNOME 51 host GLib/GJS
   floors; Debian 11/12 and Ubuntu 22.04 lack build/runtime pieces absent from
-  the private bundle. Tumbleweed now has SUSE-native specs and clean-image
-  dependency-resolution CI, but no internal RPM build/coinstall/removal proof.
-  Arch has a source-build package and a release gate, not a completed release
-  package run. Keep these targets unsupported until their specific remaining
-  gates pass.
+  the private bundle. Tumbleweed now has SUSE-native specs and a remote
+  end-to-end RPM build/coinstall/removal workflow. Arch has a generated native
+  package recipe plus both continuous and pre-release build/coinstall/removal
+  gates. Neither adapter has a successful full package run yet; keep these
+  targets unsupported until their gates pass.
 - Fedora workflow run `36139101542` passed the first RPM-side stock-GNOME
   install/coexist/remove gate, along with Fedora 43/44/45 builds and the
   existing Arch source-build/dependency checks. The RPM gate does not prove
@@ -74,9 +74,10 @@ release pipeline or COPR publication changes.
   dependency provisioning work without an assumed `busybox-gawk`, add native
   RPM specs/workflow, and correct SUSE runtime library names. `rpmspec` parses
   the specs and Zypper resolves external build and host requirements. The
-  internal RPM build/install/coexistence/removal chain remains untested: the
-  shared worker ran out of Podman storage, so use OBS or another clean remote
-  builder for the next gate.
+  remote build then exposed missing upstream tags, container Git trust and
+  committer identity, and omitted build tools (`inkscape`, `hyprcursor-util`);
+  each is fixed in the workflow. Re-run its full build/coinstall/removal gate
+  before changing the target inventory.
 - Commits `03562b7a` and `508c1f7e` add a repeatable Debian 12 / Ubuntu 22.04
   capability probe and run it on pushes and pull requests. Both images are
   blocked by GTK below Mutter 51's 4.14 floor and missing GIRepository 2,
@@ -87,6 +88,16 @@ release pipeline or COPR publication changes.
   recipe, Nix channel evaluations, and Tumbleweed dependency-resolution path.
   These are implementation paths, not support claims. Check
   `packaging/targets.json` before describing per-distro status.
+- A real Arch `makepkg` run caught that the generated recipe expanded `$srcdir`
+  before `makepkg` initialized it. The generator now computes that private
+  build path inside the build/package functions. The builder also installs
+  `brightnessctl`, and the Tumbleweed source builder installs the Hyprcursor
+  utility. The new exact-main package runs must still pass before recording
+  Arch or Tumbleweed package gates.
+- Commit `4cb52603` changed Nix full-build concurrency to preserve a long
+  package build when later commits are pushed. Stable Nix channels still have
+  dependency-floor blockers and do not have installable channel-specific
+  package outputs; successful evaluation is not NixOS release support.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
