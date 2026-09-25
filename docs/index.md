@@ -1,12 +1,12 @@
 # Gnoblin
 
 Gnoblin is a Wayland desktop built on Mutter and a fork of GNOME Shell, with
-layer-shell support. Choose a compatible shell, bar, dock, launcher and
-notification service for your setup.
+layer-shell support. Build your own shell or try Bingux, one separate project
+that uses Gnoblin.
 
-![Firefox running with Waybar in a clean Gnoblin profile](images/gnoblin-waybar-firefox.png)
+![Firefox showing Gnoblin's configuration API](images/gnoblin-site-firefox.png)
 
-_Waybar and Firefox are separate clients. The [shell guide](/bring-your-own-shell) shows ways to build a desktop around Gnoblin._
+_The [configuration API](/config) links each setting to a detailed reference._
 
 ## Get started
 

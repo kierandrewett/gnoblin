@@ -47,8 +47,8 @@ gnoblin.configure {
 Each field defaults to the current device preference when omitted. The
 `"default"` enum value asks GNOME/libinput to choose the device behavior.
 
-Use the Lua event API to change speed for the window under the pointer. This
-also works when the pointer window has not taken keyboard focus:
+Set the initial scroll speed from the window under the pointer when the config
+loads. Keyboard focus does not affect which window the event reports:
 
 ```lua
 gnoblin.on("pointer_window_changed", function(event)
@@ -57,8 +57,9 @@ gnoblin.on("pointer_window_changed", function(event)
 end)
 ```
 
-The callback table includes `app_id`, `wm_class`, and `title`. See the
-[Lua event API](/config/lua-events) for other event names and payloads.
+The callback table includes `app_id`, `wm_class`, and `title`. This event runs
+when the config loads; it does not track pointer movement continuously. See the
+[Lua event API](/config/lua-events) for its payload and callback behavior.
 
 The available gestures depend on the touchpad hardware. GNOME's
 [touchpad guide](https://help.gnome.org/gnome-help/mouse-touchpad-click.html)

@@ -80,7 +80,7 @@ export default defineConfig({
                     { text: "gnoblin.load", link: "/config/load" },
                     { text: "gnoblin.snapshot", link: "/config/snapshot" },
                     { text: "gnoblin.array", link: "/config/array" },
-                    { text: "Lua events", link: "/config/lua-events" },
+                    { text: "gnoblin.on", link: "/config/lua-events" },
                 ],
             },
             {

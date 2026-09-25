@@ -9,17 +9,18 @@ shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                     | Use it to                               |
-| --------------------------- | --------------------------------------- |
-| `gnoblinctl window list`    | Find open windows and their IDs         |
-| `gnoblinctl window match`   | Show the values a window rule can match |
-| `gnoblinctl layer list`     | Find layer-surface namespaces           |
-| `gnoblinctl config path`    | Find the config file your session uses  |
-| `gnoblinctl config default` | Print the bundled default `init.lua`    |
-| `gnoblinctl config reload`  | Apply edits and report config errors    |
+| Command                       | Use it to                                       |
+| ----------------------------- | ----------------------------------------------- |
+| `gnoblinctl window list`      | Find open windows and their IDs                 |
+| `gnoblinctl window match`     | Show the values a window rule can match         |
+| `gnoblinctl layer list`       | Find layer-surface namespaces                   |
+| `gnoblinctl config path`      | Find the config file your session uses          |
+| `gnoblinctl config default`   | Print the bundled default `init.lua`            |
+| `gnoblinctl config reload`    | Apply edits and report config errors            |
+| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding |
 
-Run `gnoblinctl --help` or `gnoblinctl window --help` for accepted
-arguments. A bare group lists its actions.
+Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
+`--help` for accepted arguments. A bare group lists its actions.
 
 ## Windows
 
@@ -42,14 +43,15 @@ gnoblinctl window match
 gnoblinctl window match 42 --json
 ```
 
-The result includes the GTK application ID, WM class, and `rule_app_id`.
-Gnoblin uses the GTK ID when available and falls back to the WM class.
+The result shows the GTK application ID, WM class, and `rule_app_id` used by
+window rules. Gnoblin uses the GTK ID when available and otherwise uses the WM
+class.
 
-The `match` object shows the corresponding `type`, `app_id`, `title`, and current
-`focused` value. Use the raw `app_id` and `title` values in a rule; the CLI's
-`APP ID` column in `window list` is a desktop-entry ID and can be different.
+The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
+raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
+shows a desktop-entry ID, which can differ.
 
-With `--json`, the identity fields remain separate from the rule matcher:
+With `--json`, identity stays separate from the rule matcher:
 
 ```json
 {
@@ -69,12 +71,11 @@ With `--json`, the identity fields remain separate from the rule matcher:
 }
 ```
 
-`match.app_id` is omitted when the window has no rule identity.
-
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.
 
-Filter the list with `--focused`, `--app-id ID` or `--title TEXT`.
+Filter by focused state, exact desktop app ID or a case-insensitive substring
+of the title with `--focused`, `--app-id ID` or `--title TEXT`.
 
 ## Layer surfaces
 
@@ -142,9 +143,8 @@ such as fullscreen or non-resizable windows.
 
 ```sh
 gnoblinctl workspace list
-gnoblinctl workspace switch 2
-gnoblinctl workspace switch --id code
 gnoblinctl workspace switch --number 2
+gnoblinctl workspace switch --id code
 gnoblinctl workspace next
 gnoblinctl workspace previous
 gnoblinctl workspace move-active --id code --follow
@@ -152,16 +152,16 @@ gnoblinctl workspace move-active --number 2
 gnoblinctl monitor list
 ```
 
-Workspace numbers are one-based positions and may change when workspaces are
-removed or reordered. Configured IDs are assigned from initial positions, then
-stay with their workspace as order changes. Unconfigured workspaces receive
-generated IDs such as `@session-1` that last only for the session.
-
+Workspace numbers are one-based positions and may change when dynamic workspaces
+are removed. Configured IDs follow their `MetaWorkspace` when reordered.
+Unconfigured workspaces receive session-only IDs such as `@session-1`.
 Names are display labels and are not identifiers. Use `workspace list` to see
-each workspace's ID, number, name, active state and window count.
-Monitor IDs start at **0**.
+each workspace's ID, number, name, active state and window count. Monitor IDs
+start at **0**.
 
 Use `--number NUMBER` to select a workspace by its current one-based position.
+The positional form `workspace switch NUMBER` remains a legacy shorthand;
+prefer the explicit selector.
 `workspace move-active` moves the focused window and switches workspaces only
 when `--follow` is supplied. `window workspace` accepts an ID or a number:
 
@@ -212,6 +212,7 @@ Run `gnoblinctl shortcut capture` from a Gnoblin terminal, then press the key co
 | `grant list`, `grant revoke KIND ID`                        | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop` |
 | `launch status`                                             | List pending launch feedback                                                       |
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN` | Start or end busy-cursor feedback; duration defaults to 3000 ms, range 1–60000 ms  |
+| `shortcut capture`                                          | Briefly grab the keyboard and print a GTK accelerator or `Super` binding           |
 
 For example, to inspect a portal decision and change keyboard source:
 
@@ -225,6 +226,12 @@ Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
+For shortcut bindings, run `gnoblinctl shortcut capture` and press a key
+combination. It consumes the captured combination, waits 30 seconds by default
+and supports `--timeout SECONDS` from 1 to 60. Escape cancels. Bare Super prints
+the special `Super` binding. See the
+[shortcuts guide](/guides/shortcuts#key-names) for configuration examples.
+
 ## Output for scripts
 
 ```sh
@@ -235,15 +242,15 @@ gnoblinctl feature list --format table
 Structured results use tables in a terminal and JSON in a pipe.
 Options work before or after the command.
 
-| Option                            | Behavior                                                    |
-| --------------------------------- | ----------------------------------------------------------- |
-| `-j`, `--json`                    | Force JSON, including in a terminal                         |
-| `--format auto`                   | Tables in a terminal; JSON in a pipe                        |
-| `--format json`, `--format table` | Force the selected output format                            |
-| `--timeout SECONDS`               | Set the request timeout, 1–60 seconds; default 5            |
-| `--socket PATH`                   | Select the compositor socket for compositor-backed commands |
+| Option                            | Behavior                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `-j`, `--json`                    | Force JSON, including in a terminal                                        |
+| `--format auto`                   | Tables in a terminal; JSON in a pipe                                       |
+| `--format json`, `--format table` | Force the selected output format                                           |
+| `--timeout SECONDS`               | Set the request timeout, 1–60 seconds; default 5 (30 for shortcut capture) |
+| `--socket PATH`                   | Select the compositor socket for compositor-backed commands                |
 
-By default, `--socket` uses `GNOBLIN_COMPOSITOR_SOCKET`, then
+`--socket` uses `GNOBLIN_COMPOSITOR_SOCKET`, then
 `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock` (or `/run/user/UID` when
 `XDG_RUNTIME_DIR` is unset). D-Bus-only commands do not use this option.
 
@@ -300,9 +307,8 @@ For workspace lists, `gnoblinctl workspace list --json` returns:
 }
 ```
 
-The remaining JSON commands return these fields. Lists are arrays; fields in
-`status`, `launch status` and animation results can vary with the running
-session or selected target.
+Other JSON commands return these fields. Lists are arrays; some status fields
+depend on the running session or selected target.
 
 | Command                               | JSON result fields                                                                                                   |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -337,7 +343,7 @@ session or selected target.
 | `window workspace`                    | `ok`, `pending`, `window`, `action`, `workspace`, `workspaceId`, `workspaceNumber`.                                  |
 
 Window-list fields are shown above. Other window action acknowledgements
-include `ok`, `pending`, `window` and `action`. Run a command with `--json` to
+include `ok`, `pending`, `window` and `action`; run a command with `--json` to
 see its exact values.
 
 | Exit code | Meaning                          |
@@ -361,7 +367,6 @@ eval "$(gnoblinctl completion bash)"
 eval "$(gnoblinctl completion zsh)"
 
 # Fish
-mkdir -p ~/.config/fish/completions
 gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
 ```
 
@@ -371,11 +376,12 @@ The CLI needs Python 3 and `busctl`.
 Settings use D-Bus; window commands use the
 [compositor bridge](compositor-bridge.md).
 
-On a compositor connection error, confirm Gnoblin is running and the selected
-socket belongs to this session.
+The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
+Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
 
 The bridge is built into current Gnoblin source builds, so `script list` does
 not show it. Package integrations that add namespaced operations do appear in
 `script list`; for example, Bingux installs its text-entry integration with
-Bingux. Check `gnoblinctl status`, the running Gnoblin version and the session
-log. See [CLI development](cli-development.md) for the transport contract.
+its own package. Check `gnoblinctl status`, the running Gnoblin version and the
+session log. See [CLI development](cli-development.md) for the transport
+contract.

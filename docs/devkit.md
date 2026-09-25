@@ -16,6 +16,10 @@ GNOBLIN_PREFIX="$PWD/install" just preview
 A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor.
 
+![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
+
+_The nested session can run a separate bar and stock desktop applications._
+
 To choose a terminal explicitly:
 
 ```sh
@@ -33,22 +37,14 @@ waybar
 The bar should appear inside the viewer. Try its menus and launcher.
 Close the terminal to stop the devkit.
 
-![GNOME Settings beneath Waybar in a clean Gnoblin devkit session](images/gnoblin-waybar-settings.png)
-
-_The devkit can run stock desktop apps alongside independently launched shell clients._
-
 ## Options
 
-| Variable                   | Accepted value                 | Default    | Effect                                         |
-| -------------------------- | ------------------------------ | ---------- | ---------------------------------------------- |
-| `MONITOR`                  | `WIDTHxHEIGHT`, in pixels      | `1600x900` | Sets the virtual display size                  |
-| `GNOME_DEVKIT_HEADLESS`    | `1` or unset                   | Unset      | Starts without a viewer when set to `1`        |
-| `GNOME_DEVKIT_EXEC`        | Shell command string, or unset | Unset      | Runs the command instead of opening a terminal |
-| `GNOME_DEVKIT_UNSAFE_MODE` | `0`, `1`, or unset             | Unset      | Enables privileged Eval only when set to `1`   |
-
-These are environment variables read when the devkit starts. For example,
-`MONITOR=1280x800` selects a 1280 by 800 virtual display. The unsafe mode is
-intended only for an isolated test process.
+| Variable                   | Accepted values          | Default    | Purpose                                                           |
+| -------------------------- | ------------------------ | ---------- | ----------------------------------------------------------------- |
+| `MONITOR`                  | `WIDTHxHEIGHT` in pixels | `1600x900` | Sets the nested display size.                                     |
+| `GNOME_DEVKIT_HEADLESS`    | `0` or `1`               | `0`        | `1` starts without a viewer; `0` requires a host Wayland display. |
+| `GNOME_DEVKIT_EXEC`        | Shell command string     | Unset      | Runs the string with `bash -c` instead of opening a terminal.     |
+| `GNOME_DEVKIT_UNSAFE_MODE` | `0` or `1`               | `0`        | `1` enables privileged shell D-Bus APIs for tests.                |
 
 ## Headless / scripting mode
 
@@ -85,32 +81,29 @@ fully separate from host services. Check the image before publishing it.
 The checked-in documentation scenes can be recaptured with:
 
 ```sh
+scripts/capture-doc-examples.sh site-firefox
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
-GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
-scripts/capture-doc-examples.sh quickshell-firefox
-scripts/capture-doc-examples.sh waybar-files
 scripts/capture-doc-examples.sh waybar-settings
-scripts/capture-doc-examples.sh waybar-mako-notification
-GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
+scripts/capture-doc-examples.sh quickshell-firefox
 scripts/capture-doc-examples.sh quickshell-files
 scripts/capture-doc-examples.sh window-effects
+GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
+GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
 ```
 
-Each capture uses a disposable profile and removes it afterward. Scenes pair
-Firefox and stock GNOME apps with Waybar + Mako, Quickshell and Bingux. Bingux
-is one separate shell project using Gnoblin.
+Each scene gets a disposable home and XDG profile. Firefox has its own clean
+profile; `site-firefox` opens the configuration reference. Other Firefox scenes
+open `www.gnoblin.org` by default. Choose Bingux, Waybar with Mako or Quickshell
+for the visible shell. Captures include the pointer and omit terminal windows.
 
-The Mako scene shows a Calendar reminder over Firefox. Firefox opens GNOME Help
-in a fresh profile; set `GNOBLIN_DOC_FIREFOX_URL` to use another page. Network
-access is needed for the default page.
-
-Captures need a visible Wayland session, a current build in `./install`, and
-the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is
-included in each image; the capture contains only the devkit viewport.
+Set `GNOBLIN_DOC_SITE_URL` or `GNOBLIN_DOC_FIREFOX_URL` to choose another page.
+Pass a second argument for a different output directory. Captures need a visible
+Wayland session, a current build in `./install` and the apps used by the scene. See the
+[shell guide](/bring-your-own-shell) for the resulting setups.
 
 The [private test harness](testing.md) is for automated checks.
-A devkit run does not verify the installed login session.
+A devkit capture shows the nested session, not an installed login session.
 
 ## Troubleshooting
 

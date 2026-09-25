@@ -21,18 +21,16 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `edge_tiling`                  | Boolean                                      | `false`             | Enable Mutter's edge tiling.                                |
 | `num_workspaces`               | 1–36                                         | `4`                 | Fixed workspace count when dynamic workspaces are disabled. |
 | `workspace_names`              | Up to 36 strings, each at most 80 characters | `{}`                | Display labels by workspace position.                       |
-| `workspace_ids`                | Ordered array of up to 36 unique IDs         | `{}`                | Stable IDs assigned by each workspace's initial position.   |
+| `workspace_ids`                | Ordered array of up to 36 unique IDs         | `{}`                | Stable IDs assigned by workspace position.                  |
 | `center_new_windows`           | Boolean                                      | `false`             | Center newly created windows.                               |
 | `attach_modal_dialogs`         | Boolean                                      | `false`             | Place modal dialogs with their parent window.               |
 | `constrain_drag_to_work_area`  | Boolean                                      | `true`              | Keep interactive window moves inside the work area.         |
 
 Workspace IDs must be unique and match
-`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. A configured ID is assigned by initial
-position, then follows its workspace if order changes. Gnoblin generates a
-session-only ID for each unconfigured workspace; do not save those IDs in
-rules or scripts. This works with fixed and dynamic workspaces. See the
-[window rules guide](/guides/window_rules#workspaces) for matching and
-placement examples.
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Gnoblin generates a session-only ID for
+each position without a configured ID. This works with fixed and dynamic
+workspaces. See the [window rules guide](/guides/window_rules#workspaces) for
+matching and placement examples.
 
 For example, use pointer-follow focus and name the first two workspaces:
 
