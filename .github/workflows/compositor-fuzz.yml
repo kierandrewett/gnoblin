@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      steps:
+        description: Random lifecycle operations after the first window (0-250; use 0 to isolate startup and shutdown)
+        required: false
+        default: 250
+        type: number
 
 permissions:
   contents: read
@@ -86,6 +91,14 @@ jobs:
           builder_uid="$(id -u builder)"
           artifact_root="$RUNNER_TEMP/lifecycle-fuzz"
           install -d -o builder -g builder -m 700 "$artifact_root"
+          fuzz_steps="${{ inputs.steps }}"
+          if [[ -z "$fuzz_steps" ]]; then
+            fuzz_steps=250
+          fi
+          if ! [[ "$fuzz_steps" =~ ^[0-9]+$ ]] || ((fuzz_steps > 250)); then
+            echo "steps must be an integer from 0 through 250" >&2
+            exit 2
+          fi
           seeds=(1738 99173 4294967 20260924)
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
             seeds+=(51 1701 884422 314159265)
@@ -115,7 +128,7 @@ jobs:
               "${extra_monitor[@]}" \
               GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
               python3 tests/window-lifecycle-fuzz.py \
-                --seed "$seed" --steps 250 --timeout 900 \
+                --seed "$seed" --steps "$fuzz_steps" --timeout 900 \
                 --artifact-dir "$artifact_dir"; then
               failed_seeds+=("$seed")
             fi

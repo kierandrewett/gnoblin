@@ -203,11 +203,31 @@ set breakpoint pending on
 handle SIGTERM nostop noprint pass
 break g_log
 condition 1 ($esi & 8) != 0
-catch signal SIGABRT
+set $gnoblin_color_source = (void *) 0
+set $gnoblin_color_handler = (unsigned long) 0
+break subprojects/mutter/src/wayland/meta-wayland-color-management.c:1974
 commands 2
   silent
+  set $gnoblin_color_source = meta_color_manager
+  set $gnoblin_color_handler = color_manager->color_state_changed_handler_id
+  printf "GNOBLIN_GDB_COLOR_DISPOSE: source=%p handler=%lu\n", $gnoblin_color_source, $gnoblin_color_handler
+  bt 12
+  continue
+end
+break g_signal_handler_disconnect
+condition 3 $rdi == $gnoblin_color_source && $rsi == $gnoblin_color_handler
+commands 3
+  silent
+  printf "GNOBLIN_GDB_COLOR_DISCONNECT: source=%p handler=%lu\n", $rdi, $rsi
+  x/8gx $rdi
+  bt 14
+  continue
+end
+catch signal SIGABRT
+commands 4
+  silent
   printf "\nGNOBLIN_GDB_ABORT: SIGABRT\n"
-  bt 40
+  bt full 40
   quit 1
 end
 commands 1
