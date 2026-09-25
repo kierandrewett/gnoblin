@@ -21,16 +21,18 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `edge_tiling`                  | Boolean                                      | `false`             | Enable Mutter's edge tiling.                                |
 | `num_workspaces`               | 1–36                                         | `4`                 | Fixed workspace count when dynamic workspaces are disabled. |
 | `workspace_names`              | Up to 36 strings, each at most 80 characters | `{}`                | Display labels by workspace position.                       |
-| `workspace_ids`                | Map of position to unique ID                 | `{}`                | Stable identifiers for rules and workspace commands.        |
+| `workspace_ids`                | Ordered array of up to 36 unique IDs         | `{}`                | Stable IDs assigned by each workspace's initial position.   |
 | `center_new_windows`           | Boolean                                      | `false`             | Center newly created windows.                               |
 | `attach_modal_dialogs`         | Boolean                                      | `false`             | Place modal dialogs with their parent window.               |
 | `constrain_drag_to_work_area`  | Boolean                                      | `true`              | Keep interactive window moves inside the work area.         |
 
 Workspace IDs must be unique and match
-`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Gnoblin generates a session-only ID for
-each position without a configured ID. This works with fixed and dynamic
-workspaces. See the [window rules guide](/guides/window_rules#workspaces) for
-matching and placement examples.
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. A configured ID is assigned by initial
+position, then follows its workspace if order changes. Gnoblin generates a
+session-only ID for each unconfigured workspace; do not save those IDs in
+rules or scripts. This works with fixed and dynamic workspaces. See the
+[window rules guide](/guides/window_rules#workspaces) for matching and
+placement examples.
 
 For example, use pointer-follow focus and name the first two workspaces:
 
@@ -67,3 +69,37 @@ manager settings directly. This Lua section does not change those apps' CSD
 behavior. A custom SSD renderer implements its own titlebar click behavior.
 
 See [titlebars](/guides/window_frames).
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field;
+`|` separates accepted alternatives.
+
+```lua
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click" | "sloppy" | "mouse"?,
+        focus_new_windows = "smart" | "strict"?,
+        raise_on_click = boolean?,
+        auto_raise = boolean?,
+        focus_change_on_pointer_rest = boolean?,
+        auto_raise_delay = integer?, -- 0–10000 ms
+        action_double_click_titlebar = TitlebarAction?,
+        action_middle_click_titlebar = TitlebarAction?,
+        action_right_click_titlebar = TitlebarAction?,
+        dynamic_workspaces = boolean?,
+        workspaces_only_on_primary = boolean?,
+        edge_tiling = boolean?,
+        num_workspaces = integer?, -- 1–36
+        workspace_names = {string, ...}?, -- up to 36, max 80 characters each
+        workspace_ids = {string, ...}?, -- up to 36 unique IDs
+        center_new_windows = boolean?,
+        attach_modal_dialogs = boolean?,
+        constrain_drag_to_work_area = boolean?,
+    },
+}
+
+-- TitlebarAction = "toggle-maximize" | "toggle-maximize-horizontally"
+--                | "toggle-maximize-vertically" | "minimize" | "lower"
+--                | "menu" | "none"
+```

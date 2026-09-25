@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 
 
@@ -17,7 +18,15 @@ def main() -> int:
         print(f"missing patched resource manifest: {RESOURCE_MANIFEST}", file=sys.stderr)
         return 1
 
-    resources = {(element.text or "").strip() for element in ET.parse(RESOURCE_MANIFEST).iter("file")}
+    resource_entries = [(element.text or "").strip() for element in ET.parse(RESOURCE_MANIFEST).iter("file")]
+    duplicates = sorted(name for name, count in Counter(resource_entries).items() if count > 1)
+    if duplicates:
+        print("duplicate JavaScript resources in js-resources.gresource.xml:", file=sys.stderr)
+        for resource in duplicates:
+            print(f"  {resource}", file=sys.stderr)
+        return 1
+
+    resources = set(resource_entries)
     overlays: list[tuple[Path, str]] = []
     for manifest in sorted((ROOT / "src").rglob("manifest")):
         for line in manifest.read_text().splitlines():

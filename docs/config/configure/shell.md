@@ -29,4 +29,30 @@ Notification and input-source preferences persist in GSettings. With no usable
 picture configured, GNOME displays its configured background color.
 
 Guides: [animations](/guides/animations), [native features](/guides/session_settings),
-[window menu](/guides/window_menu).
+[wallpapers](/guides/wallpapers), [window menu](/guides/window_menu).
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks optional settings;
+`|` separates accepted alternatives.
+
+```lua
+gnoblin.configure {
+    shell = {
+        minimize_animation = string | {minimize = string?, restore = string?}?,
+        minimize_duration = integer?, -- 0–5000 ms
+        minimize_target = {x = number, y = number}?,
+        layer_animation = string | {
+            ["layer-open"] = string?, ["layer-close"] = string?,
+            ["in"] = string?, out = string?,
+        }?,
+        layer_duration = integer?, -- 0–5000 ms
+        layer_easing = "linear" | "ease-out-quad" | "ease-out-cubic" | "ease-in-out-cubic"?,
+        window_menu = {string, ...} | {}?,
+        window_switcher = boolean?,
+        notifications = boolean?,
+        input_source_switcher = boolean?,
+        wallpaper = boolean?,
+    },
+}
+```

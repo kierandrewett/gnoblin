@@ -40,3 +40,21 @@ two-second delay. Gnoblin's built-in wallpaper renderer does not use autostart.
 
 See the [autostart guide](/guides/autostart) for launch timing, overrides,
 and process behavior.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field;
+`["entry-name"]` stands for any valid entry name.
+
+```lua
+gnoblin.configure {
+    autostart = {
+        ["entry-name"] = {
+            command = {string, ...},
+            when = "on_login"?,
+            enable = boolean?,
+            restart = "never" | "on_failure" | "always"?,
+        },
+    },
+}
+```

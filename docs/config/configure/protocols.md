@@ -3,9 +3,9 @@
 Enable or disable a Wayland protocol that Gnoblin exposes to clients. Changes
 apply at the next login because the compositor registers protocols at startup.
 
-| Setting          | Values  | Default | Effect                                                                  |
-| ---------------- | ------- | ------- | ----------------------------------------------------------------------- |
-| `protocols.NAME` | Boolean | `true`  | Exposes the named protocol (`true`) or hides it from clients (`false`). |
+| Setting          | Values  | Default | Effect                                                |
+| ---------------- | ------- | ------- | ----------------------------------------------------- |
+| `protocols.NAME` | Boolean | `true`  | Advertises or hides the named global in Gnoblin mode. |
 
 Use one of the protocol names below as the `NAME` key:
 
@@ -16,7 +16,7 @@ Use one of the protocol names below as the `NAME` key:
 - **Capture and effects:** `wlr_screencopy`, `ext_background_effect_v1`,
   `blur_fade`.
 - **Session controls:** `ext_data_control`, `ext_idle_notify`,
-  `wlr_gamma_control`, `wlr_output_power_management`.
+  `wlr_gamma_control`, `wlr_output_power_management`, `ext_session_lock`.
 
 For example, disable screen capture protocol advertisement:
 
@@ -25,3 +25,27 @@ gnoblin.configure {protocols = {wlr_screencopy = false}}
 ```
 
 See the [protocol catalog](/wayland-protocols).
+
+## Type definition
+
+Protocol fields are optional; list only the protocols you want to override.
+
+```lua
+gnoblin.configure {
+    protocols = {
+        wlr_layer_shell = boolean?,
+        ext_foreign_toplevel_list = boolean?,
+        wlr_foreign_toplevel_management = boolean?,
+        xdg_decoration = boolean?,
+        window_frame_renderer = boolean?,
+        wlr_screencopy = boolean?,
+        ext_background_effect_v1 = boolean?,
+        blur_fade = boolean?,
+        ext_data_control = boolean?,
+        ext_idle_notify = boolean?,
+        wlr_gamma_control = boolean?,
+        wlr_output_power_management = boolean?,
+        ext_session_lock = boolean?,
+    },
+}
+```

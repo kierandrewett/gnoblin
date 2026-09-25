@@ -18,3 +18,10 @@ gnoblin.configure(appearance)
 ```
 
 Module names cannot contain `..`; use `gnoblin.load("parts/motion.lua")` for explicit subdirectories.
+
+## Type definition
+
+```lua
+gnoblin.load(path_or_glob) -- string; missing explicit paths are errors
+require(module_name) -- string; local module name, no `..`
+```

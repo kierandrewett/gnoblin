@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const source = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/layer-companions.js", import.meta.url), "utf8")
+const source = readFileSync(
+    new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/layer-companions.js", import.meta.url),
+    "utf8",
+)
     .replace(/^import .*;\n/gm, "")
     .replace("export class LayerCompanions", "this.LayerCompanions = class LayerCompanions");
 const signals = {
@@ -51,6 +54,7 @@ parent.children = original.slice();
 const context = vm.createContext({
     global: { display: signals, window_manager: signals, get_window_actors: () => original },
     Main: { sessionMode: { ...signals, isLocked: false } },
+    SessionLock: { isLocked: (state) => state },
     Meta: { gnoblin_layer_namespace: (window) => window.name },
 });
 vm.runInContext(source, context);
@@ -79,6 +83,7 @@ let namespaceCalls = 0;
 const performanceContext = vm.createContext({
     global: { display: signals, window_manager: signals, get_window_actors: () => original },
     Main: { sessionMode: { ...signals, isLocked: false } },
+    SessionLock: { isLocked: (state) => state },
     Meta: {
         gnoblin_layer_namespace(window) {
             namespaceCalls++;
@@ -100,7 +105,10 @@ assert.equal(
     "One apply reads each visible layer namespace once, regardless of request count",
 );
 performanceLayers.destroy();
-const sessionSource = readFileSync(new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/ui-sessions.js", import.meta.url), "utf8");
+const sessionSource = readFileSync(
+    new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinBridge/lib/ui-sessions.js", import.meta.url),
+    "utf8",
+);
 const { UiSessions } = await import("data:text/javascript;base64," + Buffer.from(sessionSource).toString("base64"));
 let request;
 const sessions = new UiSessions(() => {}, {

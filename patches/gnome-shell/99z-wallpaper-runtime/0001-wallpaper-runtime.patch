@@ -1,0 +1,38 @@
+From 45ca8318615bd1d68e968dcf87c3fab4c2e5fe0c Mon Sep 17 00:00:00 2001
+From: Gnoblin Docs Audit <gnoblin-docs-audit@localhost>
+Date: Fri, 25 Sep 2026 05:20:52 +0100
+Subject: [PATCH] gnoblin: make wallpaper configurable in GNOME 51
+
+---
+ js/ui/layout.js             | 10 ++++++++++
+ js/ui/workspaceAnimation.js |  4 ++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index 9871e0635..b1beef195 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -316,0 +317 @@ export const LayoutManager = GObject.registerClass({
++        this._gnoblinWallpaperEnabled = true;
+@@ -534,0 +536,6 @@ export const LayoutManager = GObject.registerClass({
++    setGnoblinWallpaperEnabled(enabled) {
++        this._gnoblinWallpaperEnabled = Boolean(enabled);
++        if (Main.sessionMode.currentMode === 'gnoblin')
++            this._updateBackgrounds().catch(logError);
++    }
++
+@@ -546,0 +554,3 @@ export const LayoutManager = GObject.registerClass({
++        if (Main.sessionMode.currentMode === 'gnoblin' && !this._gnoblinWallpaperEnabled)
++            return Promise.resolve();
++
+diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
+index 320bbd50d..1cdd14c36 100644
+--- a/js/ui/workspaceAnimation.js
++++ b/js/ui/workspaceAnimation.js
+@@ -235,2 +235,6 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+     _createBackground() {
++        if (Main.sessionMode.currentMode === 'gnoblin' &&
++            !Main.layoutManager._gnoblinWallpaperEnabled)
++            return;
++
+         const background = new Meta.BackgroundGroup();

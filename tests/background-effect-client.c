@@ -17,6 +17,7 @@ static struct wl_subcompositor* subcompositor;
 static struct wl_shm* shm;
 static struct zwlr_layer_shell_v1* layers;
 static struct ext_background_effect_manager_v1* manager;
+static unsigned int manager_global_count;
 static uint32_t capabilities;
 static void caps(void* data, struct ext_background_effect_manager_v1* m, uint32_t flags) {
     capabilities = flags;
@@ -33,6 +34,7 @@ static void global(void* data, struct wl_registry* registry, uint32_t name, cons
     if (!strcmp(interface, "zwlr_layer_shell_v1"))
         layers = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
     if (!strcmp(interface, "ext_background_effect_manager_v1")) {
+        manager_global_count++;
         manager = wl_registry_bind(registry, name, &ext_background_effect_manager_v1_interface, 1);
         ext_background_effect_manager_v1_add_listener(manager, &manager_listener, NULL);
     }
@@ -115,12 +117,14 @@ int main(int argc, char** argv) {
     wl_registry_add_listener(registry, &registry_listener, NULL);
     roundtrip();
     roundtrip();
-    if (!strcmp(argv[1], "absent")) {
-        assert(!manager);
-        puts("PASS: protocol absent outside Gnoblin");
+    if (!strcmp(argv[1], "stock")) {
+        assert(manager && manager_global_count == 1);
+        assert(capabilities & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR);
+        puts("PASS: stock GNOME advertises one upstream background-effect global");
         return 0;
     }
-    assert(manager && (capabilities & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR));
+    assert(manager && manager_global_count == 1);
+    assert(capabilities & EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR);
     if (!strcmp(argv[1], "duplicate") || !strcmp(argv[1], "dead")) {
         struct wl_surface* surface = wl_compositor_create_surface(compositor);
         struct ext_background_effect_surface_v1* effect =

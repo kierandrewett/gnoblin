@@ -40,6 +40,7 @@ globals.
 | `xdg_decoration`                  | `zxdg_decoration_manager_v1`                                                                                    | Negotiate client or server titlebars                 | [Window frames](/guides/window_frames)       |
 | `window_frame_renderer`           | `gnoblin_window_frame_manager_v1`                                                                               | External frame renderer service                      | [Frame renderer API](frame-renderer-api.md)  |
 | `blur_fade`                       | `gnoblin_blur_fade_manager_v1`                                                                                  | Per-item blur fade metadata                          | [Blur fades](blur-fades.md)                  |
+| `ext_session_lock`                | `ext_session_lock_manager_v1`                                                                                   | Session locking for third-party lockers              | [Session locking](session-lock.md)           |
 
 Bind a version no higher than the one the compositor advertises. For
 Gnoblin-owned protocols, the XML under `src/protocols/` is the wire-level
@@ -55,22 +56,32 @@ and exclusive zone. Gnoblin then places the surface and applies any matching
 `type = "layer"` [window rules](/guides/window_rules). A panel that animates its own
 whole surface can disable the compositor's layer animation for its namespace.
 
+![A Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
+
+_Quickshell positions the panel with layer shell._
+
+![GNOME Files open beneath a Quickshell panel in a Gnoblin session](images/gnoblin-quickshell-files.png)
+
+_The same layer-shell surface sits above an ordinary application window._
+
 Screen capture through `wlr_screencopy` is separate from capture through the
 desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.
 
-## Interfaces not yet available
+## Interface not yet available
 
-`ext_session_lock_v1` and `zwlr_output_manager_v1` have vendored XML but are
-not registered as supported Gnoblin globals. The session-lock startup boundary
-is compiled but deliberately advertises no global until it can enforce a lock.
-Do not build a shell that requires them yet. Gnoblin's existing lock and
-display configuration paths are separate from these two proposed interfaces.
+`zwlr_output_manager_v1` has vendored XML but is not registered as a supported
+Gnoblin global. Display configuration is available through Gnoblin's existing
+interfaces. Session locking is supported through `ext_session_lock_manager_v1`;
+see [Session locking](session-lock.md) for locker requirements and security
+behavior.
 
 ## Inspect a running session
 
-Check the running compositor when packaging or debugging a client. A Wayland
-registry inspector such as `wayland-info` can show advertised globals; run it
-inside the Gnoblin session or devkit terminal so it connects to the right
-`WAYLAND_DISPLAY`. A source checkout, package manifest or XML file cannot prove
-that a particular login session has advertised a global.
+This catalog follows current Gnoblin source; older installed builds may
+advertise fewer globals.
+
+Check `gnoblinctl version --json` and the running registry when packaging or
+debugging. Run `wayland-info` inside the Gnoblin session or devkit so it uses the
+right `WAYLAND_DISPLAY`. A checkout or XML file cannot prove which globals a
+login session advertised.

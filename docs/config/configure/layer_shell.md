@@ -14,3 +14,15 @@ gnoblin.configure {
 ```
 
 See the [layer-shell protocol catalog](/wayland-protocols).
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field.
+
+```lua
+gnoblin.configure {
+    layer_shell = {
+        preserve_active_window = boolean?,
+    },
+}
+```

@@ -15,7 +15,8 @@ Do not also fade the client buffer for the same transition.
 
 ## Items sharing one buffer
 
-Use `gnoblin_blur_fade_manager_v1` for independent item fades.
+Use `gnoblin_blur_fade_manager_v1` for independent item fades; its requests and
+fields are defined in the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml).
 Commit each item's logical rectangle and animation opacity with the buffer.
 
 The protocol does not enable blur or change foreground pixels.

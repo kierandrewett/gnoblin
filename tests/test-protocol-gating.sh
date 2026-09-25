@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Prove init.lua protocol gating: with wlr-layer-shell disabled, the
-# compositor must NOT advertise zwlr_layer_shell_v1. (The default/enabled case is
-# covered by run-gnome-shell.sh, which asserts it IS advertised.)
+# Prove init.lua gates both a Gnoblin-owned global and the upstream background
+# effect global when Gnoblin mode explicitly disables it.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,10 +22,10 @@ export HOME="$DK/home" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
 export GIO_USE_VFS=local GSETTINGS_BACKEND=memory GTK_A11Y=none
 export DISP="gnoblin-pg-$$" GS="$SHELL_BIN"
 
-# init.lua disabling the layer-shell protocol.
+# init.lua disabling layer shell and the background-effect global.
 CONF_FILE="$DK/config/gnoblin/init.lua"
 mkdir -p "$(dirname "$CONF_FILE")"
-printf 'return {protocols = {["wlr-layer-shell"] = false}}\n' >"$CONF_FILE"
+printf 'return {protocols = {["wlr-layer-shell"] = false, ["ext-background-effect-v1"] = false}}\n' >"$CONF_FILE"
 export GNOBLIN_CONFIG="$CONF_FILE"
 
 probe="$DK/wl-globals"
@@ -70,7 +69,11 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -uo pipefail -c '
     echo "FAIL: zwlr_layer_shell_v1 still advertised with wlr-layer-shell=false"
     exit 1
   fi
-  echo "  ok: zwlr_layer_shell_v1 NOT advertised (config gating works)"
+  if printf "%s\n" "$globals" | grep -q ext_background_effect_manager_v1; then
+    echo "FAIL: ext_background_effect_manager_v1 still advertised with ext_background_effect_v1=false"
+    exit 1
+  fi
+  echo "  ok: layer-shell and background-effect globals are hidden by config"
 '
 rc=$?
 [ "$rc" = 0 ] && echo ">> RESULT: PASS (init.lua protocol gating)" || echo ">> RESULT: FAIL (rc=$rc)"

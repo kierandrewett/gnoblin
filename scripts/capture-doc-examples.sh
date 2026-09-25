@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Capture a fresh Gnoblin desktop with Waybar and Files for the documentation.
+# Capture a clean Gnoblin shell example for the documentation.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-desktop}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop | waybar-firefox | waybar-launcher | bingux-firefox) ;;
+    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox | waybar-settings | bingux-files | quickshell-files) ;;
     *)
-        echo "Usage: $0 [desktop] [output-directory]" >&2
+        echo "Usage: $0 {desktop|waybar-firefox|waybar-launcher|mako-notification|bingux-firefox|quickshell-firefox|waybar-settings|bingux-files|quickshell-files} [output-directory]" >&2
         exit 2
         ;;
 esac
-docs_url="${GNOBLIN_DOCS_URL:-http://127.0.0.1:5180/gnoblin}"
+firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://help.gnome.org/gnome-help/}"
 bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
@@ -105,20 +105,6 @@ gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
 }
 LUA
-if [ "$example" != bingux-firefox ]; then
-    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
-gnoblin.configure {
-    autostart = {
-        bar = {command = {"waybar"}},
-        notifications = {command = {"mako"}},
-    },
-    shortcuts = {
-        launcher = {binding = "<Super>d", command = {"fuzzel"}},
-    },
-}
-LUA
-fi
-
 cat >"$XDG_CONFIG_HOME/waybar/config.jsonc" <<'JSON'
 {
   "layer": "top", "position": "top", "height": 42,
@@ -145,6 +131,8 @@ padding=16
 width=380
 height=110
 default-timeout=9000
+anchor=bottom-right
+margin=24
 MAKO
 cat >"$XDG_CONFIG_HOME/foot/foot.ini" <<'FOOT'
 font=monospace:size=12
@@ -178,34 +166,119 @@ selection-text=edf0f7ff
 border=9ccfd8ff
 FUZZEL
 
+if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ]; then
+    command -v quickshell >/dev/null || {
+        echo "quickshell is required for this scene" >&2
+        exit 1
+    }
+    mkdir -p "$XDG_CONFIG_HOME/quickshell"
+    cat >"$XDG_CONFIG_HOME/quickshell/shell.qml" <<'QML'
+import Quickshell
+import QtQuick
+
+PanelWindow {
+    anchors { top: true; left: true; right: true }
+    implicitHeight: 42
+    color: "#171b27"
+
+    Text {
+        id: clock
+        anchors.centerIn: parent
+        text: Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+        color: "#e8eaf1"
+        font.family: "Adwaita Sans"
+        font.pixelSize: 15
+    }
+
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: clock.text = Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+    }
+}
+QML
+fi
+
 capture_path="$output_dir/gnoblin-build-a-desktop.png"
+firefox_profile="$HOME/.mozilla/firefox/gnoblin-docs"
+firefox_command="firefox --no-remote --profile '$firefox_profile'"
 case "$example" in
     desktop)
         capture_path="$output_dir/gnoblin-build-a-desktop.png"
-        app_command='nautilus --new-window'
+        app_command='waybar & mako & sleep 2; nautilus --new-window'
         ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
-        app_command="firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="firefox --new-window '$docs_url/guides/shortcuts.html'"
-        post_app_command='fuzzel & sleep 3'
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
+        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
+        ;;
+    mako-notification)
+        capture_path="$output_dir/gnoblin-mako-notification.png"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
+        post_app_command="notify-send --app-name='Downloads' 'Download complete' 'The file is ready to open.' --icon=folder-download; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
-        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; $firefox_command --new-window '$firefox_url'"
+        ;;
+    quickshell-firefox)
+        capture_path="$output_dir/gnoblin-quickshell-firefox.png"
+        app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$firefox_url'"
+        ;;
+    waybar-settings)
+        capture_path="$output_dir/gnoblin-waybar-settings.png"
+        app_command='waybar & mako & sleep 2; gnome-control-center multitasking'
+        ;;
+    bingux-files)
+        capture_path="$output_dir/gnoblin-bingux-files.png"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; nautilus --new-window"
+        ;;
+    quickshell-files)
+        capture_path="$output_dir/gnoblin-quickshell-files.png"
+        app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
         ;;
 esac
 
-if [ "$example" != desktop ]; then
-    command -v firefox >/dev/null || {
-        echo "firefox is required for this scene" >&2
+if [ "$example" = mako-notification ]; then
+    command -v notify-send >/dev/null || {
+        echo "notify-send is required for this scene" >&2
         exit 1
     }
 fi
-if [ "$example" = bingux-firefox ]; then
+
+case "$example" in
+    waybar-settings | bingux-files | quickshell-files) ;;
+    desktop) ;;
+    *)
+        command -v firefox >/dev/null || {
+            echo "firefox is required for this scene" >&2
+            exit 1
+        }
+        mkdir -p "$firefox_profile"
+        cat >"$firefox_profile/user.js" <<'PREFS'
+// Keep first-run pages out of screenshots while retaining a genuinely fresh profile.
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("browser.startup.homepage_override.buildID", "ignore");
+user_pref("browser.rights.3.shown", true);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
+user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+PREFS
+        ;;
+esac
+if [ "$example" = waybar-settings ]; then
+    command -v gnome-control-center >/dev/null || {
+        echo "gnome-control-center is required for this scene" >&2
+        exit 1
+    }
+fi
+if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     command -v gnoblin-quickshell >/dev/null || {
         echo "gnoblin-quickshell is required for this scene" >&2
         exit 1
@@ -227,9 +300,9 @@ if [ "$example" = bingux-firefox ]; then
 JSON
 fi
 
-pointer_position="${GNOBLIN_DOC_POINTER:-$(python3 -c 'import ctypes; x=ctypes.CDLL("libX11.so.6"); x.XOpenDisplay.restype=ctypes.c_void_p; x.XOpenDisplay.argtypes=[ctypes.c_char_p]; x.XDefaultScreen.argtypes=[ctypes.c_void_p]; x.XDefaultScreen.restype=ctypes.c_int; x.XDisplayWidth.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayWidth.restype=ctypes.c_int; x.XDisplayHeight.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayHeight.restype=ctypes.c_int; d=x.XOpenDisplay(None); s=x.XDefaultScreen(d); print(x.XDisplayWidth(d,s)//2, x.XDisplayHeight(d,s)//2)')}"
+pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
-desktop_command="swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim -c '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
+desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
 bash "$root/scripts/run-gnome-devkit.sh"

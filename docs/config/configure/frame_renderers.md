@@ -22,3 +22,16 @@ gnoblin.window_rule {
 Use the [window rule reference](/config/window_rule#frame-fields) to choose
 which windows get a frame. Renderer-specific arguments are passed through;
 check the renderer's documentation for supported options.
+
+## Type definition
+
+`["renderer-name"]` stands for any valid renderer name. The command list must
+contain 1–32 strings.
+
+```lua
+gnoblin.configure {
+    frame_renderers = {
+        ["renderer-name"] = {string, ...},
+    },
+}
+```

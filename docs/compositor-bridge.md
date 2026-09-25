@@ -18,6 +18,10 @@ debugging a client connection.
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.
 
+![Bingux panel and dock with Files, Firefox and Foot in a Gnoblin session](images/gnoblin-bingux-firefox.png)
+
+_Bingux is one shell example built on Gnoblin's compositor interfaces._
+
 ## Connect
 
 Socket: `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
@@ -32,9 +36,11 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
-The `hello.version` field is the socket protocol version. Check `features`
-before using optional operations. These include `ui-session`, bare Super, blur
-regions and layer animation policy.
+The `hello.version` field is the socket protocol version. This bridge advertises
+`ui-sessions`, `switcher-fallback` and `overlay-shortcut`; it adds
+`blur-regions` and `layer-animation-policy` when the running build supports
+them. Check the exact feature name before using an optional capability. For
+example, bare Super requires `overlay-shortcut`.
 
 A validation error has an `error` event. If a valid `command` request fails,
 the response also carries its request `id`. Malformed JSON or excessive input
@@ -42,26 +48,26 @@ closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op`                             | Required fields                                 | Reply or stream                                     |
-| -------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
-| `command`                        | `id`, `command`; command-specific fields        | One `reply` with matching `id`, or `error`          |
-| `windows`                        | None                                            | Current `windows` snapshot, then changes            |
-| `privacy`                        | None                                            | Current `privacy` state, then changes               |
-| `status`                         | None                                            | One `status` with binding IDs and active session ID |
-| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger` | `bound`, then activation and input events           |
-| `activate`                       | `window`                                        | Focus a window; no success reply                    |
-| `preview`                        | `window`, `width`, `height`                     | One `preview` event                                 |
-| `shortcut-input`                 | `name`, `state`                                 | Input handoff; no success reply                     |
-| `ui-session`                     | `action`; other fields depend on action         | `ui-state` or `ui-command` events                   |
-| `layer-animation-policy`         | `namespace`                                     | One policy event for that layer namespace           |
-| `blur-region`                    | `namespace`, `screen`, `region`                 | No success reply                                    |
-| `window-drag`                    | None                                            | Current `window-drag` state, then changes           |
-| `snap-offer`                     | `serial`, `regions`                             | No success reply; may later get `snap-completed`    |
-| `snap-context`                   | None                                            | One `snap-context` event                            |
-| `snap-window`                    | `window`, `monitor`, `target`                   | Applies a region; no success reply                  |
-| `stop-sharing`, `stop-recording` | None                                            | Requests stop; no success reply                     |
-| `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
-| `clear`                          | None                                            | Removes this client's bindings and session          |
+| `op`                             | Required fields                                                          | Reply or stream                                     |
+| -------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields                                 | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                                                     | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                                                     | Current `privacy` state, then changes               |
+| `status`                         | None                                                                     | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger`, `modal`, `captureInput` | `bound`, then activation and input events           |
+| `activate`                       | `window`                                                                 | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`                                              | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                                                          | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action                                  | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                                                              | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`                                          | No success reply                                    |
+| `window-drag`                    | None                                                                     | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                                                      | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                                                     | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`                                            | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                                                     | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
+| `clear`                          | None                                                                     | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
 `workspace-switch`, `workspace-next`, `workspace-previous`,
@@ -90,19 +96,23 @@ The reply's `result` is shaped like this:
 }
 ```
 
-The request `id` correlates its reply. Workspace IDs are separate: configured
-IDs persist by position, while unconfigured workspaces receive session-only
-IDs such as `@session-N`.
+The request `id` correlates its reply. A configured workspace ID is assigned
+from its initial position and stays with that `MetaWorkspace` if workspaces are
+reordered during the session. An unconfigured workspace gets an ID such as
+`@session-1`, which lasts only for that session.
 
 Each item from `workspaces` has these fields:
 
-| Field     | Meaning                                                                  |
-| --------- | ------------------------------------------------------------------------ |
-| `id`      | Stable workspace ID, or the one-based position when no ID is configured. |
-| `number`  | Current one-based position.                                              |
-| `name`    | Display label.                                                           |
-| `active`  | Whether this workspace is selected.                                      |
-| `windows` | Number of eligible windows on the workspace.                             |
+| Field     | Meaning                                                            |
+| --------- | ------------------------------------------------------------------ |
+| `id`      | Configured ID or a generated session-only ID such as `@session-1`. |
+| `number`  | Current one-based position.                                        |
+| `name`    | Display label.                                                     |
+| `active`  | Whether this workspace is selected.                                |
+| `windows` | Number of eligible windows on the workspace.                       |
+
+The older `workspaces` command keeps its legacy response: its numeric `id` is
+the current one-based position, and it does not include the display name.
 
 Switch by stable ID or current number. Send exactly one selector:
 
@@ -114,6 +124,9 @@ Switch by stable ID or current number. Send exactly one selector:
 `workspace-switch` also accepts a numeric `workspace` selector.
 `workspace-next` and `workspace-previous` take no selector and wrap at the
 ends of the current workspace list.
+
+The older `workspaces` command keeps its legacy response: `id` is the current
+one-based position, and items do not include the display name.
 
 Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
 They also include the resolved workspace's `id`, `number`, `name`, `active`,
@@ -207,8 +220,19 @@ The server acknowledges:
 | `4`        | Hold Control   |
 | `67108864` | Hold Super     |
 
-For a held shortcut, Gnoblin captures key and pointer events before your popup
-becomes visible. For example, an Alt-held switcher can finish when Alt is released.
+The optional `modal` field defaults to `true`. A modal held shortcut captures
+key and pointer events before the popup appears; an Alt-held switcher can, for
+example, navigate and finish when Alt is released. Set `modal: false` for a
+passive modifier hold: Gnoblin leaves focus and input delivery with the current
+application, and reports when the modifier is released. This is useful for a
+shell that changes state while a modifier is held without opening an input UI.
+For example, this binding reports the `<Alt>F8` activation and later the Alt
+release while the focused application keeps receiving input:
+
+```json
+{ "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }
+```
+
 Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
 
 `activated` includes id, first, modifiers and time.
@@ -230,11 +254,22 @@ own bare Super; remove a duplicate Lua command binding first.
 Super activates on release, excluding chords. With capture enabled, send:
 
 ```json
+{ "op": "shortcut-input", "name": "search", "state": "prepared" }
 { "op": "shortcut-input", "name": "search", "state": "ready" }
 ```
 
-Send ready only after the layer and text field have keyboard focus.
-Send `state: "closed"` when dismissed. The binding ID is the handoff name.
+Use these states in order for an overlay that accepts typing:
+
+| State      | Send it when                                                 | Effect                                                |
+| ---------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| `prepared` | The overlay exists and its text field has focus.             | Releases the compositor grab; input stays buffered.   |
+| `ready`    | Its Wayland window is active and can receive keyboard input. | Replays buffered keys to the focused client in order. |
+| `closed`   | The overlay closes or stops accepting input.                 | Cancels pending handoff and clears the ready state.   |
+
+The buffer expires after three seconds if the handoff never becomes ready.
+Do not send these states while the session is locked. Bingux uses this
+handoff for its search overlay; another shell can send the same operations.
+The binding ID is the handoff name.
 
 ## Windows and controls
 
@@ -323,8 +358,8 @@ normal finalisation path to save output. These requests do not grant access.
 
 ## Coordinate shell processes
 
-`ui-session` shares named state between UI processes. Names match
-`^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
+`ui-session` shares advisory state and owner-directed commands between UI
+processes. Names match `^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
 
 | Action    | Fields                 | Event                                       |
 | --------- | ---------------------- | ------------------------------------------- |
@@ -332,10 +367,36 @@ normal finalisation path to save output. These requests do not grant access.
 | `state`   | `name`, `state` object | Publishes `ui-state`                        |
 | `command` | `name`, `command`      | Sends `ui-command` to the owner             |
 
-Use the envelope `{"op":"ui-session","action":"watch"}`. Owner disconnect
-publishes `state: null`. A visible layer can include `surface` (its namespace),
-`companions` (up to 16 namespaces), `revealCompanions: true`, and
-`companionsAbove: true` in its state to coordinate panel stacking.
+`watch` immediately sends each current owner state, then sends updates. A
+`state` request claims or updates a name and broadcasts its object to watchers.
+A second client cannot claim that name. An owner disconnect removes it and
+broadcasts `state: null`; commands are not queued for a later owner.
+
+One client watches; another owns `search` and publishes its state. A watcher
+can then send a command to that owner. Each request goes on the named client's
+own bridge connection:
+
+| Client  | Request                                                                               |
+| ------- | ------------------------------------------------------------------------------------- |
+| Watcher | `{"op":"ui-session","action":"watch"}`                                                |
+| Owner   | `{"op":"ui-session","action":"state","name":"search","state":{"visible":true}}`       |
+| Watcher | `{"op":"ui-session","action":"command","name":"search","command":{"action":"close"}}` |
+
+The owner defines the command object's schema. Gnoblin forwards it to the
+current owner as `ui-command`; if there is no owner, the command is ignored.
+State is also owner-defined except for these optional stacking fields:
+
+| Field              | Effect                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `visible`          | `true` requests the `surface` and its companions.                                       |
+| `surface`          | Layer-shell namespace of the owning surface.                                            |
+| `companions`       | Companion layer-shell namespaces; Gnoblin considers at most the first 16 string values. |
+| `revealCompanions` | `true` requests companions even when `visible` is false.                                |
+| `companionsAbove`  | `true` places companions above the owning surface; otherwise they go below it.          |
+
+The owner must provide a string `surface` and an array `companions` for the
+stacking request to apply. Bingux uses this to coordinate separate panels;
+other shells can choose their own state and command objects.
 
 | Operation                | Fields                                                                                    | Limit or effect                                                                                                                            |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |

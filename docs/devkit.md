@@ -84,14 +84,19 @@ The checked-in documentation scenes can be recaptured with:
 scripts/capture-doc-examples.sh desktop
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
+scripts/capture-doc-examples.sh mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
+scripts/capture-doc-examples.sh quickshell-firefox
+scripts/capture-doc-examples.sh waybar-settings
+GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
+scripts/capture-doc-examples.sh quickshell-files
 ```
 
-Each capture uses a disposable profile and removes it afterward. The scenes
-show Files, Firefox under Waybar, Fuzzel over Firefox, and Bingux with stock
-desktop apps. Bingux is one separate shell project using Gnoblin. Firefox opens
-the local docs preview at `127.0.0.1:5180`; start it with
-`npm run docs:dev -- --port 5180` first.
+Each capture uses a disposable profile and removes it afterward. Scenes pair
+Firefox and stock GNOME apps with Waybar + Mako, Quickshell and Bingux. Bingux
+is one separate shell project using Gnoblin. Firefox opens GNOME Help in a fresh
+profile; set `GNOBLIN_DOC_FIREFOX_URL` to use another page. Network access is
+needed for the default page.
 
 Captures need a visible Wayland session, a current build in `./install`, and
 the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is

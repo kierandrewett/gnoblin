@@ -7,6 +7,7 @@ It is optional.
 | Setup                                             | What you get                                        |
 | ------------------------------------------------- | --------------------------------------------------- |
 | [Waybar + Fuzzel + Mako](#waybar-fuzzel-and-mako) | Separate tools you configure independently          |
+| [Quickshell](#quickshell)                         | A custom layer-shell surface                        |
 | [Bingux](#bingux)                                 | An integrated bar, dock, launcher and notifications |
 | Your own layer-shell clients                      | A custom desktop using Gnoblin's Wayland protocols  |
 
@@ -38,9 +39,36 @@ using Mako.
 Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
 [shortcuts](/guides/shortcuts) only control how you launch it.
 
-![Firefox running with an independent Waybar session](images/gnoblin-waybar-firefox.png)
+![Firefox showing GNOME Help in an independent Waybar session](images/gnoblin-waybar-firefox.png)
 
-_Firefox under Waybar in a fresh Gnoblin profile._
+_Firefox running under Waybar in a fresh Gnoblin profile._
+
+![A Mako notification above Firefox in a Waybar session](images/gnoblin-mako-notification.png)
+
+_Mako places a download notice above Firefox in a Waybar session._
+
+## Quickshell
+
+[Quickshell](https://quickshell.org/) can host custom layer-shell surfaces.
+This small `PanelWindow` example runs beside Firefox:
+
+```qml
+import Quickshell
+import QtQuick
+
+PanelWindow {
+    anchors { top: true; left: true; right: true }
+    implicitHeight: 42
+    Text {
+        anchors.centerIn: parent
+        text: Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+    }
+}
+```
+
+![Firefox under a Quickshell panel in a fresh Gnoblin profile](images/gnoblin-quickshell-firefox.png)
+
+_The panel is a separate Quickshell process using Gnoblin's layer-shell support._
 
 ## Bingux
 
@@ -50,6 +78,10 @@ search and window switcher.
 ![Firefox running in a Bingux session with Files, Firefox and Foot in the dock](images/gnoblin-bingux-firefox.png)
 
 _Bingux is one separate shell project that uses Gnoblin. Files, Firefox and Foot are pinned in its dock._
+
+![GNOME Files open in a Bingux session with its dock visible](images/gnoblin-bingux-files.png)
+
+_Files is a stock GNOME app; Bingux supplies the shell and dock._
 
 Install the dependencies in the
 [Bingux installation guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md),

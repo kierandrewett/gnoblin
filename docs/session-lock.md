@@ -4,7 +4,7 @@ Gnoblin uses the standard `ext-session-lock-v1` Wayland protocol in the
 Gnoblin session. The compositor owns the security boundary: it covers every
 output, stops normal input, replaces desktop capture with its lock scene, and
 stays locked if a locker exits. The locker owns its appearance and
-authentication.
+authentication. See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml).
 
 Gnoblin does not provide a default lock screen. Bingux has its own independent
 lock client. Third-party lockers such as hyprlock, swaylock, gtklock and
@@ -18,6 +18,11 @@ set a timeout or launch a locker for you.
 
 The regular GNOME session is separate. It does not advertise this protocol and
 continues to use GNOME ScreenShield.
+
+The protocol is enabled by default in Gnoblin. To hide its global, set
+`ext_session_lock = false` under `gnoblin.configure.protocols`, then log out and
+back in; protocol globals are registered at compositor startup. See the
+[protocol setting reference](/config/configure/protocols).
 
 ## Portal and remote access while locked
 

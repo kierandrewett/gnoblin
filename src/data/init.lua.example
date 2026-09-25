@@ -147,20 +147,30 @@ gnoblin.configure {
     --     cairo = {"gnoblin-frame-cairo", "--theme-file=frame-theme.txt"},
     -- },
 
-    -- Command and built-in action shortcuts share one list. Built-in action
-    -- bindings use a semantic action name and an accelerator list. GNOME
-    -- Shell actions use gnome:shell.*, for example gnome:shell.show_screenshot_ui.
-    shortcuts = {},
+    -- Shortcuts use stable names. Use the same name to change an imported
+    -- entry; fields you omit keep their earlier values. Set enable = false
+    -- to disable one. Built-in actions use a GNOME keybinding name.
+    shortcuts = {
+        screenshot = {action = "gnome:shell.show_screenshot_ui", binding = {"Print"}},
+        ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
+        ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
+        ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
+        ["microphone-mute"] = {binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}},
+        ["brightness-up"] = {binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}},
+        ["brightness-down"] = {binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}},
+        ["media-play-pause"] = {binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}},
+        ["media-next"] = {binding = "XF86AudioNext", command = {"playerctl", "next"}},
+        ["media-previous"] = {binding = "XF86AudioPrev", command = {"playerctl", "previous"}},
+        files = {binding = "<Super>e", command = {"sh", "-c", 'gio open "$HOME"'}},
+    },
 
     -- Start each named command once per login. Commands are argv arrays, not
-    -- shell strings; use a script path if shell syntax is required. `restart`
-    -- may be "never", "on_failure", or "always".
-    autostart = {},
-    -- Example: autostart = {{name = "bar", command = {"waybar"}, when = "on_login"}},
+    -- shell strings; use a script path if shell syntax is required.
+    -- autostart = {bar = {command = {"waybar"}}},
 
--- Add ordered window rules here. Later matching rules override fields they
--- specify. Match by type, focused, app_id, title, or layer.
-window_rules = {},
+    -- Add ordered window rules here. Later matching rules override fields they
+    -- specify. Use gnoblin.window_rule to append; uncomment to replace the list.
+    -- window_rules = {},
 }
 
 -- Register custom transitions once and reuse them by name in shell settings
@@ -174,23 +184,6 @@ window_rules = {},
 --     from = {y = 18, scale = 0.94, opacity = 0},
 --     to = {y = 0, scale = 1, opacity = 1},
 -- }
-
--- Media keys are ordinary editable command shortcuts. These commands are
--- provided by WirePlumber, playerctl, and brightnessctl runtime dependencies.
--- Built-in actions use the same API with an action name and accelerator list.
-gnoblin.shortcut {name = "screenshot", action = "gnome:shell.show_screenshot_ui", binding = {"Print"}}
-gnoblin.shortcut {name = "volume-up", binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}}
-gnoblin.shortcut {name = "volume-down", binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}}
-gnoblin.shortcut {name = "volume-mute", binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}}
-gnoblin.shortcut {name = "microphone-mute", binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}}
-gnoblin.shortcut {name = "brightness-up", binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}}
-gnoblin.shortcut {name = "brightness-down", binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}}
-gnoblin.shortcut {name = "media-play-pause", binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}}
-gnoblin.shortcut {name = "media-next", binding = "XF86AudioNext", command = {"playerctl", "next"}}
-gnoblin.shortcut {name = "media-previous", binding = "XF86AudioPrev", command = {"playerctl", "previous"}}
-
--- GNOME's GLib utilities provide gio; open the user's home folder.
-gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", 'gio open "$HOME"'}}
 
 -- A complete effect rule. Uncomment or add individual fields as needed.
 -- gnoblin.window_rule {
@@ -245,20 +238,12 @@ gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", '
 --     clipboard = false, -- remote-desktop only
 -- }
 
--- Named declarations can be edited from later-loaded config files.
--- gnoblin.configure {
---     shortcuts = {
---         terminal = {
---             binding = "<Super>Return",
---             command = {"YOUR_TERMINAL", "--new-window"}, -- replace with an installed executable
---         },
---     },
---     autostart = {
---         bar = {command = {"waybar"}, restart = "on_failure"},
---     },
--- }
--- Disable an imported entry by setting its enable field to false:
--- gnoblin.configure {shortcuts = {terminal = {enable = false}}}
+-- Use the same name to edit an imported entry; omitted fields stay as set.
+-- gnoblin.configure {shortcuts = {terminal = {binding = "<Super>Return", command = {"ptyxis"}}}}
+-- gnoblin.configure.shortcuts.terminal.enable = false
+-- Start a program once per login, unless a service already starts it.
+-- gnoblin.configure {autostart = {bar = {command = {"waybar"}}}}
+-- gnoblin.configure.autostart.bar.enable = false
 
 -- Advanced input overrides. Most people should leave these commented out:
 -- Gnoblin then follows each tablet/pen's existing settings and the system's

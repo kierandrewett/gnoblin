@@ -76,3 +76,16 @@ gnoblin.configure {
 This setting selects layouts or input methods; it does not set XKB options.
 Configure those separately with
 [`input.keyboard.xkb_options`](/config/configure/input/keyboard).
+
+## Type definition
+
+The IDs are installation-dependent strings. `?` marks an optional field.
+
+```lua
+gnoblin.configure {
+    input_sources = {
+        sources = {{type = "xkb" | "ibus", id = string}, ...},
+        per_window = boolean?,
+    },
+}
+```

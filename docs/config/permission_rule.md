@@ -33,3 +33,21 @@ see [Inspect a decision](/guides/permissions#inspect-a-decision).
 
 `monitors` only applies to screen capture or remote desktop. `devices` and
 `clipboard` only apply to remote desktop. Other combinations are rejected.
+
+## Type definition
+
+`?` marks optional fields; `|` separates accepted alternatives. A rule needs
+`name`, `match`, `capabilities`, and `level`.
+
+```lua
+gnoblin.permission_rule {
+    name = string,
+    match = string, -- "app-id:" or "host-exe:" plus a regular expression
+    capabilities = {"screen-cast" | "remote-desktop" | "input-capture"
+        | "screenshot" | "access", ...}, -- nonempty
+    level = "default" | "ask" | "allow" | "deny",
+    monitors = {"primary" | string, ...}?,
+    devices = {"keyboard" | "pointer" | "touchscreen", ...}?,
+    clipboard = boolean?,
+}
+```

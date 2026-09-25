@@ -69,20 +69,42 @@ Find feature IDs with `gnoblinctl feature list`. Supported event names are:
 | ------------------- | ---------------------------------- |
 | `window-opened`     | A GNOME Shell `Meta.Window` object |
 | `workspace-changed` | Zero-based active workspace index  |
+| `overview.showing`  | None                               |
+| `overview.shown`    | None                               |
+| `overview.hiding`   | None                               |
+| `overview.hidden`   | None                               |
 
 The `Meta.Window` argument is an in-process GNOME object, not the bridge's JSON
 window record. A script that calls GNOME internals may need adjustment when the
 underlying GNOME version changes. Use the bridge when an external shell needs a
 stable, serializable window record.
 
-Bridge operation names must be namespaced, such as `example.inspect`. The
-handler receives `(request, peer)`. `peer.client` is an opaque connection ID,
-`peer.pid` is the client's process ID, and `peer.send(record)` sends one event
-to that client.
+Overview events follow GNOME Shell's overview transitions. Lua listeners can
+subscribe to the same transitions as `gnome.shell.overview.*`; see the
+[Lua event reference](/config/lua-events).
 
-`peer.sendTo(clientId, record)` and
-`peer.broadcast(record, clientIds)` send to other active clients. The
-`peer.isOpen()` check is useful before completing asynchronous work.
+Bridge operation names must match
+`^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$`, such as `example.inspect`, and be unique.
+The handler receives `(request, peer)`. `peer.client` is an opaque token for
+that connection; it is valid only while the client is connected. `peer.pid` is
+the client's process ID, and `peer.send(record)` sends one event to that client.
+
+| Peer member                 | Contract                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| `client`                    | Opaque per-connection token; use it to address this client from other handlers. |
+| `pid`                       | Unix process ID reported for the bridge connection.                             |
+| `isOpen()`                  | `true` while the connection is open.                                            |
+| `send(record)`              | Send one event to this connection.                                              |
+| `sendTo(token, record)`     | Send to another open connection; returns `true` if sent, otherwise `false`.     |
+| `broadcast(record)`         | Send to all connected bridge clients.                                           |
+| `broadcast(record, tokens)` | Send only to connections identified by their `peer.client` tokens.              |
+
+`api.onCompositorClientClosed(callback)` calls `callback(token)` when a client
+disconnects. Use it to discard per-client state; the disconnected token cannot
+be used for a later send. The token is created when that connection first calls
+a script-registered operation; clients that disconnect without doing so are
+reported with `undefined`. Registering a handler returns a cleanup function,
+and script unload removes it automatically.
 
 A handler can use GJS directly. Validate each request, and keep shell-specific
 policy in the package or script that owns it.

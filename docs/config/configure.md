@@ -31,6 +31,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
+- `window_rules` replaces the full ordered list; use [`gnoblin.window_rule`](/config/window_rule) to append a rule.
 
 Use [`gnoblin.snapshot()`](/config/snapshot) to inspect the config assembled
 so far.
@@ -42,3 +43,29 @@ example.
 See [recipes](/recipes/) for complete examples and
 [file loading](/guides/files_and_load_order) for include order and reload
 behavior.
+
+## Type definition
+
+Each top-level section is optional. See its page for the full set of nested
+fields and accepted values.
+
+```lua
+gnoblin.configure {
+    shell = {...}?,
+    keybindings = {...}?,
+    window_management = {...}?,
+    compositor = {...}?,
+    input = {...}?,
+    input_sources = {...}?,
+    permissions = {...}?,
+    layer_shell = {...}?,
+    protocols = {...}?,
+    frame_renderers = {...}?,
+    cursor = {...}?,
+    shortcuts = {...}?,
+    autostart = {...}?,
+    window_rules = {WindowRule, ...}?, -- replaces the ordered list
+}
+```
+
+`WindowRule` is the table shape accepted by [`gnoblin.window_rule`](/config/window_rule).

@@ -1,0 +1,34 @@
+From 9b0c66f3c5689997775e4a36b027137abe8cddaa Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 06:45:00 +0100
+Subject: [PATCH] Respect the background effect protocol gate
+
+GNOME registers this upstream protocol during Wayland startup. In Gnoblin
+mode, keep its public configuration gate effective without changing stock
+GNOME behavior.
+---
+ src/wayland/meta-wayland-background-effect.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
+--- a/src/wayland/meta-wayland-background-effect.c
++++ b/src/wayland/meta-wayland-background-effect.c
+@@ -25,2 +25,3 @@
+ #include "ext-background-effect-v1-server-protocol.h"
++#include "core/util-private.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+@@ -32,2 +33,3 @@
+ #include "wayland/meta-wayland-surface-private.h"
++#include "wayland/gnoblin-config.h"
+ #include "wayland/meta-wayland-versions.h"
+@@ -214,6 +216,10 @@
+ void
+ meta_wayland_init_background_effect (MetaWaylandCompositor *compositor)
+ {
++  if (meta_is_gnoblin_session () &&
++      !gnoblin_config_protocol_enabled ("ext-background-effect-v1"))
++    return;
++
+   if (g_signal_lookup ("gnoblin-background-effect-changed", META_TYPE_DISPLAY) == 0)
+     g_signal_new ("gnoblin-background-effect-changed",
+                   META_TYPE_DISPLAY,
