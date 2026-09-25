@@ -210,9 +210,11 @@ commands 1
   end
   if $edx == 986
     frame 1
-    printf "GNOBLIN_GDB_XDG_STATE: initial=%d configure_sent=%d surface=%p window=%p buffer=%p acked_configure=%d\n", xdg_surface_priv->has_initial_config, xdg_surface_priv->configure_sent, surface, window, surface->buffer, pending->has_acked_configure_serial
-    if window
-      printf "GNOBLIN_GDB_WINDOW: pid=%d sequence=%u ready=%d title=%s\n", meta_window_get_pid(window), meta_window_get_stable_sequence(window), meta_window_is_ready(window), meta_window_get_title(window)
+    set $gnoblin_surface = meta_wayland_surface_role_get_surface(surface_role)
+    set $gnoblin_window = meta_wayland_surface_get_window($gnoblin_surface)
+    printf "GNOBLIN_GDB_XDG_STATE: surface=%p window=%p buffer=%p acked_configure=%d\n", $gnoblin_surface, $gnoblin_window, meta_wayland_surface_get_buffer($gnoblin_surface), pending->has_acked_configure_serial
+    if $gnoblin_window
+      printf "GNOBLIN_GDB_WINDOW: pid=%d sequence=%u ready=%d title=%s\n", meta_window_get_pid($gnoblin_window), meta_window_get_stable_sequence($gnoblin_window), meta_window_is_ready($gnoblin_window), meta_window_get_title($gnoblin_window)
     end
     frame 0
   end
