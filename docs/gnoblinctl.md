@@ -221,6 +221,18 @@ Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
+## Shell completion
+
+`completion` prints setup for Bash, Zsh or Fish. Add it to the matching shell
+startup file, then open a new shell:
+
+```sh
+gnoblinctl completion bash >> ~/.bashrc
+gnoblinctl completion zsh >> ~/.zshrc
+mkdir -p ~/.config/fish/completions
+gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
+```
+
 ## Output for scripts
 
 ```sh
@@ -231,11 +243,17 @@ gnoblinctl feature list --format table
 Structured results use tables in a terminal and JSON in a pipe.
 Options work before or after the command.
 
-| Option                            | Behavior                             |
-| --------------------------------- | ------------------------------------ |
-| `-j`, `--json`                    | Force JSON, including in a terminal  |
-| `--format auto`                   | Tables in a terminal; JSON in a pipe |
-| `--format json`, `--format table` | Force the selected output format     |
+| Option                            | Behavior                                                    |
+| --------------------------------- | ----------------------------------------------------------- |
+| `-j`, `--json`                    | Force JSON, including in a terminal                         |
+| `--format auto`                   | Tables in a terminal; JSON in a pipe                        |
+| `--format json`, `--format table` | Force the selected output format                            |
+| `--timeout SECONDS`               | Set the request timeout, 1–60 seconds; default 5            |
+| `--socket PATH`                   | Select the compositor socket for compositor-backed commands |
+
+By default, `--socket` uses `GNOBLIN_COMPOSITOR_SOCKET`, then
+`$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock` (or `/run/user/UID` when
+`XDG_RUNTIME_DIR` is unset). D-Bus-only commands do not use this option.
 
 For example, `gnoblinctl window list --focused --json` returns this shape.
 IDs, titles and geometry below are illustrative:
