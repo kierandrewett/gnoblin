@@ -48,7 +48,8 @@ gnoblin.configure {
 }
 ```
 
-Log out and back in. The protocol is only advertised in Gnoblin mode.
+Log out and back in. This setting gates the global in Gnoblin mode; stock GNOME
+keeps its upstream behavior.
 
 ## Rendering
 

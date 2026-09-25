@@ -13,9 +13,9 @@ startup wiring.
   `output-power-management/`, `foreign-toplevel-list/`, and
   `foreign-toplevel-management/` and `session-lock/` share the entry point in
   `aggregator/` and the generated `40-gnoblin-protocols` wiring patch.
-- GNOME 51 supplies `ext-background-effect-v1`; Gnoblin carries only the
-  Shell policy adapter for its committed regions in
-  `patches/mutter/62-background-effect/`.
+- GNOME 51 supplies `ext-background-effect-v1`; Gnoblin's
+  `patches/mutter/62-background-effect/` adds committed-region handling and
+  applies the `protocols.ext_background_effect_v1` gate in Gnoblin mode.
   See [background effects](../../docs/background-effects.md) for semantics and tests.
 - `foreign-toplevel-common/` contains helpers shared by the two foreign
   toplevel protocols; it does not advertise a global itself.
