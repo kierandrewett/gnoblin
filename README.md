@@ -4,7 +4,7 @@
 
 A no-frills fork of GNOME Shell with layer-shell support.
 
-[Documentation](https://kierandrewett.github.io/gnoblin/) · [Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
+[Documentation](https://gnoblin.org/) · [Install](docs/installation.md) · [Choose a shell](docs/bring-your-own-shell.md) · [Configure](docs/configuration.md) · [Protocols](#supported-protocols) · [Contribute](CONTRIBUTING.md)
 
 </div>
 

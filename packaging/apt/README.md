@@ -1,6 +1,6 @@
 # Gnoblin APT archive
 
-The public archive lives under `https://kierandrewett.github.io/gnoblin/apt/`.
+The public archive lives under `https://gnoblin.org/apt/`.
 It has one suite for Debian 13 and two suites for Ubuntu 24.04 and 26.04. Each
 suite contains only packages built and tested for that system.
 

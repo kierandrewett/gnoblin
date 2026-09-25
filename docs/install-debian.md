@@ -9,7 +9,7 @@ Open a terminal and run:
 
 ```sh
 sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://kierandrewett.github.io/gnoblin/apt/gnoblin-archive-keyring.asc |
+curl -fsSL https://gnoblin.org/apt/gnoblin-archive-keyring.asc |
     sudo gpg --dearmor --yes -o /etc/apt/keyrings/gnoblin-archive-keyring.gpg
 ```
 
@@ -21,21 +21,21 @@ This key verifies that packages and updates came from Gnoblin. If `curl` or
 Debian 13:
 
 ```sh
-echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/debian 13 main' |
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://gnoblin.org/apt/debian 13 main' |
     sudo tee /etc/apt/sources.list.d/gnoblin.list
 ```
 
 Ubuntu 24.04 LTS:
 
 ```sh
-echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/ubuntu 24.04 main' |
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://gnoblin.org/apt/ubuntu 24.04 main' |
     sudo tee /etc/apt/sources.list.d/gnoblin.list
 ```
 
 Ubuntu 26.04 LTS:
 
 ```sh
-echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://kierandrewett.github.io/gnoblin/apt/ubuntu 26.04 main' |
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/gnoblin-archive-keyring.gpg] https://gnoblin.org/apt/ubuntu 26.04 main' |
     sudo tee /etc/apt/sources.list.d/gnoblin.list
 ```
 

@@ -2,7 +2,7 @@
 -- This file is copied to ~/.config/gnoblin/init.lua on first login only when
 -- no init.lua, gnoblin.toml, or gnoblin.conf already exists. Edit and save it;
 -- Gnoblin reloads valid changes automatically.
--- Full reference: https://kierandrewett.github.io/gnoblin/configuration-reference/
+-- Full reference: https://gnoblin.org/configuration-reference/
 
 -- Load shell/component defaults first. Files are evaluated in sorted order;
 -- your values below then override imported values.
