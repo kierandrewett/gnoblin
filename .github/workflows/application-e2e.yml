@@ -29,6 +29,11 @@ on:
         type: string
         default: "0"
         required: true
+      trace_crash:
+        description: Run the selected shard under GDB and stop at the first critical or abort
+        type: boolean
+        default: false
+        required: true
 
 permissions:
   contents: read
@@ -144,6 +149,7 @@ jobs:
       - name: Run the real Fedora app shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
+          TRACE_CRASH: ${{ inputs.trace_crash || false }}
         run: |
           ARTIFACT_DIR="$RUNNER_TEMP/e2e-shard-$SHARD_INDEX" \
             bash tests/e2e/run-app-shard-container.sh

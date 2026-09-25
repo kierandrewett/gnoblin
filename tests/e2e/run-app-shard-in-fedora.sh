@@ -5,6 +5,11 @@ trap 'chmod -R a+rX "$ARTIFACT_DIR" 2>/dev/null || true' EXIT
 dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
     gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon python3-gobject \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor util-linux
+trace_env=()
+if [[ "${TRACE_CRASH:-false}" == true ]]; then
+    dnf -y install gdb
+    trace_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
+fi
 
 tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
     --no-same-owner -C "$GITHUB_WORKSPACE"
@@ -37,6 +42,7 @@ install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
 chown -R e2e:e2e "$ARTIFACT_DIR"
 runuser -u e2e -- test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 runuser -u e2e -- env \
+    "${trace_env[@]}" \
     XDG_RUNTIME_DIR="/run/user/$e2e_uid" \
     GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
     GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \

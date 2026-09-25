@@ -25,5 +25,6 @@ docker run --rm --privileged \
     --env GITHUB_WORKSPACE="$container_workspace" \
     --env SHARD_INDEX \
     --env ARTIFACT_DIR \
+    --env TRACE_CRASH \
     fedora:44 \
     bash "$container_workspace/tests/e2e/run-app-shard-in-fedora.sh"
