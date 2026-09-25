@@ -34,33 +34,13 @@
     "options": ["-Dtests=false", "-Dinstalled_tests=false", "-Ddocumentation=false", "-Dintrospection=enabled"]
   },
   {
-    "name": "glycin",
-    "version": "2.0.0",
-    "url": "https://download.gnome.org/sources/glycin/2.0/glycin-2.0.0.tar.xz",
-    "sha256": "e39c3ca4f5bd6905f19f090456940650c8de1f217d2edb1f46ee17e04e7ae502",
-    "requires": ["glib-final"],
-    "private_pkgconfig": ["glycin-2.pc"],
-    "options": [
-      "-Dlibglycin=true",
-      "-Dglycin-loaders=true",
-      "-Dlibglycin-gtk4=false",
-      "-Dglycin-thumbnailer=false",
-      "-Dtests=false",
-      "-Dvapi=false",
-      "-Dintrospection=true",
-      "-Dcapi_docs=false",
-      "-Dlto=false",
-      "-Dloaders=glycin-image-rs,glycin-svg,glycin-heif"
-    ]
-  },
-  {
     "name": "gdk-pixbuf",
-    "version": "2.44.8",
-    "url": "https://download.gnome.org/sources/gdk-pixbuf/2.44/gdk-pixbuf-2.44.8.tar.xz",
-    "sha256": "919f529512961a12e81cd4b4b466a48c3933469e7f9a310c6513cd4fb252ba3c",
-    "requires": ["glib-final", "glycin"],
+    "version": "2.42.12",
+    "url": "https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.12.tar.xz",
+    "sha256": "b9505b3445b9a7e48ced34760c3bcb73e966df3ac94c95a148cb669ab748e3c7",
+    "requires": ["glib-final"],
     "private_pkgconfig": ["gdk-pixbuf-2.0.pc"],
-    "options": []
+    "options": ["-Dman=false", "-Dtests=false", "-Dinstalled_tests=false"]
   },
   {
     "name": "pango",

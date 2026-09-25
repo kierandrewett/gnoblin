@@ -89,15 +89,21 @@ selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
 retaining staging-path and link-containment checks.
 
 The next clean-image pass installed the normal host build prerequisite
-`shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then resolved the private GLib
-interfaces and stopped at its required `glycin-2` dependency. Glycin 2.0.0 is
-therefore part of the experimental closure, built without the optional GTK4
-binding so that it can precede GDK-Pixbuf. Its upstream `Cargo.toml` declares
-`rust-version = "1.85"`; Debian 12 provides Rust 1.63.0. This is the current
-source-closure incompatibility. Resolving it requires a pinned, build-only
-Rust 1.85+ toolchain. Do not substitute the host compiler, lower Glycin, or
-promote Debian 12 support until that toolchain and the rest of the graph build
-cleanly.
+`shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then required `glycin-2`; Glycin
+2.0.0 declares `rust-version = "1.85"`, while Debian 12 provides Rust 1.63.0.
+Before adding a private Rust toolchain, an isolated alternative was tested:
+GDK-Pixbuf 2.42.12 configured, compiled, and installed against private GLib
+2.90 and the build-only 1.80 scanner. Its upstream checksum is
+`b9505b3445b9a7e48ced34760c3bcb73e966df3ac94c95a148cb669ab748e3c7`.
+
+GTK 4.14.5's pinned Meson requirement is `gdk-pixbuf-2.0 >= 2.30.0`. Its
+clean-image setup found the installed private GDK-Pixbuf 2.42.12, after first
+resolving private GLib 2.90. The setup then stopped later at optional TIFF,
+which is unrelated to the selected GDK-Pixbuf API. This makes the older
+GDK-Pixbuf source the lower-risk route for this experimental graph: it avoids
+Glycin and the Rust 1.85 bootstrap without lowering GTK or Mutter floors.
+It does not validate the complete GTK/Mutter/Shell runtime; private Pango,
+Graphene, GTK, GCR, and all package/session gates remain required.
 
 ## Boundary: what can be private
 
