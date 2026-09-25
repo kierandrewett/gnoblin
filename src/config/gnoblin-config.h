@@ -27,10 +27,15 @@ GVariant* gnoblin_config_parse_toml(const char* contents, GError** error);
 /* Evaluate one config with a fresh Lua state and record every dependency. */
 GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrArray* directories,
                                        GError** error);
+/* Persistent Lua runtime used by Mutter for configuration event callbacks. */
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
 void gnoblin_config_finish_load(gboolean commit);
 GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error);
+/* Deferred runtime operations use a shared method registry. Event callbacks
+ * enqueue operations; the host drains them only after dispatch returns. */
+GVariant* gnoblin_config_drain_runtime_operations(void); /* aa{sv} */
+GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error);
 char** gnoblin_config_runtime_events(void);
 void gnoblin_config_finish_event(gboolean commit);
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error);

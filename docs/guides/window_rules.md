@@ -35,7 +35,7 @@ match both focused and unfocused windows.
 | `title`                     | Current window title                                     |
 | `layer`                     | Layer-shell namespace supplied by the client             |
 | `workspace_id`              | Stable ID of the current workspace                       |
-| `workspace_number`          | Current one-based workspace position                     |
+| `workspace_number`          | Current one-based workspace position, 1–1024             |
 
 Choose the match field based on what should identify the window:
 
@@ -132,27 +132,32 @@ particular window title from one application.
 
 ## Workspaces {#workspaces}
 
-Use a workspace ID when a rule should keep targeting the same configured
-workspace as dynamic workspaces are removed or reordered. Gnoblin assigns
-configured IDs from initial positions, then keeps each ID with its workspace
-if the order changes. Configure IDs with the ordered `workspace_ids` array in
-`gnoblin.configure.window_management`:
+Use a workspace ID when a rule should keep targeting the same workspace as
+workspace positions change. Declare persistent workspaces as objects in the
+top-level `workspaces` field of `gnoblin.configure`:
 
 ```lua
 gnoblin.configure {
-    window_management = {
-        workspace_ids = {"code", "web", "chat"},
+    workspaces = {
+        {id = "code", name = "Code"},
+        {id = "web", name = "Web"},
+        {id = "chat", name = "Chat"},
     },
 }
 ```
 
-IDs must be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Positions
-without a configured ID get generated `@session-N` IDs for the current session.
-Those generated IDs are not suitable for saved rules or scripts.
+Each workspace needs a unique stable ID and a nonempty display name. IDs match
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. The list order determines each
+workspace's current one-based position; the ID remains attached to that
+workspace when positions change. Declared workspaces remain available when
+empty. Runtime-created workspaces are temporary and can receive a session-only
+ID; do not save a generated session ID in configuration.
 
-`workspace_names` controls displayed labels and is independent of IDs.
-Any `workspace_id` matcher or `{id = ...}` placement target must name an ID in
-`workspace_ids`. An undeclared ID makes the configuration invalid.
+Use declared IDs for persistent targets. A matcher can also use an ID assigned
+to a runtime-created workspace. Generated `@session-N` IDs are temporary and
+should not be saved in configuration. An `{id = ...}` placement target must
+exist when the matching window opens; otherwise Gnoblin leaves the window in
+place and logs a warning.
 
 Match a window's current workspace by ID or by its current one-based position:
 
@@ -168,8 +173,9 @@ gnoblin.window_rule {
 }
 ```
 
-Workspace matches update when a window moves. Numbers can change when dynamic
-workspaces are removed, so use IDs for rules that need a lasting target.
+Workspace matches update when a window moves. Numbers can change as
+workspaces are created, removed, or reordered, so use IDs for rules that need
+a lasting target.
 
 To place a newly created normal window, add a `workspace` effect to its rule:
 
@@ -180,7 +186,8 @@ gnoblin.window_rule {
 }
 ```
 
-Use `workspace = {number = 2}` to target a position instead. Placement runs
+Use `workspace = {number = 2}` to target a position instead; numbers range from
+1 to 1024. Placement runs
 once when the window is created; it is not repeated after title or focus
 changes or a config reload. Transient and modal windows remain with their
 parent.
@@ -203,7 +210,7 @@ see [load order](/guides/files_and_load_order#override-or-append).
 
 - [Effects](/guides/window_effects): blur, opacity, corners, borders, shadows and shaders.
 - [Titlebars](/guides/window_frames): decoration policy and renderer.
-- [Layer animations](/guides/animations#layer-shell-surfaces): entry, exit and timing.
+- [Layer animations](/guides/animations#per-surface-animations): entry, exit and timing.
 
 Prefer general rules when a behavior should apply to all clients.
 Use app-name exceptions only when you intend different behavior for that app.

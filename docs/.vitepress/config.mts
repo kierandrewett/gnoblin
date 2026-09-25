@@ -81,6 +81,7 @@ export default defineConfig({
                     { text: "gnoblin.snapshot", link: "/config/snapshot" },
                     { text: "gnoblin.array", link: "/config/array" },
                     { text: "gnoblin.on", link: "/config/lua-events" },
+                    { text: "Lua runtime API", link: "/config/runtime-api" },
                 ],
             },
             {

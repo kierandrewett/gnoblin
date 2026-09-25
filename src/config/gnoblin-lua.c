@@ -15,8 +15,12 @@
 typedef struct {
     gsize allocated;
     GPtrArray *paths, *directories;
+    GPtrArray* runtime_actions;
     GHashTable *active, *modules;
     char* current_path;
+    guint actions_in_dispatch;
+    gboolean dispatching;
+    gboolean api_calling;
 } LuaConfig;
 
 typedef struct {
@@ -28,13 +32,63 @@ typedef struct {
 
 static LuaRuntime* active_runtime;
 static LuaRuntime* pending_runtime;
+static guint64 next_runtime_operation_id;
+
+static const char* api_methods[] = {
+    "workspace.list",
+    "workspace.create",
+    "workspace.rename",
+    "workspace.remove",
+    "workspace.switch",
+    "workspace.next",
+    "workspace.previous",
+    "workspace.move_active",
+    "workspace.move_window",
+    "window.list",
+    "window.match",
+    "window.action",
+    "layer.list",
+    "monitor.list",
+    "animation.list",
+    "animation.surfaces",
+    "animation.inspect",
+    "animation.preview",
+    "animation.seek",
+    "animation.step",
+    "animation.play",
+    "animation.pause",
+    "animation.stop",
+    "feature.list",
+    "feature.show",
+    "feature.enable",
+    "feature.disable",
+    "script.list",
+    "input.list",
+    "input.current",
+    "input.select",
+    "privacy.get",
+    "permissions.list",
+    "permissions.check",
+    "grant.list",
+    "grant.revoke",
+    "launch.status",
+    "launch.begin",
+    "launch.end",
+    "shell.ping",
+    "shell.version",
+    "shell.status",
+    "shell.reload",
+    "config.reload",
+    "shortcut.capture",
+    NULL,
+};
 
 static gboolean append_array_key(const char* key) {
-    return key &&
-           (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-            !strcmp(key, "shortcuts") || !strcmp(key, "animations") || !strcmp(key, "rules") ||
-            !strcmp(key, "workspace-names") || !strcmp(key, "workspace-ids") ||
-            !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
+    return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
+                   !strcmp(key, "shortcuts") || !strcmp(key, "animations") ||
+                   !strcmp(key, "rules") || !strcmp(key, "workspaces") ||
+                   !strcmp(key, "workspace-names") || !strcmp(key, "workspace-ids") ||
+                   !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
@@ -257,6 +311,7 @@ static gboolean is_array(lua_State* state, int index) {
 
 static void merge_table(lua_State* state, int destination, int source, const char* key,
                         gboolean append_lists);
+static gboolean workspace_id_valid(const char* id);
 
 static void remove_named_entry(lua_State* state, int list, const char* name) {
     list = lua_absindex(state, list);
@@ -355,6 +410,64 @@ static void merge_table(lua_State* state, int destination, int source, const cha
                         gboolean append_lists) {
     destination = lua_absindex(state, destination);
     source = lua_absindex(state, source);
+    if (key && !strcmp(key, "workspaces") && lua_istable(state, destination) &&
+        lua_istable(state, source)) {
+        lua_Integer count = lua_rawlen(state, source);
+        lua_newtable(state);
+        int seen_ids = lua_absindex(state, -1);
+        lua_pushnil(state);
+        while (lua_next(state, source)) {
+            gboolean dense_key = lua_isinteger(state, -2) && lua_tointeger(state, -2) >= 1 &&
+                                 lua_tointeger(state, -2) <= count;
+            lua_pop(state, 1);
+            if (!dense_key)
+                luaL_error(state, "workspaces must be a dense array starting at 1");
+        }
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(state, source, i);
+            if (!lua_istable(state, -1))
+                luaL_error(state, "workspaces must be an array of tables");
+            int entry = lua_absindex(state, -1);
+            lua_getfield(state, entry, "id");
+            const char* id = luaL_checkstring(state, -1);
+            if (!workspace_id_valid(id))
+                luaL_error(state, "workspace id must start with a letter or number and contain "
+                                  "only letters, numbers, '.', '_' or '-' (up to 64 characters)");
+            lua_pushvalue(state, -1);
+            lua_rawget(state, seen_ids);
+            gboolean duplicate = lua_toboolean(state, -1);
+            lua_pop(state, 1);
+            if (duplicate)
+                luaL_error(state, "duplicate workspace id in workspaces array: %s", id);
+            lua_pushvalue(state, -1);
+            lua_pushboolean(state, TRUE);
+            lua_rawset(state, seen_ids);
+            lua_pop(state, 1);
+            lua_Integer existing_count = lua_rawlen(state, destination);
+            gboolean merged = FALSE;
+            for (lua_Integer j = 1; j <= existing_count; j++) {
+                lua_rawgeti(state, destination, j);
+                lua_getfield(state, -1, "id");
+                gboolean matches =
+                    lua_type(state, -1) == LUA_TSTRING && g_str_equal(lua_tostring(state, -1), id);
+                lua_pop(state, 1);
+                if (matches) {
+                    merge_table(state, -1, entry, NULL, FALSE);
+                    merged = TRUE;
+                }
+                lua_pop(state, 1);
+                if (merged)
+                    break;
+            }
+            if (!merged) {
+                lua_pushvalue(state, entry);
+                lua_rawseti(state, destination, existing_count + 1);
+            }
+            lua_pop(state, 1);
+        }
+        lua_pop(state, 1);
+        return;
+    }
     if (append_lists && append_array_key(key) && lua_istable(state, destination) &&
         lua_istable(state, source)) {
         lua_Integer offset = lua_rawlen(state, destination), count = lua_rawlen(state, source);
@@ -467,6 +580,11 @@ static int lua_on(lua_State* state) {
     if (event_length == 0 || event_length > 128 || memchr(event, '\0', event_length) ||
         !g_utf8_validate(event, event_length, NULL))
         return luaL_error(state, "event name must contain 1 to 128 bytes");
+    /* Keep the former built-in event as an input alias while listeners are
+     * stored under the canonical event name. */
+    if (event_length == strlen("pointer_window_changed") &&
+        !memcmp(event, "pointer_window_changed", event_length))
+        event = "mutter.wayland.pointer-window-changed";
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "listeners");
     int listeners = lua_absindex(state, -1);
@@ -480,6 +598,254 @@ static int lua_on(lua_State* state) {
     lua_pushvalue(state, 2);
     lua_rawseti(state, -2, lua_rawlen(state, -2) + 1);
     return 0;
+}
+
+static gboolean workspace_id_valid(const char* id) {
+    return id && g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id, G_REGEX_OPTIMIZE,
+                                      G_REGEX_MATCH_NOTEMPTY);
+}
+
+static gboolean workspace_selector_id_valid(const char* id) {
+    return workspace_id_valid(id) ||
+           (id && g_regex_match_simple("^@session-[1-9][0-9]*$", id, G_REGEX_OPTIMIZE,
+                                       G_REGEX_MATCH_NOTEMPTY));
+}
+
+static guint64 allocate_operation_id(void) {
+    if (next_runtime_operation_id >= G_MAXINT64)
+        return 0;
+    return ++next_runtime_operation_id;
+}
+
+static gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed) {
+    index = lua_absindex(state, index);
+    lua_pushnil(state);
+    while (lua_next(state, index)) {
+        gboolean found = FALSE;
+        if (lua_type(state, -2) == LUA_TSTRING) {
+            const char* key = lua_tostring(state, -2);
+            for (guint i = 0; allowed[i]; i++)
+                found |= g_str_equal(key, allowed[i]);
+        }
+        lua_pop(state, 1);
+        if (!found)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static GVariant* workspace_selector(lua_State* state, int index) {
+    luaL_checktype(state, index, LUA_TTABLE);
+    index = lua_absindex(state, index);
+    static const char* const fields[] = {"id", "number", NULL};
+    if (!table_fields_allowed(state, index, fields))
+        luaL_error(state, "workspace selector accepts only id or number");
+    GVariantBuilder selector;
+    g_variant_builder_init(&selector, G_VARIANT_TYPE_VARDICT);
+    lua_getfield(state, index, "id");
+    gboolean has_id = !lua_isnil(state, -1);
+    if (has_id) {
+        const char* id = luaL_checkstring(state, -1);
+        if (!workspace_selector_id_valid(id))
+            luaL_error(state, "workspace id must start with a letter or number and contain only "
+                              "letters, numbers, '.', '_' or '-' (up to 64 characters)");
+        g_variant_builder_add(&selector, "{sv}", "id", g_variant_new_string(id));
+    }
+    lua_pop(state, 1);
+    lua_getfield(state, index, "number");
+    gboolean has_number = !lua_isnil(state, -1);
+    if (has_number) {
+        if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
+            lua_tointeger(state, -1) > 1024)
+            luaL_error(state, "workspace number must be an integer from 1 to 1024");
+        g_variant_builder_add(&selector, "{sv}", "number",
+                              g_variant_new_int64(lua_tointeger(state, -1)));
+    }
+    lua_pop(state, 1);
+    if (has_id == has_number)
+        luaL_error(state, "workspace selector must contain exactly one of id or number");
+    return g_variant_builder_end(&selector);
+}
+
+static void add_workspace_field(lua_State* state, GVariantBuilder* arguments, int table,
+                                const char* field) {
+    lua_getfield(state, table, field);
+    GVariant* selector = workspace_selector(state, -1);
+    g_variant_builder_add(arguments, "{sv}", "workspace", selector);
+    lua_pop(state, 1);
+}
+
+static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments, int table) {
+    g_autoptr(GVariant) selector = workspace_selector(state, table);
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, selector);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        g_variant_builder_add(arguments, "{sv}", key, value);
+        g_variant_unref(value);
+    }
+}
+
+static int lua_workspace_action(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
+        return luaL_error(state,
+                          "workspace actions are available only while handling a runtime event");
+    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(state, "too many pending workspace actions");
+
+    GVariantBuilder arguments;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    if (g_str_equal(method, "workspace.list") || g_str_equal(method, "workspace.next") ||
+        g_str_equal(method, "workspace.previous")) {
+        if (lua_gettop(state) != 0)
+            return luaL_error(state, "%s takes no arguments", method);
+    } else if (g_str_equal(method, "workspace.create")) {
+        luaL_checktype(state, 1, LUA_TTABLE);
+        static const char* const fields[] = {"id", "name", "activate", NULL};
+        if (!table_fields_allowed(state, 1, fields))
+            return luaL_error(state, "workspace.create accepts only id, name, and activate");
+        lua_getfield(state, 1, "id");
+        if (!lua_isnil(state, -1)) {
+            const char* id = luaL_checkstring(state, -1);
+            if (!workspace_id_valid(id))
+                return luaL_error(state,
+                                  "workspace id must start with a letter or number and contain "
+                                  "only letters, numbers, '.', '_' or '-' (up to 64 characters)");
+            g_variant_builder_add(&arguments, "{sv}", "id", g_variant_new_string(id));
+        }
+        lua_pop(state, 1);
+        lua_getfield(state, 1, "name");
+        const char* name = luaL_checkstring(state, -1);
+        if (!*name || !g_utf8_validate(name, -1, NULL) || g_utf8_strlen(name, -1) > 80)
+            return luaL_error(state, "workspace name must contain 1 to 80 characters");
+        g_variant_builder_add(&arguments, "{sv}", "name", g_variant_new_string(name));
+        lua_pop(state, 1);
+        lua_getfield(state, 1, "activate");
+        if (!lua_isnil(state, -1)) {
+            if (!lua_isboolean(state, -1))
+                return luaL_error(state, "workspace activate must be a boolean");
+            g_variant_builder_add(&arguments, "{sv}", "activate",
+                                  g_variant_new_boolean(lua_toboolean(state, -1)));
+        }
+        lua_pop(state, 1);
+    } else if (g_str_equal(method, "workspace.rename")) {
+        luaL_checktype(state, 1, LUA_TTABLE);
+        static const char* const fields[] = {"id", "number", "name", NULL};
+        if (!table_fields_allowed(state, 1, fields))
+            return luaL_error(state, "workspace.rename accepts only id or number and name");
+        add_selector_arguments(state, &arguments, 1);
+        lua_getfield(state, 1, "name");
+        const char* name = luaL_checkstring(state, -1);
+        if (!*name || !g_utf8_validate(name, -1, NULL) || g_utf8_strlen(name, -1) > 80)
+            return luaL_error(state, "workspace name must contain 1 to 80 characters");
+        g_variant_builder_add(&arguments, "{sv}", "name", g_variant_new_string(name));
+        lua_pop(state, 1);
+    } else if (g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
+        add_selector_arguments(state, &arguments, 1);
+    } else if (g_str_equal(method, "workspace.move_active")) {
+        luaL_checktype(state, 1, LUA_TTABLE);
+        static const char* const fields[] = {"workspace", "follow", NULL};
+        if (!table_fields_allowed(state, 1, fields))
+            return luaL_error(state, "workspace.move_active accepts only workspace and follow");
+        add_workspace_field(state, &arguments, 1, "workspace");
+        lua_getfield(state, 1, "follow");
+        if (!lua_isnil(state, -1)) {
+            if (!lua_isboolean(state, -1))
+                return luaL_error(state, "workspace move follow must be a boolean");
+            g_variant_builder_add(&arguments, "{sv}", "follow",
+                                  g_variant_new_boolean(lua_toboolean(state, -1)));
+        }
+        lua_pop(state, 1);
+    } else if (g_str_equal(method, "workspace.move_window")) {
+        luaL_checktype(state, 1, LUA_TTABLE);
+        static const char* const fields[] = {"window", "workspace", "follow", NULL};
+        if (!table_fields_allowed(state, 1, fields))
+            return luaL_error(state,
+                              "workspace.move_window accepts only window, workspace, and follow");
+        lua_getfield(state, 1, "window");
+        const char* window = luaL_checkstring(state, -1);
+        if (g_str_equal(window, "active")) {
+            g_variant_builder_add(&arguments, "{sv}", "window", g_variant_new_string("active"));
+        } else if (*window && g_utf8_validate(window, -1, NULL)) {
+            g_variant_builder_add(&arguments, "{sv}", "window", g_variant_new_string(window));
+        } else {
+            return luaL_error(state, "window must be 'active' or a nonempty window ID");
+        }
+        lua_pop(state, 1);
+        add_workspace_field(state, &arguments, 1, "workspace");
+        lua_getfield(state, 1, "follow");
+        if (!lua_isnil(state, -1)) {
+            if (!lua_isboolean(state, -1))
+                return luaL_error(state, "workspace move follow must be a boolean");
+            g_variant_builder_add(&arguments, "{sv}", "follow",
+                                  g_variant_new_boolean(lua_toboolean(state, -1)));
+        }
+        lua_pop(state, 1);
+    } else {
+        g_variant_builder_clear(&arguments);
+        return luaL_error(state, "unknown workspace action");
+    }
+
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder action;
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    lua_pushinteger(state, request_id);
+    return 1;
+}
+
+static int lua_generic_api_action(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    if (!config || !config->runtime_actions || (!config->dispatching && !config->api_calling))
+        return luaL_error(state, "Gnoblin session actions are available only at runtime");
+    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(state, "too many pending Gnoblin session actions");
+
+    GVariant* arguments = NULL;
+    if (lua_gettop(state) == 0) {
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        arguments = g_variant_builder_end(&empty);
+    } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
+        GError* error = NULL;
+        arguments = variant_from_lua(state, 1, 0, FALSE, 0, &error);
+        if (!arguments) {
+            char* message = g_strdup(error ? error->message : "expected a table");
+            g_clear_error(&error);
+            lua_pushfstring(state, "%s arguments: %s", method, message);
+            g_free(message);
+            return lua_error(state);
+        }
+        if (!g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT)) {
+            g_variant_unref(arguments);
+            return luaL_error(state, "%s arguments must be a table", method);
+        }
+    } else {
+        return luaL_error(state, "%s takes no arguments or one argument table", method);
+    }
+
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder action;
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
+    g_variant_builder_add(&action, "{sv}", "arguments", arguments);
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    lua_pushinteger(state, request_id);
+    return 1;
 }
 
 static gboolean is_keybinding_action_name(const char* key) {
@@ -930,6 +1296,26 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_newtable(state);
     lua_newtable(state);
     lua_setfield(state, -2, "config");
+    for (guint i = 0; api_methods[i]; i++) {
+        const char* separator = strchr(api_methods[i], '.');
+        g_autofree char* domain = g_strndup(api_methods[i], separator - api_methods[i]);
+        const char* operation = separator + 1;
+        lua_getfield(state, -1, domain);
+        if (!lua_istable(state, -1)) {
+            lua_pop(state, 1);
+            lua_newtable(state);
+            lua_pushvalue(state, -1);
+            lua_setfield(state, -3, domain);
+        }
+        lua_pushlightuserdata(state, config);
+        lua_pushstring(state, api_methods[i]);
+        lua_pushcclosure(state,
+                         g_str_has_prefix(api_methods[i], "workspace.") ? lua_workspace_action
+                                                                        : lua_generic_api_action,
+                         2);
+        lua_setfield(state, -2, operation);
+        lua_pop(state, 1);
+    }
     lua_pushcfunction(state, lua_on);
     lua_setfield(state, -2, "on");
     lua_newtable(state);
@@ -1143,6 +1529,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.modules, g_hash_table_unref);
     g_clear_pointer(&runtime->config.paths, g_ptr_array_unref);
     g_clear_pointer(&runtime->config.directories, g_ptr_array_unref);
+    g_clear_pointer(&runtime->config.runtime_actions, g_ptr_array_unref);
     g_clear_pointer(&runtime->document, g_variant_unref);
     g_clear_pointer(&runtime->pending_document, g_variant_unref);
     g_free(runtime->config.current_path);
@@ -1154,6 +1541,8 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     LuaRuntime* runtime = g_new0(LuaRuntime, 1);
     runtime->config.paths = g_ptr_array_new_with_free_func(g_free);
     runtime->config.directories = g_ptr_array_new_with_free_func(g_free);
+    runtime->config.runtime_actions =
+        g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
     runtime->config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     runtime->config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     runtime->config.current_path = g_canonicalize_filename(path, NULL);
@@ -1191,6 +1580,11 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
 }
 
 GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error) {
+    // Shell is applying a newly parsed configuration before committing it.
+    // Compositor preference changes in that window can emit transition events;
+    // do not send those to the old Lua runtime or let it mutate the pending one.
+    if (pending_runtime)
+        return NULL;
     if (!active_runtime)
         return NULL;
     if (!event || !*event || strlen(event) > 128 || !payload ||
@@ -1199,6 +1593,14 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
                             "invalid Gnoblin Lua event or payload");
         return NULL;
     }
+    if (active_runtime->config.dispatching || active_runtime->config.api_calling) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua runtime operations cannot be dispatched reentrantly");
+        return NULL;
+    }
+    guint action_start = active_runtime->config.runtime_actions->len;
+    active_runtime->config.actions_in_dispatch = 0;
+    active_runtime->config.dispatching = TRUE;
     lua_State* state = active_runtime->state;
     int steps = MAX_CONFIG_STEPS / 1000;
     memcpy(lua_getextraspace(state), &steps, sizeof steps);
@@ -1224,6 +1626,9 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
                             event, lua_error_text(state));
                 lua_pop(state, 1);
                 lua_pop(state, 3);
+                active_runtime->config.dispatching = FALSE;
+                g_ptr_array_set_size(active_runtime->config.runtime_actions, action_start);
+                active_runtime->config.actions_in_dispatch = 0;
                 lua_getglobal(state, "gnoblin");
                 push_variant(state, active_runtime->document);
                 lua_setfield(state, -2, "config");
@@ -1233,6 +1638,8 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
         }
         lua_pop(state, 1);
     }
+    active_runtime->config.dispatching = FALSE;
+    active_runtime->config.actions_in_dispatch = 0;
     lua_pop(state, 2);
     if (!dispatched)
         return g_variant_ref(active_runtime->document);
@@ -1243,6 +1650,8 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, error)) {
         g_clear_pointer(&document, g_variant_unref);
+        g_ptr_array_set_size(active_runtime->config.runtime_actions, action_start);
+        active_runtime->config.actions_in_dispatch = 0;
         lua_getglobal(state, "gnoblin");
         push_variant(state, active_runtime->document);
         lua_setfield(state, -2, "config");
@@ -1252,6 +1661,99 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
     g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
     active_runtime->pending_document = g_variant_ref_sink(document);
     return g_variant_ref(active_runtime->pending_document);
+}
+
+GVariant* gnoblin_config_drain_runtime_operations(void) {
+    GVariantBuilder operations;
+    g_variant_builder_init(&operations, G_VARIANT_TYPE("aa{sv}"));
+    if (pending_runtime || !active_runtime || active_runtime->config.dispatching ||
+        active_runtime->config.api_calling)
+        return g_variant_builder_end(&operations);
+    GPtrArray* pending = active_runtime->config.runtime_actions;
+    for (guint i = 0; i < pending->len; i++)
+        g_variant_builder_add_value(&operations, g_variant_ref(g_ptr_array_index(pending, i)));
+    g_ptr_array_set_size(pending, 0);
+    return g_variant_builder_end(&operations);
+}
+
+GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error) {
+    if (pending_runtime) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua API is temporarily unavailable while config reloads");
+        return NULL;
+    }
+    if (!active_runtime || !method || !arguments ||
+        !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(
+            error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+            "Gnoblin API call requires an active Lua runtime, method, and argument table");
+        return NULL;
+    }
+    gboolean known = FALSE;
+    for (guint i = 0; api_methods[i]; i++)
+        known |= g_str_equal(api_methods[i], method);
+    if (!known) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "unknown Gnoblin API method '%s'",
+                    method);
+        return NULL;
+    }
+    LuaConfig* config = &active_runtime->config;
+    if (config->dispatching || config->api_calling) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua API calls cannot be dispatched reentrantly");
+        return NULL;
+    }
+    if (config->runtime_actions->len >= 256) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOSPC,
+                            "too many pending Gnoblin session actions");
+        return NULL;
+    }
+    const char* separator = strchr(method, '.');
+    g_autofree char* domain = g_strndup(method, separator - method);
+    const char* operation = separator + 1;
+    lua_State* state = active_runtime->state;
+    guint action_start = config->runtime_actions->len;
+    config->actions_in_dispatch = 0;
+    config->api_calling = TRUE;
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, domain);
+    lua_getfield(state, -1, operation);
+    if (!lua_isfunction(state, -1)) {
+        lua_pop(state, 3);
+        config->api_calling = FALSE;
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "Lua API method '%s' is not registered", method);
+        return NULL;
+    }
+    int argument_count = g_variant_n_children(arguments) ? 1 : 0;
+    if (argument_count)
+        push_variant(state, arguments);
+    if (lua_pcall(state, argument_count, 1, 0) != LUA_OK) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua API method '%s' failed: %s",
+                    method, lua_error_text(state));
+        lua_pop(state, 1);
+        lua_pop(state, 2);
+        config->api_calling = FALSE;
+        g_ptr_array_set_size(config->runtime_actions, action_start);
+        config->actions_in_dispatch = 0;
+        return NULL;
+    }
+    gboolean valid_ticket = lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0 &&
+                            config->runtime_actions->len == action_start + 1;
+    lua_pop(state, 1);
+    lua_pop(state, 2);
+    config->api_calling = FALSE;
+    config->actions_in_dispatch = 0;
+    if (!valid_ticket) {
+        g_ptr_array_set_size(config->runtime_actions, action_start);
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                    "Lua API method '%s' did not produce exactly one operation", method);
+        return NULL;
+    }
+    GVariant* operation_call =
+        g_variant_ref(g_ptr_array_index(config->runtime_actions, action_start));
+    g_ptr_array_remove_index(config->runtime_actions, action_start);
+    return operation_call;
 }
 
 void gnoblin_config_finish_load(gboolean commit) {

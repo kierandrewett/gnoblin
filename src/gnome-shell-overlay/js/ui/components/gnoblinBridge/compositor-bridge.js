@@ -16,14 +16,81 @@ import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig
 import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 import * as Animation from "resource:///org/gnome/shell/ui/components/gnoblinAnimation.js";
 import * as Workspaces from "resource:///org/gnome/shell/ui/components/gnoblinWorkspaces.js";
+import * as Permissions from "resource:///org/gnome/shell/ui/components/gnoblinPermissions.js";
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
+
+function variantForJson(value) {
+    if (typeof value === "boolean") return new GLib.Variant("b", value);
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) throw new Error("API arguments must contain finite numbers");
+        return Number.isInteger(value) ? new GLib.Variant("x", value) : new GLib.Variant("d", value);
+    }
+    if (typeof value === "string") return new GLib.Variant("s", value);
+    if (Array.isArray(value)) {
+        return new GLib.Variant(
+            "av",
+            value.map((item) => new GLib.Variant("v", variantForJson(item))),
+        );
+    }
+    if (value && typeof value === "object") return new GLib.Variant("a{sv}", variantDictionary(value));
+    throw new Error("API arguments must be JSON values");
+}
+
+function variantDictionary(value) {
+    return Object.fromEntries(
+        Object.entries(value)
+            .filter(([, item]) => item !== undefined && item !== null)
+            .map(([key, item]) => [key, variantForJson(item)]),
+    );
+}
+
+function jsonDictionary(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("arguments must be an object");
+    return new GLib.Variant("a{sv}", variantDictionary(value));
+}
+
+function socketPathIdentity(path) {
+    try {
+        const info = path.query_info("unix::device,unix::inode", Gio.FileQueryInfoFlags.NONE, null);
+        return `${info.get_attribute_as_string("unix::device")}:${info.get_attribute_as_string("unix::inode")}`;
+    } catch {
+        return null;
+    }
+}
+
+function prepareSocketPath(path) {
+    if (!path.query_exists(null)) return;
+
+    // A second shell instance must not unlink a live compositor endpoint. A
+    // stale pathname returns ECONNREFUSED and can safely be replaced.
+    const client = new Gio.SocketClient();
+    client.set_timeout(1);
+    let alreadyServing = false;
+    try {
+        const connection = client.connect(Gio.UnixSocketAddress.new(path.get_path()), null);
+        connection.close(null);
+        alreadyServing = true;
+    } catch (error) {
+        const refused = error.matches?.(Gio.io_error_quark(), Gio.IOErrorEnum.CONNECTION_REFUSED) ?? false;
+        if (!refused && path.query_exists(null)) throw error;
+    }
+    if (alreadyServing) throw new Error(`Gnoblin compositor socket is already active: ${path.get_path()}`);
+    if (path.query_exists(null)) path.delete(null);
+}
 
 // Generic shortcut sessions and window management. Clients own presentation,
 // ordering and action semantics.
 // Newline-delimited JSON stays on one persistent, user-private Unix socket.
 export class CompositorBridge {
     constructor() {
+        const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), "gnoblin"]);
+        GLib.mkdir_with_parents(directory, 0o700);
+        this.path = Gio.File.new_for_path(
+            GLib.getenv("GNOBLIN_COMPOSITOR_SOCKET") || `${directory}/compositor-v1.sock`,
+        );
+        prepareSocketPath(this.path);
+
         this.clients = new Set();
         this.clientTokens = new Map();
         this.extensionOperations = new Map();
@@ -61,12 +128,6 @@ export class CompositorBridge {
         this.animationPreviews = new Map();
         this.setupPrivacy();
         this.windowSnap = new WindowSnap(this);
-        const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), "gnoblin"]);
-        GLib.mkdir_with_parents(directory, 0o700);
-        this.path = Gio.File.new_for_path(
-            GLib.getenv("GNOBLIN_COMPOSITOR_SOCKET") || `${directory}/compositor-v1.sock`,
-        );
-        if (this.path.query_exists(null)) this.path.delete(null);
         this.service = new Gio.SocketService();
         this.service.add_address(
             Gio.UnixSocketAddress.new(this.path.get_path()),
@@ -79,6 +140,7 @@ export class CompositorBridge {
             return true;
         });
         this.service.start();
+        this.socketIdentity = socketPathIdentity(this.path);
         this.accelerator = global.display.connect("accelerator-activated", (_display, action) =>
             this.activate(action, "press"),
         );
@@ -110,6 +172,220 @@ export class CompositorBridge {
         });
         for (const actor of global.get_window_actors()) this.track(actor.meta_window);
         this.switcherFallback = new WindowSwitcherFallback(this);
+    }
+
+    apiHandlers() {
+        const control = () => Main.componentManager?._allComponents?.gnoblinControl;
+        const windowAction = (args) => {
+            const request = { command: "window", action: args.action, window: args.window ?? "active" };
+            for (const key of ["x", "y", "width", "height", "monitor"]) {
+                if (args[key] !== undefined) request[key] = args[key];
+            }
+            if (args.workspace) {
+                const hasId = args.workspace.id !== undefined;
+                const hasNumber = args.workspace.number !== undefined;
+                if (hasId === hasNumber) throw new Error("workspace must specify exactly one of id or number");
+                if (hasId) request.workspaceId = args.workspace.id;
+                else request.workspaceNumber = args.workspace.number;
+            }
+            return this.control(request);
+        };
+        return {
+            "workspace.list": () => ({ workspaces: Workspaces.dispatch("workspace.list", {}) }),
+            "workspace.create": (args) => Workspaces.dispatch("workspace.create", args),
+            "workspace.rename": (args) => Workspaces.dispatch("workspace.rename", args),
+            "workspace.remove": (args) => Workspaces.dispatch("workspace.remove", args),
+            "workspace.switch": (args) => Workspaces.dispatch("workspace.switch", args),
+            "workspace.next": () => Workspaces.dispatch("workspace.next", {}),
+            "workspace.previous": () => Workspaces.dispatch("workspace.previous", {}),
+            "workspace.move_active": (args) => Workspaces.dispatch("workspace.move_active", args),
+            "workspace.move_window": (args) => Workspaces.dispatch("workspace.move_window", args),
+            "window.list": (args) => {
+                const windows = this.windowRecords().filter(
+                    (window) =>
+                        (!args.app_id || window.appId === args.app_id) &&
+                        (!args.title ||
+                            window.title.toLocaleLowerCase().includes(String(args.title).toLocaleLowerCase())) &&
+                        (!args.focused || window.focused),
+                );
+                return { windows };
+            },
+            "window.match": (args) => {
+                const windows = this.windowRecords();
+                const window =
+                    args.window === "active" || args.window === undefined
+                        ? windows.find((entry) => entry.focused)
+                        : windows.find((entry) => entry.id === String(args.window));
+                if (!window) throw new Error(`Window not found: ${args.window ?? "active"}`);
+                const match = { type: "window", title: window.title, focused: window.focused };
+                if (window.ruleAppId) match.app_id = window.ruleAppId;
+                return {
+                    id: window.id,
+                    identity: {
+                        desktop_app_id: window.appId,
+                        gtk_app_id: window.gtkAppId,
+                        wm_class: window.wmClass,
+                        rule_app_id: window.ruleAppId,
+                    },
+                    match,
+                };
+            },
+            "window.action": windowAction,
+            "layer.list": () => ({ surfaces: this.layerRecords() }),
+            "monitor.list": () => this.control({ command: "monitors" }),
+            "animation.list": () => this.animationCommand({ action: "list" }),
+            "animation.surfaces": () => this.animationCommand({ action: "surfaces" }),
+            "animation.inspect": (args) => this.animationCommand({ ...args, action: "inspect" }),
+            "animation.preview": (args) => this.animationCommand({ ...args, action: "preview" }),
+            "animation.seek": (args) =>
+                this.animationCommand({ action: "seek", session: args.session, progress: args.progress }),
+            "animation.step": (args) =>
+                this.animationCommand({ action: "step", session: args.session, milliseconds: args.milliseconds }),
+            "animation.play": (args) => this.animationCommand({ action: "play", session: args.session }),
+            "animation.pause": (args) => this.animationCommand({ action: "pause", session: args.session }),
+            "animation.stop": (args) => this.animationCommand({ action: "stop", session: args.session }),
+            "feature.list": () => ({
+                features: control()
+                    .ListFeatures()
+                    .map(([id, description, enabled]) => ({ id, description, enabled })),
+            }),
+            "feature.show": (args) => ({ id: args.id, enabled: control().GetFeature(args.id) }),
+            "feature.enable": (args) => this.setFeature(args.id, true),
+            "feature.disable": (args) => this.setFeature(args.id, false),
+            "script.list": () => ({ scripts: control().ListScripts() }),
+            "input.list": () => ({
+                sources: control()
+                    .ListInputSources()
+                    .map(([type, id, shortName, name]) => ({ type, id, shortName, name })),
+            }),
+            "input.current": () => {
+                const [type, id, shortName, name] = control().GetCurrentInputSource();
+                return { type, id, shortName, name };
+            },
+            "input.select": (args) => {
+                control().SetInputSource(args.type, args.id);
+                return { ok: true, type: args.type, id: args.id };
+            },
+            "privacy.get": () => {
+                const [screenSharing, microphoneInUse, locationInUse] = control().GetPrivacyState();
+                return { screenSharing, microphoneInUse, locationInUse };
+            },
+            "permissions.list": () => JSON.parse(control().GetPermissions()),
+            "permissions.check": (args) => {
+                const decision = Permissions.evaluate(control()._permissionPolicy, args.capability, args.identity);
+                return {
+                    level: decision.level,
+                    rule: decision.rule,
+                    monitors: decision.monitors,
+                    devices: decision.devices,
+                    clipboard: decision.clipboard,
+                };
+            },
+            "grant.list": () => ({
+                grants: control()
+                    .ListPortalGrants()
+                    .map(([id, kind, requester, devices, clipboard, screenStreams]) => ({
+                        id,
+                        kind,
+                        requester,
+                        devices,
+                        clipboard,
+                        screenStreams,
+                    })),
+            }),
+            "grant.revoke": (args) => {
+                control().RevokePortalGrant(args.kind, args.id);
+                return { ok: true, id: args.id };
+            },
+            "launch.status": () => JSON.parse(control()._launchFeedback.GetState()),
+            "launch.begin": (args) => {
+                control()._launchFeedback.Begin(args.token, args.application, args.milliseconds ?? 3000);
+                return { ok: true, token: args.token };
+            },
+            "launch.end": (args) => {
+                control()._launchFeedback.End(args.token);
+                return { ok: true, token: args.token };
+            },
+            "shortcut.capture": (args) =>
+                new Promise((resolve, reject) => {
+                    const invocation = {
+                        return_value: (value) => resolve({ accelerator: value.deep_unpack()[0] }),
+                        return_dbus_error: (_name, message) => reject(new Error(message)),
+                    };
+                    control().CaptureAcceleratorAsync(new GLib.Variant("(u)", [args.timeout]), invocation);
+                }),
+            "shell.ping": () => ({ pong: control().Ping() }),
+            "shell.version": () => ({ version: control().GetVersion() }),
+            "shell.status": () => {
+                const windows = this.windowRecords();
+                return {
+                    version: control().GetVersion(),
+                    connected: control().Ping() === "pong",
+                    windows: windows.length,
+                    focused: windows.find((window) => window.focused)?.id ?? null,
+                };
+            },
+            "shell.reload": async () => {
+                const { softReload } = await import("resource:///org/gnome/shell/ui/components/gnoblinControl.js");
+                await softReload("api");
+                return { ok: true, action: "reload" };
+            },
+            "config.reload": () => {
+                control()._config.reload();
+                return { ok: true, action: "config reload" };
+            },
+        };
+    }
+
+    setFeature(id, enabled) {
+        const control = Main.componentManager?._allComponents?.gnoblinControl;
+        control.SetFeature(id, enabled);
+        return { ok: true, id, enabled };
+    }
+
+    dispatchApiOperation(method, arguments_, requestId = null) {
+        if (typeof method !== "string" || !/^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*$/.test(method))
+            throw new Error("invalid API method name");
+        if (!arguments_ || typeof arguments_ !== "object" || Array.isArray(arguments_))
+            throw new Error("API arguments must be an object");
+        const handler = this.apiHandlers()[method];
+        if (!handler) throw new Error(`Unsupported Gnoblin API operation: ${method}`);
+        const result = handler(arguments_);
+        if (requestId !== null) {
+            Promise.resolve(result).then(
+                (value) => this.apiOperationCompleted(requestId, method, true, value),
+                (error) => this.apiOperationCompleted(requestId, method, false, undefined, error),
+            );
+        }
+        return result;
+    }
+
+    apiOperationCompleted(requestId, method, ok, result = undefined, error = undefined) {
+        const config = Main.componentManager?._allComponents?.gnoblinControl?._config;
+        if (!config) return;
+        config.dispatchEvent("gnoblin.api.operation-completed", {
+            request_id: requestId,
+            method,
+            ok,
+            ...(ok ? { result: result ?? {} } : { error: String(error?.message ?? error) }),
+        });
+    }
+
+    apiCommand(client, record) {
+        if (typeof record.id !== "string" || !/^[\w-]{1,64}$/.test(record.id)) throw new Error("invalid request ID");
+        if (typeof record.method !== "string") throw new Error("method must be a string");
+        const native = Meta.gnoblin_call_config_api(
+            record.method,
+            jsonDictionary(record.arguments ?? {}),
+        ).recursiveUnpack();
+        const requestId = Number(native.request_id);
+        if (native.method !== record.method || !Number.isSafeInteger(requestId) || !native.arguments)
+            throw new Error("Lua API returned an invalid operation descriptor");
+        const result = this.dispatchApiOperation(native.method, native.arguments);
+        Promise.resolve(result).then(
+            (value) => this.send(client, { event: "reply", id: record.id, result: value ?? {} }),
+            (error) => this.send(client, { event: "error", id: record.id, message: String(error?.message ?? error) }),
+        );
     }
 
     registerScriptOperation(operation, handler) {
@@ -277,6 +553,10 @@ export class CompositorBridge {
     }
 
     command(client, record) {
+        if (record.op === "api") {
+            this.apiCommand(client, record);
+            return;
+        }
         if (record.op === "ui-session") {
             this.uiSessions.command(client, record);
             return;
@@ -1560,6 +1840,8 @@ export class CompositorBridge {
         this.clientClosedHandlers.clear();
         this.service.stop();
         this.service.close();
-        this.path.delete(null);
+        // Another bridge may have replaced the path since this instance
+        // started. Only unlink the socket node created by this listener.
+        if (this.socketIdentity && socketPathIdentity(this.path) === this.socketIdentity) this.path.delete(null);
     }
 }

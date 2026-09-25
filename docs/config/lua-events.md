@@ -107,19 +107,39 @@ reduced to a type or name string.
 
 Gnoblin events use the `gnoblin.*` prefix.
 
-| Event name                     | Fields               | Dispatched when                                                                                      |
-| ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `gnoblin.config.reloaded`      | `path`, `file_count` | Config and its Lua modules load and apply successfully.                                              |
-| `gnoblin.config.reload_failed` | `path`, `error`      | A config reload fails while a previously loaded event subscription is still active.                  |
-| `gnoblin.feature.changed`      | `feature`, `enabled` | A Gnoblin feature changes after initial state setup.                                                 |
-| `gnoblin.scripts.loaded`       | `scripts`            | The user script load pass completes; `scripts` is a comma-separated list of loaded script filenames. |
-| `gnoblin.scripts.load_failed`  | `script`, `error`    | A user script cannot be imported or throws while loading.                                            |
+| Event name                        | Fields                                            | Dispatched when                                                                                      |
+| --------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `gnoblin.config.reloaded`         | `path`                                            | Config and its Lua modules load and apply successfully.                                              |
+| `gnoblin.config.reload-failed`    | `path`, `error`                                   | A config reload fails while a previously loaded event subscription is still active.                  |
+| `gnoblin.workspace.created`       | Workspace record                                  | A runtime workspace is created.                                                                      |
+| `gnoblin.workspace.renamed`       | Workspace record                                  | A workspace display name changes.                                                                    |
+| `gnoblin.workspace.removed`       | Workspace record                                  | A temporary workspace is removed.                                                                    |
+| `gnoblin.workspace.activated`     | Workspace record                                  | The active workspace changes.                                                                        |
+| `gnoblin.api.operation-completed` | `request_id`, `method`, `ok`, `result` or `error` | A queued Lua runtime API operation completes.                                                        |
+| `gnoblin.feature.changed`         | `feature`, `enabled`                              | A Gnoblin feature changes after initial state setup.                                                 |
+| `gnoblin.scripts.loaded`          | `scripts`                                         | The user script load pass completes; `scripts` is a comma-separated list of loaded script filenames. |
+| `gnoblin.scripts.load_failed`     | `script`, `error`                                 | A user script cannot be imported or throws while loading.                                            |
 
 ```lua
 gnoblin.on("gnoblin.feature.changed", function(event)
     print(event.feature .. " enabled: " .. tostring(event.enabled))
 end)
 ```
+
+Workspace events include the record's `id`, current `number`, `name`, and
+`active` status. Records also include the `windows` count and `persistent` flag.
+
+`removed` reports the workspace's last record before removal. Its `number` is
+the position immediately before removal.
+
+When `workspace.create` uses `activate = true`, Gnoblin emits `created` first
+with `active = false`, then emits `activated` after switching workspaces.
+
+Lua runtime API calls return a request ID. Match that ID in
+`gnoblin.api.operation-completed`; successful events include `result`, while
+failed events include `error`. Runtime actions requested from an event callback
+run after the callback returns. See the [Lua runtime API](/config/runtime-api)
+for method arguments and results.
 
 ## Listen to every forwarded event
 

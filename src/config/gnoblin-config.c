@@ -31,6 +31,43 @@ static GPtrArray* ensure_section(GHashTable* sections, const char* name) {
 }
 
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
+    g_autoptr(GVariant) workspaces = g_variant_lookup_value(document, "workspaces", NULL);
+    if (workspaces) {
+        gboolean valid = g_variant_is_of_type(workspaces, G_VARIANT_TYPE("av")) &&
+                         g_variant_n_children(workspaces) >= 1;
+        GHashTable* ids = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+        for (gsize i = 0; valid && i < g_variant_n_children(workspaces); i++) {
+            g_autoptr(GVariant) boxed = g_variant_get_child_value(workspaces, i);
+            g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
+            if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT) ||
+                g_variant_n_children(entry) != 2) {
+                valid = FALSE;
+                break;
+            }
+            g_autoptr(GVariant) id_value = g_variant_lookup_value(entry, "id", NULL);
+            g_autoptr(GVariant) name_value = g_variant_lookup_value(entry, "name", NULL);
+            const char* id = id_value && g_variant_is_of_type(id_value, G_VARIANT_TYPE_STRING)
+                                 ? g_variant_get_string(id_value, NULL)
+                                 : "";
+            const char* name = name_value && g_variant_is_of_type(name_value, G_VARIANT_TYPE_STRING)
+                                   ? g_variant_get_string(name_value, NULL)
+                                   : "";
+            valid = id_value && name_value &&
+                    g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id, G_REGEX_OPTIMIZE,
+                                         G_REGEX_MATCH_NOTEMPTY) &&
+                    *name && g_utf8_validate(name, -1, NULL) && g_utf8_strlen(name, -1) <= 80 &&
+                    !g_hash_table_contains(ids, id);
+            if (valid)
+                g_hash_table_add(ids, g_strdup(id));
+        }
+        g_hash_table_unref(ids);
+        if (!valid) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "workspaces must be a nonempty array of objects with unique valid "
+                                "ids and nonempty names up to 80 characters");
+            return FALSE;
+        }
+    }
     const char* sections[] = {"protocols", "layer-shell"};
     const char* keys[] = {NULL, "preserve-active-window"};
     for (guint i = 0; i < G_N_ELEMENTS(sections); i++) {
@@ -56,6 +93,27 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     }
     g_autoptr(GVariant) window = g_variant_lookup_value(document, "window-management", NULL);
     if (window) {
+        if (g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT)) {
+            g_autoptr(GVariant) legacy_ids = g_variant_lookup_value(window, "workspace-ids", NULL);
+            g_autoptr(GVariant) legacy_names =
+                g_variant_lookup_value(window, "workspace-names", NULL);
+            g_autoptr(GVariant) legacy_dynamic =
+                g_variant_lookup_value(window, "dynamic-workspaces", NULL);
+            g_autoptr(GVariant) legacy_count =
+                g_variant_lookup_value(window, "num-workspaces", NULL);
+            gboolean has_legacy_workspaces =
+                legacy_ids || legacy_names || legacy_dynamic || legacy_count;
+            if (workspaces && has_legacy_workspaces) {
+                g_set_error_literal(
+                    error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "use top-level workspaces without window-management workspace-ids, "
+                    "workspace-names, dynamic-workspaces, or num-workspaces");
+                return FALSE;
+            }
+            if (!workspaces && has_legacy_workspaces)
+                g_warning("gnoblin-config: window-management workspace settings are deprecated; "
+                          "use top-level workspaces = {{id = \"...\", name = \"...\"}, ...}");
+        }
         static const char* booleans[] = {
             "constrain-drag-to-work-area",
             "raise-on-click",

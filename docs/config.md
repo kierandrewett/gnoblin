@@ -2,7 +2,7 @@
 
 Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and autostart commands. The reference pages list the supported fields and defaults.
 
-## Functions {#api-reference}
+## Functions
 
 - [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
@@ -12,7 +12,8 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 - [`gnoblin.load`](/config/load) — load another Lua config file.
 - [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
 - [`gnoblin.array`](/config/array) — mark a Lua table as a list.
-- [`gnoblin.on`](/config/lua-events) — handle events and inspect registered callbacks with `gnoblin.listeners`.
+- [`gnoblin.on`](/config/lua-events) — handle compositor and input events.
+- [Lua runtime API](/config/runtime-api) — inspect and control the running session.
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
 

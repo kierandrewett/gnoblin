@@ -45,11 +45,6 @@ import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
-const CLUTTER_EVENT_NAMES = new Map(
-    Object.entries(Clutter.EventType)
-        .filter(([key]) => Number.isNaN(Number(key)))
-        .map(([key, value]) => [value, key]),
-);
 const SCHEMA_ID = "org.gnoblin.shell";
 const DISABLED_KEY = "disabled-features";
 const PORTAL_GRANT_KINDS = ["screen-cast", "remote-desktop"];
@@ -291,10 +286,6 @@ class EventBus {
                 this.emit("workspace-changed", wm.get_active_workspace_index()),
             ),
         ]);
-        // GNOME Shell's overview is a shell-owned interaction, distinct from
-        // Mutter's workspace and display signals.
-        for (const signal of ["showing", "shown", "hiding", "hidden"])
-            this._handlers.push([Main.overview, Main.overview.connect(signal, () => this.emit(`overview.${signal}`))]);
     }
 
     subscribe(event, cb) {
@@ -304,15 +295,6 @@ class EventBus {
     }
 
     emit(event, ...args) {
-        const payload = {};
-        const first = args[0];
-        if (typeof first === "number") payload.index = first;
-        else if (first?.get_gtk_application_id) {
-            payload.app_id = first.get_gtk_application_id() || "";
-            payload.wm_class = first.get_wm_class() || "";
-            payload.title = first.get_title() || "";
-        }
-        if (event.startsWith("overview.")) activeConfig?.dispatchEvent(`gnome.shell.${event}`, payload);
         for (const cb of this._subs.get(event) ?? []) {
             try {
                 const result = cb(...args);
@@ -511,7 +493,6 @@ class ScriptHost {
             } catch (e) {
                 failures.push(name);
                 logError(e, `gnoblin-script: importing ${name} failed`);
-                this._control._config?.dispatchEvent("gnoblin.scripts.load_failed", { script: name, error: e.message });
                 continue;
             }
 
@@ -539,11 +520,9 @@ class ScriptHost {
                 this._disposeApi(api);
                 failures.push(name);
                 logError(e, `gnoblin-script: ${name} threw on load`);
-                this._control._config?.dispatchEvent("gnoblin.scripts.load_failed", { script: name, error: e.message });
             }
         }
 
-        this._control._config?.dispatchEvent("gnoblin.scripts.loaded", { scripts: this.list().join(",") });
         if (failures.length > 0) throw new Error(`failed to load scripts: ${failures.join(", ")}`);
     }
 
@@ -715,6 +694,7 @@ export class Component {
         this._locationAgent = null;
         this._privacyState = null;
         this._compositorBridge = null;
+        this._mutterEvents = null;
         this._launchFeedback = null;
         this._acceleratorCapture = null;
         this._acceleratorCaptureSignal = 0;
@@ -757,7 +737,6 @@ export class Component {
         );
         this._permissionPolicy = { default: "deny", rules: [] };
         this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
-        this._mutterEvents = new MutterEventForwarder(this._config);
         activeConfig = this._config;
         this._config.start();
         // GNOME exposes the desktop's preferred color scheme through this
@@ -770,7 +749,10 @@ export class Component {
                 this._config?.dispatchEvent("gnome.interface.color-scheme-changed", {
                     color_scheme: this._interfaceSettings.get_string("color-scheme"),
                 });
-            this._interfaceColorSchemeId = this._interfaceSettings.connect("changed::color-scheme", dispatchColorScheme);
+            this._interfaceColorSchemeId = this._interfaceSettings.connect(
+                "changed::color-scheme",
+                dispatchColorScheme,
+            );
             dispatchColorScheme();
         }
         this._configFocusId = global.display.connect("notify::focus-window", () => {
@@ -820,6 +802,11 @@ export class Component {
         });
         this._dispatchWindowEvent("focus_changed", global.display.focus_window);
         this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
+        try {
+            this._mutterEvents = new MutterEventForwarder(this._config);
+        } catch (error) {
+            logError(error, "gnoblin-control: Mutter event forwarding startup failed");
+        }
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -886,26 +873,6 @@ export class Component {
 
     disable() {
         this._finishAcceleratorCapture(null, "Shortcut capture cancelled because the shell is reloading");
-        if (this._configFocusId) {
-            global.display.disconnect(this._configFocusId);
-            this._configFocusId = 0;
-        }
-        if (this._configWindowId) {
-            global.display.disconnect(this._configWindowId);
-            this._configWindowId = 0;
-        }
-        if (this._configEventId) {
-            global.display.disconnect(this._configEventId);
-            this._configEventId = 0;
-        }
-        if (this._configInputId) {
-            global.stage.disconnect(this._configInputId);
-            this._configInputId = 0;
-        }
-        for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
-        this._eventWindows?.clear();
-        this._mutterEvents?.destroy();
-        this._mutterEvents = null;
         // Script disposers can still use window rules, config and the event bus.
         if (this._scripts) {
             this._scripts.destroy();
@@ -917,6 +884,8 @@ export class Component {
             if (global.__gnoblinCompositorBridge === this._compositorBridge) delete global.__gnoblinCompositorBridge;
             this._compositorBridge = null;
         }
+        this._mutterEvents?.destroy();
+        this._mutterEvents = null;
         this._launchFeedback?.destroy();
         this._launchFeedback = null;
         this._shortcutInput?.destroy();
@@ -931,14 +900,15 @@ export class Component {
         this._interfaceColorSchemeId = 0;
         this._config?.destroy();
         this._config = null;
+        Workspaces.setEventDispatcher(null);
         activeConfig = null;
-        if (this._acceleratorCaptureSignal) {
-            global.stage.disconnect(this._acceleratorCaptureSignal);
-            this._acceleratorCaptureSignal = 0;
-        }
         if (this._overlayKeyId) {
             global.display.disconnect(this._overlayKeyId);
             this._overlayKeyId = 0;
+        }
+        if (this._acceleratorCaptureSignal) {
+            global.stage.disconnect(this._acceleratorCaptureSignal);
+            this._acceleratorCaptureSignal = 0;
         }
         if (this._trimTimeoutId) {
             GLib.source_remove(this._trimTimeoutId);
@@ -1087,10 +1057,12 @@ export class Component {
     }
 
     _applyConfig(next) {
-        Workspaces.configure(next["window-management"]["workspace-ids"] ?? [], (index) =>
-            Meta.prefs_get_workspace_name(index),
-        );
+        // The Lua config parser exposes the top-level declaration array here.
+        // The registry uses it to assign stable IDs and names; Mutter's
+        // derived baseline count comes from the parsed window preferences.
+        Workspaces.setEventDispatcher((event, payload) => this._config?.dispatchEvent(event, payload));
         applyWindowPreferences(next["window-management"]);
+        Workspaces.configure(next.workspaces ?? [], (index) => Meta.prefs_get_workspace_name(index));
         applyCompositorPreferences(next.compositor);
         applyInputPreferences(next.input);
         Keyboard.configureGnoblinInputSources(
@@ -1124,25 +1096,6 @@ export class Component {
         Meta.prefs_set_gnoblin_cursor_config(next.cursor.theme, next.cursor.size);
     }
 
-    _dispatchWindowEvent(event, window) {
-        if (!this._config) return;
-        this._config.dispatchEvent(event, {
-            app_id: window?.get_gtk_application_id() || "",
-            wm_class: window?.get_wm_class() || "",
-            title: window?.get_title() || "",
-        });
-    }
-
-    _watchEventWindow(window) {
-        if (this._eventWindows.has(window)) return;
-        const id = window.connect("unmanaged", () => {
-            this._dispatchWindowEvent("window_unmanaged", window);
-            this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
-            this._eventWindows.delete(window);
-        });
-        this._eventWindows.set(window, id);
-    }
-
     // --- feature toggles ---
     _disabledList() {
         return this._settings ? this._settings.get_strv(DISABLED_KEY) : [];
@@ -1168,7 +1121,6 @@ export class Component {
             if (previous === undefined) continue;
 
             this._impl?.emit_signal("FeatureChanged", new GLib.Variant("(sb)", [id, enabled]));
-            this._config?.dispatchEvent("gnoblin.feature.changed", { feature: id, enabled });
             console.log(`gnoblin-control: feature '${id}' ${enabled ? "ENABLED" : "DISABLED"}`);
         }
     }
