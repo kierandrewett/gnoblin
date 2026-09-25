@@ -119,6 +119,32 @@ still logs in. Where CI cannot provide a graphical runner, report that gap
 separately instead of treating metadata or a successful package transaction as
 full coexistence proof.
 
+### Clean-image compatibility probes (2026-09-25)
+
+The probes used disposable stock images and the current Gnoblin 51 dependency
+requirements. A distro's GNOME version is not itself a blocker because Gnoblin
+ships private Shell/Mutter binaries; the host libraries and services it links
+to remain real constraints.
+
+| Targets                          | Probe result                                                                                                                                                                                             | Practical consequence                                                                                                                                                                                                                |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Debian 11                        | Build solve lacks GTK4, libadwaita, GCR4, GI Repository 2.0, GNOME Desktop 4, libei, libdisplay-info, modern C++/Rust toolchains; stock runtime lacks WirePlumber and the GNOME portal                   | Current private bundle cannot support it. Requires a much larger toolchain, session, and portal compatibility effort.                                                                                                                |
+| Debian 12, Ubuntu 22.04          | Build solve lacks GCR4, GI Repository 2.0, libei, and libdisplay-info; host Rust on Debian 12 is 1.63. Stock GNOME session/settings components are GNOME 43 and 42 respectively.                         | Not installable with today's declared dependencies and runtime closure. Measure a deliberate backport/private-build design before adding package jobs.                                                                               |
+| EL 8, 9, 10 (Rocky Linux images) | GLib/GJS are 2.56/1.56, 2.68/1.68, and 2.80/1.80; all miss Gnoblin 51's GLib 2.86 and GJS 1.85.90 floors.                                                                                                | Adding an EL repository or changing RPM macros cannot make these targets work. They need a privately namespaced GNOME runtime and per-EL session integration.                                                                        |
+| openSUSE Leap 15.6 and 16.0      | GLib/GJS are 2.78/1.78 and 2.84/1.84; both miss the 51 floors. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                             | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                            |
+| openSUSE Tumbleweed              | Core host floors are met: GLib 2.88, GJS 1.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. Dependency planning resolved, but an 844-package install was stopped before building. | The best openSUSE candidate. It still needs a SUSE-native spec/adapter, actual RPM build, and co-install/install/remove checks. Fedora names and paths differ, including Mesa, libxcvt, GCR, libadwaita, and GNOME Desktop packages. |
+
+The same limitation shows up on Arch in a different form: there is no complete
+package to test. The published standalone PKGBUILD depends on unpublished
+Gnoblin runtime package names and refers to a repository-relative example file
+that is absent from the release asset. It must become a real source-addressable
+runtime package set before Arch can be counted as covered.
+
+Probe constraints and negative results are useful evidence. Keep them in the
+target inventory, but don't describe a target as supported until its exact
+package build, stock-GNOME coexistence, graphical session, and removal gates
+pass.
+
 ## Recommended support contract
 
 Treat supported releases as native package targets, not just source-build
