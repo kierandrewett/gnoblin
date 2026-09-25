@@ -1,0 +1,31 @@
+name: openSUSE RPM adapter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/opensuse-rpm.yml"
+      - "packaging/opensuse/**"
+      - "tests/opensuse-packaging.test.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tumbleweed-buildrequires:
+    name: Tumbleweed BuildRequires
+    runs-on: ubuntu-latest
+    container: registry.opensuse.org/opensuse/tumbleweed:latest
+    timeout-minutes: 20
+    steps:
+      - name: Install checkout and RPM tools
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install git rpm-build
+      - uses: actions/checkout@v4
+      - name: Parse adapter boundaries
+        run: python3 tests/opensuse-packaging.test.py
+      - name: Resolve Tumbleweed BuildRequires
+        run: bash packaging/opensuse/check-buildrequires.sh

@@ -370,9 +370,9 @@
       "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
       "lifecycle": "rolling",
       "adapter": "rpm-opensuse",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/verify.yml"],
+      "ci": [".github/workflows/opensuse-rpm.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
