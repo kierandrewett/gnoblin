@@ -14,7 +14,6 @@ source=("$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz::https://github.com/kier
 sha256sums=('SKIP')
 
 _prefix=/usr/lib/gnoblin
-_build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
 
 prepare() {
     cd "$srcdir/$pkgname-$pkgver" || return
@@ -27,6 +26,7 @@ prepare() {
 }
 
 build() {
+    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     cd "$srcdir/$pkgname-$pkgver" || return
     python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"
     _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -41,6 +41,7 @@ build() {
 }
 
 package() {
+    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     cd "$srcdir/$pkgname-$pkgver" || return
     meson install -C build/schemas --destdir "$pkgdir" --no-rebuild
     meson install -C build/mutter --destdir "$pkgdir" --no-rebuild

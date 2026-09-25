@@ -122,7 +122,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         f'source=("$pkgname-$pkgver-gnome-{gnome_version}-arch-source.tar.xz::{PROJECT_URL}/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-{gnome_version}-arch-source.tar.xz")\n'
         f"sha256sums=('{source_sha256}')\n\n"
         "_prefix=/usr/lib/gnoblin\n"
-        '_build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"\n\n'
+        "\n"
         "prepare() {\n"
         '    cd "$srcdir/$pkgname-$pkgver" || return\n'
         "    for project in gsettings-desktop-schemas mutter gnome-shell; do\n"
@@ -133,6 +133,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         "    done\n"
         "}\n\n"
         "build() {\n"
+        '    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"\n'
         '    cd "$srcdir/$pkgname-$pkgver" || return\n'
         '    python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"\n'
         '    _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"\n'
@@ -146,6 +147,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         "    meson compile -C build/gnome-shell\n"
         "}\n\n"
         "package() {\n"
+        '    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"\n'
         '    cd "$srcdir/$pkgname-$pkgver" || return\n'
         '    meson install -C build/schemas --destdir "$pkgdir" --no-rebuild\n'
         '    meson install -C build/mutter --destdir "$pkgdir" --no-rebuild\n'
