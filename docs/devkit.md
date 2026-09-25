@@ -85,6 +85,7 @@ scripts/capture-doc-examples.sh site-firefox
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
 scripts/capture-doc-examples.sh waybar-settings
+scripts/capture-doc-examples.sh waybar-quickshell-dock
 scripts/capture-doc-examples.sh quickshell-firefox
 scripts/capture-doc-examples.sh quickshell-files
 scripts/capture-doc-examples.sh window-effects
