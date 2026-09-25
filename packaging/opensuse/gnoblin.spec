@@ -14,10 +14,10 @@ Requires:       gjs >= 1.85.90
 Requires:       glib2 >= 2.86
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
-Requires:       libinput >= 1.30
+Requires:       libinput10 >= 1.30
 Requires:       pipewire >= 1.4
 Requires:       playerctl
-Requires:       wayland >= 1.26
+Requires:       libwayland-client0 >= 1.26
 Requires:       wireplumber
 Requires:       xdg-desktop-portal-gnome
 

@@ -31,6 +31,11 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             self.assertIn("%bcond_with gnoblin_stack", content)
             self.assertIn("%if %{with gnoblin_stack}", content)
 
+    def test_meta_uses_tumbleweed_runtime_library_names(self):
+        meta = (SPECS / "gnoblin.spec").read_text()
+        self.assertIn("Requires:       libinput10 >= 1.30", meta)
+        self.assertIn("Requires:       libwayland-client0 >= 1.26", meta)
+
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
         self.assertIn("--without gnoblin_stack", check)
