@@ -62,19 +62,19 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 
 ## Corners
 
-| Field                           | Default        | Values                                                        |
-| ------------------------------- | -------------- | ------------------------------------------------------------- |
-| `radius`                        | `0`            | 0–200 logical pixels                                          |
-| `smoothing`                     | `0`            | 0–1; circular to a squarer curve                              |
-| `mode`                          | `"auto"`       | `auto`, `force`, `off`                                        |
-| `padding`                       | `{0, 0, 0, 0}` | Top/right/bottom/left inset, −128–128 logical pixels          |
-| `keep_maximized`                | `true`         | Keep rounding when maximised                                  |
-| `keep_fullscreen`, `keep_tiled` | `false`        | Keep rounding in those states                                 |
-| `skip_libadwaita`               | `true`         | Preserve libadwaita corners in auto mode                      |
-| `skip_libhandy`                 | `false`        | Skip libhandy windows in auto mode                            |
-| `remove_csd`                    | `false`        | Detect and replace client-drawn rounded corners               |
-| `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                           |
-| `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states |
+| Field                           | Default        | Values                                                         |
+| ------------------------------- | -------------- | -------------------------------------------------------------- |
+| `radius`                        | `0`            | 0–200 logical pixels                                           |
+| `smoothing`                     | `0`            | 0–1; circular to a squarer curve                               |
+| `mode`                          | `"auto"`       | `auto`, `force`, `off`                                         |
+| `padding`                       | `{0, 0, 0, 0}` | Top/right/bottom/left inset, −128–128 logical pixels           |
+| `keep_maximized`                | `true`         | Keep rounding when maximised                                   |
+| `keep_fullscreen`, `keep_tiled` | `false`        | Keep rounding in those states                                  |
+| `skip_libadwaita`               | `true`         | Preserve libadwaita corners in auto mode                       |
+| `skip_libhandy`                 | `false`        | Skip libhandy windows in auto mode                             |
+| `remove_csd`                    | `false`        | [Detect and replace client-drawn rounded corners](#remove-csd) |
+| `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                            |
+| `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states  |
 
 ## Borders and shadows
 
