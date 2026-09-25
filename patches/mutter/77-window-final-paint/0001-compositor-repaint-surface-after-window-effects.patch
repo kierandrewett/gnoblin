@@ -1,0 +1,25 @@
+From 6f40890e54d60b3ab24eb37b4ab5a9b7c3615eb2 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 14:10:00 +0100
+Subject: [PATCH] compositor: repaint client surface after window effects
+
+The client surface can be sampled while its window actor is transformed by
+an opening effect. Queue a compositor repaint after the final effect
+completes so the surface is sampled with the actor's settled transform.
+---
+ src/compositor/meta-window-actor.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -925,5 +925,9 @@ meta_window_actor_after_effects (MetaWindowActor *self)
+       g_signal_emit (self, signals[EFFECTS_COMPLETED], 0);
+       meta_window_actor_sync_visibility (self);
+       meta_window_actor_sync_actor_geometry (self, FALSE);
++
++      /* Paint the surface again with the actor's settled transform. */
++      if (priv->surface)
++        clutter_actor_queue_redraw (CLUTTER_ACTOR (priv->surface));
+     }
+ }
