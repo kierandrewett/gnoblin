@@ -54,7 +54,7 @@ def shell_window(title: str) -> dict | None:
         f"(()=>{{const a=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
         "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height,minimized:w.minimized,mapped:a.is_mapped(),"
-        "fullscreen:w.fullscreen,maximized:w.maximized_horizontally&&w.maximized_vertically,"
+        "ready:w.is_ready(),fullscreen:w.fullscreen,maximized:!!w.get_maximize_flags(),"
         "layout:imports.gi.Meta.gnoblin_window_frame_get(w).recursiveUnpack()};})()"
     )
 
@@ -64,9 +64,9 @@ def shell_windows() -> list[dict]:
         "(()=>global.get_window_actors().map(a=>{const w=a.meta_window,r=w.get_frame_rect();"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),wm_class:w.get_wm_class(),"
         "pid:w.get_pid(),type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
-        "ready:typeof w.is_ready==='function'?w.is_ready():null,mapped:a.is_mapped(),"
+        "ready:w.is_ready(),mapped:a.is_mapped(),"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
-        "maximized:w.maximized_horizontally&&w.maximized_vertically,"
+        "maximized:!!w.get_maximize_flags(),"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
         "can_maximize:w.can_maximize(),can_minimize:w.can_minimize()};}))()"
     )

@@ -451,6 +451,7 @@ def run_inside() -> int:
             presentation = state["layout"]["presentation"] if state else {}
             if (
                 state
+                and state["ready"]
                 and not state["minimized"]
                 and state["mapped"]
                 and presentation["visible"]

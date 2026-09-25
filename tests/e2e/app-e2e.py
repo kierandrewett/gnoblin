@@ -198,9 +198,9 @@ def window_state(sequence: int) -> dict | None:
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),"
         "type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
         "monitor:w.get_monitor(),"
-        "ready:typeof w.is_ready==='function'?w.is_ready():null,mapped:a?.is_mapped()??false,"
+        "ready:w.is_ready(),mapped:a?.is_mapped()??false,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
-        "maximized:w.maximized_horizontally&&w.maximized_vertically,"
+        "maximized:!!w.get_maximize_flags(),"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
         "can_maximize:w.can_maximize(),can_minimize:w.can_minimize(),"
         "focused:global.display.focus_window===w,"
@@ -248,16 +248,20 @@ def screenshot(app: dict, directory: Path) -> str | None:
 
 
 def shell_drag(start_x: int, start_y: int, end_x: int, end_y: int) -> None:
-    eval_shell(
-        "(()=>{const C=imports.gi.Clutter,G=imports.gi.GLib;"
-        "global.lifecycleFuzzPointer??=global.stage.context.get_backend().get_default_seat()"
-        ".create_virtual_device(C.InputDeviceType.POINTER_DEVICE);"
-        "const p=global.lifecycleFuzzPointer,t=G.get_monotonic_time();"
-        f"p.notify_absolute_motion(t,{start_x},{start_y});"
-        "p.notify_button(t,1,C.ButtonState.PRESSED);"
-        f"p.notify_absolute_motion(t+1,{end_x},{end_y});"
-        "p.notify_button(t+2,1,C.ButtonState.RELEASED);return true;})()"
-    )
+    send_pointer("move", start_x, start_y)
+    time.sleep(0.04)
+    send_pointer("press", start_x, start_y)
+    time.sleep(0.06)
+    steps = max(1, min(12, max(abs(end_x - start_x), abs(end_y - start_y)) // 12))
+    try:
+        for step in range(1, steps + 1):
+            x = round(start_x + (end_x - start_x) * step / steps)
+            y = round(start_y + (end_y - start_y) * step / steps)
+            send_pointer("move", x, y)
+            time.sleep(0.035)
+    finally:
+        send_pointer("release", end_x, end_y)
+    time.sleep(0.06)
 
 
 def app_command(app: dict) -> list[str]:
@@ -291,6 +295,11 @@ def close_sequence(sequence: int, timeout: float = 10) -> str:
 
 def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir: Path, launch_timeout: float) -> dict:
     baseline = {window["sequence"] for window in shell_windows()}
+    if app["source"] == "flathub-popular":
+        # The private document-portal stub returns this mount point. Flatpak's
+        # bubblewrap expects a per-app source directory even when it is empty.
+        document_mount = Path(os.environ["XDG_CONFIG_HOME"]).parent / "doc" / "by-app" / app["install"]
+        document_mount.mkdir(parents=True, exist_ok=True)
     log_path = console_dir / f"{hashlib.sha256(app['app_id'].encode()).hexdigest()[:12]}.log"
     console_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -391,6 +400,26 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir:
                     lambda: (lambda after: after is not None and after["focused"])(window_state(sequence)),
                     timeout=2,
                 )
+
+                # App defaults may map maximized or fullscreen. Return to the
+                # normal state before asserting that move/resize controls work.
+                current = window_state(sequence)
+                if current and current["fullscreen"]:
+                    invoke(
+                        "restore-initial-fullscreen",
+                        "w.unmake_fullscreen()",
+                        lambda: (lambda after: after is not None and not after["fullscreen"])(window_state(sequence)),
+                        capability="can_move",
+                    )
+                current = window_state(sequence)
+                if current and current["maximized"]:
+                    invoke(
+                        "restore-initial-maximized",
+                        "w.unmaximize()",
+                        lambda: (lambda after: after is not None and not after["maximized"])(window_state(sequence)),
+                        capability="can_move",
+                    )
+
                 try:
                     mutate(
                         sequence,

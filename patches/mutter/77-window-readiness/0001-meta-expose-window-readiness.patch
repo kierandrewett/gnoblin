@@ -1,0 +1,46 @@
+From 5feebe893af40bac6c148a67b6f0665fa33751e4 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 15:05:37 +0100
+Subject: [PATCH] meta: expose window readiness state
+
+---
+ src/core/window-private.h |  2 --
+ src/meta/window.h         | 12 ++++++++++++
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/window-private.h b/src/core/window-private.h
+index 00abadac7..87c29fe6d 100644
+--- a/src/core/window-private.h
++++ b/src/core/window-private.h
+@@ -954,5 +954,3 @@ void meta_window_set_target_monitor_from_number (MetaWindow *window,
+                                                  int         number);
+ 
+ void meta_window_notify_ready (MetaWindow *window);
+-
+-gboolean meta_window_is_ready (MetaWindow *window);
+diff --git a/src/meta/window.h b/src/meta/window.h
+index f5b2883b9..9482a67eb 100644
+--- a/src/meta/window.h
++++ b/src/meta/window.h
+@@ -147,6 +147,18 @@ gboolean meta_window_located_on_workspace (MetaWindow    *window,
+ META_EXPORT
+ gboolean meta_window_is_hidden (MetaWindow *window);
+ 
++/**
++ * meta_window_is_ready:
++ * @window: a #MetaWindow
++ *
++ * Returns whether the window has completed its initial configuration and can
++ * safely be manipulated by the window manager.
++ *
++ * Returns: %TRUE if the window is ready, or %FALSE otherwise
++ */
++META_EXPORT
++gboolean meta_window_is_ready (MetaWindow *window);
++
+ META_EXPORT
+ void     meta_window_activate  (MetaWindow *window,guint32 current_time);
+ 
+-- 
+2.55.0
+
