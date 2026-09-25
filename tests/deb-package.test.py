@@ -21,6 +21,7 @@ class PackageLayoutTests(unittest.TestCase):
 
     def test_default_shortcut_command_dependencies_are_declared(self):
         self.assertTrue({"wireplumber", "playerctl", "brightnessctl", "libglib2.0-bin"}.issubset(set(package.SERVICES)))
+        self.assertNotIn("gir1.2-gtk4layershell-1.0", package.SERVICES)
 
     def test_package_version_keeps_gnome_compatibility_and_gnoblin_semver(self):
         self.assertEqual(
