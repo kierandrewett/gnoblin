@@ -24,7 +24,7 @@
 %global colord_version 1.4.5
 %global libei_version 1.3.901
 %global mutter_api_version 51
-%global wayland_protocols_version 1.45
+%global wayland_protocols_version 1.48
 %global wayland_server_version 1.24
 
 %global major_version %%(echo %{version} | cut -d '.' -f1 | cut -d '~' -f 1)
@@ -34,7 +34,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       22.gnoblin%{?dist}
+Release:       23.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -165,6 +165,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-23.gnoblin
+- Match the GNOME 51 Wayland Protocols source floor.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-22.gnoblin
 - Filter private Clutter, Cogl and Mtk typelib requirements.
 

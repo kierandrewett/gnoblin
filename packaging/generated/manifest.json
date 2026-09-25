@@ -42,7 +42,7 @@
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
     "mutterApi": "51",
-    "mutterRpmRelease": "22.gnoblin",
+    "mutterRpmRelease": "23.gnoblin",
     "rpmEpoch": 1
   },
   "requirements": {
@@ -55,7 +55,7 @@
       }
     },
     "gjs": {
-      "minVersion": "1.85.90",
+      "minVersion": "1.87.1",
       "names": {
         "arch": "gjs",
         "deb": "gjs",

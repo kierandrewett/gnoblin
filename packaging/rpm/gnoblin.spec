@@ -16,7 +16,7 @@ Requires:       gnoblin-mutter < 52
 Requires:       gnoblin-session < 52
 Requires:       gnoblin-shell < 52
 Requires:       brightnessctl
-Requires:       gjs >= 1.85.90
+Requires:       gjs >= 1.87.1
 Requires:       glib2 >= 2.86.0
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
@@ -26,7 +26,7 @@ Requires:       playerctl
 Requires:       libwayland-client >= 1.26
 Requires:       wireplumber
 Requires:       xdg-desktop-portal-gnome
-Requires:       gnoblin-mutter = 51.0-22.gnoblin%{?dist}
+Requires:       gnoblin-mutter = 51.0-23.gnoblin%{?dist}
 
 %description
 Installs the complete Gnoblin session while reusing compatible GNOME userspace.

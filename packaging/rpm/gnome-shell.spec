@@ -21,7 +21,7 @@ Name:           gnoblin-shell
 Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        16.gnoblin%{?dist}
+Release:        18.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -57,7 +57,7 @@ Source15:       gnoblin-COPYING
 %define eds_version 3.45.1
 %define gnome_desktop_version 44.0-7
 %define glib2_version 2.86.0
-%define gjs_version 1.85.90
+%define gjs_version 1.87.1
 %define girepository_version 2.86.0
 %define gcr4_version 3.90.0
 %define gtk4_version 4.0.0
@@ -207,6 +207,7 @@ install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
+install -Dm644 %{SOURCE15} %{buildroot}%{_datadir}/licenses/gnoblin-session/COPYING
 mkdir -p %{buildroot}%{_datadir}/icons
 tar -xJf %{SOURCE14} -C %{buildroot}%{_datadir}/icons
 
@@ -241,7 +242,7 @@ desktop-file-validate gnoblin-validation.desktop
 %{_prefix}/
 
 %files -n gnoblin-session
-%license %{SOURCE15}
+%license %{_datadir}/licenses/gnoblin-session/COPYING
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session
@@ -250,6 +251,12 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-18.gnoblin
+- Stage the session package license in the buildroot.
+
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-17.gnoblin
+- Match the GNOME 51 GJS source floor.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-16.gnoblin
 - Filter private GNOME Shell and Mutter typelib requirements.
 

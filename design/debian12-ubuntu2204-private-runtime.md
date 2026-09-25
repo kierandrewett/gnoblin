@@ -37,7 +37,7 @@ The requirements are not guesses from package names. The checked-out Mutter
 Meson files require GTK `>= 4.14`, Glycin `>= 2.0.beta.2`, libei/libeis
 `>= 1.3.901`, libdisplay-info `>= 0.2`, GLib `>= 2.81.1`, and current Wayland
 interfaces. The GNOME Shell Meson files require `gcr-4`, `girepository-2.0`,
-GLib/Gio `>= 2.86`, and GJS `>= 1.85.90`. Repeat this inspection in the
+GLib/Gio `>= 2.86`, and GJS `>= 1.87.1`. Repeat this inspection in the
 release-clean source worktree when source pins change; an arbitrary developer
 submodule checkout is not release evidence.
 

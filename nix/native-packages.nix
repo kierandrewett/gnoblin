@@ -7,7 +7,7 @@ let
   };
   requirements = {
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
-    gjs = requirement "1.85.90" "gjs" "gjs" "gjs";
+    gjs = requirement "1.87.1" "gjs" "gjs" "gjs";
     gnome-session = requirement null "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
       requirement null "gnome-settings-daemon" "gnome-settings-daemon"
@@ -34,7 +34,7 @@ in
     gnoblinVersion = gnoblinRelease.version;
     # Keep the meta package coupled to the private Mutter build that contains
     # the current compositor fixes.  This is an RPM release, not a GNOME ABI.
-    mutterRpmRelease = "22.gnoblin";
+    mutterRpmRelease = "23.gnoblin";
     # Older COPR metadata used 51.0 as the Gnoblin package version.  Preserve
     # a clean public version while making this package sortable as its successor.
     rpmEpoch = 1;

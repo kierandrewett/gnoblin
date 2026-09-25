@@ -17,7 +17,7 @@
 %global libinput_version 1.27.0
 %global pipewire_version 1.2.7
 %global libei_version 1.3.901
-%global wayland_protocols_version 1.45
+%global wayland_protocols_version 1.48
 %global wayland_server_version 1.24
 %global tarball_version %%(echo %{version} | tr '~' '.')
 
