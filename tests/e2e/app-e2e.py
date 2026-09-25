@@ -272,8 +272,41 @@ def shell_drag(start_x: int, start_y: int, end_x: int, end_y: int) -> None:
 
 def app_command(app: dict) -> list[str]:
     if app["source"] == "flathub-popular":
-        return ["flatpak", "run", "--unshare=network", app["launch"]]
+        return [
+            "flatpak",
+            "run",
+            "--socket=wayland",
+            "--socket=x11",
+            "--socket=fallback-x11",
+            app["launch"],
+        ]
     return ["gtk-launch", app["launch"]]
+
+
+def stop_process_group(process: subprocess.Popen, grace_seconds: float = 2.0) -> None:
+    """Stop the app and its sandbox/launcher children before the next case."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return
+
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+
+    if process.poll() is None:
+        process.wait(timeout=2)
 
 
 def app_environment() -> dict[str, str]:
@@ -650,13 +683,7 @@ def run_one_app(
                 process.kill()
             raise
         finally:
-            if process.poll() is None:
-                process.send_signal(signal.SIGTERM)
-                try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=3)
+            stop_process_group(process)
 
 
 def run_inside() -> int:
