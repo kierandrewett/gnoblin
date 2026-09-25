@@ -8,7 +8,7 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | Key                            | Values                                       | Default             | Effect                                                        |
 | ------------------------------ | -------------------------------------------- | ------------------- | ------------------------------------------------------------- |
 | `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"`             | `"click"`           | Selects when pointer or click input changes focus. See below. |
-| `focus_new_windows`            | `"smart"`, `"strict"`                        | `"smart"`           | Selects Mutter's new-window focus policy. See below.          |
+| `focus_new_windows`            | `"smart"`, `"strict"`                        | `"smart"`           | See focus behavior below.                                     |
 | `raise_on_click`               | Boolean                                      | `true`              | Raise a window when clicked.                                  |
 | `auto_raise`                   | Boolean                                      | `false`             | Raise the focused window automatically.                       |
 | `focus_change_on_pointer_rest` | Boolean                                      | `false`             | Change focus when the pointer stops over another window.      |
@@ -42,21 +42,25 @@ for the upstream setting description.
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
 
-Mutter applies `focus_new_windows` when a new window opens. Its standard
-policy has two choices. The [GNOME Shell team's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
+`focus_new_windows` controls when app activation requests can focus a window.
+Mutter's standard policy has two choices. The [GNOME Shell team's
+focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
-- `"smart"` lets an eligible new window take focus if no newer user input has
-  gone to the currently focused window since the app started it. For example,
-  a window opened by the app you are using can take focus.
-- `"strict"` adds a second condition: the new window must be a transient
-  descendant of the focused window, such as a dialog opened by that app.
-  Other new windows stay unfocused.
+- `"smart"` lets applications activate their windows, even if you have
+  interacted with another window since the app opened them. This is Gnoblin's
+  default behavior.
+- `"strict"` enables Mutter's focus-stealing prevention. Activation requests
+  need recent launch or user activity. A newly opened window must also be a
+  transient descendant of the focused window, such as a dialog opened by that
+  app. Requests without valid recent activity leave the window unfocused.
 
-In a Gnoblin session, [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
-bypasses this policy to honor application activation requests. As a result,
-`"smart"` and `"strict"` do not currently change new-window focus in that
-session.
+In a Gnoblin session, `"strict"` makes Mutter use its focus-stealing checks.
+See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
+for this session-specific behavior, or read
+[Mutter's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).
+See the [focus prevention guide](/focus-transfer) for a ready-to-use config
+example.
 
 Workspace IDs must be unique and match
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Gnoblin generates a session-only ID for

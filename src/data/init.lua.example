@@ -18,7 +18,7 @@ gnoblin.configure {
     -- Window focus, placement, workspaces and titlebar actions.
     window_management = {
         focus_mode = "click", -- "click", "sloppy", "mouse"
-        focus_new_windows = "smart", -- "smart", "strict"
+        focus_new_windows = "smart", -- Set to "strict" to prevent focus stealing.
         raise_on_click = true,
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
