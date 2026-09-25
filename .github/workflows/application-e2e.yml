@@ -111,11 +111,6 @@ jobs:
   app-shard:
     needs: build-and-catalog
     runs-on: ubuntu-latest
-    # Flatpak's bubblewrap backend needs nested namespaces and mount operations
-    # inside the Fedora test container on the disposable GitHub-hosted VM.
-    container:
-      image: fedora:44
-      options: --privileged
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -123,22 +118,14 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.build-and-catalog.outputs.shards) }}
     steps:
-      - name: Install Git and desktop runtime dependencies
+      - name: Enable Flatpak user namespaces on the disposable runner
         run: |
-          dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
-            gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon \
-            xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor util-linux
-
-      - name: Verify Flatpak user namespaces
-        run: |
-          useradd --create-home e2e
-          runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
+          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: Checkout test drivers
         uses: actions/checkout@v4
-
-      - name: Start test system D-Bus
-        run: ./tests/start-system-bus.sh
 
       - name: Download Gnoblin build and app catalog
         uses: actions/download-artifact@v4
@@ -148,65 +135,12 @@ jobs:
           # back into that directory so the catalog and prefix paths line up.
           path: ${{ github.workspace }}/e2e-ci-artifacts
 
-      - name: Restore executable Gnoblin prefix
-        run: |
-          tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
-            --no-same-owner -C "$GITHUB_WORKSPACE"
-          test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
-
-      - name: Verify isolated session D-Bus services
+      - name: Run the real Fedora app shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          GNOBLIN_PREFIX: ${{ github.workspace }}/install
         run: |
-          python3 scripts/devkit_dbus.py \
-            "$RUNNER_TEMP/gnoblin-dbus-preflight-$SHARD_INDEX" "$GITHUB_WORKSPACE"
-
-      - name: Add Flathub and select this shard
-        env:
-          SHARD_INDEX: ${{ matrix.shard }}
-          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
-        run: |
-          flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          mkdir -p "$ARTIFACT_DIR"
-          python3 tests/e2e/app-catalog.py \
-            --catalog-in "$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
-            --shard-index "$SHARD_INDEX" --shard-count 40 \
-            --shard-output "$ARTIFACT_DIR/shard.json"
-
-      - name: Install the shard's RPM and Flatpak applications
-        env:
-          SHARD_INDEX: ${{ matrix.shard }}
-          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
-        run: |
-          python3 tests/e2e/install-shard.py \
-            "$ARTIFACT_DIR/shard.json" "$ARTIFACT_DIR/installation-report.json"
-
-      - name: Run real Gnoblin Wayland app sessions
-        env:
-          SHARD_INDEX: ${{ matrix.shard }}
-          ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
-        run: |
-          e2e_uid="$(id -u e2e)"
-          extra_monitor=""
-          if ((SHARD_INDEX % 2 == 0)); then
-            extra_monitor="1024x768"
-          fi
-          install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
-          chown -R e2e:e2e "$ARTIFACT_DIR"
-          runuser -u e2e -- test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
-          runuser -u e2e -- env \
-            XDG_RUNTIME_DIR="/run/user/$e2e_uid" \
-            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
-            GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
-            GNOBLIN_E2E_PREPARED_SHARD="$ARTIFACT_DIR/shard.json" \
-            GNOBLIN_E2E_SHARD_INDEX="$SHARD_INDEX" \
-            GNOBLIN_E2E_SHARD_COUNT=40 \
-            GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor" \
-            GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json" \
-            GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
-            GNOBLIN_E2E_TIMEOUT=3300 \
-            python3 tests/e2e/app-e2e.py
+          ARTIFACT_DIR="$RUNNER_TEMP/e2e-shard-$SHARD_INDEX" \
+            bash tests/e2e/run-app-shard-container.sh
 
       - name: Upload events, screenshots, install results and shell logs
         if: always()
