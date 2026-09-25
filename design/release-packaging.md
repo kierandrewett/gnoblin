@@ -48,9 +48,10 @@ release pipeline or COPR publication changes.
   spec and an actual package/coexistence test. Arch remains a metadata-only
   unusable package. Keep these targets unsupported until their specific
   compatibility work and gates exist.
-- Fedora workflow run `36139101542` adds the first RPM-side stock-GNOME
-  install/coexist/remove gate. Check its final status before treating that
-  test as passing; it does not prove graphical login or session selection.
+- Fedora workflow run `36139101542` passed the first RPM-side stock-GNOME
+  install/coexist/remove gate, along with Fedora 43/44/45 builds and the
+  existing Arch source-build/dependency checks. The RPM gate does not prove
+  graphical login or session selection.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
