@@ -221,18 +221,6 @@ Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
-## Shell completion
-
-`completion` prints setup for Bash, Zsh or Fish. Add it to the matching shell
-startup file, then open a new shell:
-
-```sh
-gnoblinctl completion bash >> ~/.bashrc
-gnoblinctl completion zsh >> ~/.zshrc
-mkdir -p ~/.config/fish/completions
-gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
-```
-
 ## Output for scripts
 
 ```sh
@@ -354,7 +342,6 @@ see its exact values.
 | 1         | Runtime failure; error on stderr |
 | 2         | Invalid arguments                |
 
-`--timeout SECONDS` accepts 1–60; default is 5.
 Uncertain actions are not retried automatically.
 
 A reply with `pending: true` means accepted, not finished.
@@ -370,6 +357,7 @@ eval "$(gnoblinctl completion bash)"
 eval "$(gnoblinctl completion zsh)"
 
 # Fish
+mkdir -p ~/.config/fish/completions
 gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
 ```
 
@@ -379,8 +367,8 @@ The CLI needs Python 3 and `busctl`.
 Settings use D-Bus; window commands use the
 [compositor bridge](compositor-bridge.md).
 
-The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
-Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
+On a compositor connection error, confirm Gnoblin is running and the selected
+socket belongs to this session.
 
 The bridge is built into current Gnoblin source builds, so `script list` does
 not show it. Package integrations that add namespaced operations do appear in
