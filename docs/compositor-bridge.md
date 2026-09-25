@@ -356,8 +356,8 @@ normal finalisation path to save output. These requests do not grant access.
 
 ## Coordinate shell processes
 
-`ui-session` shares named state between UI processes. Names match
-`^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
+`ui-session` shares advisory state and owner-directed commands between UI
+processes. Names match `^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
 
 | Action    | Fields                 | Event                                       |
 | --------- | ---------------------- | ------------------------------------------- |
@@ -365,10 +365,36 @@ normal finalisation path to save output. These requests do not grant access.
 | `state`   | `name`, `state` object | Publishes `ui-state`                        |
 | `command` | `name`, `command`      | Sends `ui-command` to the owner             |
 
-Use the envelope `{"op":"ui-session","action":"watch"}`. Owner disconnect
-publishes `state: null`. A visible layer can include `surface` (its namespace),
-`companions` (up to 16 namespaces), `revealCompanions: true`, and
-`companionsAbove: true` in its state to coordinate panel stacking.
+`watch` immediately sends each current owner state, then sends updates. A
+`state` request claims or updates a name and broadcasts its object to watchers.
+A second client cannot claim that name. An owner disconnect removes it and
+broadcasts `state: null`; commands are not queued for a later owner.
+
+One client watches; another owns `search` and publishes its state. A watcher
+can then send a command to that owner. Each request goes on the named client's
+own bridge connection:
+
+| Client  | Request                                                                               |
+| ------- | ------------------------------------------------------------------------------------- |
+| Watcher | `{"op":"ui-session","action":"watch"}`                                                |
+| Owner   | `{"op":"ui-session","action":"state","name":"search","state":{"visible":true}}`       |
+| Watcher | `{"op":"ui-session","action":"command","name":"search","command":{"action":"close"}}` |
+
+The owner defines the command object's schema. Gnoblin forwards it to the
+current owner as `ui-command`; if there is no owner, the command is ignored.
+State is also owner-defined except for these optional stacking fields:
+
+| Field              | Effect                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| `visible`          | `true` requests the `surface` and its companions.                                       |
+| `surface`          | Layer-shell namespace of the owning surface.                                            |
+| `companions`       | Companion layer-shell namespaces; Gnoblin considers at most the first 16 string values. |
+| `revealCompanions` | `true` requests companions even when `visible` is false.                                |
+| `companionsAbove`  | `true` places companions above the owning surface; otherwise they go below it.          |
+
+The owner must provide a string `surface` and an array `companions` for the
+stacking request to apply. Bingux uses this to coordinate separate panels;
+other shells can choose their own state and command objects.
 
 | Operation                | Fields                                                                                    | Limit or effect                                                                                                                            |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
