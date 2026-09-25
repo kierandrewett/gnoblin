@@ -121,19 +121,34 @@
               ];
             };
             hasGcc16Stdenv = pkgs ? gcc16Stdenv;
-            packageEvaluation =
-              if hasGcc16Stdenv then builtins.tryEval gnoblin.drvPath else { success = false; };
+            hasLibglycin = pkgs ? libglycin;
+            packageEvaluation = if hasLibglycin then builtins.tryEval gnoblin.drvPath else { success = false; };
             moduleEvaluation =
-              if hasGcc16Stdenv then
+              if hasLibglycin then
                 builtins.tryEval (
                   toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)
                 )
               else
                 { success = false; };
+            buildBlockers =
+              nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
+              ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
+              ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.85.90") "gjs-below-1.85.90"
+              ++ nixpkgs.lib.optional (
+                !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
+              ) "wayland-below-1.26"
+              ++ nixpkgs.lib.optional (
+                !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
+              ) "wayland-protocols-below-1.48"
+              ++ nixpkgs.lib.optional (
+                !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
+              ) "libinput-below-1.30";
           in
           {
             inherit (channel) release;
-            blocker = if hasGcc16Stdenv then null else "missing-gcc16-stdenv";
+            compiler = if hasGcc16Stdenv then "gcc16Stdenv" else "stdenv";
+            evaluationBlocker = if hasLibglycin then null else "missing-libglycin";
+            inherit buildBlockers;
             package.evaluates = packageEvaluation.success;
             module.evaluates = moduleEvaluation.success;
           }
