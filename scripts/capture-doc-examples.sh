@@ -54,6 +54,7 @@ unset GNOBLIN_CONFIG
 export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
+export XDG_CONFIG_DIRS=/etc/xdg
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
 export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
@@ -69,6 +70,9 @@ if [ -S "$host_runtime/pipewire-0" ]; then
 fi
 
 source "$root/src/tools/gnoblin-env.sh"
+# Keep host-specific app and Gnoblin integration directories out of the scene.
+# gnoblin_env_apply prepends this build's share directory to /usr/share.
+export XDG_DATA_DIRS=/usr/share
 gnoblin_env_apply "$GNOBLIN_PREFIX"
 expected_version="$(python3 "$root/scripts/gnome-versions.py" get gnome-shell version)"
 installed_version="$("$GNOBLIN_PREFIX/bin/gnome-shell" --version)"
@@ -154,6 +158,7 @@ cat >"$XDG_CONFIG_HOME/fuzzel/fuzzel.ini" <<'FUZZEL'
 [main]
 font=monospace:size=13
 width=48
+lines=3
 horizontal-pad=22
 vertical-pad=16
 inner-pad=12
@@ -209,7 +214,7 @@ case "$example" in
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="waybar & mako & sleep 2; fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url' & sleep 5; fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
@@ -284,7 +289,7 @@ fi
 pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
 if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
     case "$example" in
-        waybar-launcher) pointer_position="640 240" ;;
+        waybar-launcher) pointer_position="640 360" ;;
         waybar-settings) pointer_position="900 450" ;;
         quickshell-files | bingux-files) pointer_position="800 400" ;;
         *) pointer_position="900 700" ;;
