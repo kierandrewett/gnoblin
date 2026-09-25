@@ -13,7 +13,7 @@ gnoblin.configure {
 }
 ```
 
-![Firefox showing GNOME Help below Waybar in a fresh Gnoblin profile](../images/gnoblin-waybar-firefox.png)
+![Firefox showing GNOME's website below Waybar in a fresh Gnoblin profile](../images/gnoblin-waybar-firefox.png)
 
 _Waybar and Mako are separate layer-shell clients running beside Firefox._
 
@@ -21,9 +21,18 @@ Install the program first. Gnoblin runs the command directly, without shell
 expansion; use one string for each argument. If you need pipes or redirection,
 explicitly run a shell.
 
-A new entry starts when the config reloads. The optional `when` field defaults
-to `"on_login"`, currently the only supported trigger. A command that was
-already launched uses its updated arguments at the next login.
+| Setting   | Values                                | Default and effect                                                                             |
+| --------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `when`    | `"on_login"`                          | Starts once per login; this is the only supported trigger.                                     |
+| `restart` | `"never"`, `"on_failure"`, `"always"` | `"never"`; retry nonzero exits or signals with `on_failure`, any exit with `always`. Wait 2 s. |
+
+A new name starts when the config reloads if you are already logged in;
+otherwise it starts at the next login. See the
+[autostart reference](/config/configure/autostart) for launch failures.
+
+Changing an entry does not stop a running process. If its active restart policy
+retries after it exits, the next launch uses the current config; otherwise the
+new command starts at the next login.
 
 Do not add a program already started by your chosen shell. Bingux is one
 separate shell project that starts its own services.
