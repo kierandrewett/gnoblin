@@ -372,7 +372,7 @@
       "adapter": "rpm-opensuse",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/verify.yml"],
+      "ci": [".github/workflows/opensuse-rpm.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
