@@ -579,13 +579,38 @@ def run_inside() -> int:
             return
         if op == "drag_resize":
             state = prepare_frame(window_id)
+            if state["maximized"]:
+                eval_shell(f"{window_expr}.unmaximize();return true;")
+                wait_for(
+                    lambda: current if (current := state_for(window_id)) and not current["maximized"] else None,
+                    f"window {window_id} to leave maximized state before resizing",
+                )
+                state = wait_frame(window_id, 36)
             x, y = state["x"] + state["width"] - 2, state["y"] + state["height"] - 2
             send_pointer("move", x, y)
-            eval_shell(
-                "(()=>{const C=imports.gi.Clutter,G=imports.gi.GLib,p=global.lifecycleFuzzPointer;"
-                "p.notify_button(G.get_monotonic_time(),1,C.ButtonState.PRESSED);"
-                f"p.notify_absolute_motion(G.get_monotonic_time(),{x + 18},{y + 16});"
-                "p.notify_button(G.get_monotonic_time(),1,C.ButtonState.RELEASED);return true;})()"
+            wait_for(
+                lambda: frame_interaction(window_id, "hover") == 8,
+                f"southeast resize hover on window {window_id}",
+            )
+            send_pointer("press", x, y)
+            wait_for(
+                lambda: frame_interaction(window_id, "pressed") == 8,
+                f"southeast resize press on window {window_id}",
+            )
+            time.sleep(0.05)
+            send_pointer("move", x + 18, y + 16)
+            time.sleep(0.05)
+            send_pointer("release", x + 18, y + 16)
+            expected = (state["width"] + 18, state["height"] + 16)
+            wait_for(
+                lambda: (
+                    current
+                    if (current := state_for(window_id))
+                    and (current["width"], current["height"]) == expected
+                    and frame_interaction(window_id, "pressed") == 0
+                    else None
+                ),
+                f"southeast resize completion on window {window_id}",
             )
             return
 
