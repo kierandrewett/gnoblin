@@ -46,26 +46,26 @@ closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op`                             | Required fields                                 | Reply or stream                                     |
-| -------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
-| `command`                        | `id`, `command`; command-specific fields        | One `reply` with matching `id`, or `error`          |
-| `windows`                        | None                                            | Current `windows` snapshot, then changes            |
-| `privacy`                        | None                                            | Current `privacy` state, then changes               |
-| `status`                         | None                                            | One `status` with binding IDs and active session ID |
-| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger` | `bound`, then activation and input events           |
-| `activate`                       | `window`                                        | Focus a window; no success reply                    |
-| `preview`                        | `window`, `width`, `height`                     | One `preview` event                                 |
-| `shortcut-input`                 | `name`, `state`                                 | Input handoff; no success reply                     |
-| `ui-session`                     | `action`; other fields depend on action         | `ui-state` or `ui-command` events                   |
-| `layer-animation-policy`         | `namespace`                                     | One policy event for that layer namespace           |
-| `blur-region`                    | `namespace`, `screen`, `region`                 | No success reply                                    |
-| `window-drag`                    | None                                            | Current `window-drag` state, then changes           |
-| `snap-offer`                     | `serial`, `regions`                             | No success reply; may later get `snap-completed`    |
-| `snap-context`                   | None                                            | One `snap-context` event                            |
-| `snap-window`                    | `window`, `monitor`, `target`                   | Applies a region; no success reply                  |
-| `stop-sharing`, `stop-recording` | None                                            | Requests stop; no success reply                     |
-| `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
-| `clear`                          | None                                            | Removes this client's bindings and session          |
+| `op`                             | Required fields                                                          | Reply or stream                                     |
+| -------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields                                 | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                                                     | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                                                     | Current `privacy` state, then changes               |
+| `status`                         | None                                                                     | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger`, `modal`, `captureInput` | `bound`, then activation and input events           |
+| `activate`                       | `window`                                                                 | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`                                              | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                                                          | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action                                  | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                                                              | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`                                          | No success reply                                    |
+| `window-drag`                    | None                                                                     | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                                                      | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                                                     | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`                                            | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                                                     | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
+| `clear`                          | None                                                                     | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
 `workspace-switch`, `workspace-next`, `workspace-previous`,
@@ -218,8 +218,19 @@ The server acknowledges:
 | `4`        | Hold Control   |
 | `67108864` | Hold Super     |
 
-For a held shortcut, Gnoblin captures key and pointer events before your popup
-becomes visible. For example, an Alt-held switcher can finish when Alt is released.
+The optional `modal` field defaults to `true`. A modal held shortcut captures
+key and pointer events before the popup appears; an Alt-held switcher can, for
+example, navigate and finish when Alt is released. Set `modal: false` for a
+passive modifier hold: Gnoblin leaves focus and input delivery with the current
+application, and reports when the modifier is released. This is useful for a
+shell that changes state while a modifier is held without opening an input UI.
+For example, this binding reports the `<Alt>F8` activation and later the Alt
+release while the focused application keeps receiving input:
+
+```json
+{ "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }
+```
+
 Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
 
 `activated` includes id, first, modifiers and time.
