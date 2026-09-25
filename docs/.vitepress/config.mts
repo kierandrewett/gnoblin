@@ -117,6 +117,7 @@ export default defineConfig({
                     { text: "Request a Gnoblin titlebar", link: "/recipes/request-a-titlebar" },
                     { text: "Combine window rules", link: "/recipes/combine-window-rules" },
                     { text: "Split a config into files", link: "/recipes/split-config-into-files" },
+                    { text: "Set up a writing workspace", link: "/recipes/writing-workspace" },
                 ],
             },
             {
