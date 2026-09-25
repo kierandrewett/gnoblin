@@ -197,10 +197,11 @@ if [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
         -ex "set debuginfod enabled off"
         -ex "set pagination off"
         -ex "set breakpoint pending on"
-        -ex "break g_log"
-        -ex 'condition 1 ($rsi & 8) != 0'
+        -ex "break g_variant_unref"
+        -ex 'condition 1 *(int*)($rdi + 52) == 0'
         -ex run
-        -ex 'x/s $rdx'
+        -ex 'printf "\nGVariant unref with zero refcount: %p\n", $rdi'
+        -ex 'x/8gx $rdi'
         -ex "bt 30"
         --args "${shell_command[@]}")
 fi

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       trace_first_critical:
-        description: Stop in GDB at the first GLib critical (diagnostic run)
+        description: Stop in GDB before a zero-refcount GVariant unref (diagnostic run)
         required: false
         default: false
         type: boolean
