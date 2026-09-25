@@ -1,33 +1,22 @@
-# Application activation
+# Prevent unsolicited application focus
 
-In Gnoblin, activating an application raises its window, restores it if minimised,
-switches workspace and transfers keyboard focus.
+Gnoblin honors application activation requests by default. To enable Mutter's
+focus-stealing prevention, set `focus_new_windows` to `"strict"`:
 
-A request can still bring the app to the front even if its timestamp is stale or
-its Wayland activation token is not tied to a recent key or pointer event.
-Gnoblin does not limit those requests to marking the app as needing attention. Explicit no-focus hints and restrictions on
-special windows still apply.
-
-This policy is native Mutter code and only applies in Gnoblin mode.
-Stock GNOME keeps upstream focus prevention. Native changes need a new session.
-
-## Notification actions
-
-Bingux activates the matching app window before invoking a notification's default
-action. The app can then select a more specific window.
-
-## Test
-
-After building the local prefix:
-
-```sh
-GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
-EXPECT_FOCUS_TRANSFER=0 GNOBLIN_TEST_CLIENT="$PWD/tests/test-focus-transfer.py" scripts/run-gnome-shell.sh
+```lua
+gnoblin.configure {
+    window_management = {
+        focus_new_windows = "strict",
+    },
+}
 ```
 
-The positive run checks stale timestamps and token-without-serial activation
-using real keyboard input. The negative run changes the policy selector; it is
-not a complete stock GNOME test.
+With `"strict"`, Mutter applies its focus-stealing checks to new windows and
+application activation requests. A request needs recent launch or activation
+activity; otherwise, the window stays unfocused. A transient dialog opened by
+the focused window can still receive focus.
 
-Dependencies: Foot, Python, GTK 3 development files, C compiler,
-`wayland-scanner` and `wayland-protocols`.
+Changes apply on configuration reload. Set `focus_new_windows` to `"smart"` to
+restore Gnoblin's default behavior. See the
+[`gnoblin.configure.window_management` reference](/config/configure/window_management#focus-behavior)
+for focus modes and the [GNOME Shell team's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).

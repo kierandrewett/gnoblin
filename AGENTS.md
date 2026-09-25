@@ -70,6 +70,9 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   state its accepted values and defaults where known. Include a short example
   and link to an authoritative reference when the option set is too broad to
   list. Do not leave users guessing what values they can supply.
+- For every enum, explain what each choice does and when it applies. Do not
+  list variant names without defining their differences. Call out any
+  platform, version, or session context that changes or disables an option.
 - Use screenshots to show the actual interface or outcome. Capture a clean,
   representative product state; screenshots should look like documentation,
   not smoke-test output. Do not put terminal text, status labels, or narration

@@ -56,14 +56,14 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                                                    | Missing coverage                                                                                                              |
-| -------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Fedora   | COPR; Fedora 43, 44, 45                                                         | EL adapter; complete release install/coexistence and graphical-session proof                                                  |
-| Debian   | Signed APT archive; Debian 13                                                   | Debian 11/12 host runtime and package compatibility                                                                           |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                      | Ubuntu 22.04 host runtime compatibility                                                                                       |
-| Arch     | Self-contained PKGBUILD, deterministic source bundle, build/install/remove gate | First co-install run found a schema staging conflict; fixed and rerunning; graphical-session proof and repository publication |
-| openSUSE | Tumbleweed RPM specs, clean-image resolver and private package-chain build      | Install/coexistence retry after private typelib dependency fix; OBS publication and session proof                             |
-| NixOS    | Pinned package/module paths for 25.05, 25.11, 26.05 and unstable                | 26.05 private Wayland/Mutter slice builds; full Shell/session and coexistence proof; older stable channels remain blocked     |
+| Family   | Present path                                                                          | Missing coverage                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Fedora   | COPR; Fedora 43, 44, 45                                                               | EL adapter; complete release install/coexistence and graphical-session proof                                                    |
+| Debian   | Signed APT archive; Debian 13                                                         | Debian 11/12 host runtime and package compatibility                                                                             |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                            | Ubuntu 22.04 host runtime compatibility                                                                                         |
+| Arch     | Self-contained PKGBUILD, deterministic source bundle, build/install/remove gate       | Exact-main build, stock-GNOME co-install and removal passed; graphical-session proof and repository publication                 |
+| openSUSE | Tumbleweed RPM specs, private package-chain build and stock-GNOME install/remove gate | Exact-main RPM build, isolation, co-install and removal passed; graphical-session proof and OBS publication remain              |
+| NixOS    | Pinned package/module paths for 25.05, 25.11, 26.05 and unstable                      | 26.05 full package builds with private Wayland; install/session/coexistence proof missing; older stable channels remain blocked |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical
@@ -73,11 +73,12 @@ corrects the generator and regenerated outputs.
 The platform package models remain different. Debian bundles the runtime in
 one package; RPM divides it into Gnoblin-named runtime packages; Arch now has a
 self-contained single-package recipe with a deterministic release source
-bundle. The release workflow now gates publication on `makepkg`, stock-GNOME
-co-install, and removal checks, but no release run has exercised that gate yet.
-The RPM and Debian layouts keep files under `/usr/lib/gnoblin` and do not
-replace GNOME, but this must be demonstrated by installing and removing the
-complete package set on each target with stock GNOME already installed.
+bundle. The exact-main Arch release-style gate passed `makepkg`, stock-GNOME
+co-install, and removal in run `36157414890`. Tumbleweed passed its native RPM
+chain, package-isolation, co-install, and removal checks in run `36158322082`.
+Neither result proves graphical session login or session switching. Other RPM
+and Debian layouts keep files under `/usr/lib/gnoblin` and do not replace
+GNOME; each target still needs its own clean install/removal evidence.
 
 Gnoblin pins GNOME 51 and currently requires host GLib 2.86, GJS 1.87.1,
 Wayland 1.26, Wayland Protocols 1.48, libinput 1.30, and PipeWire 1.4. Fedora

@@ -3,6 +3,10 @@
 For user installation, see [Install Gnoblin](installation.md).
 This page is for release maintainers.
 
+The public [platform support](platform-support.md) page distinguishes package
+candidates from fully supported session installations. Do not describe a target
+as supported until its graphical-session gate has passed.
+
 ## Package layout
 
 Gnoblin must install alongside GNOME.
@@ -31,11 +35,11 @@ Fedora's COPR packages use `gnoblin-session` as the entry point.
 Debian and Ubuntu use the `gnoblin` package from the signed
 [Gnoblin APT archive](install-debian.md). There is no pacman repository.
 
-## Build Debian and Ubuntu packages
+## Build Debian and Ubuntu package candidates
 
-The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
-Build separately in each distribution's container; do not reuse a newer
-distribution's binary package on a different release.
+Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS are package candidates. Build
+separately in each distribution's container; do not reuse a newer distribution's
+binary package on a different release.
 
 Follow the [container build instructions](https://github.com/kierandrewett/gnoblin/blob/main/packaging/deb/README.md).
 The builder compiles the required newer libraries into `/usr/lib/gnoblin/deps`
@@ -44,8 +48,8 @@ No Nix installation is required.
 
 The package tests install stock GNOME first, then exercise Gnoblin's installed
 CLI and compositor in a headless session. They also check removal and verify
-that GNOME's binary is unchanged. A real login test remains part of release
-verification.
+that GNOME's binary is unchanged. They establish a package candidate, not a
+supported session installation. A real login test remains required.
 
 ## Prepare Fedora source RPMs
 
@@ -116,10 +120,11 @@ configuration. Configure it once before the first automated release:
 gh secret set COPR_CONFIG < ~/.config/copr
 ```
 
-Debian and Ubuntu packages are added to the signed APT archive after the GitHub
-release; Fedora users receive the resulting COPR update through normal `dnf`
-updates. Check the completed release workflow before telling users a release is
-available.
+Debian and Ubuntu package candidates are added to the signed APT archive after
+the GitHub release; Fedora users receive the resulting COPR update through
+normal `dnf` updates. Check the completed release workflow before telling users
+a package candidate is available. Do not claim graphical-session support until
+the target's login gate passes.
 
 ## Upgrade the GNOME base
 

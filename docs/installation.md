@@ -1,19 +1,26 @@
 # Install Gnoblin
 
-Gnoblin manages your windows. A separate desktop shell provides the
-bar, dock and launcher. Install both before your first login.
+Gnoblin manages your windows. A separate desktop shell provides the bar, dock
+and launcher. Install both before your first login.
+
+No distribution has completed the full graphical-session support gate. Read
+[platform support](platform-support.md) before choosing a package path. Package
+candidates have passed build, installation, GNOME coexistence and removal
+checks, but still need a verified graphical login.
 
 ## Choose your system
 
-| System          | Install method                                    |
-| --------------- | ------------------------------------------------- |
-| Fedora          | [Install from COPR](install-fedora.md)            |
-| NixOS           | [Add the NixOS module](install-nixos.md)          |
-| Arch / CachyOS  | [Build from source](install-source.md)            |
-| Debian / Ubuntu | [Install the official package](install-debian.md) |
-| openSUSE        | [Build from source](install-source.md)            |
+| System                            | Test path                                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Fedora 44                         | [COPR package candidate](install-fedora.md)                                                      |
+| Debian 13, Ubuntu 24.04 and 26.04 | [APT package candidates](install-debian.md)                                                      |
+| Arch / CachyOS                    | [Build the PKGBUILD](https://github.com/kierandrewett/gnoblin/blob/main/packaging/arch/PKGBUILD) |
+| openSUSE Tumbleweed               | [Build the RPM](https://github.com/kierandrewett/gnoblin/blob/main/packaging/rpm/README.md)      |
+| NixOS 26.05                       | [Experimental package and module](install-nixos.md)                                              |
+| Other releases                    | [Build from source](install-source.md)                                                           |
 
-Gnoblin installs alongside GNOME. Your existing GNOME session remains available.
+The candidate package checks show GNOME can coexist with Gnoblin on the listed
+targets. Keep an existing GNOME or other session available while testing.
 
 ## After installing
 

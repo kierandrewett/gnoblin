@@ -764,9 +764,25 @@ export class Component {
                 this._mutterEvents = new MutterEventForwarder(this._config);
             },
         );
+        this._mutterEvents = new MutterEventForwarder(this._config);
         activeConfig = this._config;
         this._config.start();
-        this._mutterEvents = new MutterEventForwarder(this._config);
+        // GNOME exposes the desktop's preferred color scheme through this
+        // interface setting. GTK follows it automatically; Gnoblin also
+        // reports changes to Lua configs so shell authors and opt-in apps can
+        // adjust their own appearance without reloading the session.
+        this._interfaceSettings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" });
+        if (this._interfaceSettings.settings_schema.has_key("color-scheme")) {
+            const dispatchColorScheme = () =>
+                this._config?.dispatchEvent("gnome.interface.color-scheme-changed", {
+                    color_scheme: this._interfaceSettings.get_string("color-scheme"),
+                });
+            this._interfaceColorSchemeId = this._interfaceSettings.connect(
+                "changed::color-scheme",
+                dispatchColorScheme,
+            );
+            dispatchColorScheme();
+        }
         this._configFocusId = global.display.connect("notify::focus-window", () => {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
             this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
@@ -919,6 +935,10 @@ export class Component {
         this._shortcuts = null;
         this._windowRules?.destroy();
         this._windowRules = null;
+        if (this._interfaceSettings && this._interfaceColorSchemeId)
+            this._interfaceSettings.disconnect(this._interfaceColorSchemeId);
+        this._interfaceSettings = null;
+        this._interfaceColorSchemeId = 0;
         this._config?.destroy();
         this._config = null;
         activeConfig = null;

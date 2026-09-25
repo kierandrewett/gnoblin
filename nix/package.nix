@@ -146,10 +146,14 @@ let
           + addSubproject gvcSrc "gvc"
           + addSubproject libshewSrc "libshew"
           + addSubproject jasmineGjsSrc "jasmine-gjs";
-        preConfigure = ''
-          export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-        ''
-        + (old.preConfigure or "");
+        preConfigure =
+          lib.optionalString (wayland != null) ''
+            export PKG_CONFIG_PATH="${wayland.dev}/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          ''
+          + ''
+            export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          ''
+          + (old.preConfigure or "");
         # Nixpkgs' hook follows its older Shell source and names files removed in
         # 51. Keep the useful fixups, scoped to paths in the pinned release.
         postPatch = ''

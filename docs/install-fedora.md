@@ -1,6 +1,9 @@
 # Fedora
 
-Install Gnoblin from COPR. You do not need to clone or build it.
+Fedora 44 has a COPR package candidate. It passes package build, clean
+installation, stock GNOME coexistence and removal checks, but does not yet have
+a verified graphical Gnoblin login. Keep GNOME or another session available.
+See [platform support](platform-support.md) for the release status.
 
 ## 1. Install Gnoblin
 
@@ -17,10 +20,11 @@ sudo dnf install --refresh gnoblin-session
 [Choose a desktop shell](bring-your-own-shell.md) for your bar and launcher.
 Use a complete shell or combine individual tools.
 
-## 3. Log in
+## 3. Test the session
 
-Log out, select **Gnoblin** from the login screen's session selector, and log in.
-In GDM, select your user first, then use the gear menu.
+Log out, select **Gnoblin** from the login screen's session selector, and test
+whether it reaches a usable desktop. In GDM, select your user first, then use
+the gear menu. Return to GNOME if the session does not start.
 
 Continue with [configuration](/config).
 

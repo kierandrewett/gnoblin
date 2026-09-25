@@ -6,14 +6,17 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | waybar-quickshell-dock | window-effects) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|waybar-quickshell-dock|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
 firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://help.gnome.org/gnome-help/}"
-bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
+bingux_root="${GNOBLIN_DOC_BINGUX_ROOT:-$root/../bingux}"
+bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$bingux_root/shell/bingux}"
+bingux_base_config="${GNOBLIN_DOC_BINGUX_BASE_CONFIG:-$bingux_root/packaging/gnoblin/bingux.lua}"
+bingux_frame_dir="${GNOBLIN_DOC_BINGUX_FRAME_DIR:-$bingux_root/build}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
     exit 1
@@ -48,6 +51,8 @@ cleanup() {
 trap 'cleanup || exit 1' EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
+mkdir -p "$profile/config/dconf"
+printf 'user-db:user\n' >"$profile/dconf.profile"
 ydotoold --socket-path="$ydotool_socket" --socket-perm=0600 >"$profile/ydotoold.log" 2>&1 &
 ydotoold_pid=$!
 
@@ -61,7 +66,9 @@ export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
 export XDG_CONFIG_DIRS=/etc/xdg
+export GSETTINGS_BACKEND=dconf
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
+export DCONF_PROFILE="$profile/dconf.profile"
 export MESA_SHADER_CACHE_DISABLE=true
 export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
@@ -111,11 +118,43 @@ mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
 ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
 ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
 
-cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
+    command -v gnoblin-quickshell >/dev/null || {
+        echo "gnoblin-quickshell is required for this scene" >&2
+        exit 1
+    }
+    [ -d "$bingux_config" ] || {
+        echo "Bingux shell config not found at $bingux_config" >&2
+        exit 1
+    }
+    [ -f "$bingux_base_config" ] || {
+        echo "Bingux's packaged Gnoblin defaults not found at $bingux_base_config" >&2
+        exit 1
+    }
+    if [ -x "$bingux_frame_dir/bingux-frame" ]; then
+        PATH="$bingux_frame_dir:$PATH"
+        export PATH
+    fi
+    command -v bingux-frame >/dev/null || {
+        echo "bingux-frame is required to show Bingux's installed window-frame defaults" >&2
+        exit 1
+    }
+    mkdir -p "$XDG_CONFIG_HOME/gnoblin/conf.d"
+    cp -- "$bingux_base_config" "$XDG_CONFIG_HOME/gnoblin/conf.d/bingux.lua"
+    cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+local gnoblin = require("gnoblin")
+gnoblin.configure {
+    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+}
+gnoblin.load("conf.d/**/*.lua")
+LUA
+else
+    cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
 }
 LUA
+fi
 if [ "$example" = window-effects ]; then
     cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.window_rule {
@@ -198,7 +237,7 @@ selection-text=edf0f7ff
 border=9ccfd8ff
 FUZZEL
 
-if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ]; then
+if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ] || [ "$example" = waybar-quickshell-dock ]; then
     command -v quickshell >/dev/null || {
         echo "quickshell is required for this scene" >&2
         exit 1
@@ -227,6 +266,74 @@ PanelWindow {
         running: true
         repeat: true
         onTriggered: clock.text = Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+    }
+}
+QML
+fi
+if [ "$example" = waybar-quickshell-dock ]; then
+    cat >"$XDG_CONFIG_HOME/quickshell/shell.qml" <<'QML'
+import Quickshell
+import Quickshell.Widgets
+import QtQuick
+
+PanelWindow {
+    anchors { bottom: true; left: true; right: true }
+    margins.bottom: 18
+    implicitHeight: 88
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+
+    Rectangle {
+        anchors.centerIn: parent
+        width: 280
+        height: 72
+        radius: 24
+        color: "#e8171b27"
+        border.color: "#657080"
+        border.width: 1
+
+        Row {
+            anchors.centerIn: parent
+            spacing: 18
+
+            Repeater {
+                model: [
+                    {icon: "org.gnome.Nautilus", command: ["nautilus"], running: true},
+                    {icon: "firefox", command: ["firefox"], running: false},
+                    {icon: "utilities-terminal", command: ["foot"], running: false},
+                    {icon: "org.gnome.Settings", command: ["gnome-control-center"], running: false}
+                ]
+
+                delegate: Item {
+                    required property var modelData
+                    width: 42
+                    height: 50
+
+                    IconImage {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 40
+                        height: 40
+                        source: Quickshell.iconPath(modelData.icon)
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 5
+                        height: 5
+                        radius: 3
+                        color: "#9ccfd8"
+                        visible: modelData.running
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Quickshell.execDetached(modelData.command)
+                    }
+                }
+            }
+        }
     }
 }
 QML
@@ -280,10 +387,14 @@ case "$example" in
         capture_path="$output_dir/gnoblin-quickshell-files.png"
         app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
         ;;
+    waybar-quickshell-dock)
+        capture_path="$output_dir/gnoblin-waybar-quickshell-dock.png"
+        app_command="waybar & mako & sleep 2; quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
+        ;;
 esac
 
 case "$example" in
-    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files) ;;
+    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files | waybar-quickshell-dock) ;;
     *)
         command -v firefox >/dev/null || {
             echo "firefox is required for this scene" >&2
@@ -315,14 +426,6 @@ if [ "$example" = waybar-mako-notification ]; then
     }
 fi
 if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
-    command -v gnoblin-quickshell >/dev/null || {
-        echo "gnoblin-quickshell is required for this scene" >&2
-        exit 1
-    }
-    [ -d "$bingux_config" ] || {
-        echo "Bingux shell config not found at $bingux_config" >&2
-        exit 1
-    }
     mkdir -p "$XDG_CONFIG_HOME/bingux"
     cat >"$XDG_CONFIG_HOME/bingux/settings.json" <<'JSON'
 {
@@ -344,12 +447,13 @@ if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
         waybar-files) pointer_position="1000 560" ;;
         bingux-firefox) pointer_position="1120 650" ;;
         quickshell-files | bingux-files) pointer_position="800 400" ;;
+        waybar-quickshell-dock) pointer_position="790 668" ;;
         waybar-firefox | quickshell-firefox | waybar-mako-notification | window-effects) pointer_position="1100 700" ;;
         *) pointer_position="900 700" ;;
     esac
 fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
-desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
+desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
 bash "$root/scripts/run-gnome-devkit.sh"

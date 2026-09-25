@@ -71,13 +71,60 @@ The next implementation must use an explicit bootstrap graph:
 4. Build private GDK-Pixbuf, Pango, Graphene, GTK 4.14+, and GCR 4 before GJS,
    GNOME Desktop, Mutter, and Shell.
 
-The dependency builder now supports declared dependency ordering and building
-a selected declared subgraph. Its archive extraction also supports the Python
-3.10/3.11 `tarfile` API used by Ubuntu 22.04 and Debian 12 while retaining
-staging path and link containment checks. The production DEB manifest does
-not include the unproven GTK/GCR graph, and the workflow still records both
-targets as blocked. This is deliberately not a package-build or package-
-transaction result.
+The isolated `packaging/deb/compat-bootstrap.json` graph now completes this
+sequence in a disposable Debian 12 image: patchelf, GLib 2.90 with
+introspection disabled, GObject Introspection 1.80.1, then GLib 2.90 with
+introspection enabled. Both GNOME source checksums were verified against the
+upstream checksum files. The build-only scanner lives in the sibling
+`deps.build-tools` prefix; the runtime prefix contains `girepository-2.0.pc`
+and private libraries with an RPATH to its own `lib64`, and does not contain
+`g-ir-scanner`. The final GLib build passed its private-interface check.
+
+The disposable image needed `python-is-python3`, `python3-dev`, and `flex`
+for the scanner bootstrap. This is only a source-closure result on Debian 12:
+the production DEB manifest and workflow are unchanged, and neither GTK/GCR,
+Mutter/Shell, package transactions, Ubuntu 22.04, nor graphical sessions have
+been validated. The builder still supports declared dependency ordering and
+selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
+retaining staging-path and link-containment checks.
+
+The next clean-image pass installed the normal host build prerequisite
+`shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then required `glycin-2`; Glycin
+2.0.0 declares `rust-version = "1.85"`, while Debian 12 provides Rust 1.63.0.
+Before adding a private Rust toolchain, an isolated alternative was tested:
+GDK-Pixbuf 2.42.12 configured, compiled, and installed against private GLib
+2.90 and the build-only 1.80 scanner. Its upstream checksum is
+`b9505b3445b9a7e48ced34760c3bcb73e966df3ac94c95a148cb669ab748e3c7`.
+
+GTK 4.14.5's pinned Meson requirement is `gdk-pixbuf-2.0 >= 2.30.0`. Its
+clean-image setup found the installed private GDK-Pixbuf 2.42.12, after first
+resolving private GLib 2.90. The setup then stopped later at optional TIFF,
+which is unrelated to the selected GDK-Pixbuf API. This makes the older
+GDK-Pixbuf source the lower-risk route for this experimental graph: it avoids
+Glycin and the Rust 1.85 bootstrap without lowering GTK or Mutter floors.
+It does not validate the complete GTK/Mutter/Shell runtime; GTK, GCR,
+Mutter/Shell, and all package/session gates remain required.
+
+The clean-image path now passes the complete seven-recipe experimental graph
+through `scripts/build-private-deps.py --only gcr4`: patchelf, the two GLib
+stages and build-only scanner, GDK-Pixbuf, GTK, then GCR. All GTK and GCR
+sources are checksum-pinned. GTK's main shared library compiles and installs
+with Wayland enabled and X11, Vulkan, GStreamer, docs, tests and introspection
+disabled. The builder's private-interface checks accept
+`girepository-2.0`, `gdk-pixbuf-2.0`, `gtk4`, and `gcr-4` at versions 2.90.0,
+2.42.12, 4.14.5 and 4.4.0.1. The scanner remains in `deps-runner.build-tools`,
+outside the runtime prefix; both GTK and GCR ELF files carry an RPATH to the
+private `lib64`. GTK loads private GLib/GObject and GDK-Pixbuf, with host Pango
+1.50.12 and Graphene 1.10.8; GCR loads private GLib/GObject/Gck and host
+libgcrypt/p11-kit. No newer Pango or Graphene bootstrap is needed on Debian 12.
+
+The Wayland build needed normal host development packages for Cairo, Pango,
+TIFF, Epoxy, XKBCommon, Graphene, Wayland/protocols, DRM, `gnupg`,
+`libgcrypt20-dev`, `libp11-kit-dev`, `libsecret-1-dev`, and `openssh-client`.
+GCR was built with introspection, Vala and documentation disabled, so its
+runtime typelib path remains untested. The entire run is still only a private
+dependency build: Mutter/Shell, package transactions, Ubuntu 22.04, and
+graphical sessions have not been tested.
 
 ## Boundary: what can be private
 
