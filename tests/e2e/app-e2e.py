@@ -194,9 +194,11 @@ def window_state(sequence: int) -> dict | None:
     expression = window_expression(sequence)
     return eval_shell(
         f"(()=>{{const w={expression};if(!w)return null;const r=w.get_frame_rect();"
+        f"const a=global.get_window_actors().find(a=>a.meta_window===w);"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),"
         "type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
         "monitor:w.get_monitor(),"
+        "ready:typeof w.is_ready==='function'?w.is_ready():null,mapped:a?.is_mapped()??false,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
         "maximized:w.maximized_horizontally&&w.maximized_vertically,"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
@@ -314,7 +316,12 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir:
         try:
 
             def app_windows() -> list[dict]:
-                return [window for window in shell_windows() if window["sequence"] not in baseline and window["title"]]
+                candidates = [
+                    window for window in shell_windows() if window["sequence"] not in baseline and window["title"]
+                ]
+                if any(window["ready"] is not None for window in candidates):
+                    return [window for window in candidates if window["ready"]]
+                return [window for window in candidates if window["mapped"]]
 
             try:
                 new_windows = wait_for(
@@ -331,6 +338,7 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir:
             new_windows.sort(key=lambda window: window["sequence"])
             state["screenshot"] = screenshot(app, screenshot_dir)
             state["windows"] = [window["sequence"] for window in new_windows]
+            state["window_observations"] = [window_state(window["sequence"]) for window in new_windows]
             state["status"] = "window-mapped"
             write_event(
                 events_path,

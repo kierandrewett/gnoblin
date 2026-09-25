@@ -111,7 +111,11 @@ jobs:
   app-shard:
     needs: build-and-catalog
     runs-on: ubuntu-latest
-    container: fedora:44
+    # Flatpak's bubblewrap backend creates nested user namespaces for each app.
+    # The disposable app-test container needs to permit those namespace calls.
+    container:
+      image: fedora:44
+      options: --security-opt seccomp=unconfined
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -123,7 +127,12 @@ jobs:
         run: |
           dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
             gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon \
-            xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor
+            xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor util-linux
+
+      - name: Verify Flatpak user namespaces
+        run: |
+          useradd --create-home e2e
+          runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
 
       - name: Checkout test drivers
         uses: actions/checkout@v4
@@ -178,7 +187,6 @@ jobs:
           SHARD_INDEX: ${{ matrix.shard }}
           ARTIFACT_DIR: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}
         run: |
-          useradd --create-home e2e
           e2e_uid="$(id -u e2e)"
           extra_monitor=""
           if ((SHARD_INDEX % 2 == 0)); then
