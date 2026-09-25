@@ -161,16 +161,15 @@ release pipeline or COPR publication changes.
 - The exact-main Arch release-style gate on `c54e3d4b` built the package, then
   failed its co-install transaction because Meson reinstalled schema outputs
   under the absolute temporary build-prefix path. Commit `187e95cc` packages
-  only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the full
-  build/co-install/removal gate is rerunning. Do not count Arch as passing yet.
+  only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the
+  corrected exact-main result is recorded below.
 - The corrected Arch run `36157414890` on `4b3e5daf` passed package build,
-  stock-GNOME co-install, and Gnoblin removal. Tumbleweed's corrected private
-  RPM chain also builds and passes package isolation; the first co-install
-  retry exposed one additional private `Meta` typelib requirement. The SUSE
-  and Fedora Shell specs now filter it, with incremented release counters;
-  the rerun `36158322082` is still installing stock GNOME before the Gnoblin
-  transaction. Fedora 43/44/45 clean source builds and Fedora 44's
-  co-install/removal check passed on run `36157414890`.
+  stock-GNOME co-install, and Gnoblin removal. Tumbleweed run `36158322082`
+  also passed its private RPM chain, package-isolation check, stock-GNOME
+  co-install, and removal after filtering the private `Meta` typelib
+  requirement. Fedora 43/44/45 clean source builds and Fedora 44's
+  co-install/removal check passed on run `36157414890`. These package gates do
+  not prove graphical session selection or login.
 - Commit `ac70ae2b` corrects NixOS host-floor reporting against Gnoblin's
   Mutter compatibility patches: libinput's required floor is 1.30, while
   PipeWire 1.4 is accepted, so neither should be reported at raw upstream
