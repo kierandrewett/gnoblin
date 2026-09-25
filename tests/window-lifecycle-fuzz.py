@@ -559,15 +559,33 @@ def run_inside() -> int:
             send_pointer("move", state["x"] + state["width"] - 20, state["y"] + 18)
             time.sleep(0.05)
             pid_file = Path(os.environ["GNOBLIN_TEST_SHELL_PID_FILE"])
-            shell_pid = int(pid_file.read_text())
-            marker = {"requested": True, "shell_pid": shell_pid, "window": window_id}
+            launcher_pid = int(pid_file.read_text())
+            shell_pid = launcher_pid
+            if os.environ.get("GNOBLIN_TEST_GDB_LOG_CRITICALS") == "1":
+                shell_pid = wait_for(
+                    lambda: next(
+                        (
+                            int(pid)
+                            for pid in Path(f"/proc/{launcher_pid}/task/{launcher_pid}/children").read_text().split()
+                        ),
+                        None,
+                    ),
+                    "GDB compositor inferior",
+                )
+            marker = {
+                "requested": True,
+                "shell_pid": shell_pid,
+                "launcher_pid": launcher_pid,
+                "window": window_id,
+            }
             save_json(plan_path.parent / "expected-shell-exit.json", marker)
             os.kill(shell_pid, signal.SIGTERM)
             deadline = time.monotonic() + 10
-            while Path(f"/proc/{shell_pid}").exists() and time.monotonic() < deadline:
+            wait_pid = launcher_pid if launcher_pid != shell_pid else shell_pid
+            while Path(f"/proc/{wait_pid}").exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
-            if Path(f"/proc/{shell_pid}").exists():
-                raise TimeoutError(f"shell pid {shell_pid} did not exit after SIGTERM")
+            if Path(f"/proc/{wait_pid}").exists():
+                raise TimeoutError(f"shell launcher pid {wait_pid} did not exit after SIGTERM")
             marker["observed_exit"] = True
             save_json(plan_path.parent / "expected-shell-exit.json", marker)
             return

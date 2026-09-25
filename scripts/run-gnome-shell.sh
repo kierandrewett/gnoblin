@@ -193,16 +193,23 @@ if [[ "${GNOBLIN_TEST_GDB_LOG_CRITICALS:-0}" == 1 ]]; then
         echo "!! GNOBLIN_TEST_GDB_LOG_CRITICALS=1 requires gdb" >&2
         exit 1
     }
-    shell_command=(gdb --nx --batch --quiet
-        -ex "set debuginfod enabled off"
-        -ex "set pagination off"
-        -ex "set breakpoint pending on"
-        -ex "break g_logv"
-        -ex 'condition 1 ($esi & 8) != 0'
-        -ex run
-        -ex 'printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx'
-        -ex "bt 40"
-        --args "${shell_command[@]}")
+    gdb_commands="$DK/trace-glib-critical.gdb"
+    cat >"$gdb_commands" <<'GDB'
+set debuginfod enabled off
+set pagination off
+set breakpoint pending on
+handle SIGTERM nostop noprint pass
+break g_log
+condition 1 ($esi & 8) != 0
+commands 1
+  silent
+  printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx
+  bt 40
+  quit 1
+end
+run
+GDB
+    shell_command=(gdb --nx --batch --quiet --command "$gdb_commands" --args "${shell_command[@]}")
 elif [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
     command -v gdb >/dev/null 2>&1 || {
         echo "!! GNOBLIN_TEST_GDB_CRITICALS=1 requires gdb" >&2
