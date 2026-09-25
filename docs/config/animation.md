@@ -31,3 +31,29 @@ gnoblin.animation {
 
 Provide `from` and/or `to`, or provide `keyframes`. The animation guide lists
 all supported events, properties, curves, pivots, and event-specific defaults.
+
+## Type definition
+
+`?` marks optional fields and `|` separates alternatives. Event-specific
+properties are described in the linked guide.
+
+```lua
+gnoblin.animation {
+    name = string,
+    event = "minimize" | "restore" | "open" | "close" | "dialog-open" | "dialog-close"
+        | "layer-open" | "layer-close" | "workspace-switch" | "console-open"
+        | "console-close" | "shadow-change" | "layer-companion-close" | "resize"
+        | "tile-preview-open" | "tile-preview-close" | "dialog-dim" | "dialog-undim",
+    enable = boolean?,
+    duration = integer?, -- 0–10000 ms
+    ease = "linear" | "ease-in-quad" | "ease-out-quad" | "ease-in-out-cubic"
+        | "ease-in-cubic" | "ease-out-cubic" | "ease-out-expo" | "ease-out-back"
+        | {type = "cubic-bezier", x1 = number, y1 = number, x2 = number, y2 = number}?,
+    from = {property = number, ...}?, -- allowed properties depend on event
+    to = {property = number, ...}?, -- allowed properties depend on event
+    keyframes = {{at = number, property = number, ease = string?, ...}, ...}?, -- 2–128 frames; endpoints at 0 and 1
+    origin = "center" | "top-left" | "top-center" | "top-right" | "bottom-left"
+        | "bottom-center" | "bottom-right" | {number, number}?, -- normalized 0–1 pair
+    target = string?,
+}
+```

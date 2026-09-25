@@ -19,3 +19,13 @@ gnoblin.config.shell["minimize-duration"] = 150
 For most config changes, `gnoblin.configure` is clearer and performs public
 key conversion. Direct edits use internal key names and are validated with the
 rest of the config when the file finishes loading.
+
+## Type definition
+
+`gnoblin.config` is the mutable configuration map. Its keys use the
+normalized, hyphenated names; direct writes are checked when the config file
+finishes loading.
+
+```lua
+local settings = gnoblin.config -- table: string keys, values of any config type
+```

@@ -41,3 +41,22 @@ available on your system.
 state between sessions. `numlock_state` temporarily overrides that state while
 Gnoblin's config is active. Omitted fields keep their current GNOME/Mutter
 values.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field.
+
+```lua
+gnoblin.configure {
+    input = {
+        keyboard = {
+            ["repeat"] = boolean?,
+            delay = integer?, -- 1–10000 ms
+            repeat_interval = integer?, -- 1–10000 ms
+            remember_numlock_state = boolean?,
+            numlock_state = boolean?,
+            xkb_options = {string, ...} | {}?,
+        },
+    },
+}
+```

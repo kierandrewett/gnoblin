@@ -20,3 +20,16 @@ gnoblin.configure {
 
 Changes apply on config reload. See the [cursor themes guide](/guides/cursors)
 for installation paths and theme details.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field.
+
+```lua
+gnoblin.configure {
+    cursor = {
+        theme = string?,
+        size = integer?, -- 1–256 logical pixels
+    },
+}
+```

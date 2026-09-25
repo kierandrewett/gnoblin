@@ -105,6 +105,9 @@ Each item from `workspaces` has these fields:
 | `active`  | Whether this workspace is selected.                                |
 | `windows` | Number of eligible windows on the workspace.                       |
 
+The older `workspaces` command keeps its legacy response: its numeric `id` is
+the current one-based position, and it does not include the display name.
+
 Switch by stable ID or current number. Send exactly one selector:
 
 ```json

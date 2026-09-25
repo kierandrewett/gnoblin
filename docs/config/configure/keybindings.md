@@ -74,3 +74,19 @@ GSettings schemas define each key's type and default; see the official
 
 See the [shortcuts guide](/guides/shortcuts) to bind commands, use media keys,
 and resolve conflicts between shortcuts.
+
+## Type definition
+
+Only the actions you want to override need to be included. Their names and
+available groups depend on the installed GNOME version.
+
+```lua
+gnoblin.configure {
+    keybindings = {
+        shell = {["action_name"] = ({string, ...} | {})?},
+        wm = {["action_name"] = ({string, ...} | {})?},
+        mutter = {["action_name"] = ({string, ...} | {})?},
+        wayland = {["action_name"] = ({string, ...} | {})?},
+    },
+}
+```

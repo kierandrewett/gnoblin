@@ -126,3 +126,24 @@ especially handlers for high-frequency `*.input.*` events.
 settings still need a new session. If a callback fails, Gnoblin logs the error
 and keeps the settings from before that event. For settings applied by the
 shell, Gnoblin applies the updated document after the callback returns.
+
+## Type definition
+
+Event names are open-ended: Gnoblin accepts a nonempty string, but only names
+dispatched by Mutter or the shell produce callbacks. The event fields depend
+on the event name; all callback values are Lua tables.
+
+```lua
+gnoblin.on(event_name, function(event)
+    -- event_name: string | "*"
+    -- event = {
+    --     name = string,
+    --     source = string?, signal = string?,
+    --     app_id = string?, wm_class = string?, title = string?,
+    --     type = string?, time = number?, x = number?, y = number?,
+    --     button = integer?, key_symbol = string?,
+    --     scroll_x = number?, scroll_y = number?, scroll_direction = string?,
+    --     ... -- additional fields depend on the event source
+    -- }
+end)
+```

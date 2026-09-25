@@ -26,3 +26,20 @@ gnoblin.configure {
 ```
 
 Guide: [session settings](/guides/session_settings).
+
+## Type definition
+
+The block below is schema pseudocode in Lua table form. `?` marks an optional
+field, and `|` separates accepted alternatives.
+
+```lua
+gnoblin.configure {
+    compositor = {
+        enable_animations = boolean?,
+        locate_pointer = boolean?,
+        visual_bell = boolean?,
+        audible_bell = boolean?,
+        visual_bell_type = "fullscreen-flash" | "frame-flash"?,
+    },
+}
+```

@@ -72,3 +72,23 @@ To disable one after loading the bundled config:
 ```lua
 gnoblin.configure.shortcuts["volume-up"].enable = false
 ```
+
+## Type definition
+
+Every named entry uses exactly one of `command` or `action`. `?` marks
+optional fields; `|` separates alternatives.
+
+```lua
+gnoblin.configure {
+    shortcuts = {
+        ["shortcut-name"] = {
+            binding = string | {string, ...} | {},
+            command = {string, ...}?,
+            action = string | {schema = string, key = string}?,
+            trigger = "press" | "release"?,
+            capture_input = boolean?,
+            enable = boolean?,
+        }, ...,
+    },
+}
+```

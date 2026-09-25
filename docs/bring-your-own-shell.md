@@ -43,6 +43,10 @@ Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) a
 
 _Firefox under Waybar in a fresh Gnoblin profile._
 
+![A Mako notification in a fresh Gnoblin session](images/gnoblin-mako-notification.png)
+
+_Mako displays a download notification as an independent desktop service._
+
 ## Quickshell
 
 [Quickshell](https://quickshell.org/) can host custom layer-shell surfaces.

@@ -17,3 +17,9 @@ for name, shortcut in pairs(gnoblin.configure.shortcuts) do
     print(name, shortcut.binding or "built-in action")
 end
 ```
+
+## Type definition
+
+```lua
+local settings = gnoblin.snapshot() -- returns a detached config table
+```

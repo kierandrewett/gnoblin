@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Capture a fresh Gnoblin desktop with Waybar and Files for the documentation.
+# Capture a clean Gnoblin shell example for the documentation.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-desktop}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop | waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox) ;;
+    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox) ;;
     *)
         echo "Usage: $0 [desktop] [output-directory]" >&2
         exit 2
@@ -215,6 +215,11 @@ case "$example" in
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/guides/shortcuts.html'"
         post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 1"
         ;;
+    mako-notification)
+        capture_path="$output_dir/gnoblin-mako-notification.png"
+        app_command='mako & sleep 2'
+        post_app_command="notify-send --app-name='Downloads' 'Archive ready' 'Your download is ready to open' --icon=folder-download; sleep 2"
+        ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
         app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
@@ -225,7 +230,14 @@ case "$example" in
         ;;
 esac
 
-if [ "$example" != desktop ]; then
+if [ "$example" = mako-notification ]; then
+    command -v notify-send >/dev/null || {
+        echo "notify-send is required for this scene" >&2
+        exit 1
+    }
+fi
+
+if [ "$example" != desktop ] && [ "$example" != mako-notification ]; then
     command -v firefox >/dev/null || {
         echo "firefox is required for this scene" >&2
         exit 1

@@ -69,3 +69,37 @@ manager settings directly. This Lua section does not change those apps' CSD
 behavior. A custom SSD renderer implements its own titlebar click behavior.
 
 See [titlebars](/guides/window_frames).
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field;
+`|` separates accepted alternatives.
+
+```lua
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click" | "sloppy" | "mouse"?,
+        focus_new_windows = "smart" | "strict"?,
+        raise_on_click = boolean?,
+        auto_raise = boolean?,
+        focus_change_on_pointer_rest = boolean?,
+        auto_raise_delay = integer?, -- 0–10000 ms
+        action_double_click_titlebar = TitlebarAction?,
+        action_middle_click_titlebar = TitlebarAction?,
+        action_right_click_titlebar = TitlebarAction?,
+        dynamic_workspaces = boolean?,
+        workspaces_only_on_primary = boolean?,
+        edge_tiling = boolean?,
+        num_workspaces = integer?, -- 1–36
+        workspace_names = {string, ...}?, -- up to 36, max 80 characters each
+        workspace_ids = {string, ...}?, -- up to 36 unique IDs
+        center_new_windows = boolean?,
+        attach_modal_dialogs = boolean?,
+        constrain_drag_to_work_area = boolean?,
+    },
+}
+
+-- TitlebarAction = "toggle-maximize" | "toggle-maximize-horizontally"
+--                | "toggle-maximize-vertically" | "minimize" | "lower"
+--                | "menu" | "none"
+```

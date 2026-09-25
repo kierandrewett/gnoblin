@@ -101,3 +101,39 @@ gnoblin.configure {
 
 The keyboard `numlock_state` override is kept in memory while Gnoblin's config
 is active; removing it restores the system setting.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field.
+Mouse, touchpad, and keyboard fields are listed on their linked pages.
+
+```lua
+gnoblin.configure {
+    input = {
+        mouse = {...}?,
+        touchpad = {...}?,
+        keyboard = {...}?,
+        orientation_lock = boolean?,
+        tablets = {
+            ["vvvv:pppp"] = {
+                mapping = "absolute" | "relative"?,
+                left_handed = boolean?,
+                keep_aspect = boolean?,
+            }, ...,
+        }?,
+        styluses = {
+            ["serial-or-default-vvvv:pppp"] = {
+                button_action = StylusAction?,
+                button_keybinding = string?,
+                secondary_button_action = StylusAction?,
+                secondary_button_keybinding = string?,
+                tertiary_button_action = StylusAction?,
+                tertiary_button_keybinding = string?,
+            }, ...,
+        }?,
+    },
+}
+
+-- StylusAction = "default" | "middle" | "right" | "back" | "forward"
+--             | "switch-monitor" | "keybinding"
+```

@@ -64,3 +64,30 @@ The available gestures depend on the touchpad hardware. GNOME's
 [touchpad guide](https://help.gnome.org/gnome-help/mouse-touchpad-click.html)
 explains tap, click, and scroll behavior. The [libinput acceleration guide](https://wayland.freedesktop.org/libinput/doc/latest/pointer-acceleration.html)
 describes the `adaptive` and `flat` profiles.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field;
+`|` separates accepted alternatives.
+
+```lua
+gnoblin.configure {
+    input = {
+        touchpad = {
+            speed = number?, -- -1 to 1
+            scroll_speed = number?, -- 0 to 2
+            accel_profile = "default" | "flat" | "adaptive"?,
+            left_handed = "right" | "left" | "mouse"?,
+            natural_scroll = boolean?,
+            tap_to_click = boolean?,
+            tap_and_drag = boolean?,
+            tap_and_drag_lock = boolean?,
+            disable_while_typing = boolean?,
+            edge_scrolling_enabled = boolean?,
+            two_finger_scrolling_enabled = boolean?,
+            tap_button_map = "default" | "lrm" | "lmr"?,
+            click_method = "default" | "none" | "areas" | "fingers"?,
+        },
+    },
+}
+```

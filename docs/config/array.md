@@ -9,3 +9,12 @@ gnoblin.configure {
 ```
 
 The marker is retained while Gnoblin converts the Lua document. For nonempty dense lists, ordinary Lua tables work.
+
+## Type definition
+
+Pass a Lua list table to `gnoblin.array`; the result is the same list marked
+for config conversion.
+
+```lua
+local marked_list = gnoblin.array {value, ...}
+```

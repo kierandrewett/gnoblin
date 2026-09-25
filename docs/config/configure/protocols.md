@@ -25,3 +25,26 @@ gnoblin.configure {protocols = {wlr_screencopy = false}}
 ```
 
 See the [protocol catalog](/wayland-protocols).
+
+## Type definition
+
+Protocol fields are optional; list only the protocols you want to override.
+
+```lua
+gnoblin.configure {
+    protocols = {
+        wlr_layer_shell = boolean?,
+        ext_foreign_toplevel_list = boolean?,
+        wlr_foreign_toplevel_management = boolean?,
+        xdg_decoration = boolean?,
+        window_frame_renderer = boolean?,
+        wlr_screencopy = boolean?,
+        ext_background_effect_v1 = boolean?,
+        blur_fade = boolean?,
+        ext_data_control = boolean?,
+        ext_idle_notify = boolean?,
+        wlr_gamma_control = boolean?,
+        wlr_output_power_management = boolean?,
+    },
+}
+```

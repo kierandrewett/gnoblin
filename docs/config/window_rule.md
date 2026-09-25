@@ -62,19 +62,20 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 
 ## Corners
 
-| Field                           | Default        | Values                                                        |
-| ------------------------------- | -------------- | ------------------------------------------------------------- |
-| `radius`                        | `0`            | 0–200 logical pixels                                          |
-| `smoothing`                     | `0`            | 0–1; circular to a squarer curve                              |
-| `mode`                          | `"auto"`       | `auto`, `force`, `off`                                        |
-| `padding`                       | `{0, 0, 0, 0}` | Top/right/bottom/left inset, −128–128 logical pixels          |
-| `keep_maximized`                | `true`         | Keep rounding when maximised                                  |
-| `keep_fullscreen`, `keep_tiled` | `false`        | Keep rounding in those states                                 |
-| `skip_libadwaita`               | `true`         | Preserve libadwaita corners in auto mode                      |
-| `skip_libhandy`                 | `false`        | Skip libhandy windows in auto mode                            |
-| `remove_csd`                    | `false`        | Reconstruct supported client corner gaps                      |
-| `shadow`                        | `false`        | A shadow table or 1–4 shadow layers                           |
-| `keep_shadow`                   | `false`        | Keep replacement shadows in maximised/fullscreen/tiled states |
+| Field                           | Default          | Values                                                         |
+| ------------------------------- | ---------------- | -------------------------------------------------------------- |
+| `radius`                        | `0`              | 0–200 logical pixels                                           |
+| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                               |
+| `mode`                          | `"auto"`         | `auto`, `force`, `off`                                         |
+| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels           |
+| `keep_maximized`                | `true`           | Keep rounding when maximised                                   |
+| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                  |
+| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                       |
+| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                             |
+| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd) |
+| `border_width`, `border_color`  | `0`, `#808080ff` | Legacy border width (−40–40) and colour                        |
+| `shadow`                        | `false`          | A shadow table or 1–4 shadow layers                            |
+| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states  |
 
 ## Borders and shadows
 
@@ -118,3 +119,116 @@ pixels and adds a frame.
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
 [`gnoblin.configure`](/config/configure#window-management).
+
+### `remove_csd`
+
+Enable `remove_csd` when an application draws its own rounded corners and you
+want Gnoblin's configured shape to control the result. Gnoblin inspects the
+window's rendered pixels to detect the corner cutouts, then fills those gaps
+from the app's nearby background before applying the configured corners.
+
+Gnoblin adapts to each window's actual content instead of assuming a
+particular toolkit, corner radius, or background colour.
+
+It also handles the narrow antialiased edge around the detected curve while
+preserving opaque content.
+
+```lua
+gnoblin.window_rule {
+    match = {type = "window", app_id = "^org.example.App$"},
+    corners = {
+        radius = 12,
+        mode = "force",
+        remove_csd = true,
+    },
+}
+```
+
+This is opt-in because detecting and sampling the window image has a cost. Use
+it on rules for apps whose own rounded corners conflict with Gnoblin's shape;
+leave it off for other windows. The option changes corner rendering only. It
+does not remove client-side titlebars or other decorations.
+
+If the app's corner background varies sharply near the edge, Gnoblin may not
+find a safe fill, so the original corner can remain visible.
+
+## Type definition
+
+This is schema pseudocode in Lua table form. `?` marks an optional field;
+`|` separates accepted alternatives. Every supplied `match` field must match.
+
+```lua
+gnoblin.window_rule {
+    match = {
+        type = "window" | "layer"?,
+        focused = boolean?,
+        app_id = string?, -- regular expression
+        title = string?, -- regular expression
+        layer = string?, -- regular expression
+        workspace_id = string?,
+        workspace_number = integer?, -- 1–36
+    },
+    blur = integer?, -- 0–100
+    opacity = number?, -- 0–1
+    blur_ignore_shadows = boolean?,
+    shader = string?,
+    shader_uniforms = {string = number}?,
+    animation = string | {
+        ["in"] = string?, out = string?,
+        open = string?, close = string?,
+        dialog_open = string?, dialog_close = string?,
+        layer_open = string?, layer_close = string?,
+        minimize = string?, restore = string?, workspace_switch = string?,
+        console_open = string?, console_close = string?, shadow_change = string?,
+        layer_companion_close = string?, resize = string?,
+        tile_preview_open = string?, tile_preview_close = string?,
+        dialog_dim = string?, dialog_undim = string?,
+        duration = integer?, -- 0–5000 ms
+        easing = string?,
+        ease = string?, -- alias for easing
+    }?,
+    workspace = {id = string} | {number = integer}?,
+    corners = {
+        radius = number?, -- 0–200
+        smoothing = number?, -- 0–1
+        mode = "auto" | "force" | "off"?,
+        padding = {number, number, number, number}?,
+        border_width = number?, -- -40 to 40
+        border_color = string?, -- #RRGGBB or #RRGGBBAA
+        keep_maximized = boolean?,
+        keep_fullscreen = boolean?,
+        keep_tiled = boolean?,
+        skip_libadwaita = boolean?,
+        skip_libhandy = boolean?,
+        remove_csd = boolean?,
+        shadow = false | Shadow | {Shadow, ...}?,
+        keep_shadow = boolean?,
+        shadow_animation = {
+            animation = string?,
+            duration = integer?, -- 0–2000 ms
+            easing = "linear" | "ease-out-cubic" | "ease-out-quad" | "ease-in-out-cubic"?,
+        }?,
+    }?,
+    borders = {
+        inner_width = number?, outer_width = number?,
+        inner_color = string?, outer_color = string?,
+        radius = number?, smoothing = number?,
+        padding = {number, number, number, number}?,
+        keep_maximized = boolean?, keep_fullscreen = boolean?, keep_tiled = boolean?,
+    }?,
+    frame = {
+        mode = "off" | "auto" | "prefer-server" | "replace"?,
+        extents = {integer, integer, integer, integer}?, -- 0–256 each
+        crop = {integer, integer, integer, integer}?, -- 0–256 each
+        renderer = string?,
+        style = string?,
+        background = string?,
+        foreground = string?,
+        inactive_background = string?,
+        button_layout = {"minimize" | "maximize" | "close", ...} | {}?,
+    }?,
+}
+
+-- Shadow = {x = number?, y = number?, blur = number?, spread = number?,
+--           opacity = number?, color = string?}
+```
