@@ -74,8 +74,10 @@ behavior.
 
 ## Inspect a running session
 
-Check the running compositor when packaging or debugging a client. A Wayland
-registry inspector such as `wayland-info` can show advertised globals; run it
-inside the Gnoblin session or devkit terminal so it connects to the right
-`WAYLAND_DISPLAY`. A source checkout, package manifest or XML file cannot prove
-that a particular login session has advertised a global.
+This catalog follows the current Gnoblin source; older installed builds may
+advertise fewer globals. Check `gnoblinctl version --json` and the running
+registry when packaging or debugging a client. A Wayland registry inspector
+such as `wayland-info` shows advertised globals; run it inside the Gnoblin
+session or devkit terminal so it connects to the right `WAYLAND_DISPLAY`. A
+source checkout, package manifest or XML file cannot prove that a particular
+login session has advertised a global.
