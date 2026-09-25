@@ -16,7 +16,7 @@ read -r -a compiler_args <<<"$compiler_flags"
 cc -std=c11 -Wall -Wextra -Wno-unused-parameter "$root/tests/background-effect-client.c" "$testdir/"*.c \
     -I"$testdir" "${compiler_args[@]}" -o "$testdir/client"
 if [[ "${GNOBLIN_ACTIVE_MODE:-gnoblin}" != gnoblin ]]; then
-    "$testdir/client" absent
+    "$testdir/client" stock
 else
     "$testdir/client" duplicate
     "$testdir/client" dead
