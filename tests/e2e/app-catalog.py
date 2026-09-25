@@ -59,16 +59,18 @@ def fetch_flathub(limit: int) -> list[dict]:
             if app_id in seen:
                 continue
             seen.add(app_id)
-            apps.append({
-                "source": "flathub-popular",
-                "source_rank": rank,
-                "app_id": app_id,
-                "name": hit.get("name") or app_id,
-                "summary": hit.get("summary") or "",
-                "category": hit.get("main_categories") or "Other",
-                "install": app_id,
-                "launch": app_id,
-            })
+            apps.append(
+                {
+                    "source": "flathub-popular",
+                    "source_rank": rank,
+                    "app_id": app_id,
+                    "name": hit.get("name") or app_id,
+                    "summary": hit.get("summary") or "",
+                    "category": hit.get("main_categories") or "Other",
+                    "install": app_id,
+                    "launch": app_id,
+                }
+            )
             if len(apps) == limit:
                 break
         page += 1
@@ -111,7 +113,12 @@ def parse_component(component: ET.Element) -> dict | None:
     }
 
 
-def fetch_fedora(path: Path, limit: int, excluded_ids: set[str]) -> list[dict]:
+def fetch_fedora(
+    path: Path,
+    limit: int,
+    excluded_ids: set[str],
+    priority_desktop_ids: set[str] | None = None,
+) -> list[dict]:
     candidates: dict[str, dict] = {}
     with gzip.open(path, "rb") as source:
         for _, element in ET.iterparse(source, events=("end",)):
@@ -130,6 +137,15 @@ def fetch_fedora(path: Path, limit: int, excluded_ids: set[str]) -> list[dict]:
 
     categories = sorted(by_category)
     selected: list[dict] = []
+    for desktop_id in sorted(priority_desktop_ids or ()):
+        app = next((candidate for candidate in candidates.values() if candidate["desktop_id"] == desktop_id), None)
+        if app is None:
+            raise RuntimeError(f"Fedora AppStream is missing required regression app {desktop_id}")
+        if len(selected) == limit:
+            raise RuntimeError(f"priority apps exceed the Fedora catalog limit of {limit}")
+        selected.append(app)
+        by_category[app["category"]].remove(app)
+
     while len(selected) < limit:
         advanced = False
         for category in categories:
@@ -141,8 +157,7 @@ def fetch_fedora(path: Path, limit: int, excluded_ids: set[str]) -> list[dict]:
                     break
         if not advanced:
             raise RuntimeError(
-                f"Fedora AppStream has only {len(selected)} unique non-Flathub launchable apps; "
-                f"need {limit}"
+                f"Fedora AppStream has only {len(selected)} unique non-Flathub launchable apps; need {limit}"
             )
     return selected
 
@@ -150,7 +165,7 @@ def fetch_fedora(path: Path, limit: int, excluded_ids: set[str]) -> list[dict]:
 def make_catalog(fedora_xml: Path, flathub_count: int, fedora_count: int) -> dict:
     flathub = fetch_flathub(flathub_count)
     excluded = {app_id for app in flathub for app_id in (app["app_id"], app["app_id"] + ".desktop")}
-    fedora = fetch_fedora(fedora_xml, fedora_count, excluded)
+    fedora = fetch_fedora(fedora_xml, fedora_count, excluded, {"Alacritty.desktop"})
     return {
         "schema": 1,
         "generated_utc": datetime.now(timezone.utc).isoformat(),

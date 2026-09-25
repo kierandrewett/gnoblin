@@ -100,6 +100,7 @@ At workflow start, `tests/e2e/app-catalog.py` refreshes two independent sources:
 - The first 500 unique desktop apps in Flathub's Popular collection.
 - 300 launchable Fedora RPM applications from `appstream-data`, balanced over
   the metadata categories and excluding duplicate desktop IDs from Flathub.
+  Alacritty is included as a pinned window-close regression case.
 
 That makes an 800-application catalog without committing a stale popularity
 snapshot. The workflow divides it into 40 shards. Each app is installed or its
