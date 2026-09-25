@@ -5,6 +5,7 @@
 %global _sysconfdir %{_prefix}/etc
 %global _localstatedir %{_prefix}/var
 %global _sharedstatedir %{_prefix}/var/lib
+%global debug_package %{nil}
 %global __provides_exclude_from ^%{_prefix}/.*$
 %global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
 
