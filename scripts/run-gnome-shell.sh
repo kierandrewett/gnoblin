@@ -280,7 +280,7 @@ commands 2
   silent
   printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx
   bt 40
-  quit 1
+  continue
 end
 run
 GDB

@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       trace_shutdown_critical:
-        description: Capture the first GLib critical or native fatal signal during shutdown
+        description: Record GLib criticals and capture native fatal signals during shutdown
         required: false
         default: false
         type: boolean

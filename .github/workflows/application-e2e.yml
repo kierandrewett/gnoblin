@@ -30,7 +30,7 @@ on:
         default: "0"
         required: true
       trace_crash:
-        description: Run the selected shard under GDB and stop at the first critical or abort
+        description: Run the selected shard under GDB, record criticals and stop at fatal signals
         type: boolean
         default: false
         required: true
