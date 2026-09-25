@@ -9,6 +9,11 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 
 - Read the relevant issue, nearby code, existing documentation, and applicable
   repository guidance before deciding how to implement a request.
+- For every change, check which documentation describes the affected behavior.
+  Update those docs in the same change whenever behavior, a public interface,
+  defaults, configuration, commands, visible UI, or troubleshooting guidance
+  changes. Verify the docs against the implementation before finishing; do not
+  leave documentation updates for later.
 - Inspect `git status`, the current branch, and diffs in the files and
   submodules you may touch. This repository may contain valuable in-progress
   work. Preserve it; do not reset, clean, overwrite, or stage unrelated work.
