@@ -75,10 +75,14 @@ Turning off this global is not a blanket screen-sharing policy.
 ## Interface not yet available
 
 `zwlr_output_manager_v1` has vendored XML but is not registered as a supported
-Gnoblin global. Display configuration is available through Gnoblin's existing
-interfaces. Session locking is supported through `ext_session_lock_manager_v1`;
-see [Session locking](session-lock.md) for locker requirements and security
-behavior.
+Gnoblin global. Mutter exposes its `org.gnome.Mutter.DisplayConfig` D-Bus API
+in the Gnoblin session; this is a Mutter interface, not a Gnoblin protocol.
+See the [Mutter monitor manager reference](https://gnome.pages.gitlab.gnome.org/mutter/meta/class.MonitorManager.html).
+
+[`gnoblinctl monitor list`](gnoblinctl.md#workspaces-and-monitors) reports
+monitor geometry but does not change display layouts. Session locking uses
+`ext_session_lock_manager_v1`; see [Session locking](session-lock.md) for its
+requirements and security behavior.
 
 ## Inspect a running session
 
