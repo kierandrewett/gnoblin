@@ -78,8 +78,13 @@ export class CompositorBridge {
             return true;
         });
         this.service.start();
-        this.accelerator = global.display.connect("accelerator-activated", (_display, action) => this.activate(action));
-        this.overlayKey = global.display.connect("overlay-key", () => this.activate("overlay-key"));
+        this.accelerator = global.display.connect("accelerator-activated", (_display, action) =>
+            this.activate(action, "press"),
+        );
+        this.deactivated = global.display.connect("accelerator-deactivated", (_display, action) =>
+            this.activate(action, "release"),
+        );
+        this.overlayKey = global.display.connect("overlay-key", () => this.activate("overlay-key", "release"));
         this.capture = global.stage.connect("event", (_stage, event) => this.event(event));
         this.returnClickCapture = global.stage.connect("captured-event", (_stage, event) =>
             this.fullscreenReturnGuard.handle(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE,
@@ -432,7 +437,9 @@ export class CompositorBridge {
             ].includes(record.hold) ||
             (record.modal !== undefined && typeof record.modal !== "boolean") ||
             (record.captureInput !== undefined && typeof record.captureInput !== "boolean") ||
+            (record.trigger !== undefined && !["press", "release"].includes(record.trigger)) ||
             (record.accelerator === "Super" && record.hold !== 0) ||
+            (record.accelerator === "Super" && record.trigger === "press") ||
             client.bindings.size >= 32 ||
             client.bindings.has(record.id)
         )
@@ -444,13 +451,16 @@ export class CompositorBridge {
             ? "overlay-key"
             : reserved?.action || global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
         if (action === Meta.KeyBindingAction.NONE) throw new Error(`shortcut already claimed: ${record.accelerator}`);
-        const binding = reserved || {
-            client,
-            id: record.id,
-            hold: record.hold,
-            modal: record.modal !== false,
-            captureInput: record.captureInput === true,
-            action,
+        const binding = {
+            ...(reserved || {
+                client,
+                id: record.id,
+                hold: record.hold,
+                modal: record.modal !== false,
+                captureInput: record.captureInput === true,
+                action,
+            }),
+            trigger: record.trigger ?? (overlay ? "release" : "press"),
         };
         client.bindings.set(record.id, binding);
         this.actions.set(action, binding);
@@ -461,9 +471,14 @@ export class CompositorBridge {
         this.send(client, { event: "bound", id: record.id });
     }
 
-    activate(action) {
+    activate(action, trigger = "press") {
         const binding = this.actions.get(action);
-        if (!binding || SessionLock.isLocked(Main.sessionMode.isLocked)) return;
+        if (
+            !binding ||
+            (binding.trigger ?? (binding.action === "overlay-key" ? "release" : "press")) !== trigger ||
+            SessionLock.isLocked(Main.sessionMode.isLocked)
+        )
+            return false;
         if (binding.captureInput)
             Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput?.begin(binding.id);
         if (this.active && this.active.client !== binding.client) this.end("cancelled");
@@ -499,6 +514,7 @@ export class CompositorBridge {
         // A release may precede the client receiving activation. Send both
         // records in order instead of waiting for the client to map a surface.
         if (this.active && !this.modifiersHeld(global.get_pointer()[2], this.active.hold)) this.checkModifiers();
+        return true;
     }
 
     modifiersHeld(state, hold) {
@@ -579,8 +595,7 @@ export class CompositorBridge {
         if (type === Clutter.EventType.KEY_PRESS) {
             if (this.active.fallback && this.switcherFallback.key(event.get_key_symbol())) return Clutter.EVENT_STOP;
             const action = global.display.get_keybinding_action(event.get_key_code(), event.get_state());
-            if (this.actions.has(action)) this.activate(action);
-            else
+            if (!this.actions.has(action) || !this.activate(action, "press"))
                 this.send(this.active.client, {
                     event: "key",
                     key: event.get_key_symbol(),
@@ -1449,6 +1464,7 @@ export class CompositorBridge {
         this.layerCompanions.destroy();
         this.switcherFallback.destroy();
         global.display.disconnect(this.accelerator);
+        global.display.disconnect(this.deactivated);
         global.display.disconnect(this.overlayKey);
         global.stage.disconnect(this.capture);
         global.stage.disconnect(this.returnClickCapture);

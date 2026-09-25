@@ -43,26 +43,26 @@ closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op`                             | Required fields                          | Reply or stream                                     |
-| -------------------------------- | ---------------------------------------- | --------------------------------------------------- |
-| `command`                        | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error`          |
-| `windows`                        | None                                     | Current `windows` snapshot, then changes            |
-| `privacy`                        | None                                     | Current `privacy` state, then changes               |
-| `status`                         | None                                     | One `status` with binding IDs and active session ID |
-| `bind`                           | `id`, `accelerator`, `hold`              | `bound`, then activation and input events           |
-| `activate`                       | `window`                                 | Focus a window; no success reply                    |
-| `preview`                        | `window`, `width`, `height`              | One `preview` event                                 |
-| `shortcut-input`                 | `name`, `state`                          | Input handoff; no success reply                     |
-| `ui-session`                     | `action`; other fields depend on action  | `ui-state` or `ui-command` events                   |
-| `layer-animation-policy`         | `namespace`                              | One policy event for that layer namespace           |
-| `blur-region`                    | `namespace`, `screen`, `region`          | No success reply                                    |
-| `window-drag`                    | None                                     | Current `window-drag` state, then changes           |
-| `snap-offer`                     | `serial`, `regions`                      | No success reply; may later get `snap-completed`    |
-| `snap-context`                   | None                                     | One `snap-context` event                            |
-| `snap-window`                    | `window`, `monitor`, `target`            | Applies a region; no success reply                  |
-| `stop-sharing`, `stop-recording` | None                                     | Requests stop; no success reply                     |
-| `end`                            | Optional `session` for fallback switcher | Ends this client's input session                    |
-| `clear`                          | None                                     | Removes this client's bindings and session          |
+| `op`                             | Required fields                                 | Reply or stream                                     |
+| -------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields        | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                            | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                            | Current `privacy` state, then changes               |
+| `status`                         | None                                            | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger` | `bound`, then activation and input events           |
+| `activate`                       | `window`                                        | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`                     | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                                 | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action         | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                                     | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`                 | No success reply                                    |
+| `window-drag`                    | None                                            | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                             | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                            | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`                   | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                            | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
+| `clear`                          | None                                            | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
 `layers`, `workspace-switch` and `window`. `layers` returns the current
@@ -118,10 +118,10 @@ with Ctrl+C. Each snapshot replaces the previous list; it is not a list of chang
 
 ## Temporary UI bindings
 
-Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
+Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects. Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
 
 ```json
-{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8 }
+{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
 ```
 
 The server acknowledges:

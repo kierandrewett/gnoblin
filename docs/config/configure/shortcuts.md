@@ -27,7 +27,9 @@ require a list of bindings; use an empty list to disable the action. Command
 shortcuts use one binding string and an argv array. They run on key press by
 default; set `trigger = "release"` to run when the accelerator is released.
 Bare `"Super"` bindings always run on release because Mutter resolves them
-after checking that no other key joined the chord.
+after checking that no other key joined the chord. Release triggering works
+with any supported command accelerator, including Alt, Control, Shift and
+Super combinations.
 
 | Field           | Values                   | Default   |
 | --------------- | ------------------------ | --------- |
