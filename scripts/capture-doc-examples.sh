@@ -6,9 +6,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | bingux-files | quickshell-files) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | waybar-mako | bingux-files | quickshell-files) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|bingux-files|quickshell-files} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|waybar-mako|bingux-files|quickshell-files} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -232,6 +232,11 @@ case "$example" in
         capture_path="$output_dir/gnoblin-waybar-notifications.png"
         app_command='waybar & mako & sleep 2; gnome-control-center notifications'
         ;;
+    waybar-mako)
+        capture_path="$output_dir/gnoblin-waybar-mako.png"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
+        post_app_command="notify-send --app-name='Calendar' --icon=appointment-soon 'Design review' 'Starts in 10 minutes · Meeting room'"
+        ;;
     bingux-files)
         capture_path="$output_dir/gnoblin-bingux-files.png"
         app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; nautilus --new-window"
@@ -265,6 +270,12 @@ esac
 if [ "$example" = waybar-settings ] || [ "$example" = waybar-notifications ]; then
     command -v gnome-control-center >/dev/null || {
         echo "gnome-control-center is required for this scene" >&2
+        exit 1
+    }
+fi
+if [ "$example" = waybar-mako ]; then
+    command -v notify-send >/dev/null || {
+        echo "notify-send is required for this scene" >&2
         exit 1
     }
 fi
