@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-25",
+  "research": {
+    "image_check": "skopeo inspect, 2026-09-25",
+    "lifecycle_sources": [
+      "https://fedoraproject.org/wiki/User:Jkurik/Fedora_Release_Life_Cycle",
+      "https://fedorapeople.org/groups/schedule/f-45/f-45-key-tasks.html",
+      "https://docs.rockylinux.org/releases/",
+      "https://www.debian.org/releases/",
+      "https://ubuntu.com/about/release-cycle",
+      "https://news.opensuse.org/2025/09/03/leap-16-doubles-support/",
+      "https://wiki.nixos.org/wiki/Nixpkgs",
+      "https://wiki.nixos.org/wiki/NixOS_Wiki:News"
+    ]
+  },
+  "status_meaning": {
+    "existing-path": "An automated build, install, or evaluation path exists. It is not a support promise.",
+    "probe-needed": "The target image exists, but its dependency and packaging feasibility has not been measured.",
+    "planned": "A requested target with no implementation path yet."
+  },
+  "support_meaning": {
+    "unsupported": "Gnoblin does not currently support this target.",
+    "candidate": "Some package gates pass, but the complete support gate has not passed.",
+    "supported": "All required package, coexistence, graphical-session, and removal gates pass."
+  },
+  "targets": [
+    {
+      "id": "fedora-43",
+      "family": "fedora",
+      "release": "43",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "fedora:43",
+      "lifecycle": "upstream-current",
+      "adapter": "rpm-fedora",
+      "status": "existing-path",
+      "support": "unsupported",
+      "ci": [".github/workflows/verify.yml"],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "fedora-44",
+      "family": "fedora",
+      "release": "44",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "fedora:44",
+      "lifecycle": "upstream-current",
+      "adapter": "rpm-fedora",
+      "status": "existing-path",
+      "support": "candidate",
+      "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
+        "graphical-session": false,
+        "removal": true
+      }
+    },
+    {
+      "id": "fedora-45",
+      "family": "fedora",
+      "release": "45",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "fedora:45",
+      "lifecycle": "upstream-pre-release",
+      "adapter": "rpm-fedora",
+      "status": "existing-path",
+      "support": "unsupported",
+      "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "el-8",
+      "family": "el",
+      "release": "8",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "quay.io/rockylinux/rockylinux:8",
+      "lifecycle": "upstream-security",
+      "adapter": "rpm-el",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "el-9",
+      "family": "el",
+      "release": "9",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "quay.io/rockylinux/rockylinux:9",
+      "lifecycle": "upstream-general",
+      "adapter": "rpm-el",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "el-10",
+      "family": "el",
+      "release": "10",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "quay.io/rockylinux/rockylinux:10",
+      "lifecycle": "upstream-general",
+      "adapter": "rpm-el",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "debian-11",
+      "family": "debian",
+      "release": "11",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "debian:11",
+      "lifecycle": "upstream-lts-ended",
+      "adapter": "deb",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "debian-12",
+      "family": "debian",
+      "release": "12",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "debian:12",
+      "lifecycle": "upstream-lts",
+      "adapter": "deb",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "debian-13",
+      "family": "debian",
+      "release": "13",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "debian:13",
+      "lifecycle": "upstream-full",
+      "adapter": "deb",
+      "status": "existing-path",
+      "support": "candidate",
+      "ci": [".github/workflows/deb.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
+        "graphical-session": false,
+        "removal": true
+      }
+    },
+    {
+      "id": "ubuntu-22.04",
+      "family": "ubuntu",
+      "release": "22.04",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "ubuntu:22.04",
+      "lifecycle": "upstream-standard",
+      "adapter": "deb",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "ubuntu-24.04",
+      "family": "ubuntu",
+      "release": "24.04",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "ubuntu:24.04",
+      "lifecycle": "upstream-standard",
+      "adapter": "deb",
+      "status": "existing-path",
+      "support": "candidate",
+      "ci": [".github/workflows/deb.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
+        "graphical-session": false,
+        "removal": true
+      }
+    },
+    {
+      "id": "ubuntu-26.04",
+      "family": "ubuntu",
+      "release": "26.04",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "ubuntu:26.04",
+      "lifecycle": "upstream-standard",
+      "adapter": "deb",
+      "status": "existing-path",
+      "support": "candidate",
+      "ci": [".github/workflows/deb.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
+        "graphical-session": false,
+        "removal": true
+      }
+    },
+    {
+      "id": "arch-current",
+      "family": "arch",
+      "release": "current",
+      "kind": "rolling",
+      "architecture": "x86_64",
+      "image": "archlinux:base",
+      "lifecycle": "rolling",
+      "adapter": "pkgbuild",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [".github/workflows/verify.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "opensuse-leap-15.5",
+      "family": "opensuse-leap",
+      "release": "15.5",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "registry.opensuse.org/opensuse/leap:15.5",
+      "lifecycle": "upstream-eol",
+      "adapter": "rpm-opensuse",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "opensuse-leap-15.6",
+      "family": "opensuse-leap",
+      "release": "15.6",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "registry.opensuse.org/opensuse/leap:15.6",
+      "lifecycle": "upstream-eol",
+      "adapter": "rpm-opensuse",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "opensuse-leap-16.0",
+      "family": "opensuse-leap",
+      "release": "16.0",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "registry.opensuse.org/opensuse/leap:16.0",
+      "lifecycle": "upstream-current",
+      "adapter": "rpm-opensuse",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "opensuse-tumbleweed-current",
+      "family": "opensuse-tumbleweed",
+      "release": "current",
+      "kind": "rolling",
+      "architecture": "x86_64",
+      "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
+      "lifecycle": "rolling",
+      "adapter": "rpm-opensuse",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [".github/workflows/verify.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "nixos-25.05",
+      "family": "nixos",
+      "release": "25.05",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "nixos/nix:2.31.2",
+      "channel": "nixos-25.05",
+      "lifecycle": "channel-eol",
+      "adapter": "nix",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "nixos-25.11",
+      "family": "nixos",
+      "release": "25.11",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "nixos/nix:2.31.2",
+      "channel": "nixos-25.11",
+      "lifecycle": "channel-eol",
+      "adapter": "nix",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "nixos-26.05",
+      "family": "nixos",
+      "release": "26.05",
+      "kind": "fixed",
+      "architecture": "x86_64",
+      "image": "nixos/nix:2.31.2",
+      "channel": "nixos-26.05",
+      "lifecycle": "channel-current",
+      "adapter": "nix",
+      "status": "probe-needed",
+      "support": "unsupported",
+      "ci": [],
+      "gates": {
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
+        "graphical-session": false,
+        "removal": false
+      }
+    },
+    {
+      "id": "nixos-unstable",
+      "family": "nixos",
+      "release": "unstable",
+      "kind": "rolling",
+      "architecture": "x86_64",
+      "image": "nixos/nix:2.31.2",
+      "channel": "nixos-unstable",
+      "lifecycle": "rolling",
+      "adapter": "nix",
+      "status": "existing-path",
+      "support": "unsupported",
+      "ci": [".github/workflows/nix.yml"],
+      "gates": {
+        "dependency-probe": true,
+        "package-build": true,
+        "install": false,
+        "coinstall": true,
+        "graphical-session": false,
+        "removal": false
+      }
+    }
+  ]
+}
