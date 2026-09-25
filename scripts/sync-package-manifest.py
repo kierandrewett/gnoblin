@@ -191,15 +191,20 @@ def main() -> int:
     parser.add_argument("--output", type=Path, help="output path for arch-release")
     parser.add_argument("--source-sha256", help="source archive digest for arch-release")
     args = parser.parse_args()
-    manifest = evaluate()
     if args.command == "arch-release":
         if not args.output or not args.source_sha256:
             parser.error("arch-release requires --output and --source-sha256")
         if not re.fullmatch(r"[0-9a-f]{64}", args.source_sha256):
             parser.error("--source-sha256 must be a lowercase SHA-256 digest")
+        # Release images do not install Nix.  The tracked manifest has already
+        # been checked against Nix by the normal package-manifest gate; use it
+        # here so source-package publication needs no second toolchain.
+        manifest = json.loads(MANIFEST_OUTPUT.read_text())
         args.output.write_text(render_arch(manifest, args.source_sha256))
         print(f"wrote {args.output}")
         return 0
+
+    manifest = evaluate()
     rendered_outputs = outputs(manifest)
 
     if args.command == "write":
