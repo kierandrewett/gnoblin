@@ -179,6 +179,8 @@ border=9ccfd8ff
 FUZZEL
 
 capture_path="$output_dir/gnoblin-build-a-desktop.png"
+firefox_profile="$HOME/.mozilla/firefox/gnoblin-docs"
+firefox_command="firefox --no-remote --profile '$firefox_profile'"
 case "$example" in
     desktop)
         capture_path="$output_dir/gnoblin-build-a-desktop.png"
@@ -186,16 +188,16 @@ case "$example" in
         ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
-        app_command="firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="$firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="firefox --new-window '$docs_url/guides/shortcuts.html'"
-        post_app_command='fuzzel & sleep 3'
+        app_command="$firefox_command --new-window '$docs_url/guides/shortcuts.html'"
+        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 1"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
-        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; firefox --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
         ;;
 esac
 
@@ -204,6 +206,16 @@ if [ "$example" != desktop ]; then
         echo "firefox is required for this scene" >&2
         exit 1
     }
+    mkdir -p "$firefox_profile"
+    cat >"$firefox_profile/user.js" <<'PREFS'
+// Keep first-run pages out of screenshots while retaining a genuinely fresh profile.
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("browser.startup.homepage_override.buildID", "ignore");
+user_pref("browser.rights.3.shown", true);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
+PREFS
 fi
 if [ "$example" = bingux-firefox ]; then
     command -v gnoblin-quickshell >/dev/null || {
