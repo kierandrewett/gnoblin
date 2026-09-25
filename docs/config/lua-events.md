@@ -119,6 +119,17 @@ name. Registering a name does not create an event source: Mutter, GNOME Shell,
 or Gnoblin must dispatch it. Signal availability follows the Mutter and GNOME
 Shell versions used to build Gnoblin.
 
+`gnoblin.listeners` maps each registered event name to its callback list.
+Inspect it to see which handlers earlier config files have added:
+
+```lua
+for name, callbacks in pairs(gnoblin.listeners) do
+    print(name, #callbacks)
+end
+```
+
+Register callbacks with `gnoblin.on`; the listener table is for inspection.
+
 Callbacks run synchronously in the compositor's main thread. Keep them short,
 especially handlers for high-frequency `*.input.*` events.
 
