@@ -663,6 +663,7 @@ def run_inside() -> int:
             str(window_id): {"pid": process.pid, "returncode": process.poll()}
             for window_id, process in processes.items()
         }
+        failure["window_states_at_failure"] = {str(window_id): state_for(window_id) for window_id in processes}
         save_json(plan_path.parent / "client-failure.json", failure)
         print(f"lifecycle fuzz failure: {error}\n{failure['traceback']}", file=sys.stderr, flush=True)
     finally:

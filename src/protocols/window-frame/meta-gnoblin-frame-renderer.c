@@ -8,6 +8,7 @@
 #include "core/window-private.h"
 #include "gnoblin-window-frame-v1-server-protocol.h"
 #include "meta/display.h"
+#include "meta/meta-context.h"
 #include "meta/meta-wayland-client.h"
 #include "meta/meta-window-actor.h"
 #include "meta/prefs.h"
@@ -68,6 +69,8 @@ struct _Frame {
 };
 
 static MetaWaylandCompositor* frame_compositor;
+static MetaDisplay* frame_display;
+static gulong grab_op_end_handler;
 static GHashTable* renderers;
 static GList* frames;
 static gboolean stopping;
@@ -510,6 +513,31 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
         gnoblin_window_frame_v1_send_interaction(frame->resource, action, !!frame->pressed);
     redraw_buttons(frame);
     return CLUTTER_EVENT_STOP;
+}
+
+static void frame_grab_op_ended(MetaDisplay* display, MetaWindow* window, MetaGrabOp op,
+                                gpointer data) {
+    static const MetaGrabOp resize[] = {
+        META_GRAB_OP_RESIZING_N,  META_GRAB_OP_RESIZING_NE, META_GRAB_OP_RESIZING_E,
+        META_GRAB_OP_RESIZING_SE, META_GRAB_OP_RESIZING_S,  META_GRAB_OP_RESIZING_SW,
+        META_GRAB_OP_RESIZING_W,  META_GRAB_OP_RESIZING_NW,
+    };
+    for (GList* l = frames; l; l = l->next) {
+        Frame* frame = l->data;
+        if (frame->window != window)
+            continue;
+        gboolean frame_grab = frame->pressed == 1 ? op == META_GRAB_OP_MOVING
+                              : frame->pressed >= 5 && frame->pressed <= 12
+                                  ? op == resize[frame->pressed - 5]
+                                  : FALSE;
+        if (!frame_grab)
+            return;
+        frame->pressed = 0;
+        redraw_buttons(frame);
+        if (frame->external && frame->resource)
+            gnoblin_window_frame_v1_send_interaction(frame->resource, frame->hover, FALSE);
+        return;
+    }
 }
 
 static void detach_frame(Frame* frame) {
@@ -1088,6 +1116,11 @@ static void prepare_shutdown(MetaWaylandCompositor* compositor, gpointer data) {
     GHashTableIter iter;
     gpointer value;
     stopping = TRUE;
+    if (frame_display && grab_op_end_handler) {
+        g_signal_handler_disconnect(frame_display, grab_op_end_handler);
+        grab_op_end_handler = 0;
+    }
+    frame_display = NULL;
     if (!renderers)
         return;
     for (GList* l = frames; l; l = l->next) {
@@ -1189,6 +1222,10 @@ void meta_gnoblin_frame_renderer_init(MetaWaylandCompositor* compositor) {
     frame_compositor = compositor;
     stopping = FALSE;
     g_signal_connect(compositor, "prepare-shutdown", G_CALLBACK(prepare_shutdown), NULL);
+    frame_display = meta_context_get_display(meta_wayland_compositor_get_context(compositor));
+    if (frame_display)
+        grab_op_end_handler =
+            g_signal_connect(frame_display, "grab-op-end", G_CALLBACK(frame_grab_op_ended), NULL);
     if (!gnoblin_config_protocol_enabled("window-frame-renderer"))
         return;
     renderers = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, renderer_unref);
