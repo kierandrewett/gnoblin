@@ -93,9 +93,10 @@ Each capture uses a disposable profile and removes it afterward. The scenes
 show Files under Waybar, Firefox with Waybar, Fuzzel over Firefox, a Mako
 notification over Firefox, a Quickshell panel, and Bingux with stock desktop
 apps. Bingux is one separate
-shell project using Gnoblin. Firefox opens the local docs preview at
-`127.0.0.1:5180`; start it with
-`npm run docs:dev -- --port 5180` first.
+shell project using Gnoblin. Firefox opens the GNOME website in a fresh profile,
+so the screenshots show a real desktop in use instead of a page from the docs
+being illustrated. Firefox needs network access for this page; set
+`GNOBLIN_DOC_FIREFOX_URL` to use another page, such as a local site.
 
 Captures need a visible Wayland session, a current build in `./install`, and
 the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is

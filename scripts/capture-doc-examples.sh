@@ -12,7 +12,7 @@ case "$example" in
         exit 2
         ;;
 esac
-docs_url="${GNOBLIN_DOCS_URL:-http://127.0.0.1:5180/gnoblin}"
+firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://www.gnome.org/}"
 bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
@@ -131,6 +131,8 @@ padding=16
 width=380
 height=110
 default-timeout=9000
+anchor=bottom-right
+margin=24
 MAKO
 cat >"$XDG_CONFIG_HOME/foot/foot.ini" <<'FOOT'
 font=monospace:size=12
@@ -208,25 +210,25 @@ case "$example" in
         ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/guides/shortcuts.html'"
-        post_app_command='fuzzel & sleep 3'
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
+        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
         ;;
     mako-notification)
         capture_path="$output_dir/gnoblin-mako-notification.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
         post_app_command="notify-send --app-name='Downloads' 'Download complete' 'The file is ready to open.' --icon=folder-download; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
-        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; $firefox_command --new-window '$firefox_url'"
         ;;
     quickshell-firefox)
         capture_path="$output_dir/gnoblin-quickshell-firefox.png"
-        app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
+        app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$firefox_url'"
         ;;
 esac
 

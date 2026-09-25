@@ -39,9 +39,9 @@ using Mako.
 Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
 [shortcuts](/guides/shortcuts) only control how you launch it.
 
-![Firefox running with an independent Waybar session](images/gnoblin-waybar-firefox.png)
+![Firefox showing the GNOME website with an independent Waybar session](images/gnoblin-waybar-firefox.png)
 
-_Firefox under Waybar in a fresh Gnoblin profile._
+_Firefox running under Waybar in a fresh Gnoblin profile._
 
 ![A Mako notification in a fresh Gnoblin session](images/gnoblin-mako-notification.png)
 

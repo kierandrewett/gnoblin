@@ -28,6 +28,11 @@ gnoblin.configure {
 | `input_source_switcher` | Initially off | Native keyboard-layout popup       |
 | `window_switcher`       | Off           | GNOME's app/window/group switchers |
 
+With Mako, set [`shell.notifications`](/config/configure/shell) to `false` so
+Gnoblin does not also own the notification service:
+
+![Mako notification displayed over Firefox in a Waybar session](../images/gnoblin-mako-notification.png)
+
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
