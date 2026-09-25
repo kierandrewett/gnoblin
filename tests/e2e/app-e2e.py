@@ -270,11 +270,14 @@ def shell_drag(start_x: int, start_y: int, end_x: int, end_y: int) -> None:
     time.sleep(0.06)
 
 
-def app_command(app: dict) -> list[str]:
+def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
     if app["source"] == "flathub-popular":
         return [
             "flatpak",
             "run",
+            f"--env=DISPLAY={client_environment['DISPLAY']}",
+            f"--env=XAUTHORITY={client_environment['XAUTHORITY']}",
+            f"--env=LANG={client_environment['LANG']}",
             "--socket=wayland",
             "--socket=x11",
             "--socket=fallback-x11",
@@ -334,6 +337,7 @@ def app_environment() -> dict[str, str]:
 
     env = os.environ.copy()
     env.update(compositor_environment)
+    env.setdefault("LANG", "C.UTF-8")
     # The shell itself forces Wayland, but launched applications need to select
     # their native backend or fall back to the XWayland display Mutter provides.
     env.pop("GDK_BACKEND", None)
@@ -393,7 +397,7 @@ def run_one_app(
     with log_path.open("w") as log:
         try:
             process = subprocess.Popen(
-                app_command(app),
+                app_command(app, client_environment),
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
