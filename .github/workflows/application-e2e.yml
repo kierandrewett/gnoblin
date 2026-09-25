@@ -134,7 +134,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}
+          # The artifact's common root is e2e-ci-artifacts/; extract its files
+          # back into that directory so the catalog and prefix paths line up.
+          path: ${{ github.workspace }}/e2e-ci-artifacts
 
       - name: Restore executable Gnoblin prefix
         run: |
