@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       trace_shutdown_critical:
-        description: Capture the first GLib critical during the shell-shutdown seed
+        description: Capture the first GLib critical or native abort during shutdown
         required: false
         default: false
         type: boolean

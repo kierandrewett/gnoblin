@@ -198,10 +198,18 @@ if [[ "${GNOBLIN_TEST_GDB_LOG_CRITICALS:-0}" == 1 ]]; then
     cat >"$gdb_commands" <<'GDB'
 set debuginfod enabled off
 set pagination off
+set confirm off
 set breakpoint pending on
 handle SIGTERM nostop noprint pass
 break g_log
 condition 1 ($esi & 8) != 0
+catch signal SIGABRT
+commands 2
+  silent
+  printf "\nGNOBLIN_GDB_ABORT: SIGABRT\n"
+  bt 40
+  quit 1
+end
 commands 1
   silent
   printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx
