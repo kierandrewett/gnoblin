@@ -140,6 +140,39 @@ Gnoblin runtime package names and refers to a repository-relative example file
 that is absent from the release asset. It must become a real source-addressable
 runtime package set before Arch can be counted as covered.
 
+### Host and private runtime boundary
+
+The least fragile model is a private GNOME 51 compositor/runtime inside
+`/usr/lib/gnoblin` with the host distribution owning login, device, and desktop
+services. Gnoblin can privately build ABI-sensitive libraries such as GLib,
+Wayland, libinput, GJS/mozjs, GNOME Desktop, libei, and its compositor
+dependencies. Its session wrapper must scope those library paths to Gnoblin
+Shell and clear them before launching the host session manager.
+
+Keep these services host-owned: GDM and PAM, systemd/logind and the user
+manager, host `gnome-session`, host GNOME Settings Daemon, D-Bus, PipeWire and
+WirePlumber, udev, Mesa, and kernel/device drivers. They own authentication,
+session tracking, device access, portals, and hardware policy. Installing a
+private copy alongside the host can split session state and permissions rather
+than solve an old-library dependency.
+
+Use the host `xdg-desktop-portal` broker and its normal backend selection.
+Add a Gnoblin portal backend only if clean-target tests show that the stock
+portal configuration cannot select an appropriate backend with Gnoblin's
+desktop identity. Verify ScreenCast, RemoteDesktop, and settings portals
+against the host PipeWire/WirePlumber stack, including RustDesk's live connect,
+disconnect, and reconnect path. PipeWire client-library version compatibility
+must be tested against each host daemon; do not infer it from matching package
+names.
+
+This boundary fits the GNOME distribution model, where upstream releases
+signal downstreams to update distro packages, and the portal design supports
+backend selection for multiple desktop environments. Relevant service
+contracts: [systemd PAM session setup](https://www.freedesktop.org/software/systemd/man/251/pam_systemd.html),
+[portal design considerations](https://flatpak.github.io/xdg-desktop-portal/docs/design-considerations.html),
+[portal backend selection](https://flatpak.github.io/xdg-desktop-portal/docs/configuration-file.html),
+and [PipeWire session management](https://docs.pipewire.org/page_session_manager.html).
+
 Probe constraints and negative results are useful evidence. Keep them in the
 target inventory, but don't describe a target as supported until its exact
 package build, stock-GNOME coexistence, graphical session, and removal gates
