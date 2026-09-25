@@ -1,10 +1,8 @@
 # Wallpapers
 
-The session starts `gnoblin-gnome-wallpaper` from its autostart entry with
-`restart = "always"`. Gnoblin relaunches it two seconds after it exits, keeping
-the background available after a crash or clean exit. The client creates a
-non-interactive `zwlr_layer_shell_v1` surface on the background layer for each
-monitor.
+The session starts `gnoblin-gnome-wallpaper` from its autostart entry. The
+client creates a non-interactive `zwlr_layer_shell_v1` surface on the
+background layer for each monitor.
 
 The client reads `org.gnome.desktop.background` through GNOME's `GnomeBG`
 renderer. Existing GNOME picture, placement, color and slideshow settings
@@ -16,15 +14,15 @@ The default entry can be removed or replaced in `~/.config/gnoblin/init.lua`:
 gnoblin.configure {
     autostart = {
         ["gnoblin-gnome-wallpaper"] = {enable = false},
-        my_wallpaper = {command = {"my-wallpaper-daemon"}, restart = "always"},
+        my_wallpaper = {command = {"my-wallpaper-daemon"}},
     },
 }
 ```
 
-Autostart commands use argument arrays and start once per login. The wallpaper
-entry opts into Gnoblin's restart supervision. See [autostart](/guides/autostart)
-for restart policies and named entries. The [configuration loading guide](/guides/files_and_load_order)
-explains how the default entry combines with your config.
+Autostart commands use argument arrays and start once per login. See
+[autostart](/guides/autostart) for named entries. The
+[configuration loading guide](/guides/files_and_load_order) explains how the
+default entry combines with your config.
 
 ## Build your own wallpaper system
 

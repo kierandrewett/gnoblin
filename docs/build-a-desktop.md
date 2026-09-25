@@ -63,9 +63,8 @@ explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
 file. `gnoblinctl config reload` reports errors and applies a valid edit.
-Autostart launches each named command once per login; an entry can opt into
-restarts with `restart = "on_failure"` or `restart = "always"`. Adding a new
-name during a reload starts it, while removing one does not stop a running
+Autostart launches each named command once per login. Adding a new name during
+a reload starts it, while disabling or removing one does not stop a running
 process. See the [autostart guide](/guides/autostart) for details.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do

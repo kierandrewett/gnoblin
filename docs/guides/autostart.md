@@ -1,13 +1,9 @@
-# autostart
+# Autostart
 
-[Configuration reference](/config/configure)
+[Configuration reference](/config/configure/autostart)
 
-Use `autostart` for commands that should start with the session. Set its
-`restart` policy when the process should be relaunched after it exits.
-
-## Add a program
-
-Add this to `~/.config/gnoblin/init.lua`, after any `gnoblin.load(...)` lines:
+Use `autostart` for commands that should start in your session. Add this to
+`~/.config/gnoblin/init.lua`:
 
 ```lua
 gnoblin.configure {
@@ -17,11 +13,12 @@ gnoblin.configure {
 }
 ```
 
-`when` is optional; it defaults to `"on_login"`. Gnoblin currently supports
-that trigger, which starts the command once in the session. A new entry added
-after login starts when the config reloads. Reusing a name updates the entry.
-Install the program first.
-Do not add a program already started by a service, such as Bingux.
+Install the program first. Gnoblin runs the command directly, without shell
+expansion; use one string for each argument. If you need pipes or redirection,
+explicitly run a shell. A new entry starts when the config reloads. The
+optional `when` field defaults to `"on_login"`, currently the only supported
+trigger. A command that was already launched uses its updated arguments at the
+next login. Do not add a program already started by a service, such as Bingux.
 
 ## Override an imported command
 
@@ -32,22 +29,17 @@ gnoblin.configure {
     autostart = {
         waybar = {
             command = {"waybar", "--config", "/home/you/.config/waybar/work.jsonc"},
-            restart = "on_failure",
         },
     },
 }
 ```
 
-Replace the path with your own. If Waybar has already started, the changed
-command takes effect at your next login. `restart` accepts `"never"` (the
-default), `"on_failure"`, or `"always"`. Gnoblin waits two seconds between
-restarts. Use `"always"` for a long-running client that should recover after
-any exit.
+Replace the path with your own. Omitted fields keep their earlier values.
 
-## Remove an entry
+## Disable an entry
 
-To prevent an imported program from starting next time, disable its named entry
-after the file that adds it:
+Set `enable = false` on the named entry to prevent it starting in future
+sessions:
 
 ```lua
 gnoblin.configure {
@@ -57,30 +49,22 @@ gnoblin.configure {
 }
 ```
 
-An unknown name adds a disabled entry. Disabling an entry does not stop an
-already running process.
+An unknown name adds a disabled entry. Disabling or removing an entry does not
+stop a process that is already running.
 
 ## When does it run?
 
-- A new name starts on the next config reload.
-- Each name gets one initial launch per login. A configured restart policy may
-  launch it again after it exits.
-- Saving again or unlocking does not start a second copy.
-- An exited process follows its `restart` policy. The default, `"never"`,
-  does not restart it; `"on_failure"` restarts unsuccessful exits, and
-  `"always"` restarts every exit.
-- Changing the command for a program already launched takes effect at the next login.
-- Removing the entry does not stop the running process.
-
-Gnoblin waits two seconds before a restart. Failed launches are logged; when a
-restart policy is enabled, Gnoblin retries them using the same delay.
+- A new name starts when the config reloads.
+- Each name gets one launch per login. Saving again or unlocking does not
+  start a second copy.
+- Changing the command for an entry that already launched takes effect at the
+  next login.
+- Disabling or removing an entry does not stop its running process.
 
 ![A Mako notification displayed in a Gnoblin session](../images/gnoblin-mako-notification.png)
 
 _A notification daemon such as Mako runs as a separate autostarted client._
 
-## Command arguments
-
-Use one string per argument. Commands run without shell expansion, so use
-absolute paths or programs on PATH. For pipes or redirection, explicitly
-invoke a shell; see [command syntax](/guides/shortcuts#commands-and-shell-syntax).
+See [command syntax](/guides/shortcuts#commands-and-shell-syntax) for shell
+commands and [configuration loading](/guides/files_and_load_order) for how
+named entries combine across files.
