@@ -44,15 +44,17 @@ def main() -> int:
     rpm_status: dict[str, dict] = {}
     packages = sorted(rpm_apps)
     if packages:
-        code, output = run(["dnf", "-y", "--setopt=install_weak_deps=False", "install", *packages],
-                           2400, log_dir / "rpm-batch.log")
+        code, output = run(
+            ["dnf", "-y", "--setopt=install_weak_deps=False", "install", *packages], 2400, log_dir / "rpm-batch.log"
+        )
         if code == 0:
             rpm_status = {package: {"status": "installed"} for package in packages}
         else:
             for index, package in enumerate(packages):
                 code, individual_output = run(
                     ["dnf", "-y", "--setopt=install_weak_deps=False", "install", package],
-                    300, log_dir / f"rpm-{index:03d}.log",
+                    300,
+                    log_dir / f"rpm-{index:03d}.log",
                 )
                 rpm_status[package] = {
                     "status": "installed" if code == 0 else "install-failed",
@@ -60,24 +62,40 @@ def main() -> int:
                     "diagnostic": individual_output,
                 }
 
-    results.update({
-        app["app_id"]: {"app_id": app["app_id"], "source": app["source"],
-                        "status": rpm_status.get(app["install"], {}).get("status", "install-failed"),
-                        "package": app["install"], "details": rpm_status.get(app["install"], {})}
-        for apps in rpm_apps.values() for app in apps
-    })
+    results.update(
+        {
+            app["app_id"]: {
+                "app_id": app["app_id"],
+                "source": app["source"],
+                "status": rpm_status.get(app["install"], {}).get("status", "install-failed"),
+                "package": app["install"],
+                "details": rpm_status.get(app["install"], {}),
+            }
+            for apps in rpm_apps.values()
+            for app in apps
+        }
+    )
 
     for index, app in enumerate(flatpak_apps):
         code, output = run(
-            ["flatpak", "install", "--system", "--noninteractive", "--assumeyes",
-             "flathub", app["install"]],
+            [
+                "flatpak",
+                "install",
+                "--system",
+                "--noninteractive",
+                "--assumeyes",
+                "flathub",
+                f"{app['install']}//stable",
+            ],
             1500,
             log_dir / f"flatpak-{index:03d}.log",
         )
         results[app["app_id"]] = {
-            "app_id": app["app_id"], "source": app["source"],
+            "app_id": app["app_id"],
+            "source": app["source"],
             "status": "installed" if code == 0 else "install-failed",
-            "return_code": code, "diagnostic": output,
+            "return_code": code,
+            "diagnostic": output,
         }
         print(f"install {app['source']} {app['app_id']}: {results[app['app_id']]['status']}", flush=True)
 
