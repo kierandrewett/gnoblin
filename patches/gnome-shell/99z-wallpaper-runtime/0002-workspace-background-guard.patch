@@ -1,0 +1,17 @@
+From 45f1702593bef07580aa0ab7a87fbb8bc9f39cbc Mon Sep 17 00:00:00 2001
+From: Gnoblin Docs Audit <gnoblin-docs-audit@localhost>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] gnoblin: guard optional workspace animation background
+
+---
+ js/ui/workspaceAnimation.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
+index 1cdd14c36..9f5317726 100644
+--- a/js/ui/workspaceAnimation.js
++++ b/js/ui/workspaceAnimation.js
+@@ -253,2 +253,2 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+-        this._bgManager.destroy();
++        this._bgManager?.destroy();
+     }

@@ -10,6 +10,7 @@ import ctypes
 import os
 from pathlib import Path
 import sys
+import time
 
 from PIL import Image
 
@@ -45,6 +46,20 @@ def main() -> int:
     display.XDisplayWidth.restype = ctypes.c_int
     display.XDisplayHeight.argtypes = [ctypes.c_void_p, ctypes.c_int]
     display.XDisplayHeight.restype = ctypes.c_int
+    display.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+    display.XDefaultRootWindow.restype = ctypes.c_ulong
+    display.XWarpPointer.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.c_ulong,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    display.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
     display.XCloseDisplay.argtypes = [ctypes.c_void_p]
     display.XFree.argtypes = [ctypes.c_void_p]
     fixes.XFixesGetCursorImage.restype = ctypes.POINTER(CursorImage)
@@ -53,19 +68,6 @@ def main() -> int:
     connection = display.XOpenDisplay(None)
     if not connection:
         raise RuntimeError("Could not read the live pointer from the host XWayland display")
-    image_ptr = fixes.XFixesGetCursorImage(connection)
-    if not image_ptr:
-        display.XCloseDisplay(connection)
-        raise RuntimeError("XFixes did not return the live pointer image")
-
-    cursor = image_ptr.contents
-    rgba = []
-    for index in range(cursor.width * cursor.height):
-        pixel = cursor.pixels[index] & 0xFFFFFFFF
-        rgba.append(((pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF, pixel & 0xFF, (pixel >> 24) & 0xFF))
-    pointer = Image.new("RGBA", (cursor.width, cursor.height))
-    pointer.putdata(rgba)
-
     with Image.open(output) as scene:
         scene = scene.convert("RGBA")
         screen = display.XDefaultScreen(connection)
@@ -75,6 +77,28 @@ def main() -> int:
         # the canvas center ten pixels above the host screen center.
         origin_x = int(os.environ.get("GNOBLIN_DOC_VIEWPORT_X") or (screen_width - scene.width) // 2)
         origin_y = int(os.environ.get("GNOBLIN_DOC_VIEWPORT_Y") or (screen_height - scene.height) // 2 - 10)
+        requested_position = os.environ.get("GNOBLIN_DOC_POINTER")
+        if requested_position:
+            target_x, target_y = map(int, requested_position.split())
+            if not 0 <= target_x < scene.width or not 0 <= target_y < scene.height:
+                raise RuntimeError(f"Requested cursor position {target_x},{target_y} is outside the screenshot")
+            root_window = display.XDefaultRootWindow(connection)
+            display.XWarpPointer(connection, 0, root_window, 0, 0, 0, 0, origin_x + target_x, origin_y + target_y)
+            display.XSync(connection, 0)
+            time.sleep(0.1)
+
+        image_ptr = fixes.XFixesGetCursorImage(connection)
+        if not image_ptr:
+            display.XCloseDisplay(connection)
+            raise RuntimeError("XFixes did not return the live pointer image")
+
+        cursor = image_ptr.contents
+        rgba = []
+        for index in range(cursor.width * cursor.height):
+            pixel = cursor.pixels[index] & 0xFFFFFFFF
+            rgba.append(((pixel >> 16) & 0xFF, (pixel >> 8) & 0xFF, pixel & 0xFF, (pixel >> 24) & 0xFF))
+        pointer = Image.new("RGBA", (cursor.width, cursor.height))
+        pointer.putdata(rgba)
         position = (cursor.x - cursor.xhot - origin_x, cursor.y - cursor.yhot - origin_y)
         if position[0] < 0 or position[1] < 0 or position[0] >= scene.width or position[1] >= scene.height:
             raise RuntimeError(

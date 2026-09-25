@@ -18,6 +18,10 @@ debugging a client connection.
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.
 
+![Bingux dock with Files, Firefox and Foot in a Gnoblin session](images/gnoblin-bingux-firefox.png)
+
+_Bingux is one shell example built on Gnoblin's compositor interfaces._
+
 ## Connect
 
 Socket: `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.

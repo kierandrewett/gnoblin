@@ -204,7 +204,7 @@ firefox_command="firefox --no-remote --profile '$firefox_profile'"
 case "$example" in
     desktop)
         capture_path="$output_dir/gnoblin-build-a-desktop.png"
-        app_command='nautilus --new-window'
+        app_command='waybar & mako & sleep 2; nautilus --new-window'
         ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
@@ -213,12 +213,12 @@ case "$example" in
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/guides/shortcuts.html'"
-        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 1"
+        post_app_command='fuzzel & sleep 3'
         ;;
     mako-notification)
         capture_path="$output_dir/gnoblin-mako-notification.png"
-        app_command='mako & sleep 2'
-        post_app_command="notify-send --app-name='Downloads' 'Archive ready' 'Your download is ready to open' --icon=folder-download; sleep 2"
+        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$docs_url/bring-your-own-shell.html'"
+        post_app_command="notify-send --app-name='Downloads' 'Download complete' 'The file is ready to open.' --icon=folder-download; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
@@ -237,7 +237,7 @@ if [ "$example" = mako-notification ]; then
     }
 fi
 
-if [ "$example" != desktop ] && [ "$example" != mako-notification ]; then
+if [ "$example" != desktop ]; then
     command -v firefox >/dev/null || {
         echo "firefox is required for this scene" >&2
         exit 1
@@ -276,9 +276,9 @@ if [ "$example" = bingux-firefox ]; then
 JSON
 fi
 
-pointer_position="${GNOBLIN_DOC_POINTER:-$(python3 -c 'import ctypes; x=ctypes.CDLL("libX11.so.6"); x.XOpenDisplay.restype=ctypes.c_void_p; x.XOpenDisplay.argtypes=[ctypes.c_char_p]; x.XDefaultScreen.argtypes=[ctypes.c_void_p]; x.XDefaultScreen.restype=ctypes.c_int; x.XDisplayWidth.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayWidth.restype=ctypes.c_int; x.XDisplayHeight.argtypes=[ctypes.c_void_p,ctypes.c_int]; x.XDisplayHeight.restype=ctypes.c_int; d=x.XOpenDisplay(None); s=x.XDefaultScreen(d); print(x.XDisplayWidth(d,s)//2, x.XDisplayHeight(d,s)//2)')}"
+pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
-desktop_command="swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
+desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
 bash "$root/scripts/run-gnome-devkit.sh"

@@ -15,6 +15,10 @@ gnoblin.configure {
 
 See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
 
+![Fuzzel's application list open over Firefox](../../images/gnoblin-waybar-launcher.png)
+
+_Fuzzel opens from a Gnoblin shortcut._
+
 ## Run a built-in action
 
 An `action` names an existing GNOME keybinding as `group.key`. Accepted

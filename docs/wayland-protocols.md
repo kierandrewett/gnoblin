@@ -55,6 +55,10 @@ and exclusive zone. Gnoblin then places the surface and applies any matching
 `type = "layer"` [window rules](/guides/window_rules). A panel that animates its own
 whole surface can disable the compositor's layer animation for its namespace.
 
+![A Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
+
+_Quickshell positions the panel with layer shell._
+
 Screen capture through `wlr_screencopy` is separate from capture through the
 desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.

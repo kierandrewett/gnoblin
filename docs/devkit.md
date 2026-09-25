@@ -90,8 +90,9 @@ scripts/capture-doc-examples.sh quickshell-firefox
 ```
 
 Each capture uses a disposable profile and removes it afterward. The scenes
-show Files, Firefox under Waybar, Fuzzel over Firefox, a Mako notification, a
-Quickshell panel, and Bingux with stock desktop apps. Bingux is one separate
+show Files under Waybar, Firefox with Waybar, Fuzzel over Firefox, a Mako
+notification over Firefox, a Quickshell panel, and Bingux with stock desktop
+apps. Bingux is one separate
 shell project using Gnoblin. Firefox opens the local docs preview at
 `127.0.0.1:5180`; start it with
 `npm run docs:dev -- --port 5180` first.
