@@ -27,13 +27,22 @@ prepare() {
 
 build() {
     local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
+    local _schema_prefix="$_build_prefix/schemas"
     cd "$srcdir/$pkgname-$pkgver" || return
     python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"
     _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     _private_gir="$_build_prefix/deps/share/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}"
     _private_typelib="$_build_prefix/deps/lib64/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/schemas subprojects/gsettings-desktop-schemas --prefix="$_prefix" --libdir=lib --buildtype=release
+    meson setup build/schemas subprojects/gsettings-desktop-schemas --prefix="$_schema_prefix" --libdir=lib --buildtype=release
     meson compile -C build/schemas
+    meson install -C build/schemas --no-rebuild
+    _schema_pkgconfig="$_schema_prefix/lib/pkgconfig:$_schema_prefix/share/pkgconfig"
+    _schema_gir="$_schema_prefix/share/gir-1.0"
+    _schema_typelib="$_schema_prefix/lib/girepository-1.0"
+    test "$(env PKG_CONFIG_PATH="$_schema_pkgconfig:$_private_pkgconfig" pkg-config --modversion gsettings-desktop-schemas)" = "51.0"
+    _private_pkgconfig="$_schema_pkgconfig:$_private_pkgconfig"
+    _private_gir="$_schema_gir:$_private_gir"
+    _private_typelib="$_schema_typelib:$_private_typelib"
     env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/mutter subprojects/mutter --prefix="$_prefix" --libdir=lib --buildtype=release -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir="$_prefix/lib/udev"
     meson compile -C build/mutter
     env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib:$_prefix/lib/mutter-51" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false

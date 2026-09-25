@@ -99,6 +99,7 @@ def render_rpm(manifest: dict) -> str:
 def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     gnome_version = manifest["release"]["gnomeVersion"]
+    schemas_version = manifest["packages"]["gnoblin-gsettings-desktop-schemas"]["version"]
     _, requirements = dependency_closure(manifest, "gnoblin")
     dependencies = [
         *(
@@ -134,13 +135,22 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         "}\n\n"
         "build() {\n"
         '    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"\n'
+        '    local _schema_prefix="$_build_prefix/schemas"\n'
         '    cd "$srcdir/$pkgname-$pkgver" || return\n'
         '    python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"\n'
         '    _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"\n'
         '    _private_gir="$_build_prefix/deps/share/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}"\n'
         '    _private_typelib="$_build_prefix/deps/lib64/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"\n'
-        '    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/schemas subprojects/gsettings-desktop-schemas --prefix="$_prefix" --libdir=lib --buildtype=release\n'
+        '    meson setup build/schemas subprojects/gsettings-desktop-schemas --prefix="$_schema_prefix" --libdir=lib --buildtype=release\n'
         "    meson compile -C build/schemas\n"
+        "    meson install -C build/schemas --no-rebuild\n"
+        '    _schema_pkgconfig="$_schema_prefix/lib/pkgconfig:$_schema_prefix/share/pkgconfig"\n'
+        '    _schema_gir="$_schema_prefix/share/gir-1.0"\n'
+        '    _schema_typelib="$_schema_prefix/lib/girepository-1.0"\n'
+        f'    test "$(env PKG_CONFIG_PATH="$_schema_pkgconfig:$_private_pkgconfig" pkg-config --modversion gsettings-desktop-schemas)" = "{schemas_version}"\n'
+        '    _private_pkgconfig="$_schema_pkgconfig:$_private_pkgconfig"\n'
+        '    _private_gir="$_schema_gir:$_private_gir"\n'
+        '    _private_typelib="$_schema_typelib:$_private_typelib"\n'
         '    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/mutter subprojects/mutter --prefix="$_prefix" --libdir=lib --buildtype=release -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir="$_prefix/lib/udev"\n'
         "    meson compile -C build/mutter\n"
         '    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib:$_prefix/lib/mutter-51" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false\n'

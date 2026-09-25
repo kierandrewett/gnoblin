@@ -18,6 +18,15 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             self.assertIn("pkgconfig(", content)
             self.assertNotIn("mesa-libEGL-devel", content)
 
+    def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
+        for name in ("gsettings-desktop-schemas.spec", "mutter.spec", "gnome-shell.spec"):
+            content = (SPECS / name).read_text()
+            self.assertNotIn("%{_bindir}/meson", content)
+        schemas = (SPECS / "gsettings-desktop-schemas.spec").read_text()
+        self.assertIn("/usr/bin/meson setup build .", schemas)
+        self.assertIn("/usr/bin/meson compile -C build", schemas)
+        self.assertIn("/usr/bin/meson install -C build", schemas)
+
     def test_session_uses_host_discovery_paths_and_gnoblin_names(self):
         shell = (SPECS / "gnome-shell.spec").read_text()
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", shell)

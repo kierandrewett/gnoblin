@@ -27,11 +27,19 @@ provide the matching GNOME major without replacing the host desktop schemas.
 %autosetup -n gsettings-desktop-schemas-%{version}
 
 %build
-%meson
-%meson_build
+# The openSUSE RPM macro derives the Meson executable from _bindir.  Gnoblin
+# makes _bindir private, but Meson itself is host build tooling.
+/usr/bin/meson setup build . --buildtype=plain \
+  --prefix=%{_prefix} --libdir=%{_libdir} --libexecdir=%{_libexecdir} \
+  --bindir=%{_bindir} --sbindir=%{_sbindir} --includedir=%{_includedir} \
+  --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} \
+  --localedir=%{_datadir}/locale --sysconfdir=%{_sysconfdir} \
+  --localstatedir=%{_localstatedir} --sharedstatedir=%{_sharedstatedir} \
+  --wrap-mode=nodownload --auto-features=enabled
+/usr/bin/meson compile -C build %{?_smp_mflags}
 
 %install
-%meson_install
+DESTDIR=%{buildroot} /usr/bin/meson install -C build --no-rebuild
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
 
 %posttrans
