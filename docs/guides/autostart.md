@@ -15,10 +15,13 @@ gnoblin.configure {
 
 Install the program first. Gnoblin runs the command directly, without shell
 expansion; use one string for each argument. If you need pipes or redirection,
-explicitly run a shell. A new entry starts when the config reloads. The
-optional `when` field defaults to `"on_login"`, currently the only supported
-trigger. A command that was already launched uses its updated arguments at the
-next login. Do not add a program already started by a service, such as Bingux.
+explicitly run a shell.
+
+A new entry starts when the config reloads. The optional `when` field defaults
+to `"on_login"`, currently the only supported trigger. A command that was
+already launched uses its updated arguments at the next login.
+
+Do not add a program already started by a service, such as Bingux.
 
 ## Override an imported command
 

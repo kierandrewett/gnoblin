@@ -52,8 +52,10 @@ window in place and logs a warning.
 | `frame`               | Frame fields below                                                   |
 
 Workspace match fields select a window's current workspace and update when
-the window changes workspaces. The `workspace` placement effect runs once
-when a normal window is created. It is not reapplied when its title or focus
+the window changes workspaces.
+
+The `workspace` placement effect runs once when a normal window is created. It
+is not reapplied when its title or focus
 changes or when the configuration reloads. Transient and modal windows stay
 with their parent. See the [workspaces section of the window rules guide](/guides/window_rules#workspaces).
 

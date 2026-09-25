@@ -26,10 +26,12 @@ gnoblin.configure {
 
 Use exactly one of `command` or `action`. A command uses one GTK accelerator
 and a nonempty argument array; Gnoblin runs it directly, without shell
-expansion. An action uses a GSettings schema and key, plus a list of
-accelerators. It can also use a short name such as `"wm.close"` or
-`"gnome:shell.show_screenshot_ui"`. The groups are `wm`, `gnome:shell`,
-`mutter` and `wayland`. An empty binding list disables that action. Find keys
+expansion.
+
+An action uses a GSettings schema and key, plus a list of accelerators. It can
+also use a short name such as `"wm.close"` or `"gnome:shell.show_screenshot_ui"`.
+The groups are `wm`, `gnome:shell`, `mutter` and `wayland`. An empty binding
+list disables that action. Find keys
 with `gsettings list-keys SCHEMA` and read a description with
 `gsettings describe SCHEMA KEY`; available keys vary by GNOME version.
 

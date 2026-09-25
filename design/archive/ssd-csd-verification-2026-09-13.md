@@ -6,8 +6,8 @@ search: false
 
 **Archived record.** 13 September 2026 private-session decoration tests. App behavior and installed-session status are historical, not current compatibility guarantees.
 
-For current instructions, see [installation](installation.md),
-[window frames](/guides/window_frames) or [testing](testing.md).
+For current instructions, see [installation](../../docs/installation.md),
+[window frames](../../docs/guides/window_frames) or [testing](../../docs/testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>

@@ -74,6 +74,12 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - Before finishing documentation changes, check links, navigation, names, and
   examples against the current source and intended audience. Use the
   documentation build when verification is requested or needed for the change.
+- The published Markdown review uses both the editorial rules in `MARKDOWN_STYLE.md` and
+  deterministic checks for long paragraphs, long table cells, and repeated
+  table definitions. Run `python3 scripts/markdown-style.py review
+--fail-on-flags` for changed pages under `docs/` and resolve every flag; do not bypass a
+  failed review caused by missing credentials, service errors, or unresolved
+  flags.
 
 ## Writing style
 

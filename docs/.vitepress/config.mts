@@ -151,7 +151,6 @@ export default defineConfig({
                     { text: "CLI development", link: "/cli-development" },
                     { text: "Packaging", link: "/distribution" },
                     { text: "Documentation", link: "/documentation-site" },
-                    { text: "Archive", link: "/archive" },
                 ],
             },
         ],

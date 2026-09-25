@@ -6,8 +6,8 @@ search: false
 
 **Archived record.** Superseded frame design proposal. Its illustrative GJS renderer settings are not valid configuration; use the current frame and renderer guides.
 
-For current instructions, see [installation](installation.md),
-[window frames](/guides/window_frames) or [testing](testing.md).
+For current instructions, see [installation](../../docs/installation.md),
+[window frames](../../docs/guides/window_frames) or [testing](../../docs/testing.md).
 
 <details markdown="1">
 <summary>Read the original record</summary>
@@ -138,7 +138,7 @@ should not be required for the first working SSD implementation.
 ## Proposed configuration semantics
 
 The GJS renderer proposal below is superseded by
-[language-independent renderer services](window-frame-renderers.md).
+[language-independent renderer services](../../docs/window-frame-renderers.md).
 
 These names are illustrative and are not accepted by the current parser:
 

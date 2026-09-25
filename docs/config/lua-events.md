@@ -51,9 +51,10 @@ end)
 
 `gnoblin.on` accepts any nonempty event name up to 128 bytes. Registering a
 name does not create an event source: Mutter or the shell must dispatch that
-name. The wildcard receives all names those sources dispatch. Event callbacks
-run synchronously in the compositor's main thread, so keep handlers short,
-especially for `input.*` events. `gnoblin.configure` changes are subject to the
+name. The wildcard receives all names those sources dispatch.
+
+Event callbacks run synchronously in the compositor's main thread, so keep
+handlers short, especially for `input.*` events. `gnoblin.configure` changes are subject to the
 usual live-setting rules; startup-only settings such as protocol registration
 still need a new session.
 
