@@ -10,7 +10,7 @@ configuration reload unless the row says the preference is persisted.
 | `minimize_animation`    | `"zoom"`, `"fade"`, `"none"`, `"gnome"`                                  | `"zoom"`                                  |
 | `minimize_duration`     | 0–5000 ms                                                                | `200`                                     |
 | `minimize_target`       | `[x, y]`, two integers from −1,000,000 to 1,000,000                      | Dock target, then bottom centre           |
-| `layer_animation`       | `"slide"`, `"fade"`, `"none"`                                            | `"slide"`                                 |
+| `layer_animation`       | `"slide"`, `"fade"`, `"none"`, `"gnome"`                                 | `"slide"`                                 |
 | `layer_duration`        | 0–5000 ms                                                                | `220`                                     |
 | `layer_easing`          | `"linear"`, `"ease-out-quad"`, `"ease-out-cubic"`, `"ease-in-out-cubic"` | `"ease-out-cubic"`                        |
 | `window_menu`           | Up to 32 command strings; first must be non-empty if present             | Empty                                     |
@@ -19,11 +19,14 @@ configuration reload unless the row says the preference is persisted.
 | `input_source_switcher` | Boolean                                                                  | Initially disabled; persists in GSettings |
 | `wallpaper`             | Boolean                                                                  | `true`; persists in GSettings             |
 
-`minimize_animation` and `layer_animation` select a built-in name or a map of
-event names to custom animation names. Their accepted values and motion are
-described in the [animation guide](/guides/animations). `minimize_target` is a
-two-integer `[x, y]` position in logical desktop pixels; omitted coordinates use
-the dock target or bottom-center fallback. For example, `minimize_target = {320, 400}`.
+`minimize_animation` and `layer_animation` select a built-in preset that
+supports both transitions, or an event map. Use a map to select a custom
+animation by its registered name; custom animations apply to one event. See
+the [animation guide](/guides/animations) for presets, events and examples.
+
+`minimize_target` is a two-integer `[x, y]` position in logical desktop pixels.
+Omit it to use the dock target or bottom-center fallback. For example,
+`minimize_target = {320, 400}`.
 
 Use `window_menu = gnoblin.array {}` to explicitly clear a configured menu command.
 

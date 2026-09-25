@@ -48,7 +48,7 @@ window in place and logs a warning.
 | `borders`             | Border fields below                                                  |
 | `shader`              | GLSL file path; `""` clears it                                       |
 | `shader_uniforms`     | Map of literal uniform names to numeric values                       |
-| `animation`           | `"slide"`, `"fade"`, `"none"`, or a per-phase table                  |
+| `animation`           | Built-in or registered animation name, or an event map               |
 | `workspace`           | `{id = "code"}` or `{number = 2}`; place a new window on a workspace |
 | `frame`               | Frame fields below                                                   |
 
@@ -91,9 +91,18 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 
 ## Animation fields
 
+Choose a built-in or registered animation name. To select names by event, use
+a table:
+
+- `in` and `out` alias `layer-open` and `layer-close`.
+- `duration` and `easing` (or `ease`) override the selected animation.
+
+See the [animation guide](/guides/animations#register-a-custom-animation) for
+supported events and presets.
+
 | Field                              | Values                                                     |
 | ---------------------------------- | ---------------------------------------------------------- |
-| `animation["in"]`, `animation.out` | `"slide"`, `"fade"`, `"none"`                              |
+| `animation["in"]`, `animation.out` | Built-in or registered animation name                      |
 | `animation.duration`               | 0–5000 ms                                                  |
 | `animation.easing`                 | Same easing values as `gnoblin.configure` shell animations |
 

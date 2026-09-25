@@ -1,8 +1,9 @@
 # Compositor bridge
 
 Use this socket API to build a dock, launcher or window switcher. It lets your
-shell read windows, register shortcuts and request window actions. Your shell
-still draws the UI and decides how to group and order windows.
+shell read windows, request window actions and take temporary input grabs for
+interactive UI. Put persistent shortcuts in the [Lua config](/config/configure/shortcuts).
+Your shell still draws the UI and decides how to group and order windows.
 
 For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
 connection for you.
@@ -36,11 +37,12 @@ The server sends a greeting, including available features:
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
-The `hello.version` field is the socket protocol version. This bridge advertises
-`ui-sessions`, `switcher-fallback` and `overlay-shortcut`; it adds
-`blur-regions` and `layer-animation-policy` when the running build supports
-them. Check the exact feature name before using an optional capability. For
-example, bare Super requires `overlay-shortcut`.
+Read the socket protocol version from `hello.version`. Check `features` before
+using an optional capability:
+
+- Bare Super requires `overlay-shortcut`.
+- `blur-region` requires `blur-regions`.
+- `layer-animation-policy` requires the same-named feature.
 
 A validation error has an `error` event. If a valid `command` request fails,
 the response also carries its request `id`. Malformed JSON or excessive input
@@ -69,12 +71,17 @@ closes the socket; ordinary validation errors leave it open.
 | `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
 | `clear`                          | None                                                                     | Removes this client's bindings and session          |
 
-`command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
-`workspace-switch`, `workspace-next`, `workspace-previous`,
-`workspace-move-active`, `monitors`, `layers` and `window`. `layers` returns
-the current layer-shell surfaces in a `surfaces` array. `window` needs an
-`action` and a stable window ID or `"active"`. The [CLI reference](gnoblinctl.md)
-lists window actions and arguments.
+`command` supports these operations:
+
+- Window records: `windows`, `capture-windows`.
+- Workspaces: `workspaces`, `workspace-list`, `workspace-switch`,
+  `workspace-next`, `workspace-previous`, `workspace-move-active`.
+- `monitors` lists monitors; `layers` returns layer-shell surfaces.
+- `window` takes an `action` and a stable window ID or `"active"`.
+- `animation` lists, inspects and previews registered animations. See the
+  [animation CLI guide](gnoblinctl.md#animations).
+
+The [CLI reference](gnoblinctl.md) lists window actions and arguments.
 
 ### Workspace commands
 
@@ -124,9 +131,6 @@ Switch by stable ID or current number. Send exactly one selector:
 `workspace-switch` also accepts a numeric `workspace` selector.
 `workspace-next` and `workspace-previous` take no selector and wrap at the
 ends of the current workspace list.
-
-The older `workspaces` command keeps its legacy response: `id` is the current
-one-based position, and items do not include the display name.
 
 Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
 They also include the resolved workspace's `id`, `number`, `name`, `active`,
@@ -220,14 +224,15 @@ The server acknowledges:
 | `4`        | Hold Control   |
 | `67108864` | Hold Super     |
 
-The optional `modal` field defaults to `true`. A modal held shortcut captures
-key and pointer events before the popup appears; an Alt-held switcher can, for
-example, navigate and finish when Alt is released. Set `modal: false` for a
-passive modifier hold: Gnoblin leaves focus and input delivery with the current
-application, and reports when the modifier is released. This is useful for a
-shell that changes state while a modifier is held without opening an input UI.
-For example, this binding reports the `<Alt>F8` activation and later the Alt
-release while the focused application keeps receiving input:
+The optional `modal` field defaults to `true`:
+
+- Modal holds capture keyboard and pointer input for a popup. An Alt-held
+  switcher can continue until Alt is released.
+- `modal: false` leaves focus and input with the current app, while reporting
+  modifier release. Use it to change shell state without opening an input UI.
+
+This binding reports the `<Alt>F8` activation and later Alt release while the
+focused application keeps receiving input:
 
 ```json
 { "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }

@@ -85,9 +85,11 @@ subscribe to the same transitions as `gnome.shell.overview.*`; see the
 
 Bridge operation names must match
 `^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$`, such as `example.inspect`, and be unique.
-The handler receives `(request, peer)`. `peer.client` is an opaque token for
-that connection; it is valid only while the client is connected. `peer.pid` is
-the client's process ID, and `peer.send(record)` sends one event to that client.
+The handler receives `(request, peer)`.
+
+- `peer.client` is an opaque token for the connected client.
+- `peer.pid` is the client's process ID.
+- `peer.send(record)` sends one event to that client.
 
 | Peer member                 | Contract                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------- |

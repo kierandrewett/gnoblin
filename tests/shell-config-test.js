@@ -64,7 +64,12 @@ assert(
 const input = parseDocument({
     input: {
         mouse: { speed: -0.25, "left-handed": true, "accel-profile": "flat" },
-        touchpad: { "tap-to-click": true, "click-method": "fingers", "left-handed": "mouse" },
+        touchpad: {
+            "scroll-speed": 0.5,
+            "tap-to-click": true,
+            "click-method": "fingers",
+            "left-handed": "mouse",
+        },
         keyboard: { repeat: true, delay: 500, "repeat-interval": 30, "xkb-options": ["caps:escape"] },
         "orientation-lock": true,
         tablets: { "1234:5678": { mapping: "absolute", "keep-aspect": true } },
@@ -80,6 +85,7 @@ const input = parseDocument({
 });
 assert(
     input.input.keyboard["xkb-options"][0] === "caps:escape" &&
+        input.input.touchpad["scroll-speed"] === 0.5 &&
         input.input["orientation-lock"] &&
         input.input.tablets["1234:5678"].mapping === "absolute" &&
         input["input-sources"].sources[1].id === "anthy" &&
@@ -120,6 +126,8 @@ for (const document of [
     { cursor: { size: 257 } },
     { cursor: { unknown: true } },
     { input: { mouse: { speed: 1.1 } } },
+    { input: { touchpad: { "scroll-speed": -0.1 } } },
+    { input: { touchpad: { "scroll-speed": 2.1 } } },
     { input: { touchpad: { "click-method": "invalid" } } },
     { input: { keyboard: { delay: 0 } } },
     { input: { keyboard: { "xkb-options": "caps:escape" } } },

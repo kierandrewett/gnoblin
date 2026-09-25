@@ -156,9 +156,10 @@ Workspace numbers are one-based positions and may change when workspaces are
 removed or reordered. Configured IDs are assigned from initial positions, then
 stay with their workspace as order changes. Unconfigured workspaces receive
 generated IDs such as `@session-1` that last only for the session.
+
 Names are display labels and are not identifiers. Use `workspace list` to see
-each workspace's ID, number, name, active state and window count. Monitor IDs
-start at **0**.
+each workspace's ID, number, name, active state and window count.
+Monitor IDs start at **0**.
 
 Use `--number NUMBER` to select a workspace by its current one-based position.
 `workspace move-active` moves the focused window and switches workspaces only
