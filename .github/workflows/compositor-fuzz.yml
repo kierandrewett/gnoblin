@@ -54,6 +54,9 @@ jobs:
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             ./build.sh
 
+      - name: Test Lua runtime GVariant ownership
+        run: ./tests/test-config.sh
+
       - name: Verify lifecycle session runtime
         run: |
           command -v dbus-run-session
