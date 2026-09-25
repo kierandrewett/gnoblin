@@ -36,6 +36,9 @@ jobs:
       - name: Parse adapter boundaries
         run: python3 tests/opensuse-packaging.test.py
       - name: Build private RPM chain
+        env:
+          GIT_COMMITTER_NAME: Gnoblin Package Builder
+          GIT_COMMITTER_EMAIL: package-builder@gnoblin.local
         run: bash packaging/opensuse/build-chain.sh "$RUNNER_TEMP/rpmbuild"
       - name: Check RPM package isolation
         run: |

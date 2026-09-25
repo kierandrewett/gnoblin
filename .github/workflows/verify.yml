@@ -123,6 +123,9 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build a source bundle from this checked-out revision
+        env:
+          GIT_COMMITTER_NAME: Gnoblin Package Builder
+          GIT_COMMITTER_EMAIL: package-builder@gnoblin.local
         run: |
           git submodule foreach --recursive 'git fetch --force --tags origin'
           source_dir="$RUNNER_TEMP/gnoblin-arch-source"
