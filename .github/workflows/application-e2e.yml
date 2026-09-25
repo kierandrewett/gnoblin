@@ -122,7 +122,8 @@ jobs:
       - name: Install Git and desktop runtime dependencies
         run: |
           dnf -y install git flatpak gtk3 gtk4 wayland-devel wayland-protocols-devel \
-            gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon
+            gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon \
+            xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf
 
       - name: Checkout test drivers
         uses: actions/checkout@v4
@@ -143,6 +144,14 @@ jobs:
           tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
             --no-same-owner -C "$GITHUB_WORKSPACE"
           test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
+
+      - name: Verify isolated session D-Bus services
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          GNOBLIN_PREFIX: ${{ github.workspace }}/install
+        run: |
+          python3 scripts/devkit_dbus.py \
+            "$RUNNER_TEMP/gnoblin-dbus-preflight-$SHARD_INDEX" "$GITHUB_WORKSPACE"
 
       - name: Add Flathub and select this shard
         env:
