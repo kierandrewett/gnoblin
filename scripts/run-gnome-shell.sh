@@ -188,7 +188,22 @@ monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
 shell_command=("$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE"
     "${monitor_args[@]}" --wayland-display "$DISP")
-if [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
+if [[ "${GNOBLIN_TEST_GDB_LOG_CRITICALS:-0}" == 1 ]]; then
+    command -v gdb >/dev/null 2>&1 || {
+        echo "!! GNOBLIN_TEST_GDB_LOG_CRITICALS=1 requires gdb" >&2
+        exit 1
+    }
+    shell_command=(gdb --nx --batch --quiet
+        -ex "set debuginfod enabled off"
+        -ex "set pagination off"
+        -ex "set breakpoint pending on"
+        -ex "break g_logv"
+        -ex 'condition 1 ($esi & 8) != 0'
+        -ex run
+        -ex 'printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx'
+        -ex "bt 40"
+        --args "${shell_command[@]}")
+elif [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
     command -v gdb >/dev/null 2>&1 || {
         echo "!! GNOBLIN_TEST_GDB_CRITICALS=1 requires gdb" >&2
         exit 1

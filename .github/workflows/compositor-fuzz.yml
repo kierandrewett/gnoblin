@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      trace_shutdown_critical:
+        description: Capture the first GLib critical during the shell-shutdown seed
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ jobs:
         run: dnf -y install git dbus-daemon
 
       - name: Install GDB for a critical backtrace
-        if: ${{ inputs.trace_first_critical }}
+        if: ${{ inputs.trace_first_critical || inputs.trace_shutdown_critical }}
         run: dnf -y install gdb
 
       - name: Checkout Gnoblin and submodules
@@ -85,7 +90,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
             seeds+=(51 1701 884422 314159265)
           fi
-          if [[ "${{ inputs.trace_first_critical }}" == "true" ]]; then
+          if [[ "${{ inputs.trace_first_critical }}" == "true" || "${{ inputs.trace_shutdown_critical }}" == "true" ]]; then
             seeds=(1738)
           fi
           failed_seeds=()
@@ -100,6 +105,9 @@ jobs:
             debug_env=()
             if [[ "${{ inputs.trace_first_critical }}" == "true" && "$seed" == "1738" ]]; then
               debug_env+=(GNOBLIN_TEST_GDB_CRITICALS=1)
+            fi
+            if [[ "${{ inputs.trace_shutdown_critical }}" == "true" && "$seed" == "1738" ]]; then
+              debug_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
             fi
             if ! runuser -u builder -- env \
               "${debug_env[@]}" \

@@ -58,7 +58,7 @@ VALID_OPERATIONS = {
 FATAL_LOG = re.compile(
     r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
     r"Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|"
-    r"segmentation fault|runtime check failed|core dumped",
+    r"segmentation fault|runtime check failed|core dumped|GNOBLIN_GDB_CRITICAL",
     re.IGNORECASE,
 )
 FRAME_MODES = {0: "off", 1: "auto", 2: "prefer-server", 3: "replace"}
@@ -414,6 +414,19 @@ def run_inside() -> int:
             )
         )
 
+    def frame_pick_diagnostic(window_id: int, x: int, y: int) -> dict:
+        title = json.dumps(title_for(window_id))
+        return eval_shell(
+            "(()=>{const C=imports.gi.Clutter,p=global.get_pointer();"
+            f"const w=global.get_window_actors().find(a=>a.meta_window.title==={title});"
+            f"let actor=global.stage.get_actor_at_pos(C.PickMode.REACTIVE,{x},{y});"
+            "const pick=[];while(actor){pick.push(String(actor));actor=actor.get_parent();}"
+            "const r=w?.meta_window.get_frame_rect();return {requested:["
+            f"{x},{y}],pointer:[p[0],p[1]],pick,minimized:w?.meta_window.minimized,"
+            "mapped:w?.is_mapped(),frame:r&&[r.x,r.y,r.width,r.height],"
+            "layout:w&&imports.gi.Meta.gnoblin_window_frame_get(w.meta_window).recursiveUnpack()};})()"
+        )
+
     def set_frame_policy(window_id: int, policy: list[int]) -> None:
         frame_policies[window_id] = policy
         write_frame_config(config_path, frame_policies)
@@ -587,12 +600,35 @@ def run_inside() -> int:
                     f"window {window_id} to leave maximized state before resizing",
                 )
                 state = wait_frame(window_id, 36)
-            x, y = state["x"] + state["width"] - 2, state["y"] + state["height"] - 2
-            send_pointer("move", x, y)
-            wait_for(
-                lambda: frame_interaction(window_id, "hover") == 8,
-                f"southeast resize hover on window {window_id}",
+
+            # Keep the synthetic drag inside the monitor's work area and make
+            # the target the topmost window. Fuzzed resize/move operations can
+            # otherwise place a frame at the output edge, where Mutter must
+            # clamp the requested drag, or under another overlapping fixture.
+            eval_shell(
+                f"(()=>{{const w={window_expr};const m=global.display.get_monitor_geometry(w.get_monitor());"
+                "w.move_frame(false,m.x+40,m.y+40);w.raise();return true;})()"
             )
+            state = wait_frame(window_id, 36)
+            x, y = state["x"] + state["width"] - 2, state["y"] + state["height"] - 2
+
+            # A virtual pointer motion to its current coordinates emits no
+            # Clutter motion event. Move into the frame first so the corner
+            # transition is observable even when a previous action left the
+            # pointer at this exact point.
+            send_pointer("move", state["x"] + state["width"] // 2, state["y"] + 18)
+            wait_for(
+                lambda: frame_button_is_pickable(window_id, x, y),
+                f"southeast resize hit target on window {window_id}",
+            )
+            send_pointer("move", x, y)
+            try:
+                wait_for(
+                    lambda: frame_interaction(window_id, "hover") == 8,
+                    f"southeast resize hover on window {window_id}",
+                )
+            except TimeoutError as error:
+                raise TimeoutError(f"{error}; input diagnostic={frame_pick_diagnostic(window_id, x, y)!r}") from error
             send_pointer("press", x, y)
             wait_for(
                 lambda: frame_interaction(window_id, "pressed") == 8,
