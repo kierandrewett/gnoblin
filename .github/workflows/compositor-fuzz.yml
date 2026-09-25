@@ -60,7 +60,7 @@ jobs:
           runuser -u builder -- env \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
             GNOBLIN_WORKSPACE="$GITHUB_WORKSPACE" \
-            bash -c 'cd "$GNOBLIN_WORKSPACE"; source src/tools/gnoblin-env.sh; gnoblin_env_apply "$GNOBLIN_PREFIX"; gjs -m tests/lua-shell-config-test.js'
+            bash -c 'cd "$GNOBLIN_WORKSPACE"; source src/tools/gnoblin-env.sh; gnoblin_env_apply "$GNOBLIN_PREFIX"; gjs -m tests/lua-event-filter-test.js'
 
       - name: Run varied seeded lifecycle sessions
         id: lifecycle-fuzz
