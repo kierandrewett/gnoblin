@@ -74,8 +74,6 @@ export default defineConfig({
                     { text: "gnoblin.window_rule", link: "/config/window_rule" },
                     { text: "gnoblin.animation", link: "/config/animation" },
                     { text: "gnoblin.permission_rule", link: "/config/permission_rule" },
-                    { text: "gnoblin.animation", link: "/config/animation" },
-                    { text: "gnoblin.remove_animation", link: "/config/remove_animation" },
                     { text: "gnoblin.config", link: "/config/config" },
                     { text: "gnoblin.load", link: "/config/load" },
                     { text: "gnoblin.snapshot", link: "/config/snapshot" },
