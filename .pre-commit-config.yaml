@@ -46,6 +46,8 @@ repos:
         entry: clang-format --dry-run --Werror
         language: python
         types_or: [c, c++]
+        # This overlay follows Mutter's style instead of the repo-wide format.
+        exclude: ^src/protocols/session-lock/meta-wayland-session-lock\.c$
         additional_dependencies: ["clang-format==23.1.1"]
         require_serial: true
       - id: shfmt-check

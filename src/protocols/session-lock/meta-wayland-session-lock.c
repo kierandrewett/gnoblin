@@ -680,7 +680,9 @@ destroy_controller (gpointer data)
   if (controller->scene)
     clutter_actor_destroy (controller->scene);
 
-  g_clear_pointer (&controller->global, wl_global_destroy);
+  /* The Wayland display owns its globals and destroys them in
+   * meta_wayland_compositor_finalize(). This controller is GObject data, so
+   * its destroy notifier runs after that and controller->global is stale. */
 
   g_clear_pointer (&controller->unpresented_stage_views, g_hash_table_unref);
   g_clear_pointer (&controller->surfaces, g_hash_table_unref);
