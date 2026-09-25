@@ -8,8 +8,8 @@ Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
  src/core/util.c                    | 67 +++++++++++++++++++++++++++++-
  src/meta/display.h                 |  5 +++
  src/meta/util.h                    |  8 ++++
- src/wayland/meta-wayland-pointer.c | 26 ++++++++++++
- 5 files changed, 114 insertions(+), 1 deletion(-)
+ src/wayland/meta-wayland-pointer.c | 27 +++++++++++++++
+ 5 files changed, 115 insertions(+), 1 deletion(-)
 
 diff --git a/src/core/display.c b/src/core/display.c
 index 45b860eb8..91c4769b9 100644
@@ -188,7 +188,7 @@ index b33b3a845..48651566c 100644
    ClutterSeat *clutter_seat = clutter_backend_get_default_seat (clutter_backend);
    MetaWindow *toplevel_window;
    struct wl_client *old_client = NULL;
-@@ -1153,6 +1160,25 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
+@@ -1153,6 +1160,26 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
    if (pointer->focus_surface == surface)
      return;
  
@@ -209,6 +209,7 @@ index b33b3a845..48651566c 100644
 +                           g_variant_new_string (title ? title : ""));
 +    event = g_variant_ref_sink (g_variant_builder_end (&payload));
 +    meta_display_dispatch_gnoblin_event (display, "pointer_window_changed", event);
++    meta_display_dispatch_gnoblin_event (display, "mutter.wayland.pointer-window-changed", event);
 +  }
 +
    if (pointer->focus_surface && pointer->focus_surface->resource)
@@ -216,4 +217,3 @@ index b33b3a845..48651566c 100644
    if (surface && surface->resource)
 -- 
 2.55.0
-

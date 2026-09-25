@@ -40,6 +40,7 @@ import * as Volume from "../status/volume.js";
 import * as Config from "../../misc/config.js";
 import { CompositorBridge } from "./gnoblinBridge/compositor-bridge.js";
 import { LaunchFeedback } from "./gnoblinLaunchFeedback.js";
+import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
@@ -289,6 +290,10 @@ class EventBus {
                 this.emit("workspace-changed", wm.get_active_workspace_index()),
             ),
         ]);
+        // GNOME Shell's overview is a shell-owned interaction, distinct from
+        // Mutter's workspace and display signals.
+        for (const signal of ["showing", "shown", "hiding", "hidden"])
+            this._handlers.push([Main.overview, Main.overview.connect(signal, () => this.emit(`overview.${signal}`))]);
     }
 
     subscribe(event, cb) {
@@ -298,6 +303,15 @@ class EventBus {
     }
 
     emit(event, ...args) {
+        const payload = {};
+        const first = args[0];
+        if (typeof first === "number") payload.index = first;
+        else if (first?.get_gtk_application_id) {
+            payload.app_id = first.get_gtk_application_id() || "";
+            payload.wm_class = first.get_wm_class() || "";
+            payload.title = first.get_title() || "";
+        }
+        if (event.startsWith("overview.")) activeConfig?.dispatchEvent(`gnome.shell.${event}`, payload);
         for (const cb of this._subs.get(event) ?? []) {
             try {
                 const result = cb(...args);
@@ -496,6 +510,7 @@ class ScriptHost {
             } catch (e) {
                 failures.push(name);
                 logError(e, `gnoblin-script: importing ${name} failed`);
+                this._control._config?.dispatchEvent("gnoblin.scripts.load_failed", { script: name, error: e.message });
                 continue;
             }
 
@@ -523,9 +538,11 @@ class ScriptHost {
                 this._disposeApi(api);
                 failures.push(name);
                 logError(e, `gnoblin-script: ${name} threw on load`);
+                this._control._config?.dispatchEvent("gnoblin.scripts.load_failed", { script: name, error: e.message });
             }
         }
 
+        this._control._config?.dispatchEvent("gnoblin.scripts.loaded", { scripts: this.list().join(",") });
         if (failures.length > 0) throw new Error(`failed to load scripts: ${failures.join(", ")}`);
     }
 
@@ -729,10 +746,12 @@ export class Component {
         );
         this._permissionPolicy = { default: "deny", rules: [] };
         this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
+        this._mutterEvents = new MutterEventForwarder(this._config);
         activeConfig = this._config;
         this._config.start();
         this._configFocusId = global.display.connect("notify::focus-window", () => {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
+            this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
         });
         this._configEventId = global.display.connect("gnoblin-config-event", (_display, _event, document) => {
             this._config?.applyRuntimeDocument(document);
@@ -741,6 +760,7 @@ export class Component {
         for (const window of global.display.list_all_windows()) this._watchEventWindow(window);
         this._configWindowId = global.display.connect("window-created", (_display, window) => {
             this._dispatchWindowEvent("window_created", window);
+            this._dispatchWindowEvent("gnome.shell.window.created", window);
             this._watchEventWindow(window);
         });
         this._configInputId = global.stage.connect("captured-event", (_stage, event) => {
@@ -769,10 +789,13 @@ export class Component {
                 payload.scroll_y = dy;
                 payload.scroll_direction = String(event.get_scroll_direction());
             }
-            this._config.dispatchEvent(`input.${name.toLowerCase()}`, payload);
+            const eventName = name.toLowerCase();
+            this._config.dispatchEvent(`input.${eventName}`, payload);
+            this._config.dispatchEvent(`gnome.shell.input.${eventName}`, payload);
             return Clutter.EVENT_PROPAGATE;
         });
         this._dispatchWindowEvent("focus_changed", global.display.focus_window);
+        this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -855,6 +878,8 @@ export class Component {
         }
         for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
         this._eventWindows?.clear();
+        this._mutterEvents?.destroy();
+        this._mutterEvents = null;
         // Script disposers can still use window rules, config and the event bus.
         if (this._scripts) {
             this._scripts.destroy();
@@ -1078,6 +1103,7 @@ export class Component {
         if (this._eventWindows.has(window)) return;
         const id = window.connect("unmanaged", () => {
             this._dispatchWindowEvent("window_unmanaged", window);
+            this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
             this._eventWindows.delete(window);
         });
         this._eventWindows.set(window, id);
@@ -1108,6 +1134,7 @@ export class Component {
             if (previous === undefined) continue;
 
             this._impl?.emit_signal("FeatureChanged", new GLib.Variant("(sb)", [id, enabled]));
+            this._config?.dispatchEvent("gnoblin.feature.changed", { feature: id, enabled });
             console.log(`gnoblin-control: feature '${id}' ${enabled ? "ENABLED" : "DISABLED"}`);
         }
     }

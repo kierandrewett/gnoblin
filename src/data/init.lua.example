@@ -293,8 +293,8 @@ gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", '
 -- gnoblin.load("appearance.lua")
 -- gnoblin.configure(require("bindings"))
 
--- React to a focused application and adjust touchpad speed at runtime:
--- gnoblin.on("pointer_window_changed", function(window)
---     local speed = window.app_id == "org.chromium.Chromium" and 0.3 or 1.0
+-- React to the application under the pointer, even if it is not focused:
+-- gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
+--     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
 --     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 -- end)
