@@ -1,0 +1,76 @@
+From ada09b15629168e1884f0c15264dcc4f56dfc469 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 13:58:56 +0100
+Subject: [PATCH] shell: make GNOME QR runtime optional
+
+GNOME Shell loads its login dialog modules while starting a normal session. The QR module therefore must not make GnomeQR a hard startup dependency: older supported desktops lack that typelib. Keep the login URL and code usable, and omit only the QR image when the library is unavailable.
+---
+ js/misc/dependencies.js |  1 -
+ js/ui/qrCode.js         | 20 +++++++++++++++++---
+ 2 files changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/js/misc/dependencies.js b/js/misc/dependencies.js
+index fbb83d116..c3c51aa2d 100644
+--- a/js/misc/dependencies.js
++++ b/js/misc/dependencies.js
+@@ -16,7 +16,6 @@ import 'gi://GioUnix?version=2.0';
+ import 'gi://GDesktopEnums?version=3.0';
+ import 'gi://GdkPixbuf?version=2.0';
+ import 'gi://GnomeBG?version=4.0';
+-import 'gi://GnomeQR?version=4.0';
+ import 'gi://GnomeDesktop?version=4.0';
+ import 'gi://Graphene?version=1.0';
+ import 'gi://GUdev?version=1.0';
+diff --git a/js/ui/qrCode.js b/js/ui/qrCode.js
+index 4a68753ea..e74dffede 100644
+--- a/js/ui/qrCode.js
++++ b/js/ui/qrCode.js
+@@ -2,14 +2,24 @@ import Clutter from 'gi://Clutter';
+ import Cogl from 'gi://Cogl';
+ import GObject from 'gi://GObject';
+ import Gio from 'gi://Gio';
+-import GnomeQR from 'gi://GnomeQR';
++import gi from 'gi';
+ import St from 'gi://St';
+ import {logErrorUnlessCancelled} from '../misc/errorUtils.js';
+ 
+-Gio._promisify(GnomeQR, 'generate_qr_code_async');
++let GnomeQR = null;
++try {
++    GnomeQR = gi.require('GnomeQR', '4.0');
++} catch {
++    console.debug('GnomeQR is unavailable; QR code rendering will be disabled.');
++}
++
++if (GnomeQR)
++    Gio._promisify(GnomeQR, 'generate_qr_code_async');
+ 
+ const QR_CODE_DEFAULT_SIZE = 150;
+-const QR_CODE_TRANSPARENT_COLOR = new GnomeQR.Color({alpha: 0});
++const QR_CODE_TRANSPARENT_COLOR = GnomeQR
++    ? new GnomeQR.Color({alpha: 0})
++    : null;
+ 
+ export class QrCode extends St.Bin {
+     static [GObject.properties] = {
+@@ -31,6 +41,7 @@ export class QrCode extends St.Bin {
+             styleClass: 'qr-code',
+             width: qrSize,
+             height: qrSize,
++            visible: GnomeQR !== null,
+             ...params,
+         });
+ 
+@@ -73,6 +84,9 @@ export class QrCode extends St.Bin {
+     }
+ 
+     async _update() {
++        if (!GnomeQR)
++            return;
++
+         const fgColor = QrCode.#getGnomeQRColor(this._fgColor);
+ 
+         this._cancellable?.cancel();
+-- 
+2.55.0
+
