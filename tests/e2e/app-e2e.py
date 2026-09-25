@@ -665,8 +665,6 @@ def run_one_app(
                     "w.unmake_fullscreen()",
                     lambda: (lambda after: after is not None and not after["fullscreen"])(window_state(sequence)),
                 )
-
-            for sequence in state["windows"]:
                 try:
                     initial = window_state(sequence)
                     close_method = close_sequence(sequence)
