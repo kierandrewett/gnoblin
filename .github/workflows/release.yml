@@ -26,7 +26,7 @@ jobs:
       GIT_COMMITTER_EMAIL: release@gnoblin.local
     steps:
       - name: Install release tools
-        run: dnf -y install git meson patch rpm-build rpmdevtools tar xz
+        run: dnf -y install adwaita-cursor-theme git hyprcursor inkscape meson patch rpm-build rpmdevtools tar xz
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
@@ -54,8 +54,78 @@ jobs:
     with:
       ref: ${{ inputs.tag || github.ref }}
 
-  github-release:
+  arch-package:
     needs: [source-packages, debian-packages]
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    timeout-minutes: 180
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Install stock GNOME and package build requirements
+        run: |
+          pacman -Syu --noconfirm --needed \
+            adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
+            evolution-data-server gettext git glib2-devel gobject-introspection \
+            gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
+            inkscape libadwaita libdisplay-info libei libinput libxkbcommon \
+            libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
+            python python-docutils python-packaging sassc sysprof wayland wireplumber \
+            xdg-desktop-portal-gnome xorg-xwayland
+          pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
+          pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
+          pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - name: Build the release Arch package from its local source asset
+        run: |
+          source_archive="$(find release-assets -maxdepth 1 -name 'gnoblin-*-arch-source.tar.xz' -print -quit)"
+          pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-*.PKGBUILD' -print -quit)"
+          test -n "$source_archive"
+          test -n "$pkgbuild"
+          mkdir -p build
+          cp "$source_archive" build/
+          cp "$pkgbuild" build/PKGBUILD
+          # The released recipe has a remote source URL. This gate changes only
+          # that URL fragment so makepkg consumes the just-built local asset;
+          # the filename and checked SHA-256 remain unchanged.
+          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v\$pkgver/[^\"]+##' build/PKGBUILD
+          useradd -m builder
+          chown -R builder:builder build
+          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build"
+      - name: Install beside stock GNOME, then remove Gnoblin
+        run: |
+          package="$(find build -maxdepth 1 -name 'gnoblin-*.pkg.tar.zst' -print -quit)"
+          test -n "$package"
+          pacman -U --noconfirm "$package"
+          pacman -Q gnoblin
+          test -x /usr/lib/gnoblin/bin/gnome-shell
+          test -x /usr/lib/gnoblin/bin/gnoblin-session
+          test -x /usr/bin/gnoblinctl
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
+          test -f /usr/share/gnome-session/sessions/gnoblin.session
+          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
+          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
+          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
+          pacman -R --noconfirm gnoblin
+          ! pacman -Q gnoblin
+          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
+          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
+          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package-${{ env.RELEASE_TAG }}
+          path: build/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove package cache
+        if: always()
+        run: pacman -Scc --noconfirm
+
+  github-release:
+    needs: [source-packages, debian-packages, arch-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -70,6 +140,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: deb-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package-${{ env.RELEASE_TAG }}
           path: release-assets
           merge-multiple: true
       - name: Checksum all release assets

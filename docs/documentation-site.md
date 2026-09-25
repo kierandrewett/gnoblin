@@ -25,9 +25,17 @@ directly to their source on GitHub.
 
 ## Publish
 
-The Documentation workflow publishes changes merged to `main` to `gh-pages`
-and preserves the APT archive stored on that branch. GitHub Pages must use
-**Deploy from a branch → gh-pages → / (root)**.
+The Documentation workflow checks pull requests and deploys changes merged to
+`main` to the Cloudflare Pages project `gnoblin-docs`.
+
+Set these repository values in **Settings → Secrets and variables → Actions**:
+
+| Name                    | Type     | Value                                                   |
+| ----------------------- | -------- | ------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Secret   | Token with **Account → Cloudflare Pages → Edit** access |
+| `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID that owns `gnoblin-docs`          |
+
+The APT archive continues to use the `gh-pages` branch independently.
 
 ## Write for the reader
 

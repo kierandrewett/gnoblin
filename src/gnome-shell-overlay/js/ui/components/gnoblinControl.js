@@ -30,6 +30,7 @@ import * as Workspaces from "./gnoblinWorkspaces.js";
 import Gio from "gi://Gio";
 import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
+import Gtk from "gi://Gtk?version=4.0";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import St from "gi://St";
@@ -584,6 +585,11 @@ const IFACE = `
     <method name="GetVersion">
       <arg type="s" direction="out" name="version"/>
     </method>
+    <!-- Temporarily grab keyboard input and return one GTK accelerator. -->
+    <method name="CaptureAccelerator">
+      <arg type="u" direction="in" name="waitSeconds"/>
+      <arg type="s" direction="out" name="accelerator"/>
+    </method>
     <!-- Emitted after Super is released with no other input. The payload is
          [protocol version, monotonic timestamp in microseconds]. -->
     <signal name="SuperReleased">
@@ -710,6 +716,8 @@ export class Component {
         this._privacyState = null;
         this._compositorBridge = null;
         this._launchFeedback = null;
+        this._acceleratorCapture = null;
+        this._acceleratorCaptureSignal = 0;
     }
 
     enable() {
@@ -718,6 +726,9 @@ export class Component {
 
         this._impl = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._impl.export(Gio.DBus.session, OBJECT_PATH);
+        this._acceleratorCaptureSignal = global.stage.connect("captured-event", (_stage, event) =>
+            this._captureAcceleratorEvent(event),
+        );
 
         this._windowRules = new WindowRules();
         this._shortcutInput = new ShortcutInput(
@@ -838,6 +849,7 @@ export class Component {
         // released without other input. This preserves Super-drag while
         // giving external chrome one precise edge to react to.
         this._overlayKeyId = global.display.connect("overlay-key", () => {
+            if (this._acceleratorCapture) return;
             this._impl?.emit_signal(
                 "SuperReleased",
                 new GLib.Variant("(ut)", [SUPER_RELEASE_PROTOCOL_VERSION, GLib.get_monotonic_time()]),
@@ -867,6 +879,7 @@ export class Component {
     }
 
     disable() {
+        this._finishAcceleratorCapture(null, "Shortcut capture cancelled because the shell is reloading");
         if (this._configFocusId) {
             global.display.disconnect(this._configFocusId);
             this._configFocusId = 0;
@@ -909,6 +922,10 @@ export class Component {
         this._config?.destroy();
         this._config = null;
         activeConfig = null;
+        if (this._acceleratorCaptureSignal) {
+            global.stage.disconnect(this._acceleratorCaptureSignal);
+            this._acceleratorCaptureSignal = 0;
+        }
         if (this._overlayKeyId) {
             global.display.disconnect(this._overlayKeyId);
             this._overlayKeyId = 0;
@@ -1228,6 +1245,134 @@ export class Component {
 
     GetVersion() {
         return Config.PACKAGE_VERSION ?? "unknown";
+    }
+
+    CaptureAcceleratorAsync(params, invocation) {
+        const [waitSeconds] = params.deep_unpack();
+        if (!Number.isInteger(waitSeconds) || waitSeconds < 1 || waitSeconds > 60) {
+            invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, "waitSeconds must be between 1 and 60");
+            return;
+        }
+        if (this._acceleratorCapture) {
+            invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, "another shortcut capture is active");
+            return;
+        }
+        if (Main.sessionMode.isLocked) {
+            invocation.return_dbus_error(
+                `${BUS_NAME}.Error.CaptureFailed`,
+                "cannot capture a shortcut while the screen is locked",
+            );
+            return;
+        }
+
+        let grab;
+        try {
+            grab = Main.pushModal(global.stage, { actionMode: Shell.ActionMode.SYSTEM_MODAL });
+        } catch (error) {
+            invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, error.message);
+            return;
+        }
+        if (!grab || !(grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
+            if (grab) Main.popModal(grab);
+            invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, "keyboard input is already grabbed");
+            return;
+        }
+
+        const modifierKeys = new Set([
+            Clutter.KEY_Shift_L,
+            Clutter.KEY_Shift_R,
+            Clutter.KEY_Control_L,
+            Clutter.KEY_Control_R,
+            Clutter.KEY_Alt_L,
+            Clutter.KEY_Alt_R,
+            Clutter.KEY_Meta_L,
+            Clutter.KEY_Meta_R,
+            Clutter.KEY_Super_L,
+            Clutter.KEY_Super_R,
+            Clutter.KEY_Hyper_L,
+            Clutter.KEY_Hyper_R,
+            Clutter.KEY_ISO_Level3_Shift,
+            Clutter.KEY_ISO_Level5_Shift,
+            Clutter.KEY_Caps_Lock,
+            Clutter.KEY_Num_Lock,
+        ]);
+        const capture = {
+            invocation,
+            grab,
+            modifierKeys,
+            heldModifiers: new Set(),
+            onlySuper: true,
+            pending: null,
+            sessionSignal: 0,
+            timeout: 0,
+        };
+        this._acceleratorCapture = capture;
+        capture.sessionSignal = Main.sessionMode.connect("updated", () => {
+            if (Main.sessionMode.isLocked)
+                this._finishAcceleratorCapture(null, "Shortcut capture cancelled because the screen was locked");
+        });
+        capture.timeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, waitSeconds, () => {
+            capture.timeout = 0;
+            this._finishAcceleratorCapture(null, `timed out waiting ${waitSeconds} seconds for a shortcut`);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _captureAcceleratorEvent(event) {
+        const capture = this._acceleratorCapture;
+        if (!capture) return Clutter.EVENT_PROPAGATE;
+        const type = event.type();
+        if (type !== Clutter.EventType.KEY_PRESS && type !== Clutter.EventType.KEY_RELEASE) return Clutter.EVENT_STOP;
+
+        const key = event.get_key_symbol();
+        if (type === Clutter.EventType.KEY_PRESS) {
+            if (capture.modifierKeys.has(key)) {
+                capture.heldModifiers.add(key);
+                if (key !== Clutter.KEY_Super_L && key !== Clutter.KEY_Super_R) capture.onlySuper = false;
+                return Clutter.EVENT_STOP;
+            }
+            if (capture.pending) return Clutter.EVENT_STOP;
+
+            const modifiers = event.get_state() & Gtk.accelerator_get_default_mod_mask();
+            if (key === Clutter.KEY_Escape && modifiers === 0) {
+                capture.pending = { key, cancelled: true };
+                return Clutter.EVENT_STOP;
+            }
+            const accelerator = Gtk.accelerator_name(key, modifiers);
+            capture.pending = accelerator ? { key, accelerator } : { key, error: "key has no GTK accelerator name" };
+            return Clutter.EVENT_STOP;
+        }
+
+        if (capture.modifierKeys.has(key)) {
+            capture.heldModifiers.delete(key);
+            if (!capture.pending && capture.onlySuper && capture.heldModifiers.size === 0) {
+                this._finishAcceleratorCapture("Super");
+                return Clutter.EVENT_STOP;
+            }
+        }
+        if (capture.pending?.key === key) capture.pending.released = true;
+        if (capture.pending?.released && capture.heldModifiers.size === 0) {
+            const pending = capture.pending;
+            if (pending.cancelled) this._finishAcceleratorCapture(null, "Shortcut capture cancelled");
+            else if (pending.error) this._finishAcceleratorCapture(null, pending.error);
+            else this._finishAcceleratorCapture(pending.accelerator);
+        }
+        return Clutter.EVENT_STOP;
+    }
+
+    _finishAcceleratorCapture(accelerator, error = null) {
+        const capture = this._acceleratorCapture;
+        if (!capture) return;
+        this._acceleratorCapture = null;
+        if (capture.timeout) GLib.source_remove(capture.timeout);
+        if (capture.sessionSignal) Main.sessionMode.disconnect(capture.sessionSignal);
+        try {
+            Main.popModal(capture.grab);
+        } catch (popError) {
+            logError(popError, "gnoblin-control: failed to release shortcut capture keyboard grab");
+        }
+        if (error) capture.invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, error);
+        else capture.invocation.return_value(new GLib.Variant("(s)", [accelerator]));
     }
 
     ListInputSources() {

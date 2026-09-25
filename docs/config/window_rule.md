@@ -135,7 +135,7 @@ pixels and adds a frame.
 
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
-[`gnoblin.configure`](/config/configure#window-management).
+[`gnoblin.configure`](/config/configure#settings).
 
 ### `remove_csd`
 

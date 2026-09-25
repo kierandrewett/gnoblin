@@ -218,6 +218,14 @@ class IsolationTests(unittest.TestCase):
         self.assertIn('"-Dextensions_tool=false"', nix_package)
         self.assertIn("-  'org.gnome.Shell.Extensions': 'extensions',", no_extensions_patch)
 
+    def test_nix_workspace_resource_patch_is_an_existing_file_edit(self):
+        patch = (
+            ROOT / "patches/gnome-shell/96-workspace-resource/0001-register-workspace-service-resource.patch"
+        ).read_text()
+        self.assertNotIn("index 000000000..000000000", patch)
+        self.assertIn("--- a/js/js-resources.gresource.xml", patch)
+        self.assertIn("+    <file>ui/components/gnoblinWorkspaces.js</file>", patch)
+
     def test_system_install_defaults_to_official_copr(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
         justfile = (ROOT / "Justfile").read_text()

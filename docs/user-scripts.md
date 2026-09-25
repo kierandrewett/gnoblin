@@ -104,9 +104,9 @@ The handler receives `(request, peer)`.
 `api.onCompositorClientClosed(callback)` calls `callback(token)` when a client
 disconnects. Use it to discard per-client state; the disconnected token cannot
 be used for a later send. The token is created when that connection first calls
-a script-registered operation; clients that disconnect without doing so are
-reported with `undefined`. Registering a handler returns a cleanup function,
-and script unload removes it automatically.
+a script-registered operation. Other client disconnects do not call the handler.
+Registering a handler returns a cleanup function, and script unload removes it
+automatically.
 
 A handler can use GJS directly. Validate each request, and keep shell-specific
 policy in the package or script that owns it.

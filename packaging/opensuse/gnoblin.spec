@@ -1,0 +1,31 @@
+Name:           gnoblin
+Version:        0.1.7
+Release:        1%{?dist}
+Summary:        Gnoblin desktop session
+License:        GPL-2.0-or-later
+URL:            https://github.com/kierandrewett/gnoblin
+BuildArch:      noarch
+Requires:       gnoblin-gsettings-desktop-schemas >= 51
+Requires:       gnoblin-mutter >= 51
+Requires:       gnoblin-session >= 51
+Requires:       gnoblin-shell >= 51
+Requires:       brightnessctl
+Requires:       gjs >= 1.85.90
+Requires:       glib2 >= 2.86
+Requires:       gnome-session
+Requires:       gnome-settings-daemon
+Requires:       libinput10 >= 1.30
+Requires:       pipewire >= 1.4
+Requires:       playerctl
+Requires:       libwayland-client0 >= 1.26
+Requires:       wireplumber
+Requires:       xdg-desktop-portal-gnome
+
+%description
+Installs the complete Gnoblin session while reusing compatible GNOME userspace.
+
+%files
+
+%changelog
+* Fri Sep 25 2026 Gnoblin contributors
+- Initial openSUSE Tumbleweed adapter.

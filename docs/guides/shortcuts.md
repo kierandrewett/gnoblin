@@ -76,6 +76,8 @@ Super is usually the Windows-logo key. Put modifiers in angle brackets and
 the main key after them. This is
 [GTK accelerator syntax](https://docs.gtk.org/gtk4/func.accelerator_parse.html).
 
+Run `gnoblinctl shortcut capture` in a Gnoblin terminal and press a key combination. It prints the GTK accelerator for `binding`; bare Super prints Gnoblin’s special `Super` binding. Escape cancels. The command grabs the keyboard while it waits, consumes the captured combination, and times out after 30 seconds by default. Use `--timeout SECONDS` for 1–60 seconds.
+
 Held keys do not repeatedly launch commands. Command shortcuts are inactive on
 the lock and login screens.
 

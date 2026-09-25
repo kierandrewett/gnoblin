@@ -1,7 +1,7 @@
 {
   lib,
   stdenv,
-  gcc16Stdenv,
+  gcc16Stdenv ? stdenv,
   symlinkJoin,
   glib,
   gjs,
@@ -66,9 +66,9 @@ let
         patches = [ ];
       };
 
-  # hyprcursor and its C++ dependencies use Nixpkgs' GCC 16 ABI. Build the
-  # consumer with the same toolchain so its final executable resolves the
-  # matching libstdc++ symbol versions.
+  # Use the channel's GCC 16 toolchain where it exists. Stable channels which
+  # predate GCC 16 build hyprcursor and its C++ closure with their default
+  # stdenv, so the fallback keeps the consumer in that same ABI closure.
   gnoblinMutter = (mutter.override { stdenv = gcc16Stdenv; }).overrideAttrs (old: {
     pname = "gnoblin-mutter";
     version = versions.components.mutter.version;
@@ -312,7 +312,7 @@ let
         lgpl3Plus
         cc-by-sa-30
       ];
-      platforms = lib.platforms.x86_64;
+      platforms = [ "x86_64-linux" ];
     };
   };
 in

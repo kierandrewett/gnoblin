@@ -40,7 +40,17 @@ install -m 0644 -- "$SOURCES/mutter-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/gnome-shell-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/gsettings-desktop-schemas-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
-install -m 0644 -- "$ROOT/packaging/arch/PKGBUILD" "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD"
+ARCH_SOURCE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-arch-source.tar.xz"
+"$ROOT/packaging/arch/build-source-bundle.sh" \
+    "$ARCH_SOURCE" \
+    "$GNOBLIN_VERSION" \
+    "$SOURCES/gsettings-desktop-schemas-$GNOME_VERSION.tar.xz" \
+    "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
+    "$SOURCES/gnome-shell-$GNOME_VERSION.tar.xz"
+ARCH_SOURCE_SHA256="$(sha256sum "$ARCH_SOURCE" | awk '{print $1}')"
+python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
+    --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD" \
+    --source-sha256 "$ARCH_SOURCE_SHA256"
 git -C "$ROOT" archive --format=tar HEAD | xz >"$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz"
 
 (

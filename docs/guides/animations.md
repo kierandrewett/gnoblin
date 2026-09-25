@@ -110,6 +110,8 @@ For intermediate poses, use `keyframes`:
 - A frame's optional `ease` controls the segment ending at that frame. Otherwise
   the declaration's `ease` applies.
 
+### Easing {#easing}
+
 `ease` accepts `linear`, `ease-in-quad`, `ease-out-quad`, `ease-in-cubic`,
 `ease-out-cubic`, `ease-in-out-cubic`, `ease-out-expo` and `ease-out-back`.
 For another curve, use cubic Bézier control points:

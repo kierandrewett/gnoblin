@@ -48,7 +48,7 @@ GNOBLIN_PREFIX="$PWD/install" just preview
 A nested desktop and terminal open. Launch your layer-shell client from that
 terminal. Close the terminal to end the test. See [Devkit](devkit.md) for help.
 
-## 3. Add a login session
+## 3. Add a login session {#login-session}
 
 After the build and nested test succeed:
 

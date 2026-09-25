@@ -19,8 +19,14 @@ case "$ID:$VERSION_ID" in
         bundle=true
         rust_packages=(rustc cargo python3-legacy-cgi g++-14)
         ;;
+    debian:12 | ubuntu:22.04)
+        echo "$(tr '[:lower:]' '[:upper:]' <<<"$ID") $VERSION_ID is a measured Gnoblin 51 blocker, not a build target." >&2
+        echo 'Run scripts/probe-deb-target.py in this disposable image for the exact missing interfaces.' >&2
+        exit 2
+        ;;
     *)
         echo 'Supported build containers: Debian 13, Ubuntu 24.04 and Ubuntu 26.04.' >&2
+        echo 'Debian 12 and Ubuntu 22.04 have a recorded dependency blocker; run scripts/probe-deb-target.py.' >&2
         exit 2
         ;;
 esac

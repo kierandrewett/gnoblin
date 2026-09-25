@@ -3,6 +3,9 @@
 These APIs are for shell authors. Desktop configuration starts with
 [the configuration guide](/config).
 
+For session status, input sources, live feature switches and permission state,
+see the [`org.gnoblin.Shell` D-Bus reference](/shell-dbus-api).
+
 ## Dock animation targets
 
 A dock can tell Gnoblin where each window's icon appears.

@@ -1,19 +1,19 @@
-From bdd73746ff006408575274f0fadf31195deedd25 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gnoblin <gnoblin@localhost>
 Date: Fri, 25 Sep 2026 00:00:00 +0100
 Subject: [PATCH] shell: bundle Gnoblin workspace service
 
 Register the workspace service module as a GNOME Shell JavaScript resource so
 built-in imports can resolve it at runtime.
+
 ---
  js/js-resources.gresource.xml | 1 +
  1 file changed, 1 insertion(+)
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
-index daeb21c79..ecef57ed6 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -149,6 +149,7 @@
+@@ -137,6 +137,7 @@
      <file>ui/components/gnoblinPermissions.js</file>
      <file>ui/components/gnoblinLayerAnimation.js</file>
      <file>ui/components/gnoblinAnimation.js</file>

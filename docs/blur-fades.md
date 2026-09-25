@@ -9,7 +9,7 @@ desktop settings, see [animations](/guides/animations).
 
 ## Whole-window fades
 
-Let Gnoblin animate the whole surface using a [layer animation](/guides/animations#per-surface-animations).
+Let Gnoblin animate the whole surface using a [layer animation](/guides/animations#layer-shell-surfaces).
 It fades the window and the blur behind it together.
 Do not also fade the client buffer for the same transition.
 

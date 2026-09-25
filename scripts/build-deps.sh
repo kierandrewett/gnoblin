@@ -132,9 +132,13 @@ install_build_dependencies() {
                 gnome-settings-daemon inkscape adwaita-icon-theme hyprcursor)
             capabilities+=('pkgconfig(libadwaita-1)' 'pkgconfig(xkeyboard-config)')
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" refresh
-            # The minimal CI image gains busybox-gawk while bootstrapping Git,
+            # Older minimal images gained busybox-gawk while bootstrapping Git,
             # but desktop-file-utils requires the full gawk implementation.
-            build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" remove busybox-gawk
+            # Current Tumbleweed no longer ships busybox-gawk, so only remove
+            # it when it is actually installed.
+            if rpm -q busybox-gawk >/dev/null 2>&1; then
+                build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" remove busybox-gawk
+            fi
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" install \
                 gawk "${packages[@]}" "${capabilities[@]}"
             ;;

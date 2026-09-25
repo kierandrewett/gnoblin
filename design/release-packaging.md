@@ -15,17 +15,114 @@ release pipeline or COPR publication changes.
 - COPR has Fedora 43, 44, and 45 x86_64 chroots enabled. The existing
   published build has no Fedora 45 packages yet; the 0.1.7 release must build
   and pass clean installs in all three chroots.
-- The current source candidate is Gnoblin 0.1.7 on GNOME 51.0. Its existing
-  tag points to the failed attempt described below; no GitHub release or COPR
-  build was published from it. Repoint the tag only after the repaired source
-  passes the complete release gates.
-- The `gnoblin-v0.1.7` Release workflow built its source assets and all three
-  Debian/Ubuntu packages, but all three install smoke tests failed while
-  reloading a partial config: `next.cursor` was undefined. The release was
-  not published to GitHub or COPR.
-- Commits `752d016` and `3daf6dc` add default cursor values, validate configured
-  cursor settings, and expose Mutter's live cursor preference setter. The
-  Mutter patch series applies cleanly from the pinned 51.0 tag.
+- The current source candidate is Gnoblin 0.1.7 on GNOME 51.0. The
+  `gnoblin-v0.1.7` tag points at `682a8f5`, which is also on `main`.
+- Release run `36132144715` built all packages and passed Debian 13 and Ubuntu
+  26.04 install tests. Ubuntu 24.04 failed because the package declared
+  `gir1.2-gtk4layershell-1.0`, which Ubuntu 24.04 does not provide. This was a
+  fixed service dependency; no Gnoblin source uses GTK4LayerShell.
+- Commit `682a8f5` removes that unavailable dependency and adds a regression
+  assertion. Release run `36136202878` was cancelled during the package builds
+  before install or publication, so the candidate did not reach GitHub, APT, or
+  COPR.
+- A packaging audit found the generated RPM and Arch package metadata pointed
+  at a deleted GitHub owner (`kdrew7`). Commit `e1472bb8` fixes the shared
+  generator and both generated outputs. The old URL returned HTTP 404; the
+  canonical URL returned HTTP 200.
+- The requested distro scope now includes Fedora/EL, Debian/Ubuntu, Arch,
+  openSUSE, and NixOS. The family-by-family gap analysis and researched
+  implementation direction are in `design/packaging-research.md`. Do not
+  republish 0.1.7 until its target matrix, package recipes, and GNOME
+  co-install/remove gates have been brought into line with that scope.
+- Commits `bcbc5d46`, `2d367232`, and `d847369a` begin that work: Fedora's
+  COPR smoke test now installs stock GNOME first and verifies ownership before
+  and after Gnoblin install/removal; `packaging/targets.json` records 21 fixed
+  and rolling x86_64 targets across the requested families; and the research
+  log records disposable-image compatibility probes. The inventory validator
+  runs in `.github/workflows/packaging-targets.yml` and keeps every target
+  unsupported or candidate until all evidence gates pass.
+- Probe results rule out unchanged package recipes as a solution for the older
+  targets. EL 8/9/10 and openSUSE Leap 15.6/16.0 miss GNOME 51 host GLib/GJS
+  floors; Debian 11/12 and Ubuntu 22.04 lack build/runtime pieces absent from
+  the private bundle. Tumbleweed now has SUSE-native specs and a remote
+  end-to-end RPM build/coinstall/removal workflow. Arch has a generated native
+  package recipe plus both continuous and pre-release build/coinstall/removal
+  gates. Neither adapter has a successful full package run yet; keep these
+  targets unsupported until their gates pass.
+- Fedora workflow run `36139101542` passed the first RPM-side stock-GNOME
+  install/coexist/remove gate, along with Fedora 43/44/45 builds and the
+  existing Arch source-build/dependency checks. The RPM gate does not prove
+  graphical login or session selection.
+- Commit `6e377de6` replaces the broken Arch placeholder with a real
+  source-build PKGBUILD and a deterministic release source bundle containing
+  Gnoblin plus materialised patched schemas, Mutter, and Shell sources.
+  Commit `25cd6d54` makes the release recipe generator independent of Nix.
+  Commit `7c1bfa15` adds a pre-publication `makepkg`, stock-GNOME co-install,
+  and Gnoblin removal gate and publishes the resulting Arch package asset.
+  Bundle determinism, source inventory, release checksum generation, and
+  recipe syntax pass; the new release gate has not yet run for a tag, and
+  graphical login remains unverified.
+- Commits `6ea70e32` and `03ed5012` add pinned NixOS 25.05, 25.11, 26.05, and
+  unstable package/module evaluations and use each channel's compiler ABI
+  consistently, falling back to `stdenv` when `gcc16Stdenv` is absent. All
+  four channel evaluations pass. 25.05 lacks libglycin and misses several
+  host dependency floors; 25.11 and 26.05 evaluate but are blocked at the
+  required Wayland 1.26 floor (and 25.11 also misses Wayland Protocols and
+  libinput floors). Unstable has no recorded host-floor blocker. Evaluation
+  does not establish a package build, graphical session, or coexistence.
+- Commits `76d82d9e`, `ea85af0c`, and `a53afd86` make openSUSE Tumbleweed
+  dependency provisioning work without an assumed `busybox-gawk`, add native
+  RPM specs/workflow, and correct SUSE runtime library names. `rpmspec` parses
+  the specs and Zypper resolves external build and host requirements. The
+  remote build then exposed missing upstream tags, container Git trust and
+  committer identity, and omitted build tools (`inkscape`, `hyprcursor-util`);
+  each is fixed in the workflow. Re-run its full build/coinstall/removal gate
+  before changing the target inventory.
+- Commits `03562b7a` and `508c1f7e` add a repeatable Debian 12 / Ubuntu 22.04
+  capability probe and run it on pushes and pull requests. Both images are
+  blocked by GTK below Mutter 51's 4.14 floor and missing GIRepository 2,
+  GCR4, libei/eis, libdisplay-info, Glycin, and Hyprcursor interfaces. The
+  probe emits a JSON artifact and leaves both targets unsupported; adding them
+  to the package build matrix requires a deliberate private-runtime extension.
+- The target inventory now reflects the automated Arch source-bundle/release
+  recipe, Nix channel evaluations, and Tumbleweed dependency-resolution path.
+  These are implementation paths, not support claims. Check
+  `packaging/targets.json` before describing per-distro status.
+- Manual DEB workflow run `36143640335` completed private package builds and
+  clean install/coinstall/removal checks for Debian 13, Ubuntu 24.04, and
+  Ubuntu 26.04. Debian 12 and Ubuntu 22.04 remain probe-only due to missing
+  host runtime interfaces. The newer DEB targets remain candidates: no
+  graphical login gate has run.
+- A real Arch `makepkg` run caught that the generated recipe expanded `$srcdir`
+  before `makepkg` initialized it. The generator now computes that private
+  build path inside the build/package functions. The builder also installs
+  `brightnessctl`, and the Tumbleweed source builder installs the Hyprcursor
+  utility. The new exact-main package runs must still pass before recording
+  Arch or Tumbleweed package gates.
+- Commit `4cb52603` changed Nix full-build concurrency to preserve a long
+  package build when later commits are pushed. Stable Nix channels still have
+  dependency-floor blockers and do not have installable channel-specific
+  package outputs; successful evaluation is not NixOS release support.
+- The first Tumbleweed SRPM reached `%build` but exposed the RPM Meson helper
+  resolving its executable under `/usr/lib/gnoblin`. Commit `0614f077` replaces
+  the helper with explicit host Meson commands and explicit private install
+  directories. The new full RPM/coinstall/removal workflow must pass before
+  updating target gate values.
+- Commit `a55f4069` stages GNOME 51 schemas in Arch's temporary build prefix
+  before Mutter configuration and replaces the Tumbleweed schema spec's
+  private-prefix Meson lookup. Run `36148646285` then progressed through the
+  schema RPM and failed configuring Mutter because `pkgconfig(udev)` was not
+  required. The current spec fix adds that capability; package-chain and
+  stock-GNOME install/removal evidence still need a successful exact-main run.
+- The earlier install failure in run `36074745709` was caused by
+  `next.cursor` being undefined while reloading a partial config. Commits
+  `752d016` and `3daf6dc` added default cursor values, validation, and
+  Mutter's live cursor preference setter; a later full Debian/Ubuntu install
+  run passed that config reload smoke test.
+- `COPYING` credits Gnoblin's original code to Working Directory Ltd. and
+  preserves separate GNOME author/contributor attribution. Debian metadata
+  includes both notices and the bundled Adwaita cursor attribution; RPM
+  packages include the repository license file.
 - Workflow `36079736824` passed package builds and clean install tests on
   Debian 13, Ubuntu 24.04, and Ubuntu 26.04, including the config reload smoke
   test. This verifies the Debian/Ubuntu package path; it does not verify an
@@ -77,9 +174,9 @@ disable-while-typing behavior.
 
 The shared package manifest floors are set to PipeWire 1.4 and libinput 1.30.
 The COPR build/install run is still required to prove RPM build and runtime
-compatibility on Fedora 43, 44, and 45. After 0.1.7's release checks pass,
-publish it via the release workflow and wait for all three COPR builds and
-install jobs.
+compatibility on Fedora 43, 44, and 45. Broader distribution-family targets
+and clean stock-GNOME coexistence tests must be added before the `0.1.7` release
+workflow is restarted.
 
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and

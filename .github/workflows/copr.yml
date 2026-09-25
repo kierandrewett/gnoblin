@@ -80,6 +80,13 @@ jobs:
     container: fedora:${{ matrix.fedora }}
     timeout-minutes: 20
     steps:
+      - name: Install stock GNOME and record package ownership
+        run: |
+          dnf -y install gnome-shell mutter gnome-session gdm
+          rpm -q gnome-shell mutter gnome-session gdm > /tmp/stock-gnome-packages
+          rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/stock-gnome-owners
+          test -x /usr/bin/gnome-shell
+          test -x /usr/bin/mutter
       - name: Install the published release
         run: |
           dnf -y install dnf-plugins-core
@@ -87,3 +94,20 @@ jobs:
           dnf -y install --refresh gnoblin
           rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
           test -f /usr/share/wayland-sessions/gnoblin.desktop
+          rpm -q gnome-shell mutter gnome-session gdm > /tmp/gnome-packages-with-gnoblin
+          diff -u /tmp/stock-gnome-packages /tmp/gnome-packages-with-gnoblin
+          rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/gnome-owners-with-gnoblin
+          diff -u /tmp/stock-gnome-owners /tmp/gnome-owners-with-gnoblin
+      - name: Remove Gnoblin and verify stock GNOME remains installed
+        run: |
+          dnf -y remove gnoblin
+          mapfile -t gnoblin_packages < <(rpm -qa 'gnoblin*')
+          if ((${#gnoblin_packages[@]})); then
+            dnf -y remove "${gnoblin_packages[@]}"
+          fi
+          rpm -q gnome-shell mutter gnome-session gdm > /tmp/gnome-packages-after-removal
+          diff -u /tmp/stock-gnome-packages /tmp/gnome-packages-after-removal
+          rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/gnome-owners-after-removal
+          diff -u /tmp/stock-gnome-owners /tmp/gnome-owners-after-removal
+          test -x /usr/bin/gnome-shell
+          test -x /usr/bin/mutter

@@ -1,16 +1,30 @@
 name: Documentation
 on:
   pull_request:
-    paths: ["docs/**", "scripts/docs-vitepress-postbuild.mjs", "package.json", "package-lock.json", ".github/workflows/docs.yml"]
+    paths:
+      [
+        "docs/**",
+        "scripts/docs-vitepress-postbuild.mjs",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/docs.yml",
+      ]
   push:
     branches: [main]
-    paths: ["docs/**", "scripts/docs-vitepress-postbuild.mjs", "package.json", "package-lock.json", ".github/workflows/docs.yml"]
+    paths:
+      [
+        "docs/**",
+        "scripts/docs-vitepress-postbuild.mjs",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/docs.yml",
+      ]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: pages-archive
-  cancel-in-progress: false
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,41 +43,18 @@ jobs:
         with:
           name: documentation
           path: docs/.vitepress/dist
+          if-no-files-found: error
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci
-      - run: npm run docs:build
-      - name: Build documentation without replacing the APT archive
-        run: |
-          cp -a docs/.vitepress/dist "$RUNNER_TEMP/site"
-          touch "$RUNNER_TEMP/site/.nojekyll"
-          git fetch origin gh-pages
-          git worktree add --detach "$RUNNER_TEMP/pages" origin/gh-pages
-          rsync -a --delete --exclude=.git --exclude=apt "$RUNNER_TEMP/site/" "$RUNNER_TEMP/pages/"
-          cd "$RUNNER_TEMP/pages"
-          git config user.name 'Gnoblin documentation automation'
-          git config user.email 'docs@gnoblin.local'
-          git add --all
-          if ! git diff --cached --quiet; then
-            git commit -m 'docs: publish site'
-            git push origin HEAD:gh-pages
-          fi
-      # A push using GITHUB_TOKEN does not itself trigger a Pages build.
-      - name: Request Pages build
+          name: documentation
+          path: docs/.vitepress/dist
+      - name: Deploy to Cloudflare Pages
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.140.0 pages deploy docs/.vitepress/dist --project-name=gnoblin-docs --branch=main

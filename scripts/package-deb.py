@@ -35,7 +35,6 @@ SERVICES = (
     "dconf-gsettings-backend",
     "iso-codes",
     "adwaita-icon-theme",
-    "gir1.2-gtk4layershell-1.0",
     "bubblewrap",
     "wireplumber",
     "playerctl",
