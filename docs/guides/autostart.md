@@ -13,6 +13,10 @@ gnoblin.configure {
 }
 ```
 
+![Firefox running below Waybar in a fresh Gnoblin profile](../images/gnoblin-waybar-firefox.png)
+
+_Waybar and Mako are separate layer-shell clients; the bar shows its clock beside Firefox._
+
 Install the program first. Gnoblin runs the command directly, without shell
 expansion; use one string for each argument. If you need pipes or redirection,
 explicitly run a shell.

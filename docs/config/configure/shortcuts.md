@@ -27,7 +27,7 @@ Run `gsettings list-keys SCHEMA` to discover keys. Run
 | Field     | Accepted values                                                     | Meaning                                                                       |
 | --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `action`  | `"gnome:shell.KEY"`, `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"` | Selects a built-in action from that schema. Use underscores in Lua key names. |
-| `binding` | Array of GTK accelerators                                           | Required for an action. `{}` disables its current binding.                    |
+| `binding` | GTK accelerator string for a command; array for an action           | Required. An empty action list disables its current binding.                  |
 | `command` | Nonempty array of strings                                           | Alternative to `action`; runs the program directly without shell expansion.   |
 
 Set exactly one of `action` or `command`:
@@ -47,6 +47,16 @@ This binds Mutter's `close` action. GNOME's [Gio.Settings reference](https://doc
 explains schema-backed settings; Gnoblin's
 [keybinding reference](/config/configure/keybindings) lists all groups and
 shows how to find keys on your system.
+
+The named view lets later files inspect and edit imported shortcuts. Each
+entry exposes public `snake_case` fields. `pairs` visits the names already
+loaded:
+
+```lua
+for name, shortcut in pairs(gnoblin.configure.shortcuts) do
+    print(name, shortcut.binding or "built-in action")
+end
+```
 
 The bundled config supplies these names:
 

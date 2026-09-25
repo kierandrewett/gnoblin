@@ -85,12 +85,13 @@ scripts/capture-doc-examples.sh desktop
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
+scripts/capture-doc-examples.sh quickshell-firefox
 ```
 
 Each capture uses a disposable profile and removes it afterward. The scenes
-show Files, Firefox under Waybar, Fuzzel over Firefox, and Bingux with stock
-desktop apps. Bingux is one separate shell project using Gnoblin. Firefox opens
-the local docs preview at `127.0.0.1:5180`; start it with
+show Files, Firefox under Waybar, Fuzzel over Firefox, a Quickshell panel, and
+Bingux with stock desktop apps. Bingux is one separate shell project using
+Gnoblin. Firefox opens the local docs preview at `127.0.0.1:5180`; start it with
 `npm run docs:dev -- --port 5180` first.
 
 Captures need a visible Wayland session, a current build in `./install`, and

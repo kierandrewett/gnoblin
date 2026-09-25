@@ -7,6 +7,7 @@ It is optional.
 | Setup                                             | What you get                                        |
 | ------------------------------------------------- | --------------------------------------------------- |
 | [Waybar + Fuzzel + Mako](#waybar-fuzzel-and-mako) | Separate tools you configure independently          |
+| [Quickshell](#quickshell)                         | A custom layer-shell surface                        |
 | [Bingux](#bingux)                                 | An integrated bar, dock, launcher and notifications |
 | Your own layer-shell clients                      | A custom desktop using Gnoblin's Wayland protocols  |
 
@@ -41,6 +42,29 @@ Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) a
 ![Firefox running with an independent Waybar session](images/gnoblin-waybar-firefox.png)
 
 _Firefox under Waybar in a fresh Gnoblin profile._
+
+## Quickshell
+
+[Quickshell](https://quickshell.org/) can host custom layer-shell surfaces.
+This small `PanelWindow` example runs beside Firefox:
+
+```qml
+import Quickshell
+import QtQuick
+
+PanelWindow {
+    anchors { top: true; left: true; right: true }
+    implicitHeight: 42
+    Text {
+        anchors.centerIn: parent
+        text: Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+    }
+}
+```
+
+![Firefox under a Quickshell panel in a fresh Gnoblin profile](images/gnoblin-quickshell-firefox.png)
+
+_The panel is a separate Quickshell process using Gnoblin's layer-shell support._
 
 ## Bingux
 

@@ -31,6 +31,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
+- `window_rules` replaces the full ordered list; use [`gnoblin.window_rule`](/config/window_rule) to append a rule.
 
 Use [`gnoblin.snapshot()`](/config/snapshot) to inspect the config assembled
 so far.
