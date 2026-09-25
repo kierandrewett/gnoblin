@@ -7,15 +7,23 @@ set -euo pipefail
 
 mkdir -p "$ARTIFACT_DIR"
 
+# build-and-catalog runs in a GitHub Actions job container. Actions mounts the
+# checkout at /__w/<repository>/<repository> there, and GNOME Shell embeds that
+# absolute prefix in Config.PKGDATADIR. Reuse the same path in the Fedora app
+# container so the relocated build remains runnable.
+repo_name="${GITHUB_REPOSITORY##*/}"
+: "${repo_name:?GITHUB_REPOSITORY must be set}"
+container_workspace="/__w/$repo_name/$repo_name"
+
 # Flatpak needs nested user/mount/network namespaces. Configure the disposable
 # GitHub runner before entering Fedora, then keep the test environment in the
 # same privileged Fedora container that receives the built Gnoblin prefix.
 docker run --rm --privileged \
-    --mount "type=bind,src=$GITHUB_WORKSPACE,dst=$GITHUB_WORKSPACE" \
+    --mount "type=bind,src=$GITHUB_WORKSPACE,dst=$container_workspace" \
     --mount "type=bind,src=$ARTIFACT_DIR,dst=$ARTIFACT_DIR" \
-    --workdir "$GITHUB_WORKSPACE" \
-    --env GITHUB_WORKSPACE \
+    --workdir "$container_workspace" \
+    --env GITHUB_WORKSPACE="$container_workspace" \
     --env SHARD_INDEX \
     --env ARTIFACT_DIR \
     fedora:44 \
-    bash "$GITHUB_WORKSPACE/tests/e2e/run-app-shard-in-fedora.sh"
+    bash "$container_workspace/tests/e2e/run-app-shard-in-fedora.sh"

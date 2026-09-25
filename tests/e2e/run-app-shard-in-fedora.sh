@@ -9,6 +9,7 @@ dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols
 tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
     --no-same-owner -C "$GITHUB_WORKSPACE"
 test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
+test -f "$GITHUB_WORKSPACE/install/share/gnome-shell/gnome-shell-dbus-interfaces.gresource"
 
 useradd --create-home e2e
 runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
