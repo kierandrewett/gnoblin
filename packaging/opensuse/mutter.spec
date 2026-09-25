@@ -44,19 +44,20 @@ BuildRequires:  pkgconfig(colord)
 BuildRequires:  pkgconfig(gbm)
 BuildRequires:  pkgconfig(glesv2)
 BuildRequires:  pkgconfig(glib-2.0) >= %{glib_version}
-BuildRequires:  pkgconfig(glycin-2)
+BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2
 BuildRequires:  pkgconfig(gnome-desktop-4)
 BuildRequires:  pkgconfig(gnome-settings-daemon)
 BuildRequires:  pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires:  pkgconfig(graphene-gobject-1.0)
 BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires:  pkgconfig(gudev-1.0)
-BuildRequires:  pkgconfig(hyprcursor) >= 0.1.11
+BuildRequires:  pkgconfig(hyprcursor) >= 0.1.13
 BuildRequires:  pkgconfig(lcms2)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(libcanberra)
-BuildRequires:  pkgconfig(libdisplay-info)
+BuildRequires:  pkgconfig(libdisplay-info) >= 0.2
 BuildRequires:  pkgconfig(libdrm) >= %{libdrm_version}
+BuildRequires:  libxcvt
 BuildRequires:  pkgconfig(libei-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libeis-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libinput) >= %{libinput_version}
@@ -74,6 +75,8 @@ BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
 BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
 BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(xwayland)
+BuildRequires:  python3dist(argcomplete)
+BuildRequires:  python3dist(docutils)
 %if %{with gnoblin_stack}
 BuildRequires:  gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 %endif

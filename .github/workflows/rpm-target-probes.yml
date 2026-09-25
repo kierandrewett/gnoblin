@@ -1,0 +1,64 @@
+name: RPM target capability probes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/rpm-target-probes.yml"
+      - "scripts/probe-rpm-target.py"
+      - "tests/rpm-target-probe.test.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ matrix.target }} host capability floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: rocky-8
+            image: quay.io/rockylinux/rockylinux:8
+            expectation: --expect-blocked
+          - target: rocky-9
+            image: quay.io/rockylinux/rockylinux:9
+            expectation: --expect-blocked
+          - target: rocky-10
+            image: quay.io/rockylinux/rockylinux:10
+            expectation: --expect-blocked
+          - target: opensuse-leap-15.6
+            image: registry.opensuse.org/opensuse/leap:15.6
+            expectation: --expect-blocked
+          - target: opensuse-leap-16.0
+            image: registry.opensuse.org/opensuse/leap:16.0
+            expectation: --expect-blocked
+          - target: opensuse-tumbleweed
+            image: registry.opensuse.org/opensuse/tumbleweed:latest
+            expectation: --expect-ready
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install repository query tools
+        run: |
+          source /etc/os-release
+          case "$ID" in
+            rocky | rhel | almalinux | centos)
+              dnf -y install dnf-plugins-core python3
+              ;;
+            opensuse-leap | opensuse-tumbleweed)
+              zypper --non-interactive refresh
+              zypper --non-interactive install python3 tar gzip
+              ;;
+          esac
+      - uses: actions/checkout@v4
+      - name: Record host capability floors
+        run: scripts/probe-rpm-target.py ${{ matrix.expectation }} --output "build/rpm-probes/${{ matrix.target }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-probe-${{ matrix.target }}
+          path: build/rpm-probes/${{ matrix.target }}.json
+          if-no-files-found: error

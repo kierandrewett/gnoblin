@@ -21,6 +21,27 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             "BuildRequires:  pkgconfig(udev)",
             (SPECS / "mutter.spec").read_text(),
         )
+        self.assertIn(
+            "BuildRequires:  python3dist(argcomplete)",
+            (SPECS / "mutter.spec").read_text(),
+        )
+        self.assertIn(
+            "BuildRequires:  pkgconfig(hyprcursor) >= 0.1.13",
+            (SPECS / "mutter.spec").read_text(),
+        )
+        self.assertIn(
+            "BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2",
+            (SPECS / "mutter.spec").read_text(),
+        )
+        self.assertIn(
+            "BuildRequires:  pkgconfig(libdisplay-info) >= 0.2",
+            (SPECS / "mutter.spec").read_text(),
+        )
+
+    def test_shell_declares_gcr_and_girepository_source_floors(self):
+        shell = (SPECS / "gnome-shell.spec").read_text()
+        self.assertIn("BuildRequires:  pkgconfig(gcr-4) >= 3.90.0", shell)
+        self.assertIn("BuildRequires:  pkgconfig(girepository-2.0) >= 2.86.0", shell)
 
     def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
         for name in ("gsettings-desktop-schemas.spec", "mutter.spec", "gnome-shell.spec"):

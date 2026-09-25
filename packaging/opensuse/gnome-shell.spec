@@ -38,8 +38,9 @@ BuildRequires:  git
 BuildRequires:  meson
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
-BuildRequires:  pkgconfig(gcr-4)
+BuildRequires:  pkgconfig(gcr-4) >= 3.90.0
 BuildRequires:  pkgconfig(gio-2.0) >= 2.86
+BuildRequires:  pkgconfig(girepository-2.0) >= 2.86.0
 BuildRequires:  pkgconfig(gjs-1.0) >= 1.85.90
 BuildRequires:  pkgconfig(glib-2.0) >= 2.86
 BuildRequires:  pkgconfig(gnome-autoar-0)
