@@ -67,7 +67,14 @@
     "sha256": "5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d",
     "requires": ["glib-final", "gdk-pixbuf", "pango", "graphene"],
     "private_pkgconfig": ["gtk4.pc"],
-    "options": []
+    "options": [
+      "-Dintrospection=disabled",
+      "-Dbuild-testsuite=false",
+      "-Ddocumentation=false",
+      "-Dx11-backend=false",
+      "-Dvulkan=disabled",
+      "-Dmedia-gstreamer=disabled"
+    ]
   },
   {
     "name": "gcr4",

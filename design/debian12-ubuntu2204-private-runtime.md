@@ -105,6 +105,17 @@ Glycin and the Rust 1.85 bootstrap without lowering GTK or Mutter floors.
 It does not validate the complete GTK/Mutter/Shell runtime; private Pango,
 Graphene, GTK, GCR, and all package/session gates remain required.
 
+A later Debian 12 setup pass configured GTK 4.14.5 successfully with private
+GLib 2.90 and GDK-Pixbuf 2.42.12. It used the Wayland backend and disabled
+the optional X11, Vulkan, and GStreamer media backends; private GTK for this
+session does not need those build paths. The host build image needed normal
+development packages for Cairo, Pango, TIFF, Epoxy, XKBCommon, Graphene,
+Wayland/protocols, and DRM. The successful configuration reported 495 build
+targets and `Display backends: wayland`. It is configuration evidence only:
+private Pango and Graphene have not yet replaced their temporary host build
+counterparts, GTK has not compiled and installed from the experimental DAG,
+and GCR4 has not been configured.
+
 ## Boundary: what can be private
 
 The executable compositor and Shell should load one coherent Gnoblin library
