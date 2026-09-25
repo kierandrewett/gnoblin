@@ -132,6 +132,7 @@ class CliTests(unittest.TestCase):
                 "privacy",
                 "permissions",
                 "window",
+                "layer",
                 "completion",
                 "config",
                 "workspace",
@@ -141,6 +142,7 @@ class CliTests(unittest.TestCase):
                 "script",
                 "grant",
                 "launch",
+                "animation",
             },
         )
         with contextlib.redirect_stdout(io.StringIO()) as output:

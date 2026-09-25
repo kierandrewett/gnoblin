@@ -130,9 +130,10 @@ gnoblinctl workspace move-active --number 2
 gnoblinctl monitor list
 ```
 
-Workspace numbers are one-based positions and may change when dynamic
-workspaces are removed. Workspace IDs are stable for configured positions;
-unconfigured dynamic workspaces receive IDs that last only for the session.
+Workspace numbers are one-based positions and may change when workspaces are
+removed or reordered. Configured IDs are assigned from initial positions, then
+stay with their workspace as order changes. Unconfigured workspaces receive
+generated IDs such as `@session-1` that last only for the session.
 Names are display labels and are not identifiers. Use `workspace list` to see
 each workspace's ID, number, name, active state and window count. Monitor IDs
 start at **0**.
@@ -217,6 +218,9 @@ IDs, titles and geometry below are illustrative:
             "id": "42",
             "title": "Notes",
             "appId": "org.example.Editor.desktop",
+            "gtkAppId": "org.example.Editor",
+            "wmClass": "editor",
+            "ruleAppId": "org.example.Editor",
             "focused": true,
             "minimized": false,
             "workspace": 1,
@@ -256,6 +260,46 @@ For workspace lists, `gnoblinctl workspace list --json` returns:
     ]
 }
 ```
+
+The remaining JSON commands return these fields. Lists are arrays; fields in
+`status`, `launch status` and animation results can vary with the running
+session or selected target.
+
+| Command                               | JSON result fields                                                                                                   |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ping`                                | The string `"pong"`.                                                                                                 |
+| `version`                             | `gnomeVersion`, `gnoblinVersion`, `shellVersion`.                                                                    |
+| `status`                              | Version fields, `connected`, `windows`, `focused`; `windowControlError` appears if window listing fails.             |
+| `reload`, `config reload`             | `ok`, `action`.                                                                                                      |
+| `config path`                         | A path string.                                                                                                       |
+| `config default`                      | The bundled Lua config as a string.                                                                                  |
+| `privacy`                             | `screenSharing`, `microphoneInUse`, `locationInUse` booleans.                                                        |
+| `permissions`, `permissions list`     | `policy`, `capabilities`, `levels`, `path`.                                                                          |
+| `permissions check`                   | `level`, `rule`, `monitors`, `devices` bitmask, `clipboard`.                                                         |
+| `input list`                          | `sources`: objects with `type`, `id`, `shortName`, `name`.                                                           |
+| `input current`                       | `type`, `id`, `shortName`, `name`.                                                                                   |
+| `input select`                        | `ok`, `type`, `id`.                                                                                                  |
+| `feature list`                        | `features`: objects with `id`, `description`, `enabled`.                                                             |
+| `feature show`                        | `id`, `enabled`.                                                                                                     |
+| `feature enable/disable`              | `ok`, `id`, `enabled`.                                                                                               |
+| `script list`                         | `scripts`: names of loaded integrations and user scripts.                                                            |
+| `grant list`                          | `grants`: objects with `id`, `kind`, `requester`, `devices`, `clipboard`, `screenStreams`.                           |
+| `grant revoke`                        | `ok`, `id`.                                                                                                          |
+| `launch begin/end`                    | `ok`, `token`.                                                                                                       |
+| `launch status`                       | `busy`, `pending`, `nativeCursor`, `pointerVisible`, `spinnerVisible`, `cursorSource`, `position`.                   |
+| `monitor list`                        | `monitors`: objects with `id`, `x`, `y`, `width`, `height`, `primary`, `scale`.                                      |
+| `layer list`, `animation surfaces`    | `surfaces`: objects with `id`, `namespace`, `title`.                                                                 |
+| `animation list`                      | `animations`: built-ins have `name`, `event`, `builtin`, `previewable`; custom entries also have `duration`, `ease`. |
+| `animation inspect`                   | `name`, `event`, `target`, `properties`, `context`, `spec`.                                                          |
+| `animation preview`                   | `session`, `target`, `name`, `event`, `paused`, `spec`.                                                              |
+| `animation seek/step/play/pause/stop` | `ok`, `session`, `action`.                                                                                           |
+| `workspace switch/next/previous`      | `ok`, `pending`, `workspace`, `id`, `number`, `name`, `active`, `windows`.                                           |
+| `workspace move-active`               | Workspace fields above, plus `follow` and `window`.                                                                  |
+| `window workspace`                    | `ok`, `pending`, `window`, `action`, `workspace`, `workspaceId`, `workspaceNumber`.                                  |
+
+Window-list fields are shown above. Other window action acknowledgements
+include `ok`, `pending`, `window` and `action`. Run a command with `--json` to
+see its exact values.
 
 | Exit code | Meaning                          |
 | --------- | -------------------------------- |

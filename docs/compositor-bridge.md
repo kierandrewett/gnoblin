@@ -90,19 +90,20 @@ The reply's `result` is shaped like this:
 }
 ```
 
-The request `id` correlates its reply. Workspace IDs are separate: configured
-IDs persist by position, while unconfigured workspaces receive session-only
-IDs such as `@session-N`.
+The request `id` correlates its reply. A configured workspace ID is assigned
+from its initial position and stays with that `MetaWorkspace` if workspaces are
+reordered during the session. An unconfigured workspace gets an ID such as
+`@session-1`, which lasts only for that session.
 
 Each item from `workspaces` has these fields:
 
-| Field     | Meaning                                                                  |
-| --------- | ------------------------------------------------------------------------ |
-| `id`      | Stable workspace ID, or the one-based position when no ID is configured. |
-| `number`  | Current one-based position.                                              |
-| `name`    | Display label.                                                           |
-| `active`  | Whether this workspace is selected.                                      |
-| `windows` | Number of eligible windows on the workspace.                             |
+| Field     | Meaning                                                            |
+| --------- | ------------------------------------------------------------------ |
+| `id`      | Configured ID or a generated session-only ID such as `@session-1`. |
+| `number`  | Current one-based position.                                        |
+| `name`    | Display label.                                                     |
+| `active`  | Whether this workspace is selected.                                |
+| `windows` | Number of eligible windows on the workspace.                       |
 
 Switch by stable ID or current number. Send exactly one selector:
 
@@ -114,6 +115,9 @@ Switch by stable ID or current number. Send exactly one selector:
 `workspace-switch` also accepts a numeric `workspace` selector.
 `workspace-next` and `workspace-previous` take no selector and wrap at the
 ends of the current workspace list.
+
+The older `workspaces` command keeps its legacy response: `id` is the current
+one-based position, and items do not include the display name.
 
 Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
 They also include the resolved workspace's `id`, `number`, `name`, `active`,

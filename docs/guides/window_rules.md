@@ -133,8 +133,10 @@ particular window title from one application.
 ## Workspaces {#workspaces}
 
 Use a workspace ID when a rule should keep targeting the same configured
-workspace as dynamic workspaces are removed or reordered. Configure IDs by
-position with `workspace_ids` in `gnoblin.configure.window_management`:
+workspace as dynamic workspaces are removed or reordered. Gnoblin assigns
+configured IDs from initial positions, then keeps each ID with its workspace
+if the order changes. Configure IDs with the ordered `workspace_ids` array in
+`gnoblin.configure.window_management`:
 
 ```lua
 gnoblin.configure {
