@@ -10,7 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class ReleaseWorkflowTests(unittest.TestCase):
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
-        version = subprocess.check_output([str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True).strip()
+        version = subprocess.check_output(
+            [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
+        ).strip()
         self.assertEqual(subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(), "1")
         for tag in ("main", "v51.0", "gnoblin-v0.1", "gnoblin-v0.1.0-1", "gnoblin-v0.1.0.1"):
             self.assertNotEqual(subprocess.run([str(script), tag], capture_output=True).returncode, 0)
@@ -45,12 +47,13 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
+        self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
 
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
         self.assertIn("COPR_CONFIG:", workflow)
         self.assertIn("required: true", workflow)
-        self.assertIn("gh release download \"$RELEASE_TAG\"", workflow)
+        self.assertIn('gh release download "$RELEASE_TAG"', workflow)
         self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
         self.assertIn("dnf -y install --refresh gnoblin", workflow)
         self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)

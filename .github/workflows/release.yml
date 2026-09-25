@@ -26,7 +26,7 @@ jobs:
       GIT_COMMITTER_EMAIL: release@gnoblin.local
     steps:
       - name: Install release tools
-        run: dnf -y install git meson patch rpm-build rpmdevtools tar xz
+        run: dnf -y install git inkscape meson patch rpm-build rpmdevtools tar xz
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
