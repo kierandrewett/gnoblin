@@ -10,8 +10,8 @@ gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
-    -- Cursor changes are optional. Uncomment the theme only when it is
-    -- installed; this example theme is not included in every package.
+    -- Cursor changes are optional. Gnoblin includes this artwork; install
+    -- other Hyprcursor themes before selecting them.
     cursor = {},
     -- cursor = {theme = "Adwaita-Hyprcursor", size = 24}, -- size: 1..256
 
