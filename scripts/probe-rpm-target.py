@@ -226,7 +226,13 @@ def dnf_candidates(capability: str) -> List[Dict[str, str]]:
 
 
 def zypper_candidates(capability: str) -> List[Dict[str, str]]:
-    output = command("zypper", "--non-interactive", "search", "--details", "--provides", capability)
+    try:
+        output = command("zypper", "--non-interactive", "search", "--details", "--provides", capability)
+    except subprocess.CalledProcessError as error:
+        # zypper returns 104 when a well-formed capability has no provider.
+        if error.returncode == 104:
+            return []
+        raise
     result = []
     for line in output.splitlines():
         fields = [field.strip() for field in line.split("|")]

@@ -47,6 +47,18 @@ class RpmTargetProbeTests(unittest.TestCase):
             {"packaging/opensuse/gnome-shell.spec:43", "packaging/rpm/gnome-shell.spec:61,83"},
         )
 
+    def test_treats_zypper_no_provider_status_as_a_missing_capability(self):
+        original = probe.command
+
+        def no_provider(*_):
+            raise probe.subprocess.CalledProcessError(104, "zypper")
+
+        probe.command = no_provider
+        try:
+            self.assertEqual(probe.zypper_candidates("pkgconfig(glycin-2)"), [])
+        finally:
+            probe.command = original
+
     def test_compares_required_upstream_floors(self):
         self.assertTrue(probe.version_at_least("2.88.3", "2.86.0"))
         self.assertTrue(probe.version_at_least("2.1.5", "2.0.beta.2"))

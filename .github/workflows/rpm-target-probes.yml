@@ -51,7 +51,7 @@ jobs:
               ;;
             opensuse-leap | opensuse-tumbleweed)
               zypper --non-interactive refresh
-              zypper --non-interactive install python3
+              zypper --non-interactive install python3 tar gzip
               ;;
           esac
       - uses: actions/checkout@v4
