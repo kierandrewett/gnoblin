@@ -88,6 +88,17 @@ been validated. The builder still supports declared dependency ordering and
 selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
 retaining staging-path and link-containment checks.
 
+The next clean-image pass installed the normal host build prerequisite
+`shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then resolved the private GLib
+interfaces and stopped at its required `glycin-2` dependency. Glycin 2.0.0 is
+therefore part of the experimental closure, built without the optional GTK4
+binding so that it can precede GDK-Pixbuf. Its upstream `Cargo.toml` declares
+`rust-version = "1.85"`; Debian 12 provides Rust 1.63.0. This is the current
+source-closure incompatibility. Resolving it requires a pinned, build-only
+Rust 1.85+ toolchain. Do not substitute the host compiler, lower Glycin, or
+promote Debian 12 support until that toolchain and the rest of the graph build
+cleanly.
+
 ## Boundary: what can be private
 
 The executable compositor and Shell should load one coherent Gnoblin library
