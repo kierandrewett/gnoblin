@@ -44,6 +44,19 @@ class CliTests(unittest.TestCase):
             self.assertEqual(result.stdout, example.read_text(encoding="utf-8"))
             self.assertEqual(result.stderr, "")
 
+    def test_shortcut_capture_prints_the_compositor_accelerator_and_waits_by_default(self):
+        with (
+            contextlib.redirect_stdout(io.StringIO()) as output,
+            contextlib.redirect_stderr(io.StringIO()),
+            patch.object(ctl, "dbus", return_value=["<Shift><Control>q"]) as call,
+        ):
+            self.assertEqual(ctl.main(["shortcut", "capture"]), 0)
+        self.assertEqual(output.getvalue(), "<Shift><Control>q\n")
+        self.assertEqual(
+            call.call_args,
+            unittest.mock.call("CaptureAccelerator", "u", [30], timeout=32, run=ctl.subprocess.run),
+        )
+
     def test_global_options_before_or_after_command(self):
         for words in (["--json", "window", "focus", "42"], ["window", "focus", "42", "--json"]):
             args = ctl.parser().parse_args(words)
@@ -143,6 +156,7 @@ class CliTests(unittest.TestCase):
                 "grant",
                 "launch",
                 "animation",
+                "shortcut",
             },
         )
         with contextlib.redirect_stdout(io.StringIO()) as output:

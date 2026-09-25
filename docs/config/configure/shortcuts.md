@@ -77,6 +77,8 @@ To disable one after loading the bundled config:
 gnoblin.configure.shortcuts["volume-up"].enable = false
 ```
 
+Run `gnoblinctl shortcut capture` to print the GTK accelerator for a key combination. Escape cancels; capture times out after 30 seconds by default. See the [shortcuts guide](/guides/shortcuts) for timeout options and behavior.
+
 ## Type definition
 
 Every named entry uses exactly one of `command` or `action`. `?` marks

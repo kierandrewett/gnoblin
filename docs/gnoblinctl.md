@@ -190,6 +190,10 @@ Actions without extra arguments accept an optional window ID; they use
 | `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                          |
 | `monitor`                                | `ID MONITOR`                                     | Move to a zero-based monitor: 0–1024                   |
 
+## Capture a shortcut
+
+Run `gnoblinctl shortcut capture` from a Gnoblin terminal, then press the key combination. The command prints a GTK accelerator that you can copy into `binding` in your Lua config. Escape cancels; it grabs the keyboard while waiting and times out after 30 seconds by default. Use `--timeout SECONDS` to choose 1–60 seconds.
+
 ## Shell and policy commands
 
 | Command                                                     | Use                                                                                |

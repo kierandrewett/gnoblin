@@ -54,6 +54,14 @@ def default_lua_config():
     raise CommandError("Default Lua config not found; install the Gnoblin session config package")
 
 
+def capture_accelerator(wait_seconds, command_runner=None):
+    """Ask Gnoblin to capture a key and return its GTK accelerator name."""
+    command_runner = subprocess.run if command_runner is None else command_runner
+    print("Press a shortcut now; Escape cancels.", file=sys.stderr, flush=True)
+    result = dbus("CaptureAccelerator", "u", [wait_seconds], timeout=wait_seconds + 2, run=command_runner)
+    return result[0]
+
+
 def version_record(shell_version):
     return {
         "gnomeVersion": str(shell_version).removesuffix("-gnoblin"),
@@ -189,6 +197,9 @@ def parser():
     add(layer_actions, "list", "List layer surfaces and their rule namespaces")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
+    shortcut = add(commands, "shortcut", "Capture a keyboard shortcut as a GTK accelerator")
+    shortcut_actions = shortcut.add_subparsers(dest="action", metavar="ACTION")
+    add(shortcut_actions, "capture", "Capture one key combination and print its GTK accelerator")
     config = add(commands, "config", "Show the default or manage the active configuration")
     config_actions = config.add_subparsers(dest="action")
     add(config_actions, "path", "Show the active configuration path")
@@ -380,6 +391,8 @@ def dispatch(args, cli):
     cmd = args.command
     if cmd == "config" and args.action == "path":
         return str(user_config_path())
+    if cmd == "shortcut" and args.action == "capture":
+        return capture_accelerator(args.timeout)
 
     def call(method, signature="", arguments=(), service="org.gnoblin.Shell"):
         return dbus(method, signature, arguments, service, args.timeout)
@@ -690,7 +703,7 @@ def main(argv=None):
     args = cli.parse_args(argv)
     defaults = {
         "format": "auto",
-        "timeout": 5,
+        "timeout": 30 if args.command == "shortcut" and args.action == "capture" else 5,
         "socket": os.environ.get("GNOBLIN_COMPOSITOR_SOCKET")
         or str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "gnoblin/compositor-v1.sock"),
     }
@@ -717,6 +730,7 @@ def main(argv=None):
             "grant",
             "launch",
             "permissions",
+            "shortcut",
         )
         and args.action is None
     ):
