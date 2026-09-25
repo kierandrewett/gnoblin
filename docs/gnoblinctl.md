@@ -49,6 +49,28 @@ The `match` object shows the corresponding `type`, `app_id`, `title`, and curren
 `focused` value. Use the raw `app_id` and `title` values in a rule; the CLI's
 `APP ID` column in `window list` is a desktop-entry ID and can be different.
 
+With `--json`, the identity fields remain separate from the rule matcher:
+
+```json
+{
+    "id": "42",
+    "identity": {
+        "desktop_app_id": "org.example.Editor.desktop",
+        "gtk_app_id": "org.example.Editor",
+        "wm_class": "editor",
+        "rule_app_id": "org.example.Editor"
+    },
+    "match": {
+        "type": "window",
+        "app_id": "org.example.Editor",
+        "title": "Notes",
+        "focused": true
+    }
+}
+```
+
+`match.app_id` is omitted when the window has no rule identity.
+
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.
 
@@ -206,7 +228,13 @@ gnoblinctl feature list --format table
 ```
 
 Structured results use tables in a terminal and JSON in a pipe.
-`--json` forces JSON. Options work before or after the command.
+Options work before or after the command.
+
+| Option                            | Behavior                             |
+| --------------------------------- | ------------------------------------ |
+| `-j`, `--json`                    | Force JSON, including in a terminal  |
+| `--format auto`                   | Tables in a terminal; JSON in a pipe |
+| `--format json`, `--format table` | Force the selected output format     |
 
 For example, `gnoblinctl window list --focused --json` returns this shape.
 IDs, titles and geometry below are illustrative:
