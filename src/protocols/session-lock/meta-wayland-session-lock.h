@@ -95,3 +95,8 @@ meta_wayland_session_lock_get_scene (MetaWaylandCompositor *compositor);
  * input controller would falsely claim a security guarantee.
  */
 void meta_wayland_init_session_lock (MetaWaylandCompositor *compositor);
+
+/* Destroy controller-owned scene, input and protocol objects before the
+ * compositor finalizes the display, seat or stage. */
+void
+meta_wayland_session_lock_controller_finalize (MetaWaylandCompositor *compositor);

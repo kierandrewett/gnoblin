@@ -680,9 +680,7 @@ destroy_controller (gpointer data)
   if (controller->scene)
     clutter_actor_destroy (controller->scene);
 
-  /* The Wayland display owns its globals and destroys them in
-   * meta_wayland_compositor_finalize(). This controller is GObject data, so
-   * its destroy notifier runs after that and controller->global is stale. */
+  g_clear_pointer (&controller->global, wl_global_destroy);
 
   g_clear_pointer (&controller->unpresented_stage_views, g_hash_table_unref);
   g_clear_pointer (&controller->surfaces, g_hash_table_unref);
@@ -714,6 +712,19 @@ get_controller (MetaWaylandCompositor *compositor)
                           SESSION_LOCK_CONTROLLER_KEY,
                           controller, destroy_controller);
   return controller;
+}
+
+void
+meta_wayland_session_lock_controller_finalize (MetaWaylandCompositor *compositor)
+{
+  MetaWaylandSessionLockController *controller;
+
+  g_return_if_fail (compositor != NULL);
+
+  controller = g_object_steal_data (G_OBJECT (compositor),
+                                    SESSION_LOCK_CONTROLLER_KEY);
+  if (controller)
+    destroy_controller (controller);
 }
 
 void

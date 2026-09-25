@@ -1,0 +1,33 @@
+From b1f4cd2a043c8dddbb6a5723504373301e1c37d4 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 20:46:00 +0000
+Subject: [PATCH] wayland: finalize Gnoblin lock controller before dependencies
+
+The controller owns scene actors, seat handlers and a Wayland global. Its
+GObject data destroy notifier otherwise runs after compositor finalization has
+already torn down those dependencies. Explicitly finalize it first.
+
+---
+ src/wayland/meta-wayland.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -62,6 +62,7 @@
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-region.h"
+ #include "wayland/meta-wayland-seat.h"
++#include "wayland/meta-wayland-session-lock.h"
+ #include "wayland/meta-wayland-subsurface.h"
+ #include "wayland/meta-wayland-system-bell.h"
+ #include "wayland/meta-wayland-tablet-manager.h"
+@@ -887,6 +888,8 @@
+   MetaBackend *backend = meta_context_get_backend (compositor->context);
+   ClutterActor *stage = meta_backend_get_stage (backend);
+ 
++  meta_wayland_session_lock_controller_finalize (compositor);
++
+   meta_wayland_xdg_foreign_finalize (compositor);
+   meta_wayland_xdg_session_management_finalize (compositor);
+   meta_wayland_activation_finalize (compositor);
