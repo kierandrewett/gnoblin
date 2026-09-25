@@ -15,17 +15,24 @@ release pipeline or COPR publication changes.
 - COPR has Fedora 43, 44, and 45 x86_64 chroots enabled. The existing
   published build has no Fedora 45 packages yet; the 0.1.7 release must build
   and pass clean installs in all three chroots.
-- The current source candidate is Gnoblin 0.1.7 on GNOME 51.0. Its existing
-  tag points to the failed attempt described below; no GitHub release or COPR
-  build was published from it. Repoint the tag only after the repaired source
-  passes the complete release gates.
-- The `gnoblin-v0.1.7` Release workflow built its source assets and all three
-  Debian/Ubuntu packages, but all three install smoke tests failed while
-  reloading a partial config: `next.cursor` was undefined. The release was
-  not published to GitHub or COPR.
-- Commits `752d016` and `3daf6dc` add default cursor values, validate configured
-  cursor settings, and expose Mutter's live cursor preference setter. The
-  Mutter patch series applies cleanly from the pinned 51.0 tag.
+- The current source candidate is Gnoblin 0.1.7 on GNOME 51.0. The
+  `gnoblin-v0.1.7` tag points at `682a8f5`, which is also on `main`.
+- Release run `36132144715` built all packages and passed Debian 13 and Ubuntu
+  26.04 install tests. Ubuntu 24.04 failed because the package declared
+  `gir1.2-gtk4layershell-1.0`, which Ubuntu 24.04 does not provide. This was a
+  fixed service dependency; no Gnoblin source uses GTK4LayerShell.
+- Commit `682a8f5` removes that unavailable dependency and adds a regression
+  assertion. Release run `36136202878` is rebuilding the candidate; its package
+  install gates and publication are still pending.
+- The earlier install failure in run `36074745709` was caused by
+  `next.cursor` being undefined while reloading a partial config. Commits
+  `752d016` and `3daf6dc` added default cursor values, validation, and
+  Mutter's live cursor preference setter; a later full Debian/Ubuntu install
+  run passed that config reload smoke test.
+- `COPYING` credits Gnoblin's original code to Working Directory Ltd. and
+  preserves separate GNOME author/contributor attribution. Debian metadata
+  includes both notices and the bundled Adwaita cursor attribution; RPM
+  packages include the repository license file.
 - Workflow `36079736824` passed package builds and clean install tests on
   Debian 13, Ubuntu 24.04, and Ubuntu 26.04, including the config reload smoke
   test. This verifies the Debian/Ubuntu package path; it does not verify an
@@ -77,9 +84,10 @@ disable-while-typing behavior.
 
 The shared package manifest floors are set to PipeWire 1.4 and libinput 1.30.
 The COPR build/install run is still required to prove RPM build and runtime
-compatibility on Fedora 43, 44, and 45. After 0.1.7's release checks pass,
-publish it via the release workflow and wait for all three COPR builds and
-install jobs.
+compatibility on Fedora 43, 44, and 45. After release run `36136202878` passes
+all Debian/Ubuntu install checks, verify GitHub release publication, then wait
+for all three COPR builds and install jobs before claiming 0.1.7 is available
+on Fedora 43–45.
 
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
