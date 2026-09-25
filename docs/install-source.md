@@ -1,8 +1,8 @@
 # Build from source
 
-Use this route for current development code. For a packaged install, use
-[Fedora's COPR packages](install-fedora.md) or the
-[Debian/Ubuntu downloads](install-debian.md).
+Use this route for current development code. It does not make Gnoblin supported
+on your distribution. For package candidates and their current test status, see
+[platform support](platform-support.md).
 
 The build goes into `./install` inside your checkout.
 Keep the checkout there if you register it as a login session.

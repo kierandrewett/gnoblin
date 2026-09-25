@@ -1,7 +1,10 @@
 # Debian and Ubuntu
 
-Official packages for Intel and AMD 64-bit PCs. Add the Gnoblin APT repository
-once; future releases arrive through normal system updates.
+Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS have APT package candidates
+for Intel and AMD 64-bit PCs. They pass package build, clean installation,
+stock GNOME coexistence and removal checks, but do not yet have a verified
+graphical Gnoblin login. Keep GNOME or another session available. See
+[platform support](platform-support.md) for the release status.
 
 ## 1. Add the archive key
 
@@ -49,11 +52,12 @@ sudo apt install gnoblin
 APT installs the required system packages. Gnoblin's newer runtime libraries
 stay under `/usr/lib/gnoblin`; your GNOME session remains installed separately.
 
-## 4. Choose a shell and log in
+## 4. Choose a shell and test the session
 
 [Install a desktop shell](bring-your-own-shell.md) for your bar, launcher and
 other desktop controls. Then log out, select **Gnoblin** in the login screen's
-session menu, and log in.
+session menu, and test whether it reaches a usable desktop. Return to GNOME if
+the session does not start.
 
 Next: [configure Gnoblin](/config).
 
