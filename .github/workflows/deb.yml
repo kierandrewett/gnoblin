@@ -1,6 +1,9 @@
 name: Debian and Ubuntu packages
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_call:
     inputs:
       ref:
@@ -40,7 +43,7 @@ jobs:
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - name: Record current host dependency blockers
         run: scripts/probe-deb-target.py --expect-blocked --output "build/deb-probes/${{ matrix.target }}.json"
       - uses: actions/upload-artifact@v4
@@ -50,6 +53,7 @@ jobs:
           if-no-files-found: error
 
   build:
+    if: inputs.ref != ''
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -100,6 +104,7 @@ jobs:
           retention-days: 14
 
   install:
+    if: inputs.ref != ''
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
