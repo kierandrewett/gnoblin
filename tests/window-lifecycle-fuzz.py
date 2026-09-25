@@ -403,6 +403,16 @@ def run_inside() -> int:
         state = state_for(window_id)
         return state["layout"]["presentation"][field] if state else None
 
+    def frame_button_is_pickable(window_id: int, x: int, y: int) -> bool:
+        title = json.dumps(title_for(window_id))
+        return bool(
+            eval_shell(
+                "(()=>{const C=imports.gi.Clutter;let a=global.stage.get_actor_at_pos("
+                f"C.PickMode.REACTIVE,{x},{y});while(a){{if(a.get_name()==='gnoblin-native-frame')"
+                f"return a.get_parent()?.meta_window.title==={title};a=a.get_parent();}}return false;}})()"
+            )
+        )
+
     def set_frame_policy(window_id: int, policy: list[int]) -> None:
         frame_policies[window_id] = policy
         write_frame_config(config_path, frame_policies)
@@ -484,6 +494,10 @@ def run_inside() -> int:
         if op == "frame_click":
             state = prepare_frame(window_id)
             x, y = frame_button_center(state, 2)
+            wait_for(
+                lambda: frame_button_is_pickable(window_id, x, y),
+                f"close button hit target on window {window_id}",
+            )
             send_pointer("move", x, y)
             try:
                 wait_for(

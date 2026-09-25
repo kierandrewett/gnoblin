@@ -12,11 +12,10 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index 8908843..809c980 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -158,2 +158,11 @@
+@@ -158,2 +158,10 @@
      <file>ui/components/gnoblinControl.js</file>
 +    <file>ui/components/gnoblinBridge/compositor-bridge.js</file>
 +    <file>ui/components/gnoblinBridge/lib/blur-regions.js</file>
-+    <file>ui/components/gnoblinBridge/lib/clipboard-paste.js</file>
 +    <file>ui/components/gnoblinBridge/lib/fullscreen-return-guard.js</file>
 +    <file>ui/components/gnoblinBridge/lib/layer-companions.js</file>
 +    <file>ui/components/gnoblinBridge/lib/ui-sessions.js</file>
