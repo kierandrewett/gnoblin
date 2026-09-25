@@ -6,7 +6,7 @@ that uses Gnoblin.
 
 ![GNOME Files open above the Bingux dock](images/gnoblin-bingux-files.png)
 
-_Bingux is one separate shell project that uses Gnoblin._
+_Bingux is one separate shell project that uses Gnoblin. Its packaged rules round the Files window, fill its CSD corner gaps and draw the window shadow._
 
 ![GNOME Files beneath Waybar and a Quickshell dock](images/gnoblin-waybar-quickshell-dock.png)
 

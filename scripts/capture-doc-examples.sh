@@ -13,7 +13,10 @@ case "$example" in
         ;;
 esac
 firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://help.gnome.org/gnome-help/}"
-bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
+bingux_root="${GNOBLIN_DOC_BINGUX_ROOT:-$root/../bingux}"
+bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$bingux_root/shell/bingux}"
+bingux_base_config="${GNOBLIN_DOC_BINGUX_BASE_CONFIG:-$bingux_root/packaging/gnoblin/bingux.lua}"
+bingux_frame_dir="${GNOBLIN_DOC_BINGUX_FRAME_DIR:-$bingux_root/build}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
     exit 1
@@ -48,6 +51,8 @@ cleanup() {
 trap 'cleanup || exit 1' EXIT
 mkdir -m 700 "$profile/home" "$profile/config" "$profile/data" \
     "$profile/cache" "$profile/state" "$profile/runtime"
+mkdir -p "$profile/config/dconf"
+printf 'user-db:user\n' >"$profile/dconf.profile"
 ydotoold --socket-path="$ydotool_socket" --socket-perm=0600 >"$profile/ydotoold.log" 2>&1 &
 ydotoold_pid=$!
 
@@ -61,7 +66,9 @@ export HOME="$profile/home"
 export XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data"
 export XDG_CACHE_HOME="$profile/cache" XDG_STATE_HOME="$profile/state"
 export XDG_CONFIG_DIRS=/etc/xdg
+export GSETTINGS_BACKEND=dconf
 export XDG_RUNTIME_DIR="$profile/runtime" WAYLAND_DISPLAY="$host_display"
+export DCONF_PROFILE="$profile/dconf.profile"
 export MESA_SHADER_CACHE_DISABLE=true
 export GNOBLIN_STATE_DIR="$profile/state/gnoblin"
 export GNOBLIN_PREFIX="${GNOBLIN_DOC_PREFIX:-$root/install}"
@@ -111,11 +118,43 @@ mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
 ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
 ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
 
-cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
+    command -v gnoblin-quickshell >/dev/null || {
+        echo "gnoblin-quickshell is required for this scene" >&2
+        exit 1
+    }
+    [ -d "$bingux_config" ] || {
+        echo "Bingux shell config not found at $bingux_config" >&2
+        exit 1
+    }
+    [ -f "$bingux_base_config" ] || {
+        echo "Bingux's packaged Gnoblin defaults not found at $bingux_base_config" >&2
+        exit 1
+    }
+    if [ -x "$bingux_frame_dir/bingux-frame" ]; then
+        PATH="$bingux_frame_dir:$PATH"
+        export PATH
+    fi
+    command -v bingux-frame >/dev/null || {
+        echo "bingux-frame is required to show Bingux's installed window-frame defaults" >&2
+        exit 1
+    }
+    mkdir -p "$XDG_CONFIG_HOME/gnoblin/conf.d"
+    cp -- "$bingux_base_config" "$XDG_CONFIG_HOME/gnoblin/conf.d/bingux.lua"
+    cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+local gnoblin = require("gnoblin")
+gnoblin.configure {
+    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+}
+gnoblin.load("conf.d/**/*.lua")
+LUA
+else
+    cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
 }
 LUA
+fi
 if [ "$example" = window-effects ]; then
     cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.window_rule {
@@ -387,14 +426,6 @@ if [ "$example" = waybar-mako-notification ]; then
     }
 fi
 if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
-    command -v gnoblin-quickshell >/dev/null || {
-        echo "gnoblin-quickshell is required for this scene" >&2
-        exit 1
-    }
-    [ -d "$bingux_config" ] || {
-        echo "Bingux shell config not found at $bingux_config" >&2
-        exit 1
-    }
     mkdir -p "$XDG_CONFIG_HOME/bingux"
     cat >"$XDG_CONFIG_HOME/bingux/settings.json" <<'JSON'
 {
@@ -423,6 +454,6 @@ if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
 fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
-desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
+desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
 bash "$root/scripts/run-gnome-devkit.sh"

@@ -1,9 +1,13 @@
 # Lua events
 
 Register Lua callbacks with `gnoblin.on(name, callback)`. Event names identify
-their source: `gnome.shell.*` comes from GNOME Shell, `mutter.*` comes from
-Mutter, and `gnoblin.*` comes from Gnoblin. The Lua runtime stays alive for the
-session. Reloading the config replaces it and registers its callbacks again.
+their source: `gnome.shell.*` and `gnome.interface.*` come from GNOME,
+`mutter.*` comes from Mutter, and `gnoblin.*` comes from Gnoblin. The Lua
+runtime stays alive for the session. Reloading the config replaces it and
+registers its callbacks again.
+
+For the current GNOME light or dark appearance and a live border example, see
+[Light and dark appearance](/guides/theming).
 
 ```lua
 gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
@@ -47,6 +51,19 @@ For compatibility, the earlier unqualified names remain available:
 `window_unmanaged`, and `input.<type>`.
 `pointer_window_changed` is emitted by Mutter's Wayland pointer tracking;
 the other listed compatibility events come from the shell integration.
+
+Gnoblin also reports the desktop's light or dark preference:
+
+```lua
+gnoblin.on("gnome.interface.color-scheme-changed", function(event)
+    print(event.color_scheme) -- "default", "prefer-dark", or "prefer-light"
+end)
+```
+
+The values are `default`, `prefer-dark`, and `prefer-light`. Gnoblin sends the
+current value after config load and whenever it changes. GTK apps consume the
+desktop preference automatically; some non-GTK apps opt into it. See the
+[theming guide](/guides/theming) for GTK behavior and a live border example.
 
 ### Mutter
 

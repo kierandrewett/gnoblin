@@ -90,6 +90,7 @@ export default defineConfig({
                     { text: "Files and load order", link: "/guides/files_and_load_order" },
                     { text: "Shortcuts", link: "/guides/shortcuts" },
                     { text: "Autostart", link: "/guides/autostart" },
+                    { text: "Light and dark appearance", link: "/guides/theming" },
                     { text: "Wallpapers", link: "/guides/wallpapers" },
                     { text: "Window rules", link: "/guides/window_rules" },
                     { text: "Window effects", link: "/guides/window_effects" },
