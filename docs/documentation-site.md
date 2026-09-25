@@ -50,5 +50,6 @@ Installation is organised around the package-first approach used by
 [niri](https://niri-wm.github.io/niri/Getting-Started.html) and
 [Hyprland](https://wiki.hypr.land/Getting-Started/Installation/).
 
-Dated experiments belong in the [archive](archive.md), excluded from site search.
-They are evidence of a specific test, not current installation instructions.
+Dated experiments and superseded design proposals are kept under
+`design/archive/` in the source repository. They are not part of the published
+user documentation.

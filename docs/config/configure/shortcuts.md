@@ -18,9 +18,10 @@ See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and comman
 ## Run a built-in action
 
 An `action` names an existing GNOME keybinding as `group.key`. Accepted
-namespaces are `gnome:shell`, `wm`, `mutter`, and `wayland`; each maps to a
-GSettings schema. The key must exist in that schema on the installed GNOME
-version. Use `gsettings list-keys SCHEMA` to discover keys and
+namespaces are `gnome:shell`, `wm`, `mutter`, and `wayland`. Each maps to a
+GSettings schema, and the key must exist in that schema on your GNOME version.
+
+Run `gsettings list-keys SCHEMA` to discover keys. Run
 `gsettings describe SCHEMA KEY` to read one key's purpose.
 
 | Field     | Accepted values                                                     | Meaning                                                                       |

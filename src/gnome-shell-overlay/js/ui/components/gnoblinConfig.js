@@ -522,7 +522,7 @@ export function parseDocument(document) {
     if (!cursor || Array.isArray(cursor) || typeof cursor !== "object") throw new Error("cursor must be a table");
     for (const [key, value] of Object.entries(cursor)) {
         if (key === "theme") {
-            if (typeof value !== "string" || !value.trim())
+            if (typeof value !== "string" || !value.trim() || value.includes("\0"))
                 throw new Error("cursor.theme: expected a nonempty theme name");
         } else if (key === "size") {
             if (!Number.isInteger(value) || value < 1 || value > 256)

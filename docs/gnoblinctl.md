@@ -43,8 +43,9 @@ gnoblinctl window match 42 --json
 ```
 
 The result includes the GTK application ID, WM class, and `rule_app_id`.
-Gnoblin uses the GTK ID when available and falls back to the WM class. The
-`match` object shows the corresponding `type`, `app_id`, `title`, and current
+Gnoblin uses the GTK ID when available and falls back to the WM class.
+
+The `match` object shows the corresponding `type`, `app_id`, `title`, and current
 `focused` value. Use the raw `app_id` and `title` values in a rule; the CLI's
 `APP ID` column in `window list` is a desktop-entry ID and can be different.
 

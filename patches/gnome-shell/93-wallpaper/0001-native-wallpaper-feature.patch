@@ -40,5 +40,5 @@ index 06c599728..712b30061 100644
 @@ -175,1 +179,1 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
 -        this._bgManager.destroy();
 +        this._bgManager?.destroy();
--- 
+--
 2.45.0

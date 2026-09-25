@@ -26,9 +26,10 @@ gnoblin.window_rule {
 
 All supplied match fields must match. `app_id`, `title`, and `layer` are
 case-sensitive JavaScript regular expressions; use `^` and `$` for an exact
-match. `workspace_id` is an exact, case-sensitive ID. For examples and
-instructions to find the live app ID, title, or layer namespace, see the
-[window rules guide](/guides/window_rules#find-the-values).
+match. `workspace_id` is an exact, case-sensitive ID.
+
+See the [window rules guide](/guides/window_rules#find-the-values) for examples
+and instructions to find the live app ID, title, or layer namespace.
 
 Declare IDs in `gnoblin.configure.window_management.workspace_ids`. A
 `workspace_id` matcher or `{id = ...}` placement target that is not declared

@@ -145,8 +145,9 @@ gnoblin.configure {
 ```
 
 IDs must be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Positions
-without a configured ID get generated `@session-N` IDs for the current session;
-those generated IDs are not suitable for saved rules or scripts.
+without a configured ID get generated `@session-N` IDs for the current session.
+Those generated IDs are not suitable for saved rules or scripts.
+
 `workspace_names` controls displayed labels and is independent of IDs.
 Any `workspace_id` matcher or `{id = ...}` placement target must name an ID in
 `workspace_ids`. An undeclared ID makes the configuration invalid.

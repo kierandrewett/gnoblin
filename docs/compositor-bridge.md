@@ -33,34 +33,35 @@ Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
 The `hello.version` field is the socket protocol version. Check `features`
-before using optional operations such as `ui-session`, bare Super, blur regions
-or layer animation policy. A validation error is
-`{"event":"error","message":"..."}`; if a valid `command` request fails,
-the error also carries its request `id`. Malformed JSON or excessive input
+before using optional operations. These include `ui-session`, bare Super, blur
+regions and layer animation policy.
+
+A validation error has an `error` event. If a valid `command` request fails,
+the response also carries its request `id`. Malformed JSON or excessive input
 closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op`                             | Required fields                          | Reply or stream                                     |
-| -------------------------------- | ---------------------------------------- | --------------------------------------------------- |
-| `command`                        | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error`          |
-| `windows`                        | None                                     | Current `windows` snapshot, then changes            |
-| `privacy`                        | None                                     | Current `privacy` state, then changes               |
-| `status`                         | None                                     | One `status` with binding IDs and active session ID |
-| `bind`                           | `id`, `accelerator`, `hold`              | `bound`, then activation and input events           |
-| `activate`                       | `window`                                 | Focus a window; no success reply                    |
-| `preview`                        | `window`, `width`, `height`              | One `preview` event                                 |
-| `shortcut-input`                 | `name`, `state`                          | Input handoff; no success reply                     |
-| `ui-session`                     | `action`; other fields depend on action  | `ui-state` or `ui-command` events                   |
-| `layer-animation-policy`         | `namespace`                              | One policy event for that layer namespace           |
-| `blur-region`                    | `namespace`, `screen`, `region`          | No success reply                                    |
-| `window-drag`                    | None                                     | Current `window-drag` state, then changes           |
-| `snap-offer`                     | `serial`, `regions`                      | No success reply; may later get `snap-completed`    |
-| `snap-context`                   | None                                     | One `snap-context` event                            |
-| `snap-window`                    | `window`, `monitor`, `target`            | Applies a region; no success reply                  |
-| `stop-sharing`, `stop-recording` | None                                     | Requests stop; no success reply                     |
-| `end`                            | Optional `session` for fallback switcher | Ends this client's input session                    |
-| `clear`                          | None                                     | Removes this client's bindings and session          |
+| `op`                             | Required fields                                 | Reply or stream                                     |
+| -------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields        | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                            | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                            | Current `privacy` state, then changes               |
+| `status`                         | None                                            | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger` | `bound`, then activation and input events           |
+| `activate`                       | `window`                                        | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`                     | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                                 | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action         | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                                     | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`                 | No success reply                                    |
+| `window-drag`                    | None                                            | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                             | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                            | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`                   | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                            | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
+| `clear`                          | None                                            | Removes this client's bindings and session          |
 
 `command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
 `workspace-switch`, `workspace-next`, `workspace-previous`,
@@ -149,11 +150,13 @@ The bridge's `layer-animation-policy` operation lets a shell read the
 configured enter/exit policy for a namespace. See the [animation guide](/guides/animations)
 for layer-shell lifecycle events and target selection.
 
-`capture-windows` returns visible, non-minimised windows in stacking order
-with title, app name, frame position and size, and `bufferWidth` and
-`bufferHeight` for capture. These IDs come from Mutter's window ID, whereas
-`windows` snapshots use a stable sequence string. Obtain an action ID from
-`windows` or `gnoblinctl window list` before sending a `window` action.
+`capture-windows` returns visible, non-minimised windows in stacking order.
+Each entry includes the title, app name, frame position and size, plus
+`bufferWidth` and `bufferHeight` for capture.
+
+Capture IDs come from Mutter; `windows` snapshots use a stable sequence
+string. Get an action ID from `windows` or `gnoblinctl window list` before
+sending a `window` action.
 
 ## Example: watch the window list
 
@@ -185,8 +188,10 @@ with Ctrl+C. Each snapshot replaces the previous list; it is not a list of chang
 
 Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
 
+Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
+
 ```json
-{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8 }
+{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
 ```
 
 The server acknowledges:

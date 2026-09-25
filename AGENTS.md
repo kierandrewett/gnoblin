@@ -9,6 +9,11 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 
 - Read the relevant issue, nearby code, existing documentation, and applicable
   repository guidance before deciding how to implement a request.
+- For every change, check which documentation describes the affected behavior.
+  Update those docs in the same change whenever behavior, a public interface,
+  defaults, configuration, commands, visible UI, or troubleshooting guidance
+  changes. Verify the docs against the implementation before finishing; do not
+  leave documentation updates for later.
 - Inspect `git status`, the current branch, and diffs in the files and
   submodules you may touch. This repository may contain valuable in-progress
   work. Preserve it; do not reset, clean, overwrite, or stage unrelated work.
@@ -76,14 +81,14 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   documentation build when verification is requested or needed for the change.
 - An agent changing Markdown must run
   `python3 scripts/markdown-style.py review --fail-on-flags` on the changed
-  files before finishing.
-
-    This review is mandatory: missing Jev credentials, request failures, or
-    unresolved flags block completion. The script sends the
-    selected files and `MARKDOWN_STYLE.md` to the provider configured in the
-    ignored repo-root `.env`. Fix every flag; the report prints its exact rule.
-    `MARKDOWN_STYLE.md` is the source of truth. Do not duplicate its rules in
-    code. The `split` command previews a single explicit paragraph break.
+  files under `docs/` before finishing. The review uses the editorial rules in
+  `MARKDOWN_STYLE.md` and deterministic checks for long paragraphs, long table
+  cells, and repeated table definitions. Missing credentials, request failures,
+  or unresolved flags block completion. The script sends selected files and
+  `MARKDOWN_STYLE.md` to the provider configured in the ignored repo-root
+  `.env`. Fix every flag; the report prints its exact rule. `MARKDOWN_STYLE.md`
+  is the source of truth. The `split` command previews a single explicit
+  paragraph break.
 
 ## Writing style
 

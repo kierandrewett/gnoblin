@@ -21,6 +21,7 @@ class SessionEnvironmentTests(unittest.TestCase):
             (prefix / "libexec").mkdir()
             shutil.copy2(ROOT / "src/tools/gnoblin-session", prefix / "bin/gnoblin-session")
             shutil.copy2(ROOT / "src/tools/gnoblin-env.sh", prefix / "libexec/gnoblin-env.sh")
+            shutil.copy2(ROOT / "src/tools/gnoblin-seed-config", prefix / "libexec/gnoblin-seed-config")
 
             fake_dbus = prefix / "bin/dbus-update-activation-environment"
             fake_dbus.write_text(
