@@ -6,6 +6,13 @@
     # revisions below remain pinned by gnome-versions.json.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # Keep each release input independent.  The compatibility evaluations below
+    # deliberately do not follow the rolling package set: they need to expose
+    # a regression in a specific NixOS release channel.
+    nixpkgs_25_05.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs_25_11.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs_26_05.url = "github:NixOS/nixpkgs/nixos-26.05";
+
     mutter-src = {
       url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
       flake = false;
@@ -47,6 +54,9 @@
     inputs@{
       self,
       nixpkgs,
+      nixpkgs_25_05,
+      nixpkgs_25_11,
+      nixpkgs_26_05,
       ...
     }:
     let
@@ -55,6 +65,80 @@
       versions = builtins.fromJSON (builtins.readFile ./gnome-versions.json);
       gnoblinRelease = builtins.fromJSON (builtins.readFile ./gnoblin-version.json);
       nativePackages = import ./nix/native-packages.nix { inherit versions gnoblinRelease; };
+      nixpkgsChannels = {
+        nixos_25_05 = {
+          release = "25.05";
+          input = nixpkgs_25_05;
+        };
+        nixos_25_11 = {
+          release = "25.11";
+          input = nixpkgs_25_11;
+        };
+        nixos_26_05 = {
+          release = "26.05";
+          input = nixpkgs_26_05;
+        };
+        nixos_unstable = {
+          release = "unstable";
+          input = nixpkgs;
+        };
+      };
+      mkGnoblin =
+        pkgs:
+        pkgs.callPackage ./nix/package.nix {
+          gnoblinSrc = self.outPath;
+          mutterSrc = inputs.mutter-src.outPath;
+          gnomeShellSrc = inputs.gnome-shell-src.outPath;
+          gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
+          gvdbSrc = inputs.gvdb.outPath;
+          gvcSrc = inputs.gvc.outPath;
+          libshewSrc = inputs.libshew.outPath;
+          jasmineGjsSrc = inputs.jasmineGjs.outPath;
+          gnomeShell = pkgs.gnome-shell;
+          gnomeSession = pkgs.gnome-session;
+        };
+      # These values evaluate a package and enabled NixOS module with the exact
+      # release channel pinned in flake.lock. They do not build or run a
+      # compositor, so a true result is not a session or coexistence claim.
+      nixChannelEvaluations = forAllSystems (
+        system:
+        nixpkgs.lib.mapAttrs (
+          _: channel:
+          let
+            pkgs = import channel.input { inherit system; };
+            gnoblin = mkGnoblin pkgs;
+            moduleTest = channel.input.lib.nixosSystem {
+              inherit system;
+              modules = [
+                self.nixosModules.default
+                {
+                  system.stateVersion = channel.release;
+                  programs.gnoblin = {
+                    enable = true;
+                    package = gnoblin;
+                  };
+                }
+              ];
+            };
+            hasGcc16Stdenv = pkgs ? gcc16Stdenv;
+            packageEvaluation =
+              if hasGcc16Stdenv then builtins.tryEval gnoblin.drvPath else { success = false; };
+            moduleEvaluation =
+              if hasGcc16Stdenv then
+                builtins.tryEval (
+                  toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)
+                )
+              else
+                { success = false; };
+          in
+          {
+            inherit (channel) release;
+            blocker = if hasGcc16Stdenv then null else "missing-gcc16-stdenv";
+            package.evaluates = packageEvaluation.success;
+            module.evaluates = moduleEvaluation.success;
+          }
+        ) nixpkgsChannels
+      );
     in
     {
       packages = forAllSystems (
@@ -63,18 +147,7 @@
           pkgs = import nixpkgs { inherit system; };
         in
         rec {
-          gnoblin = pkgs.callPackage ./nix/package.nix {
-            gnoblinSrc = self.outPath;
-            mutterSrc = inputs.mutter-src.outPath;
-            gnomeShellSrc = inputs.gnome-shell-src.outPath;
-            gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
-            gvdbSrc = inputs.gvdb.outPath;
-            gvcSrc = inputs.gvc.outPath;
-            libshewSrc = inputs.libshew.outPath;
-            jasmineGjsSrc = inputs.jasmineGjs.outPath;
-            gnomeShell = pkgs.gnome-shell;
-            gnomeSession = pkgs.gnome-session;
-          };
+          gnoblin = mkGnoblin pkgs;
           default = gnoblin;
         }
       );
@@ -151,7 +224,9 @@
         }
       );
 
-      lib = { inherit nativePackages; };
+      lib = {
+        inherit nativePackages nixChannelEvaluations;
+      };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };
     };
