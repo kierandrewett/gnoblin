@@ -287,15 +287,15 @@
       "lifecycle": "rolling",
       "adapter": "pkgbuild",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/verify.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -371,15 +371,15 @@
       "lifecycle": "rolling",
       "adapter": "rpm-opensuse",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/opensuse-rpm.yml", ".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -441,7 +441,7 @@
       "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": false,
+        "package-build": true,
         "install": false,
         "coinstall": false,
         "graphical-session": false,
@@ -465,7 +465,7 @@
         "dependency-probe": true,
         "package-build": true,
         "install": false,
-        "coinstall": true,
+        "coinstall": false,
         "graphical-session": false,
         "removal": false
       }
