@@ -43,34 +43,16 @@
     "options": ["-Dman=false", "-Dtests=false", "-Dinstalled_tests=false"]
   },
   {
-    "name": "pango",
-    "version": "1.56.4",
-    "url": "https://download.gnome.org/sources/pango/1.56/pango-1.56.4.tar.xz",
-    "sha256": "17065e2fcc5f5a5bdbffc884c956bfc7c451a96e8c4fb2f8ad837c6413cb5a01",
-    "requires": ["glib-final"],
-    "private_pkgconfig": ["pango.pc"],
-    "options": []
-  },
-  {
-    "name": "graphene",
-    "version": "1.10.8",
-    "url": "https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz",
-    "sha256": "a37bb0e78a419dcbeaa9c7027bcff52f5ec2367c25ec859da31dfde2928f279a",
-    "requires": ["glib-final"],
-    "private_pkgconfig": ["graphene-1.0.pc"],
-    "options": []
-  },
-  {
     "name": "gtk4",
     "version": "4.14.5",
     "url": "https://download.gnome.org/sources/gtk/4.14/gtk-4.14.5.tar.xz",
     "sha256": "5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d",
-    "requires": ["glib-final", "gdk-pixbuf", "pango", "graphene"],
+    "requires": ["glib-final", "gdk-pixbuf"],
     "private_pkgconfig": ["gtk4.pc"],
     "options": [
       "-Dintrospection=disabled",
       "-Dbuild-testsuite=false",
-      "-Ddocumentation=false",
+      "-Dgtk_doc=false",
       "-Dx11-backend=false",
       "-Dvulkan=disabled",
       "-Dmedia-gstreamer=disabled"
@@ -83,6 +65,6 @@
     "sha256": "0c3c341e49f9f4f2532a4884509804190a0c2663e6120360bb298c5d174a8098",
     "requires": ["glib-final", "gtk4"],
     "private_pkgconfig": ["gcr-4.pc"],
-    "options": []
+    "options": ["-Dvapi=false", "-Dgtk_doc=false", "-Dintrospection=false"]
   }
 ]

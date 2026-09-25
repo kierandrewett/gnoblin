@@ -102,19 +102,27 @@ resolving private GLib 2.90. The setup then stopped later at optional TIFF,
 which is unrelated to the selected GDK-Pixbuf API. This makes the older
 GDK-Pixbuf source the lower-risk route for this experimental graph: it avoids
 Glycin and the Rust 1.85 bootstrap without lowering GTK or Mutter floors.
-It does not validate the complete GTK/Mutter/Shell runtime; private Pango,
-Graphene, GTK, GCR, and all package/session gates remain required.
+It does not validate the complete GTK/Mutter/Shell runtime; GTK, GCR,
+Mutter/Shell, and all package/session gates remain required.
 
 A later Debian 12 setup pass configured GTK 4.14.5 successfully with private
 GLib 2.90 and GDK-Pixbuf 2.42.12. It used the Wayland backend and disabled
-the optional X11, Vulkan, and GStreamer media backends; private GTK for this
-session does not need those build paths. The host build image needed normal
-development packages for Cairo, Pango, TIFF, Epoxy, XKBCommon, Graphene,
-Wayland/protocols, and DRM. The successful configuration reported 495 build
-targets and `Display backends: wayland`. It is configuration evidence only:
-private Pango and Graphene have not yet replaced their temporary host build
-counterparts, GTK has not compiled and installed from the experimental DAG,
-and GCR4 has not been configured.
+X11, Vulkan, GStreamer media, documentation, and tests. GTK's declared floors
+accept Debian 12's Pango 1.50.12 and Graphene 1.10.8, so the experiment uses
+those host libraries rather than building them privately. GTK's main shared
+library then compiled and installed into the disposable private prefix; its
+`gtk4.pc` reports 4.14.5, and `ldd` resolves GLib/GObject and GDK-Pixbuf from
+the private prefix while resolving Pango and Graphene from the host. The
+Wayland GTK build needed normal host development packages for Cairo, Pango,
+TIFF, Epoxy, XKBCommon, Graphene, Wayland/protocols, and DRM. In the same
+disposable prefix, GCR 4.4.0.1 then configured, compiled, and installed with
+introspection, Vala, and documentation disabled. Its setup found GTK 4.14.5,
+GLib 2.90, libgcrypt 1.10.1, p11-kit 0.24.1, and libsecret 0.20.5. Debian 12's
+normal host prerequisites for this pass were `gnupg`, `libgcrypt20-dev`,
+`libp11-kit-dev`, `libsecret-1-dev`, and `openssh-client`. The private `gcr-4.pc`
+reports GCR 4.4.0.1. Runtime typelibs and a complete Mutter/Shell build are
+still untested; this does not establish package transactions, Ubuntu 22.04, or
+graphical sessions.
 
 ## Boundary: what can be private
 
