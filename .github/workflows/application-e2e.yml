@@ -121,7 +121,7 @@ jobs:
     steps:
       - name: Install Git and desktop runtime dependencies
         run: |
-          dnf -y install git flatpak gtk3 gtk4 wayland-devel wayland-protocols-devel \
+          dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
             gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon \
             xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf
 
