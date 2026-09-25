@@ -37,7 +37,8 @@ from gnoblin_test_session import (  # noqa: E402
 
 FATAL_LOG = re.compile(
     r"GNOME Shell-CRITICAL|Gjs-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
-    r"Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|"
+    r"Traceback \(most recent call last\)|assertion .* failed|"
+    r"GNOBLIN_GDB_(?:FATAL|ABORT): SIG(?:SEGV|ABRT|BUS|ILL)|"
     r"segmentation fault|runtime check failed|double free|corruption|core dumped",
     re.IGNORECASE,
 )

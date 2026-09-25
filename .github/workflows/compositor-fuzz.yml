@@ -75,6 +75,9 @@ jobs:
       - name: Verify Gnoblin JavaScript resources
         run: python3 tests/gnome-shell-overlay-resources.test.py
 
+      - name: Verify fatal log diagnostics
+        run: bash tests/test-log-diagnostics.sh
+
       - name: Run deterministic plan checks
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
 
