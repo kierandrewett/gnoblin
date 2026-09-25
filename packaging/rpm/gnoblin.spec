@@ -20,8 +20,8 @@ Requires:       gjs >= 1.85.90
 Requires:       glib2 >= 2.86.0
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
-Requires:       libinput >= 1.30.0
-Requires:       pipewire >= 1.4.0
+Requires:       libinput >= 1.31.0
+Requires:       pipewire >= 1.6.0
 Requires:       playerctl
 Requires:       libwayland-client >= 1.26
 Requires:       wireplumber
