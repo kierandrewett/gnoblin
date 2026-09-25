@@ -51,14 +51,14 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                               | Missing coverage                                                         |
-| -------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Fedora   | COPR; Fedora 43, 44, 45                                    | Enterprise Linux targets; install/coexistence gates per target           |
-| Debian   | Signed APT archive; Debian 13                              | Debian 11 and 12 build, dependency, install and coexistence gates        |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                 | Ubuntu 22.04 and per-LTS install/coexistence gates                       |
-| Arch     | Generated metapackage only                                 | Runtime packages, a buildable PKGBUILD/AUR submission, and install tests |
-| openSUSE | Source-build instructions                                  | RPM package, OBS build targets, and install/coexistence tests            |
-| NixOS    | Flake package and NixOS module, pinned to `nixos-unstable` | Stable-channel evaluation and session/coexistence tests                  |
+| Family   | Present path                                                         | Missing coverage                                                         |
+| -------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Fedora   | COPR; Fedora 43, 44, 45                                              | Enterprise Linux targets; install/coexistence gates per target           |
+| Debian   | Signed APT archive; Debian 13                                        | Debian 11 and 12 build, dependency, install and coexistence gates        |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                           | Ubuntu 22.04 and per-LTS install/coexistence gates                       |
+| Arch     | Generated metapackage only                                           | Runtime packages, a buildable PKGBUILD/AUR submission, and install tests |
+| openSUSE | Source-build instructions                                            | RPM package, OBS build targets, and install/coexistence tests            |
+| NixOS    | Flake package/module evaluation for 25.05, 25.11, 26.05 and unstable | Package builds plus graphical-session/coexistence tests                  |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical
@@ -100,15 +100,24 @@ ownership, removes Gnoblin, then checks stock GNOME remains. Nix's
 to stock Nix packages, but it is an evaluation/composition check rather than a
 graphical login/removal test.
 
-The existing Nix flake pins only `nixos-unstable`, checks only x86_64 Linux,
-and has no stable-channel target matrix. Fedora packaging supports Fedora
-COPR chroots but has no EL publication target. Its `%rhel` condition only
-omits an optional portal helper; it does not adapt the Fedora package names,
-macros, or dependency versions for EL. Arch's generated `any` metapackage
-depends on Gnoblin runtime packages that are not published, so it cannot
-provide a complete installation. openSUSE currently has dependency-provisioning
-and source-build support, but no openSUSE-native spec or tested OBS project;
-Fedora RPM specs are not portable to SUSE as written.
+The Nix flake has isolated, lock-file-pinned evaluation inputs for
+`nixos-25.05`, `nixos-25.11`, `nixos-26.05`, and `nixos-unstable`, still only
+on x86_64 Linux. On 2026-09-25, the 25.05 and 25.11 inputs resolve but are
+blocked before package or module evaluation because they do not expose
+`gcc16Stdenv`, required for Gnoblin's hyprcursor ABI. The 26.05 and unstable
+inputs evaluate the package derivation and enabled module. These are evaluation
+results only: they do not prove a package build, a graphical session, or GNOME
+coexistence. The workflow records these exact outcomes so a channel change
+cannot silently turn a known blocker into an unexamined result.
+
+Fedora packaging supports Fedora COPR chroots but has no EL publication target.
+Its `%rhel` condition only omits an optional portal helper; it does not adapt
+the Fedora package names, macros, or dependency versions for EL. Arch's
+generated `any` metapackage depends on Gnoblin runtime packages that are not
+published, so it cannot provide a complete installation. openSUSE currently
+has dependency-provisioning and source-build support, but no openSUSE-native
+spec or tested OBS project; Fedora RPM specs are not portable to SUSE as
+written.
 
 This means coexistence is a package-layout invariant, not yet a demonstrated
 cross-distro guarantee. Each target gate should install the stock desktop

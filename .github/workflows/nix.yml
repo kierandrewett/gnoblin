@@ -14,6 +14,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  evaluate-target-channels:
+    name: Evaluate NixOS ${{ matrix.channel.release }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        channel:
+          - attribute: nixos_25_05
+            release: "25.05"
+            package_evaluates: "false"
+            module_evaluates: "false"
+            blocker: '"missing-gcc16-stdenv"'
+          - attribute: nixos_25_11
+            release: "25.11"
+            package_evaluates: "false"
+            module_evaluates: "false"
+            blocker: '"missing-gcc16-stdenv"'
+          - attribute: nixos_26_05
+            release: "26.05"
+            package_evaluates: "true"
+            module_evaluates: "true"
+            blocker: "null"
+          - attribute: nixos_unstable
+            release: unstable
+            package_evaluates: "true"
+            module_evaluates: "true"
+            blocker: "null"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Validate recorded package and module evaluation status
+        run: |
+          package_status="$(nix eval --json ".#lib.nixChannelEvaluations.x86_64-linux.${{ matrix.channel.attribute }}.package.evaluates")"
+          module_status="$(nix eval --json ".#lib.nixChannelEvaluations.x86_64-linux.${{ matrix.channel.attribute }}.module.evaluates")"
+          blocker="$(nix eval --json ".#lib.nixChannelEvaluations.x86_64-linux.${{ matrix.channel.attribute }}.blocker")"
+          test "$package_status" = "${{ matrix.channel.package_evaluates }}"
+          test "$module_status" = "${{ matrix.channel.module_evaluates }}"
+          test "$blocker" = '${{ matrix.channel.blocker }}'
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
