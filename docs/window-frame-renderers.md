@@ -3,8 +3,9 @@
 Gnoblin owns decoration policy, geometry and input. An external process draws
 the frame. The private v1 protocol is experimental.
 
-Register a renderer using an absolute executable path or a command name on the
-compositor's `PATH`; see the [configuration reference](/config/configure#frames).
+Register a renderer using a command name on the compositor's `PATH`; a full
+executable path is also accepted. See the
+[configuration reference](/config/configure/frame_renderers).
 
 For configuration, see [titlebars](/guides/window_frames).
 For implementation steps, see [write a renderer](frame-renderer-api.md).
@@ -66,8 +67,10 @@ Outputs:
 - `build/frame-renderers/gnoblin-frame-cairo`
 - `build/frame-renderers/gnoblin-frame-qt`
 
-Both accept `--theme-file=/absolute/path` containing a six-digit hex background.
-Valid edits repaint; invalid edits retain the previous colour.
+Both accept `--theme-file=FILE`. `FILE` names a text file whose first line is
+a six-digit hex background, for example `#242424`. The renderer reads the
+path as given; relative paths are resolved from its working directory. Valid
+edits repaint; invalid edits retain the previous colour.
 
 Their button layout is fixed. Native fallback separately supports Lua's
 `button_layout`. Other toolkits need an adapter; ordinary toolkit windows

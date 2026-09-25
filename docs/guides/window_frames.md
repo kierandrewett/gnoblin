@@ -88,7 +88,7 @@ Register the renderer command, then select its name in a rule:
 ```lua
 gnoblin.configure {
     frame_renderers = {
-        cairo = {"/absolute/path/gnoblin-frame-cairo"},
+        cairo = {"gnoblin-frame-cairo"},
     },
 }
 
@@ -98,8 +98,9 @@ gnoblin.window_rule {
 }
 ```
 
-Use an absolute executable path or a command name resolved through the
-compositor's `PATH`, followed by separate arguments. `native` is reserved.
+Use a command name resolved through the compositor's `PATH`, followed by
+separate arguments. A full executable path is also accepted. `native` is
+reserved.
 [Bingux](/bring-your-own-shell) supplies its own styled renderer.
 
 Config reload restarts external renderers, including rebuilt executables at

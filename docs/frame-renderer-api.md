@@ -3,10 +3,11 @@
 [Configuration reference](/config/configure/frame_renderers)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
-window actions and input. Register its executable as an absolute path or a
-command name found on the compositor's `PATH`; pass remaining arguments as
-separate array entries. Read the [architecture](window-frame-renderers.md)
-for ownership and failure behavior.
+window actions and input. Set the first `frame_renderers` array item to the
+executable name; Gnoblin looks it up on the compositor's `PATH`. Put each
+command-line argument in its own later array item. Gnoblin passes those strings
+directly, without shell expansion. Read the
+[architecture](window-frame-renderers.md) for ownership and failure behavior.
 
 ## Register your executable
 
@@ -15,21 +16,24 @@ your renderer and uses it for apps that request a server-drawn frame:
 
 ```lua
 gnoblin.configure {
-    frame_renderers = {my_frame = {"/absolute/path/my-frame"}},
+    frame_renderers = {cairo = {"gnoblin-frame-cairo"}},
 }
 
 gnoblin.window_rule {
     match = {type = "window"},
     frame = {
         mode = "auto",
-        renderer = "my_frame",
+        renderer = "cairo",
         extents = {48, 1, 1, 1},
     },
 }
 ```
 
-Replace the executable path, then run `gnoblinctl config reload`. The rule
-adds a 48-pixel titlebar and one-pixel edges without removing existing rules.
+Install `gnoblin-frame-cairo` so it is available on the compositor's `PATH`,
+then run `gnoblinctl config reload`. The rule adds a 48-pixel titlebar and
+one-pixel edges without removing existing rules. Run
+`command -v gnoblin-frame-cairo` in a terminal to find the executable provided
+by your installation.
 
 ## Implement the protocol
 
