@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import tempfile
 
+import gnoblin_test_session as session
+
 module_path = Path(__file__).with_name("window-lifecycle-fuzz.py")
 spec = importlib.util.spec_from_file_location("window_lifecycle_fuzz", module_path)
 fuzz = importlib.util.module_from_spec(spec)
@@ -30,6 +32,18 @@ assert fuzz.frame_button_center(
     },
     2,
 ) == (410, 68)
+
+pointer_calls = []
+original_eval_shell = session.eval_shell
+session.eval_shell = pointer_calls.append
+try:
+    session.send_pointer("press", 10, 20)
+    session.send_pointer("release", 10, 20)
+finally:
+    session.eval_shell = original_eval_shell
+assert len(pointer_calls) == 2
+assert "ButtonState.PRESSED" in pointer_calls[0] and "ButtonState.RELEASED" not in pointer_calls[0]
+assert "ButtonState.RELEASED" in pointer_calls[1] and "ButtonState.PRESSED" not in pointer_calls[1]
 
 live = set()
 peak = 0

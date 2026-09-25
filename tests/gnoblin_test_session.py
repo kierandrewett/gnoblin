@@ -10,9 +10,21 @@ import time
 
 def eval_shell(code: str, timeout: float = 5) -> object:
     result = subprocess.run(
-        ["gdbus", "call", "--session", "--dest", "org.gnome.Shell",
-         "--object-path", "/org/gnome/Shell", "--method", "org.gnome.Shell.Eval", code],
-        capture_output=True, text=True, timeout=timeout,
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell",
+            "--method",
+            "org.gnome.Shell.Eval",
+            code,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
     if result.returncode:
         raise RuntimeError(f"Shell Eval failed: {result.stderr.strip() or result.stdout.strip()}")
@@ -28,17 +40,11 @@ def eval_shell(code: str, timeout: float = 5) -> object:
 
 
 def window_by_title_expression(title: str) -> str:
-    return (
-        "global.get_window_actors().find(a=>a.meta_window.title==="
-        f"{json.dumps(title)})?.meta_window"
-    )
+    return f"global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)})?.meta_window"
 
 
 def window_by_sequence_expression(sequence: int) -> str:
-    return (
-        "global.get_window_actors().find(a=>a.meta_window.get_stable_sequence()==="
-        f"{sequence})?.meta_window"
-    )
+    return f"global.get_window_actors().find(a=>a.meta_window.get_stable_sequence()==={sequence})?.meta_window"
 
 
 def shell_window(title: str) -> dict | None:
@@ -76,11 +82,18 @@ def wait_for(predicate, description: str, timeout: float = 5) -> object:
 
 
 def send_pointer(kind: str, x: int, y: int, button: int = 1) -> None:
-    event = (
-        f"p.notify_button(G.get_monotonic_time(),{button},C.ButtonState.PRESSED);"
-        f"p.notify_button(G.get_monotonic_time(),{button},C.ButtonState.RELEASED);"
-        if kind == "click" else ""
-    )
+    pressed = f"p.notify_button(G.get_monotonic_time(),{button},C.ButtonState.PRESSED);"
+    released = f"p.notify_button(G.get_monotonic_time(),{button},C.ButtonState.RELEASED);"
+    if kind == "click":
+        event = pressed + released
+    elif kind == "press":
+        event = pressed
+    elif kind == "release":
+        event = released
+    elif kind == "move":
+        event = ""
+    else:
+        raise ValueError(f"unsupported pointer action: {kind}")
     eval_shell(
         "(()=>{const C=imports.gi.Clutter,G=imports.gi.GLib;"
         "global.lifecycleFuzzPointer??=global.stage.context.get_backend().get_default_seat()"

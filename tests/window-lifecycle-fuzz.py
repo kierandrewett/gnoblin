@@ -473,7 +473,9 @@ def run_inside() -> int:
             x, y = frame_button_center(state, 2)
             send_pointer("move", x, y)
             time.sleep(0.05)
-            send_pointer("click", x, y)
+            send_pointer("press", x, y)
+            time.sleep(0.05)
+            send_pointer("release", x, y)
             wait_window(window_id, False)
             processes[window_id].wait(timeout=3)
             return
