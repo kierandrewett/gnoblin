@@ -178,14 +178,16 @@ release pipeline or COPR publication changes.
   assessment still reports actual Wayland/GJS/GLib blockers on the default
   stable-channel package outputs; the separate 26.05 adapter supplies private
   Wayland for its complete package build as described above.
-- The first private Debian 12 source-closure attempt now reaches GLib 2.90's
-  Meson configure step and records the concrete bootstrap blocker:
-  `/usr/bin/g-ir-scanner` 1.74 is below the required 1.80. The builder can
-  order and select declared dependency subgraphs and safely extract archives
-  under Python 3.10/3.11, but this does not add GTK/GCR to the production
-  manifest. Debian 12 and Ubuntu 22.04 remain unsupported pending a separate
-  GLib-without-introspection -> private scanner -> final GLib/GIRepository 2 ->
-  GTK 4.14/GCR4 compatibility closure.
+- The initial direct Debian 12 GLib 2.90 configure failed because its system
+  `g-ir-scanner` 1.74 is below the required 1.80. A new, separate
+  `packaging/deb/compat-bootstrap.json` now builds GLib without introspection,
+  GObject Introspection 1.80.1, and final GLib with GIRepository2. Its source
+  checksums match GNOME's published checksum files. A disposable Debian 12
+  build completed and verified the private GIRepository pkg-config interface,
+  runtime ELF RPATH, and scanner isolation under a sibling build-tools prefix.
+  The production DEB manifest and workflow remain unchanged. GTK 4.14/GCR4,
+  Mutter/Shell, Ubuntu 22.04, package transactions, and graphical sessions
+  remain unverified; both targets stay unsupported.
 - On the exact `4b3e5daf` workflow run, the Tumbleweed private RPM chain has
   built and passed package isolation; stock-GNOME co-install/removal is still
   in progress. The Arch package/co-install gate and Fedora 43/44/45 source

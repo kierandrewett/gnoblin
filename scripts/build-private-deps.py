@@ -80,10 +80,13 @@ def select_recipes(recipes, names):
 def verify_private_interfaces(prefix, recipes, env):
     """Reject a compatibility build that silently falls back to host GI data."""
     expected = {typelib for recipe in recipes for typelib in recipe.get("private_typelibs", [])}
-    if any(recipe["name"] == "glib" for recipe in recipes):
-        pkgconfig = prefix / "lib64/pkgconfig/girepository-2.0.pc"
-        if not pkgconfig.is_file():
-            raise RuntimeError(f"Private GLib did not install GIRepository 2: {pkgconfig}")
+    expected_pkgconfig = {entry for recipe in recipes for entry in recipe.get("private_pkgconfig", [])}
+    if any(recipe["name"] in {"glib", "glib-final"} for recipe in recipes):
+        expected_pkgconfig.add("girepository-2.0.pc")
+    for entry in sorted(expected_pkgconfig):
+        path = prefix / "lib64/pkgconfig" / entry
+        if not path.is_file():
+            raise RuntimeError(f"Private compatibility pkg-config file is missing: {path}")
     typelib_dir = prefix / "lib64/girepository-1.0"
     for typelib in sorted(expected):
         path = typelib_dir / typelib
@@ -216,7 +219,7 @@ def checked_archive(recipe, downloads):
     return archive
 
 
-def build(recipe, prefix, cache, env, jobs, manifest=None):
+def build(recipe, prefix, cache, env, jobs, manifest=None, patcher_prefix=None):
     platform_patch = ROOT / "packaging/deb/patches/mozjs-platform.patch"
     patch_bytes = platform_patch.read_bytes() if recipe.get("build_system") == "spidermonkey" else b""
     flags = {key: env.get(key, "") for key in ("CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS")}
@@ -333,7 +336,7 @@ def build(recipe, prefix, cache, env, jobs, manifest=None):
         if (path.is_file() or path.is_symlink()) and not path.is_relative_to(staged_prefix):
             raise RuntimeError(f"Install destination outside the private prefix: {path.relative_to(stage)}")
     if recipe["name"] != "patchelf":
-        fix_linkage(staged_prefix, prefix)
+        fix_linkage(staged_prefix, patcher_prefix or prefix)
     install_tree(staged_prefix, prefix)
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(identity + "\n")
@@ -376,6 +379,9 @@ def main():
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     env = build_environment(prefix)
+    tools_prefix = prefix.parent / f"{prefix.name}.build-tools"
+    build_env = env.copy()
+    tools_env = None
     if args.fix_runtime:
         runtime = args.runtime_prefix.resolve()
         if runtime in {Path("/"), Path("/usr"), Path("/usr/local"), Path("/lib"), Path("/lib64")}:
@@ -407,7 +413,32 @@ def main():
         with (prefix / ".build.lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             for recipe in recipes:
-                build(recipe, prefix, args.cache.resolve(), env, args.jobs, args.manifest)
+                if recipe.get("build_only", False):
+                    if tools_env is None:
+                        tools_env = build_env.copy()
+                        for key, paths in {
+                            "PATH": [tools_prefix / "bin"],
+                            "PKG_CONFIG_PATH": [
+                                tools_prefix / "lib64/pkgconfig",
+                                tools_prefix / "share/pkgconfig",
+                            ],
+                            "GI_GIR_PATH": [tools_prefix / "share/gir-1.0"],
+                            "GI_TYPELIB_PATH": [tools_prefix / "lib64/girepository-1.0"],
+                            "LD_LIBRARY_PATH": [tools_prefix / "lib64"],
+                        }.items():
+                            tools_env[key] = ":".join([*(str(path) for path in paths), tools_env[key]])
+                    build(
+                        recipe,
+                        tools_prefix,
+                        args.cache.resolve(),
+                        build_env,
+                        args.jobs,
+                        args.manifest,
+                        patcher_prefix=prefix,
+                    )
+                    build_env = tools_env
+                else:
+                    build(recipe, prefix, args.cache.resolve(), build_env, args.jobs, args.manifest)
             verify_private_interfaces(prefix, recipes, env)
     except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
         print(f"[deps] {error}")

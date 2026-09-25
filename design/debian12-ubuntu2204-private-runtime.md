@@ -71,13 +71,22 @@ The next implementation must use an explicit bootstrap graph:
 4. Build private GDK-Pixbuf, Pango, Graphene, GTK 4.14+, and GCR 4 before GJS,
    GNOME Desktop, Mutter, and Shell.
 
-The dependency builder now supports declared dependency ordering and building
-a selected declared subgraph. Its archive extraction also supports the Python
-3.10/3.11 `tarfile` API used by Ubuntu 22.04 and Debian 12 while retaining
-staging path and link containment checks. The production DEB manifest does
-not include the unproven GTK/GCR graph, and the workflow still records both
-targets as blocked. This is deliberately not a package-build or package-
-transaction result.
+The isolated `packaging/deb/compat-bootstrap.json` graph now completes this
+sequence in a disposable Debian 12 image: patchelf, GLib 2.90 with
+introspection disabled, GObject Introspection 1.80.1, then GLib 2.90 with
+introspection enabled. Both GNOME source checksums were verified against the
+upstream checksum files. The build-only scanner lives in the sibling
+`deps.build-tools` prefix; the runtime prefix contains `girepository-2.0.pc`
+and private libraries with an RPATH to its own `lib64`, and does not contain
+`g-ir-scanner`. The final GLib build passed its private-interface check.
+
+The disposable image needed `python-is-python3`, `python3-dev`, and `flex`
+for the scanner bootstrap. This is only a source-closure result on Debian 12:
+the production DEB manifest and workflow are unchanged, and neither GTK/GCR,
+Mutter/Shell, package transactions, Ubuntu 22.04, nor graphical sessions have
+been validated. The builder still supports declared dependency ordering and
+selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
+retaining staging-path and link-containment checks.
 
 ## Boundary: what can be private
 
