@@ -28,6 +28,8 @@ prepare() {
 build() {
     local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     local _schema_prefix="$_build_prefix/schemas"
+    local _mutter_stage="$_build_prefix/mutter-stage"
+    local _mutter_pkgconfig="$_build_prefix/mutter-pkgconfig"
     cd "$srcdir/$pkgname-$pkgver" || return
     python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"
     _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -45,7 +47,21 @@ build() {
     _private_typelib="$_schema_typelib:$_private_typelib"
     env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/mutter subprojects/mutter --prefix="$_prefix" --libdir=lib --buildtype=release -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir="$_prefix/lib/udev"
     meson compile -C build/mutter
-    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib:$_prefix/lib/mutter-51" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false
+    meson install -C build/mutter --destdir "$_mutter_stage" --no-rebuild
+    install -d "$_mutter_pkgconfig"
+    cp "$_mutter_stage$_prefix/lib/pkgconfig/"*.pc "$_mutter_pkgconfig/"
+    sed -i "s|$_prefix|$_mutter_stage$_prefix|g" "$_mutter_pkgconfig/"*.pc
+    test -f "$_mutter_pkgconfig/mutter-clutter-51.pc"
+    _mutter_gir="$_mutter_stage$_prefix/lib/mutter-51"
+    _mutter_pc_path="$_mutter_pkgconfig:$_private_pkgconfig"
+    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --exists mutter-clutter-51
+    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --cflags mutter-clutter-51 | grep -F -- "-I$_mutter_stage$_prefix/include/mutter-51"
+    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --libs mutter-clutter-51 | grep -F -- "-L$_mutter_stage$_prefix/lib/mutter-51"
+    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --libs mutter-clutter-51 | grep -F -- "-L$_build_prefix/deps/lib64"
+    _private_pkgconfig="$_mutter_pc_path"
+    _private_gir="$_mutter_gir:$_private_gir"
+    _private_typelib="$_mutter_gir:$_private_typelib"
+    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false
     meson compile -C build/gnome-shell
 }
 

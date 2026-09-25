@@ -12,8 +12,11 @@
 %global gobject_introspection_version 1.41.4
 %global gtk3_version 3.19.8
 %global gtk4_version 4.14.0
+%global glycin_version 2.0.beta.2
+%global hyprcursor_version 0.1.13
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
+%global libdisplay_info_version 0.2
 %global libinput_version 1.27.0
 %global pixman_version 0.42
 %global pipewire_version 1.2.7
@@ -31,7 +34,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       20.gnoblin%{?dist}
+Release:       21.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -57,7 +60,7 @@ BuildRequires: pam-devel
 BuildRequires: pkgconfig(bash-completion)
 BuildRequires: pkgconfig(colord) >= %{colord_version}
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
-BuildRequires: pkgconfig(hyprcursor) >= 0.1.13
+BuildRequires: pkgconfig(hyprcursor) >= %{hyprcursor_version}
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
@@ -67,7 +70,7 @@ BuildRequires: pkgconfig(libwacom)
 BuildRequires: pkgconfig(xkbcommon)
 BuildRequires: pkgconfig(glesv2)
 BuildRequires: pkgconfig(graphene-gobject-1.0)
-BuildRequires: pkgconfig(libdisplay-info)
+BuildRequires: pkgconfig(libdisplay-info) >= %{libdisplay_info_version}
 BuildRequires: pkgconfig(libpipewire-0.3) >= %{pipewire_version}
 BuildRequires: pkgconfig(sysprof-capture-4)
 BuildRequires: pkgconfig(libsystemd)
@@ -83,7 +86,7 @@ BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires: pkgconfig(gnome-settings-daemon)
 BuildRequires: meson
 BuildRequires: pkgconfig(gbm)
-BuildRequires: pkgconfig(glycin-2)
+BuildRequires: pkgconfig(glycin-2) >= %{glycin_version}
 BuildRequires: pkgconfig(gnome-desktop-4)
 BuildRequires: pkgconfig(gudev-1.0)
 BuildRequires: pkgconfig(libdrm) >= %{libdrm_version}
@@ -162,6 +165,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-21.gnoblin
+- Match declared Glycin, libdisplay-info and Hyprcursor source API floors.
+
 * Tue Sep 22 2026 Gnoblin contributors - 51.0-20.gnoblin
 - Respect reserved exclusive zones while moving windows.
 

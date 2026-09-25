@@ -26,7 +26,7 @@ Requires:       playerctl
 Requires:       libwayland-client >= 1.26
 Requires:       wireplumber
 Requires:       xdg-desktop-portal-gnome
-Requires:       gnoblin-mutter = 51.0-20.gnoblin%{?dist}
+Requires:       gnoblin-mutter = 51.0-21.gnoblin%{?dist}
 
 %description
 Installs the complete Gnoblin session while reusing compatible GNOME userspace.

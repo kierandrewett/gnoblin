@@ -21,7 +21,7 @@ Name:           gnoblin-shell
 Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        14.gnoblin%{?dist}
+Release:        15.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -58,6 +58,8 @@ Source15:       gnoblin-COPYING
 %define gnome_desktop_version 44.0-7
 %define glib2_version 2.86.0
 %define gjs_version 1.85.90
+%define girepository_version 2.86.0
+%define gcr4_version 3.90.0
 %define gtk4_version 4.0.0
 %define adwaita_version 1.5.0
 %define mutter_version 51.0
@@ -77,7 +79,8 @@ BuildRequires:  meson
 BuildRequires:  git
 BuildRequires:  desktop-file-utils
 BuildRequires:  pkgconfig(libedataserver-1.2) >= %{eds_version}
-BuildRequires:  pkgconfig(gcr-4)
+BuildRequires:  pkgconfig(gcr-4) >= %{gcr4_version}
+BuildRequires:  pkgconfig(girepository-2.0) >= %{girepository_version}
 BuildRequires:  pkgconfig(gjs-1.0) >= %{gjs_version}
 BuildRequires:  pkgconfig(gio-2.0) >= %{glib2_version}
 BuildRequires:  pkgconfig(gnome-autoar-0)
@@ -109,7 +112,7 @@ BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
 %endif
 # Bootstrap requirements
 BuildRequires: gtk-doc
-Requires:       gcr%{?_isa}
+Requires:       gcr%{?_isa} >= %{gcr4_version}
 Requires:       gjs%{?_isa} >= %{gjs_version}
 Requires:       gtk4%{?_isa} >= %{gtk4_version}
 Requires:       libadwaita%{_isa} >= %{adwaita_version}
@@ -247,6 +250,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-15.gnoblin
+- Match declared GCR and GIRepository source API floors.
+
 * Sun Sep 20 2026 Gnoblin contributors - 51.0-14.gnoblin
 - Filter private Shell and Mutter library requirements from RPM metadata.
 
