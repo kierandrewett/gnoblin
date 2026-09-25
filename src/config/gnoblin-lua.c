@@ -78,7 +78,7 @@ static const char* api_methods[] = {
     "shell.version",
     "shell.status",
     "shell.reload",
-    "config.reload",
+    "runtime.reload_config",
     "shortcut.capture",
     NULL,
 };

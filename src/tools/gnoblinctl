@@ -540,7 +540,7 @@ def dispatch(args, cli):
     if cmd == "reload":
         return api_call("shell.reload", {}, args.socket, args.timeout)
     if cmd == "config" and args.action == "reload":
-        return api_call("config.reload", {}, args.socket, args.timeout)
+        return api_call("runtime.reload_config", {}, args.socket, args.timeout)
 
 
 def text(value):

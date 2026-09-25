@@ -171,23 +171,23 @@ same values as [session permissions](/config/configure/permissions).
 
 ## Launch feedback, shell, and configuration
 
-| Method               | Arguments                                       | Successful result                                                |
-| -------------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
-| `launch.status()`    | None                                            | `{launches = {...}}`                                             |
-| `launch.begin(args)` | `token`, `application`; optional `milliseconds` | `{ok, token}`                                                    |
-| `launch.end(args)`   | `token`                                         | `{ok, token}`                                                    |
-| `shell.ping()`       | None                                            | `{pong}`                                                         |
-| `shell.version()`    | None                                            | `{version}`                                                      |
-| `shell.status()`     | None                                            | Shell version, connection state, window count, focused window ID |
-| `shell.reload()`     | None                                            | Reload acknowledgement                                           |
-| `config.reload()`    | None                                            | Configuration reload acknowledgement                             |
+| Method                    | Arguments                                       | Successful result                                                |
+| ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| `launch.status()`         | None                                            | `{launches = {...}}`                                             |
+| `launch.begin(args)`      | `token`, `application`; optional `milliseconds` | `{ok, token}`                                                    |
+| `launch.end(args)`        | `token`                                         | `{ok, token}`                                                    |
+| `shell.ping()`            | None                                            | `{pong}`                                                         |
+| `shell.version()`         | None                                            | `{version}`                                                      |
+| `shell.status()`          | None                                            | Shell version, connection state, window count, focused window ID |
+| `shell.reload()`          | None                                            | Reload acknowledgement                                           |
+| `runtime.reload_config()` | None                                            | Configuration reload acknowledgement                             |
 
 `launch.begin` accepts a token of up to 128 characters and an application name
 of up to 512 characters. Its `milliseconds` value defaults to 3000 and is
 clamped to 100–10000 ms. Pass the same token to `launch.end` when the
 application starts or the launch request is cancelled.
-`shell.reload` reloads the GNOME Shell integration; `config.reload` reloads
-Gnoblin configuration.
+`shell.reload` reloads the GNOME Shell integration;
+`runtime.reload_config` reloads Gnoblin configuration.
 
 ## Shortcut capture
 

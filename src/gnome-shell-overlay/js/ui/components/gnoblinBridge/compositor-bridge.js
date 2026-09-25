@@ -330,7 +330,7 @@ export class CompositorBridge {
                 await softReload("api");
                 return { ok: true, action: "reload" };
             },
-            "config.reload": () => {
+            "runtime.reload_config": () => {
                 control()._config.reload();
                 return { ok: true, action: "config reload" };
             },
