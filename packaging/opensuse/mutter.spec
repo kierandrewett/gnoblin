@@ -57,6 +57,7 @@ BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(libdisplay-info) >= 0.2
 BuildRequires:  pkgconfig(libdrm) >= %{libdrm_version}
+BuildRequires:  libxcvt
 BuildRequires:  pkgconfig(libei-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libeis-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libinput) >= %{libinput_version}
