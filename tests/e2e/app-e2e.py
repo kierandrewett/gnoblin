@@ -36,9 +36,9 @@ from gnoblin_test_session import (  # noqa: E402
 )
 
 FATAL_LOG = re.compile(
-    r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
+    r"GNOME Shell-CRITICAL|Gjs-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
     r"Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|"
-    r"segmentation fault|runtime check failed|core dumped",
+    r"segmentation fault|runtime check failed|double free|corruption|core dumped",
     re.IGNORECASE,
 )
 FRAME_POLICY = [3, 0, 0, 0, 0, 36, 2, 2, 2]
@@ -276,8 +276,8 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             "flatpak",
             "run",
             f"--env=DISPLAY={client_environment['DISPLAY']}",
-            f"--env=XAUTHORITY={client_environment['XAUTHORITY']}",
             f"--env=LANG={client_environment['LANG']}",
+            "--env=LIBGL_ALWAYS_SOFTWARE=1",
             "--socket=wayland",
             "--socket=x11",
             "--socket=fallback-x11",
@@ -337,11 +337,22 @@ def app_environment() -> dict[str, str]:
 
     env = os.environ.copy()
     env.update(compositor_environment)
-    env.setdefault("LANG", "C.UTF-8")
+    if env.get("LANG") in (None, "", "C", "C.UTF-8", "POSIX"):
+        env["LANG"] = "en_US.UTF-8"
+    env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     # The shell itself forces Wayland, but launched applications need to select
     # their native backend or fall back to the XWayland display Mutter provides.
     env.pop("GDK_BACKEND", None)
     env.pop("QT_QPA_PLATFORM", None)
+    print(
+        "Nested app display: "
+        f"WAYLAND_DISPLAY={env.get('WAYLAND_DISPLAY')} "
+        f"DISPLAY={display} "
+        f"XAUTHORITY-readable={os.access(xauthority, os.R_OK)} "
+        f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR')} "
+        f"LANG={env['LANG']} LIBGL_ALWAYS_SOFTWARE=1",
+        flush=True,
+    )
     return env
 
 

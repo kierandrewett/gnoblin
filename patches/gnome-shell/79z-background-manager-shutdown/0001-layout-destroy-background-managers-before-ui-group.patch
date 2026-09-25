@@ -1,0 +1,37 @@
+From 8b4822e8d244445db37900494e0a182feafc09fc Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 18:20:00 +0100
+Subject: [PATCH] layout: destroy backgrounds before the UI group
+
+The layout shutdown handler destroys uiGroup before Mutter tears down its
+background actors. Background actors own popup menus whose actors are children
+of uiGroup, so the later background destroy callback destroys an already
+disposed popup and can trigger GJS criticals and allocator corruption.
+
+Destroy the background managers while both sides of that relationship are
+still alive. This lets each background actor destroy its menu before uiGroup
+teardown and keeps Mutter's later actor destruction idempotent.
+---
+ js/ui/layout.js | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index 000000000..000000000 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -217,6 +217,13 @@ export class LayoutManager extends Signals.EventEmitter {
+         global.connect('shutdown', () => {
+             const monitorManager = global.backend.get_monitor_manager();
+             monitorManager.disconnectObject(this);
++
++            this._bgLoadCancellable?.cancel();
++            this._bgLoadCancellable = null;
++
++            for (const bgManager of this._bgManagers)
++                bgManager.destroy();
++            this._bgManagers = [];
+ 
+             const adoptedUiGroupActors = [
+                 global.window_group,
+-- 
+2.53.0
