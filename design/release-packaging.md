@@ -34,6 +34,23 @@ release pipeline or COPR publication changes.
   implementation direction are in `design/packaging-research.md`. Do not
   republish 0.1.7 until its target matrix, package recipes, and GNOME
   co-install/remove gates have been brought into line with that scope.
+- Commits `bcbc5d46`, `2d367232`, and `d847369a` begin that work: Fedora's
+  COPR smoke test now installs stock GNOME first and verifies ownership before
+  and after Gnoblin install/removal; `packaging/targets.json` records 21 fixed
+  and rolling x86_64 targets across the requested families; and the research
+  log records disposable-image compatibility probes. The inventory validator
+  runs in `.github/workflows/packaging-targets.yml` and keeps every target
+  unsupported or candidate until all evidence gates pass.
+- Probe results rule out unchanged package recipes as a solution for the older
+  targets. EL 8/9/10 and openSUSE Leap 15.6/16.0 miss GNOME 51 host GLib/GJS
+  floors; Debian 11/12 and Ubuntu 22.04 lack build/runtime pieces absent from
+  the private bundle. Tumbleweed meets the core floors but needs a SUSE-native
+  spec and an actual package/coexistence test. Arch remains a metadata-only
+  unusable package. Keep these targets unsupported until their specific
+  compatibility work and gates exist.
+- Fedora workflow run `36139101542` adds the first RPM-side stock-GNOME
+  install/coexist/remove gate. Check its final status before treating that
+  test as passing; it does not prove graphical login or session selection.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
