@@ -11,8 +11,8 @@ startup wiring.
   `patches/mutter/30-layer-shell/` and `30-screencopy/`.
 - `idle-notify/`, `data-control/`, `gamma-control/`,
   `output-power-management/`, `foreign-toplevel-list/`, and
-  `foreign-toplevel-management/` share the entry point in `aggregator/` and
-  the generated `40-gnoblin-protocols` wiring patch.
+  `foreign-toplevel-management/` and `session-lock/` share the entry point in
+  `aggregator/` and the generated `40-gnoblin-protocols` wiring patch.
 - GNOME 51 supplies `ext-background-effect-v1`; Gnoblin carries only the
   Shell policy adapter for its committed regions in
   `patches/mutter/62-background-effect/`.
@@ -24,9 +24,9 @@ All Gnoblin-owned globals are available only in the Gnoblin session. Each
 defaults on within that session and can be disabled through its `protocols`
 key in `init.lua`.
 
-`session-lock/` and `output-management/` are not supported globals.
-The session-lock startup boundary is compiled but advertises no global until
-the compositor can enforce a secure lock. Output management remains XML only.
+`session-lock/` registers the secure `ext_session_lock_manager_v1` global in
+the Gnoblin session when its protocol gate is enabled. `output-management/`
+remains XML only and does not register a global.
 
 ## Adding an aggregated protocol
 
