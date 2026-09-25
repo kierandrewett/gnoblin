@@ -3,6 +3,11 @@ import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import { ConfigFile } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js";
 
+globalThis.global = {
+    get_pointer: () => [0, 0],
+    stage: { get_actor_at_pos: () => null },
+};
+
 function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
