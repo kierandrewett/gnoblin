@@ -94,31 +94,86 @@ jobs:
           diff -u /tmp/stock-gnome-owners /tmp/gnome-owners-after-removal
           test -x /usr/bin/gnome-shell
           test -x /usr/bin/mutter
-  arch-source:
+  arch-package:
     runs-on: ubuntu-latest
     container: archlinux:base
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
-      - name: Install checkout tools
-        run: pacman -Syu --noconfirm --needed git
-      - uses: actions/checkout@v4
+      - name: Install stock GNOME and package build requirements
+        run: |
+          pacman -Syu --noconfirm --needed \
+            adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
+            evolution-data-server gettext git glib2-devel gobject-introspection \
+            gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
+            inkscape libadwaita libdisplay-info libei libinput libxkbcommon \
+            libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
+            python python-docutils python-packaging sassc sysprof wayland wireplumber \
+            xdg-desktop-portal-gnome xorg-xwayland
+          pacman -Q --qf '%n %v-%r\n' gnome-shell mutter > /tmp/stock-gnome-packages
+          pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
+          pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
       - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-      - name: Build everything
+      - name: Build a source bundle from this checked-out revision
         run: |
-          source scripts/build-deps.sh
-          source /etc/os-release
-          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+          git submodule foreach --recursive 'git fetch --force --tags origin'
+          source_dir="$RUNNER_TEMP/gnoblin-arch-source"
+          package_dir="$RUNNER_TEMP/gnoblin-arch-package"
+          mkdir -p "$source_dir" "$package_dir"
+          ./scripts/make-tarball.sh gsettings-desktop-schemas "$source_dir"
+          ./scripts/make-tarball.sh mutter "$source_dir"
+          ./scripts/make-tarball.sh gnome-shell "$source_dir"
+          version="$(./scripts/gnoblin-version.py get version)"
+          gnome_version="$(./scripts/gnoblin-version.py get gnomeVersion)"
+          source_bundle="$package_dir/gnoblin-$version-gnome-$gnome_version-arch-source.tar.xz"
+          ./packaging/arch/build-source-bundle.sh \
+            "$source_bundle" "$version" \
+            "$source_dir/gsettings-desktop-schemas-$gnome_version.tar.xz" \
+            "$source_dir/mutter-$gnome_version.tar.xz" \
+            "$source_dir/gnome-shell-$gnome_version.tar.xz"
+          source_sha256="$(sha256sum "$source_bundle" | awk '{print $1}')"
+          python3 scripts/sync-package-manifest.py arch-release \
+            --output "$package_dir/PKGBUILD" \
+            --source-sha256 "$source_sha256"
+          # The generated recipe normally downloads a release asset. In this
+          # verification job, change only that URL fragment to use the bundle
+          # created from the checked-out revision. Its name and SHA-256 remain
+          # exactly those generated above.
+          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v\$pkgver/[^\"]+##' "$package_dir/PKGBUILD"
+      - name: Build the checked-out Arch package
+        run: |
+          package_dir="$RUNNER_TEMP/gnoblin-arch-package"
           useradd -m builder
-          chown -R builder "$GITHUB_WORKSPACE"
-          runuser -u builder -- ./build.sh
-      - name: Verify local runtime and session
+          chown -R builder:builder "$package_dir"
+          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$package_dir"
+      - name: Install beside stock GNOME, then remove Gnoblin
         run: |
-          test -x install/bin/gnome-shell
-          test -x install/bin/gnoblin-session
-          test -f install/share/wayland-sessions/gnoblin.desktop
-          test -f install/lib64/libmutter-51.so
+          package="$(find "$RUNNER_TEMP/gnoblin-arch-package" -maxdepth 1 -name 'gnoblin-*.pkg.tar.zst' -print -quit)"
+          test -n "$package"
+          pacman -U --noconfirm "$package"
+          pacman -Q gnoblin
+          test -x /usr/lib/gnoblin/bin/gnome-shell
+          test -x /usr/lib/gnoblin/bin/gnoblin-session
+          test -x /usr/bin/gnoblinctl
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
+          test -f /usr/share/gnome-session/sessions/gnoblin.session
+          cmp /tmp/stock-gnome-packages <(pacman -Q --qf '%n %v-%r\n' gnome-shell mutter)
+          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
+          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
+          pacman -R --noconfirm gnoblin
+          ! pacman -Q gnoblin
+          cmp /tmp/stock-gnome-packages <(pacman -Q --qf '%n %v-%r\n' gnome-shell mutter)
+          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
+          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
+      - name: Remove package cache
+        if: always()
+        run: pacman -Scc --noconfirm
 
   distro-dependencies:
     runs-on: ubuntu-latest
