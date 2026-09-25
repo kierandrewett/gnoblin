@@ -19,6 +19,15 @@ configuration reload unless the row says the preference is persisted.
 | `input_source_switcher` | Boolean                                                                  | Initially disabled; persists in GSettings |
 | `wallpaper`             | Boolean                                                                  | `true`; persists in GSettings             |
 
+Older configs may still contain these boolean keys:
+
+- OSD: `osd`, `osd_volume`, `osd_microphone`, `osd_brightness`, `osd_keyboard_brightness`, `osd_pad`
+- Capture: `screenshot`
+
+Gnoblin accepts them for compatibility, but the GNOME widgets are removed and
+cannot be restored through config. Provide OSD and capture UI in your shell;
+see [native UI removal](/native-ui-removal).
+
 `minimize_animation` and `layer_animation` select a built-in preset that
 supports both transitions, or an event map. Use a map to select a custom
 animation by its registered name; custom animations apply to one event. See
@@ -62,6 +71,10 @@ gnoblin.configure {
         notifications = boolean?,
         input_source_switcher = boolean?,
         wallpaper = boolean?,
+        -- Legacy compatibility flags; these native UI features are removed.
+        osd = boolean?, osd_volume = boolean?, osd_microphone = boolean?,
+        osd_brightness = boolean?, osd_keyboard_brightness = boolean?, osd_pad = boolean?,
+        screenshot = boolean?,
     },
 }
 ```
