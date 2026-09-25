@@ -36,10 +36,6 @@ Hyprland modules need those compositors' own interfaces and do not work in Gnobl
 Run one notification daemon; leave Gnoblin's native notifications disabled when
 using Mako.
 
-![Waybar and a Mako reminder above Firefox in a clean Gnoblin session](images/gnoblin-waybar-mako.png)
-
-_Waybar and Mako are separate layer-shell clients; Firefox remains an ordinary window._
-
 Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
 [shortcuts](/guides/shortcuts) only control how you launch it.
 

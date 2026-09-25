@@ -39,11 +39,7 @@ gnoblin.configure {shell = {notifications = false}}
 
 _GNOME Settings shows per-app notification controls in this Waybar session._
 
-With Mako running, notifications appear through its own layer-shell surface:
-
-![Mako notification over Firefox in a clean Waybar session](../images/gnoblin-waybar-mako.png)
-
-_Mako owns the reminder; Firefox remains an ordinary app window._
+With Mako running, notifications appear through its own layer-shell surface.
 
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting

@@ -6,9 +6,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | waybar-mako | bingux-files | quickshell-files) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | bingux-files | quickshell-files | window-effects) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|waybar-mako|bingux-files|quickshell-files} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -109,6 +109,19 @@ gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
 }
 LUA
+if [ "$example" = window-effects ]; then
+    cat >>"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        radius = 20,
+        smoothing = 0.55,
+        mode = "force",
+        shadow = {x = 0, y = 12, blur = 32, spread = 0, opacity = 0.28},
+    },
+}
+LUA
+fi
 cat >"$XDG_CONFIG_HOME/waybar/config.jsonc" <<'JSON'
 {
   "layer": "top", "position": "top", "height": 42,
@@ -232,10 +245,10 @@ case "$example" in
         capture_path="$output_dir/gnoblin-waybar-notifications.png"
         app_command='waybar & mako & sleep 2; gnome-control-center notifications'
         ;;
-    waybar-mako)
-        capture_path="$output_dir/gnoblin-waybar-mako.png"
+    window-effects)
+        capture_path="$output_dir/gnoblin-window-effects.png"
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
-        post_app_command="notify-send --app-name='Calendar' --icon=appointment-soon 'Design review' 'Starts in 10 minutes · Meeting room'"
+        post_app_command='gnoblinctl window unmaximize active 2>/dev/null || true; gnoblinctl window resize active 1000 680; gnoblinctl window move active 140 60'
         ;;
     bingux-files)
         capture_path="$output_dir/gnoblin-bingux-files.png"
@@ -270,12 +283,6 @@ esac
 if [ "$example" = waybar-settings ] || [ "$example" = waybar-notifications ]; then
     command -v gnome-control-center >/dev/null || {
         echo "gnome-control-center is required for this scene" >&2
-        exit 1
-    }
-fi
-if [ "$example" = waybar-mako ]; then
-    command -v notify-send >/dev/null || {
-        echo "notify-send is required for this scene" >&2
         exit 1
     }
 fi

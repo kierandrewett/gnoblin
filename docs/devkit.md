@@ -92,6 +92,7 @@ scripts/capture-doc-examples.sh quickshell-firefox
 scripts/capture-doc-examples.sh waybar-settings
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
 scripts/capture-doc-examples.sh quickshell-files
+scripts/capture-doc-examples.sh window-effects
 ```
 
 Each capture uses a disposable profile and removes it afterward. Scenes pair
