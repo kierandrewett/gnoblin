@@ -855,7 +855,10 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     } else if (run.error) {
         g_propagate_error(error, g_steal_pointer(&run.error));
     }
-    runtime->document = run.result;
+    /* Keep a strong runtime-owned reference. The returned reference can be
+     * embedded in another GVariant, which sinks floating children. */
+    if (run.result)
+        runtime->document = g_variant_ref_sink(g_steal_pointer(&run.result));
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
         lua_runtime_free(runtime);
         return NULL;
