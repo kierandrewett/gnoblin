@@ -30,6 +30,7 @@ jobs:
       - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build everything
         run: |
           source scripts/build-deps.sh
@@ -120,6 +121,7 @@ jobs:
       - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build a source bundle from this checked-out revision
         run: |
           git submodule foreach --recursive 'git fetch --force --tags origin'
