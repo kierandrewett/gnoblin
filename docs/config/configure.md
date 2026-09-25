@@ -38,6 +38,9 @@ so far.
 Use [Lua events](/config/lua-events) to set values from the window under the
 pointer when the config loads.
 
+To follow GNOME's light or dark preference in window rules, see
+[light and dark appearance](/guides/theming).
+
 See [recipes](/recipes/) for complete examples and
 [file loading](/guides/files_and_load_order) for include order and reload
 behavior.

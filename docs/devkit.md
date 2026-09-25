@@ -96,7 +96,9 @@ GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh b
 Each scene gets a disposable home and XDG profile. Firefox has its own clean
 profile; `site-firefox` opens the configuration reference. Other Firefox scenes
 open `www.gnoblin.org` by default. Choose Bingux, Waybar with Mako or Quickshell
-for the visible shell. Captures include the pointer and omit terminal windows.
+for the visible shell. Bingux scenes load its packaged Gnoblin defaults into the
+disposable profile and use neutral shell preferences. Captures include the pointer
+and omit terminal windows.
 
 Set `GNOBLIN_DOC_SITE_URL` or `GNOBLIN_DOC_FIREFOX_URL` to choose another page.
 Pass a second argument for a different output directory. Captures need a visible

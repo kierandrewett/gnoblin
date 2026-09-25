@@ -280,3 +280,9 @@ gnoblin.configure {
 --     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
 --     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 -- end)
+
+-- Follow GNOME's light or dark preference while the session is running:
+-- gnoblin.on("gnome.interface.color-scheme-changed", function(event)
+--     print("Desktop color preference:", event.color_scheme)
+-- end)
+-- See /guides/theming for updating window borders from this event.
