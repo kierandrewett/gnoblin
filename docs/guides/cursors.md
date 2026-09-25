@@ -1,12 +1,13 @@
-# Cursors
+# cursors
 
 [Configuration reference](/config/configure)
 
 Gnoblin reads the compositor cursor theme and size from
 `~/.config/gnoblin/init.lua`. The config API is `cursor.theme` and
 `cursor.size`; Gnoblin currently renders those settings with Hyprcursor.
-The default theme is `Adwaita-Hyprcursor` at size `24`. Cursor theme and size
-are no longer read from GSettings in a Gnoblin session.
+The defaults are theme `Adwaita-Hyprcursor` and size `24` logical pixels.
+`theme` accepts an installed Hyprcursor theme name. `size` accepts an integer
+from `1` to `256` logical pixels. Omitted values use the defaults.
 
 ## Select a theme
 
@@ -29,6 +30,8 @@ To select the Adwaita artwork theme:
 gnoblin.configure {cursor = {theme = "Adwaita-Hyprcursor", size = 24}}
 ```
 
+![The configured pointer visible beside Fuzzel in Gnoblin](../images/gnoblin-build-a-desktop.png)
+
 ## Hyprcursor support
 
 Gnoblin loads compositor cursor themes through Hyprcursor. The upstream
@@ -36,31 +39,21 @@ Gnoblin loads compositor cursor themes through Hyprcursor. The upstream
 describes theme files and cursor metadata.
 
 Install a compiled theme in `~/.local/share/icons/<theme>/` or
-`~/.icons/<theme>/`, then set `cursor.theme` to its name. The configured theme
-and size control compositor cursors and the launch wait cursor. Animated frames
-retain their hotspots and timing.
+`~/.icons/<theme>/`, then set `cursor.theme` to its installed name. The theme
+and size apply to compositor cursors and the launch wait cursor. Animated
+frames retain their hotspots and timing.
 
 Client applications that supply their own cursor surfaces continue to draw
-them themselves. Gnoblin does not look up Xcursor theme files as a fallback.
+those surfaces themselves. Gnoblin does not look up Xcursor theme files as a
+fallback.
 
-## Build Adwaita-Hyprcursor
+## Adwaita-Hyprcursor
 
-From the Gnoblin checkout, with Python 3, Inkscape and `hyprcursor-util` installed:
-
-```sh
-scripts/build-adwaita-hyprcursor.py
-mkdir -p ~/.local/share/icons
-cp -a build/Adwaita-Hyprcursor ~/.local/share/icons/
-```
-
-Then select it in `init.lua` with `gnoblin.configure {cursor = {theme =
-"Adwaita-Hyprcursor", size = 24}}` and reload the config.
-
-The builder refuses to overwrite its output. Use `--output` for another
-directory.
-
-The theme uses GNOME Adwaita SVG artwork and preserves hotspots and animation.
-Artwork and licences are in `src/cursor/adwaita/`.
+Gnoblin installs Adwaita-Hyprcursor with the session package and source
+installation. Select it directly in `init.lua`; no separate theme install is
+needed. The theme includes GNOME Adwaita SVG artwork, animation, Xcursor
+fallbacks and the required licences. The source artwork is in
+`src/cursor/adwaita/`.
 
 ## Build support and tests
 

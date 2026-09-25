@@ -40,12 +40,16 @@ Close the terminal to stop the devkit.
 
 ## Options
 
-| Variable                   | Default    | Purpose                                      |
-| -------------------------- | ---------- | -------------------------------------------- |
-| `MONITOR`                  | `1600x900` | Virtual display size                         |
-| `GNOME_DEVKIT_HEADLESS`    | Unset      | Set `1` to hide the viewer                   |
-| `GNOME_DEVKIT_EXEC`        | Unset      | Command to run instead of a terminal         |
-| `GNOME_DEVKIT_UNSAFE_MODE` | Unset      | Enable privileged Eval for this test process |
+| Variable                   | Accepted value                 | Default    | Effect                                         |
+| -------------------------- | ------------------------------ | ---------- | ---------------------------------------------- |
+| `MONITOR`                  | `WIDTHxHEIGHT`, in pixels      | `1600x900` | Sets the virtual display size                  |
+| `GNOME_DEVKIT_HEADLESS`    | `1` or unset                   | Unset      | Starts without a viewer when set to `1`        |
+| `GNOME_DEVKIT_EXEC`        | Shell command string, or unset | Unset      | Runs the command instead of opening a terminal |
+| `GNOME_DEVKIT_UNSAFE_MODE` | `0`, `1`, or unset             | Unset      | Enables privileged Eval only when set to `1`   |
+
+These are environment variables read when the devkit starts. For example,
+`MONITOR=1280x800` selects a 1280 by 800 virtual display. The unsafe mode is
+intended only for an isolated test process.
 
 ## Headless / scripting mode
 
@@ -88,8 +92,8 @@ scripts/capture-doc-examples.sh desktop
 The script builds a fresh profile, starts Waybar and Files, then writes
 `docs/images/gnoblin-build-a-desktop.png`. Pass a second argument for another
 output directory. It needs a visible Wayland session, a current Gnoblin build
-in `./install`, `grim`, the desktop apps configured by the script, and an
-installed Adwaita Hyprcursor theme (or a built theme in `build/`).
+in `./install`, `grim` and the desktop apps configured by the script. The
+session build installs Adwaita Hyprcursor into `./install`.
 
 The [private test harness](testing.md) is for automated checks.
 A devkit run does not verify the installed login session.

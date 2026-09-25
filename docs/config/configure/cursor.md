@@ -13,6 +13,10 @@ gnoblin.configure {
 }
 ```
 
-`theme` is an installed cursor theme name. Gnoblin currently renders it with
-Hyprcursor. `size` is an integer from 1 to 256 logical pixels (default `24`).
-Changes apply on config reload. Guide: [cursor themes](/guides/cursors).
+| Setting | Accepted value                       | Default              |
+| ------- | ------------------------------------ | -------------------- |
+| `theme` | Installed Hyprcursor theme name      | `Adwaita-Hyprcursor` |
+| `size`  | Integer from 1 to 256 logical pixels | `24`                 |
+
+Changes apply on config reload. See the [cursor themes guide](/guides/cursors)
+for installation paths and theme details.

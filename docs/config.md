@@ -1,49 +1,25 @@
 # Config API
 
-Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and autostart commands. Register compositor animations with [`gnoblin.animation`](/config/animation). The reference pages list supported fields and behavior.
+Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and autostart commands. The reference pages list the supported fields and defaults.
 
 ## Functions
 
 - [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
-- [`gnoblin.animation`](/config/animation) — register a named animation for one event.
 - [`gnoblin.permission_rule`](/config/permission_rule) — add a portal permission rule.
+- [`gnoblin.animation`](/config/animation) — register a named animation.
+- [`gnoblin.config`](/config/config) — inspect or edit the config assembled during loading.
 - [`gnoblin.load`](/config/load) — load another Lua config file.
 - [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
 - [`gnoblin.array`](/config/array) — mark a Lua table as a list.
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
 
-Disable an imported animation by name with `gnoblin.animation {name = "soft-open", enable = false}`.
-
-## Migrate older config calls
-
-You can keep existing configs and migrate them a piece at a time. Replace the older named-entry calls with the matching `gnoblin.configure` map:
-
-These older functions are deprecated and may be removed at any time. Each config refresh that executes one prints a warning with its migration path. Move to the current forms below.
-
-| Older call                                  | Current form                                          |
-| ------------------------------------------- | ----------------------------------------------------- |
-| `gnoblin.shortcut {name = "terminal", ...}` | `gnoblin.configure.shortcuts.terminal = {...}`        |
-| `gnoblin.autostart {name = "panel", ...}`   | `gnoblin.configure.autostart.panel = {...}`           |
-| `gnoblin.remove_shortcut("terminal")`       | `gnoblin.configure.shortcuts.terminal.enable = false` |
-| `gnoblin.remove_autostart("panel")`         | `gnoblin.configure.autostart.panel.enable = false`    |
-
-For `gnoblin.set`, move the values into `gnoblin.configure` and use the public keys from the reference. For example, change the internal `minimize-duration` key to `minimize_duration`:
-
-```lua
--- Older form
-gnoblin.set {shell = {["minimize-duration"] = 150}}
-
--- Current form
-gnoblin.configure {shell = {minimize_duration = 150}}
-```
-
-Disabling an autostart entry affects future launches; it does not stop a process that is already running.
-
 ## First config
 
-On first login, `gnoblin-session` copies the packaged reference config to `~/.config/gnoblin/init.lua` when no Lua or legacy config exists. It does not replace an existing config. Edit that file to configure Gnoblin.
+On first login, `gnoblin-session` copies the packaged reference config to
+`~/.config/gnoblin/init.lua` when that file does not exist. It does not replace
+an existing config. Edit that file to configure Gnoblin.
 
 ```sh
 gnoblinctl config path

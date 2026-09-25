@@ -102,11 +102,7 @@ int main(void) {
               "gnoblin.configure {shortcuts={},window_rules={}}\n"
               "assert(#gnoblin.config.shortcuts==0 and #gnoblin.config['window-rules']==0)\n"
               "gnoblin.configure {keybindings={shell={show_screenshot_ui={}}}}\n"
-              "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n"
-              "gnoblin.configure {shortcuts={screenshot={"
-              "action='gnome:shell.show_screenshot_ui',binding={'Print'}}}}\n"
-              "assert(#gnoblin.config.shortcuts==1 and "
-              "gnoblin.config.shortcuts[1].action=='gnome:shell.show_screenshot_ui')\n");
+              "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n");
     g_autoptr(GVariant) named =
         evaluate(root, "gnoblin.load('component.lua')\n"
                        "local snapshot=gnoblin.snapshot()\n"

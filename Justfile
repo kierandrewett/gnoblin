@@ -35,6 +35,11 @@ build-source: build-local
 preview *TERMINAL:
     just gnome-devkit {{TERMINAL}}
 
+# Fuzz real Wayland window lifetimes in a private Gnoblin session. Supply a seed
+# to make a run reproducible, for example `just fuzz-lifecycle SEED=1738`.
+fuzz-lifecycle SEED="random" STEPS="300":
+    if [ "{{SEED}}" = random ]; then ./tests/window-lifecycle-fuzz.py --steps "{{STEPS}}"; else ./tests/window-lifecycle-fuzz.py --seed "{{SEED}}" --steps "{{STEPS}}"; fi
+
 # Add this source build as a selectable login session.
 register-session: dev-session-register
 
@@ -467,7 +472,7 @@ test-mutter: (patch "mutter")
 verify-fast:
     ./scripts/gnome-versions.py check
     for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin-session src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
-    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py tests/*.py src/tools/gnoblinctl
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py tests/*.py tests/e2e/*.py src/tools/gnoblinctl
     ./tests/test-log-diagnostics.sh
     ./tests/test-secure-state.sh
     ./tests/test-rpm-sources.sh
@@ -476,6 +481,8 @@ verify-fast:
     python3 tests/package-isolation.test.py
     python3 tests/build-deps.test.py
     python3 tests/private-deps.test.py
+    python3 tests/window-lifecycle-fuzz.test.py
+    python3 tests/e2e/app-catalog.test.py
     just test-config
 
 # Every isolated headless integration check against an existing ./install.

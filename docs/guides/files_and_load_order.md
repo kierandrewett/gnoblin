@@ -1,4 +1,4 @@
-# Files and load order
+# files_and_load_order
 
 [Configuration reference](/config/configure)
 
@@ -13,17 +13,13 @@ The usual path is `~/.config/gnoblin/init.lua`, or
 `$XDG_CONFIG_HOME/gnoblin/init.lua` when that variable is set.
 The compositor's `GNOBLIN_CONFIG` environment variable overrides it.
 
-If `init.lua` is absent, the loader checks `gnoblin.toml`, then
-`gnoblin.conf`. These are alternatives, not extra includes.
-Use a `.lua` suffix for Lua; other suffixes select TOML.
+For packaged logins, `gnoblin-session` copies
+`/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
+The shell loads that file when its config starts.
 
-For packaged logins, `gnoblin-session` seeds `init.lua` from
-`/usr/share/gnoblin/init.lua.example` before starting gnome-session when no
-supported user config exists. The shell then loads that file on its first
-config load. The seed step preserves existing `init.lua`, TOML, and legacy
-config files. If the example is unavailable, or when running a build directly,
-Gnoblin uses its defaults. Setting `GNOBLIN_CONFIG` in a terminal does not
-change the already-running compositor's environment.
+If the example is unavailable, or you run a build directly, Gnoblin uses its
+defaults. Setting `GNOBLIN_CONFIG` in a terminal does not change the
+environment of an already-running compositor.
 
 ## Include a file
 
@@ -72,11 +68,10 @@ gnoblin.configure {shell = {minimize_duration = 150}}
 The result is a fade lasting 150 milliseconds. Changing the duration does not
 remove the animation choice.
 
-Direct list settings replace earlier lists when supplied to `gnoblin.configure`.
-Examples include `window_rules`, `permissions.rules`, `input_sources.sources`,
-`window_management.workspace_names` and `input.keyboard.xkb_options`. Named
-`shortcuts` and `autostart` maps merge by entry name. To add a window rule while
-keeping previous rules, use:
+Lists replace earlier values. This applies to `window_rules`, `shortcuts`,
+`autostart` and permission `rules`.
+
+To add a window rule while keeping previous rules, use:
 
 ```lua
 gnoblin.window_rule {
@@ -85,14 +80,18 @@ gnoblin.window_rule {
 }
 ```
 
-Use the same shortcut or autostart name to change an imported entry; omitted
-fields keep their earlier values. Set `enable = false` to disable an imported
-shortcut or autostart entry. Disabling autostart does not stop a process that
-is already running. `gnoblin.window_rule` and `gnoblin.permission_rule` append
-entries to their respective lists.
+The `shortcuts` and `autostart` maps merge entries with the same name. Set an
+entry's `enable` field to `false` to disable an imported shortcut or autostart.
+Disabling an autostart entry does not stop a running process.
 
-Named shortcuts and autostart entries belong under `gnoblin.configure`; see
-the [function reference](/config#functions).
+To remove every shortcut loaded so far:
+
+```lua
+gnoblin.configure {shortcuts = {}}
+```
+
+Use `gnoblin.configure.shortcuts` to add or change individual shortcuts
+without clearing the others.
 
 ## Use a Lua module
 
@@ -111,9 +110,11 @@ In `init.lua`:
 gnoblin.configure(require("appearance"))
 ```
 
-`require("appearance")` searches `appearance.lua`, then
-`lua/appearance.lua`, relative to its caller. It runs once per reload.
-A returned table is only applied when passed to `gnoblin.configure`.
+`require("appearance")` searches `appearance.lua`, then `lua/appearance.lua`,
+relative to its caller. It runs once per reload.
+
+Returning a table does not apply its settings by itself. Pass it to
+`gnoblin.configure` as shown above.
 
 Dots in module names are not converted to directories. For explicit subdirectories,
 use `gnoblin.load("parts/motion.lua")`. Avoid loading the same file through both a glob
@@ -122,7 +123,7 @@ and `require`.
 ## Available Lua functions
 
 `gnoblin` is available globally in every loaded file and module.
-See the [function reference](/config#functions).
+See the [function reference](/config#api-reference).
 
 Setting names use `snake_case`. The API converts them to Gnoblin's internal
 hyphenated names. String values, shader uniform names and renderer names stay
@@ -134,40 +135,11 @@ read arbitrary files, run processes or load native modules.
 Use shortcuts or autostart to launch programs.
 
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
-32 active files, including the root config.
+32 nested files.
 
 Lua configuration cannot run arbitrary JavaScript. For custom live automation,
 see [user scripts](/user-scripts); most settings and desktop behavior should
 stay in the supported configuration API.
-
-## Existing configs
-
-Configs using `require("gnoblin")`, `g.set`, `g.config`, returned tables
-and TOML still work.
-They retain their original hyphenated keys and merge behaviour.
-
-For example, this existing config:
-
-```lua
-local g = require("gnoblin")
-g.set {
-    shell = {["minimize-duration"] = 150},
-}
-```
-
-is equivalent to:
-
-```lua
-gnoblin.configure {
-    shell = {minimize_duration = 150},
-}
-```
-
-You can use `gnoblin.configure` after existing component includes without
-rewriting the included files.
-
-If `gnoblin` or `configure` is reported as `nil`, see
-[configuration compatibility](/troubleshooting#gnoblin-or-configure-is-nil).
 
 ## Reload and persistence
 

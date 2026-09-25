@@ -13,6 +13,7 @@ gnome-shell  js/ui/components/gnoblinConsole.js  js/ui/components/gnoblinConsole
 gnome-shell  js/ui/components/gnoblinConsoleEvaluator.js  js/ui/components/gnoblinConsoleEvaluator.js
 gnome-shell  js/ui/components/gnoblinConsoleIntrospection.js  js/ui/components/gnoblinConsoleIntrospection.js
 gnome-shell  js/ui/components/gnoblinConfig.js  js/ui/components/gnoblinConfig.js
+gnome-shell  js/ui/components/gnoblinWorkspaces.js  js/ui/components/gnoblinWorkspaces.js
 gnome-shell  js/ui/components/gnoblinAnimation.js  js/ui/components/gnoblinAnimation.js
 gnome-shell  js/ui/components/gnoblinRules.js  js/ui/components/gnoblinRules.js
 gnome-shell  js/ui/components/gnoblinLayerAnimation.js  js/ui/components/gnoblinLayerAnimation.js

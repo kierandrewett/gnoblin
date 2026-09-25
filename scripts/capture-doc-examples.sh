@@ -71,7 +71,10 @@ mkdir -p "$XDG_CONFIG_HOME/gnoblin" "$XDG_CONFIG_HOME/waybar" \
 mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures"
 
 # Make an installed vector cursor theme visible inside the disposable profile.
-cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$root/build/Adwaita-Hyprcursor}"
+cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$root/install/share/icons/Adwaita-Hyprcursor}"
+if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$root/build/Adwaita-Hyprcursor/hyprcursors" ]; then
+    cursor_theme="$root/build/Adwaita-Hyprcursor"
+fi
 if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$host_home/.local/share/icons/Adwaita-Hyprcursor/hyprcursors" ]; then
     cursor_theme="$host_home/.local/share/icons/Adwaita-Hyprcursor"
 fi

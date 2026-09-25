@@ -27,12 +27,12 @@ export default function(api) {
   } catch (_) {}
   return GLib.SOURCE_CONTINUE;
  });
- api._disposers.push(() => GLib.source_remove(timer));
+ api.addCleanup(() => GLib.source_remove(timer));
 }
 """)
 repo = Path(__file__).resolve().parents[1]
 qs = os.environ.get("QS_TEST_BIN", "qs")
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
 
 qml = root / "effect.qml"
 qml.write_text("""import QtQuick

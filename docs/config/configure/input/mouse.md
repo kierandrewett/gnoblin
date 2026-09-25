@@ -19,15 +19,17 @@ gnoblin.configure {
 }
 ```
 
-| Field                           | Values                                 |
-| ------------------------------- | -------------------------------------- |
-| `speed`                         | Number from `-1` to `1`                |
-| `left_handed`, `natural_scroll` | Boolean                                |
-| `accel_profile`                 | `"default"`, `"flat"`, or `"adaptive"` |
+| Field            | Accepted values                        | Default when omitted      | What it changes                                                                             |
+| ---------------- | -------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------- |
+| `speed`          | Number from `-1` to `1`                | Current device preference | `-1` is unaccelerated, `1` is fast, and `0` asks the system for its default speed.          |
+| `left_handed`    | Boolean                                | Current device preference | Swaps the primary mouse buttons.                                                            |
+| `natural_scroll` | Boolean                                | Current device preference | Reverses the scroll direction.                                                              |
+| `accel_profile`  | `"default"`, `"flat"`, or `"adaptive"` | Current device profile    | Uses the device default, a constant pointer speed, or acceleration based on movement speed. |
 
-`left_handed` swaps the primary mouse buttons. `speed` ranges from `-1`
-(unaccelerated) to `1` (fast); `0` uses the system default. `natural_scroll`
-reverses the scroll direction. `"default"` uses the device's default
-acceleration profile, `"flat"` uses a constant factor, and `"adaptive"` adjusts
-acceleration to movement speed. A device without the selected profile falls
-back to its default.
+If a device does not support the selected acceleration profile, it uses its
+default profile.
+
+Omitted values keep the current GNOME/Mutter preference for that device.
+GNOME's [pointer-speed guide](https://help.gnome.org/gnome-help/mouse-sensitivity.html)
+explains the user-facing speed setting. The [libinput guide](https://wayland.freedesktop.org/libinput/doc/latest/pointer-acceleration.html)
+describes how `adaptive` and `flat` profiles affect pointer motion.

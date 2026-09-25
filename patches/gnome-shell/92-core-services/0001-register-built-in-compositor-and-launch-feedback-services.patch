@@ -1,0 +1,28 @@
+From 2c37a6e26db04c96a32b1ab6c8ae96eddbb518bc Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 15:00:00 +0100
+Subject: [PATCH] gnoblin: bundle core compositor services
+
+Register the compositor bridge implementation and launch feedback service as
+GNOME Shell resources so the Gnoblin session component can import them as
+built-in services.
+
+---
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 8908843..809c980 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -158,2 +158,11 @@
+     <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinBridge/compositor-bridge.js</file>
++    <file>ui/components/gnoblinBridge/lib/blur-regions.js</file>
++    <file>ui/components/gnoblinBridge/lib/clipboard-paste.js</file>
++    <file>ui/components/gnoblinBridge/lib/fullscreen-return-guard.js</file>
++    <file>ui/components/gnoblinBridge/lib/layer-companions.js</file>
++    <file>ui/components/gnoblinBridge/lib/ui-sessions.js</file>
++    <file>ui/components/gnoblinBridge/lib/window-snap.js</file>
++    <file>ui/components/gnoblinBridge/lib/window-switcher-fallback.js</file>
++    <file>ui/components/gnoblinLaunchFeedback.js</file>
+     <file>ui/components/gnoblinSessionLock.js</file>
+-- 
+2.55.0

@@ -25,10 +25,10 @@ regular GNOME session stays available.
 - **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
   docks, wallpapers, launchers and overlays, including layer popups and
   exclusive zones. See [bring-your-own-shell](docs/bring-your-own-shell.md).
-- **Hyprcursor support.** [Mutter loads Hyprcursor themes](docs/cursors.md)
-  before falling back to Xcursor. Vector and animated frames scale to the
-  requested cursor size and monitor scale while preserving hotspots and
-  timing; the same themed wait cursor is used for launch feedback.
+- **Hyprcursor support.** [Configure compositor cursors](docs/cursors.md) with
+  the generic `cursor.theme` and `cursor.size` settings in Gnoblin's live
+  config. Animated frames preserve hotspots and timing, and the same theme
+  supplies launch feedback.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows, custom shaders and layer animations](docs/window-effects.md) with
   window rules.

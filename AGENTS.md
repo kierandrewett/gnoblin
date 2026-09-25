@@ -74,6 +74,16 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - Before finishing documentation changes, check links, navigation, names, and
   examples against the current source and intended audience. Use the
   documentation build when verification is requested or needed for the change.
+- An agent changing Markdown must run
+  `python3 scripts/markdown-style.py review --fail-on-flags` on the changed
+  files before finishing.
+
+    This review is mandatory: missing Jev credentials, request failures, or
+    unresolved flags block completion. The script sends the
+    selected files and `MARKDOWN_STYLE.md` to the provider configured in the
+    ignored repo-root `.env`. Fix every flag; the report prints its exact rule.
+    `MARKDOWN_STYLE.md` is the source of truth. Do not duplicate its rules in
+    code. The `split` command previews a single explicit paragraph break.
 
 ## Writing style
 
@@ -112,21 +122,6 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - Report what was changed and what was actually checked. State material gaps
   plainly; do not imply runtime, packaging, hardware, or publishing success
   without evidence.
-
-## Release packaging
-
-- Before changing RPMs, release workflows, or COPR targets, read
-  `design/release-packaging.md` and verify the live COPR chroots, latest build
-  IDs, Fedora versions, and installed package versions. Old release notes are
-  context, not proof of current publication state.
-- Keep the Fedora build matrix, COPR project chroots, and package install
-  checks aligned. A source compile is not evidence that the RPM dependency
-  metadata permits installation on that Fedora release.
-- After packaging or publication work, update
-  `design/release-packaging.md` with the target matrix, exact build IDs/NVRs,
-  checks performed, and any remaining runtime or release gap.
-- Release and packaging changes started in a side worktree must be merged or
-  fast-forwarded to `main`; verify the remote `main` commit after pushing.
 
 ## Scope, collaboration, and delivery
 

@@ -30,7 +30,7 @@ static GPtrArray* ensure_section(GHashTable* sections, const char* name) {
     return entries;
 }
 
-static gboolean validate_document(GVariant* document, GError** error) {
+gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     const char* sections[] = {"protocols", "layer-shell"};
     const char* keys[] = {NULL, "preserve-active-window"};
     for (guint i = 0; i < G_N_ELEMENTS(sections); i++) {
@@ -57,20 +57,33 @@ static gboolean validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) window = g_variant_lookup_value(document, "window-management", NULL);
     if (window) {
         static const char* booleans[] = {
-            "constrain-drag-to-work-area", "raise-on-click", "auto-raise",
-            "focus-change-on-pointer-rest", "dynamic-workspaces",
-            "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
-            "attach-modal-dialogs", NULL,
+            "constrain-drag-to-work-area",
+            "raise-on-click",
+            "auto-raise",
+            "focus-change-on-pointer-rest",
+            "dynamic-workspaces",
+            "workspaces-only-on-primary",
+            "edge-tiling",
+            "center-new-windows",
+            "attach-modal-dialogs",
+            NULL,
         };
         static const char* titlebar[] = {
-            "toggle-maximize", "toggle-maximize-horizontally",
-            "toggle-maximize-vertically", "minimize", "none", "lower", "menu", NULL,
+            "toggle-maximize",
+            "toggle-maximize-horizontally",
+            "toggle-maximize-vertically",
+            "minimize",
+            "none",
+            "lower",
+            "menu",
+            NULL,
         };
         gboolean valid = g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
         const char* name;
         GVariant* value;
-        if (valid) g_variant_iter_init(&iter, window);
+        if (valid)
+            g_variant_iter_init(&iter, window);
         while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
             gboolean known_boolean = FALSE;
             for (guint i = 0; booleans[i]; i++)
@@ -86,24 +99,48 @@ static gboolean validate_document(GVariant* document, GError** error) {
                     valid = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING) &&
                             g_utf8_strlen(g_variant_get_string(item, NULL), -1) <= 80;
                 }
-            } else if (g_str_equal(name, "auto-raise-delay") || g_str_equal(name, "num-workspaces")) {
-                gint64 number = g_variant_is_of_type(value, G_VARIANT_TYPE_INT32) ? g_variant_get_int32(value)
-                               : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value) : -1;
+            } else if (g_str_equal(name, "workspace-ids")) {
+                valid = g_variant_is_of_type(value, G_VARIANT_TYPE("av")) &&
+                        g_variant_n_children(value) <= 36;
+                GHashTable* ids = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+                for (gsize i = 0; valid && i < g_variant_n_children(value); i++) {
+                    g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+                    g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+                    const char* id = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING)
+                                         ? g_variant_get_string(item, NULL)
+                                         : "";
+                    valid = g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id,
+                                                 G_REGEX_OPTIMIZE, G_REGEX_MATCH_NOTEMPTY) &&
+                            !g_hash_table_contains(ids, id);
+                    if (valid)
+                        g_hash_table_add(ids, g_strdup(id));
+                }
+                g_hash_table_unref(ids);
+            } else if (g_str_equal(name, "auto-raise-delay") ||
+                       g_str_equal(name, "num-workspaces")) {
+                gint64 number =
+                    g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)   ? g_variant_get_int32(value)
+                    : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
+                                                                        : -1;
                 valid = g_str_equal(name, "auto-raise-delay") ? number >= 0 && number <= 10000
-                                                             : number >= 1 && number <= 36;
+                                                              : number >= 1 && number <= 36;
             } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* string = g_variant_get_string(value, NULL);
                 if (g_str_equal(name, "focus-mode"))
-                    valid = g_str_equal(string, "click") || g_str_equal(string, "sloppy") || g_str_equal(string, "mouse");
+                    valid = g_str_equal(string, "click") || g_str_equal(string, "sloppy") ||
+                            g_str_equal(string, "mouse");
                 else if (g_str_equal(name, "focus-new-windows"))
                     valid = g_str_equal(string, "smart") || g_str_equal(string, "strict");
                 else if (g_str_equal(name, "action-double-click-titlebar") ||
                          g_str_equal(name, "action-middle-click-titlebar") ||
                          g_str_equal(name, "action-right-click-titlebar")) {
                     valid = FALSE;
-                    for (guint i = 0; titlebar[i]; i++) valid |= g_str_equal(string, titlebar[i]);
-                } else valid = FALSE;
-            } else valid = FALSE;
+                    for (guint i = 0; titlebar[i]; i++)
+                        valid |= g_str_equal(string, titlebar[i]);
+                } else
+                    valid = FALSE;
+            } else
+                valid = FALSE;
             g_variant_unref(value);
         }
         if (!valid) {
@@ -121,22 +158,61 @@ static gboolean validate_document(GVariant* document, GError** error) {
         GVariantIter iter;
         const char* name;
         GVariant* value;
-        if (valid) g_variant_iter_init(&iter, compositor);
+        if (valid)
+            g_variant_iter_init(&iter, compositor);
         while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
             gboolean known_boolean = FALSE;
-            for (guint i = 0; booleans[i]; i++) known_boolean |= g_str_equal(name, booleans[i]);
+            for (guint i = 0; booleans[i]; i++)
+                known_boolean |= g_str_equal(name, booleans[i]);
             if (known_boolean)
                 valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
             else if (g_str_equal(name, "visual-bell-type") &&
                      g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* bell = g_variant_get_string(value, NULL);
                 valid = g_str_equal(bell, "fullscreen-flash") || g_str_equal(bell, "frame-flash");
-            } else valid = FALSE;
+            } else
+                valid = FALSE;
             g_variant_unref(value);
         }
         if (!valid) {
             g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                 "compositor contains an unsupported name or value");
+            return FALSE;
+        }
+    }
+    g_autoptr(GVariant) cursor = g_variant_lookup_value(document, "cursor", NULL);
+    if (cursor) {
+        gboolean valid = g_variant_is_of_type(cursor, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* name;
+        GVariant* value;
+        if (valid)
+            g_variant_iter_init(&iter, cursor);
+        while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+            if (g_str_equal(name, "theme")) {
+                if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                    g_autofree char* theme = g_variant_dup_string(value, NULL);
+                    valid = *g_strstrip(theme) != '\0';
+                } else {
+                    valid = FALSE;
+                }
+            } else if (g_str_equal(name, "size")) {
+                gint64 size =
+                    g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)   ? g_variant_get_int32(value)
+                    : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
+                                                                        : 0;
+                valid = size >= 1 && size <= 256 &&
+                        (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32) ||
+                         g_variant_is_of_type(value, G_VARIANT_TYPE_INT64));
+            } else {
+                valid = FALSE;
+            }
+            g_variant_unref(value);
+        }
+        if (!valid) {
+            g_set_error_literal(
+                error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                "cursor must contain only a nonempty theme and a size from 1 to 256");
             return FALSE;
         }
     }
@@ -164,7 +240,7 @@ GVariant* gnoblin_config_load_document(const char* path, GPtrArray** paths, GPtr
                                 "configuration must be a table of settings");
             g_clear_pointer(&document, g_variant_unref);
         }
-        if (document && !validate_document(document, error))
+        if (document && !gnoblin_config_validate_document(document, error))
             g_clear_pointer(&document, g_variant_unref);
     }
     if (paths)

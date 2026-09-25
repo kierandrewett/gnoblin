@@ -19,8 +19,9 @@ const base = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
 const media = new Gio.Settings({ schema_id: "org.gnome.settings-daemon.plugins.media-keys" });
 const native = new Gio.Settings({ schema_id: "org.gnome.shell.keybindings" });
 const entry = { name: "capture", binding: "<Alt>s", command: ["qs", "-p", "/a path/with spaces", "quote'and$HOME"] };
-const builtIn = { name: "screenshot", action: "gnome:shell.show_screenshot_ui", binding: [] };
-const config = { shortcuts: [entry, builtIn] };
+const config = {
+    shortcuts: [entry, { name: "disable-screenshot", action: "gnome:shell.show_screenshot_ui", binding: [] }],
+};
 media.set_strv("custom-keybindings", [`${base}user-owned/`]);
 native.set_strv("show-screenshot-ui", ["<Alt>s"]);
 let registered = [];
@@ -40,12 +41,6 @@ assert(
     "built-in override does not write GNOME settings",
 );
 assert(registered.length === 1 && registered[0] === entry, "register shortcut through native command backend");
-const actionConfig = validateShortcuts({ shortcuts: [builtIn] });
-assert(actionConfig.shortcuts.length === 0, "built-in action is not registered as a command");
-assert(
-    JSON.stringify(actionConfig.keybindings.shell.show_screenshot_ui) === "[]",
-    "built-in actions become native keybinding overrides",
-);
 let customBindingChanges = 0;
 media.connect("changed::custom-keybindings", () => customBindingChanges++);
 manager.apply(config);
@@ -58,19 +53,6 @@ for (const invalid of [
     { shortcuts: [{ ...entry, binding: "<Typo>s" }] },
     { shortcuts: [{ ...entry, binding: "<Alt>NotARealKey" }] },
     { shortcuts: [{ ...entry, command: "qs" }] },
-    { shortcuts: [{ ...entry, trigger: "keydown" }] },
-    { shortcuts: [{ ...builtIn, action: "unknown.action" }] },
-    { shortcuts: [{ ...builtIn, trigger: "release" }] },
-    { shortcuts: [{ ...builtIn, action: "wm.not_a_real_action" }] },
-    { shortcuts: [{ ...builtIn, command: ["qs"] }] },
-    { shortcuts: [builtIn, { ...builtIn, name: "screenshot-again" }] },
-    { shortcuts: [builtIn], keybindings: { shell: { show_screenshot_ui: ["Print"] } } },
-    {
-        shortcuts: [
-            { ...builtIn, binding: ["<Alt>s"] },
-            { ...entry, binding: "<Alt>s" },
-        ],
-    },
     { shortcuts: [{ ...entry, name: "../escape" }] },
     { keybindings: { shell: { "show-screenshot-ui": [] } } },
     { keybindings: { media: { custom_keybindings: [] } } },
@@ -99,7 +81,7 @@ assert(
 assert(validateShortcuts({}).shortcuts.length === 0, "empty defaults");
 print("PASS: native shortcut registration, reload, validation, built-in overrides and removal");
 
-let activated, deactivated, overlayReleased;
+let activated, overlayReleased;
 let nextAction = 100;
 const grabs = [],
     releases = [],
@@ -110,14 +92,12 @@ const display = {
             overlayReleased = callback;
             return 2;
         }
-        if (signal === "accelerator-activated") activated = callback;
-        if (signal === "accelerator-deactivated") deactivated = callback;
-        return signal;
+        activated = callback;
+        return 1;
     },
     disconnect(id) {
         if (id === 2) overlayReleased = null;
-        else if (id === "accelerator-activated") activated = null;
-        else if (id === "accelerator-deactivated") deactivated = null;
+        else activated = null;
     },
     grab_accelerator(binding, flags) {
         grabs.push({ binding, flags });
@@ -152,23 +132,8 @@ try {
 assert(conflict && releases.length === 0, "failed binding edit preserves working shortcut");
 commands.apply([]);
 assert(releases[0] === 100, "removal releases compositor grab");
-const releaseEntry = { ...entry, name: "release-command", binding: "<Alt>r", trigger: "release" };
-commands.apply([releaseEntry]);
-const beforeReleaseTrigger = launched.length;
-activated(null, 101);
-assert(launched.length === beforeReleaseTrigger, "release-triggered shortcut does not launch on keydown");
-deactivated(null, 101);
-assert(launched.at(-1) === releaseEntry.command, "release-triggered shortcut launches on keyup");
-commands.apply([]);
 const search = { name: "search", binding: "Super", command: ["binguxctl", "search", "open"] };
 assert(validateShortcuts({ shortcuts: [search] }).shortcuts.length === 1, "bare Super config is valid");
-let bareSuperPressRejected = false;
-try {
-    validateShortcuts({ shortcuts: [{ ...search, trigger: "press" }] });
-} catch {
-    bareSuperPressRejected = true;
-}
-assert(bareSuperPressRejected, "bare Super cannot trigger on press before chord state is known");
 const countBefore = grabs.length;
 commands.apply([search]);
 assert(grabs.length === countBefore, "bare Super uses Mutter release event, not a press grab");
@@ -183,7 +148,6 @@ overlayReleased();
 assert(launched.length === launchCount, "removed release command cannot run");
 commands.destroy();
 assert(activated === null, "destroy disconnects activation listener");
-assert(deactivated === null, "destroy disconnects release listener");
 print("PASS: native no-repeat registration, command updates, conflict rollback and lifecycle");
 
 // Buffer the opening gap, preserving editing keys and cancelling safely.

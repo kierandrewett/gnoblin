@@ -1,10 +1,17 @@
-# Keep identical in Gnoblin and Bingux. Checks never rewrite source files.
+# Shared language checks match Bingux; Gnoblin also syncs issue tracking.
 minimum_pre_commit_version: "4.6.2"
 default_stages: [pre-commit]
 exclude: '(^|/)(subprojects|build|install|dist|target|node_modules|vendor|third_party|tomlc99|banks)/|\.patch$|\.lock$'
 repos:
   - repo: local
     hooks:
+      - id: markdown-jev-review
+        name: Gnoblin Markdown review (Jev)
+        entry: python3 scripts/markdown-style.py review --fail-on-flags
+        language: system
+        types: [markdown]
+        files: '^docs/.*\.md$'
+        require_serial: true
       - id: ruff
         name: ruff
         entry: ruff check
@@ -89,6 +96,13 @@ repos:
         entry: env -u LD_LIBRARY_PATH nix shell github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41#nixfmt --command nixfmt --check
         language: system
         types: [nix]
+        require_serial: true
+      - id: beads-github-sync
+        name: Sync Beads with GitHub Issues
+        entry: ./scripts/gnoblin-issues sync --prefer-newer
+        language: system
+        pass_filenames: false
+        always_run: true
         require_serial: true
       - id: ruff-format
         name: ruff-format

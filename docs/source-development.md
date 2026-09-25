@@ -50,7 +50,6 @@ To test the patched portal backend in your test session:
 ```
 
 See [permission policy](/guides/permissions) before testing remote access.
-Old custom remembered-grant files no longer provide approval.
 
 ## Verify
 

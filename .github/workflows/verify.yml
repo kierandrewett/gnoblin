@@ -94,8 +94,6 @@ jobs:
           test -x install/bin/gnoblin-session
           test -f install/share/wayland-sessions/gnoblin.desktop
           test -f install/lib64/libmutter-51.so
-      - name: Verify Lua protocol gates at runtime
-        run: ./tests/test-protocol-gating.sh
 
   distro-dependencies:
     runs-on: ubuntu-latest

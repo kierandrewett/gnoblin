@@ -1,9 +1,9 @@
 # gnoblin.animation
 
-Register a named animation for one compositor event. The first registration
-for an event is its default; a shell setting or window rule can select another
-registered name. A later declaration with the same name updates the earlier
-one. Each name must be unique in the assembled configuration.
+Register a named animation for one supported event. Declarations with the same
+name merge during a config load. Disable an imported animation by registering
+its name with `enable = false`. The [animation guide](/guides/animations)
+covers events, presets and keyframe examples.
 
 ```lua
 gnoblin.animation {
@@ -17,42 +17,17 @@ gnoblin.animation {
 }
 ```
 
-## Fields
+| Field        | Accepted values                                                                           | Default and effect                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `name`       | Required unique name; letters, digits, `_` and `-`; maximum 80 characters                 | Selects this registration from settings and window rules.                                                       |
+| `enable`     | Boolean                                                                                   | `true`; set to `false` to disable a registration by name.                                                       |
+| `event`      | One event listed in the [animation guide](/guides/animations#register-a-custom-animation) | Selects the transition this animation controls.                                                                 |
+| `duration`   | Integer milliseconds from `0` to `10000`                                                  | Uses the event preset's duration when omitted; `0` completes immediately.                                       |
+| `ease`       | Named curve or `{type = "cubic-bezier", x1, y1, x2, y2}`                                  | Uses the event preset's curve when omitted. See [curve values](/guides/animations#properties-and-keyframes).    |
+| `from`, `to` | Property-value maps supported by the event                                                | Start and end state. Supply these or `keyframes`.                                                               |
+| `keyframes`  | Ordered frames from `at = 0` through `at = 1`                                             | Defines intermediate states instead of endpoint interpolation.                                                  |
+| `origin`     | Named pivot or normalized `{x, y}` pair                                                   | `"center"`; sets the transform pivot. See accepted [pivot values](/guides/animations#properties-and-keyframes). |
+| `target`     | Optional string label                                                                     | `"none"`; displayed by inspection tools.                                                                        |
 
-| Field        | Required    | Values                                                 |
-| ------------ | ----------- | ------------------------------------------------------ |
-| `name`       | Yes         | 1–80 letters, digits, `_` or `-`                       |
-| `event`      | Yes         | One supported event below                              |
-| `duration`   | No          | Integer milliseconds, 0–10000                          |
-| `ease`       | No          | Easing name or cubic Bézier table                      |
-| `from`, `to` | One or both | Start and end property maps                            |
-| `keyframes`  | Alternative | 2–128 ordered frames from `at = 0` to `at = 1`         |
-| `origin`     | No          | Named pivot or normalized two-number array from 0 to 1 |
-| `target`     | No          | Label of up to 80 letters, digits, `_` or `-`          |
-| `enable`     | No          | Set `false` to disable an earlier registration by name |
-
-An animation needs `from`, `to`, or `keyframes`. Each keyframe has an `at`
-position and one or more properties; its optional `ease` controls the segment
-ending at that frame. Supported properties depend on the event: window and
-layer transitions use `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation` and
-`opacity`; tile previews use `x`, `y`, `width`, `height` and `opacity`; scalar
-transitions such as workspace switching and shadow changes use `progress`.
-
-Events are `minimize`, `restore`, `open`, `close`, `dialog-open`,
-`dialog-close`, `layer-open`, `layer-close`, `workspace-switch`, `console-open`,
-`console-close`, `shadow-change`, `layer-companion-close`, `resize`,
-`tile-preview-open`, `tile-preview-close`, `dialog-dim` and `dialog-undim`.
-
-Names may be used in [`gnoblin.configure.shell`](/config/configure/shell) and
-[`gnoblin.window_rule`](/config/window_rule). Shell settings that cover two
-events need a map if the selected custom animations are event-specific. See
-the [animation guide](/guides/animations) for built-in names, practical
-examples, easing choices and preview commands.
-
-Load the registration first, then disable it by name:
-
-```lua
-gnoblin.animation {name = "soft-open", enable = false}
-```
-
-`enable = false` removes the earlier declaration from the assembled config.
+Provide `from` and/or `to`, or provide `keyframes`. The animation guide lists
+all supported events, properties, curves, pivots, and event-specific defaults.

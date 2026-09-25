@@ -3,7 +3,7 @@
 This is internal release engineering material. Keep it current whenever the
 release pipeline or COPR publication changes.
 
-## Current state (2026-09-25)
+## Current state (2026-09-24)
 
 - `gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
 - The latest COPR release is Gnoblin 0.1.4, build 11021823, with Mutter
@@ -14,22 +14,6 @@ release pipeline or COPR publication changes.
 - The source-build job in `.github/workflows/verify.yml` covers Fedora 43 and 44. The initial matrix run exposed a stale GNOME Shell patch hunk and is
   being corrected. The source-RPM job uses Fedora 44; COPR compiles SRPMs in
   each enabled chroot.
-- Both Fedora source-build jobs passed on commit `300190f`. The `0.1.5` tag's
-  source RPMs and Debian/Ubuntu package builds succeeded, but all three
-  package-install smoke tests failed on input-source initialization; the
-  Ubuntu 24.04 test also assumed a package script directory that is not
-  installed when no integrations are shipped. No GitHub release or COPR build
-  was published from that tag.
-- Tag `gnoblin-v0.1.6` contains the keyboard-startup and smoke-fixture fixes.
-  Its release workflow is building Debian/Ubuntu packages. The first Fedora
-  43/44 verification on that commit failed because the bridge resource patch
-  duplicated entries already added by the overlay resource patch. Commit
-  `52982ab` removes that redundant patch and is on `main`. The verification
-  build on its descendant passed on Fedora 43; Fedora 44 stopped before source
-  compilation when GNOME GitLab returned HTTP 503 fetching Mutter. The rolling
-  openSUSE dependency job also failed on an unavailable package. A retry is
-  needed for Fedora 44. No Fedora 43 RPM or fresh-host runtime verification
-  has yet been published.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -70,24 +54,18 @@ Adding an older Fedora target requires all of the following:
 The Fedora 43 work enables the COPR chroot and adds clean source-build and
 post-publication package-install matrices. Mutter 51 calls the libinput 1.31
 DWT-timeout API; this setting is now compiled conditionally so older libinput
-retains normal disable-while-typing behavior. The shared package manifest
-floors are set to PipeWire 1.4 and libinput 1.30. The COPR build/install run
-is still required to prove RPM build and runtime compatibility on Fedora 43.
+retains normal disable-while-typing behavior.
+
+The shared package manifest floors are set to PipeWire 1.4 and libinput 1.30.
+The COPR build/install run is still required to prove RPM build and runtime
+compatibility on Fedora 43.
 
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
-its resource entry made the notification patch stale. Both patches now apply
-in sequence. The follow-up run on commit `300190f` passed both Fedora source
-builds. The `0.1.6` release run found an XKB options initialization error in
-the headless smoke test; two ordered Shell patches initialize keyboard
-options before source activation and default absent option arrays. The smoke
-fixture now creates its per-user script directory when no packaged
-integrations exist. A subsequent Fedora build exposed duplicate GResource
-entries because the bridge modules were included by two patches; the
-redundant later patch is removed in `52982ab`. The Fedora 43 source build
-passed on the first retry; Fedora 44 then hit a transient GitLab 503 while
-fetching Mutter, but a subsequent run on `835ca3b` passed both Fedora source
-builds. Version `0.1.7` carries that fix and the synchronized RPM/Arch
-metadata. A tagged release must still pass its package builds, followed by a
-COPR build and Fedora 43 installation check, before this compatibility change
-is complete.
+its new resource entry made the notification patch stale. Both patches now
+apply in sequence.
+
+On commit `25af4af`, Fedora 43 completed the full source build successfully.
+Fedora 44 checkout hit a transient upstream GitLab 503 before compilation;
+rerun that job. The Fedora 43 COPR package build and clean install remain the
+release compatibility gates.

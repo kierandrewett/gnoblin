@@ -1,4 +1,4 @@
-# Window snapping
+# window_snapping
 
 [Configuration reference](/config/configure)
 
@@ -35,7 +35,8 @@ See [drag boundaries](/guides/session_settings#window-drag-boundary) for overlap
 
 Use the [bridge socket](/compositor-bridge) to supply a picker. Rectangles
 use logical desktop pixels. Read the work area from Gnoblin; it excludes space
-reserved by panels.
+reserved by panels. `hit` is where pointer release selects a region, while
+`target` is the final window rectangle.
 
 | Step                  | Message                 | What Gnoblin returns or does                                                                               |
 | --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -62,11 +63,22 @@ offer the left half of a 1920 × 1048 work area starting at `(0, 32)`:
 ```
 
 Build both rectangles from the current event's `area` and `monitor`; the
-numbers above only show the message shape. At most 128 regions may be offered.
-Each rectangle needs finite `x`, `y`, `width` and `height`; sizes must be 1–32768.
-Optional `control: true` requires Ctrl at release. Optional `maximize: true`
-maximizes the window instead of using `target` as its final size. On success the
-owner receives `{"event":"snap-completed","layout":"left-half"}`.
+numbers above show only the message shape.
+
+An offer can contain up to 128 regions. Each `hit` and `target` rectangle
+contains finite logical-pixel coordinates:
+
+| Field             | Accepted values   | Meaning                                              |
+| ----------------- | ----------------- | ---------------------------------------------------- |
+| `x`, `y`          | Finite numbers    | Top-left position in the desktop work area.          |
+| `width`, `height` | 1–32768           | Rectangle size in logical pixels.                    |
+| `layout`          | String label      | Returned in the `snap-completed` event.              |
+| `control`         | Boolean, optional | Require Ctrl to be held at pointer release.          |
+| `maximize`        | Boolean, optional | Maximize instead of applying the `target` rectangle. |
+
+Set `maximize: true` to maximize the window instead of applying `target` as its
+final size. On success, the owner receives
+`{"event":"snap-completed","layout":"left-half"}`.
 
 For a keyboard picker, request `snap-context`, let the user choose a rectangle
 inside its `area`, then send:
@@ -75,6 +87,8 @@ inside its `area`, then send:
 { "op": "snap-window", "window": "42", "monitor": 0, "target": { "x": 0, "y": 32, "width": 960, "height": 1048 } }
 ```
 
-Use the returned window ID and monitor ID. Only one client owns a drag. Gnoblin
-rejects stale serials and targets outside the work area. Escape, disconnect or
-drag completion clears offers; the picker does not grab input during a drag.
+Use the returned window and monitor IDs. Only one client can own a drag, and
+Gnoblin rejects stale serials or targets outside the work area.
+
+Escape, disconnect or drag completion clears the offers. The picker does not
+grab input while the drag is in progress.

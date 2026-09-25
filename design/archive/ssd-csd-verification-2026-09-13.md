@@ -77,20 +77,6 @@ test-exported stage watcher. Reading it from Clutter's later `after-paint`
 signal can capture the next backbuffer and is not a valid damage test. Panel
 clock and dock animation regions were excluded from the image comparison.
 
-The focus/menu/CSD checks were repeated after retiring the compatibility
-scripts. The drag test ran without the temporary move-redraw script.
-
-## Configuration cleanup
-
-Active load order is `init.lua` → `bingux.lua` → Bingux integration plus
-`settings.lua`. Bingux remains selected. Eight obsolete compatibility scripts
-were moved, not deleted, to:
-
-`~/.config/gnoblin/scripts/retired/2026-09-13-ssd/`
-
-They are the CSD bridge, SSD border/focus bridges, move-damage workaround,
-forced-clip bridge, old lifecycle bridge and two no-op border/shadow scripts.
-
 ## Verification entry points
 
 Start with `bash scripts/run-normal-config-devkit.sh`. It refuses to start
@@ -121,9 +107,11 @@ Similarity review found no duplicate JavaScript functions in the component
 scope. Python matches were reviewed as intentionally parallel test fixtures;
 no unrelated refactor was performed.
 
-The interactive Bingux SSD regression also verifies that compositor hover over
-a real control changes rendered pixels, and that two titlebar double-clicks
-toggle maximize then restore. The earlier explanation that the hidden host had
+The interactive Bingux SSD regression also verifies that compositor hover
+over a real control changes rendered pixels, and that two titlebar
+double-clicks toggle maximize then restore.
+
+The earlier explanation that the hidden host had
 no frame clock was incorrect. Keeping its widgets alive and servicing GTK's main
 context restores GTK's CSS transitions. The custom hover tint and compact header
 class have been removed.
@@ -131,9 +119,10 @@ class have been removed.
 Normal GTK comparison: `/tmp/gnoblin-user-config.9pfMZs/comparison` contains a
 presented GTK4/libadwaita header alongside the actual SSD painter. Idle, hover,
 pressed, pointer-leave, backdrop and restored-focus endpoints each differed by
-zero bytes. The animated phases produced 10–13 changing SSD frames, matching
-GTK's behavior; focus restoration was immediate in both for this theme.
-`comparison.png` and `comparison.gif` show the captured headers side by side.
+zero bytes.
+
+The animated phases produced 10–13 changing SSD frames, matching
+GTK's behavior; focus restoration was immediate in both for this theme. `comparison.png` and `comparison.gif` show the captured headers side by side.
 
 The normal-config nested transport check additionally passed actual compositor
 hover-in, hover-out, header focus-color fade, double-click maximize/restore,
@@ -143,7 +132,9 @@ consumed zero CPU ticks during a two-second settled idle measurement.
 
 After the user confirmed the animations but requested the shorter titlebar, the
 desktop was returned to 36px using GTK's `default-decoration` class via
-`--compact`. `/tmp/gnoblin-user-config.9pfMZs/compact-comparison` repeats the
+`--compact`.
+
+`/tmp/gnoblin-user-config.9pfMZs/compact-comparison` repeats the
 normal-GTK reference comparison in that same compact mode: all six endpoints
 still match byte-for-byte and animated phases still produce 11–12 changing
 frames. The persistent widget tree and GTK event-loop integration are unchanged.

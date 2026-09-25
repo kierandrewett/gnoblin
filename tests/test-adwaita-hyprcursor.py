@@ -14,7 +14,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 THEME = "Adwaita-Hyprcursor"
 theme = Path(os.environ.get("ADWAITA_HYPRCURSOR_PATH", Path.home() / ".local/share/icons" / THEME))
-if not os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"):
+if not os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-") and not os.environ.get(
+    "ADWAITA_HYPRCURSOR_PATH"
+):
     assert theme.resolve() == (Path.home() / ".local/share/icons" / THEME).resolve(), (
         "Install the theme before testing it"
     )

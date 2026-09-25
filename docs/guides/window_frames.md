@@ -1,16 +1,27 @@
-# Window frames
+# window_frames
 
 [Configuration API](/config)
 
 Most apps draw their own titlebar and buttons. This is **client-side decoration
 (CSD)**. Gnoblin can draw them instead: **server-side decoration (SSD)**.
 
-`window_management.action_*_titlebar` sets Mutter's titlebar action preferences.
-GTK apps typically draw their own titlebars and read GNOME settings directly,
-so this Lua setting does not change their CSD behavior. Gnoblin's built-in
-fallback SSD implements these actions. A custom SSD renderer must implement
-its own titlebar click behavior. Supported actions are maximize, horizontal or vertical maximize,
-minimize, lower, menu and no action.
+`window_management.action_*_titlebar` sets Mutter's titlebar action
+preferences. GTK apps typically draw their own titlebars and read GNOME
+settings directly, so this Lua setting does not change their client-side
+decoration (CSD) behavior.
+
+Gnoblin's built-in fallback server-side decoration (SSD) supports these
+actions:
+
+- `toggle-maximize`
+- `toggle-maximize-horizontally`
+- `toggle-maximize-vertically`
+- `minimize`
+- `lower`
+- `menu`
+- `none`
+
+A custom SSD renderer implements its own titlebar click behavior.
 
 Gnoblin's frames are off by default, although your desktop shell can enable
 them through its config. Use `mode` to decide which windows get a frame and

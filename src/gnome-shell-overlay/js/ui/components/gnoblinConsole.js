@@ -9,6 +9,7 @@ import St from "gi://St";
 import System from "system";
 
 import * as Main from "../main.js";
+import * as SessionLock from "./gnoblinSessionLock.js";
 import { consoleConfig } from "./gnoblinControl.js";
 import { createGjsIntrospector } from "./gnoblinConsoleIntrospection.js";
 import * as Animation from "./gnoblinAnimation.js";
@@ -43,7 +44,7 @@ function consoleHelp(topic = "") {
         "",
         'Lua: gnoblin.set({shell = {["layer-duration"] = 350}}), then :apply',
         ":help  :apply (Lua)  :undo  :reload  :reset (variables only)",
-        "Live: animations, window rules, shortcuts, keybindings and permissions.",
+        "Live: animations, window rules, shortcuts and permissions.",
         "Live edits do not write config files; file reload replaces them.",
         "Saved feature preferences, autostart and frame services require file edits. Protocol changes need a new session.",
         "Escape dismisses suggestions first, then closes. Alt+F2 closes immediately.",
@@ -366,7 +367,11 @@ export const DeveloperConsole = GObject.registerClass(
         }
 
         _allowed() {
-            return global.session_mode === "gnoblin" && Main.sessionMode.isPrimary && !Main.sessionMode.isLocked;
+            return (
+                global.session_mode === "gnoblin" &&
+                Main.sessionMode.isPrimary &&
+                !SessionLock.isLocked(Main.sessionMode.isLocked)
+            );
         }
 
         get isOpen() {

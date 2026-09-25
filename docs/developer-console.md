@@ -13,11 +13,8 @@ Disable the Alt+F2 binding in `~/.config/gnoblin/init.lua` with:
 ```lua
 gnoblin.configure {
     shortcuts = {
-        run_dialog = {
-            action = {
-                schema = "org.gnome.shell.keybindings",
-                key = "panel-run-dialog",
-            },
+        ["disable-run-dialog"] = {
+            action = "gnome:shell.panel_run_dialog",
             binding = {},
         },
     },
@@ -88,7 +85,7 @@ Lua keeps a separate working copy. After changing settings through JavaScript
 or the config file, use `:reload` before editing in Lua again so you do not
 apply an outdated copy.
 
-Live edits support rules, animations, shortcuts, keybindings and permissions.
+Live edits support rules, animations, shortcuts and permissions.
 Saved feature preferences, autostart, renderer services and startup protocols
 must be changed in the file instead.
 

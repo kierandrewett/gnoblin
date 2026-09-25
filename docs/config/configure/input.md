@@ -13,10 +13,23 @@ For the common pointer and keyboard settings, see:
 
 ## Tablets
 
-Tablet overrides are keyed by vendor and product ID, for example `"1234:5678"`.
-Add only devices you want to change; unlisted tablets keep their current system
-settings. `mapping` accepts `"absolute"` or `"relative"`, while
-`left_handed` and `keep_aspect` are booleans.
+Tablet overrides use a four-digit hexadecimal vendor and product ID key, such
+as `"1234:5678"`. Unlisted tablets keep their current system settings.
+
+Find the device path with `libinput list-devices`, then inspect its IDs with
+`udevadm info --query=property --name=/dev/input/eventN`. The [libinput tools
+guide](https://wayland.freedesktop.org/libinput/doc/latest/tools.html) and
+[`udevadm` manual](https://man7.org/linux/man-pages/man8/udevadm.8.html) explain
+the commands and their output.
+
+| Field         | Accepted values              | Meaning                                                                                     |
+| ------------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `mapping`     | `"absolute"` or `"relative"` | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
+| `left_handed` | Boolean                      | Reverses the tablet's button orientation.                                                   |
+| `keep_aspect` | Boolean                      | Preserves proportions when tablet and display have different shapes.                        |
+
+Enable `keep_aspect` when you want a drawn circle to stay circular across
+different display and tablet shapes.
 
 ```lua
 gnoblin.configure {
@@ -31,16 +44,16 @@ gnoblin.configure {
 }
 ```
 
-Absolute mapping ties pen position to a fixed area of the tablet; relative
-mapping moves the pointer like a mouse. Keep aspect ratio when the tablet and
-display have different shapes and you want a drawn circle to stay circular.
-
 ## Styluses
 
-Stylus overrides use a hexadecimal device serial, or `default-` followed by a
-vendor and product ID such as `"default-1234:5678"`. Use `"default"` to leave a
-button's action unchanged. Set an action to `"keybinding"` and provide the
-matching keybinding field to assign a shortcut.
+Stylus overrides use either a hexadecimal device serial or a vendor and
+product ID prefixed by `default-`, such as `"default-1234:5678"`. Use the
+device event path with `udevadm info --query=property` to inspect available
+serial properties. See the [`udevadm` reference](https://man7.org/linux/man-pages/man8/udevadm.8.html)
+and [libinput tools](https://wayland.freedesktop.org/libinput/doc/latest/tools.html).
+
+Set an action to `"default"` to leave the button unchanged. To assign a
+shortcut, use `"keybinding"` and provide the matching keybinding field.
 
 ```lua
 gnoblin.configure {
@@ -55,18 +68,28 @@ gnoblin.configure {
 }
 ```
 
-Each button action accepts `"default"`, `"middle"`, `"right"`, `"back"`,
-`"forward"`, `"switch-monitor"`, or `"keybinding"`. The primary button uses
-`button_action` and `button_keybinding`; the other buttons use the corresponding
-`secondary_` and `tertiary_` fields. An empty keybinding has no effect unless
-its action is set to `"keybinding"`.
+| Action                | Effect                                  |
+| --------------------- | --------------------------------------- |
+| `"default"`           | Keep the system's button behavior.      |
+| `"middle"`, `"right"` | Send a middle or right click.           |
+| `"back"`, `"forward"` | Send a navigation button click.         |
+| `"switch-monitor"`    | Switch the stylus to another monitor.   |
+| `"keybinding"`        | Run the matching configured keybinding. |
+
+The primary button uses `button_action` and `button_keybinding`. Secondary and
+tertiary buttons use the corresponding `secondary_` and `tertiary_` fields.
+An empty keybinding has no effect unless its action is `"keybinding"`.
 
 ## Orientation lock
 
-Set `orientation_lock = true` to lock the current screen orientation, or
-`false` to allow automatic rotation. Leave the field out to follow GNOME's
-setting. Use the override when the system rotation preference should not
-change the screen orientation for this config.
+| `orientation_lock` | Behavior                             |
+| ------------------ | ------------------------------------ |
+| `true`             | Lock the current screen orientation. |
+| `false`            | Allow automatic rotation.            |
+| Omitted            | Follow GNOME's setting.              |
+
+Use this override when the system rotation preference should not change screen
+orientation for this config.
 
 ```lua
 gnoblin.configure {

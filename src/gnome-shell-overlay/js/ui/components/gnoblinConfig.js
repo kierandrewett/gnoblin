@@ -1,6 +1,7 @@
 import * as Permissions from "./gnoblinPermissions.js";
 import * as Corners from "./gnoblinCornerGeometry.js";
 import * as Frames from "./gnoblinFramePolicy.js";
+import * as Workspaces from "./gnoblinWorkspaces.js";
 // Live shell settings. Protocol registration remains a compositor-startup operation.
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -17,8 +18,10 @@ export const FEATURE_KEYS = Object.freeze([
     "screenshot",
     "notifications",
     "input-source-switcher",
+    "wallpaper",
 ]);
 
+const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 export const WINDOW_PREFERENCES = Object.freeze({
     "focus-mode": "click",
     "focus-new-windows": "smart",
@@ -44,7 +47,7 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [] });
+const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [], "workspace-ids": [] });
 const TITLEBAR_ACTIONS = new Set([
     "toggle-maximize",
     "toggle-maximize-horizontally",
@@ -63,6 +66,7 @@ const INPUT_FIELDS = Object.freeze({
     },
     touchpad: {
         speed: "number",
+        "scroll-speed": "number",
         "left-handed": ["right", "left", "mouse"],
         "natural-scroll": "boolean",
         "accel-profile": ["default", "flat", "adaptive"],
@@ -105,7 +109,9 @@ function validateInputFields(group, values, path) {
             : kind === "boolean"
               ? typeof value === "boolean"
               : kind === "number"
-                ? typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1
+                ? typeof value === "number" &&
+                  Number.isFinite(value) &&
+                  (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
                 : kind === "milliseconds"
                   ? Number.isInteger(value) && value >= 1 && value <= 10000
                   : kind === "strings"
@@ -171,7 +177,7 @@ export const DEFAULTS = Object.freeze({
     "layer-easing": "ease-out-cubic",
     animations: [],
     permissions: Permissions.DEFAULT_POLICY,
-    autostart: [{ name: "gnoblin-gnome-wallpaper", command: ["gnoblin-gnome-wallpaper"] }],
+    autostart: [],
     "window-rules": [],
     shortcuts: [],
     keybindings: {},
@@ -179,6 +185,7 @@ export const DEFAULTS = Object.freeze({
 
 export let settings = {
     ...DEFAULTS,
+    cursor: { ...DEFAULT_CURSOR },
     "window-management": windowDefaults(),
     compositor: { ...COMPOSITOR_PREFERENCES },
     input: null,
@@ -453,18 +460,7 @@ export function windowAnimation(properties, event, config = settings) {
     let selected = null;
     let overrides = {};
     for (const rule of config["window-rules"]) {
-        let matches = true;
-        for (const [key, matcher] of windowRuleMatchers(rule)) {
-            if (
-                key === "type" || key === "focused"
-                    ? properties[key] !== matcher
-                    : properties[key] === null || !matcher.test(properties[key] ?? "")
-            ) {
-                matches = false;
-                break;
-            }
-        }
-        if (!matches || rule.animation === undefined) continue;
+        if (!windowRuleMatches(rule, properties) || rule.animation === undefined) continue;
         if (typeof rule.animation === "string") {
             if (!animationNameSupports(rule.animation, [event], config.animations)) continue;
             selected = rule.animation;
@@ -514,6 +510,7 @@ function compileWindowRuleMatchers(rules) {
 export function parseDocument(document) {
     const next = {
         ...DEFAULTS,
+        cursor: { ...DEFAULT_CURSOR },
         "window-management": windowDefaults(),
         compositor: { ...COMPOSITOR_PREFERENCES },
         input: null,
@@ -521,12 +518,34 @@ export function parseDocument(document) {
     };
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
+    const cursor = document.cursor ?? {};
+    if (!cursor || Array.isArray(cursor) || typeof cursor !== "object") throw new Error("cursor must be a table");
+    for (const [key, value] of Object.entries(cursor)) {
+        if (key === "theme") {
+            if (typeof value !== "string" || !value.trim())
+                throw new Error("cursor.theme: expected a nonempty theme name");
+        } else if (key === "size") {
+            if (!Number.isInteger(value) || value < 1 || value > 256)
+                throw new Error("cursor.size: expected 1 to 256 logical pixels");
+        } else {
+            throw new Error(`unknown cursor setting: ${key}`);
+        }
+        next.cursor[key] = value;
+    }
     const windowManagement = document["window-management"] ?? {};
     if (!windowManagement || Array.isArray(windowManagement) || typeof windowManagement !== "object")
         throw new Error("window-management must be a table");
     for (const [key, value] of Object.entries(windowManagement)) {
         if (key === "constrain-drag-to-work-area") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
+        } else if (key === "workspace-ids") {
+            if (
+                !Array.isArray(value) ||
+                value.length > 36 ||
+                !value.every((id) => typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)) ||
+                new Set(value).size !== value.length
+            )
+                throw new Error(`${key}: expected up to 36 unique workspace IDs`);
         } else if (!Object.hasOwn(WINDOW_PREFERENCES, key)) {
             throw new Error(`unknown window-management setting: ${key}`);
         } else if (key === "focus-mode") {
@@ -647,7 +666,7 @@ export function parseDocument(document) {
             !entry ||
             typeof entry !== "object" ||
             Array.isArray(entry) ||
-            Object.keys(entry).some((key) => !["name", "command", "when"].includes(key)) ||
+            Object.keys(entry).some((key) => !["name", "command", "when", "restart"].includes(key)) ||
             typeof entry.name !== "string" ||
             !entry.name.trim() ||
             names.has(entry.name) ||
@@ -658,12 +677,16 @@ export function parseDocument(document) {
         )
             throw new Error("autostart requires a unique name and a nonempty command array");
         if (when !== "on_login") throw new Error('autostart.when: expected "on_login"');
+        const restart = entry.restart ?? "never";
+        if (!["never", "on_failure", "always"].includes(restart))
+            throw new Error('autostart.restart: expected "never", "on_failure", or "always"');
         names.add(entry.name);
-        normalizedEntries.push({ name: entry.name, command: entry.command, when });
+        normalizedEntries.push({ name: entry.name, command: entry.command, when, restart });
     }
     next.autostart = normalizedEntries;
     const rules = document["window-rules"] ?? [];
     if (!Array.isArray(rules)) throw new Error("window-rules must use [[window-rules]] tables");
+    const configuredWorkspaceIds = new Set(next["window-management"]["workspace-ids"]);
     for (const rule of rules) {
         if (
             !rule ||
@@ -675,6 +698,7 @@ export function parseDocument(document) {
                 (key) =>
                     ![
                         "match",
+                        "workspace",
                         "blur",
                         "blur-ignore-shadows",
                         "opacity",
@@ -691,12 +715,35 @@ export function parseDocument(document) {
         for (const [key, value] of Object.entries(rule.match)) {
             if (key === "focused") {
                 if (typeof value !== "boolean") throw new Error("focused match must be boolean");
+            } else if (key === "workspace-id") {
+                if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value))
+                    throw new Error("workspace-id match must be a valid workspace ID");
+                if (!configuredWorkspaceIds.has(value))
+                    throw new Error(`workspace-id match references unknown workspace ID: ${value}`);
+            } else if (key === "workspace-number") {
+                if (!Number.isInteger(value) || value < 1 || value > 36)
+                    throw new Error("workspace-number match must be from 1 to 36");
             } else if (["app-id", "title", "layer"].includes(key)) {
                 if (typeof value !== "string" || value.length > 512)
                     throw new Error("rule matcher must be a regex string");
             } else if (key !== "type" || !["layer", "window"].includes(value)) {
                 throw new Error("unknown window rule match");
             }
+        }
+        if (rule.workspace !== undefined) {
+            const target = rule.workspace;
+            if (
+                !isTable(target) ||
+                Object.keys(target).length !== 1 ||
+                (Object.hasOwn(target, "id") &&
+                    (typeof target.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(target.id))) ||
+                (Object.hasOwn(target, "number") &&
+                    (!Number.isInteger(target.number) || target.number < 1 || target.number > 36)) ||
+                (!Object.hasOwn(target, "id") && !Object.hasOwn(target, "number"))
+            )
+                throw new Error("workspace effect must contain exactly one valid id or number");
+            if (Object.hasOwn(target, "id") && !configuredWorkspaceIds.has(target.id))
+                throw new Error(`workspace effect references unknown workspace ID: ${target.id}`);
         }
         if (rule.corners !== undefined) Corners.validate(rule.corners);
         if (rule.borders !== undefined) Corners.validateBorders(rule.borders);
@@ -863,41 +910,7 @@ export const KEYBINDING_SCHEMAS = Object.freeze({
     mutter: "org.gnome.mutter.keybindings",
     wayland: "org.gnome.mutter.wayland.keybindings",
 });
-const KEYBINDING_SCHEMA_GROUPS = Object.freeze(
-    Object.fromEntries(Object.entries(KEYBINDING_SCHEMAS).map(([group, schema]) => [schema, group])),
-);
 const gsettingsKey = (key) => key.replaceAll("_", "-");
-
-function parseShortcutAction(action) {
-    if (typeof action === "string") {
-        const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(action);
-        if (!match) return null;
-        const [, namespace, key] = match;
-        const group = namespace === "gnome:shell" ? "shell" : namespace;
-        return { group, key, nativeKey: gsettingsKey(key), label: action };
-    }
-
-    if (
-        !action ||
-        typeof action !== "object" ||
-        Array.isArray(action) ||
-        Object.keys(action).length !== 2 ||
-        Object.keys(action).some((key) => !["schema", "key"].includes(key)) ||
-        typeof action.schema !== "string" ||
-        typeof action.key !== "string" ||
-        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(action.key)
-    )
-        return null;
-
-    const group = KEYBINDING_SCHEMA_GROUPS[action.schema];
-    if (!group) return null;
-    return {
-        group,
-        key: action.key.replaceAll("-", "_"),
-        nativeKey: action.key,
-        label: `${action.schema} ${action.key}`,
-    };
-}
 
 function acceleratorIdentity(value) {
     if (value === "Super") return "overlay-key";
@@ -921,7 +934,6 @@ function acceleratorIdentity(value) {
 
 export function validateShortcuts(document) {
     const declarations = document.shortcuts ?? [];
-    const shortcuts = [];
     const keybindings = Object.fromEntries(
         Object.entries(document.keybindings ?? {}).map(([group, entries]) => [
             group,
@@ -932,6 +944,7 @@ export function validateShortcuts(document) {
         throw new Error("shortcuts must use [[shortcuts]] tables (maximum 256)");
     const names = new Set(),
         accelerators = new Set();
+    const shortcuts = [];
     const declaredActions = new Set();
     for (const entry of declarations) {
         if (
@@ -939,7 +952,7 @@ export function validateShortcuts(document) {
             typeof entry !== "object" ||
             Array.isArray(entry) ||
             Object.keys(entry).some(
-                (key) => !["name", "binding", "command", "action", "capture-input", "trigger"].includes(key),
+                (key) => !["name", "binding", "command", "action", "capture-input"].includes(key),
             ) ||
             (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean") ||
             typeof entry.name !== "string" ||
@@ -948,24 +961,22 @@ export function validateShortcuts(document) {
             (entry.action === undefined) === (entry.command === undefined)
         )
             throw new Error("shortcut requires a unique name and exactly one of action or command");
-        if (entry.trigger !== undefined && !["press", "release"].includes(entry.trigger))
-            throw new Error('shortcut trigger must be "press" or "release"');
         names.add(entry.name);
         if (entry.action !== undefined) {
-            if (entry.trigger !== undefined) throw new Error("trigger is only supported for command shortcuts");
-            const parsedAction = parseShortcutAction(entry.action);
-            if (!parsedAction || !Array.isArray(entry.binding))
+            const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(entry.action);
+            if (!match || !Array.isArray(entry.binding))
                 throw new Error(
-                    'built-in shortcut requires action = {schema = "org.gnome.shell.keybindings", key = "show-screenshot-ui"} and a binding list',
+                    'built-in shortcut requires a namespaced shell action or action = "group.action" and a binding list',
                 );
-            const { group, key, nativeKey, label } = parsedAction;
+            const [, namespace, key] = match;
+            const group = namespace === "gnome:shell" ? "shell" : namespace;
             const actionKey = `${group}.${key}`;
-            if (declaredActions.has(actionKey) || Object.hasOwn(keybindings[group] ?? {}, key))
-                throw new Error(`built-in shortcut action is configured more than once: ${label}`);
+            if (declaredActions.has(actionKey)) throw new Error(`duplicate built-in shortcut action: ${entry.action}`);
             declaredActions.add(actionKey);
             const schema = Gio.SettingsSchemaSource.get_default().lookup(KEYBINDING_SCHEMAS[group], true);
-            if (!schema?.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
-                throw new Error(`unknown built-in shortcut action: ${label}`);
+            const nativeKey = gsettingsKey(key);
+            if (!schema.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
+                throw new Error(`unknown built-in shortcut action: ${entry.action}`);
             for (const binding of entry.binding) {
                 const identity = acceleratorIdentity(binding);
                 if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);
@@ -978,12 +989,11 @@ export function validateShortcuts(document) {
                 !Array.isArray(entry.command) ||
                 !entry.command.length ||
                 !entry.command[0] ||
-                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0"))
+                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0")) ||
+                (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean")
             )
                 throw new Error("command shortcut requires a nonempty command array");
             const identity = acceleratorIdentity(entry.binding);
-            if (identity === "overlay-key" && entry.trigger === "press")
-                throw new Error('the bare "Super" shortcut can only trigger on release');
             if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
             accelerators.add(identity);
             shortcuts.push(entry);
@@ -1106,7 +1116,7 @@ function inputVariant(group, values) {
                     : typeof value === "boolean"
                       ? "b"
                       : typeof value === "number"
-                        ? key === "speed"
+                        ? ["speed", "scroll-speed"].includes(key)
                             ? "d"
                             : "u"
                         : "s";
@@ -1159,7 +1169,7 @@ export class CommandShortcuts {
         this.bindings = new Map();
         this.overlaySignal = display.connect("overlay-key", () => {
             const binding = this.bindings.get("overlay-key");
-            if (!binding || binding.entry.trigger === "press") return;
+            if (!binding) return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
@@ -1167,18 +1177,16 @@ export class CommandShortcuts {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
         });
-        const run = (action, trigger) => {
+        this.signal = display.connect("accelerator-activated", (_display, action) => {
             const binding = [...this.bindings.values()].find((item) => item.action === action);
-            if (!binding || (binding.entry.trigger ?? "press") !== trigger) return;
+            if (!binding) return;
             try {
                 if (binding.entry["capture-input"]) this.prepareInput(binding.entry.name);
                 this.launch(binding.entry.command);
             } catch (error) {
                 console.warn(`gnoblin-shortcut ${binding.entry.name}: ${error.message}`);
             }
-        };
-        this.signal = display.connect("accelerator-activated", (_display, action) => run(action, "press"));
-        this.releaseSignal = display.connect("accelerator-deactivated", (_display, action) => run(action, "release"));
+        });
     }
 
     apply(entries) {
@@ -1217,7 +1225,6 @@ export class CommandShortcuts {
 
     destroy() {
         this.display.disconnect(this.signal);
-        this.display.disconnect(this.releaseSignal);
         this.display.disconnect(this.overlaySignal);
         for (const binding of this.bindings.values()) this.release(binding.action);
         this.bindings.clear();
@@ -1329,27 +1336,45 @@ export function minimizeTarget(window, monitor) {
 export class Autostart {
     constructor() {
         this._started = new Set();
+        this._entries = new Map();
     }
 
     apply(entries) {
-        for (const { name, command, when = "on_login" } of entries) {
+        this._entries = new Map(entries.map((entry) => [entry.name, entry]));
+        for (const { name, command, when = "on_login", restart = "never" } of entries) {
             if (when !== "on_login") throw new Error(`unsupported autostart trigger: ${when}`);
             if (this._started.has(name)) continue;
-            try {
-                const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
-                this._started.add(name);
-                child.wait_async(null, (process, result) => {
-                    try {
-                        process.wait_finish(result);
-                        if (!process.get_successful()) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
-                    } catch (e) {
-                        console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
-                    }
-                });
-                console.log(`gnoblin-autostart: started ${name}`);
-            } catch (e) {
-                console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
-            }
+            this._launch({ name, command, when, restart });
+        }
+    }
+
+    _scheduleRestart(name) {
+        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            const entry = this._entries.get(name);
+            if (entry && ["on_failure", "always"].includes(entry.restart)) this._launch(entry);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _launch({ name, command, restart }) {
+        try {
+            const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
+            this._started.add(name);
+            child.wait_async(null, (process, result) => {
+                let successful = false;
+                try {
+                    process.wait_finish(result);
+                    successful = process.get_successful();
+                } catch (e) {
+                    console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
+                }
+                if (!successful) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
+                if (restart === "always" || (restart === "on_failure" && !successful)) this._scheduleRestart(name);
+            });
+            console.log(`gnoblin-autostart: started ${name}`);
+        } catch (e) {
+            console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
+            if (restart !== "never") this._scheduleRestart(name);
         }
     }
 }
@@ -1392,28 +1417,81 @@ export class ConfigFile {
 
     reload() {
         const path = this.path;
-        let next;
-        // Mutter and Shell evaluate the same Lua files, in the same order.
-        // Keep failed dependencies watched so fixing a module retries it.
-        const loaded = Meta.gnoblin_load_config(path).recursiveUnpack();
-        this._setWatchedFiles(loaded.paths ?? [path], loaded.directories ?? []);
-        if (loaded.error) throw new Error(loaded.error);
         try {
-            next = parseDocument(loaded.document);
+            // Mutter and Shell evaluate the same Lua files, in the same order.
+            // Keep failed dependencies watched so fixing a module retries it.
+            const loaded = Meta.gnoblin_load_config(path).recursiveUnpack();
+            this._setWatchedFiles(loaded.paths ?? [path], loaded.directories ?? []);
+            if (loaded.error) throw new Error(loaded.error);
+            const next = parseDocument(loaded.document);
+            const services = Object.fromEntries(
+                Object.entries(loaded.document["frame-renderers"] ?? {}).map(([name, argv]) => [
+                    name,
+                    new GLib.Variant("as", argv),
+                ]),
+            );
+            Meta.gnoblin_frame_renderers_configure(new GLib.Variant("a{sv}", services), true);
+            this._apply(next);
+            Meta.gnoblin_finish_config_load(true);
+            settings = next;
+            this._document = cloneDocument(loaded.document);
+            this._events = new Set(loaded.events ?? []);
+            this._liveUndo = [];
+            this.dispatchPointerWindowAtPointer();
         } catch (error) {
+            Meta.gnoblin_finish_config_load(false);
             throw new Error(`${path}: ${error.message}`);
         }
-        const services = Object.fromEntries(
-            Object.entries(loaded.document["frame-renderers"] ?? {}).map(([name, argv]) => [
-                name,
-                new GLib.Variant("as", argv),
-            ]),
-        );
-        Meta.gnoblin_frame_renderers_configure(new GLib.Variant("a{sv}", services), true);
-        this._apply(next);
-        settings = next;
-        this._document = cloneDocument(loaded.document);
-        this._liveUndo = [];
+    }
+
+    dispatchPointerWindowAtPointer() {
+        const [x, y] = global.get_pointer();
+        let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+        while (actor && !actor.meta_window) actor = actor.get_parent();
+        const window = actor?.meta_window;
+        this.dispatchEvent("pointer_window_changed", {
+            app_id: window?.get_gtk_application_id() || "",
+            wm_class: window?.get_wm_class() || "",
+            title: window?.get_title() || "",
+        });
+    }
+
+    dispatchEvent(event, payload = {}) {
+        if (!this._events?.has(event) && !this._events?.has("*")) return;
+        try {
+            const variants = Object.fromEntries(
+                Object.entries(payload).map(([key, value]) => {
+                    const type = typeof value === "boolean" ? "b" : typeof value === "number" ? "d" : "s";
+                    return [key, new GLib.Variant(type, value == null ? "" : value)];
+                }),
+            );
+            const result = Meta.gnoblin_dispatch_config_event(
+                event,
+                new GLib.Variant("a{sv}", variants),
+            ).recursiveUnpack();
+            if (result.error) throw new Error(result.error);
+            const next = parseDocument(result.document);
+            if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            settings = next;
+            this._document = cloneDocument(result.document);
+            Meta.gnoblin_finish_config_event(true);
+        } catch (error) {
+            Meta.gnoblin_finish_config_event(false);
+            console.warn(`gnoblin config event ${event}: ${error.message}`);
+        }
+    }
+
+    applyRuntimeDocument(document) {
+        try {
+            document = document.recursiveUnpack();
+            const next = parseDocument(document);
+            if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            settings = next;
+            this._document = cloneDocument(document);
+        } catch (error) {
+            Meta.gnoblin_finish_config_event(false);
+            console.warn(`gnoblin runtime event: ${error.message}`);
+        }
     }
 
     document() {
@@ -1575,6 +1653,17 @@ export function layerOffset(anchor, rect, monitor) {
     return [x, y];
 }
 
+function windowRuleMatches(rule, properties) {
+    for (const [key, matcher] of windowRuleMatchers(rule)) {
+        if (key === "type" || key === "focused" || key === "workspace-id" || key === "workspace-number") {
+            if (properties[key] !== matcher) return false;
+        } else if (properties[key] === null || !matcher.test(properties[key] ?? "")) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Later matching rules override individual effects, leaving others intact.
 export function windowEffects(properties, config = settings, defaultBlur = 0) {
     const effects = {
@@ -1590,18 +1679,7 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
     effects.frame = { ...Frames.defaults };
     let borderGeometryOverrides = null;
     for (const rule of config["window-rules"]) {
-        let matches = true;
-        for (const [key, matcher] of windowRuleMatchers(rule)) {
-            if (
-                key === "type" || key === "focused"
-                    ? properties[key] !== matcher
-                    : properties[key] === null || !matcher.test(properties[key] ?? "")
-            ) {
-                matches = false;
-                break;
-            }
-        }
-        if (matches) {
+        if (windowRuleMatches(rule, properties)) {
             if (rule.frame !== undefined) effects.frame = { ...effects.frame, ...rule.frame };
             if (rule.corners !== undefined) effects.corners = Corners.merge(effects.corners, rule.corners);
             if (rule.borders !== undefined) {
@@ -1626,14 +1704,43 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
     return effects;
 }
 
+// Placement is evaluated only by the initial window-created handler. A later
+// title/focus/workspace/config update must never reassign an existing window.
+export function initialWorkspaceTarget(properties, config = settings) {
+    let target = null;
+    for (const rule of config["window-rules"])
+        if (rule.workspace !== undefined && windowRuleMatches(rule, properties)) target = rule.workspace;
+    return target;
+}
+
 export function windowProperties(window) {
     const namespace = Meta.gnoblin_layer_namespace(window);
+    const workspace = window.get_workspace();
+    let workspaceDescription = null;
+    if (workspace) {
+        try {
+            const manager = global.workspace_manager;
+            let number = null;
+            for (let index = 0; index < manager.n_workspaces; index++) {
+                if (manager.get_workspace_by_index(index) === workspace) {
+                    number = index + 1;
+                    break;
+                }
+            }
+            workspaceDescription = { id: Workspaces.getId(workspace), number };
+        } catch {
+            // Workspace metadata may be transient while Mutter is configuring
+            // its workspace manager; the rest of the window rules still apply.
+        }
+    }
     return {
         "app-id": window.get_gtk_application_id() || window.get_wm_class() || "",
         title: window.get_title() || "",
         layer: namespace,
         type: namespace !== null ? "layer" : "window",
         focused: window.has_focus(),
+        "workspace-id": workspaceDescription?.id ?? null,
+        "workspace-number": workspaceDescription?.number ?? null,
     };
 }
 

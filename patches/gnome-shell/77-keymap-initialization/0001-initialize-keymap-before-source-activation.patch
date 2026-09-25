@@ -1,34 +1,39 @@
-From 52830a2179c350e358280d08408a4e885b62096b Mon Sep 17 00:00:00 2001
-From: Gnoblin Build <build@gnoblin.local>
-Date: Fri, 25 Sep 2026 00:23:02 +0100
-Subject: [PATCH] keyboard: initialize XKB before Gnoblin source activation
+From 6635496dd16876d12453d117bc7d9a1c9aa98d23 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 24 Sep 2026 23:35:07 +0100
+Subject: [PATCH] keyboard: initialize keymap before Gnoblin input sources
 
 ---
+ js/misc/keyboardManager.js | 2 +-
  js/ui/status/keyboard.js | 6 +++++-
- 1 file changed, 5 insertions(+), 1 deletion(-)
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/js/misc/keyboardManager.js b/js/misc/keyboardManager.js
+index bed56aa69..45a45fdcc 100644
+--- a/js/misc/keyboardManager.js
++++ b/js/misc/keyboardManager.js
+@@ -270,3 +270,3 @@ class KeyboardManager extends Signals.EventEmitter {
+     setKeyboardModel(model) {
+-        this._xkbModel = model;
++        this._xkbModel = model ?? '';
+     }
 
 diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
-index ca54f4591..ffe003cd2 100644
+index e9056afa2..72bf2831f 100644
 --- a/js/ui/status/keyboard.js
 +++ b/js/ui/status/keyboard.js
-@@ -359,6 +359,7 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
+@@ -357,4 +357,5 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
+         if (sources === null)
+             this._mruSources = [];
          this._xkbOptions = xkbOptions;
-         this._emitInputSourcesChanged();
-         this._emitPerWindowChanged();
 +        this._emitKeyboardModelChanged();
          this._emitKeyboardOptionsChanged();
-     }
- 
-@@ -386,7 +387,7 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
-     }
- 
+@@ -389,3 +390,3 @@ class InputSourceGnoblinSettings extends InputSourceSettings {
      get keyboardModel() {
 -        return this._sessionSettings.keyboardModel;
 +        return this._sessionSettings.keyboardModel ?? '';
      }
- }
- 
-@@ -471,6 +472,9 @@ export class InputSourceManager extends Signals.EventEmitter {
+@@ -472,4 +473,7 @@ export class InputSourceManager extends Signals.EventEmitter {
      _setGnoblinInputSources(sources, perWindow, xkbOptions) {
          if (!(this._settings instanceof InputSourceGnoblinSettings))
              return;
@@ -36,8 +41,3 @@ index ca54f4591..ffe003cd2 100644
 +            xkbOptions ?? this._settings.keyboardOptions ?? []);
 +        this._keyboardManager.setKeyboardModel(this._settings.keyboardModel ?? '');
          this._settings.setInputSources(sources, perWindow, xkbOptions);
-         this._sourcesPerWindowChanged();
-     }
--- 
-2.55.0
-

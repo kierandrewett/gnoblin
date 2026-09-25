@@ -161,7 +161,6 @@ def parser():
     for name, fields in (
         ("move", ["x", "y"]),
         ("resize", ["width", "height"]),
-        ("workspace", ["workspace"]),
         ("monitor", ["monitor"]),
     ):
         action = add(
@@ -170,22 +169,21 @@ def parser():
             {
                 "move": "Set position in logical screen coordinates",
                 "resize": "Set frame size in logical pixels",
-                "workspace": "Move to an existing workspace (one-based)",
                 "monitor": "Move to a logical monitor (zero-based)",
             }[name],
         )
         action.add_argument("id", help="Window ID, or active")
         for field in fields:
             bounds = (
-                (1, 32768)
-                if field in ("width", "height")
-                else (1, 1024)
-                if field == "workspace"
-                else (0, 1024)
-                if field == "monitor"
-                else (-100000, 100000)
+                (1, 32768) if field in ("width", "height") else (0, 1024) if field == "monitor" else (-100000, 100000)
             )
             action.add_argument(field, type=number(*bounds))
+    window_workspace = add(actions, "workspace", "Move a window to an existing workspace")
+    window_workspace.add_argument("id", help="Window ID, or active")
+    window_target = window_workspace.add_mutually_exclusive_group(required=True)
+    window_target.add_argument("workspace", nargs="?", type=number(1, 1024), help="Legacy shorthand for --number")
+    window_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    window_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
     layer = add(commands, "layer", "Inspect layer-shell surfaces")
     layer_actions = layer.add_subparsers(dest="action", metavar="ACTION")
     add(layer_actions, "list", "List layer surfaces and their rule namespaces")
@@ -211,7 +209,17 @@ def parser():
     workspace_actions = workspace.add_subparsers(dest="action")
     add(workspace_actions, "list", "List workspaces")
     switch = add(workspace_actions, "switch", "Switch to an existing workspace")
-    switch.add_argument("workspace", type=number(1, 1024), help="One-based workspace ID")
+    switch_target = switch.add_mutually_exclusive_group(required=True)
+    switch_target.add_argument("workspace", nargs="?", type=number(1, 1024), help="Legacy shorthand for --number")
+    switch_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    switch_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    add(workspace_actions, "next", "Switch to the next workspace")
+    add(workspace_actions, "previous", "Switch to the previous workspace")
+    move_active = add(workspace_actions, "move-active", "Move the active window to a workspace")
+    move_target = move_active.add_mutually_exclusive_group(required=True)
+    move_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    move_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    move_active.add_argument("--follow", action="store_true", help="Switch to the target workspace after moving")
 
     monitor = commands.choices["monitor"]
     monitor_actions = monitor.add_subparsers(dest="action")
@@ -414,9 +422,14 @@ def dispatch(args, cli):
         }
     if cmd == "window":
         request = {"command": "window", "action": args.action, "window": args.id}
-        for field in ("x", "y", "width", "height", "workspace", "monitor"):
+        for field in ("x", "y", "width", "height", "monitor"):
             if hasattr(args, field):
                 request[field] = getattr(args, field)
+        if args.action == "workspace":
+            if args.workspace_id is not None:
+                request["workspaceId"] = args.workspace_id
+            else:
+                request["workspaceNumber"] = args.number if args.number is not None else args.workspace
         return rpc(request)
     if cmd == "animation":
         request = {"command": "animation", "action": args.action}
@@ -448,11 +461,21 @@ def dispatch(args, cli):
     if cmd == "monitor":
         return rpc({"command": "monitors"})
     if cmd == "workspace":
-        return rpc(
-            {"command": "workspaces"}
-            if args.action == "list"
-            else {"command": "workspace-switch", "workspace": args.workspace}
+        if args.action == "list":
+            return rpc({"command": "workspace-list"})
+        if args.action == "switch":
+            selector = (
+                {"workspaceId": args.workspace_id}
+                if args.workspace_id is not None
+                else {"workspaceNumber": args.number if args.number is not None else args.workspace}
+            )
+            return rpc({"command": "workspace-switch", **selector})
+        if args.action in ("next", "previous"):
+            return rpc({"command": f"workspace-{args.action}"})
+        selector = (
+            {"workspaceId": args.workspace_id} if args.workspace_id is not None else {"workspaceNumber": args.number}
         )
+        return rpc({"command": "workspace-move-active", **selector, "follow": args.follow})
     if cmd == "status":
         result = {**version_record(call("GetVersion")[0]), "connected": call("Ping")[0] == "pong"}
         try:

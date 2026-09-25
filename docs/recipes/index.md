@@ -1,38 +1,27 @@
 # Recipes
 
-Each recipe combines settings to solve a desktop task. Add its Lua to
-`~/.config/gnoblin/init.lua` after any `gnoblin.load(...)` lines, then run
-`gnoblinctl config reload`.
+Short Lua examples for common desktop configuration tasks. Add a recipe to
+`~/.config/gnoblin/init.lua` after any `gnoblin.load(...)` lines so your choices
+override settings loaded from other files.
 
-## Desktop setup
+After editing the file, apply the changes with `gnoblinctl config reload`.
 
-- [Build a small desktop](/recipes/small-desktop): start a bar and notification
-  daemon, add launcher and terminal shortcuts, and set a cursor theme.
-- [Organize a growing config](/recipes/organize-config-files): split settings
-  by purpose while keeping load order predictable.
+- [Complete starter config](/recipes/complete-starter-config): start with a
+  working shell, shortcut and window rule setup.
+- [Add a shortcut](/recipes/add-a-shortcut): add or change one named shortcut
+  without replacing other shortcuts.
+- [Dim unfocused windows](/recipes/dim-unfocused-windows): lower the opacity of
+  windows that are not focused.
+- [Round application windows](/recipes/round-application-windows): set window
+  corner radius and smoothing.
+- [Turn off layer animations](/recipes/turn-off-layer-animations): disable
+  compositor animations for layer surfaces.
+- [Request a Gnoblin titlebar](/recipes/request-a-titlebar): provide a server
+  titlebar when an application requests one.
+- [Combine window rules](/recipes/combine-window-rules): apply defaults and
+  override selected values for matching windows.
+- [Split a config into files](/recipes/split-config-into-files): load separate
+  files for appearance and shortcuts.
 
-## Input workflows
-
-- [Set up a laptop for two keyboard layouts](/recipes/laptop-input): keep US
-  and UK layouts per window, use Caps Lock as Escape, and configure touchpad
-  gestures.
-- [Set up a pen display](/recipes/pen-display-workflow): map a tablet without
-  stretching the drawing area and use the stylus button to switch monitors.
-
-## Windows and workspaces
-
-- [Set up a focused writing workspace](/recipes/writing-workspace): name fixed
-  workspaces, place new windows consistently, and style editor windows without
-  fading their text.
-
-## Privacy and accessibility
-
-- [Prepare remote support access](/recipes/remote-support): ask by default and
-  grant one trusted support app limited access to a selected monitor and input.
-- [Make pointer feedback easier to see](/recipes/pointer-feedback): enlarge
-  the cursor, locate it on demand, and turn client bell requests into a visual
-  signal.
-
-See the [configuration reference](/config/configure) for every supported
-option and the [guides](/guides/permissions) for behavior that depends on the
-session or portal backend.
+See the [configuration reference](/config/configure) for available options and
+the [configuration guides](/guides/window_rules) for behavior and tradeoffs.

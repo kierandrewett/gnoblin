@@ -27,9 +27,10 @@ gnoblin.configure {
 }
 ```
 
-Install the selected applications and the [Adwaita Hyprcursor theme](/guides/cursors)
-first. The cursor size is in logical pixels. `autostart` launches each named
-command at login; it does not install or configure the applications themselves.
+Install the selected applications first. Gnoblin includes the Adwaita
+Hyprcursor theme. Cursor size is in logical pixels. `autostart` launches each
+named command at login; it does not install or configure the applications
+themselves.
 
 Keep any `gnoblin.load(...)` lines supplied by your shell before this block.
 If an imported shortcut already uses one of these names, this updates that

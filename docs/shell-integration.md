@@ -22,10 +22,8 @@ function updateTarget(toplevel) {
 Update after layout changes and when a window joins a group.
 Give each grouped window the same icon rectangle before minimising it.
 
-The Wayland rectangle uses surface-local coordinates; Gnoblin converts it to
-desktop coordinates. Set both width and height to zero to clear the hint;
-negative dimensions are a protocol error. Gnoblin also clears the hint when
-its surface or toplevel handle disappears.
+A zero-size rectangle clears the hint. The hint also clears when its surface
+or window handle disappears.
 
 ## Layer placement and animation
 
@@ -33,7 +31,7 @@ During entry and exit animations, Gnoblin moves the displayed panel without
 asking the client to resize its buffer. Space reserved for the panel (its
 exclusive zone) stays unchanged, and it remains on the same monitor.
 
-When a panel changes size, Gnoblin keeps its old buffer aligned to its chosen
+When a panel changes size, Gnoblin keeps its previous buffer aligned to its chosen
 edge until the client submits the new buffer. The client must still set its
 Wayland anchors and margins correctly.
 

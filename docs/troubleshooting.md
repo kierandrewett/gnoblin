@@ -43,24 +43,8 @@ gnoblinctl config reload
 Edit the printed path and read the reload error. Then check:
 
 - Does this setting need a [new session](/guides/files_and_load_order#reload-and-persistence)?
-- Is a function missing? See [configuration compatibility](#gnoblin-or-configure-is-nil).
 - Did an unmatched include glob load nothing?
 - Did a later list replace your rules or shortcuts?
-
-## `gnoblin` or `configure` is nil
-
-An error such as `attempt to index a nil value (global 'gnoblin')` or
-`attempt to call a nil value (field 'configure')` can mean your running
-compositor predates the Lua functions used in these guides.
-
-If you have just updated Gnoblin, log out and back in. Reloading the config
-does not load an updated compositor. Otherwise, update through your
-[installation method](installation.md). If your package does not include these
-functions, keep using the [existing config syntax](/guides/files_and_load_order#existing-configs)
-or [build from source](install-source.md).
-
-On a build that supports these functions, check that your config has not
-assigned another value to `gnoblin` or `gnoblin.configure`.
 
 ## My component's shortcuts or rules disappeared
 
@@ -78,17 +62,19 @@ Check anchors, escaping and the raw app ID. See [window rules](/guides/window_ru
 Run its command in a terminal. Check that the executable is on PATH.
 Command arguments do not expand `~`, `$HOME` or pipes.
 
-Check for an existing binding in your component config or GNOME keybindings.
+Check for another shortcut in your Gnoblin config that uses the same binding.
+Use `gnoblin.configure.keybindings` to change a built-in action. Set
+`enable = false` on a named `gnoblin.configure.shortcuts` entry to disable it.
 See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
 
 ## Shell integration errors
 
-| Symptom                                                | Check                                                                                                                                                                                                                                    |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json`. Check `windowControlError` and the active socket path. The bridge is built into current source builds; it does not appear in `script list`. See [connection details](gnoblinctl.md#connection-problems). |
-| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                                                                                                              |
-| A Wayland client cannot bind a Gnoblin interface       | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Gates take effect at login, not config reload.                                                                                    |
-| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                                                                                                            |
+| Symptom                                                | Check                                                                                                                                                  |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json` and check `windowControlError` and the active socket path. See [connection details](gnoblinctl.md#connection-problems). |
+| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                            |
+| A Wayland client cannot bind a Gnoblin interface       | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Gates take effect at login, not config reload.  |
+| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                          |
 
 ## Removing a setting does not reset it
 

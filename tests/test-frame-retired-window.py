@@ -37,7 +37,7 @@ export default function(api) {
  });
 }
 """)
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
 qml = root / "retired.qml"
 qml.write_text("""import QtQuick
 import Quickshell

@@ -9,14 +9,14 @@ shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                     | Use it to                              |
-| --------------------------- | -------------------------------------- |
-| `gnoblinctl window list`    | Find open windows and their IDs        |
-| `gnoblinctl window match`   | Show values available to window rules  |
-| `gnoblinctl layer list`     | Find layer-shell rule namespaces       |
-| `gnoblinctl config path`    | Find the config file your session uses |
-| `gnoblinctl config default` | Print the bundled default `init.lua`   |
-| `gnoblinctl config reload`  | Apply edits and report config errors   |
+| Command                     | Use it to                               |
+| --------------------------- | --------------------------------------- |
+| `gnoblinctl window list`    | Find open windows and their IDs         |
+| `gnoblinctl window match`   | Show the values a window rule can match |
+| `gnoblinctl layer list`     | Find layer-surface namespaces           |
+| `gnoblinctl config path`    | Find the config file your session uses  |
+| `gnoblinctl config default` | Print the bundled default `init.lua`    |
+| `gnoblinctl config reload`  | Apply edits and report config errors    |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -35,11 +35,18 @@ gnoblinctl window close 42
 Use an ID from `window list`, or `active` for the focused window.
 IDs last for the window's lifetime, not across logins.
 
-To see the values used by `gnoblin.window_rule`, run `gnoblinctl window match`
-for the focused window or pass an ID from `window list`. The output includes
-the desktop-entry ID, GTK application ID, WM class, and the effective rule
-`app_id`; use that `app_id` and the exact title in your rule. The desktop-entry
-ID shown by `window list` can differ from the rule value.
+To see the exact identity and title used by `gnoblin.window_rule`, run:
+
+```sh
+gnoblinctl window match
+gnoblinctl window match 42 --json
+```
+
+The result includes the GTK application ID, WM class, and `rule_app_id`.
+Gnoblin uses the GTK ID when available and falls back to the WM class. The
+`match` object shows the corresponding `type`, `app_id`, `title`, and current
+`focused` value. Use the raw `app_id` and `title` values in a rule; the CLI's
+`APP ID` column in `window list` is a desktop-entry ID and can be different.
 
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.
@@ -48,19 +55,19 @@ Filter the list with `--focused`, `--app-id ID` or `--title TEXT`.
 
 ## Layer surfaces
 
-List layer-shell surfaces and the namespaces available to window rules with:
+List current layer-shell surfaces and their namespaces with:
 
 ```sh
 gnoblinctl layer list
 ```
 
-Use a listed `namespace` as the rule's `layer` value.
-The `animation surfaces` command reports these targets for layer previews.
+Use a surface's `namespace` as the `layer` value in a window rule. The
+`animation surfaces` command reports the same surfaces for animation previews.
 
 ## Animations
 
-Use `gnoblinctl` to inspect and step through a named animation on a window or
-layer-shell surface. A preview starts paused and changes only the target's
+Use animation previews to inspect registered curves for compatible window and
+layer-shell targets. A preview starts paused and changes only the target's
 visual transform; it does not minimize or close the target.
 
 ```sh
@@ -75,18 +82,24 @@ gnoblinctl animation pause "$session"
 gnoblinctl animation stop "$session"
 ```
 
-Omitting `--window` uses the active window. For layer surfaces, choose
+Omitting `--window` uses the active window. For layer-shell surfaces, choose
 `--layer ID` or `--namespace NAME`; a namespace must resolve to exactly one
-visible surface. `seek` accepts a percentage from 0 to 100; `step` advances by
-milliseconds. `stop` restores the target's original visual state.
+visible surface. `seek` accepts an integer percentage from 0 to 100; `step` advances
+by milliseconds.
 
-`animation list` marks entries that can be previewed against a window or layer
-surface. Workspace, console, shadow, tile-preview, dialog-dimming, and
-layer-companion animations run on internal compositor actors and effects, so
-they cannot be previewed against an external target.
+Seeking to 100% keeps the last frame visible until `stop`,
+which restores the target's original visual state. `inspect` accepts `--event EVENT` to inspect a particular event variant. `preview --autoplay` starts playback immediately.
 
-See the [animation guide](/guides/animations) for custom curves, events, and
-the GNOME and Gnoblin presets.
+`animation surfaces` prints layer surface IDs, namespaces, and titles; layer
+surfaces are not included in `window list`. `animation list` marks entries
+that the current window/layer preview targets can run with `previewable`.
+
+Workspace, console, shadow, tile-preview, dialog-dimming, and layer-companion animations
+run on internal compositor actors or effects, so the current CLI cannot
+preview them against a window or layer surface.
+
+See the [animation guide](/guides/animations) for custom curves, events and
+GNOME-style presets.
 
 ## Move and resize
 
@@ -107,33 +120,50 @@ such as fullscreen or non-resizable windows.
 ```sh
 gnoblinctl workspace list
 gnoblinctl workspace switch 2
+gnoblinctl workspace switch --id code
+gnoblinctl workspace switch --number 2
+gnoblinctl workspace next
+gnoblinctl workspace previous
+gnoblinctl workspace move-active --id code --follow
+gnoblinctl workspace move-active --number 2
 gnoblinctl monitor list
 ```
 
-Workspace positions start at **1**; monitor IDs start at **0**.
-Dynamic workspaces can be renumbered. Refresh the list before reusing an index.
+Workspace numbers are one-based positions and may change when dynamic
+workspaces are removed. Workspace IDs are stable for configured positions;
+unconfigured dynamic workspaces receive IDs that last only for the session.
+Names are display labels and are not identifiers. Use `workspace list` to see
+each workspace's ID, number, name, active state and window count. Monitor IDs
+start at **0**.
 
-Moving a window does not follow it. Focus that window to switch to its workspace.
+Use `--number NUMBER` to select a workspace by its current one-based position.
+`workspace move-active` moves the focused window and switches workspaces only
+when `--follow` is supplied. `window workspace` accepts an ID or a number:
+
+```sh
+gnoblinctl window workspace 42 --id code
+gnoblinctl window workspace 42 --number 2
+```
 
 ## Window actions
 
 Actions without extra arguments accept an optional window ID; they use
 `active` if omitted. The geometry actions require the ID and numbers shown.
 
-| Action                                   | Arguments after action | Effect                                                 |
-| ---------------------------------------- | ---------------------- | ------------------------------------------------------ |
-| `menu`                                   | `[ID]`                 | Open the window menu                                   |
-| `interactive-move`, `interactive-resize` | `[ID]`                 | Begin pointer-driven move or resize                    |
-| `above`, `unabove`                       | `[ID]`                 | Set or clear always-on-top                             |
-| `stick`, `unstick`                       | `[ID]`                 | Show on all workspaces or only its own                 |
-| `focus`, `close`, `minimize`             | `[ID]`                 | Focus, request close, or minimize                      |
-| `restore-or-minimize`                    | `[ID]`                 | Restore a maximized/snapped window; otherwise minimize |
-| `restore`, `maximize`, `unmaximize`      | `[ID]`                 | Change minimization or maximization                    |
-| `fullscreen`, `unfullscreen`             | `[ID]`                 | Enter or leave fullscreen                              |
-| `move`                                   | `ID X Y`               | Set frame position; each coordinate: −100000–100000    |
-| `resize`                                 | `ID WIDTH HEIGHT`      | Set frame size; each dimension: 1–32768                |
-| `workspace`                              | `ID WORKSPACE`         | Move to a one-based workspace: 1–1024                  |
-| `monitor`                                | `ID MONITOR`           | Move to a zero-based monitor: 0–1024                   |
+| Action                                   | Arguments after action                           | Effect                                                 |
+| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| `menu`                                   | `[ID]`                                           | Open the window menu                                   |
+| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                    |
+| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                             |
+| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                 |
+| `focus`, `close`, `minimize`             | `[ID]`                                           | Focus, request close, or minimize                      |
+| `restore-or-minimize`                    | `[ID]`                                           | Restore a maximized/snapped window; otherwise minimize |
+| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                    |
+| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                              |
+| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000    |
+| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768                |
+| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                          |
+| `monitor`                                | `ID MONITOR`                                     | Move to a zero-based monitor: 0–1024                   |
 
 ## Shell and policy commands
 
@@ -189,6 +219,8 @@ IDs, titles and geometry below are illustrative:
             "focused": true,
             "minimized": false,
             "workspace": 1,
+            "workspaceId": "code",
+            "workspaceNumber": 1,
             "monitorIndex": 0,
             "maximized": false,
             "fullscreen": false,
@@ -218,8 +250,8 @@ For workspace lists, `gnoblinctl workspace list --json` returns:
 ```json
 {
     "workspaces": [
-        { "id": 1, "active": true, "windows": 2 },
-        { "id": 2, "active": false, "windows": 0 }
+        { "id": "code", "number": 1, "name": "Code", "active": true, "windows": 2 },
+        { "id": "web", "number": 2, "name": "Web", "active": false, "windows": 0 }
     ]
 }
 ```
@@ -262,5 +294,4 @@ The bridge is built into current Gnoblin source builds, so `script list` does
 not show it. Package integrations that add namespaced operations do appear in
 `script list`; for example, Bingux installs its text-entry integration with
 Bingux. Check `gnoblinctl status`, the running Gnoblin version and the session
-log. Older installed builds may not include the built-in service yet. See
-[CLI development](cli-development.md) for the transport contract.
+log. See [CLI development](cli-development.md) for the transport contract.

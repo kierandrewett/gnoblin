@@ -35,7 +35,7 @@ Debian and Ubuntu use the `gnoblin` package from the signed
 
 The supported targets are Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS.
 Build separately in each distribution's container; do not reuse a newer
-distribution's binary package on an older one.
+distribution's binary package on a different release.
 
 Follow the [container build instructions](https://github.com/kierandrewett/gnoblin/blob/main/packaging/deb/README.md).
 The builder compiles the required newer libraries into `/usr/lib/gnoblin/deps`
@@ -98,10 +98,13 @@ git push origin gnoblin-v0.1.0
 
 The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
 packages and checksums. All three Debian/Ubuntu build and install tests must
-pass before assets are published. Asset names and package metadata include both
-versions; for example, a Debian package is versioned
-`51.0+gnoblin0.1.0-1~debian13`. Dependency sources accompany the binaries.
-Manual dispatch can repair assets for an existing SemVer tag. Historical
+pass before assets are published.
+
+Asset names and package metadata include both versions. For example, a
+Debian package is versioned `51.0+gnoblin0.1.0-1~debian13`. Dependency sources
+accompany the binaries. Manual dispatch can repair assets for an existing
+SemVer tag.
+
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
 The release workflow then publishes the same source RPMs to COPR and installs

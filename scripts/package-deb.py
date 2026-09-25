@@ -35,6 +35,7 @@ SERVICES = (
     "dconf-gsettings-backend",
     "iso-codes",
     "adwaita-icon-theme",
+    "gir1.2-gtk4layershell-1.0",
     "bubblewrap",
     "wireplumber",
     "playerctl",
@@ -70,6 +71,7 @@ def stage_runtime(prefix, stage):
         "bin/gnoblin-session",
         "libexec/gnoblin-seed-config",
         "share/gnoblin/init.lua.example",
+        "share/icons/Adwaita-Hyprcursor",
         "deps/lib64",
         *PUBLIC_FILES,
     ):
@@ -227,7 +229,15 @@ def main():
             )
             + "\n"
         )
-        shutil.copy2(ROOT / "COPYING", docs / "copyright")
+        copyright_text = (ROOT / "COPYING").read_text()
+        copyright_text += (
+            "\n\nFiles: src/cursor/adwaita/*\n"
+            "Copyright: GNOME Project\n"
+            "License: LGPL-3.0-or-later or CC-BY-SA-3.0\n"
+            " The Adwaita cursor artwork is available under either license.\n"
+            " Full license texts are installed with the Adwaita-Hyprcursor theme.\n"
+        )
+        (docs / "copyright").write_text(copyright_text)
         for source in [
             *(ROOT / "subprojects").glob("*"),
             *(ROOT / "build/dependencies").glob("*/source"),

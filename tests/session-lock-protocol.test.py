@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check ext-session-lock-v1 wiring and the compositor's fail-closed paths."""
+"""Guard the fail-closed boundary around ext-session-lock-v1.
+
+This is deliberately a source-level test.  A real compositor session is still
+required before the protocol can be advertised; see the session-lock design
+document for that acceptance suite.
+"""
 
 from pathlib import Path
 import unittest
@@ -16,10 +21,7 @@ INPUT_PATCH_DIR = ROOT / "patches/mutter/72-session-lock-input"
 
 class SessionLockProtocolTests(unittest.TestCase):
     def test_standard_protocol_contains_required_lock_objects(self):
-        interfaces = {
-            interface.attrib["name"]: interface
-            for interface in ET.parse(XML).getroot().findall("interface")
-        }
+        interfaces = {interface.attrib["name"]: interface for interface in ET.parse(XML).getroot().findall("interface")}
         self.assertEqual(
             set(interfaces),
             {
@@ -28,18 +30,17 @@ class SessionLockProtocolTests(unittest.TestCase):
                 "ext_session_lock_surface_v1",
             },
         )
-        self.assertIsNotNone(
-            interfaces["ext_session_lock_v1"].find("request[@name='unlock_and_destroy']")
-        )
-        self.assertIsNotNone(
-            interfaces["ext_session_lock_v1"].find("event[@name='locked']")
-        )
+        self.assertIsNotNone(interfaces["ext_session_lock_v1"].find("request[@name='unlock_and_destroy']"))
+        self.assertIsNotNone(interfaces["ext_session_lock_v1"].find("event[@name='locked']"))
 
-    def test_manager_is_advertised_only_for_gnoblin_sessions(self):
+    def test_manager_is_gnoblin_session_scoped_and_owns_its_global(self):
         source = SOURCE.read_text()
         self.assertIn('gnoblin_config_protocol_enabled ("ext-session-lock")', source)
+        self.assertIn("GNOME_SHELL_SESSION_MODE=gnoblin", source)
         self.assertIn("wl_global_create", source)
-        self.assertIn("controller->global ? 1 : 0", source)
+        self.assertIn("session_lock_manager_bind", source)
+        self.assertIn("wl_global_destroy", source)
+        self.assertIn("controller && controller->global ? 1 : 0", source)
         self.assertIn("session_lock_manager_interface", source)
 
     def test_failsafe_keeps_cover_and_input_embargo_in_compositor(self):

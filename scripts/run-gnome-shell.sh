@@ -297,8 +297,20 @@ if [ -n "${GNOBLIN_TEST_CLIENT:-}" ]; then
     if [ ! -x "$GNOBLIN_TEST_CLIENT" ]; then
         echo "!! protocol test client is not executable: $GNOBLIN_TEST_CLIENT" >&2
         client_ok=0
-    elif ! WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_CLIENT"; then
+    elif ! GNOBLIN_TEST_SHELL_PID_FILE="$SHELL_REAL_PID_FILE" \
+        WAYLAND_DISPLAY="$DISP" DBUS_SESSION_BUS_ADDRESS="$bus_address" "$GNOBLIN_TEST_CLIENT"; then
         client_ok=0
+    elif [ "${GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT:-0}" = 1 ]; then
+        for _ in $(seq 1 30); do
+            kill -0 "$SHELL_PID" 2>/dev/null || break
+            sleep 0.1
+        done
+        if kill -0 "$SHELL_PID" 2>/dev/null; then
+            echo "!! test client expected gnome-shell to exit, but it is still running" >&2
+            client_ok=0
+        else
+            echo "== expected compositor shutdown observed =="
+        fi
     elif ! timeout 5s env WAYLAND_DISPLAY="$DISP" "$probe" >/dev/null; then
         echo "!! compositor did not respond after protocol client disconnect" >&2
         client_ok=0

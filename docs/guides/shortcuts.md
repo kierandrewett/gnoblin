@@ -1,8 +1,11 @@
-# Shortcuts
+# shortcuts
 
 [Configuration reference](/config/configure)
 
-Use `gnoblin.configure {shortcuts = {...}}` to launch a program with a key combination, including a media key. Use `keybindings` to change built-in actions such as closing a window. Add the examples to `~/.config/gnoblin/init.lua`; both reload on save.
+Gnoblin reads global shortcuts from its Lua config. Use
+`gnoblin.configure.shortcuts` to run commands and
+`gnoblin.configure.keybindings` to change built-in GNOME actions. Add the
+examples to `~/.config/gnoblin/init.lua`; changes apply when the config reloads.
 
 ## Launch a command
 
@@ -22,34 +25,41 @@ gnoblin.configure {
 Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
-Names use letters, numbers, `_` and `-`. Up to 256 command shortcuts are allowed.
-Disabling one releases its binding; it does not stop a launched program.
+Shortcut names use letters, numbers, `_` and `-`. A config can declare up to
+256 shortcuts. Removing a command shortcut releases its binding; it does not
+stop a launched program.
 
-## Disable a shortcut
+## Open an application launcher
 
-`enable = false` disables an imported shortcut for this config load. Use it when a shell's config supplies a shortcut you do not want:
+Bind Fuzzel to Super+D:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {my_terminal = {enable = false}},
+    shortcuts = {
+        launcher = {binding = "<Super>d", command = {"fuzzel"}},
+    },
 }
 ```
 
-The config is rebuilt on every reload. This releases that entry's binding;
-it does not change GNOME's built-in keybindings or shortcuts belonging to
-other programs. Put the setting after the file that adds the shortcut;
-[load order](/guides/files_and_load_order#override-or-append) matters.
+![Fuzzel searching installed applications in Gnoblin](../images/gnoblin-build-a-desktop.png)
 
-Lua can inspect the shortcuts declared so far. For example, this disables
-every named playback command in the bundled config:
+## Remove a shortcut
+
+Set `enable = false` to disable a named shortcut added by another config file:
 
 ```lua
-for name, shortcut in pairs(gnoblin.configure.shortcuts) do
-    if name:match("^media%-") then
-        shortcut.enable = false
-    end
-end
+gnoblin.configure {
+    shortcuts = {
+        my_terminal = {enable = false},
+    },
+}
 ```
+
+The config is rebuilt on every reload. Disabling a command shortcut releases
+its binding. Shortcuts registered by other programs are unaffected.
+
+Put the removal after the file that adds the shortcut. See
+[load order](/guides/files_and_load_order#override-or-append).
 
 ## Key names
 
@@ -61,73 +71,71 @@ end
 | `"Super"`           | Super press and release, without another key |
 
 Super is usually the Windows-logo key. Put modifiers in angle brackets and
-the main key after them. This is [GTK accelerator syntax](https://docs.gtk.org/gtk4/func.accelerator_parse.html).
-Held keys do not repeatedly launch commands.
-Command shortcuts are inactive on the lock and login screens.
+the main key after them. This is
+[GTK accelerator syntax](https://docs.gtk.org/gtk4/func.accelerator_parse.html).
 
-## Run a command on release
-
-Command shortcuts run when the key combination is pressed. Set `trigger` to
-`"release"` to launch after the combination is released:
-
-```lua
-gnoblin.configure {
-    shortcuts = {
-        launcher = {
-            binding = "<Super>space",
-            command = {"my-launcher"},
-            trigger = "release",
-        },
-    },
-}
-```
-
-This lets a launcher start after the shortcut chord is complete. Bare `"Super"`
-already runs on release; Mutter waits to see whether another key joins the
-chord before emitting its overlay-key event.
+Held keys do not repeatedly launch commands. Command shortcuts are inactive on
+the lock and login screens.
 
 ## Change a built-in action
 
 ```lua
 gnoblin.configure {
+    keybindings = {
+        wm = {close = {"<Super>q"}},
+    },
+}
+```
+
+Built-in actions accept a list of accelerator strings. Use an empty list to
+disable one. The group must be `shell`, `wm`, `mutter`, or `wayland`; each group
+maps to a GNOME GSettings keybinding schema. The action names and defaults
+depend on your installed GNOME version; Gnoblin does not define a fixed list for
+every version.
+
+Find the schema and action names on your system with
+`gsettings list-schemas` and `gsettings list-keys SCHEMA`. Run
+`gsettings describe SCHEMA KEY` to read an action's description. GSettings prints
+`show-screenshot-ui`; the Lua key is `shell.show_screenshot_ui`.
+The [keybinding reference](/config/configure/keybindings) lists all four
+groups and gives examples.
+
+GNOME Settings edits do not change Gnoblin's active bindings. Removing an
+override restores the default on reload.
+
+## Media keys
+
+Media keys use command shortcuts. The starter config includes editable volume,
+microphone mute, brightness, and playback controls.
+
+Run `gnoblinctl config path` to see the config file used by your session. Run
+`gnoblinctl config default` to print the packaged starter config. For example,
+a volume key can run `wpctl` directly:
+
+```lua
+gnoblin.configure {
     shortcuts = {
-        close_window = {
-            action = {
-                schema = "org.gnome.desktop.wm.keybindings",
-                key = "close",
-            },
-            binding = {"<Super>q"},
+        ["volume-up"] = {
+            binding = "XF86AudioRaiseVolume",
+            command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"},
         },
     },
 }
 ```
 
-`action` names a GSettings schema and key. Use `gsettings list-keys SCHEMA`
-to find keys and `gsettings describe SCHEMA KEY` to read what one does. For
-example:
-
-```sh
-gsettings list-keys org.gnome.desktop.wm.keybindings
-gsettings describe org.gnome.desktop.wm.keybindings close
-```
-
-Copy the schema ID and native key spelling into the `action` table. For
-example, use `schema = "org.gnome.desktop.wm.keybindings"` and `key = "close"`.
-The [shortcut reference](/config/configure/shortcuts) lists the GNOME 51 keys
-with descriptions and maps each schema to its purpose. Other GNOME versions
-may provide different keys. The Lua config shows Gnoblin's active bindings;
-the list from GSettings shows available keys. Use an empty binding list to
-disable an action. Removing the entry restores its built-in default on reload.
-Commands and built-in actions share the same `shortcuts` map.
+Edit or remove these entries in your Lua config to change the media-key
+behavior. The commands they call must be installed.
 
 ## Avoid conflicts
 
 To override an imported shortcut, use the same map key. Only supplied fields
 change. Different names must use different bindings. See the
-[desktop setup example](/recipes/small-desktop).
+[override example](/recipes/add-a-shortcut).
 
-An existing GNOME action can also own the key. Disable or rebind that action
-first. Invalid or conflicting edits keep the previous working registrations.
+A built-in action may already use the key. Change or disable it through
+`gnoblin.configure.keybindings` before assigning the same key to a command.
+Gnoblin rejects duplicate bindings in the config and keeps the previous
+working registrations if a reload contains an invalid or conflicting shortcut.
 
 ## Commands and shell syntax
 
@@ -137,7 +145,7 @@ Use an absolute path, a program on PATH, or explicitly run a shell:
 ```lua
 gnoblin.configure {
     shortcuts = {
-        log_time = {
+        ["log-time"] = {
             binding = "<Super><Shift>t",
             command = {"sh", "-c", "date >> \"$HOME/shortcut.log\""},
         },
@@ -147,11 +155,10 @@ gnoblin.configure {
 
 This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
-## Buffer typing while a popup opens
+## Popups that capture typing
 
-A shortcut can set `capture_input = true` to buffer typing between activation
-and popup focus. The popup must implement the
-[input handoff protocol](/compositor-bridge). This is separate from choosing
-whether the command runs on press or release.
+A shortcut can set `capture_input = true` to buffer typing while a popup
+starts. The popup must implement the [input handoff protocol](/compositor-bridge).
+Do not enable it for ordinary terminal or application launch commands.
 
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

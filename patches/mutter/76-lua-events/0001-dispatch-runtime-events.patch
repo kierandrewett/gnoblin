@@ -1,0 +1,219 @@
+From 16a09db174775a54de0ef79f70ab2beefb0494f0 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 01:47:25 +0100
+Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
+
+---
+ src/core/display.c                 |  9 ++++
+ src/core/util.c                    | 67 +++++++++++++++++++++++++++++-
+ src/meta/display.h                 |  5 +++
+ src/meta/util.h                    |  8 ++++
+ src/wayland/meta-wayland-pointer.c | 26 ++++++++++++
+ 5 files changed, 114 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/display.c b/src/core/display.c
+index 45b860eb8..91c4769b9 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -158,6 +158,7 @@ enum
+   ACCELERATOR_DEACTIVATED,
+   MODIFIERS_ACCELERATOR_ACTIVATED,
+   FOCUS_WINDOW,
++  GNOBLIN_CONFIG_EVENT,
+   WINDOW_CREATED,
+   WINDOW_DEMANDS_ATTENTION,
+   WINDOW_MARKED_URGENT,
+@@ -351,6 +352,14 @@ meta_display_class_init (MetaDisplayClass *klass)
+                   NULL, NULL, NULL,
+                   G_TYPE_NONE, 2, META_TYPE_WINDOW, G_TYPE_INT64);
+ 
++  display_signals[GNOBLIN_CONFIG_EVENT] =
++    g_signal_new ("gnoblin-config-event",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL, NULL,
++                  G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_VARIANT);
++
+   display_signals[WINDOW_CREATED] =
+     g_signal_new ("window-created",
+                   G_TYPE_FROM_CLASS (klass),
+diff --git a/src/core/util.c b/src/core/util.c
+index 5b89e5ce2..06accd2fb 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -170,15 +170,19 @@ GVariant *
+ meta_gnoblin_load_config (const char *path)
+ {
+   GVariantBuilder result;
++  g_auto (GStrv) events = NULL;
+   g_autoptr (GPtrArray) paths = NULL;
+   g_autoptr (GPtrArray) directories = NULL;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) document = NULL;
+ 
+   g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
+-  document = gnoblin_config_load_document (path, &paths, &directories, &error);
++  document = gnoblin_config_load_runtime (path, &paths, &directories, &error);
+   if (document)
+     g_variant_builder_add (&result, "{sv}", "document", document);
++  events = gnoblin_config_runtime_events ();
++  g_variant_builder_add (&result, "{sv}", "events",
++                         g_variant_new_strv ((const char * const *) events, -1));
+   g_variant_builder_add (&result, "{sv}", "paths",
+                          g_variant_new_strv (
+                            paths ? (const char * const *) paths->pdata : NULL,
+@@ -793,3 +797,64 @@ meta_encode_hex (gpointer data,
+ 
+   return g_string_free_and_steal (encoded);
+ }
++
++void
++meta_gnoblin_finish_config_load (gboolean commit)
++{
++#ifdef HAVE_WAYLAND
++  gnoblin_config_finish_load (commit);
++#endif
++}
++
++GVariant *
++meta_gnoblin_dispatch_config_event (const char *event,
++                                    GVariant *payload)
++{
++  GVariantBuilder result;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) document = NULL;
++
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++#ifdef HAVE_WAYLAND
++  document = gnoblin_config_dispatch_event (event, payload, &error);
++  if (document)
++    g_variant_builder_add (&result, "{sv}", "document", document);
++#else
++  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
++                       "Gnoblin config events require Wayland support");
++#endif
++  if (error)
++    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
++
++void
++meta_gnoblin_finish_config_event (gboolean commit)
++{
++#ifdef HAVE_WAYLAND
++  gnoblin_config_finish_event (commit);
++#endif
++}
++
++void
++meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++                                     const char  *event,
++                                     GVariant    *payload)
++{
++#ifdef HAVE_WAYLAND
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) document =
++    gnoblin_config_dispatch_event (event, payload, &error);
++
++  if (error)
++    {
++      g_warning ("gnoblin Lua event %s: %s", event, error->message);
++      return;
++    }
++  if (document)
++    {
++      g_signal_emit_by_name (display, "gnoblin-config-event", event, document);
++      gnoblin_config_finish_event (TRUE);
++    }
++#endif
++}
+diff --git a/src/meta/display.h b/src/meta/display.h
+index 8773263e0..d40d2ca75 100644
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -105,6 +105,11 @@ META_EXPORT
+ void meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+                                               GVariant    *input);
+ 
++META_EXPORT
++void meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++                                          const char  *event,
++                                          GVariant    *payload);
++
+ META_EXPORT
+ MetaWindow *meta_display_get_focus_window (MetaDisplay *display);
+ 
+diff --git a/src/meta/util.h b/src/meta/util.h
+index f1229453a..b522e30d2 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -110,6 +110,14 @@ char * meta_accelerator_name (ClutterModifierType accelerator_mods,
+ META_EXPORT
+ GVariant *meta_gnoblin_load_config (const char *path);
+ 
++META_EXPORT
++void meta_gnoblin_finish_config_load (gboolean commit);
++META_EXPORT
++GVariant *meta_gnoblin_dispatch_config_event (const char *event,
++                                               GVariant *payload);
++META_EXPORT
++void meta_gnoblin_finish_config_event (gboolean commit);
++
+ META_EXPORT
+ GVariant *meta_gnoblin_console_lua (const char *operation, const char *source);
+ 
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index b33b3a845..48651566c 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -54,6 +54,9 @@
+ #include "backends/meta-cursor-xcursor.h"
+ #include "clutter/clutter.h"
+ #include "cogl/cogl.h"
++#include "meta/display.h"
++#include "meta/meta-context.h"
++#include "meta/window.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "meta/meta-cursor-tracker.h"
+ #include "wayland/meta-cursor-wayland.h"
+@@ -1139,6 +1142,10 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
+   MetaBackend *backend = backend_from_pointer (pointer);
+   MetaCursorTracker *cursor_tracker = meta_backend_get_cursor_tracker (backend);
+   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
++  MetaWaylandCompositor *compositor = meta_wayland_seat_get_compositor (seat);
++  MetaDisplay *display = meta_context_get_display (
++    meta_wayland_compositor_get_context (compositor));
+   ClutterSeat *clutter_seat = clutter_backend_get_default_seat (clutter_backend);
+   MetaWindow *toplevel_window;
+   struct wl_client *old_client = NULL;
+@@ -1153,6 +1160,25 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
+   if (pointer->focus_surface == surface)
+     return;
+ 
++  {
++    MetaWindow *window = surface ? meta_wayland_surface_get_window (surface) : NULL;
++    const char *app_id = window ? meta_window_get_gtk_application_id (window) : NULL;
++    const char *wm_class = window ? meta_window_get_wm_class (window) : NULL;
++    const char *title = window ? meta_window_get_title (window) : NULL;
++    GVariantBuilder payload;
++    g_autoptr (GVariant) event = NULL;
++
++    g_variant_builder_init (&payload, G_VARIANT_TYPE_VARDICT);
++    g_variant_builder_add (&payload, "{sv}", "app_id",
++                           g_variant_new_string (app_id ? app_id : ""));
++    g_variant_builder_add (&payload, "{sv}", "wm_class",
++                           g_variant_new_string (wm_class ? wm_class : ""));
++    g_variant_builder_add (&payload, "{sv}", "title",
++                           g_variant_new_string (title ? title : ""));
++    event = g_variant_ref_sink (g_variant_builder_end (&payload));
++    meta_display_dispatch_gnoblin_event (display, "pointer_window_changed", event);
++  }
++
+   if (pointer->focus_surface && pointer->focus_surface->resource)
+     old_client = wl_resource_get_client (pointer->focus_surface->resource);
+   if (surface && surface->resource)
+-- 
+2.55.0
+

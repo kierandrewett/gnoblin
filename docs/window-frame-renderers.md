@@ -10,6 +10,20 @@ executable path is also accepted. See the
 For configuration, see [titlebars](/guides/window_frames).
 For implementation steps, see [write a renderer](frame-renderer-api.md).
 
+## Terms in the protocol
+
+| Term          | Meaning                                                          | Values or reference                                                                                                                                     |
+| ------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frame handle  | Protocol object for one window's frame.                          | Created by Gnoblin; destroyed when the frame closes.                                                                                                    |
+| `configure`   | Message describing the buffer Gnoblin can accept.                | Includes a serial, dimensions, extents, state flags, title, app ID, and style. See the [field definitions](/frame-renderer-api#configure-event-fields). |
+| State         | Bit field describing focus, window state, and available actions. | Test the flags listed in the [renderer API](/frame-renderer-api#state-flags).                                                                           |
+| Region action | Numeric operation assigned to a rectangular hit area.            | Drag, close, maximise/restore, minimise, or resize; see [action values](/frame-renderer-api#input-regions).                                             |
+| Renderer name | Key under `frame_renderers` that a window rule selects.          | Any unique configured name except reserved `native`.                                                                                                    |
+
+For example, `region(2, x, y, width, height)` assigns action `2` (close) to a
+logical-pixel rectangle. The API reference lists every action number and the
+required request order.
+
 ## Ownership
 
 | Gnoblin                          | Renderer                 |
@@ -23,6 +37,23 @@ For implementation steps, see [write a renderer](frame-renderer-api.md).
 One process can render many frames. Gnoblin passes it a private Wayland
 connection; only that connection sees the frame global. This limits protocol
 capabilities, not the executable's OS access.
+
+Register the executable and select it from a matching rule:
+
+```lua
+gnoblin.configure {
+    frame_renderers = {compact = {"gnoblin-frame-cairo"}},
+}
+
+gnoblin.window_rule {
+    match = {type = "window"},
+    frame = {mode = "auto", renderer = "compact"},
+}
+```
+
+`mode` controls which windows receive a frame. Its values and defaults are in
+the [frame fields reference](/config/window_rule#frame-fields). `renderer`
+must name an entry registered in `frame_renderers`.
 
 ## Commit sequence
 

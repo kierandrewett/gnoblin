@@ -15,7 +15,7 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index da691f3..276bc2b 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -156,6 +156,7 @@
+@@ -156,7 +157,8 @@
      <file>ui/components/gnoblinFrames.js</file>
      <file>ui/components/gnoblinFramePolicy.js</file>
      <file>ui/components/gnoblinControl.js</file>

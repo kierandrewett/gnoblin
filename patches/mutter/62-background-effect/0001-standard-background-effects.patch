@@ -10,7 +10,7 @@ synchronised subsurface transactions. Expose committed regions to the shell.
  src/wayland/meta-wayland-background-effect.c | 361 +++++++++++++------
  src/wayland/meta-wayland-background-effect.h |  27 +-
  src/wayland/meta-wayland-surface.c           |   2 +
- 4 files changed, 272 insertions(+), 125 deletions(-)
+ 4 files changed, 268 insertions(+), 125 deletions(-)
 
 diff --git a/src/wayland/meta-wayland-actor-surface.c b/src/wayland/meta-wayland-actor-surface.c
 index d1e1d7709..cb201ab19 100644
@@ -37,7 +37,7 @@ diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-way
 index 41fb2a276..33e408edc 100644
 --- a/src/wayland/meta-wayland-background-effect.c
 +++ b/src/wayland/meta-wayland-background-effect.c
-@@ -1,152 +1,281 @@
+@@ -1,152 +1,277 @@
 -/* SPDX-License-Identifier: GPL-2.0-or-later */
 -/* ext-background-effect-v1: commit-synchronised, surface-local blur regions. */
 +/*
@@ -69,7 +69,6 @@ index 41fb2a276..33e408edc 100644
 +#include "meta/display.h"
 +#include "meta/meta-context.h"
 +#include "meta/util.h"
-+#include "wayland/gnoblin-config.h"
  #include "wayland/meta-wayland-private.h"
  #include "wayland/meta-wayland-region.h"
  #include "wayland/meta-wayland-surface-private.h"
@@ -346,9 +345,6 @@ index 41fb2a276..33e408edc 100644
 +void
 +meta_wayland_init_background_effect (MetaWaylandCompositor *compositor)
 +{
-+  if (!gnoblin_config_protocol_enabled ("ext-background-effect-v1"))
-+    return;
-+
 +  if (g_signal_lookup ("gnoblin-background-effect-changed", META_TYPE_DISPLAY) == 0)
 +    g_signal_new ("gnoblin-background-effect-changed",
 +                  META_TYPE_DISPLAY,

@@ -4,19 +4,12 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import time
 
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 config = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
-package_scripts = Path("/usr/lib/gnoblin/share/gnoblin/scripts")
-if package_scripts.is_dir():
-    shutil.copytree(package_scripts, config / "scripts")
-else:
-    # No package integrations are installed yet; the user script path still
-    # exists and can be populated independently.
-    (config / "scripts").mkdir(parents=True)
+config.mkdir(parents=True, exist_ok=True)
 (config / "init.lua").write_text(
     'gnoblin.window_rule { match = { type = "window", focused = false }, opacity = 0.95 }\n'
 )

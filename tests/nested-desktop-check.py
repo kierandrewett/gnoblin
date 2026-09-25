@@ -54,7 +54,7 @@ if __name__ == "__main__":
     time.sleep(0.2)
     for cycle in range(4):
         if cycle:
-            run(["gnoblinctl", "script", "reload"])
+            run(["gnoblinctl", "reload"])
             run(["gnoblinctl", "config", "reload"])
             time.sleep(1)
         rows = evaluate(

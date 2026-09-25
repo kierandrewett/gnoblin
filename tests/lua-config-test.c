@@ -34,7 +34,7 @@ int main(void) {
         "to={scale_x=1} }\n"
         "g.animation { name='test-open', duration=260 }\n"
         "g.animation { name='removed', event='close', from={opacity=1}, to={opacity=0} }\n"
-        "g.animation { name='removed', enable=false }\n"
+        "g.remove_animation('removed')\n"
         "g.config.keybindings={shell={show_screenshot_ui={}}}\n"
         "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));
@@ -97,8 +97,8 @@ int main(void) {
         g_autoptr(GVariant) example_shortcuts =
             g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
         g_assert_nonnull(example_shortcuts);
-        /* The seed has ten commands, two built-in actions and one shell shortcut. */
-        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 13);
+        /* The seeded file keeps the shell fragment plus its ten own shortcuts. */
+        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 11);
     }
 
     g_assert_true(g_file_set_contents(explicit_root, "return { shell={osd=true} }\n", -1, &error));

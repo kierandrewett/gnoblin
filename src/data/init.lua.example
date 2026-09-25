@@ -2,7 +2,7 @@
 -- This file is copied to ~/.config/gnoblin/init.lua on first login only when
 -- no init.lua, gnoblin.toml, or gnoblin.conf already exists. Edit and save it;
 -- Gnoblin reloads valid changes automatically.
--- Full reference: https://kierandrewett.github.io/gnoblin/config
+-- Full reference: https://kierandrewett.github.io/gnoblin/configuration-reference/
 
 -- Load shell/component defaults first. Files are evaluated in sorted order;
 -- your values below then override imported values.
@@ -26,6 +26,7 @@ gnoblin.configure {
         dynamic_workspaces = false,
         num_workspaces = 4, -- 1..36; used when dynamic_workspaces is false
         workspace_names = {}, -- up to 36 strings, in workspace order
+        workspace_ids = {}, -- up to 36 unique stable IDs, in workspace order
         workspaces_only_on_primary = false,
         edge_tiling = false,
         center_new_windows = false,
@@ -65,6 +66,7 @@ gnoblin.configure {
         },
         touchpad = {
             -- speed = 0.0, -- -1..1
+            -- scroll_speed = 1.0, -- 0..2; 1 is the default, 0.5 is half speed
             -- left_handed = "mouse", -- "right", "left", "mouse"
             -- natural_scroll = true,
             -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
@@ -131,8 +133,7 @@ gnoblin.configure {
     -- Protocol switches are booleans. Available names:
     -- wlr_layer_shell, wlr_screencopy, ext_foreign_toplevel_list,
     -- wlr_foreign_toplevel_management, ext_data_control, ext_idle_notify,
-    -- wlr_gamma_control, wlr_output_power_management, ext_background_effect_v1,
-    -- ext_session_lock, xdg_decoration, window_frame_renderer, blur_fade.
+    -- wlr_gamma_control, wlr_output_power_management, ext_background_effect_v1.
 
     -- Layer-shell clients can preserve the active app when they appear.
     layer_shell = {
@@ -146,54 +147,50 @@ gnoblin.configure {
     --     cairo = {"gnoblin-frame-cairo", "--theme-file=frame-theme.txt"},
     -- },
 
-    -- Command and built-in action shortcuts live in this named map.
-    -- An entry with the same name overrides imported fields. Set enable =
-    -- false to disable one. Accelerators use GTK syntax, such as <Super>Return.
-    shortcuts = {
-        screenshot = {
-            action = {
-                schema = "org.gnome.shell.keybindings",
-                key = "show-screenshot-ui",
-            },
-            binding = {"Print"},
-        },
-        close_window = {
-            action = {
-                schema = "org.gnome.desktop.wm.keybindings",
-                key = "close",
-            },
-            binding = {"<Alt>F4"},
-        },
-        ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
-        ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
-        ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
-        ["microphone-mute"] = {binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}},
-        ["brightness-up"] = {binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}},
-        ["brightness-down"] = {binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}},
-        ["media-play-pause"] = {binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}},
-        ["media-next"] = {binding = "XF86AudioNext", command = {"playerctl", "next"}},
-        ["media-previous"] = {binding = "XF86AudioPrev", command = {"playerctl", "previous"}},
-        files = {binding = "<Super>e", command = {"sh", "-c", 'gio open "$HOME"'}},
-    },
+    -- Command and built-in action shortcuts share one list. Built-in action
+    -- bindings use a semantic action name and an accelerator list. GNOME
+    -- Shell actions use gnome:shell.*, for example gnome:shell.show_screenshot_ui.
+    shortcuts = {},
 
     -- Start each named command once per login. Commands are argv arrays, not
-    -- shell strings; use a script path if shell syntax is required.
-    -- autostart = {bar = {command = {"waybar"}}},
+    -- shell strings; use a script path if shell syntax is required. `restart`
+    -- may be "never", "on_failure", or "always".
+    autostart = {},
+    -- Example: autostart = {{name = "bar", command = {"waybar"}, when = "on_login"}},
 
-    -- Add ordered window rules here. Later matching rules override fields they
-    -- specify. Match by type, focused, app_id, title, or layer.
-    -- window_rules = {}, -- uncomment to clear imported rules
+-- Add ordered window rules here. Later matching rules override fields they
+-- specify. Match by type, focused, app_id, title, or layer.
+window_rules = {},
 }
 
--- Register custom transitions once and reuse them in shell settings or rules.
+-- Register custom transitions once and reuse them by name in shell settings
+-- or window rules. See /guides/animations for events and preview controls.
 -- gnoblin.animation {
 --     name = "soft-open",
 --     event = "open",
 --     duration = 280,
 --     ease = "ease-out-cubic",
+--     origin = "center",
 --     from = {y = 18, scale = 0.94, opacity = 0},
 --     to = {y = 0, scale = 1, opacity = 1},
 -- }
+
+-- Media keys are ordinary editable command shortcuts. These commands are
+-- provided by WirePlumber, playerctl, and brightnessctl runtime dependencies.
+-- Built-in actions use the same API with an action name and accelerator list.
+gnoblin.shortcut {name = "screenshot", action = "gnome:shell.show_screenshot_ui", binding = {"Print"}}
+gnoblin.shortcut {name = "volume-up", binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}}
+gnoblin.shortcut {name = "volume-down", binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}}
+gnoblin.shortcut {name = "volume-mute", binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}}
+gnoblin.shortcut {name = "microphone-mute", binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}}
+gnoblin.shortcut {name = "brightness-up", binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}}
+gnoblin.shortcut {name = "brightness-down", binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}}
+gnoblin.shortcut {name = "media-play-pause", binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}}
+gnoblin.shortcut {name = "media-next", binding = "XF86AudioNext", command = {"playerctl", "next"}}
+gnoblin.shortcut {name = "media-previous", binding = "XF86AudioPrev", command = {"playerctl", "previous"}}
+
+-- GNOME's GLib utilities provide gio; open the user's home folder.
+gnoblin.shortcut {name = "files", binding = "<Super>e", command = {"sh", "-c", 'gio open "$HOME"'}}
 
 -- A complete effect rule. Uncomment or add individual fields as needed.
 -- gnoblin.window_rule {
@@ -248,12 +245,20 @@ gnoblin.configure {
 --     clipboard = false, -- remote-desktop only
 -- }
 
--- Add a command shortcut, or use an imported name to change its fields.
--- gnoblin.configure {shortcuts = {terminal = {binding = "<Super>Return", command = {"ptyxis"}}}}
--- gnoblin.configure.shortcuts.terminal.enable = false
--- Start a program once per login, unless a service already starts it.
--- gnoblin.configure {autostart = {bar = {command = {"waybar"}}}}
--- gnoblin.configure.autostart.bar.enable = false
+-- Named declarations can be edited from later-loaded config files.
+-- gnoblin.configure {
+--     shortcuts = {
+--         terminal = {
+--             binding = "<Super>Return",
+--             command = {"YOUR_TERMINAL", "--new-window"}, -- replace with an installed executable
+--         },
+--     },
+--     autostart = {
+--         bar = {command = {"waybar"}, restart = "on_failure"},
+--     },
+-- }
+-- Disable an imported entry by setting its enable field to false:
+-- gnoblin.configure {shortcuts = {terminal = {enable = false}}}
 
 -- Advanced input overrides. Most people should leave these commented out:
 -- Gnoblin then follows each tablet/pen's existing settings and the system's
@@ -287,3 +292,9 @@ gnoblin.configure {
 -- Lua file making the load call; globs are sorted and recursive.
 -- gnoblin.load("appearance.lua")
 -- gnoblin.configure(require("bindings"))
+
+-- React to a focused application and adjust touchpad speed at runtime:
+-- gnoblin.on("pointer_window_changed", function(window)
+--     local speed = window.app_id == "org.chromium.Chromium" and 0.3 or 1.0
+--     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
+-- end)

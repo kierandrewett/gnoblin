@@ -2,29 +2,68 @@
 
 Configure this part of `gnoblin.configure` with the `window_management` key.
 
-Inside `gnoblin.configure {window_management = {...}}`. Values apply on reload
-and omitted fields return to the Gnoblin defaults below.
+Put these fields inside `gnoblin.configure {window_management = {...}}`.
+Changes apply on configuration reload. Omitted fields use the defaults below.
 
-| Key                                                               | Values                                                | Default                  |
-| ----------------------------------------------------------------- | ----------------------------------------------------- | ------------------------ |
-| `focus_mode`                                                      | `"click"`, `"sloppy"`, `"mouse"`                      | `"click"`                |
-| `focus_new_windows`                                               | `"smart"`, `"strict"`                                 | `"smart"`                |
-| `raise_on_click`, `auto_raise`, `focus_change_on_pointer_rest`    | Boolean                                               | `true`, `false`, `false` |
-| `auto_raise_delay`                                                | 0–10000 ms                                            | `500`                    |
-| `action_double_click_titlebar`                                    | Titlebar action below                                 | `"toggle-maximize"`      |
-| `action_middle_click_titlebar`                                    | Titlebar action below                                 | `"lower"`                |
-| `action_right_click_titlebar`                                     | Titlebar action below                                 | `"menu"`                 |
-| `dynamic_workspaces`, `workspaces_only_on_primary`, `edge_tiling` | Boolean                                               | `false`                  |
-| `num_workspaces`                                                  | 1–36; used when dynamic workspaces are off            | `4`                      |
-| `workspace_names`                                                 | Array of up to 36 strings, each at most 80 characters | `{}`                     |
-| `center_new_windows`, `attach_modal_dialogs`                      | Boolean                                               | `false`                  |
-| `constrain_drag_to_work_area`                                     | Boolean                                               | `true`                   |
+| Key                            | Values                                       | Default             | Effect                                                      |
+| ------------------------------ | -------------------------------------------- | ------------------- | ----------------------------------------------------------- |
+| `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"`             | `"click"`           | Focus on click, pointer entry, or pointer movement.         |
+| `focus_new_windows`            | `"smart"`, `"strict"`                        | `"smart"`           | Controls whether newly opened windows may take focus.       |
+| `raise_on_click`               | Boolean                                      | `true`              | Raise a window when clicked.                                |
+| `auto_raise`                   | Boolean                                      | `false`             | Raise the focused window automatically.                     |
+| `focus_change_on_pointer_rest` | Boolean                                      | `false`             | Change focus when the pointer stops over another window.    |
+| `auto_raise_delay`             | 0–10000 ms                                   | `500`               | Delay before automatic raise.                               |
+| `action_double_click_titlebar` | Titlebar action below                        | `"toggle-maximize"` | Action for a titlebar double-click.                         |
+| `action_middle_click_titlebar` | Titlebar action below                        | `"lower"`           | Action for a titlebar middle-click.                         |
+| `action_right_click_titlebar`  | Titlebar action below                        | `"menu"`            | Action for a titlebar right-click.                          |
+| `dynamic_workspaces`           | Boolean                                      | `false`             | Create and remove workspaces as needed.                     |
+| `workspaces_only_on_primary`   | Boolean                                      | `false`             | Keep workspaces on the primary monitor.                     |
+| `edge_tiling`                  | Boolean                                      | `false`             | Enable Mutter's edge tiling.                                |
+| `num_workspaces`               | 1–36                                         | `4`                 | Fixed workspace count when dynamic workspaces are disabled. |
+| `workspace_names`              | Up to 36 strings, each at most 80 characters | `{}`                | Display labels by workspace position.                       |
+| `workspace_ids`                | Map of position to unique ID                 | `{}`                | Stable identifiers for rules and workspace commands.        |
+| `center_new_windows`           | Boolean                                      | `false`             | Center newly created windows.                               |
+| `attach_modal_dialogs`         | Boolean                                      | `false`             | Place modal dialogs with their parent window.               |
+| `constrain_drag_to_work_area`  | Boolean                                      | `true`              | Keep interactive window moves inside the work area.         |
 
-Titlebar actions: `toggle-maximize`, `toggle-maximize-horizontally`,
-`toggle-maximize-vertically`, `minimize`, `lower`, `menu`, `none`.
-GTK apps usually draw their own titlebars and read GNOME's window-manager
-settings directly; this Lua section does not change those app settings. It
-controls Mutter policy and Gnoblin's built-in fallback SSD, which implements
-these actions. A custom SSD renderer must implement its own titlebar click
-behavior.
+Workspace IDs must be unique and match
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Gnoblin generates a session-only ID for
+each position without a configured ID. This works with fixed and dynamic
+workspaces. See the [window rules guide](/guides/window_rules#workspaces) for
+matching and placement examples.
+
+For example, use pointer-follow focus and name the first two workspaces:
+
+```lua
+gnoblin.configure {
+    window_management = {
+        focus_mode = "sloppy",
+        workspace_names = {"Main", "Chat"},
+        workspace_ids = {"main", "chat"},
+    },
+}
+```
+
+## Titlebar actions
+
+The three titlebar click fields accept these values:
+
+| Value                          | Action                                  |
+| ------------------------------ | --------------------------------------- |
+| `toggle-maximize`              | Toggle maximize.                        |
+| `toggle-maximize-horizontally` | Toggle horizontal maximize.             |
+| `toggle-maximize-vertically`   | Toggle vertical maximize.               |
+| `minimize`                     | Minimize the window.                    |
+| `lower`                        | Lower the window in the stacking order. |
+| `menu`                         | Open the window menu.                   |
+| `none`                         | Do nothing.                             |
+
+These settings control Mutter policy and Gnoblin's built-in fallback SSD.
+Applications that draw their own client-side titlebars handle those clicks
+themselves.
+
+GTK applications usually draw their own titlebars and read GNOME's window
+manager settings directly. This Lua section does not change those apps' CSD
+behavior. A custom SSD renderer implements its own titlebar click behavior.
+
 See [titlebars](/guides/window_frames).

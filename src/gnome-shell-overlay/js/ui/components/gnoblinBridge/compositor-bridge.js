@@ -15,6 +15,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
 import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
 import * as Animation from "resource:///org/gnome/shell/ui/components/gnoblinAnimation.js";
+import * as Workspaces from "resource:///org/gnome/shell/ui/components/gnoblinWorkspaces.js";
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
 
@@ -860,6 +861,8 @@ export class CompositorBridge {
                     focused: global.display.focus_window === window,
                     minimized: window.minimized,
                     workspace: window.get_workspace()?.index() + 1 || null,
+                    workspaceId: window.get_workspace() ? Workspaces.getId(window.get_workspace()) : null,
+                    workspaceNumber: window.get_workspace()?.index() + 1 || null,
                     monitorIndex: window.get_monitor(),
                     maximized: window.get_maximize_flags() === Meta.MaximizeFlags.BOTH,
                     fullscreen: window.is_fullscreen(),
@@ -931,6 +934,12 @@ export class CompositorBridge {
                         .filter((window) => this.eligible(window)).length,
                 })),
             };
+        if (record.command === "workspace-list")
+            return {
+                workspaces: Array.from({ length: manager.n_workspaces }, (_, index) =>
+                    this.workspaceDescription(manager.get_workspace_by_index(index)),
+                ),
+            };
         if (record.command === "monitors")
             return {
                 monitors: Main.layoutManager.monitors.map((monitor) => ({
@@ -945,14 +954,51 @@ export class CompositorBridge {
             };
         if (SessionLock.isLocked(Main.sessionMode.isLocked))
             throw new Error("window management is unavailable while the session is locked");
-        const workspace = () => {
-            if (!Number.isInteger(record.workspace) || record.workspace < 1 || record.workspace > manager.n_workspaces)
-                throw new Error("workspace not found; list workspaces first");
-            return manager.get_workspace_by_index(record.workspace - 1);
+        const workspace = (selector = null) => {
+            if (!selector) {
+                if (
+                    !Number.isInteger(record.workspace) ||
+                    record.workspace < 1 ||
+                    record.workspace > manager.n_workspaces
+                )
+                    throw new Error("workspace not found; list workspaces first");
+                selector = { number: record.workspace };
+            }
+            return Workspaces.resolve(selector);
         };
         if (record.command === "workspace-switch") {
-            workspace().activate(global.get_current_time());
-            return { ok: true, pending: true, workspace: record.workspace };
+            const target = workspace(this.workspaceSelector(record));
+            target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return { ok: true, pending: true, workspace: info.number, ...info };
+        }
+        if (record.command === "workspace-next" || record.command === "workspace-previous") {
+            const count = manager.n_workspaces;
+            if (!count) throw new Error("no workspaces are available");
+            const delta = record.command === "workspace-next" ? 1 : -1;
+            const index = (manager.get_active_workspace_index() + delta + count) % count;
+            const target = manager.get_workspace_by_index(index);
+            target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return { ok: true, pending: true, workspace: info.number, ...info };
+        }
+        if (record.command === "workspace-move-active") {
+            const window = global.display.focus_window;
+            if (!window || !this.eligible(window)) throw new Error("no active window available to move");
+            const target = workspace(this.workspaceSelector(record));
+            const follow = record.follow ?? false;
+            if (typeof follow !== "boolean") throw new Error("follow must be a boolean");
+            window.change_workspace(target);
+            if (follow) target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return {
+                ok: true,
+                pending: true,
+                follow,
+                workspace: info.number,
+                ...info,
+                window: String(window.get_stable_sequence()),
+            };
         }
         if (record.command !== "window") throw new Error("unknown compositor command");
         const actions = [
@@ -1078,9 +1124,20 @@ export class CompositorBridge {
                 window.move_resize_frame(true, frame.x, frame.y, record.width, record.height);
                 break;
             }
-            case "workspace":
-                window.change_workspace(workspace());
-                break;
+            case "workspace": {
+                const target = workspace(this.workspaceSelector(record, "workspace"));
+                window.change_workspace(target);
+                const info = this.workspaceDescription(target);
+                return {
+                    ok: true,
+                    pending: true,
+                    window: String(window.get_stable_sequence()),
+                    action: record.action,
+                    workspace: info.number,
+                    workspaceId: info.id,
+                    workspaceNumber: info.number,
+                };
+            }
             case "monitor":
                 if (
                     !Number.isInteger(record.monitor) ||
@@ -1091,6 +1148,31 @@ export class CompositorBridge {
                 break;
         }
         return { ok: true, pending: true, window: String(window.get_stable_sequence()), action: record.action };
+    }
+
+    workspaceSelector(record, legacyField = null) {
+        const hasId = Object.hasOwn(record, "workspaceId");
+        const hasNumber = Object.hasOwn(record, "workspaceNumber");
+        if (hasId && hasNumber) throw new Error("specify a workspace id or number, not both");
+        if (hasId) {
+            if (typeof record.workspaceId !== "string" || !record.workspaceId)
+                throw new Error("workspaceId must be a nonempty string");
+            return { id: record.workspaceId };
+        }
+        if (hasNumber) {
+            if (!Number.isInteger(record.workspaceNumber) || record.workspaceNumber < 1)
+                throw new Error("workspaceNumber must be a positive integer");
+            return { number: record.workspaceNumber };
+        }
+        if (legacyField && Number.isInteger(record[legacyField])) return { number: record[legacyField] };
+        return null;
+    }
+
+    workspaceDescription(workspace) {
+        return {
+            ...Workspaces.describe(workspace),
+            windows: workspace.list_windows().filter((window) => this.eligible(window)).length,
+        };
     }
 
     layerRecords() {

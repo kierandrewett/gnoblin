@@ -16,7 +16,9 @@ This is an end-to-end clean guest test of the documented Fedora installation
 paths for Gnoblin and Bingux. The guest used Fedora 43 Workstation Live
 (`Fedora-Workstation-Live-43-1.6.x86_64.iso`, SHA-256
 `2a4a16c009244eb5ab2198700eb04103793b62407e8596f30a3e0cc8ac294d77`) and a
-new 40 GiB qcow2 disk. QEMU used 6 GiB RAM, four vCPUs, KVM, user networking,
+new 40 GiB qcow2 disk.
+
+QEMU used 6 GiB RAM, four vCPUs, KVM, user networking,
 SSH forwarded to localhost:2229, and VNC bound to `127.0.0.1:5909`. The guest
 user was `luna` (wheel), created through Fedora's graphical first-login setup.
 
@@ -42,13 +44,16 @@ build of the current Gnoblin source tree. The guide-test revision was Gnoblin
 `7925a241f8ee33d6cf00d11c876874b3a3029eb7` and Bingux
 `6107dfaa05dae04d3a5d900c8498750a4b702e94`.
 
-The Bingux source guide was followed from a clean clone at the latter commit.
-The first literal `make doctor` failed because Fedora's fresh image did not
-have `make`. The prerequisite command's `libpulse-devel` package was
+The Bingux source guide was followed from a clean clone at the latter commit. The first literal `make doctor` failed because Fedora's fresh image did not
+have `make`.
+
+The prerequisite command's `libpulse-devel` package was
 unavailable on Fedora 43, so it was rerun with `--skip-unavailable`; Fedora's
 `pulseaudio-libs-devel` provider was installed. `dnf builddep
 ~/bingux/packaging/rpm/bingux.spec` then succeeded. The initial
-doctor also required Quickshell. Fedora 43's enabled repositories supplied
+doctor also required Quickshell.
+
+Fedora 43's enabled repositories supplied
 `quickshell-0.3.1-2.fc43`, which made doctor pass:
 
 ```text
@@ -59,7 +64,9 @@ Bingux prerequisites are ready.
 and README guidance separately requires a matching Qt/Quickshell runtime. No
 0.2.1 package was available to
 the Fedora 43 guest, so 0.3.1 was an explicit environment deviation and is a
-material compatibility risk. The exact doctor, builddep, and install logs are
+material compatibility risk.
+
+The exact doctor, builddep, and install logs are
 `bingux-doctor.log`, `bingux-doctor3.log`, `bingux-builddep.log`, and
 `bingux-quickshell-doctor.log` in the VM artifact directory.
 
@@ -123,10 +130,14 @@ ERROR: caused by @ShellPopup.qml[232:13]: BackgroundEffect can only be used as a
 The guest's QEMU/VNC software graphics path also logged Mesa/ZINK device
 selection warnings. The QML failure occurred after Quickshell loaded the
 configuration, but this test did not reproduce it with a 0.2.1 runtime, so the
-0.3.1 compatibility mismatch is suspected rather than proven. `gnoblinctl
+0.3.1 compatibility mismatch is suspected rather than proven.
+
+`gnoblinctl
 status` also reported the missing `/run/user/1000/gnoblin/compositor-v1.sock`;
 that compositor functional path remains unverified despite `gnoblinctl ping`
-succeeding. `binguxctl status` confirmed there was no running instance. The full bounded journal and command output are in
+succeeding. `binguxctl status` confirmed there was no running instance.
+
+The full bounded journal and command output are in
 `full-runtime.log` and `graphical-proof.log`.
 
 ## Verdict
@@ -134,10 +145,14 @@ succeeding. `binguxctl status` confirmed there was no running instance. The full
 Fresh Fedora provisioning, graphical first-login setup, Gnoblin COPR install,
 Gnoblin session selection, Bingux clean source checkout, dependency discovery,
 doctor, native/user install, systemd target wiring, and Gnoblin session
-connectivity all passed. The end-user Gnoblin+Bingux desktop did not pass:
+connectivity all passed.
+
+The end-user Gnoblin+Bingux desktop did not pass:
 the available Fedora 43 Quickshell package is 0.3.1 while the Bingux docs
 require 0.2.1. The QML failure is consistent with that suspected API mismatch
-but was not isolated against 0.2.1. Search also has an independent
+but was not isolated against 0.2.1.
+
+Search also has an independent
 absolute-launcher configuration failure, and the compositor-v1 socket path
 remains unverified. No host desktop/session or host project source was changed.
 

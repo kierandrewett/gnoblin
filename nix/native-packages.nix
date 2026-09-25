@@ -19,8 +19,8 @@ let
     wayland-protocols =
       requirement "1.48" "wayland-protocols-devel" "wayland-protocols"
         "wayland-protocols";
-    libinput = requirement "1.30.0" "libinput" "libinput10" "libinput";
-    pipewire = requirement "1.4.0" "pipewire" "pipewire" "pipewire";
+    libinput = requirement "1.31.0" "libinput" "libinput10" "libinput";
+    pipewire = requirement "1.6.0" "pipewire" "pipewire" "pipewire";
     wireplumber = requirement null "wireplumber" "wireplumber" "wireplumber";
     playerctl = requirement null "playerctl" "playerctl" "playerctl";
     brightnessctl = requirement null "brightnessctl" "brightnessctl" "brightnessctl";
