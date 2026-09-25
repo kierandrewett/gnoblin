@@ -68,13 +68,13 @@ numbers above show only the message shape.
 An offer can contain up to 128 regions. Each `hit` and `target` rectangle
 contains finite logical-pixel coordinates:
 
-| Field             | Accepted values   | Meaning                                              |
-| ----------------- | ----------------- | ---------------------------------------------------- |
-| `x`, `y`          | Finite numbers    | Top-left position in the desktop work area.          |
-| `width`, `height` | 1–32768           | Rectangle size in logical pixels.                    |
-| `layout`          | String label      | Returned in the `snap-completed` event.              |
-| `control`         | Boolean, optional | Require Ctrl to be held at pointer release.          |
-| `maximize`        | Boolean, optional | Maximize instead of applying the `target` rectangle. |
+| Field             | Accepted values   | Meaning                                                    |
+| ----------------- | ----------------- | ---------------------------------------------------------- |
+| `x`, `y`          | −100,000–100,000  | Finite top-left position in desktop logical pixels.        |
+| `width`, `height` | 1–32768           | Rectangle size in logical pixels.                          |
+| `layout`          | Optional value    | Echoed in `snap-completed`; Gnoblin does not interpret it. |
+| `control`         | Boolean, optional | Require Ctrl to be held at pointer release.                |
+| `maximize`        | Boolean, optional | Maximize instead of applying the `target` rectangle.       |
 
 Set `maximize: true` to maximize the window instead of applying `target` as its
 final size. On success, the owner receives

@@ -57,7 +57,7 @@ closes the socket; ordinary validation errors leave it open.
 | `privacy`                        | None                                                                     | Current `privacy` state, then changes               |
 | `status`                         | None                                                                     | One `status` with binding IDs and active session ID |
 | `bind`                           | `id`, `accelerator`, `hold`; optional `trigger`, `modal`, `captureInput` | `bound`, then activation and input events           |
-| `activate`                       | `window`                                                                 | Focus a window; no success reply                    |
+| `activate`                       | `window`; optional `session` for the built-in switcher fallback          | Focus a window; no success reply                    |
 | `preview`                        | `window`, `width`, `height`                                              | One `preview` event                                 |
 | `shortcut-input`                 | `name`, `state`                                                          | Input handoff; no success reply                     |
 | `ui-session`                     | `action`; other fields depend on action                                  | `ui-state` or `ui-command` events                   |
@@ -70,6 +70,10 @@ closes the socket; ordinary validation errors leave it open.
 | `stop-sharing`, `stop-recording` | None                                                                     | Requests stop; no success reply                     |
 | `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
 | `clear`                          | None                                                                     | Removes this client's bindings and session          |
+
+When a client claims a built-in switcher shortcut, pass the matching `session`
+from its `activated` event with `activate`. Gnoblin ignores an activation from
+an older switcher session.
 
 `command` supports these operations:
 
@@ -215,7 +219,9 @@ with Ctrl+C. Each snapshot replaces the previous list; it is not a list of chang
 
 Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
 
-Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
+- `trigger` is `"press"` by default or `"release"` to wait until the accelerator's main key is released.
+- Accelerator chords can include Alt, Control, Shift or Super. A held session supports Alt, Control or Super; Shift is not a valid `hold` value.
+- Bare `"Super"` activates on release because Mutter first checks whether another key joins the chord.
 
 ```json
 { "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
@@ -248,14 +254,22 @@ focused application keeps receiving input:
 { "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }
 ```
 
-Events include `activated`, `key`, `pointer`, `released` and `cancelled`.
+Events sent during a binding session are:
 
-`activated` includes id, first, modifiers and time.
-Pointer coordinates are global logical pixels; button 1 is left.
+| Event                   | Fields                                        | Meaning                                                                      |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------------- |
+| `activated`             | `id`, `first`, `session`, `modifiers`, `time` | Accelerator fired.                                                           |
+| `key`                   | `key`, `modifiers`                            | Key symbol and modifier mask for a captured key press.                       |
+| `pointer`               | `x`, `y`, `button`                            | Captured button press at global logical-pixel coordinates; button 1 is left. |
+| `released`, `cancelled` | `session`                                     | The modifier was released or the session ended early.                        |
 
-Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking,
-disconnecting or reaching the ten-second timeout also releases the captured
-input.
+- `first` is true when no binding session was already active.
+- `session` is `0` for ordinary bindings and nonzero for the built-in switcher fallback.
+- `modifiers` is a Clutter modifier mask; `time` is the event timestamp in milliseconds.
+- `key` is the Clutter key symbol.
+
+Hide the UI when `released` or `cancelled` arrives. Sending `{"op":"end"}`,
+locking, disconnecting or reaching the ten-second timeout cancels the session.
 
 ## Bare Super and buffered typing
 
@@ -418,6 +432,14 @@ other shells can choose their own state and command objects.
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `blur-region`            | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
 | `layer-animation-policy` | `namespace`                                                                               | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters                                                                  |
+
+| Field    | Shape and accepted values                                                         | Meaning                                    |
+| -------- | --------------------------------------------------------------------------------- | ------------------------------------------ |
+| `screen` | `[x, y]`; finite coordinates from −65,536 to 65,536                               | Monitor origin in desktop coordinates.     |
+| `region` | `null` or `[x, y, width, height]`; finite values from −65,536 to 65,536; size ≥ 0 | Local rectangle; `null` clears the region. |
+
+Gnoblin matches the namespace and monitor origin for layer surfaces from the
+requesting process. A matching blur window rule is still required.
 
 For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
 using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
