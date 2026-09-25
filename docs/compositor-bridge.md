@@ -81,6 +81,16 @@ closes the socket; ordinary validation errors leave it open.
 - `animation` lists, inspects and previews registered animations. See the
   [animation CLI guide](gnoblinctl.md#animations).
 
+Successful `command` requests return an `event: "reply"` with the matching ID
+and a `result` object. Read-only results use these shapes:
+
+| Command           | Result field | Contents                                                                                                                 |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `windows`         | `windows[]`  | The same fields as [`gnoblinctl window list --json`](gnoblinctl.md#output-for-scripts).                                  |
+| `capture-windows` | `windows[]`  | `id`, `title`, `appId`, `appName`, frame `x`, `y`, `width`, `height`, and `bufferWidth`, `bufferHeight`.                 |
+| `monitors`        | `monitors[]` | `id`, `x`, `y`, `width`, `height`, `primary`, and `scale`; see [monitor records](gnoblinctl.md#workspaces-and-monitors). |
+| `layers`          | `surfaces[]` | Layer-shell `id`, `namespace`, and `title`; see [layer surfaces](gnoblinctl.md#layer-surfaces).                          |
+
 The [CLI reference](gnoblinctl.md) lists window actions and arguments.
 
 ### Workspace commands
@@ -168,8 +178,8 @@ configured enter/exit policy for a namespace. See the [animation guide](/guides/
 for layer-shell lifecycle events and target selection.
 
 `capture-windows` returns visible, non-minimised windows in stacking order.
-Each entry includes the title, app name, frame position and size, plus
-`bufferWidth` and `bufferHeight` for capture.
+`bufferWidth` and `bufferHeight` follow the compositor paint box and can include
+decoration shadows outside the frame dimensions.
 
 Capture IDs come from Mutter; `windows` snapshots use a stable sequence
 string. Get an action ID from `windows` or `gnoblinctl window list` before
@@ -286,8 +296,9 @@ The binding ID is the handoff name.
 | `{"op":"end"}`                     | Cancel this client's input session        |
 | `{"op":"clear"}`                   | Remove this client's bindings and session |
 
-Window records contain id, title, appId, focused, minimized, lastUserTime,
-parent and monitor. IDs are strings, stable for the window's session lifetime.
+`windows` records include the CLI fields plus `workspace`, `workspaceId`,
+`workspaceNumber`, `monitorIndex`, `maximized`, `fullscreen`, and `geometry`.
+Their IDs are stable strings for the window's session lifetime.
 
 Skip-taskbar and override-redirect windows are excluded.
 The client chooses grouping and ordering. Stale IDs return an error. `parent`
