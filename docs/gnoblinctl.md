@@ -18,8 +18,8 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl config default` | Print the bundled default `init.lua`    |
 | `gnoblinctl config reload`  | Apply edits and report config errors    |
 
-Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
-`--help` for accepted arguments. A bare group lists its actions.
+Run `gnoblinctl --help` or `gnoblinctl window --help` for accepted
+arguments. A bare group lists its actions.
 
 ## Windows
 

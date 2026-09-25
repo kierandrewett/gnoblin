@@ -1,7 +1,7 @@
 # Documentation site
 
 Edit the Markdown in `docs/`. VitePress builds the
-[public site](https://kierandrewett.github.io/gnoblin/) from those files.
+[public site](https://gnoblin.org/) from those files.
 
 ## Preview
 
