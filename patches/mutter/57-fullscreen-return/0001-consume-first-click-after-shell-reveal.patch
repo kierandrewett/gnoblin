@@ -78,8 +78,7 @@ diff --git a/src/core/util-private.h b/src/core/util-private.h
 index c32af71e3..c9ead19aa 100644
 --- a/src/core/util-private.h
 +++ b/src/core/util-private.h
-@@ -51,5 +51,11 @@ meta_timeval_to_microseconds (const struct timeval *tv)
- /* Gnoblin honours application focus requests instead of focus prevention. */
+@@ -51,4 +51,10 @@ meta_timeval_to_microseconds (const struct timeval *tv)
  gboolean meta_is_gnoblin_session (void);
  
 +gboolean meta_gnoblin_consume_fullscreen_return_event (MetaDisplay *display,
