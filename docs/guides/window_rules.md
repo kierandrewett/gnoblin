@@ -203,7 +203,7 @@ see [load order](/guides/files_and_load_order#override-or-append).
 
 - [Effects](/guides/window_effects): blur, opacity, corners, borders, shadows and shaders.
 - [Titlebars](/guides/window_frames): decoration policy and renderer.
-- [Layer animations](/guides/animations#per-surface-animations): entry, exit and timing.
+- [Layer animations](/guides/animations#layer-shell-surfaces): entry, exit and timing.
 
 Prefer general rules when a behavior should apply to all clients.
 Use app-name exceptions only when you intend different behavior for that app.

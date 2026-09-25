@@ -19,4 +19,4 @@ The matching rule overrides animation choices in earlier component rules. This
 controls layer surfaces appearing or disappearing; a shell may animate its own
 contents separately. Configure those animations in that shell.
 See the [animation reference](/config/animation) and
-[window rule reference](/config/window_rule#animation) for available values.
+[window rule reference](/config/window_rule#animation-fields) for available values.

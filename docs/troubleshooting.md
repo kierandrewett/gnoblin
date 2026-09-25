@@ -11,7 +11,7 @@ For Fedora, check the session package:
 rpm -q gnoblin-session
 ```
 
-For source builds, complete [session registration](install-source.md#3-add-a-login-session),
+For source builds, complete [session registration](install-source.md#login-session),
 including the printed root commands. Building alone does not add a login entry.
 
 ## No bar, dock or launcher

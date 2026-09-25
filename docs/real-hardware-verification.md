@@ -8,7 +8,7 @@ headless tests cannot prove. Ordinary installation ends with the steps in the
 ## 1. Log in
 
 Use the [package guide](installation.md) or complete
-[source session registration](install-source.md#3-add-a-login-session).
+[source session registration](install-source.md#login-session).
 Choose **Gnoblin** at the login screen.
 
 Record the build you installed, distribution, GPU, displays and scale factors.

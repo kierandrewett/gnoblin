@@ -1,7 +1,7 @@
 # gnoblin.permission_rule
 
 Append a portal permission rule. Use
-[`gnoblin.configure`](/config/configure#permissions) to set the global
+[`gnoblin.configure`](/config/configure#settings) to set the global
 fallback.
 
 Any matching deny wins. Otherwise, the last matching rule wins as a whole.
