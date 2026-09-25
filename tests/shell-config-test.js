@@ -6,6 +6,7 @@ import {
     minimizeTarget,
     layerOffset,
     windowEffects,
+    ConfigFile,
 } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js";
 
 function assert(condition, message) {
@@ -18,6 +19,12 @@ assert(
         .every(([key, value]) => JSON.stringify(parseDocument({})[key]) === JSON.stringify(value)),
     "missing Lua keys use defaults (autostart is loaded from the document)",
 );
+const eventFilter = Object.create(ConfigFile.prototype);
+eventFilter._events = new Set(["mutter.display.restacked"]);
+assert(eventFilter.wantsEvent("mutter.display.restacked"), "Lua event filter accepts a registered event");
+assert(!eventFilter.wantsEvent("mutter.window.unmanaged"), "Lua event filter rejects an unregistered event");
+eventFilter._events.add("*");
+assert(eventFilter.wantsEvent("mutter.window.unmanaged"), "Lua event filter accepts the wildcard subscription");
 const cursorDefaults = parseDocument({}).cursor;
 assert(
     cursorDefaults.theme === "Adwaita-Hyprcursor" && cursorDefaults.size === 24,

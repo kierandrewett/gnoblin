@@ -1462,7 +1462,7 @@ export class ConfigFile {
     }
 
     dispatchEvent(event, payload = {}) {
-        if (!this._events?.has(event) && !this._events?.has("*")) return;
+        if (!this.wantsEvent(event)) return;
         try {
             const variants = Object.fromEntries(
                 Object.entries(payload).map(([key, value]) => {
@@ -1484,6 +1484,10 @@ export class ConfigFile {
             Meta.gnoblin_finish_config_event(false);
             console.warn(`gnoblin config event ${event}: ${error.message}`);
         }
+    }
+
+    wantsEvent(event) {
+        return Boolean(this._events?.has(event) || this._events?.has("*"));
     }
 
     applyRuntimeDocument(document) {
