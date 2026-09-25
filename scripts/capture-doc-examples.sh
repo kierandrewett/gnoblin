@@ -6,9 +6,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | waybar-quickshell-dock | window-effects) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|waybar-quickshell-dock|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -198,7 +198,7 @@ selection-text=edf0f7ff
 border=9ccfd8ff
 FUZZEL
 
-if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ]; then
+if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ] || [ "$example" = waybar-quickshell-dock ]; then
     command -v quickshell >/dev/null || {
         echo "quickshell is required for this scene" >&2
         exit 1
@@ -227,6 +227,74 @@ PanelWindow {
         running: true
         repeat: true
         onTriggered: clock.text = Qt.formatDateTime(new Date(), "ddd, dd MMM  ·  HH:mm")
+    }
+}
+QML
+fi
+if [ "$example" = waybar-quickshell-dock ]; then
+    cat >"$XDG_CONFIG_HOME/quickshell/shell.qml" <<'QML'
+import Quickshell
+import Quickshell.Widgets
+import QtQuick
+
+PanelWindow {
+    anchors { bottom: true; left: true; right: true }
+    margins.bottom: 18
+    implicitHeight: 88
+    color: "transparent"
+    exclusionMode: ExclusionMode.Ignore
+
+    Rectangle {
+        anchors.centerIn: parent
+        width: 280
+        height: 72
+        radius: 24
+        color: "#e8171b27"
+        border.color: "#657080"
+        border.width: 1
+
+        Row {
+            anchors.centerIn: parent
+            spacing: 18
+
+            Repeater {
+                model: [
+                    {icon: "org.gnome.Nautilus", command: ["nautilus"], running: true},
+                    {icon: "firefox", command: ["firefox"], running: false},
+                    {icon: "utilities-terminal", command: ["foot"], running: false},
+                    {icon: "org.gnome.Settings", command: ["gnome-control-center"], running: false}
+                ]
+
+                delegate: Item {
+                    required property var modelData
+                    width: 42
+                    height: 50
+
+                    IconImage {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 40
+                        height: 40
+                        source: Quickshell.iconPath(modelData.icon)
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 5
+                        height: 5
+                        radius: 3
+                        color: "#9ccfd8"
+                        visible: modelData.running
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Quickshell.execDetached(modelData.command)
+                    }
+                }
+            }
+        }
     }
 }
 QML
@@ -280,10 +348,14 @@ case "$example" in
         capture_path="$output_dir/gnoblin-quickshell-files.png"
         app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
         ;;
+    waybar-quickshell-dock)
+        capture_path="$output_dir/gnoblin-waybar-quickshell-dock.png"
+        app_command="waybar & mako & sleep 2; quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
+        ;;
 esac
 
 case "$example" in
-    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files) ;;
+    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files | waybar-quickshell-dock) ;;
     *)
         command -v firefox >/dev/null || {
             echo "firefox is required for this scene" >&2
@@ -344,6 +416,7 @@ if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
         waybar-files) pointer_position="1000 560" ;;
         bingux-firefox) pointer_position="1120 650" ;;
         quickshell-files | bingux-files) pointer_position="800 400" ;;
+        waybar-quickshell-dock) pointer_position="790 668" ;;
         waybar-firefox | quickshell-firefox | waybar-mako-notification | window-effects) pointer_position="1100 700" ;;
         *) pointer_position="900 700" ;;
     esac
