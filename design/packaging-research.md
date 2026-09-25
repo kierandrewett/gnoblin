@@ -106,12 +106,21 @@ graphical login/removal test.
 
 The Nix flake has isolated, lock-file-pinned evaluation inputs for
 `nixos-25.05`, `nixos-25.11`, `nixos-26.05`, and `nixos-unstable`, still only
-on x86_64 Linux. On 2026-09-25, the 25.05 and 25.11 inputs resolve but are
-blocked before package or module evaluation because they do not expose
-`gcc16Stdenv`, required for Gnoblin's hyprcursor ABI. The 26.05 and unstable
-inputs evaluate the package derivation and enabled module. These are evaluation
-results only: they do not prove a package build, a graphical session, or GNOME
-coexistence. The workflow records these exact outcomes so a channel change
+on x86_64 Linux. Its `gcc16Stdenv` argument falls back to a stable channel's
+default `stdenv`: hyprcursor and its C++ closure come from that same channel,
+so this keeps Mutter and hyprcursor in one compiler ABI rather than mixing
+GCC releases.
+
+On 2026-09-25, 25.05 cannot evaluate because it lacks `libglycin`; it also
+falls below the GNOME 51 floors for GLib, GJS, Wayland, Wayland Protocols, and
+libinput. The 25.11 and 26.05 package/module evaluations pass with their
+channel compiler, but builds remain blocked by Wayland 1.24 and 1.25,
+respectively, where Gnoblin requires 1.26. Version floors also block 25.11's
+Wayland Protocols and libinput. Unstable is the only evaluated target without
+one of these recorded host-floor blockers. A real 25.11 build was attempted
+and Mutter stopped at the Wayland 1.26 requirement, confirming the preflight.
+These results do not prove a graphical session or GNOME coexistence. The
+workflow records the exact evaluation and floor results so a channel change
 cannot silently turn a known blocker into an unexamined result.
 
 Fedora packaging supports Fedora COPR chroots but has no EL publication target.
