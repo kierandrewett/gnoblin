@@ -22,8 +22,18 @@ release pipeline or COPR publication changes.
   `gir1.2-gtk4layershell-1.0`, which Ubuntu 24.04 does not provide. This was a
   fixed service dependency; no Gnoblin source uses GTK4LayerShell.
 - Commit `682a8f5` removes that unavailable dependency and adds a regression
-  assertion. Release run `36136202878` is rebuilding the candidate; its package
-  install gates and publication are still pending.
+  assertion. Release run `36136202878` was cancelled during the package builds
+  before install or publication, so the candidate did not reach GitHub, APT, or
+  COPR.
+- A packaging audit found the generated RPM and Arch package metadata pointed
+  at a deleted GitHub owner (`kdrew7`). Commit `e1472bb8` fixes the shared
+  generator and both generated outputs. The old URL returned HTTP 404; the
+  canonical URL returned HTTP 200.
+- The requested distro scope now includes Fedora/EL, Debian/Ubuntu, Arch,
+  openSUSE, and NixOS. The family-by-family gap analysis and researched
+  implementation direction are in `design/packaging-research.md`. Do not
+  republish 0.1.7 until its target matrix, package recipes, and GNOME
+  co-install/remove gates have been brought into line with that scope.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
@@ -84,10 +94,9 @@ disable-while-typing behavior.
 
 The shared package manifest floors are set to PipeWire 1.4 and libinput 1.30.
 The COPR build/install run is still required to prove RPM build and runtime
-compatibility on Fedora 43, 44, and 45. After release run `36136202878` passes
-all Debian/Ubuntu install checks, verify GitHub release publication, then wait
-for all three COPR builds and install jobs before claiming 0.1.7 is available
-on Fedora 43–45.
+compatibility on Fedora 43, 44, and 45. Broader distribution-family targets
+and clean stock-GNOME coexistence tests must be added before the `0.1.7` release
+workflow is restarted.
 
 The first Fedora 43/44 source matrix run reached Shell patch application and
 failed because the session-lock patch had malformed unified-diff context and
