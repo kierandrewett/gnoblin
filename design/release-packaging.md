@@ -154,6 +154,11 @@ release pipeline or COPR publication changes.
   existing channel. Nix flake evaluation, module selection, and the private
   Mutter build pass; full Shell/runtime, GNOME coexistence, and graphical login
   remain unverified. The public install guide labels this path experimental.
+- The exact-main Arch release-style gate on `c54e3d4b` built the package, then
+  failed its co-install transaction because Meson reinstalled schema outputs
+  under the absolute temporary build-prefix path. Commit `187e95cc` packages
+  only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the full
+  build/co-install/removal gate is rerunning. Do not count Arch as passing yet.
 
 ## Release flow
 
