@@ -48,6 +48,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
         self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
+        self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
+        self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
