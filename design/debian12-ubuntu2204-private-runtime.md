@@ -105,24 +105,26 @@ Glycin and the Rust 1.85 bootstrap without lowering GTK or Mutter floors.
 It does not validate the complete GTK/Mutter/Shell runtime; GTK, GCR,
 Mutter/Shell, and all package/session gates remain required.
 
-A later Debian 12 setup pass configured GTK 4.14.5 successfully with private
-GLib 2.90 and GDK-Pixbuf 2.42.12. It used the Wayland backend and disabled
-X11, Vulkan, GStreamer media, documentation, and tests. GTK's declared floors
-accept Debian 12's Pango 1.50.12 and Graphene 1.10.8, so the experiment uses
-those host libraries rather than building them privately. GTK's main shared
-library then compiled and installed into the disposable private prefix; its
-`gtk4.pc` reports 4.14.5, and `ldd` resolves GLib/GObject and GDK-Pixbuf from
-the private prefix while resolving Pango and Graphene from the host. The
-Wayland GTK build needed normal host development packages for Cairo, Pango,
-TIFF, Epoxy, XKBCommon, Graphene, Wayland/protocols, and DRM. In the same
-disposable prefix, GCR 4.4.0.1 then configured, compiled, and installed with
-introspection, Vala, and documentation disabled. Its setup found GTK 4.14.5,
-GLib 2.90, libgcrypt 1.10.1, p11-kit 0.24.1, and libsecret 0.20.5. Debian 12's
-normal host prerequisites for this pass were `gnupg`, `libgcrypt20-dev`,
-`libp11-kit-dev`, `libsecret-1-dev`, and `openssh-client`. The private `gcr-4.pc`
-reports GCR 4.4.0.1. Runtime typelibs and a complete Mutter/Shell build are
-still untested; this does not establish package transactions, Ubuntu 22.04, or
-graphical sessions.
+The clean-image path now passes the complete seven-recipe experimental graph
+through `scripts/build-private-deps.py --only gcr4`: patchelf, the two GLib
+stages and build-only scanner, GDK-Pixbuf, GTK, then GCR. All GTK and GCR
+sources are checksum-pinned. GTK's main shared library compiles and installs
+with Wayland enabled and X11, Vulkan, GStreamer, docs, tests and introspection
+disabled. The builder's private-interface checks accept
+`girepository-2.0`, `gdk-pixbuf-2.0`, `gtk4`, and `gcr-4` at versions 2.90.0,
+2.42.12, 4.14.5 and 4.4.0.1. The scanner remains in `deps-runner.build-tools`,
+outside the runtime prefix; both GTK and GCR ELF files carry an RPATH to the
+private `lib64`. GTK loads private GLib/GObject and GDK-Pixbuf, with host Pango
+1.50.12 and Graphene 1.10.8; GCR loads private GLib/GObject/Gck and host
+libgcrypt/p11-kit. No newer Pango or Graphene bootstrap is needed on Debian 12.
+
+The Wayland build needed normal host development packages for Cairo, Pango,
+TIFF, Epoxy, XKBCommon, Graphene, Wayland/protocols, DRM, `gnupg`,
+`libgcrypt20-dev`, `libp11-kit-dev`, `libsecret-1-dev`, and `openssh-client`.
+GCR was built with introspection, Vala and documentation disabled, so its
+runtime typelib path remains untested. The entire run is still only a private
+dependency build: Mutter/Shell, package transactions, Ubuntu 22.04, and
+graphical sessions have not been tested.
 
 ## Boundary: what can be private
 
