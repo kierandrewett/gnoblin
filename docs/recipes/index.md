@@ -24,6 +24,24 @@ After editing the file, apply the changes with `gnoblinctl config reload`.
   files for appearance and shortcuts.
 - [Set up a writing workspace](/recipes/writing-workspace): assign stable
   workspace IDs, place editor windows, and control workspaces from the CLI.
+- [Build a small desktop](/recipes/small-desktop): start a bar, notifications,
+  launcher and terminal.
+- [Set up a laptop for two keyboard layouts](/recipes/laptop-input): configure
+  XKB layouts, keyboard options and touchpad gestures.
+- [Make pointer feedback easier to see](/recipes/pointer-feedback): enlarge
+  the cursor and enable locate-pointer and visual-bell effects.
+- [Prepare remote support access](/recipes/remote-support): scope screen-share
+  and input permissions to one trusted program.
+- [Set up a pen display](/recipes/pen-display-workflow): map a tablet and
+  configure a stylus button.
+- [Organize a growing config](/recipes/organize-config-files): split rules and
+  shortcuts into loaded Lua files.
+- [Route new app windows to named workspaces](/recipes/put-apps-on-named-workspaces):
+  send new editor, browser and chat windows to stable workspace IDs.
+- [Animate the developer console](/recipes/animate-the-developer-console):
+  customize the built-in console's entrance and exit.
+- [Give an app a springy entrance](/recipes/springy-app-entrance): register
+  keyframes and apply them to one application.
 
 See the [configuration reference](/config/configure) for available options and
 the [configuration guides](/guides/window_rules) for behavior and tradeoffs.
