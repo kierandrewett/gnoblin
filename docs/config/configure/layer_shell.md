@@ -15,6 +15,10 @@ gnoblin.configure {
 
 See the [layer-shell protocol catalog](/wayland-protocols).
 
+![GNOME Files beneath a Quickshell panel in a clean Gnoblin session](../../images/gnoblin-quickshell-files.png)
+
+_Quickshell draws the panel as a layer surface; Files remains a regular app window._
+
 ## Type definition
 
 This is schema pseudocode in Lua table form. `?` marks an optional field.

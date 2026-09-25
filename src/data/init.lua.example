@@ -107,15 +107,8 @@ gnoblin.configure {
         layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
         window_menu = gnoblin.array {}, -- argv for your shell's window-menu handler
         window_switcher = false,
-        -- The feature keys below are opt-in GSettings-backed controls. Leave
-        -- them unset to preserve their current state.
-        -- osd = true,
-        -- osd_volume = true,
-        -- osd_microphone = true,
-        -- osd_brightness = true,
-        -- osd_keyboard_brightness = true,
-        -- osd_pad = true,
-        -- screenshot = true,
+        -- These supported saved preferences are opt-in. Leave them unset to
+        -- preserve their current state.
         -- notifications = true,
         -- input_source_switcher = true,
     },

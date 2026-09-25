@@ -12,9 +12,9 @@ Bingux is one separate project built on these interfaces.
 | Surfaces         | Layer-shell placement, exclusive zones and effects      | Bar, dock, wallpaper and overlays              |
 | Desktop services | Portals, permission policy and optional native features | Notification daemon and other visible controls |
 
-![Files open under Waybar in a fresh Gnoblin devkit session](images/gnoblin-build-a-desktop.png)
+![Firefox under Waybar in a clean Gnoblin session](images/gnoblin-waybar-firefox.png)
 
-_A fresh Gnoblin devkit profile running Waybar and the stock Files app._
+_Firefox is an ordinary client window; Waybar is a separate desktop client._
 
 The [configuration reference](/config/configure) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
@@ -47,8 +47,8 @@ Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cur
 to select it or use another installed theme.
 
 Capture this example from the checkout with
-`scripts/capture-doc-examples.sh desktop`. It uses a disposable config and
-profile; see the [capture script](devkit.md#documentation-captures) for setup.
+`scripts/capture-doc-examples.sh waybar-firefox`. It uses a disposable config
+and profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
 If your existing `init.lua` loads files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported

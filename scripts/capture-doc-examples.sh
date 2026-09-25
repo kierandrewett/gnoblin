@@ -3,12 +3,12 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-example="${1:-desktop}"
+example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox | waybar-settings | bingux-files | quickshell-files) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | bingux-files | quickshell-files) ;;
     *)
-        echo "Usage: $0 {desktop|waybar-firefox|waybar-launcher|mako-notification|bingux-firefox|quickshell-firefox|waybar-settings|bingux-files|quickshell-files} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|bingux-files|quickshell-files} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -200,27 +200,16 @@ PanelWindow {
 QML
 fi
 
-capture_path="$output_dir/gnoblin-build-a-desktop.png"
 firefox_profile="$HOME/.mozilla/firefox/gnoblin-docs"
 firefox_command="firefox --no-remote --profile '$firefox_profile'"
 case "$example" in
-    desktop)
-        capture_path="$output_dir/gnoblin-build-a-desktop.png"
-        app_command='waybar & mako & sleep 2; nautilus --new-window'
-        ;;
     waybar-firefox)
         capture_path="$output_dir/gnoblin-waybar-firefox.png"
         app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
         ;;
     waybar-launcher)
         capture_path="$output_dir/gnoblin-waybar-launcher.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
-        post_app_command="fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
-        ;;
-    mako-notification)
-        capture_path="$output_dir/gnoblin-mako-notification.png"
-        app_command="waybar & mako & sleep 2; $firefox_command --new-window '$firefox_url'"
-        post_app_command="notify-send --app-name='Downloads' 'Download complete' 'The file is ready to open.' --icon=folder-download; sleep 2"
+        app_command="waybar & mako & sleep 2; fuzzel & sleep 3; YDOTOOL_SOCKET='$ydotool_socket' ydotool type Firefox; sleep 2"
         ;;
     bingux-firefox)
         capture_path="$output_dir/gnoblin-bingux-firefox.png"
@@ -244,16 +233,8 @@ case "$example" in
         ;;
 esac
 
-if [ "$example" = mako-notification ]; then
-    command -v notify-send >/dev/null || {
-        echo "notify-send is required for this scene" >&2
-        exit 1
-    }
-fi
-
 case "$example" in
     waybar-settings | bingux-files | quickshell-files) ;;
-    desktop) ;;
     *)
         command -v firefox >/dev/null || {
             echo "firefox is required for this scene" >&2
@@ -301,6 +282,14 @@ JSON
 fi
 
 pointer_position="${GNOBLIN_DOC_POINTER:-1160 700}"
+if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
+    case "$example" in
+        waybar-launcher) pointer_position="640 240" ;;
+        waybar-settings) pointer_position="900 450" ;;
+        quickshell-files | bingux-files) pointer_position="800 400" ;;
+        *) pointer_position="900 700" ;;
+    esac
+fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
 desktop_command="set -e; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"

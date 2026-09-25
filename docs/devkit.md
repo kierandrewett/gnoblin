@@ -33,6 +33,10 @@ waybar
 The bar should appear inside the viewer. Try its menus and launcher.
 Close the terminal to stop the devkit.
 
+![GNOME Settings beneath Waybar in a clean Gnoblin devkit session](images/gnoblin-waybar-settings.png)
+
+_The devkit can run stock desktop apps alongside independently launched shell clients._
+
 ## Options
 
 | Variable                   | Accepted value                 | Default    | Effect                                         |
@@ -81,10 +85,8 @@ fully separate from host services. Check the image before publishing it.
 The checked-in documentation scenes can be recaptured with:
 
 ```sh
-scripts/capture-doc-examples.sh desktop
 scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
-scripts/capture-doc-examples.sh mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
 scripts/capture-doc-examples.sh quickshell-firefox
 scripts/capture-doc-examples.sh waybar-settings

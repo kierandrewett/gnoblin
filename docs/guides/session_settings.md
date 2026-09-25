@@ -31,8 +31,6 @@ gnoblin.configure {
 With Mako, set [`shell.notifications`](/config/configure/shell) to `false` so
 Gnoblin does not also own the notification service:
 
-![Mako notification displayed over Firefox in a Waybar session](../images/gnoblin-mako-notification.png)
-
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
