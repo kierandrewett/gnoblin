@@ -16,7 +16,7 @@
   },
   "status_meaning": {
     "existing-path": "An automated build, install, or evaluation path exists. It is not a support promise.",
-    "probe-needed": "The target image exists, but its dependency and packaging feasibility has not been measured.",
+    "probe-needed": "The target image exists, but Gnoblin has no automated target build/install/evaluation path yet; manual probe results are recorded separately.",
     "planned": "A requested target with no implementation path yet."
   },
   "support_meaning": {
@@ -59,7 +59,7 @@
       "support": "candidate",
       "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
       "gates": {
-        "dependency-probe": false,
+        "dependency-probe": true,
         "package-build": true,
         "install": true,
         "coinstall": true,
@@ -286,9 +286,9 @@
       "image": "archlinux:base",
       "lifecycle": "rolling",
       "adapter": "pkgbuild",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/verify.yml"],
+      "ci": [".github/workflows/verify.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
@@ -370,7 +370,7 @@
       "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
       "lifecycle": "rolling",
       "adapter": "rpm-opensuse",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
       "ci": [".github/workflows/verify.yml"],
       "gates": {
@@ -392,11 +392,11 @@
       "channel": "nixos-25.05",
       "lifecycle": "channel-eol",
       "adapter": "nix",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
-        "dependency-probe": false,
+        "dependency-probe": true,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -414,11 +414,11 @@
       "channel": "nixos-25.11",
       "lifecycle": "channel-eol",
       "adapter": "nix",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
-        "dependency-probe": false,
+        "dependency-probe": true,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -436,11 +436,11 @@
       "channel": "nixos-26.05",
       "lifecycle": "channel-current",
       "adapter": "nix",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
-        "dependency-probe": false,
+        "dependency-probe": true,
         "package-build": false,
         "install": false,
         "coinstall": false,

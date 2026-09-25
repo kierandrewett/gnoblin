@@ -69,6 +69,16 @@ release pipeline or COPR publication changes.
   succeeds, but the actual build remains unverified because the shared worker
   ran out of Podman storage before building the private runtime. Do not mark
   Tumbleweed package support yet.
+- Commits `03562b7a` and `508c1f7e` add a repeatable Debian 12 / Ubuntu 22.04
+  capability probe and run it on pushes and pull requests. Both images are
+  blocked by GTK below Mutter 51's 4.14 floor and missing GIRepository 2,
+  GCR4, libei/eis, libdisplay-info, Glycin, and Hyprcursor interfaces. The
+  probe emits a JSON artifact and leaves both targets unsupported; adding them
+  to the package build matrix requires a deliberate private-runtime extension.
+- The target inventory now reflects the automated Arch source-bundle/release
+  recipe, Nix channel evaluations, and Tumbleweed dependency-resolution path.
+  These are implementation paths, not support claims. Check
+  `packaging/targets.json` before describing per-distro status.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
