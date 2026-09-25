@@ -507,6 +507,10 @@ def run_inside() -> int:
                 lambda: frame_button_is_pickable(window_id, x, y),
                 f"close button hit target on window {window_id}",
             )
+            # Force a pointer enter even when a resize or unminimize moved the
+            # frame underneath the virtual pointer without changing its coords.
+            send_pointer("move", 0, 0)
+            time.sleep(0.05)
             send_pointer("move", x, y)
             try:
                 wait_for(
