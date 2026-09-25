@@ -4,7 +4,7 @@
 %global _localstatedir %{_prefix}/var
 %global _sharedstatedir %{_prefix}/var/lib
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
+%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|GnomeQR|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %bcond_with gnoblin_stack
 
