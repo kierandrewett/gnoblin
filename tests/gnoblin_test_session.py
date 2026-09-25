@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import json
+from pathlib import Path
+import select
 import subprocess
 import time
 
@@ -101,6 +103,81 @@ def send_pointer(kind: str, x: int, y: int, button: int = 1) -> None:
         "const p=global.lifecycleFuzzPointer;p.notify_absolute_motion(G.get_monotonic_time(),"
         f"{x},{y});{event}return true;}})()"
     )
+
+
+def compile_minimal_testing_shell(build_dir: Path) -> Path:
+    """Build the real layer-shell panel shared by headless compositor tests."""
+    root = Path(__file__).resolve().parents[1]
+    build_dir.mkdir(parents=True, exist_ok=True)
+    generated = build_dir / "generated"
+    generated.mkdir(exist_ok=True)
+    layer_xml = root / "src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"
+    layer_header = generated / "wlr-layer-shell-unstable-v1-client-protocol.h"
+    layer_code = generated / "wlr-layer-shell-unstable-v1-protocol.c"
+    xdg_header = generated / "xdg-shell-client-protocol.h"
+    xdg_code = generated / "xdg-shell-protocol.c"
+    wayland_protocols = subprocess.check_output(
+        ["pkg-config", "--variable=pkgdatadir", "wayland-protocols"], text=True
+    ).strip()
+    commands = [
+        ["wayland-scanner", "client-header", str(layer_xml), str(layer_header)],
+        ["wayland-scanner", "private-code", str(layer_xml), str(layer_code)],
+        [
+            "wayland-scanner",
+            "client-header",
+            f"{wayland_protocols}/stable/xdg-shell/xdg-shell.xml",
+            str(xdg_header),
+        ],
+        [
+            "wayland-scanner",
+            "private-code",
+            f"{wayland_protocols}/stable/xdg-shell/xdg-shell.xml",
+            str(xdg_code),
+        ],
+    ]
+    for command in commands:
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+    compiler_flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "wayland-client"], text=True).split()
+    binary = build_dir / "minimal-testing-shell"
+    subprocess.run(
+        [
+            "cc",
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{generated}",
+            str(root / "tests/e2e/minimal-testing-shell.c"),
+            str(layer_code),
+            str(xdg_code),
+            *compiler_flags,
+            "-o",
+            str(binary),
+        ],
+        check=True,
+    )
+    return binary
+
+
+def start_minimal_testing_shell(build_dir: Path, log_path: Path) -> subprocess.Popen:
+    """Start the panel and wait for its first layer-surface commit."""
+    binary = compile_minimal_testing_shell(build_dir)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w") as log:
+        process = subprocess.Popen([str(binary)], stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1)
+    assert process.stdout is not None
+    readable, _, _ = select.select([process.stdout], [], [], 12)
+    line = process.stdout.readline().strip() if readable else ""
+    if line == "GNOBLIN_TEST_SHELL_READY":
+        return process
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+    raise RuntimeError(f"minimal layer-shell panel did not map: {line!r} {log_path.read_text()}")
 
 
 def set_frame(title: str, policy: list[int]) -> None:

@@ -14,7 +14,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import traceback
@@ -22,7 +21,8 @@ import traceback
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
-from gnoblin_test_session import (
+from gnoblin_test_session import (  # noqa: E402
+    compile_minimal_testing_shell,
     eval_shell,
     send_pointer,
     shell_windows,
@@ -60,10 +60,21 @@ def run_parent() -> int:
     prepared_shard = os.environ.get("GNOBLIN_E2E_PREPARED_SHARD")
     shard_path = Path(prepared_shard) if prepared_shard else artifact_dir / "shard.json"
     if not prepared_shard:
-        subprocess.run([
-            sys.executable, str(ROOT / "tests/e2e/app-catalog.py"), "--catalog-in", str(catalog_path),
-            "--shard-index", str(index), "--shard-count", str(count), "--shard-output", str(shard_path),
-        ], check=True)
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tests/e2e/app-catalog.py"),
+                "--catalog-in",
+                str(catalog_path),
+                "--shard-index",
+                str(index),
+                "--shard-count",
+                str(count),
+                "--shard-output",
+                str(shard_path),
+            ],
+            check=True,
+        )
     shard = json.loads(shard_path.read_text())
     if shard.get("shard") != {"index": index, "count": count} or not shard.get("apps"):
         raise RuntimeError(f"invalid or empty catalog shard {index}/{count}")
@@ -71,8 +82,9 @@ def run_parent() -> int:
     run_info = {
         "shard": shard["shard"],
         "app_count": len(apps),
-        "git_head": subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
-                                    capture_output=True, text=True).stdout.strip(),
+        "git_head": subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True
+        ).stdout.strip(),
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "prefix": os.environ.get("GNOBLIN_PREFIX", str(ROOT / "install")),
         "catalog_generated_utc": catalog["generated_utc"],
@@ -84,21 +96,23 @@ def run_parent() -> int:
     state_dir = artifact_dir / "private-state"
     state_dir.mkdir(mode=0o700)
     env = os.environ.copy()
-    env.update({
-        "GNOBLIN_TEST_UNSAFE_MODE": "1",
-        "GNOBLIN_TEST_XWAYLAND": "1",
-        "GNOBLIN_TEST_CLIENT": str(SCRIPT),
-        "GNOBLIN_APP_E2E_INNER": "1",
-        "GNOBLIN_E2E_SHARD_FILE": str(shard_path),
-        "GNOBLIN_E2E_EVENTS": str(artifact_dir / "events.jsonl"),
-        "GNOBLIN_E2E_SUMMARY": str(artifact_dir / "summary.json"),
-        "GNOBLIN_E2E_SCREENSHOTS": str(artifact_dir / "screenshots"),
-        "GNOBLIN_E2E_ARTIFACT_DIR": str(artifact_dir),
-        "GNOBLIN_STATE_DIR": str(state_dir),
-        "GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT": "0",
-        "MONITOR": os.environ.get("GNOBLIN_E2E_MONITOR", "1280x800"),
-        "PYTHONUNBUFFERED": "1",
-    })
+    env.update(
+        {
+            "GNOBLIN_TEST_UNSAFE_MODE": "1",
+            "GNOBLIN_TEST_XWAYLAND": "1",
+            "GNOBLIN_TEST_CLIENT": str(SCRIPT),
+            "GNOBLIN_APP_E2E_INNER": "1",
+            "GNOBLIN_E2E_SHARD_FILE": str(shard_path),
+            "GNOBLIN_E2E_EVENTS": str(artifact_dir / "events.jsonl"),
+            "GNOBLIN_E2E_SUMMARY": str(artifact_dir / "summary.json"),
+            "GNOBLIN_E2E_SCREENSHOTS": str(artifact_dir / "screenshots"),
+            "GNOBLIN_E2E_ARTIFACT_DIR": str(artifact_dir),
+            "GNOBLIN_STATE_DIR": str(state_dir),
+            "GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT": "0",
+            "MONITOR": os.environ.get("GNOBLIN_E2E_MONITOR", "1280x800"),
+            "PYTHONUNBUFFERED": "1",
+        }
+    )
     if os.environ.get("GNOBLIN_E2E_EXTRA_MONITOR"):
         env["EXTRA_MONITOR"] = os.environ["GNOBLIN_E2E_EXTRA_MONITOR"]
     timeout = int(os.environ.get("GNOBLIN_E2E_TIMEOUT", "7200"))
@@ -107,9 +121,14 @@ def run_parent() -> int:
 
     log_path = artifact_dir / "runner.log"
     with log_path.open("w") as log:
-        process = subprocess.Popen([str(ROOT / "scripts/run-gnome-shell.sh")], cwd=ROOT,
-                                   env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True)
+        process = subprocess.Popen(
+            [str(ROOT / "scripts/run-gnome-shell.sh")],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
 
         def stream_output() -> None:
             assert process.stdout is not None
@@ -135,15 +154,20 @@ def run_parent() -> int:
     published_log = state_dir / "gnome-shell-last.log"
     if published_log.exists():
         shutil.copy2(published_log, artifact_dir / "shell.log")
-    shell_log = (artifact_dir / "shell.log").read_text(errors="replace") if (artifact_dir / "shell.log").exists() else ""
+    shell_log = (
+        (artifact_dir / "shell.log").read_text(errors="replace") if (artifact_dir / "shell.log").exists() else ""
+    )
     diagnostics = [line for line in shell_log.splitlines() if FATAL_LOG.search(line)]
     if return_code or diagnostics or (artifact_dir / "timeout.json").exists():
-        save_json(artifact_dir / "failure.json", {
-            "return_code": return_code,
-            "diagnostics": diagnostics[-80:],
-            "events": str(artifact_dir / "events.jsonl"),
-            "shell_log": str(artifact_dir / "shell.log"),
-        })
+        save_json(
+            artifact_dir / "failure.json",
+            {
+                "return_code": return_code,
+                "diagnostics": diagnostics[-80:],
+                "events": str(artifact_dir / "events.jsonl"),
+                "shell_log": str(artifact_dir / "shell.log"),
+            },
+        )
         repair_request = artifact_dir / "repair-request.md"
         if not repair_request.exists():
             repair_request.write_text(
@@ -160,39 +184,6 @@ def run_parent() -> int:
     summary = json.loads((artifact_dir / "summary.json").read_text())
     print(f"PASS: compositor survived shard {index}/{count}; outcomes={summary['outcomes']}", flush=True)
     return 0
-
-
-def compile_testing_shell() -> Path:
-    build_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin-app-e2e"
-    build_dir.mkdir(parents=True, exist_ok=True)
-    layer_xml = ROOT / "src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"
-    generated = build_dir / "generated"
-    generated.mkdir(exist_ok=True)
-    layer_header = generated / "wlr-layer-shell-unstable-v1-client-protocol.h"
-    layer_code = generated / "wlr-layer-shell-unstable-v1-protocol.c"
-    xdg_header = generated / "xdg-shell-client-protocol.h"
-    xdg_code = generated / "xdg-shell-protocol.c"
-    wayland_protocols = subprocess.check_output(
-        ["pkg-config", "--variable=pkgdatadir", "wayland-protocols"], text=True
-    ).strip()
-    commands = [
-        ["wayland-scanner", "client-header", str(layer_xml), str(layer_header)],
-        ["wayland-scanner", "private-code", str(layer_xml), str(layer_code)],
-        ["wayland-scanner", "client-header", f"{wayland_protocols}/stable/xdg-shell/xdg-shell.xml", str(xdg_header)],
-        ["wayland-scanner", "private-code", f"{wayland_protocols}/stable/xdg-shell/xdg-shell.xml", str(xdg_code)],
-    ]
-    for command in commands:
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-    compiler_flags = subprocess.check_output(
-        ["pkg-config", "--cflags", "--libs", "wayland-client"], text=True
-    ).split()
-    binary = build_dir / "minimal-testing-shell"
-    subprocess.run([
-        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", f"-I{generated}",
-        str(ROOT / "tests/e2e/minimal-testing-shell.c"), str(layer_code), str(xdg_code),
-        *compiler_flags, "-o", str(binary),
-    ], check=True)
-    return binary
 
 
 def window_expression(sequence: int) -> str:
@@ -217,7 +208,9 @@ def window_state(sequence: int) -> dict | None:
 
 def mutate(sequence: int, body: str) -> object:
     expression = window_expression(sequence)
-    return eval_shell(f"(()=>{{const w={expression};if(!w)throw new Error('window disappeared');{body};return true;}})()")
+    return eval_shell(
+        f"(()=>{{const w={expression};if(!w)throw new Error('window disappeared');{body};return true;}})()"
+    )
 
 
 def write_event(path: Path, event: dict) -> None:
@@ -231,10 +224,23 @@ def screenshot(app: dict, directory: Path) -> str | None:
     digest = hashlib.sha256(app["app_id"].encode()).hexdigest()[:12]
     path = directory / f"{app['source']}-{digest}.png"
     result = subprocess.run(
-        ["gdbus", "call", "--session", "--dest", "org.gnome.Shell.Screenshot",
-         "--object-path", "/org/gnome/Shell/Screenshot", "--method",
-         "org.gnome.Shell.Screenshot.Screenshot", "false", "false", str(path)],
-        capture_output=True, text=True, timeout=12,
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell.Screenshot",
+            "--object-path",
+            "/org/gnome/Shell/Screenshot",
+            "--method",
+            "org.gnome.Shell.Screenshot.Screenshot",
+            "false",
+            "false",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=12,
     )
     return str(path) if result.returncode == 0 and path.is_file() else None
 
@@ -281,53 +287,64 @@ def close_sequence(sequence: int, timeout: float = 10) -> str:
     return "window-delete-fallback"
 
 
-def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
-                console_dir: Path, launch_timeout: float) -> dict:
+def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir: Path, launch_timeout: float) -> dict:
     baseline = {window["sequence"] for window in shell_windows()}
     log_path = console_dir / f"{hashlib.sha256(app['app_id'].encode()).hexdigest()[:12]}.log"
     console_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    state = {"app_id": app["app_id"], "name": app["name"], "source": app["source"],
-             "status": "started", "windows": [], "operations": [], "console_log": str(log_path)}
+    state = {
+        "app_id": app["app_id"],
+        "name": app["name"],
+        "source": app["source"],
+        "status": "started",
+        "windows": [],
+        "operations": [],
+        "console_log": str(log_path),
+    }
     with log_path.open("w") as log:
         try:
-            process = subprocess.Popen(app_command(app), stdin=subprocess.DEVNULL,
-                                       stdout=log, stderr=subprocess.STDOUT,
-                                       start_new_session=True)
+            process = subprocess.Popen(
+                app_command(app), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+            )
         except Exception as error:
             state.update(status="launch-error", error=str(error))
             write_event(events_path, state)
             return state
 
         try:
+
             def app_windows() -> list[dict]:
-                return [window for window in shell_windows()
-                        if window["sequence"] not in baseline and window["title"]]
+                return [window for window in shell_windows() if window["sequence"] not in baseline and window["title"]]
 
             try:
-                new_windows = wait_for(app_windows, f"{app['app_id']} to map a Wayland/X11 window",
-                                       timeout=launch_timeout)
+                new_windows = wait_for(
+                    app_windows, f"{app['app_id']} to map a Wayland/X11 window", timeout=launch_timeout
+                )
                 time.sleep(0.6)
                 new_windows = app_windows()
                 if not new_windows:
                     raise TimeoutError(f"{app['app_id']} closed its first window before the test began")
             except TimeoutError as error:
-                state.update(status="no-window", error=str(error),
-                             process_exit_code=process.poll())
+                state.update(status="no-window", error=str(error), process_exit_code=process.poll())
                 return state
 
             new_windows.sort(key=lambda window: window["sequence"])
             state["screenshot"] = screenshot(app, screenshot_dir)
             state["windows"] = [window["sequence"] for window in new_windows]
             state["status"] = "window-mapped"
-            write_event(events_path, {**state, "phase": "window-mapped", "elapsed_seconds": round(time.monotonic() - started, 3)})
+            write_event(
+                events_path,
+                {**state, "phase": "window-mapped", "elapsed_seconds": round(time.monotonic() - started, 3)},
+            )
 
             control_failed = False
             for mapped in new_windows:
                 sequence = mapped["sequence"]
                 current = window_state(sequence)
                 if current is None:
-                    state["operations"].append({"window": sequence, "operation": "observe", "status": "closed-before-test"})
+                    state["operations"].append(
+                        {"window": sequence, "operation": "observe", "status": "closed-before-test"}
+                    )
                     control_failed = True
                     continue
 
@@ -336,8 +353,9 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
                     state["operations"].append(result)
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
 
-                def invoke(operation: str, body: str, verify, timeout: float = 2.5,
-                           capability: str | None = None) -> str:
+                def invoke(
+                    operation: str, body: str, verify, timeout: float = 2.5, capability: str | None = None
+                ) -> str:
                     nonlocal control_failed
                     current_state = window_state(sequence)
                     if capability and current_state and not current_state[capability]:
@@ -359,13 +377,23 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
                             control_failed = True
                         return "unsupported-or-error"
 
-                invoke("activate", "w.activate(global.get_current_time())",
-                       lambda: (lambda after: after is not None and after["focused"])(window_state(sequence)), timeout=2)
+                invoke(
+                    "activate",
+                    "w.activate(global.get_current_time())",
+                    lambda: (lambda after: after is not None and after["focused"])(window_state(sequence)),
+                    timeout=2,
+                )
                 try:
-                    mutate(sequence, "imports.gi.Meta.gnoblin_window_frame_set(w,"
-                           f"new imports.gi.GLib.Variant('(iiiiiiiii)',{json.dumps(FRAME_POLICY)}))")
-                    wait_for(lambda: (window_state(sequence) or {}).get("layout", {}).get("border", [0])[0] == 36,
-                             "Gnoblin native frame", timeout=2)
+                    mutate(
+                        sequence,
+                        "imports.gi.Meta.gnoblin_window_frame_set(w,"
+                        f"new imports.gi.GLib.Variant('(iiiiiiiii)',{json.dumps(FRAME_POLICY)}))",
+                    )
+                    wait_for(
+                        lambda: (window_state(sequence) or {}).get("layout", {}).get("border", [0])[0] == 36,
+                        "Gnoblin native frame",
+                        timeout=2,
+                    )
                     record("native-frame", "observed")
                 except Exception as error:
                     record("native-frame", "unsupported-or-error", error=str(error))
@@ -380,43 +408,64 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
                         record(name, "window-disappeared")
                         control_failed = True
                         break
-                    invoke(name, f"w.move_frame(false,{x},{y})",
-                           lambda: (lambda after: after is not None and
-                                    (after["x"], after["y"]) != (before["x"], before["y"]))(
-                                        window_state(sequence)), timeout=1.5, capability="can_move")
-                    for size_name, width, height in (("center", 700, 440), ("edge", 960, 620),
-                                                    ("small", 300, 220)):
+                    invoke(
+                        name,
+                        f"w.move_frame(false,{x},{y})",
+                        lambda: (
+                            lambda after: after is not None and (after["x"], after["y"]) != (before["x"], before["y"])
+                        )(window_state(sequence)),
+                        timeout=1.5,
+                        capability="can_move",
+                    )
+                    for size_name, width, height in (("center", 700, 440), ("edge", 960, 620), ("small", 300, 220)):
                         before = window_state(sequence)
                         if not before:
                             record(f"resize-{size_name}", "window-disappeared")
                             break
-                        invoke(f"resize-{size_name}",
-                               f"w.move_resize_frame(false,{x},{y},{width},{height})",
-                               lambda: (lambda after: after is not None and
-                                        (after["width"], after["height"]) !=
-                                        (before["width"], before["height"]))(
-                                            window_state(sequence)), timeout=1.5,
-                               capability="can_resize")
+                        invoke(
+                            f"resize-{size_name}",
+                            f"w.move_resize_frame(false,{x},{y},{width},{height})",
+                            lambda: (
+                                lambda after: (
+                                    after is not None
+                                    and (after["width"], after["height"]) != (before["width"], before["height"])
+                                )
+                            )(window_state(sequence)),
+                            timeout=1.5,
+                            capability="can_resize",
+                        )
 
                 monitor_count = eval_shell("global.display.get_n_monitors()")
                 if monitor_count > 1:
-                    invoke("move-to-secondary-monitor", "w.move_to_monitor(1)",
-                           lambda: (lambda after: after is not None and after["monitor"] == 1)(
-                               window_state(sequence)), timeout=2, capability="can_move")
-                    invoke("move-back-to-primary-monitor", "w.move_to_monitor(0)",
-                           lambda: (lambda after: after is not None and after["monitor"] == 0)(
-                               window_state(sequence)), timeout=2, capability="can_move")
+                    invoke(
+                        "move-to-secondary-monitor",
+                        "w.move_to_monitor(1)",
+                        lambda: (lambda after: after is not None and after["monitor"] == 1)(window_state(sequence)),
+                        timeout=2,
+                        capability="can_move",
+                    )
+                    invoke(
+                        "move-back-to-primary-monitor",
+                        "w.move_to_monitor(0)",
+                        lambda: (lambda after: after is not None and after["monitor"] == 0)(window_state(sequence)),
+                        timeout=2,
+                        capability="can_move",
+                    )
 
                 current = window_state(sequence)
                 if current and current["layout"]["border"][0]:
                     try:
                         x, y, width, height = (current[k] for k in ("x", "y", "width", "height"))
-                        shell_drag(x + min(100, width // 2), y + 18,
-                                   min(1230, x + min(100, width // 2) + 44), min(750, y + 54))
+                        shell_drag(
+                            x + min(100, width // 2), y + 18, min(1230, x + min(100, width // 2) + 44), min(750, y + 54)
+                        )
                         dragged = wait_for(
-                            lambda: (lambda after: after if after and
-                                     (after["x"], after["y"]) != (x, y) else None)(window_state(sequence)),
-                            "titlebar drag movement", timeout=1.5)
+                            lambda: (lambda after: after if after and (after["x"], after["y"]) != (x, y) else None)(
+                                window_state(sequence)
+                            ),
+                            "titlebar drag movement",
+                            timeout=1.5,
+                        )
                         record("titlebar-drag", "observed", state=dragged)
                     except Exception as error:
                         record("titlebar-drag", "unsupported-or-error", error=str(error))
@@ -427,13 +476,20 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
                         before = window_state(sequence)
                         if before and before["can_resize"]:
                             x, y, width, height = (before[k] for k in ("x", "y", "width", "height"))
-                            shell_drag(x + width - 2, y + height - 2,
-                                       min(1276, x + width + 38), min(796, y + height + 30))
+                            shell_drag(
+                                x + width - 2, y + height - 2, min(1276, x + width + 38), min(796, y + height + 30)
+                            )
                             resized = wait_for(
-                                lambda: (lambda after: after if after and
-                                         (after["width"], after["height"]) != (width, height)
-                                         else None)(window_state(sequence)),
-                                "native-frame resize handle", timeout=1.5)
+                                lambda: (
+                                    lambda after: (
+                                        after
+                                        if after and (after["width"], after["height"]) != (width, height)
+                                        else None
+                                    )
+                                )(window_state(sequence)),
+                                "native-frame resize handle",
+                                timeout=1.5,
+                            )
                             record("resize-handle-drag", "observed", state=resized)
                         elif before:
                             record("resize-handle-drag", "not-supported", capability="can_resize")
@@ -442,40 +498,63 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path,
                         if before and before["can_resize"]:
                             control_failed = True
 
-                invoke("maximize", "w.maximize()",
-                       lambda: (lambda after: after is not None and after["maximized"])(window_state(sequence)),
-                       capability="can_maximize")
-                invoke("unmaximize", "w.unmaximize()",
-                       lambda: (lambda after: after is not None and not after["maximized"])(window_state(sequence)),
-                       capability="can_maximize")
-                invoke("minimize", "w.minimize()",
-                       lambda: (lambda after: after is not None and after["minimized"])(window_state(sequence)),
-                       capability="can_minimize")
-                invoke("unminimize", "w.unminimize()",
-                       lambda: (lambda after: after is not None and not after["minimized"])(window_state(sequence)),
-                       capability="can_minimize")
-                invoke("fullscreen", "w.make_fullscreen()",
-                       lambda: (lambda after: after is not None and after["fullscreen"])(window_state(sequence)))
-                invoke("unfullscreen", "w.unmake_fullscreen()",
-                       lambda: (lambda after: after is not None and not after["fullscreen"])(window_state(sequence)))
+                invoke(
+                    "maximize",
+                    "w.maximize()",
+                    lambda: (lambda after: after is not None and after["maximized"])(window_state(sequence)),
+                    capability="can_maximize",
+                )
+                invoke(
+                    "unmaximize",
+                    "w.unmaximize()",
+                    lambda: (lambda after: after is not None and not after["maximized"])(window_state(sequence)),
+                    capability="can_maximize",
+                )
+                invoke(
+                    "minimize",
+                    "w.minimize()",
+                    lambda: (lambda after: after is not None and after["minimized"])(window_state(sequence)),
+                    capability="can_minimize",
+                )
+                invoke(
+                    "unminimize",
+                    "w.unminimize()",
+                    lambda: (lambda after: after is not None and not after["minimized"])(window_state(sequence)),
+                    capability="can_minimize",
+                )
+                invoke(
+                    "fullscreen",
+                    "w.make_fullscreen()",
+                    lambda: (lambda after: after is not None and after["fullscreen"])(window_state(sequence)),
+                )
+                invoke(
+                    "unfullscreen",
+                    "w.unmake_fullscreen()",
+                    lambda: (lambda after: after is not None and not after["fullscreen"])(window_state(sequence)),
+                )
 
             for sequence in state["windows"]:
                 try:
                     initial = window_state(sequence)
                     close_method = close_sequence(sequence)
-                    close_result = {"window": sequence, "operation": "close",
-                                    "status": close_method}
+                    close_result = {"window": sequence, "operation": "close", "status": close_method}
                     state["operations"].append(close_result)
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
                     if initial and initial["layout"]["border"][0] and close_method != "titlebar-close-button":
                         control_failed = True
                 except Exception as error:
-                    state["operations"].append({"window": sequence, "operation": "close",
-                                                 "status": "error", "error": str(error)})
-            close_failed = any(operation.get("operation") == "close" and operation.get("status") == "error"
-                               for operation in state["operations"])
-            state["status"] = "control-failed" if close_failed or control_failed else (
-                "exercised" if state["windows"] else "no-window")
+                    state["operations"].append(
+                        {"window": sequence, "operation": "close", "status": "error", "error": str(error)}
+                    )
+            close_failed = any(
+                operation.get("operation") == "close" and operation.get("status") == "error"
+                for operation in state["operations"]
+            )
+            state["status"] = (
+                "control-failed"
+                if close_failed or control_failed
+                else ("exercised" if state["windows"] else "no-window")
+            )
             state["elapsed_seconds"] = round(time.monotonic() - started, 3)
             return state
         except BaseException:
@@ -507,9 +586,8 @@ def run_inside() -> int:
     event_path = events_path
     event_path.parent.mkdir(parents=True, exist_ok=True)
     event_path.write_text("")
-    panel_binary = compile_testing_shell()
-    panel = subprocess.Popen([str(panel_binary)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, bufsize=1)
+    panel_binary = compile_minimal_testing_shell(Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin-app-e2e")
+    panel = subprocess.Popen([str(panel_binary)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     try:
         assert panel.stdout is not None
         readable, _, _ = select.select([panel.stdout], [], [], 12)
@@ -530,17 +608,20 @@ def run_inside() -> int:
         install_results = {}
         if install_report and Path(install_report).is_file():
             install_results = {
-                result["app_id"]: result
-                for result in json.loads(Path(install_report).read_text()).get("apps", [])
+                result["app_id"]: result for result in json.loads(Path(install_report).read_text()).get("apps", [])
             }
         launch_timeout = float(os.environ.get("GNOBLIN_E2E_LAUNCH_TIMEOUT", "25"))
         for index, app in enumerate(shard["apps"], start=1):
             print(f"app E2E [{index}/{len(shard['apps'])}] {app['source']} {app['app_id']}", flush=True)
             installation = install_results.get(app["app_id"])
             if installation and installation.get("status") != "installed":
-                outcome = {"app_id": app["app_id"], "name": app["name"],
-                           "source": app["source"], "status": "install-failed",
-                           "installation": installation}
+                outcome = {
+                    "app_id": app["app_id"],
+                    "name": app["name"],
+                    "source": app["source"],
+                    "status": "install-failed",
+                    "installation": installation,
+                }
                 outcomes.append(outcome)
                 write_event(events_path, {"phase": "application-complete", **outcome})
                 continue
@@ -570,9 +651,9 @@ def run_inside() -> int:
             repair_path.write_text(
                 "# Gnoblin application compatibility failures\n\n"
                 f"Shard: `{shard['shard']['index']}/{shard['shard']['count']}`\n\n"
-                "Failed application IDs:\n\n" +
-                "\n".join(f"- `{app_id}`" for app_id in failed_apps) +
-                "\n\nInspect each application console log, operation event, screenshot and the shell log. "
+                "Failed application IDs:\n\n"
+                + "\n".join(f"- `{app_id}`" for app_id in failed_apps)
+                + "\n\nInspect each application console log, operation event, screenshot and the shell log. "
                 "Reproduce one app at a time, then reduce the failing state sequence before patching.\n"
             )
         return 1 if failed_apps else 0

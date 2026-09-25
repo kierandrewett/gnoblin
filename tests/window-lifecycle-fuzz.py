@@ -31,6 +31,7 @@ from gnoblin_test_session import (  # noqa: E402
     eval_shell,
     send_pointer,
     shell_window,
+    start_minimal_testing_shell,
     wait_for,
 )
 
@@ -389,6 +390,7 @@ def run_inside() -> int:
     flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "gtk4"], text=True).split()
     subprocess.run(["cc", str(ROOT / "tests/window-lifecycle-client.c"), "-o", str(fixture), *flags], check=True)
     processes: dict[int, subprocess.Popen] = {}
+    test_shell: subprocess.Popen | None = None
     frame_policies: dict[int, list[int]] = {}
 
     def title_for(window_id: int) -> str:
@@ -564,6 +566,19 @@ def run_inside() -> int:
     event_path.write_text("")
     shell_stopped = False
     try:
+        test_shell = start_minimal_testing_shell(fixture_dir, plan_path.parent / "minimal-testing-shell.log")
+        wait_for(
+            lambda: eval_shell(
+                "(()=>{const M=imports.gi.Meta,Main=imports.ui.main;"
+                "const hasLayer=global.get_window_actors().some("
+                "a=>a.is_mapped()&&a.meta_window&&M.gnoblin_layer_anchor(a.meta_window)>=0);"
+                "const recovery=Main.layoutManager.uiGroup.get_children().find("
+                "a=>a.name==='gnoblin-recovery');return hasLayer&&!recovery?.visible;})()"
+            ),
+            "minimal layer-shell panel to keep desktop recovery inactive",
+        )
+        with event_path.open("a") as events:
+            events.write(json.dumps({"phase": "test-shell-ready", "pid": test_shell.pid}) + "\n")
         for index, action in enumerate(plan["actions"]):
             with event_path.open("a") as events:
                 events.write(json.dumps({"phase": "start", "index": index, "action": action}) + "\n")
@@ -597,6 +612,13 @@ def run_inside() -> int:
                     process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     pass
+        if test_shell and test_shell.poll() is None:
+            test_shell.terminate()
+            try:
+                test_shell.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                test_shell.kill()
+                test_shell.wait(timeout=2)
 
     if failure:
         return 1
