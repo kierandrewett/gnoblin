@@ -352,6 +352,7 @@ export class WindowRules {
         for (const [actor, entry] of this._actors) {
             actor.disconnect(entry.destroy);
             actor.meta_window.disconnect(entry.title);
+            actor.meta_window.disconnect(entry.workspaceChanged);
             entry.surface.disconnect(entry.width);
             entry.surface.disconnect(entry.height);
             entry.surface.opacity = entry.opacity;

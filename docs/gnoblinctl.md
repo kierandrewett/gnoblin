@@ -9,15 +9,16 @@ shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                       | Use it to                                       |
-| ----------------------------- | ----------------------------------------------- |
-| `gnoblinctl window list`      | Find open windows and their IDs                 |
-| `gnoblinctl window match`     | Show the values a window rule can match         |
-| `gnoblinctl layer list`       | Find layer-surface namespaces                   |
-| `gnoblinctl config path`      | Find the config file your session uses          |
-| `gnoblinctl config default`   | Print the bundled default `init.lua`            |
-| `gnoblinctl config reload`    | Apply edits and report config errors            |
-| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding |
+| Command                       | Use it to                                        |
+| ----------------------------- | ------------------------------------------------ |
+| `gnoblinctl window list`      | Find open windows and their IDs                  |
+| `gnoblinctl window match`     | Show the values a window rule can match          |
+| `gnoblinctl layer list`       | Find layer-surface namespaces                    |
+| `gnoblinctl workspace list`   | Show workspace IDs, names, positions and windows |
+| `gnoblinctl config path`      | Find the config file your session uses           |
+| `gnoblinctl config default`   | Print the bundled default `init.lua`             |
+| `gnoblinctl config reload`    | Apply edits and report config errors             |
+| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding  |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -50,26 +51,6 @@ class.
 The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
 raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
 shows a desktop-entry ID, which can differ.
-
-With `--json`, identity stays separate from the rule matcher:
-
-```json
-{
-    "id": "42",
-    "identity": {
-        "desktop_app_id": "org.example.Editor.desktop",
-        "gtk_app_id": "org.example.Editor",
-        "wm_class": "editor",
-        "rule_app_id": "org.example.Editor"
-    },
-    "match": {
-        "type": "window",
-        "app_id": "org.example.Editor",
-        "title": "Notes",
-        "focused": true
-    }
-}
-```
 
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.
@@ -143,6 +124,10 @@ such as fullscreen or non-resizable windows.
 
 ```sh
 gnoblinctl workspace list
+gnoblinctl workspace create --name "Build"
+gnoblinctl workspace create --id build --name "Build" --activate
+gnoblinctl workspace rename --id build --name "Compile"
+gnoblinctl workspace remove --id build
 gnoblinctl workspace switch --number 2
 gnoblinctl workspace switch --id code
 gnoblinctl workspace next
@@ -159,6 +144,16 @@ Names are display labels and are not identifiers. Use `workspace list` to see
 each workspace's ID, number, name, active state and window count. Monitor IDs
 start at **0**.
 
+`workspace create` requires `--name`:
+
+- `--id ID` assigns an ID for this session.
+- `--activate` switches to the new workspace.
+- Without `--id`, Gnoblin assigns a session-only ID such as `@session-1`.
+
+Runtime-created workspaces are temporary. `workspace rename` and
+`workspace remove` require exactly one of `--id` or `--number`. Gnoblin refuses
+to remove a persistent, active, or occupied workspace.
+
 Use `--number NUMBER` to select a workspace by its current one-based position.
 The positional form `workspace switch NUMBER` remains a legacy shorthand;
 prefer the explicit selector.
@@ -169,6 +164,12 @@ when `--follow` is supplied. `window workspace` accepts an ID or a number:
 gnoblinctl window workspace 42 --id code
 gnoblinctl window workspace 42 --number 2
 ```
+
+## Capture a shortcut
+
+Run `gnoblinctl shortcut capture`, then press the key combination. The command
+prints its GTK accelerator. Press Escape to cancel. The default timeout is 30
+seconds; set `--timeout` to an integer from 1 to 60 seconds to change it.
 
 ## Window actions
 
@@ -189,10 +190,6 @@ Actions without extra arguments accept an optional window ID; they use
 | `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768                |
 | `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                          |
 | `monitor`                                | `ID MONITOR`                                     | Move to a zero-based monitor: 0–1024                   |
-
-## Capture a shortcut
-
-Run `gnoblinctl shortcut capture` from a Gnoblin terminal, then press the key combination. The command prints a GTK accelerator that you can copy into `binding` in your Lua config. Escape cancels; it grabs the keyboard while waiting and times out after 30 seconds by default. Use `--timeout SECONDS` to choose 1–60 seconds.
 
 ## Shell and policy commands
 
@@ -240,19 +237,7 @@ gnoblinctl feature list --format table
 ```
 
 Structured results use tables in a terminal and JSON in a pipe.
-Options work before or after the command.
-
-| Option                            | Behavior                                                                   |
-| --------------------------------- | -------------------------------------------------------------------------- |
-| `-j`, `--json`                    | Force JSON, including in a terminal                                        |
-| `--format auto`                   | Tables in a terminal; JSON in a pipe                                       |
-| `--format json`, `--format table` | Force the selected output format                                           |
-| `--timeout SECONDS`               | Set the request timeout, 1–60 seconds; default 5 (30 for shortcut capture) |
-| `--socket PATH`                   | Select the compositor socket for compositor-backed commands                |
-
-`--socket` uses `GNOBLIN_COMPOSITOR_SOCKET`, then
-`$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock` (or `/run/user/UID` when
-`XDG_RUNTIME_DIR` is unset). D-Bus-only commands do not use this option.
+`--json` forces JSON. Options work before or after the command.
 
 For example, `gnoblinctl window list --focused --json` returns this shape.
 IDs, titles and geometry below are illustrative:
@@ -264,9 +249,6 @@ IDs, titles and geometry below are illustrative:
             "id": "42",
             "title": "Notes",
             "appId": "org.example.Editor.desktop",
-            "gtkAppId": "org.example.Editor",
-            "wmClass": "editor",
-            "ruleAppId": "org.example.Editor",
             "focused": true,
             "minimized": false,
             "workspace": 1,
@@ -307,51 +289,13 @@ For workspace lists, `gnoblinctl workspace list --json` returns:
 }
 ```
 
-Other JSON commands return these fields. Lists are arrays; some status fields
-depend on the running session or selected target.
-
-| Command                               | JSON result fields                                                                                                   |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ping`                                | The string `"pong"`.                                                                                                 |
-| `version`                             | `gnomeVersion`, `gnoblinVersion`, `shellVersion`.                                                                    |
-| `status`                              | Version fields, `connected`, `windows`, `focused`; `windowControlError` appears if window listing fails.             |
-| `reload`, `config reload`             | `ok`, `action`.                                                                                                      |
-| `config path`                         | A path string.                                                                                                       |
-| `config default`                      | The bundled Lua config as a string.                                                                                  |
-| `privacy`                             | `screenSharing`, `microphoneInUse`, `locationInUse` booleans.                                                        |
-| `permissions`, `permissions list`     | `policy`, `capabilities`, `levels`, `path`.                                                                          |
-| `permissions check`                   | `level`, `rule`, `monitors`, `devices` bitmask, `clipboard`.                                                         |
-| `input list`                          | `sources`: objects with `type`, `id`, `shortName`, `name`.                                                           |
-| `input current`                       | `type`, `id`, `shortName`, `name`.                                                                                   |
-| `input select`                        | `ok`, `type`, `id`.                                                                                                  |
-| `feature list`                        | `features`: objects with `id`, `description`, `enabled`.                                                             |
-| `feature show`                        | `id`, `enabled`.                                                                                                     |
-| `feature enable/disable`              | `ok`, `id`, `enabled`.                                                                                               |
-| `script list`                         | `scripts`: names of loaded integrations and user scripts.                                                            |
-| `grant list`                          | `grants`: objects with `id`, `kind`, `requester`, `devices`, `clipboard`, `screenStreams`.                           |
-| `grant revoke`                        | `ok`, `id`.                                                                                                          |
-| `launch begin/end`                    | `ok`, `token`.                                                                                                       |
-| `launch status`                       | `busy`, `pending`, `nativeCursor`, `pointerVisible`, `spinnerVisible`, `cursorSource`, `position`.                   |
-| `monitor list`                        | `monitors`: objects with `id`, `x`, `y`, `width`, `height`, `primary`, `scale`.                                      |
-| `layer list`, `animation surfaces`    | `surfaces`: objects with `id`, `namespace`, `title`.                                                                 |
-| `animation list`                      | `animations`: built-ins have `name`, `event`, `builtin`, `previewable`; custom entries also have `duration`, `ease`. |
-| `animation inspect`                   | `name`, `event`, `target`, `properties`, `context`, `spec`.                                                          |
-| `animation preview`                   | `session`, `target`, `name`, `event`, `paused`, `spec`.                                                              |
-| `animation seek/step/play/pause/stop` | `ok`, `session`, `action`.                                                                                           |
-| `workspace switch/next/previous`      | `ok`, `pending`, `workspace`, `id`, `number`, `name`, `active`, `windows`.                                           |
-| `workspace move-active`               | Workspace fields above, plus `follow` and `window`.                                                                  |
-| `window workspace`                    | `ok`, `pending`, `window`, `action`, `workspace`, `workspaceId`, `workspaceNumber`.                                  |
-
-Window-list fields are shown above. Other window action acknowledgements
-include `ok`, `pending`, `window` and `action`; run a command with `--json` to
-see its exact values.
-
 | Exit code | Meaning                          |
 | --------- | -------------------------------- |
 | 0         | Success                          |
 | 1         | Runtime failure; error on stderr |
 | 2         | Invalid arguments                |
 
+`--timeout SECONDS` accepts 1–60; default is 5.
 Uncertain actions are not retried automatically.
 
 A reply with `pending: true` means accepted, not finished.

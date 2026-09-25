@@ -52,6 +52,11 @@ jobs:
         with:
           submodules: false
 
+      - name: Set container checkout ownership
+        run: |
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Fetch GNOME submodules with retry backoff
         run: scripts/checkout-submodules-with-retry.sh
 

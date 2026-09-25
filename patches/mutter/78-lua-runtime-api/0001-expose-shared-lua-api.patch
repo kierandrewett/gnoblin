@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 17:00:00 +0100
+Subject: [PATCH] gnoblin: expose the shared Lua runtime API to Shell
+
+Expose narrow Mutter entry points for Lua API invocation and queued runtime
+operation draining. Gnoblin owns these additions and applies them as an overlay
+patch to the pinned Mutter source.
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 06accd2fb..bfea65a31 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -838,0 +839,24 @@ meta_gnoblin_finish_config_event (gboolean commit)
++GVariant *
++meta_gnoblin_call_config_api (const char *method,
++                              GVariant   *arguments,
++                              GError    **error)
++{
++#ifdef HAVE_WAYLAND
++  return gnoblin_config_call_api (method, arguments, error);
++#else
++  g_set_error_literal (error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
++                       "Gnoblin config API requires Wayland support");
++  return NULL;
++#endif
++}
++
++GVariant *
++meta_gnoblin_drain_config_runtime_operations (void)
++{
++#ifdef HAVE_WAYLAND
++  return gnoblin_config_drain_runtime_operations ();
++#else
++  return g_variant_ref_sink (g_variant_new_array (G_VARIANT_TYPE_VARDICT, NULL, 0));
++#endif
++}
++
+diff --git a/src/meta/util.h b/src/meta/util.h
+index b522e30d2..d2d1334e4 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -120,0 +121,7 @@ void meta_gnoblin_finish_config_event (gboolean commit);
++META_EXPORT
++GVariant *meta_gnoblin_call_config_api (const char *method,
++                                        GVariant *arguments,
++                                        GError **error);
++META_EXPORT
++GVariant *meta_gnoblin_drain_config_runtime_operations (void);
++

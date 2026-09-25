@@ -21,8 +21,8 @@ gnoblin.window_rule {
 | `app_id`           | JavaScript regular expression against GTK app ID, falling back to WM class |
 | `title`            | JavaScript regular expression against the window title                     |
 | `layer`            | Layer-shell namespace matcher                                              |
-| `workspace_id`     | Exact stable workspace ID declared in `workspace_ids`                      |
-| `workspace_number` | Current one-based workspace position                                       |
+| `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime             |
+| `workspace_number` | Current one-based workspace position, 1–1024                               |
 
 All supplied match fields must match. The `app_id`, `title`, and `layer`
 patterns are case-sensitive JavaScript regular expressions. Use `^` and `$`
@@ -31,26 +31,26 @@ to match the whole value. `workspace_id` matches an exact, case-sensitive ID.
 See the [window rules guide](/guides/window_rules#find-the-values) for examples
 and ways to find a live app ID, title, or layer namespace.
 
-Declare IDs in `gnoblin.configure.window_management.workspace_ids`. A
-`workspace_id` matcher or `{id = ...}` placement target that is not declared
-makes the configuration invalid. If a declared placement target has no
-currently available workspace when a matching window opens, Gnoblin leaves the
-window in place and logs a warning.
+Declare persistent workspace IDs in `gnoblin.configure.workspaces`. A matcher
+can also name an explicitly assigned runtime ID. Generated `@session-N` IDs
+are temporary and should not be saved in configuration. A `{id = ...}`
+placement target must exist when a matching window opens; if it does not,
+Gnoblin leaves the window in place and logs a warning.
 
 ## Rule fields {#rule-fields}
 
-| Field                 | Values                                                               |
-| --------------------- | -------------------------------------------------------------------- |
-| `blur`                | Integer 0–100; 0 disables blur                                       |
-| `opacity`             | Number 0–1; affects content and text                                 |
-| `blur_ignore_shadows` | Boolean; default `false`                                             |
-| `corners`             | Corner fields below                                                  |
-| `borders`             | Border fields below                                                  |
-| `shader`              | GLSL file path; `""` clears it                                       |
-| `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values               |
-| `animation`           | Built-in or registered animation name, or an event map               |
-| `workspace`           | `{id = "code"}` or `{number = 2}`; place a new window on a workspace |
-| `frame`               | Frame fields below                                                   |
+| Field                 | Values                                                                     |
+| --------------------- | -------------------------------------------------------------------------- |
+| `blur`                | Integer 0–100; 0 disables blur                                             |
+| `opacity`             | Number 0–1; affects content and text                                       |
+| `blur_ignore_shadows` | Boolean; default `false`                                                   |
+| `corners`             | Corner fields below                                                        |
+| `borders`             | Border fields below                                                        |
+| `shader`              | GLSL file path; `""` clears it                                             |
+| `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values                     |
+| `animation`           | Built-in or registered animation name, or an event map                     |
+| `workspace`           | `{id = "code"}` or `{number = 1..1024}`; place a new window on a workspace |
+| `frame`               | Frame fields below                                                         |
 
 Uniform names must be valid GLSL-style identifiers; the `gnoblin_` prefix is
 reserved. Values must fit in a finite 32-bit float.
@@ -135,7 +135,7 @@ pixels and adds a frame.
 
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
-[`gnoblin.configure`](/config/configure#settings).
+[`gnoblin.configure`](/config/configure#window-management).
 
 ### `remove_csd`
 
@@ -183,7 +183,7 @@ gnoblin.window_rule {
         title = string?, -- regular expression
         layer = string?, -- regular expression
         workspace_id = string?,
-        workspace_number = integer?, -- 1–36
+        workspace_number = integer?, -- 1–1024
     },
     blur = integer?, -- 0–100
     opacity = number?, -- 0–1
