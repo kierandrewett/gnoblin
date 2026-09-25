@@ -5,6 +5,7 @@ import { ConfigFile } from "../src/gnome-shell-overlay/js/ui/components/gnoblinC
 globalThis.global = {
     get_pointer: () => [0, 0],
     stage: { get_actor_at_pos: () => null },
+    display: { connect: () => 1, disconnect: () => {} },
 };
 
 function assert(condition, message) {
