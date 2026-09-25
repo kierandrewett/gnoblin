@@ -5,7 +5,7 @@ Epoch:          1
 Release:        1%{?dist}
 Summary:        Gnoblin desktop session
 License:        GPL-2.0-or-later
-URL:            https://github.com/kdrew7/gnoblin
+URL:            https://github.com/kierandrewett/gnoblin
 BuildArch:      noarch
 Requires:       gnoblin-gsettings-desktop-schemas >= 0.1.7
 Requires:       gnoblin-mutter >= 0.1.7

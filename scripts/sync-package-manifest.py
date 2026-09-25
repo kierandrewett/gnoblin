@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_OUTPUT = ROOT / "packaging/generated/manifest.json"
+PROJECT_URL = "https://github.com/kierandrewett/gnoblin"
 
 
 def evaluate() -> dict:
@@ -86,8 +87,9 @@ def render_rpm(manifest: dict) -> str:
         "Release:        1%{?dist}\n"
         "Summary:        Gnoblin desktop session\n"
         "License:        GPL-2.0-or-later\n"
-        "URL:            https://github.com/kdrew7/gnoblin\n"
-        "BuildArch:      noarch\n" + "\n".join(dependencies)
+        f"URL:            {PROJECT_URL}\n"
+        "BuildArch:      noarch\n"
+        + "\n".join(dependencies)
         + f"\nRequires:       gnoblin-mutter = {mutter_version}-{mutter_release}%{{?dist}}\n\n%description\n"
         "Installs the complete Gnoblin session while reusing compatible GNOME userspace.\n\n"
         "%files\n"
@@ -115,7 +117,7 @@ def render_arch(manifest: dict) -> str:
         "pkgrel=1\n"
         "pkgdesc='Gnoblin desktop session'\n"
         "arch=('any')\n"
-        "url='https://github.com/kdrew7/gnoblin'\n"
+        f"url='{PROJECT_URL}'\n"
         "license=('GPL-2.0-or-later')\n"
         f"depends=({' '.join(dependencies)})\n\n"
         "package() {\n"
