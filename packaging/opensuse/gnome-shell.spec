@@ -1,5 +1,4 @@
 %global _prefix /usr/lib/gnoblin
-%global __meson /usr/bin/meson
 %global _libdir %{_prefix}/%{_lib}
 %global _sysconfdir %{_prefix}/etc
 %global _localstatedir %{_prefix}/var
@@ -91,12 +90,19 @@ Adds Gnoblin to the login screen without replacing the GNOME session.
 export PKG_CONFIG_PATH=%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
 test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
-%meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
+/usr/bin/meson setup build . --buildtype=plain \
+  --prefix=%{_prefix} --libdir=%{_libdir} --libexecdir=%{_libexecdir} \
+  --bindir=%{_bindir} --sbindir=%{_sbindir} --includedir=%{_includedir} \
+  --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} \
+  --localedir=%{_datadir}/locale --sysconfdir=%{_sysconfdir} \
+  --localstatedir=%{_localstatedir} --sharedstatedir=%{_sharedstatedir} \
+  --wrap-mode=nodownload --auto-features=enabled \
+  -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
   -Dextensions_tool=false -Dtests=false -Dman=false
-%meson_build
+/usr/bin/meson compile -C build %{?_smp_mflags}
 
 %install
-%meson_install
+DESTDIR=%{buildroot} /usr/bin/meson install -C build --no-rebuild
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
 rm -f %{buildroot}%{_libdir}/systemd/user/org.gnome.Shell-disable-extensions.service
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json

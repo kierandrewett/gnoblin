@@ -1,7 +1,6 @@
 # Tumbleweed uses capability BuildRequires because package names change more
 # often than the pkg-config interfaces consumed by Mutter.
 %global _prefix /usr/lib/gnoblin
-%global __meson /usr/bin/meson
 %global _libdir %{_prefix}/%{_lib}
 %global _sysconfdir %{_prefix}/etc
 %global _localstatedir %{_prefix}/var
@@ -99,13 +98,20 @@ Private headers and pkg-config files for Gnoblin builds.
 %build
 export PKG_CONFIG_PATH=%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
-%meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
+/usr/bin/meson setup build . --buildtype=plain \
+  --prefix=%{_prefix} --libdir=%{_libdir} --libexecdir=%{_libexecdir} \
+  --bindir=%{_bindir} --sbindir=%{_sbindir} --includedir=%{_includedir} \
+  --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} \
+  --localedir=%{_datadir}/locale --sysconfdir=%{_sysconfdir} \
+  --localstatedir=%{_localstatedir} --sharedstatedir=%{_sharedstatedir} \
+  --wrap-mode=nodownload --auto-features=enabled \
+  -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
   -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
   -Dudev_dir=%{_prefix}/lib/udev
-%meson_build
+/usr/bin/meson compile -C build %{?_smp_mflags}
 
 %install
-%meson_install
+DESTDIR=%{buildroot} /usr/bin/meson install -C build --no-rebuild
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
 # The policy is globally visible because polkit resolves actions there.  Its
 # Gnoblin action ID avoids taking ownership of the GNOME policy.
