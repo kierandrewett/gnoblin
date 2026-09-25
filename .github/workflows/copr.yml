@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fedora: [43, 44]
+        fedora: [43, 44, 45]
     container: fedora:${{ matrix.fedora }}
     timeout-minutes: 20
     steps:

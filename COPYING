@@ -1,3 +1,9 @@
+Copyright © 2026 Working Directory Ltd. for Gnoblin's original code.
+
+GNOME-derived portions are Copyright © their respective GNOME authors and
+contributors, as identified by upstream notices. Those notices and licence
+terms are preserved in their source files and submodules.
+
 Gnoblin's own source files are licensed under GPL-2.0-or-later unless a file states otherwise.
 
 This repository also pins upstream GNOME submodules under `subprojects/`. Those projects keep their own licence notices and `COPYING` files; this file does not relicense them.

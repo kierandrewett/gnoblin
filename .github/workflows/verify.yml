@@ -16,7 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fedora: [43, 44]
+        # Keep the current Fedora release and the two previous releases green.
+        fedora: [43, 44, 45]
     container: fedora:${{ matrix.fedora }}
     timeout-minutes: 90
     steps:
