@@ -12,6 +12,7 @@ BUILDROOT="$TOPDIR/BUILDROOT"
 mkdir -p "$SOURCES" "$BUILDROOT"
 
 "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
+git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
 for project in gsettings-desktop-schemas mutter gnome-shell; do
     "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
 done

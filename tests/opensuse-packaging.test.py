@@ -44,6 +44,10 @@ class OpenSUSEPackagingTests(unittest.TestCase):
     def test_build_chain_respects_internal_dependency_order(self):
         chain = (SPECS / "build-chain.sh").read_text()
         self.assertLess(
+            chain.index("git fetch --force --tags origin"),
+            chain.index('"$ROOT/scripts/make-tarball.sh"'),
+        )
+        self.assertLess(
             chain.index("build gsettings-desktop-schemas.spec"),
             chain.index("build mutter.spec --with gnoblin_stack"),
         )
