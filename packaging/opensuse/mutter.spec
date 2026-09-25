@@ -7,7 +7,7 @@
 %global _sharedstatedir %{_prefix}/var/lib
 %global debug_package %{nil}
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4

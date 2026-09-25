@@ -6,7 +6,7 @@
 %global _sharedstatedir %{_prefix}/var/lib
 # Private libraries must never satisfy dependencies of stock GNOME packages.
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4
@@ -34,7 +34,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       21.gnoblin%{?dist}
+Release:       22.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -165,6 +165,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-22.gnoblin
+- Filter private Clutter, Cogl and Mtk typelib requirements.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-21.gnoblin
 - Match declared Glycin, libdisplay-info and Hyprcursor source API floors.
 

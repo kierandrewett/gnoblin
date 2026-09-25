@@ -6,7 +6,7 @@
 %global _sharedstatedir %{_prefix}/var/lib
 # Private libraries must never satisfy dependencies of stock GNOME packages.
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
+%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %define major_version %(c=%{version}; echo $c | cut -d. -f1 | cut -d~ -f1)
@@ -21,7 +21,7 @@ Name:           gnoblin-shell
 Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        15.gnoblin%{?dist}
+Release:        16.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -250,6 +250,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-16.gnoblin
+- Filter private GNOME Shell and Mutter typelib requirements.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-15.gnoblin
 - Match declared GCR and GIRepository source API floors.
 
