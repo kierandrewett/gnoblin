@@ -68,6 +68,10 @@ Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
 modules or write a module using [window data](compositor-bridge.md#windows-and-controls).
 
+![GNOME Settings open under Waybar in a fresh Gnoblin profile](images/gnoblin-waybar-settings.png)
+
+_A stock GNOME app running alongside independent Waybar and Mako clients._
+
 ## Give each visible function an owner
 
 Only one notification daemon should own notifications. If your shell handles

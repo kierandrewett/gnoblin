@@ -15,7 +15,7 @@ gnoblin.configure {
 
 See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
 
-![Fuzzel searching for Firefox over the GNOME website in a Waybar session](../../images/gnoblin-waybar-launcher.png)
+![Fuzzel searching for Firefox over GNOME Help in a Waybar session](../../images/gnoblin-waybar-launcher.png)
 
 _A Gnoblin shortcut opens Fuzzel; the launcher filters to Firefox._
 

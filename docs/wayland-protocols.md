@@ -60,6 +60,10 @@ whole surface can disable the compositor's layer animation for its namespace.
 
 _Quickshell positions the panel with layer shell._
 
+![GNOME Files open beneath a Quickshell panel in a Gnoblin session](images/gnoblin-quickshell-files.png)
+
+_The same layer-shell surface sits above an ordinary application window._
+
 Screen capture through `wlr_screencopy` is separate from capture through the
 desktop portal. The latter follows [portal permission policy](/guides/permissions).
 Turning off this global is not a blanket screen-sharing policy.
@@ -74,10 +78,10 @@ behavior.
 
 ## Inspect a running session
 
-This catalog follows the current Gnoblin source; older installed builds may
-advertise fewer globals. Check `gnoblinctl version --json` and the running
-registry when packaging or debugging a client. A Wayland registry inspector
-such as `wayland-info` shows advertised globals; run it inside the Gnoblin
-session or devkit terminal so it connects to the right `WAYLAND_DISPLAY`. A
-source checkout, package manifest or XML file cannot prove that a particular
-login session has advertised a global.
+This catalog follows current Gnoblin source; older installed builds may
+advertise fewer globals.
+
+Check `gnoblinctl version --json` and the running registry when packaging or
+debugging. Run `wayland-info` inside the Gnoblin session or devkit so it uses the
+right `WAYLAND_DISPLAY`. A checkout or XML file cannot prove which globals a
+login session advertised.

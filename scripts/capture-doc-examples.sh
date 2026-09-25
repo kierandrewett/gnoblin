@@ -6,13 +6,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-desktop}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox) ;;
+    desktop | waybar-firefox | waybar-launcher | mako-notification | bingux-firefox | quickshell-firefox | waybar-settings | bingux-files | quickshell-files) ;;
     *)
-        echo "Usage: $0 [desktop] [output-directory]" >&2
+        echo "Usage: $0 {desktop|waybar-firefox|waybar-launcher|mako-notification|bingux-firefox|quickshell-firefox|waybar-settings|bingux-files|quickshell-files} [output-directory]" >&2
         exit 2
         ;;
 esac
-firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://www.gnome.org/}"
+firefox_url="${GNOBLIN_DOC_FIREFOX_URL:-https://help.gnome.org/gnome-help/}"
 bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$root/../bingux/shell/bingux}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
@@ -166,7 +166,7 @@ selection-text=edf0f7ff
 border=9ccfd8ff
 FUZZEL
 
-if [ "$example" = quickshell-firefox ]; then
+if [ "$example" = quickshell-firefox ] || [ "$example" = quickshell-files ]; then
     command -v quickshell >/dev/null || {
         echo "quickshell is required for this scene" >&2
         exit 1
@@ -230,6 +230,18 @@ case "$example" in
         capture_path="$output_dir/gnoblin-quickshell-firefox.png"
         app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$firefox_url'"
         ;;
+    waybar-settings)
+        capture_path="$output_dir/gnoblin-waybar-settings.png"
+        app_command='waybar & mako & sleep 2; gnome-control-center multitasking'
+        ;;
+    bingux-files)
+        capture_path="$output_dir/gnoblin-bingux-files.png"
+        app_command="gnoblin-quickshell -p '$bingux_config' & sleep 5; nautilus --new-window"
+        ;;
+    quickshell-files)
+        capture_path="$output_dir/gnoblin-quickshell-files.png"
+        app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; nautilus --new-window"
+        ;;
 esac
 
 if [ "$example" = mako-notification ]; then
@@ -239,13 +251,16 @@ if [ "$example" = mako-notification ]; then
     }
 fi
 
-if [ "$example" != desktop ]; then
-    command -v firefox >/dev/null || {
-        echo "firefox is required for this scene" >&2
-        exit 1
-    }
-    mkdir -p "$firefox_profile"
-    cat >"$firefox_profile/user.js" <<'PREFS'
+case "$example" in
+    waybar-settings | bingux-files | quickshell-files) ;;
+    desktop) ;;
+    *)
+        command -v firefox >/dev/null || {
+            echo "firefox is required for this scene" >&2
+            exit 1
+        }
+        mkdir -p "$firefox_profile"
+        cat >"$firefox_profile/user.js" <<'PREFS'
 // Keep first-run pages out of screenshots while retaining a genuinely fresh profile.
 user_pref("browser.aboutwelcome.enabled", false);
 user_pref("browser.startup.homepage_override.mstone", "ignore");
@@ -255,8 +270,15 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
 user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 PREFS
+        ;;
+esac
+if [ "$example" = waybar-settings ]; then
+    command -v gnome-control-center >/dev/null || {
+        echo "gnome-control-center is required for this scene" >&2
+        exit 1
+    }
 fi
-if [ "$example" = bingux-firefox ]; then
+if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     command -v gnoblin-quickshell >/dev/null || {
         echo "gnoblin-quickshell is required for this scene" >&2
         exit 1

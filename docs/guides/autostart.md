@@ -13,7 +13,7 @@ gnoblin.configure {
 }
 ```
 
-![Firefox showing the GNOME website below Waybar in a fresh Gnoblin profile](../images/gnoblin-waybar-firefox.png)
+![Firefox showing GNOME Help below Waybar in a fresh Gnoblin profile](../images/gnoblin-waybar-firefox.png)
 
 _Waybar and Mako are separate layer-shell clients running beside Firefox._
 

@@ -87,16 +87,16 @@ scripts/capture-doc-examples.sh waybar-launcher
 scripts/capture-doc-examples.sh mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
 scripts/capture-doc-examples.sh quickshell-firefox
+scripts/capture-doc-examples.sh waybar-settings
+GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files
+scripts/capture-doc-examples.sh quickshell-files
 ```
 
-Each capture uses a disposable profile and removes it afterward. The scenes
-show Files under Waybar, Firefox with Waybar, Fuzzel over Firefox, a Mako
-notification over Firefox, a Quickshell panel, and Bingux with stock desktop
-apps. Bingux is one separate
-shell project using Gnoblin. Firefox opens the GNOME website in a fresh profile,
-so the screenshots show a real desktop in use instead of a page from the docs
-being illustrated. Firefox needs network access for this page; set
-`GNOBLIN_DOC_FIREFOX_URL` to use another page, such as a local site.
+Each capture uses a disposable profile and removes it afterward. Scenes pair
+Firefox and stock GNOME apps with Waybar + Mako, Quickshell and Bingux. Bingux
+is one separate shell project using Gnoblin. Firefox opens GNOME Help in a fresh
+profile; set `GNOBLIN_DOC_FIREFOX_URL` to use another page. Network access is
+needed for the default page.
 
 Captures need a visible Wayland session, a current build in `./install`, and
 the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is

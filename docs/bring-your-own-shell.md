@@ -39,11 +39,11 @@ using Mako.
 Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) and
 [shortcuts](/guides/shortcuts) only control how you launch it.
 
-![Firefox showing the GNOME website with an independent Waybar session](images/gnoblin-waybar-firefox.png)
+![Firefox showing GNOME Help in an independent Waybar session](images/gnoblin-waybar-firefox.png)
 
 _Firefox running under Waybar in a fresh Gnoblin profile._
 
-![A Mako notification in a fresh Gnoblin session](images/gnoblin-mako-notification.png)
+![A Mako notification above Firefox in a Waybar session](images/gnoblin-mako-notification.png)
 
 _Mako places a download notice above Firefox in a Waybar session._
 
@@ -78,6 +78,10 @@ search and window switcher.
 ![Firefox running in a Bingux session with Files, Firefox and Foot in the dock](images/gnoblin-bingux-firefox.png)
 
 _Bingux is one separate shell project that uses Gnoblin. Files, Firefox and Foot are pinned in its dock._
+
+![GNOME Files open in a Bingux session with its dock visible](images/gnoblin-bingux-files.png)
+
+_Files is a stock GNOME app; Bingux supplies the shell and dock._
 
 Install the dependencies in the
 [Bingux installation guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md),
