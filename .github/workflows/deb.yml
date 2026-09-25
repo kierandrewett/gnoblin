@@ -22,6 +22,33 @@ defaults:
     shell: bash
 
 jobs:
+  dependency-probe:
+    name: Measure older DEB target feasibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+            target: debian12
+          - image: ubuntu:22.04
+            target: ubuntu22.04
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install checkout tools
+        run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Record current host dependency blockers
+        run: scripts/probe-deb-target.py --expect-blocked --output "build/deb-probes/${{ matrix.target }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-probe-${{ matrix.target }}
+          path: build/deb-probes/${{ matrix.target }}.json
+          if-no-files-found: error
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 180
