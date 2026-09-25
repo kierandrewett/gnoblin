@@ -6,7 +6,7 @@
 %global _sharedstatedir %{_prefix}/var/lib
 # Private libraries must never satisfy dependencies of stock GNOME packages.
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|GnomeQR|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
+%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|GnomeQR|Meta|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %define major_version %(c=%{version}; echo $c | cut -d. -f1 | cut -d~ -f1)
@@ -21,7 +21,7 @@ Name:           gnoblin-shell
 Version:        51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        19.gnoblin%{?dist}
+Release:        20.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -251,6 +251,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors - 51.0-20.gnoblin
+- Filter private Meta typelib requirement.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-19.gnoblin
 - Filter private GnomeQR typelib requirements.
 
