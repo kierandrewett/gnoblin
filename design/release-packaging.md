@@ -52,6 +52,23 @@ release pipeline or COPR publication changes.
   install/coexist/remove gate, along with Fedora 43/44/45 builds and the
   existing Arch source-build/dependency checks. The RPM gate does not prove
   graphical login or session selection.
+- Commit `6e377de6` replaces the broken Arch placeholder with a real
+  source-build PKGBUILD and a deterministic release source bundle containing
+  Gnoblin plus materialised patched schemas, Mutter, and Shell sources.
+  Commit `25cd6d54` makes the release recipe generator independent of Nix.
+  Bundle determinism, source inventory, release checksum generation, and
+  recipe syntax pass; full `makepkg`, GNOME co-install, graphical login, and
+  removal remain release gates.
+- Commit `6ea70e32` adds pinned NixOS 25.05, 25.11, 26.05, and unstable
+  package/module evaluations. CI confirms 25.05 and 25.11 are blocked because
+  their package sets lack `gcc16Stdenv`, while 26.05 and unstable evaluate.
+  These evaluations do not establish package-build or graphical-session
+  support.
+- Commit `76d82d9e` makes openSUSE Tumbleweed dependency provisioning succeed
+  when its image lacks `busybox-gawk`. Clean host dependency resolution
+  succeeds, but the actual build remains unverified because the shared worker
+  ran out of Podman storage before building the private runtime. Do not mark
+  Tumbleweed package support yet.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
