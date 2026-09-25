@@ -155,9 +155,10 @@ release pipeline or COPR publication changes.
   dependency. `nix/package.nix` now adds the private Wayland dev output to
   Shell's pkg-config path when that adapter is selected. The full package
   output and `nix flake check --no-build` pass, and CI now builds both Mutter
-  and the complete package. Installation, stock-GNOME coexistence, and
-  graphical login remain unverified; the public guide continues to label this
-  path experimental.
+  and the complete package. Nix workflow run `36159534134` on `861df019`
+  passed all channel evaluations, the full 26.05 package build, and flake
+  checks. Installation, stock-GNOME coexistence, and graphical login remain
+  unverified; the public guide continues to label this path experimental.
 - The exact-main Arch release-style gate on `c54e3d4b` built the package, then
   failed its co-install transaction because Meson reinstalled schema outputs
   under the absolute temporary build-prefix path. Commit `187e95cc` packages
