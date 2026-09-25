@@ -1437,9 +1437,14 @@ export class ConfigFile {
             this._document = cloneDocument(loaded.document);
             this._events = new Set(loaded.events ?? []);
             this._liveUndo = [];
+            this.dispatchEvent("gnoblin.config.reloaded", {
+                path,
+                file_count: (loaded.paths ?? [path]).length,
+            });
             this.dispatchPointerWindowAtPointer();
         } catch (error) {
             Meta.gnoblin_finish_config_load(false);
+            this.dispatchEvent("gnoblin.config.reload_failed", { path, error: error.message });
             throw new Error(`${path}: ${error.message}`);
         }
     }

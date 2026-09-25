@@ -12,11 +12,9 @@ Bingux is one separate project built on these interfaces.
 | Surfaces         | Layer-shell placement, exclusive zones and effects      | Bar, dock, wallpaper and overlays              |
 | Desktop services | Portals, permission policy and optional native features | Notification daemon and other visible controls |
 
-![Calculator on a fresh Gnoblin devkit desktop with a Bingux bar and dock](images/gnoblin-example-desktop.png)
+![Files open under Waybar in a fresh Gnoblin devkit session](images/gnoblin-build-a-desktop.png)
 
-_Calculator in a clean Gnoblin devkit session. Bingux, a separate example
-shell, supplies the bar, dock and wallpaper. The dock pins Files, Firefox and
-Terminal from installed desktop entries._
+_A fresh Gnoblin devkit profile running Waybar and the stock Files app._
 
 The [configuration reference](/config/configure) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
@@ -44,10 +42,6 @@ gnoblin.configure {
     },
 }
 ```
-
-![Waybar and Files in a fresh Gnoblin session](images/gnoblin-build-a-desktop.png)
-
-_Waybar above the stock Files app in a disposable Gnoblin profile._
 
 Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cursors)
 to select it or use another installed theme.

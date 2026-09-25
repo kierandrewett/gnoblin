@@ -16,11 +16,6 @@ GNOBLIN_PREFIX="$PWD/install" just preview
 A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor.
 
-![A calculator window in a Gnoblin devkit desktop with a separate shell](images/gnoblin-example-desktop.png)
-
-_This capture shows Gnoblin managing the application window while Bingux,
-which is a separate project, provides the visible desktop shell._
-
 To choose a terminal explicitly:
 
 ```sh
@@ -87,13 +82,20 @@ The checked-in documentation scenes can be recaptured with:
 
 ```sh
 scripts/capture-doc-examples.sh desktop
+scripts/capture-doc-examples.sh waybar-firefox
+scripts/capture-doc-examples.sh waybar-launcher
+GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
 ```
 
-The script builds a fresh profile, starts Waybar and Files, then writes
-`docs/images/gnoblin-build-a-desktop.png`. Pass a second argument for another
-output directory. It needs a visible Wayland session, a current Gnoblin build
-in `./install`, `grim` and the desktop apps configured by the script. The
-session build installs Adwaita Hyprcursor into `./install`.
+Each capture uses a disposable profile and removes it afterward. The scenes
+show Files, Firefox under Waybar, Fuzzel over Firefox, and Bingux with stock
+desktop apps. Bingux is one separate shell project using Gnoblin. Firefox opens
+the local docs preview at `127.0.0.1:5180`; start it with
+`npm run docs:dev -- --port 5180` first.
+
+Captures need a visible Wayland session, a current build in `./install`, and
+the scene's apps. The build must include Adwaita Hyprcursor. The live cursor is
+included in each image; the capture contains only the devkit viewport.
 
 The [private test harness](testing.md) is for automated checks.
 A devkit run does not verify the installed login session.

@@ -34,8 +34,6 @@ To select the Adwaita artwork theme:
 gnoblin.configure {cursor = {theme = "Adwaita-Hyprcursor", size = 24}}
 ```
 
-![The configured pointer visible beside Fuzzel in Gnoblin](../images/gnoblin-build-a-desktop.png)
-
 ## Hyprcursor support
 
 Gnoblin loads compositor cursor themes through Hyprcursor. The upstream
