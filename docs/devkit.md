@@ -89,6 +89,7 @@ scripts/capture-doc-examples.sh waybar-firefox
 scripts/capture-doc-examples.sh waybar-launcher
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-firefox
 scripts/capture-doc-examples.sh quickshell-firefox
+scripts/capture-doc-examples.sh waybar-files
 scripts/capture-doc-examples.sh waybar-settings
 scripts/capture-doc-examples.sh waybar-mako-notification
 GNOBLIN_DOC_BINGUX_PATH=../bingux/shell/bingux scripts/capture-doc-examples.sh bingux-files

@@ -6,9 +6,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 example="${1:-waybar-firefox}"
 output_dir="${2:-$root/docs/images}"
 case "$example" in
-    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
+    waybar-firefox | waybar-launcher | bingux-firefox | quickshell-firefox | waybar-files | waybar-settings | waybar-notifications | waybar-mako-notification | bingux-files | quickshell-files | window-effects) ;;
     *)
-        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
+        echo "Usage: $0 {waybar-firefox|waybar-launcher|bingux-firefox|quickshell-firefox|waybar-files|waybar-settings|waybar-notifications|waybar-mako-notification|bingux-files|quickshell-files|window-effects} [output-directory]" >&2
         exit 2
         ;;
 esac
@@ -251,6 +251,10 @@ case "$example" in
         capture_path="$output_dir/gnoblin-quickshell-firefox.png"
         app_command="quickshell -p '$XDG_CONFIG_HOME/quickshell/shell.qml' & sleep 3; $firefox_command --new-window '$firefox_url'"
         ;;
+    waybar-files)
+        capture_path="$output_dir/gnoblin-waybar-files.png"
+        app_command='waybar & mako & sleep 2; nautilus --new-window'
+        ;;
     waybar-settings)
         capture_path="$output_dir/gnoblin-waybar-settings.png"
         app_command='waybar & mako & sleep 2; gnome-control-center multitasking'
@@ -279,7 +283,7 @@ case "$example" in
 esac
 
 case "$example" in
-    waybar-settings | bingux-files | quickshell-files) ;;
+    waybar-files | waybar-settings | waybar-notifications | bingux-files | quickshell-files) ;;
     *)
         command -v firefox >/dev/null || {
             echo "firefox is required for this scene" >&2

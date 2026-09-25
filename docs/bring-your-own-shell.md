@@ -43,6 +43,10 @@ Configure each tool in its own files. Gnoblin's [autostart](/guides/autostart) a
 
 _Firefox running under Waybar in a fresh Gnoblin profile._
 
+![GNOME Files open beneath Waybar](images/gnoblin-waybar-files.png)
+
+_A stock GNOME app running with Waybar and Mako as separate clients._
+
 ## Quickshell
 
 [Quickshell](https://quickshell.org/) can host custom layer-shell surfaces.
