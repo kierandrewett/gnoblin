@@ -51,14 +51,14 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                                            | Missing coverage                                                                      |
-| -------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Fedora   | COPR; Fedora 43, 44, 45                                                 | Enterprise Linux targets; install/coexistence gates per target                        |
-| Debian   | Signed APT archive; Debian 13                                           | Debian 11 and 12 build, dependency, install and coexistence gates                     |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                              | Ubuntu 22.04 and per-LTS install/coexistence gates                                    |
-| Arch     | Self-contained runtime PKGBUILD and deterministic release source bundle | `makepkg`, installed package/coexistence/removal tests, and binary or AUR publication |
-| openSUSE | Source-build instructions                                               | RPM package, OBS build targets, and install/coexistence tests                         |
-| NixOS    | Flake package/module evaluation for 25.05, 25.11, 26.05 and unstable    | Package builds plus graphical-session/coexistence tests                               |
+| Family   | Present path                                                               | Missing coverage                                                                 |
+| -------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Fedora   | COPR; Fedora 43, 44, 45                                                    | EL adapter; complete release install/coexistence and graphical-session proof     |
+| Debian   | Signed APT archive; Debian 13                                              | Debian 11/12 host runtime and package compatibility                              |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                 | Ubuntu 22.04 host runtime compatibility                                          |
+| Arch     | Self-contained PKGBUILD, deterministic release source bundle, release gate | First release-gate run, graphical-session proof, repository publication          |
+| openSUSE | Tumbleweed RPM specs and clean-image dependency resolver                   | Internal RPM build chain, OBS publication, install/coexistence and session proof |
+| NixOS    | Pinned package/module evaluation for 25.05, 25.11, 26.05 and unstable      | Stable-channel host floors; build, graphical-session and coexistence proof       |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical
@@ -128,9 +128,10 @@ Its `%rhel` condition only omits an optional portal helper; it does not adapt
 the Fedora package names, macros, or dependency versions for EL. Arch now has
 a single-package source recipe and a deterministic release bundle; its release
 workflow gates publication on `makepkg` and install/remove checks, pending the
-first release run. openSUSE dependency planning
-works on Tumbleweed, but it still needs a SUSE-native spec and package test;
-Fedora RPM specs are not portable to SUSE as written.
+first release run. Tumbleweed now has SUSE-native specs and clean-image
+dependency-resolution CI. Specs parse and Zypper resolves both build and host
+requirements, but no internal RPM chain has been built or installed yet, so
+coexistence, graphical login, and removal remain unverified.
 
 This means coexistence is a package-layout invariant, not yet a demonstrated
 cross-distro guarantee. Each target gate should install the stock desktop
@@ -154,7 +155,7 @@ to remain real constraints.
 | Debian 12, Ubuntu 22.04          | A clean-image CI probe records missing GCR4, GI Repository 2.0, libei/libeis, libdisplay-info, Glycin, and Hyprcursor development interfaces. Debian 12 has GTK 4.8 and Ubuntu 22.04 has GTK 4.6; Mutter 51 needs GTK 4.14. Host Rust on Debian 12 is 1.63. Stock GNOME session/settings components are GNOME 43 and 42 respectively. | Not installable with today's declared dependencies and runtime closure. A full route needs a separately reviewed private GTK, GIRepository, and GCR chain, followed by clean package, stock-GNOME coexistence, graphical-session, and removal gates. Do not add either to the package build matrix until that design exists. |
 | EL 8, 9, 10 (Rocky Linux images) | GLib/GJS are 2.56/1.56, 2.68/1.68, and 2.80/1.80; all miss Gnoblin 51's GLib 2.86 and GJS 1.85.90 floors.                                                                                                                                                                                                                             | Adding an EL repository or changing RPM macros cannot make these targets work. They need a privately namespaced GNOME runtime and per-EL session integration.                                                                                                                                                                |
 | openSUSE Leap 15.6 and 16.0      | GLib/GJS are 2.78/1.78 and 2.84/1.84; both miss the 51 floors. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                                                                                                                                                          | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
-| openSUSE Tumbleweed              | Core host floors are met: GLib 2.88, GJS 1.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. Dependency planning resolved, but an 844-package install was stopped before building.                                                                                                                              | The best openSUSE candidate. It still needs a SUSE-native spec/adapter, actual RPM build, and co-install/install/remove checks. Fedora names and paths differ, including Mesa, libxcvt, GCR, libadwaita, and GNOME Desktop packages.                                                                                         |
+| openSUSE Tumbleweed              | Core host floors are met: GLib 2.88, GJS 1.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. SUSE specs parse and clean-image Zypper solves external BuildRequires and meta host requirements.                                                                                                                  | The SUSE-native adapter and dependency path now exist. The internal package chain, install/coexistence/removal, and graphical session remain untested. Do not mark it supported until those gates run in OBS or another clean build environment.                                                                             |
 
 The Arch placeholder is now replaced by a source-addressable single-package
 recipe. Commit `6e377de6` adds a deterministic release bundle containing the

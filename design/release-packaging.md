@@ -44,11 +44,11 @@ release pipeline or COPR publication changes.
 - Probe results rule out unchanged package recipes as a solution for the older
   targets. EL 8/9/10 and openSUSE Leap 15.6/16.0 miss GNOME 51 host GLib/GJS
   floors; Debian 11/12 and Ubuntu 22.04 lack build/runtime pieces absent from
-  the private bundle. Tumbleweed meets the core floors but needs a SUSE-native
-  spec and an actual package/coexistence test. Arch now has a source-build
-  package recipe, but the package and install path remain unverified. Keep
-  these targets unsupported until their specific compatibility work and gates
-  exist.
+  the private bundle. Tumbleweed now has SUSE-native specs and clean-image
+  dependency-resolution CI, but no internal RPM build/coinstall/removal proof.
+  Arch has a source-build package and a release gate, not a completed release
+  package run. Keep these targets unsupported until their specific remaining
+  gates pass.
 - Fedora workflow run `36139101542` passed the first RPM-side stock-GNOME
   install/coexist/remove gate, along with Fedora 43/44/45 builds and the
   existing Arch source-build/dependency checks. The RPM gate does not prove
@@ -62,16 +62,21 @@ release pipeline or COPR publication changes.
   Bundle determinism, source inventory, release checksum generation, and
   recipe syntax pass; the new release gate has not yet run for a tag, and
   graphical login remains unverified.
-- Commit `6ea70e32` adds pinned NixOS 25.05, 25.11, 26.05, and unstable
-  package/module evaluations. CI confirms 25.05 and 25.11 are blocked because
-  their package sets lack `gcc16Stdenv`, while 26.05 and unstable evaluate.
-  These evaluations do not establish package-build or graphical-session
-  support.
-- Commit `76d82d9e` makes openSUSE Tumbleweed dependency provisioning succeed
-  when its image lacks `busybox-gawk`. Clean host dependency resolution
-  succeeds, but the actual build remains unverified because the shared worker
-  ran out of Podman storage before building the private runtime. Do not mark
-  Tumbleweed package support yet.
+- Commits `6ea70e32` and `03ed5012` add pinned NixOS 25.05, 25.11, 26.05, and
+  unstable package/module evaluations and use each channel's compiler ABI
+  consistently, falling back to `stdenv` when `gcc16Stdenv` is absent. All
+  four channel evaluations pass. 25.05 lacks libglycin and misses several
+  host dependency floors; 25.11 and 26.05 evaluate but are blocked at the
+  required Wayland 1.26 floor (and 25.11 also misses Wayland Protocols and
+  libinput floors). Unstable has no recorded host-floor blocker. Evaluation
+  does not establish a package build, graphical session, or coexistence.
+- Commits `76d82d9e`, `ea85af0c`, and `a53afd86` make openSUSE Tumbleweed
+  dependency provisioning work without an assumed `busybox-gawk`, add native
+  RPM specs/workflow, and correct SUSE runtime library names. `rpmspec` parses
+  the specs and Zypper resolves external build and host requirements. The
+  internal RPM build/install/coexistence/removal chain remains untested: the
+  shared worker ran out of Podman storage, so use OBS or another clean remote
+  builder for the next gate.
 - Commits `03562b7a` and `508c1f7e` add a repeatable Debian 12 / Ubuntu 22.04
   capability probe and run it on pushes and pull requests. Both images are
   blocked by GTK below Mutter 51's 4.14 floor and missing GIRepository 2,
