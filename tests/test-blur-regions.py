@@ -16,8 +16,6 @@ if not str(config).startswith("/tmp/gnoblin-gs."):
 root = config / "gnoblin"
 scripts = root / "scripts"
 scripts.mkdir(parents=True, exist_ok=True)
-shutil.copy2(repo / "src/scripts/compositor-bridge.js", scripts)
-shutil.copytree(repo / "src/scripts/lib", scripts / "lib", dirs_exist_ok=True)
 (root / "init.lua").write_text("""return {
     shell = {['layer-animation'] = 'none'},
     ['window-rules'] = {{match = {layer = '^blur-target$'}, blur = 24}},
@@ -95,7 +93,7 @@ export default function(api) {
   if (effect) GLib.file_set_contents(GLib.build_filenamev([GLib.get_user_config_dir(), 'blur-observer.json']), JSON.stringify({region:actor._gnoblinBlurRegion, builds:effect.get_cache_build_count(), repaints:effect.get_repaint_count(), maskPaints:effect.get_mask_paint_count(), fullRedraw:!!(Clutter.get_debug_flags()[1] & Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS)}));
   return GLib.SOURCE_CONTINUE;
  });
- api._disposers.push(() => GLib.source_remove(timer));
+ api.addCleanup(() => GLib.source_remove(timer));
 }
 """)
 subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)

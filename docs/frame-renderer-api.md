@@ -1,10 +1,13 @@
 # Write a frame renderer
 
-[Configuration reference](/config/reference#frames)
+[Configuration reference](/config/configure/frame_renderers)
 
 A renderer draws server-side decorations (SSD). Gnoblin handles geometry,
-window actions and input. Read the [architecture](window-frame-renderers.md)
-for ownership and failure behavior.
+window actions and input. Set the first `frame_renderers` array item to the
+executable name; Gnoblin looks it up on the compositor's `PATH`. Put each
+command-line argument in its own later array item. Gnoblin passes those strings
+directly, without shell expansion. Read the
+[architecture](window-frame-renderers.md) for ownership and failure behavior.
 
 ## Register your executable
 
@@ -13,21 +16,24 @@ your renderer and uses it for apps that request a server-drawn frame:
 
 ```lua
 gnoblin.configure {
-    frame_renderers = {my_frame = {"/absolute/path/my-frame"}},
+    frame_renderers = {cairo = {"gnoblin-frame-cairo"}},
 }
 
 gnoblin.window_rule {
     match = {type = "window"},
     frame = {
         mode = "auto",
-        renderer = "my_frame",
+        renderer = "cairo",
         extents = {48, 1, 1, 1},
     },
 }
 ```
 
-Replace the executable path, then run `gnoblinctl config reload`. The rule
-adds a 48-pixel titlebar and one-pixel edges without removing existing rules.
+Install `gnoblin-frame-cairo` so it is available on the compositor's `PATH`,
+then run `gnoblinctl config reload`. The rule adds a 48-pixel titlebar and
+one-pixel edges without removing existing rules. Run
+`command -v gnoblin-frame-cairo` in a terminal to find the executable provided
+by your installation.
 
 ## Implement the protocol
 
@@ -36,20 +42,115 @@ Gnoblin starts the configured command with a private Wayland connection.
 `WAYLAND_SOCKET` contains its file descriptor.
 Connect once; do not give that descriptor to a second toolkit display connection.
 
-1. Bind `gnoblin_window_frame_manager_v1`, `wl_compositor` and your buffer facility.
-2. For each `frame` event, create a new `wl_surface` with no assigned role and call `attach_surface`.
-3. On `configure`, draw the supplied outer size. Extents are top/right/bottom/left
-   logical pixels. `state` includes focus, maximized and allowed-action flags.
-4. Acknowledge its serial, clear/redeclare hit regions, attach a matching buffer,
-   damage and commit. Keep buffers alive until `wl_buffer.release`.
-5. On `interaction`, redraw hover/pressed appearance. On `closed`, destroy the
-   frame handle and surface and release your per-frame resources.
+The compositor offers a `frame` object when a window needs a frame. It sends
+dimensions and metadata in a `configure` event:
+
+```text
+configure(serial, width, height, top, right, bottom, left,
+          state, title, app_id, style)
+```
+
+### Configure event fields
+
+| Field                            | Meaning                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `serial`                         | Identifier for this configuration; acknowledge it before committing its buffer.                         |
+| `width`, `height`                | Required dimensions for the matching frame buffer.                                                      |
+| `top`, `right`, `bottom`, `left` | Frame extents for this window, in that order.                                                           |
+| `state`                          | Bit field for focus, maximize state, and available window actions. See the [state flags](#state-flags). |
+| `title`, `app_id`                | Window metadata supplied by Gnoblin.                                                                    |
+| `style`                          | Style label for the renderer; interpret it according to your renderer's theme support.                  |
+
+Bind `gnoblin_window_frame_manager_v1`, `wl_compositor` and a buffer facility.
+For each `frame` event, create a fresh roleless `wl_surface` and attach it with
+`attach_surface(surface)`. Never reuse an app's `xdg_toplevel` surface: a
+Wayland surface can have only one role.
+
+### JS-like lifecycle pseudocode
+
+This illustrates the request order in language-neutral pseudocode. Replace
+`on`, `createSurface`, `createArgb8888Buffer` and drawing calls with your
+Wayland binding's APIs. The names in backticks are the protocol requests.
+
+```javascript
+const ACTION_CLOSE = 2;
+
+manager.on("frame", (frame) => {
+    const surface = compositor.createSurface(); // no role assigned yet
+    let config = null;
+    let hover = 0;
+    let pressed = false;
+
+    frame.attach_surface(surface);
+
+    function drawAndCommit() {
+        if (!config) return;
+
+        const buffer = shm.createArgb8888Buffer(config.width, config.height);
+        drawFrame(buffer, {
+            title: config.title,
+            appId: config.app_id,
+            style: config.style,
+            extents: [config.top, config.right, config.bottom, config.left],
+            state: config.state,
+            hover,
+            pressed,
+        });
+
+        frame.ack_configure(config.serial);
+        frame.clear_regions();
+        const close = closeButtonBounds(config); // use your renderer's layout
+        frame.region(ACTION_CLOSE, close.x, close.y, close.width, close.height);
+        surface.attach(buffer, 0, 0);
+        surface.damage(0, 0, config.width, config.height);
+        surface.commit();
+    }
+
+    frame.on("configure", (next) => {
+        config = next;
+        drawAndCommit();
+    });
+
+    frame.on("interaction", (event) => {
+        hover = event.action; // 0 means no region is hovered
+        pressed = event.pressed !== 0;
+        drawAndCommit();
+    });
+
+    frame.on("closed", () => {
+        frame.destroy();
+        surface.destroy();
+    });
+});
+```
+
+The buffer must match the latest configure's width and height. Keep it alive
+until `wl_buffer.release`. Acknowledge the latest serial before committing its
+buffer. Gnoblin presents only buffers for the current configuration; it ignores
+stale generations.
+
+### State flags {#state-flags}
+
+The `state` value is a bit field. Test each flag with a bitwise AND:
+
+| Flag         | Value |
+| ------------ | ----: |
+| Focused      |   `1` |
+| Maximized    |   `2` |
+| Can close    |   `4` |
+| Can maximize |   `8` |
+| Can minimize |  `16` |
+| Can resize   |  `32` |
 
 ## Input regions
 
+`region(action, x, y, width, height)` declares a hit area in logical frame
+coordinates. Clear and redeclare regions for each commit; the compositor applies
+them atomically with the pixels. At most 64 regions are allowed, and the last
+registered region wins when areas overlap. Use actual button bounds.
+
 Gnoblin excludes application content, clips the outer radius, checks permissions
-and owns move/resize grabs. Renderer regions are last-defined-wins and commit
-atomically with pixels. Use actual button bounds.
+and owns move/resize grabs.
 
 The native resize perimeter takes priority, even with zero painted side/bottom
 extents. It supplies directional cursors and respects non-resizable windows.
@@ -62,9 +163,7 @@ extents. It supplies directional cursors and respects non-resizable windows.
 | Minimise                   | 4      |
 | Resize N/NE/E/SE/S/SW/W/NW | 5–12   |
 
-Interaction action 0 means no hovered region. Keyboard focus stays with the app.
-
-Never attach an existing toolkit xdg-toplevel. A surface cannot have two roles.
+The protocol action values appear below. Keyboard focus stays with the app.
 Slow or dead renderers do not block application commits: an opted-in window gets
 the native fallback until a matching buffer is ready.
 

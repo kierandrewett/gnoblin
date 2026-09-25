@@ -56,8 +56,7 @@ With the patched portal backend installed:
 4. For an `allow` rule, test both permitted and broader device requests.
 5. Stop sharing and confirm the stream ends.
 
-See [portal permissions](/config/permissions). Old custom grants and
-“remember forever” checkboxes are obsolete; do not use them as acceptance criteria.
+See [portal permissions](/guides/permissions) for current permission policy.
 
 ## 7. Return to GNOME
 

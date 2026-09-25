@@ -22,11 +22,10 @@ export function validateRenderers(services = {}) {
             argv.length < 1 ||
             argv.length > 32 ||
             argv.some((arg) => typeof arg !== "string" || arg.includes("\0")) ||
-            !argv[0].startsWith("/")
+            !argv[0] ||
+            (!argv[0].startsWith("/") && argv[0].includes("/"))
         )
-            throw new Error(
-                `frame-renderers.${name}: expected argv with an absolute executable path; native is reserved`,
-            );
+            throw new Error(`frame-renderers.${name}: expected an absolute path or PATH command; native is reserved`);
     }
 }
 export function validate(frame) {

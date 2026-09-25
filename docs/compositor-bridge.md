@@ -13,9 +13,7 @@ The bridge is a built-in Gnoblin compositor service. It starts with the
 Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
 not need to be installed under `~/.config/gnoblin/scripts/`.
 `gnoblinctl window list` uses the same socket. Check `gnoblinctl status` before
-debugging a client connection. Older installed builds may not include the
-built-in service yet; [check the running build](source-development.md#verify)
-when its behaviour differs from this reference.
+debugging a client connection.
 
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.
@@ -35,48 +33,130 @@ Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
 
 The `hello.version` field is the socket protocol version. Check `features`
-before using optional operations such as `ui-session`, bare Super, blur regions
-or layer animation policy. A validation error is
-`{"event":"error","message":"..."}`; if a valid `command` request fails,
-the error also carries its request `id`. Malformed JSON or excessive input
+before using optional operations. These include `ui-session`, bare Super, blur
+regions and layer animation policy.
+
+A validation error has an `error` event. If a valid `command` request fails,
+the response also carries its request `id`. Malformed JSON or excessive input
 closes the socket; ordinary validation errors leave it open.
 
 ## Operation index
 
-| `op` | Required fields | Reply or stream |
-| --- | --- | --- |
-| `command` | `id`, `command`; command-specific fields | One `reply` with matching `id`, or `error` |
-| `windows` | None | Current `windows` snapshot, then changes |
-| `privacy` | None | Current `privacy` state, then changes |
-| `status` | None | One `status` with binding IDs and active session ID |
-| `bind` | `id`, `accelerator`, `hold` | `bound`, then activation and input events |
-| `activate` | `window` | Focus a window; no success reply |
-| `preview` | `window`, `width`, `height` | One `preview` event |
-| `shortcut-input` | `name`, `state` | Input handoff; no success reply |
-| `ui-session` | `action`; other fields depend on action | `ui-state` or `ui-command` events |
-| `layer-animation-policy` | `namespace` | One policy event for that layer namespace |
-| `blur-region` | `namespace`, `screen`, `region` | No success reply |
-| `window-drag` | None | Current `window-drag` state, then changes |
-| `snap-offer` | `serial`, `regions` | No success reply; may later get `snap-completed` |
-| `snap-context` | None | One `snap-context` event |
-| `snap-window` | `window`, `monitor`, `target` | Applies a region; no success reply |
-| `stop-sharing`, `stop-recording` | None | Requests stop; no success reply |
-| `end` | Optional `session` for fallback switcher | Ends this client's input session |
-| `clear` | None | Removes this client's bindings and session |
+| `op`                             | Required fields                                 | Reply or stream                                     |
+| -------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `command`                        | `id`, `command`; command-specific fields        | One `reply` with matching `id`, or `error`          |
+| `windows`                        | None                                            | Current `windows` snapshot, then changes            |
+| `privacy`                        | None                                            | Current `privacy` state, then changes               |
+| `status`                         | None                                            | One `status` with binding IDs and active session ID |
+| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger` | `bound`, then activation and input events           |
+| `activate`                       | `window`                                        | Focus a window; no success reply                    |
+| `preview`                        | `window`, `width`, `height`                     | One `preview` event                                 |
+| `shortcut-input`                 | `name`, `state`                                 | Input handoff; no success reply                     |
+| `ui-session`                     | `action`; other fields depend on action         | `ui-state` or `ui-command` events                   |
+| `layer-animation-policy`         | `namespace`                                     | One policy event for that layer namespace           |
+| `blur-region`                    | `namespace`, `screen`, `region`                 | No success reply                                    |
+| `window-drag`                    | None                                            | Current `window-drag` state, then changes           |
+| `snap-offer`                     | `serial`, `regions`                             | No success reply; may later get `snap-completed`    |
+| `snap-context`                   | None                                            | One `snap-context` event                            |
+| `snap-window`                    | `window`, `monitor`, `target`                   | Applies a region; no success reply                  |
+| `stop-sharing`, `stop-recording` | None                                            | Requests stop; no success reply                     |
+| `end`                            | Optional `session` for fallback switcher        | Ends this client's input session                    |
+| `clear`                          | None                                            | Removes this client's bindings and session          |
 
-`command` accepts `windows`, `capture-windows`, `workspaces`, `monitors`,
-`workspace-switch` and `window`. `workspace-switch` needs a one-based
-`workspace`; `window` needs an `action` and a stable window ID or `"active"`.
-The [CLI reference](gnoblinctl.md) lists window actions and arguments. Only
-`command` supplies a correlation ID: match `reply` or `error` by that ID
+`command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
+`workspace-switch`, `workspace-next`, `workspace-previous`,
+`workspace-move-active`, `monitors`, `layers` and `window`. `layers` returns
+the current layer-shell surfaces in a `surfaces` array. `window` needs an
+`action` and a stable window ID or `"active"`. The [CLI reference](gnoblinctl.md)
+lists window actions and arguments.
+
+### Workspace commands
+
+Use `workspace-list` to get the workspace ID, current one-based number, display
+name, active state and eligible window count:
+
+```json
+{ "op": "command", "id": "request-1", "command": "workspace-list" }
+```
+
+The reply's `result` is shaped like this:
+
+```json
+{
+    "workspaces": [
+        { "id": "code", "number": 1, "name": "Code", "active": true, "windows": 2 },
+        { "id": "web", "number": 2, "name": "Web", "active": false, "windows": 0 }
+    ]
+}
+```
+
+The request `id` correlates its reply. Workspace IDs are separate: configured
+IDs persist by position, while unconfigured workspaces receive session-only
+IDs such as `@session-N`.
+
+Each item from `workspaces` has these fields:
+
+| Field     | Meaning                                                                  |
+| --------- | ------------------------------------------------------------------------ |
+| `id`      | Stable workspace ID, or the one-based position when no ID is configured. |
+| `number`  | Current one-based position.                                              |
+| `name`    | Display label.                                                           |
+| `active`  | Whether this workspace is selected.                                      |
+| `windows` | Number of eligible windows on the workspace.                             |
+
+Switch by stable ID or current number. Send exactly one selector:
+
+```json
+{"op":"command","id":"request-2","command":"workspace-switch","workspaceId":"code"}
+{"op":"command","id":"request-3","command":"workspace-switch","workspaceNumber":2}
+```
+
+`workspace-switch` also accepts a numeric `workspace` selector.
+`workspace-next` and `workspace-previous` take no selector and wrap at the
+ends of the current workspace list.
+
+Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
+They also include the resolved workspace's `id`, `number`, `name`, `active`,
+and `windows` fields.
+
+Move the focused window with `workspace-move-active`. It accepts the same
+`workspaceId` or `workspaceNumber` selector, plus an optional `follow` boolean.
+The default is `false`; set it to `true` to activate the destination after
+moving.
+
+For an explicit window, use `command: "window"`, `action: "workspace"`, and
+the `window` ID with `workspaceId` or `workspaceNumber`. The one-based numeric
+`workspace` selector is also accepted.
+
+Successful move replies include the resolved workspace fields, `follow`, the
+stable window `window` ID, and the selected `workspace` number, `workspaceId`,
+and `workspaceNumber`.
+
+Numbers can change when dynamic workspaces are removed. Use IDs in shell
+integrations that need to keep addressing a configured workspace. The
+[workspace CLI examples](gnoblinctl.md#workspaces-and-monitors) show equivalent
+terminal commands.
+
+Only `command` supplies a correlation ID: match `reply` or `error` by that ID
 because other events can arrive first. A reply with `pending: true` means the
 action was accepted; observe later state to confirm completion.
 
-`capture-windows` returns visible, non-minimised windows in stacking order
-with title, app name, frame position and size, and `bufferWidth` and
-`bufferHeight` for capture. These IDs come from Mutter's window ID, whereas
-`windows` snapshots use a stable sequence string. Obtain an action ID from
-`windows` or `gnoblinctl window list` before sending a `window` action.
+Animations are registered in Lua with `gnoblin.animation` and are previewed
+through `gnoblinctl animation`. Shell clients should continue to own their
+surface content motion; use a matching `animation = "none"` layer rule to
+avoid applying compositor motion twice.
+
+The bridge's `layer-animation-policy` operation lets a shell read the
+configured enter/exit policy for a namespace. See the [animation guide](/guides/animations)
+for layer-shell lifecycle events and target selection.
+
+`capture-windows` returns visible, non-minimised windows in stacking order.
+Each entry includes the title, app name, frame position and size, plus
+`bufferWidth` and `bufferHeight` for capture.
+
+Capture IDs come from Mutter; `windows` snapshots use a stable sequence
+string. Get an action ID from `windows` or `gnoblinctl window list` before
+sending a `window` action.
 
 ## Example: watch the window list
 
@@ -87,9 +167,8 @@ import json
 import os
 import socket
 
-path = os.environ.get(
-    "GNOBLIN_COMPOSITOR_SOCKET",
-    os.path.join(os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"),
+path = os.environ.get("GNOBLIN_COMPOSITOR_SOCKET") or os.path.join(
+    os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"
 )
 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
     connection.connect(path)
@@ -105,10 +184,14 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
 It prints the current list and subsequent snapshots as windows change. Stop it
 with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.
 
-## Register a shortcut
+## Temporary UI bindings
+
+Put persistent command shortcuts, including media keys, in the [Lua config](/config/configure/shortcuts). A shell can use `bind` while it runs an interactive UI such as a switcher. Bridge bindings belong to that connection and disappear when it disconnects.
+
+Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
 
 ```json
-{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8 }
+{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
 ```
 
 The server acknowledges:
@@ -243,25 +326,25 @@ normal finalisation path to save output. These requests do not grant access.
 `ui-session` shares named state between UI processes. Names match
 `^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
 
-| Action | Fields | Event |
-| --- | --- | --- |
-| `watch` | None | `ui-state` for each owner and later changes |
-| `state` | `name`, `state` object | Publishes `ui-state` |
-| `command` | `name`, `command` | Sends `ui-command` to the owner |
+| Action    | Fields                 | Event                                       |
+| --------- | ---------------------- | ------------------------------------------- |
+| `watch`   | None                   | `ui-state` for each owner and later changes |
+| `state`   | `name`, `state` object | Publishes `ui-state`                        |
+| `command` | `name`, `command`      | Sends `ui-command` to the owner             |
 
 Use the envelope `{"op":"ui-session","action":"watch"}`. Owner disconnect
 publishes `state: null`. A visible layer can include `surface` (its namespace),
 `companions` (up to 16 namespaces), `revealCompanions: true`, and
 `companionsAbove: true` in its state to coordinate panel stacking.
 
-| Operation | Fields | Limit or effect |
-| --- | --- | --- |
-| `blur-region` | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
-| `layer-animation-policy` | `namespace` | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters |
+| Operation                | Fields                                                                                    | Limit or effect                                                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `blur-region`            | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
+| `layer-animation-policy` | `namespace`                                                                               | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters                                                                  |
 
 For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
 using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
-The [snapping guide](/config/window_snapping#shell-integration) gives the request
+The [snapping guide](/guides/window_snapping#shell-integration) gives the request
 shapes and work-area checks.
 
 ## Limits and disconnects

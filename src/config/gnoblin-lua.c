@@ -19,11 +19,22 @@ typedef struct {
     char* current_path;
 } LuaConfig;
 
+typedef struct {
+    LuaConfig config;
+    lua_State* state;
+    GVariant* document;
+    GVariant* pending_document;
+} LuaRuntime;
+
+static LuaRuntime* active_runtime;
+static LuaRuntime* pending_runtime;
+
 static gboolean append_array_key(const char* key) {
-    return key &&
-           (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-            !strcmp(key, "shortcuts") || !strcmp(key, "rules") || !strcmp(key, "workspace-names") ||
-            !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
+    return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
+                   !strcmp(key, "shortcuts") || !strcmp(key, "animations") ||
+                   !strcmp(key, "rules") || !strcmp(key, "binding") ||
+                   !strcmp(key, "workspace-names") || !strcmp(key, "workspace-ids") ||
+                   !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
@@ -244,108 +255,10 @@ static gboolean is_array(lua_State* state, int index) {
     return marked_array(state, index) || lua_rawlen(state, index) > 0;
 }
 
-static void merge_table(lua_State* state, int destination, int source, const char* key,
-                        gboolean append_lists);
-
-static void remove_named_entry(lua_State* state, int list, const char* name) {
-    list = lua_absindex(state, list);
-    lua_Integer count = lua_rawlen(state, list), next = 1;
-    for (lua_Integer i = 1; i <= count; i++) {
-        lua_rawgeti(state, list, i);
-        lua_getfield(state, -1, "name");
-        gboolean matches =
-            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
-        lua_pop(state, 1);
-        if (matches)
-            lua_pop(state, 1);
-        else
-            lua_rawseti(state, list, next++);
-    }
-    for (lua_Integer i = next; i <= count; i++) {
-        lua_pushnil(state);
-        lua_rawseti(state, list, i);
-    }
-}
-
-static gboolean named_entries_key(const char* key) {
-    return key && (!strcmp(key, "shortcuts") || !strcmp(key, "autostart"));
-}
-
-static gboolean named_entries_map(lua_State* state, int index) {
-    index = lua_absindex(state, index);
-    if (!lua_istable(state, index) || is_array(state, index))
-        return FALSE;
-    lua_pushnil(state);
-    if (!lua_next(state, index))
-        return FALSE;
-    gboolean map = lua_type(state, -2) == LUA_TSTRING;
-    lua_pop(state, 2);
-    return map;
-}
-
-static void merge_named_entries(lua_State* state, int list, int entries) {
-    list = lua_absindex(state, list);
-    entries = lua_absindex(state, entries);
-    lua_pushnil(state);
-    while (lua_next(state, entries)) {
-        if (lua_type(state, -2) != LUA_TSTRING || !lua_istable(state, -1))
-            luaL_error(state, "named shortcuts and autostart entries must be tables");
-        const char* name = lua_tostring(state, -2);
-        int source = lua_gettop(state);
-        lua_getfield(state, source, "name");
-        if (!lua_isnil(state, -1) &&
-            (lua_type(state, -1) != LUA_TSTRING || strcmp(name, lua_tostring(state, -1))))
-            luaL_error(state, "named entry key and name must match");
-        lua_pop(state, 1);
-        lua_getfield(state, source, "enable");
-        if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
-            luaL_error(state, "named entry enable must be a boolean");
-        gboolean disabled = lua_isboolean(state, -1) && !lua_toboolean(state, -1);
-        lua_pop(state, 1);
-        if (disabled) {
-            remove_named_entry(state, list, name);
-            lua_pop(state, 1);
-            continue;
-        }
-        lua_newtable(state);
-        int entry = lua_gettop(state);
-        merge_table(state, entry, source, NULL, FALSE);
-        lua_pushnil(state);
-        lua_setfield(state, entry, "enable");
-        lua_pushstring(state, name);
-        lua_setfield(state, entry, "name");
-        lua_Integer count = lua_rawlen(state, list);
-        gboolean merged = FALSE;
-        for (lua_Integer i = 1; i <= count; i++) {
-            lua_rawgeti(state, list, i);
-            lua_getfield(state, -1, "name");
-            gboolean matches =
-                lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
-            lua_pop(state, 1);
-            if (matches) {
-                lua_pushnil(state);
-                lua_setfield(state, -2, "enable");
-                merge_table(state, -1, entry, NULL, FALSE);
-                merged = TRUE;
-            }
-            lua_pop(state, 1);
-            if (merged)
-                break;
-        }
-        if (!merged) {
-            lua_pushvalue(state, entry);
-            lua_rawseti(state, list, count + 1);
-        }
-        lua_pop(state, 2);
-    }
-}
-
-static void merge_table(lua_State* state, int destination, int source, const char* key,
-                        gboolean append_lists) {
+static void merge_table(lua_State* state, int destination, int source, const char* key) {
     destination = lua_absindex(state, destination);
     source = lua_absindex(state, source);
-    if (append_lists && append_array_key(key) && lua_istable(state, destination) &&
-        lua_istable(state, source)) {
+    if (append_array_key(key) && lua_istable(state, destination) && lua_istable(state, source)) {
         lua_Integer offset = lua_rawlen(state, destination), count = lua_rawlen(state, source);
         for (lua_Integer i = 1; i <= count; i++) {
             lua_rawgeti(state, source, i);
@@ -356,25 +269,11 @@ static void merge_table(lua_State* state, int destination, int source, const cha
     lua_pushnil(state);
     while (lua_next(state, source)) {
         const char* name = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
-        if (named_entries_key(name) && named_entries_map(state, -1)) {
-            lua_pushvalue(state, -2);
-            lua_rawget(state, destination);
-            if (lua_isnil(state, -1)) {
-                lua_pop(state, 1);
-                lua_newtable(state);
-                lua_pushvalue(state, -3);
-                lua_pushvalue(state, -2);
-                lua_rawset(state, destination);
-            }
-            if (!lua_istable(state, -1) || named_entries_map(state, -1))
-                luaL_error(state, "%s must be a list before named overrides", name);
-            merge_named_entries(state, -1, -2);
-            lua_pop(state, 1);
-        } else if (name && lua_istable(state, -1)) {
+        if (name && lua_istable(state, -1)) {
             lua_pushvalue(state, -2);
             lua_rawget(state, destination);
             if (lua_istable(state, -1) && !is_array(state, -1) && !is_array(state, -2)) {
-                merge_table(state, -1, -2, name, append_lists);
+                merge_table(state, -1, -2, name);
                 lua_pop(state, 1);
             } else {
                 lua_pop(state, 1);
@@ -401,47 +300,21 @@ static int lua_array(lua_State* state) {
     return 1;
 }
 
-static void copy_config_value(lua_State* state, int source, int depth) {
-    if (depth > MAX_CONFIG_DEPTH)
-        luaL_error(state, "Lua config nesting exceeds 64 levels");
-    source = lua_absindex(state, source);
-    if (!lua_istable(state, source)) {
-        lua_pushvalue(state, source);
-        return;
-    }
-    lua_newtable(state);
-    int destination = lua_gettop(state);
-    lua_pushnil(state);
-    while (lua_next(state, source)) {
-        lua_pushvalue(state, -2);
-        copy_config_value(state, -2, depth + 1);
-        lua_rawset(state, destination);
-        lua_pop(state, 1);
-    }
-    if (marked_array(state, source) && lua_getmetatable(state, source))
-        lua_setmetatable(state, destination);
-}
-
-static int lua_snapshot(lua_State* state) {
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "snapshot takes no arguments");
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    if (!lua_istable(state, -1))
-        return luaL_error(state, "gnoblin.config must be a table");
-    copy_config_value(state, -1, 0);
-    return 1;
-}
-
 static int lua_set(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
     if (!lua_istable(state, -1))
         return luaL_error(state, "gnoblin.config must be a table");
-    merge_table(state, -1, 1, NULL, FALSE);
+    merge_table(state, -1, 1, NULL);
     lua_pop(state, 2);
     return 0;
+}
+
+static int lua_legacy_set(lua_State* state) {
+    g_warning("gnoblin.set is deprecated and may be removed at any time; migrate to "
+              "gnoblin.configure with public snake_case setting names");
+    return lua_set(state);
 }
 
 static gboolean is_keybinding_action_name(const char* key) {
@@ -476,8 +349,7 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
     lua_newtable(state);
     int destination = lua_gettop(state);
     gboolean literal =
-        parent && (!strcmp(parent, "shader-uniforms") || !strcmp(parent, "frame-renderers") ||
-                   !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart"));
+        parent && (!strcmp(parent, "shader-uniforms") || !strcmp(parent, "frame-renderers"));
     lua_pushnil(state);
     while (lua_next(state, source)) {
         gboolean keybinding_action = keybinding_depth == 2 && lua_type(state, -2) == LUA_TSTRING;
@@ -515,9 +387,26 @@ static int lua_configure(lua_State* state) {
     return lua_set(state);
 }
 
-static int lua_configure_call(lua_State* state) {
-    lua_remove(state, 1);
-    return lua_configure(state);
+static int lua_on(lua_State* state) {
+    (void)config_from_upvalue(state);
+    size_t event_length;
+    const char* event = luaL_checklstring(state, 1, &event_length);
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    if (event_length == 0 || event_length > 128 || memchr(event, '\0', event_length) ||
+        !g_utf8_validate(event, event_length, NULL))
+        return luaL_error(state, "event name must contain 1 to 128 bytes");
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "listeners");
+    lua_getfield(state, -1, event);
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, -3, event);
+    }
+    lua_pushvalue(state, 2);
+    lua_rawseti(state, -2, lua_rawlen(state, -2) + 1);
+    return 0;
 }
 
 static void push_config_list(lua_State* state) {
@@ -561,182 +450,26 @@ static void push_config_list(lua_State* state) {
         luaL_error(state, "%s must be a dense list of tables", key);
 }
 
-/* Named views expose the actual loaded entries, while the stored document
- * keeps the existing ordered-list representation. */
-static int lua_named_entry_index(lua_State* state) {
-    const char* key = luaL_checkstring(state, 2);
-    g_autofree char* internal = g_strdup(key);
-    g_strdelimit(internal, "_", '-');
-    lua_pushstring(state, internal);
-    lua_rawget(state, lua_upvalueindex(1));
-    if (!strcmp(key, "enable") && lua_isnil(state, -1)) {
-        lua_pop(state, 1);
-        lua_pushboolean(state, TRUE);
-    }
-    return 1;
-}
-
-static int lua_named_entry_assign(lua_State* state) {
-    const char* key = luaL_checkstring(state, 2);
-    if (!strcmp(key, "name"))
-        return luaL_error(state, "named entry name cannot be changed");
-    g_autofree char* internal = g_strdup(key);
-    g_strdelimit(internal, "_", '-');
-    lua_pushstring(state, internal);
-    lua_pushvalue(state, 3);
-    lua_rawset(state, lua_upvalueindex(1));
-    return 0;
-}
-
-static int lua_named_entry_pairs(lua_State* state) {
-    lua_newtable(state);
-    int entries = lua_gettop(state);
-    lua_pushnil(state);
-    while (lua_next(state, lua_upvalueindex(1))) {
-        if (lua_type(state, -2) == LUA_TSTRING) {
-            g_autofree char* public_key = g_strdup(lua_tostring(state, -2));
-            g_strdelimit(public_key, "-", '_');
-            lua_pushvalue(state, -1);
-            lua_setfield(state, entries, public_key);
-        }
-        lua_pop(state, 1);
-    }
-    lua_getfield(state, entries, "enable");
-    gboolean has_enable = !lua_isnil(state, -1);
-    lua_pop(state, 1);
-    if (!has_enable) {
-        lua_pushboolean(state, TRUE);
-        lua_setfield(state, entries, "enable");
-    }
-    lua_getglobal(state, "next");
-    lua_pushvalue(state, entries);
-    lua_pushnil(state);
-    return 3;
-}
-
-static void push_named_entry_proxy(lua_State* state, int entry) {
-    entry = lua_absindex(state, entry);
-    lua_newtable(state);
-    lua_newtable(state);
-    lua_pushvalue(state, entry);
-    lua_pushcclosure(state, lua_named_entry_index, 1);
-    lua_setfield(state, -2, "__index");
-    lua_pushvalue(state, entry);
-    lua_pushcclosure(state, lua_named_entry_assign, 1);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushvalue(state, entry);
-    lua_pushcclosure(state, lua_named_entry_pairs, 1);
-    lua_setfield(state, -2, "__pairs");
-    lua_setmetatable(state, -2);
-}
-
-static int lua_named_view_index(lua_State* state) {
-    const char* name = luaL_checkstring(state, 2);
-    push_config_list(state);
-    int list = lua_gettop(state);
-    lua_Integer count = lua_rawlen(state, list);
-    for (lua_Integer i = 1; i <= count; i++) {
-        lua_rawgeti(state, list, i);
-        lua_getfield(state, -1, "name");
-        gboolean matches =
-            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
-        lua_pop(state, 1);
-        if (matches) {
-            push_named_entry_proxy(state, -1);
-            return 1;
-        }
-        lua_pop(state, 1);
-    }
-    lua_pushnil(state);
-    return 1;
-}
-
-static int lua_named_view_pairs(lua_State* state) {
-    push_config_list(state);
-    int list = lua_gettop(state);
-    lua_newtable(state);
-    int entries = lua_gettop(state);
-    lua_Integer count = lua_rawlen(state, list);
-    for (lua_Integer i = 1; i <= count; i++) {
-        lua_rawgeti(state, list, i);
-        lua_getfield(state, -1, "name");
-        if (lua_type(state, -1) == LUA_TSTRING) {
-            const char* name = lua_tostring(state, -1);
-            push_named_entry_proxy(state, -2);
-            lua_setfield(state, entries, name);
-        }
-        lua_pop(state, 2);
-    }
-    lua_getglobal(state, "next");
-    lua_pushvalue(state, entries);
-    lua_pushnil(state);
-    return 3;
-}
-
-static int lua_named_view_assign(lua_State* state) {
-    const char* name = luaL_checkstring(state, 2);
-    luaL_checktype(state, 3, LUA_TTABLE);
-    push_settings(state, 3, NULL, 0, 0);
-    lua_newtable(state);
-    int entries = lua_gettop(state);
-    lua_pushvalue(state, -2);
-    lua_setfield(state, entries, name);
-    push_config_list(state);
-    merge_named_entries(state, -1, entries);
-    return 0;
-}
-
-static void install_named_view(lua_State* state, const char* key) {
-    lua_newtable(state);
-    lua_newtable(state);
-    lua_pushstring(state, "");
-    lua_pushstring(state, key);
-    lua_pushcclosure(state, lua_named_view_index, 2);
-    lua_setfield(state, -2, "__index");
-    lua_pushstring(state, "");
-    lua_pushstring(state, key);
-    lua_pushcclosure(state, lua_named_view_pairs, 2);
-    lua_setfield(state, -2, "__pairs");
-    lua_pushstring(state, "");
-    lua_pushstring(state, key);
-    lua_pushcclosure(state, lua_named_view_assign, 2);
-    lua_setfield(state, -2, "__newindex");
-    lua_setmetatable(state, -2);
-    lua_setfield(state, -2, key);
-}
-
-static void finish_named_entries(lua_State* state, int config, const char* key) {
-    config = lua_absindex(state, config);
-    lua_getfield(state, config, key);
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        return;
-    }
-    int list = lua_gettop(state);
-    lua_Integer count = lua_rawlen(state, list), next = 1;
-    for (lua_Integer i = 1; i <= count; i++) {
-        lua_rawgeti(state, list, i);
-        lua_getfield(state, -1, "enable");
-        if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
-            luaL_error(state, "named entry enable must be a boolean");
-        gboolean disabled = lua_isboolean(state, -1) && !lua_toboolean(state, -1);
-        lua_pop(state, 1);
-        lua_pushnil(state);
-        lua_setfield(state, -2, "enable");
-        if (disabled)
-            lua_pop(state, 1);
-        else
-            lua_rawseti(state, list, next++);
-    }
-    for (lua_Integer i = next; i <= count; i++) {
-        lua_pushnil(state);
-        lua_rawseti(state, list, i);
-    }
-    lua_pop(state, 1);
-}
-
 /* Named commands merge in place; ordered rules always append. */
 static int lua_declare(lua_State* state) {
+    const char* api = lua_tostring(state, lua_upvalueindex(4));
+    if (api && *api) {
+        const char* name = "<name>";
+        if (lua_istable(state, 1)) {
+            lua_getfield(state, 1, "name");
+            if (lua_type(state, -1) == LUA_TSTRING)
+                name = lua_tostring(state, -1);
+            lua_pop(state, 1);
+        }
+        if (!strcmp(api, "gnoblin.shortcut"))
+            g_warning("%s is deprecated and may be removed at any time; migrate to "
+                      "gnoblin.configure {shortcuts = {[\"%s\"] = {binding = ..., command = ...}}}",
+                      api, name);
+        else
+            g_warning("%s is deprecated and may be removed at any time; migrate to "
+                      "gnoblin.configure {autostart = {[\"%s\"] = {command = ...}}}",
+                      api, name);
+    }
     luaL_checktype(state, 1, LUA_TTABLE);
     push_settings(state, 1, NULL, 0, 0);
     int entry = lua_gettop(state);
@@ -746,18 +479,6 @@ static int lua_declare(lua_State* state) {
         if (lua_type(state, -1) != LUA_TSTRING || !lua_rawlen(state, -1))
             return luaL_error(state, "declaration needs a nonempty string name");
         name = lua_tostring(state, -1);
-        lua_getfield(state, entry, "enable");
-        if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
-            return luaL_error(state, "named entry enable must be a boolean");
-        gboolean disabled = lua_isboolean(state, -1) && !lua_toboolean(state, -1);
-        lua_pop(state, 1);
-        lua_pushnil(state);
-        lua_setfield(state, entry, "enable");
-        if (disabled) {
-            push_config_list(state);
-            remove_named_entry(state, -1, name);
-            return 0;
-        }
     }
     push_config_list(state);
     int list = lua_gettop(state);
@@ -769,9 +490,7 @@ static int lua_declare(lua_State* state) {
             lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
         lua_pop(state, 1);
         if (matches) {
-            lua_pushnil(state);
-            lua_setfield(state, -2, "enable");
-            merge_table(state, -1, entry, NULL, FALSE);
+            merge_table(state, -1, entry, NULL);
             return 0;
         }
         lua_pop(state, 1);
@@ -783,8 +502,37 @@ static int lua_declare(lua_State* state) {
 
 static int lua_remove_declaration(lua_State* state) {
     const char* name = luaL_checkstring(state, 1);
+    const char* api = lua_tostring(state, lua_upvalueindex(4));
+    if (api && *api) {
+        if (!strcmp(api, "gnoblin.remove_shortcut"))
+            g_warning("%s is deprecated and may be removed at any time; remove key \"%s\" from "
+                      "gnoblin.configure.shortcuts or set "
+                      "gnoblin.configure.shortcuts[\"%s\"].enable = false",
+                      api, name, name);
+        else
+            g_warning("%s is deprecated and may be removed at any time; remove key \"%s\" from "
+                      "gnoblin.configure.autostart or set "
+                      "gnoblin.configure.autostart[\"%s\"].enable = false",
+                      api, name, name);
+    }
     push_config_list(state);
-    remove_named_entry(state, -1, name);
+    int list = lua_gettop(state);
+    lua_Integer count = lua_rawlen(state, list), next = 1;
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        lua_getfield(state, -1, "name");
+        gboolean matches =
+            lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        if (matches)
+            lua_pop(state, 1);
+        else
+            lua_rawseti(state, list, next++);
+    }
+    for (lua_Integer i = next; i <= count; i++) {
+        lua_pushnil(state);
+        lua_rawseti(state, list, i);
+    }
     return 0;
 }
 
@@ -870,19 +618,15 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_newtable(state);
     lua_newtable(state);
     lua_setfield(state, -2, "config");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_set, 1);
+    lua_pushcfunction(state, lua_legacy_set);
     lua_setfield(state, -2, "set");
-    lua_newtable(state);
-    lua_newtable(state);
-    lua_pushcfunction(state, lua_configure_call);
-    lua_setfield(state, -2, "__call");
-    lua_setmetatable(state, -2);
-    install_named_view(state, "shortcuts");
-    install_named_view(state, "autostart");
+    lua_pushcfunction(state, lua_configure);
     lua_setfield(state, -2, "configure");
-    lua_pushcfunction(state, lua_snapshot);
-    lua_setfield(state, -2, "snapshot");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_on, 1);
+    lua_setfield(state, -2, "on");
+    lua_newtable(state);
+    lua_setfield(state, -2, "listeners");
     const struct {
         const char *name, *section, *key;
         gboolean named, remove;
@@ -890,15 +634,23 @@ static void install_api(lua_State* state, LuaConfig* config) {
         {"window_rule", "", "window-rules", FALSE, FALSE},
         {"permission_rule", "permissions", "rules", FALSE, FALSE},
         {"shortcut", "", "shortcuts", TRUE, FALSE},
+        {"animation", "", "animations", TRUE, FALSE},
         {"autostart", "", "autostart", TRUE, FALSE},
         {"remove_shortcut", "", "shortcuts", TRUE, TRUE},
+        {"remove_animation", "", "animations", TRUE, TRUE},
         {"remove_autostart", "", "autostart", TRUE, TRUE},
     };
     for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {
         lua_pushstring(state, declarations[i].section);
         lua_pushstring(state, declarations[i].key);
         lua_pushboolean(state, declarations[i].named);
-        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 3);
+        lua_pushstring(
+            state, !strcmp(declarations[i].name, "shortcut")           ? "gnoblin.shortcut"
+                   : !strcmp(declarations[i].name, "autostart")        ? "gnoblin.autostart"
+                   : !strcmp(declarations[i].name, "remove_shortcut")  ? "gnoblin.remove_shortcut"
+                   : !strcmp(declarations[i].name, "remove_autostart") ? "gnoblin.remove_autostart"
+                                                                       : "");
+        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 4);
         lua_setfield(state, -2, declarations[i].name);
     }
     lua_pushlightuserdata(state, config);
@@ -921,7 +673,7 @@ static gboolean merge_variant(lua_State* state, GVariant* document, GError** err
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
     push_variant(state, document);
-    merge_table(state, -2, -1, NULL, TRUE);
+    merge_table(state, -2, -1, NULL);
     lua_pop(state, 3);
     return TRUE;
 }
@@ -987,7 +739,7 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
             if (ok) {
                 lua_getglobal(state, "gnoblin");
                 lua_getfield(state, -1, "config");
-                merge_table(state, -1, -3, NULL, TRUE);
+                merge_table(state, -1, -3, NULL);
                 lua_pop(state, 3);
             } else {
                 lua_pop(state, 1);
@@ -1020,8 +772,6 @@ static int protected_eval(lua_State* state) {
         return 0;
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
-    finish_named_entries(state, -1, "shortcuts");
-    finish_named_entries(state, -1, "autostart");
     run->result = variant_from_lua(state, -1, 0, FALSE, 0, &run->error);
     lua_pop(state, 2);
     return 0;
@@ -1061,6 +811,172 @@ out:
     if (!paths)
         g_ptr_array_free(config.paths, TRUE);
     return run.result;
+}
+
+static void lua_runtime_free(LuaRuntime* runtime) {
+    if (!runtime)
+        return;
+    if (runtime->state)
+        lua_close(runtime->state);
+    g_clear_pointer(&runtime->config.active, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.modules, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.paths, g_ptr_array_unref);
+    g_clear_pointer(&runtime->config.directories, g_ptr_array_unref);
+    g_clear_pointer(&runtime->document, g_variant_unref);
+    g_clear_pointer(&runtime->pending_document, g_variant_unref);
+    g_free(runtime->config.current_path);
+    g_free(runtime);
+}
+
+GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
+                                      GError** error) {
+    LuaRuntime* runtime = g_new0(LuaRuntime, 1);
+    runtime->config.paths = g_ptr_array_new_with_free_func(g_free);
+    runtime->config.directories = g_ptr_array_new_with_free_func(g_free);
+    runtime->config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    runtime->config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    runtime->config.current_path = g_canonicalize_filename(path, NULL);
+    runtime->state = new_config_state(&runtime->config);
+    if (!runtime->state) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOMEM,
+                            "Lua config exceeded memory limit");
+        lua_runtime_free(runtime);
+        return NULL;
+    }
+    int steps = MAX_CONFIG_STEPS / 1000;
+    memcpy(lua_getextraspace(runtime->state), &steps, sizeof steps);
+    lua_sethook(runtime->state, limit_hook, LUA_MASKCOUNT, 1000);
+    EvalRun run = {.config = &runtime->config, .path = path};
+    lua_pushlightuserdata(runtime->state, &run);
+    lua_pushcclosure(runtime->state, protected_eval, 1);
+    if (lua_pcall(runtime->state, 0, 0, 0) != LUA_OK) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", lua_error_text(runtime->state));
+        lua_pop(runtime->state, 1);
+    } else if (run.error) {
+        g_propagate_error(error, g_steal_pointer(&run.error));
+    }
+    runtime->document = run.result;
+    if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
+        lua_runtime_free(runtime);
+        return NULL;
+    }
+    lua_runtime_free(pending_runtime);
+    pending_runtime = runtime;
+    if (paths)
+        *paths = g_ptr_array_ref(runtime->config.paths);
+    if (directories)
+        *directories = g_ptr_array_ref(runtime->config.directories);
+    return g_variant_ref(runtime->document);
+}
+
+GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error) {
+    if (!active_runtime)
+        return NULL;
+    if (!event || !*event || strlen(event) > 128 || !payload ||
+        !g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "invalid Gnoblin Lua event or payload");
+        return NULL;
+    }
+    lua_State* state = active_runtime->state;
+    int steps = MAX_CONFIG_STEPS / 1000;
+    memcpy(lua_getextraspace(state), &steps, sizeof steps);
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "listeners");
+    gboolean dispatched = FALSE;
+    for (int pass = 0; pass < 2; pass++) {
+        lua_getfield(state, -1, pass == 0 ? event : "*");
+        if (!lua_istable(state, -1)) {
+            lua_pop(state, 1);
+            continue;
+        }
+        int listeners = lua_gettop(state);
+        lua_Integer count = lua_rawlen(state, listeners);
+        dispatched |= count > 0;
+        for (lua_Integer i = 1; i <= count; i++) {
+            lua_rawgeti(state, listeners, i);
+            push_variant(state, payload);
+            lua_pushstring(state, event);
+            lua_setfield(state, -2, "name");
+            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua event '%s' failed: %s",
+                            event, lua_error_text(state));
+                lua_pop(state, 1);
+                lua_pop(state, 3);
+                lua_getglobal(state, "gnoblin");
+                push_variant(state, active_runtime->document);
+                lua_setfield(state, -2, "config");
+                lua_pop(state, 1);
+                return NULL;
+            }
+        }
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 2);
+    if (!dispatched)
+        return g_variant_ref(active_runtime->document);
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "config");
+    GVariant* document = variant_from_lua(state, -1, 0, FALSE, 0, error);
+    lua_pop(state, 2);
+    if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
+        !gnoblin_config_validate_document(document, error)) {
+        g_clear_pointer(&document, g_variant_unref);
+        lua_getglobal(state, "gnoblin");
+        push_variant(state, active_runtime->document);
+        lua_setfield(state, -2, "config");
+        lua_pop(state, 1);
+        return NULL;
+    }
+    g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
+    active_runtime->pending_document = g_variant_ref_sink(document);
+    return g_variant_ref(active_runtime->pending_document);
+}
+
+void gnoblin_config_finish_load(gboolean commit) {
+    if (!pending_runtime)
+        return;
+    if (commit) {
+        lua_runtime_free(active_runtime);
+        active_runtime = g_steal_pointer(&pending_runtime);
+    } else {
+        lua_runtime_free(g_steal_pointer(&pending_runtime));
+    }
+}
+
+void gnoblin_config_finish_event(gboolean commit) {
+    if (!active_runtime || !active_runtime->pending_document)
+        return;
+    if (commit) {
+        g_clear_pointer(&active_runtime->document, g_variant_unref);
+        active_runtime->document = g_steal_pointer(&active_runtime->pending_document);
+        return;
+    }
+    lua_State* state = active_runtime->state;
+    lua_getglobal(state, "gnoblin");
+    push_variant(state, active_runtime->document);
+    lua_setfield(state, -2, "config");
+    lua_pop(state, 1);
+    g_clear_pointer(&active_runtime->pending_document, g_variant_unref);
+}
+
+char** gnoblin_config_runtime_events(void) {
+    LuaRuntime* runtime = pending_runtime ? pending_runtime : active_runtime;
+    if (!runtime)
+        return g_new0(char*, 1);
+    GPtrArray* events = g_ptr_array_new_with_free_func(g_free);
+    lua_State* state = runtime->state;
+    lua_getglobal(state, "gnoblin");
+    lua_getfield(state, -1, "listeners");
+    lua_pushnil(state);
+    while (lua_next(state, -2)) {
+        if (lua_type(state, -2) == LUA_TSTRING && lua_istable(state, -1))
+            g_ptr_array_add(events, g_strdup(lua_tostring(state, -2)));
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 2);
+    g_ptr_array_add(events, NULL);
+    return (char**)g_ptr_array_free(events, FALSE);
 }
 
 #include "gnoblin-console-lua.inc"

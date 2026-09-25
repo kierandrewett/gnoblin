@@ -11,7 +11,7 @@ An external shell owns the bar, dock, launcher and desktop popups.
 - Window-management menu
 - Notifications, unless GNOME's service is explicitly enabled
 
-See [choose a shell](bring-your-own-shell.md) and [native feature settings](/config/session_settings#native-features).
+See [choose a shell](bring-your-own-shell.md) and [native feature settings](/guides/session_settings#native-features).
 
 ## Kept in Gnoblin
 
@@ -27,8 +27,7 @@ See [choose a shell](bring-your-own-shell.md) and [native feature settings](/con
 GNOME's Overview, dash, app grid, extension loader and extension management UI
 are unavailable. User scripts remain supported.
 
-Alt+F2 opens the [developer console](developer-console.md), not the old Run dialog.
-Legacy OSD/screenshot config keys cannot restore removed widgets.
+Alt+F2 opens the [developer console](developer-console.md).
 
 Stock GNOME retains its normal behavior. Test both modes when changing shared
 code; see [testing](testing.md).

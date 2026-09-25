@@ -21,13 +21,14 @@ for (const invalid of [
 ])
     assert.throws(() => validate(invalid));
 validateRenderers({ cairo: ["/usr/local/bin/my-frame", "--theme=dark"] });
+validateRenderers({ bingux: ["bingux-frame", "--compact"] });
 validateRenderers();
 for (const invalid of [
     [],
     null,
     { native: ["/bin/true"] },
     { x: "shell command" },
-    { x: ["relative"] },
+    { x: ["./relative"] },
     { x: [] },
     { x: ["/bin/true", 4] },
     { x: ["/bin/true", "\0"] },

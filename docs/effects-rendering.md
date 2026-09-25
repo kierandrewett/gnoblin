@@ -1,6 +1,6 @@
 # Effect rendering
 
-Developer notes for the implementation behind [window effects](/config/window_effects).
+Developer notes for the implementation behind [window effects](/guides/window_effects).
 
 ## Blur cache
 

@@ -136,6 +136,8 @@ def parser():
     window = add(commands, "window", "List and manage windows")
     actions = window.add_subparsers(dest="action", metavar="ACTION")
     window_filters(add(actions, "list", "List open windows"))
+    match = add(actions, "match", "Show the fields used to match one window in config rules")
+    match.add_argument("id", nargs="?", default="active", help="Window ID from window list (default: active)")
     for name in (
         "menu",
         "interactive-move",
@@ -159,7 +161,6 @@ def parser():
     for name, fields in (
         ("move", ["x", "y"]),
         ("resize", ["width", "height"]),
-        ("workspace", ["workspace"]),
         ("monitor", ["monitor"]),
     ):
         action = add(
@@ -168,22 +169,24 @@ def parser():
             {
                 "move": "Set position in logical screen coordinates",
                 "resize": "Set frame size in logical pixels",
-                "workspace": "Move to an existing workspace (one-based)",
                 "monitor": "Move to a logical monitor (zero-based)",
             }[name],
         )
         action.add_argument("id", help="Window ID, or active")
         for field in fields:
             bounds = (
-                (1, 32768)
-                if field in ("width", "height")
-                else (1, 1024)
-                if field == "workspace"
-                else (0, 1024)
-                if field == "monitor"
-                else (-100000, 100000)
+                (1, 32768) if field in ("width", "height") else (0, 1024) if field == "monitor" else (-100000, 100000)
             )
             action.add_argument(field, type=number(*bounds))
+    window_workspace = add(actions, "workspace", "Move a window to an existing workspace")
+    window_workspace.add_argument("id", help="Window ID, or active")
+    window_target = window_workspace.add_mutually_exclusive_group(required=True)
+    window_target.add_argument("workspace", nargs="?", type=number(1, 1024), help="Legacy shorthand for --number")
+    window_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    window_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    layer = add(commands, "layer", "Inspect layer-shell surfaces")
+    layer_actions = layer.add_subparsers(dest="action", metavar="ACTION")
+    add(layer_actions, "list", "List layer surfaces and their rule namespaces")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
     config = add(commands, "config", "Show the default or manage the active configuration")
@@ -206,7 +209,17 @@ def parser():
     workspace_actions = workspace.add_subparsers(dest="action")
     add(workspace_actions, "list", "List workspaces")
     switch = add(workspace_actions, "switch", "Switch to an existing workspace")
-    switch.add_argument("workspace", type=number(1, 1024), help="One-based workspace ID")
+    switch_target = switch.add_mutually_exclusive_group(required=True)
+    switch_target.add_argument("workspace", nargs="?", type=number(1, 1024), help="Legacy shorthand for --number")
+    switch_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    switch_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    add(workspace_actions, "next", "Switch to the next workspace")
+    add(workspace_actions, "previous", "Switch to the previous workspace")
+    move_active = add(workspace_actions, "move-active", "Move the active window to a workspace")
+    move_target = move_active.add_mutually_exclusive_group(required=True)
+    move_target.add_argument("--number", type=number(1, 1024), help="Current one-based workspace position")
+    move_target.add_argument("--id", dest="workspace_id", help="Stable workspace ID")
+    move_active.add_argument("--follow", action="store_true", help="Switch to the target workspace after moving")
 
     monitor = commands.choices["monitor"]
     monitor_actions = monitor.add_subparsers(dest="action")
@@ -249,6 +262,32 @@ def parser():
     begin.add_argument("milliseconds", nargs="?", default=3000, type=number(1, 60000))
     end = add(launch_actions, "end", "End a busy-cursor request")
     end.add_argument("token")
+
+    animation = add(commands, "animation", "Inspect and preview compositor animations")
+    animation_actions = animation.add_subparsers(dest="action")
+    add(animation_actions, "list", "List configured animations")
+    add(animation_actions, "surfaces", "List layer-shell animation targets")
+    for name in ("inspect", "preview"):
+        action = add(animation_actions, name, f"{name.capitalize()} a configured animation")
+        action.add_argument("name")
+        action.add_argument("--event", help="Select an event if the animation name is ambiguous")
+        target = action.add_mutually_exclusive_group()
+        target.add_argument("--window", help="Window ID, or active")
+        target.add_argument("--layer", help="Layer-shell surface ID from animation surfaces")
+        target.add_argument("--namespace", help="Layer-shell namespace; must match one surface")
+        if name == "preview":
+            action.add_argument("--autoplay", action="store_true", help="Start playing immediately")
+    for name, help_text in (("seek", "Seek a preview to a percentage"), ("step", "Advance a preview by milliseconds")):
+        action = add(animation_actions, name, help_text)
+        action.add_argument("session")
+        action.add_argument(
+            "value",
+            type=number(0 if name == "seek" else 1, 100 if name == "seek" else 60000),
+            help="0-100 percent" if name == "seek" else "Milliseconds",
+        )
+    for name in ("play", "pause", "stop"):
+        action = add(animation_actions, name, f"{name.capitalize()} a preview session")
+        action.add_argument("session")
     return root
 
 
@@ -279,20 +318,6 @@ def dbus(method, signature="", arguments=(), service="org.gnoblin.Shell", timeou
         raise CommandError("Invalid response from busctl") from None
 
 
-def input_call(method, signature="", arguments=(), timeout=5, call=dbus):
-    try:
-        return call(method, signature, arguments, timeout=timeout)
-    except CommandError as error:
-        # Fall back only when the interface is absent, never after an uncertain mutation.
-        text = str(error)
-        if not re.match(
-            r"^(?:Call failed: )?(?:Unknown method|Unknown interface|Unknown object|The name \S+ (?:was not provided by any \.service|is not activatable))",
-            text,
-        ):
-            raise
-        return call(method, signature, arguments, service="org.gnoblin.InputSources", timeout=timeout)
-
-
 def user_config_path():
     override = os.environ.get("GNOBLIN_CONFIG")
     if override:
@@ -314,7 +339,7 @@ def compositor(request, path, timeout=5):
             connection.connect(path)
         except OSError as error:
             raise CommandError(
-                f"Cannot connect to compositor socket {path}: {error.strerror}. Check gnoblinctl script list."
+                f"Cannot connect to compositor socket {path}: {error.strerror}. Check that a Gnoblin session is running and that the socket path is correct."
             ) from None
         connection.sendall((json.dumps(dict(request, op="command", id=identity)) + "\n").encode())
         buffer = b""
@@ -372,20 +397,85 @@ def dispatch(args, cli):
             and (not args.focused or window["focused"])
         ]
         return result
+    if cmd == "window" and args.action == "match":
+        windows = rpc({"command": "windows"})["windows"]
+        candidates = (
+            (entry for entry in windows if entry["focused"])
+            if args.id == "active"
+            else (entry for entry in windows if entry["id"] == args.id)
+        )
+        window = next(candidates, None)
+        if window is None:
+            raise CommandError(f"Window not found: {args.id}")
+        match = {"type": "window", "title": window["title"], "focused": window["focused"]}
+        if window["ruleAppId"]:
+            match["app_id"] = window["ruleAppId"]
+        return {
+            "id": window["id"],
+            "identity": {
+                "desktop_app_id": window["appId"],
+                "gtk_app_id": window["gtkAppId"],
+                "wm_class": window["wmClass"],
+                "rule_app_id": window["ruleAppId"],
+            },
+            "match": match,
+        }
     if cmd == "window":
         request = {"command": "window", "action": args.action, "window": args.id}
-        for field in ("x", "y", "width", "height", "workspace", "monitor"):
+        for field in ("x", "y", "width", "height", "monitor"):
             if hasattr(args, field):
                 request[field] = getattr(args, field)
+        if args.action == "workspace":
+            if args.workspace_id is not None:
+                request["workspaceId"] = args.workspace_id
+            else:
+                request["workspaceNumber"] = args.number if args.number is not None else args.workspace
         return rpc(request)
+    if cmd == "animation":
+        request = {"command": "animation", "action": args.action}
+        if args.action in ("inspect", "preview"):
+            request.update(name=args.name)
+            if args.event is not None:
+                request["event"] = args.event
+            if args.window is not None:
+                request.update(targetType="window", target=args.window)
+            elif args.layer is not None:
+                request.update(targetType="layer", target=args.layer)
+            elif args.namespace is not None:
+                request.update(targetType="namespace", target=args.namespace)
+            else:
+                request.update(targetType="window", target="active")
+            if args.action == "preview":
+                request["autoplay"] = args.autoplay
+        elif args.action in ("seek", "step"):
+            request.update(session=args.session)
+            request["progress" if args.action == "seek" else "milliseconds"] = (
+                args.value / 100 if args.action == "seek" else args.value
+            )
+        else:
+            if args.action in ("play", "pause", "stop"):
+                request["session"] = args.session
+        return rpc(request)
+    if cmd == "layer" and args.action == "list":
+        return rpc({"command": "layers"})
     if cmd == "monitor":
         return rpc({"command": "monitors"})
     if cmd == "workspace":
-        return rpc(
-            {"command": "workspaces"}
-            if args.action == "list"
-            else {"command": "workspace-switch", "workspace": args.workspace}
+        if args.action == "list":
+            return rpc({"command": "workspace-list"})
+        if args.action == "switch":
+            selector = (
+                {"workspaceId": args.workspace_id}
+                if args.workspace_id is not None
+                else {"workspaceNumber": args.number if args.number is not None else args.workspace}
+            )
+            return rpc({"command": "workspace-switch", **selector})
+        if args.action in ("next", "previous"):
+            return rpc({"command": f"workspace-{args.action}"})
+        selector = (
+            {"workspaceId": args.workspace_id} if args.workspace_id is not None else {"workspaceNumber": args.number}
         )
+        return rpc({"command": "workspace-move-active", **selector, "follow": args.follow})
     if cmd == "status":
         result = {**version_record(call("GetVersion")[0]), "connected": call("Ping")[0] == "pong"}
         try:
@@ -412,10 +502,10 @@ def dispatch(args, cli):
     if cmd == "input":
         fields = ["type", "id", "shortName", "name"]
         if args.action == "list":
-            return {"sources": keyed(input_call("ListInputSources", timeout=args.timeout)[0], fields)}
+            return {"sources": keyed(call("ListInputSources", timeout=args.timeout)[0], fields)}
         if args.action == "current":
-            return dict(zip(fields, input_call("GetCurrentInputSource", timeout=args.timeout)))
-        input_call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
+            return dict(zip(fields, call("GetCurrentInputSource", timeout=args.timeout)))
+        call("SetInputSource", "ss", [args.type, args.id], timeout=args.timeout)
         return {"ok": True, "type": args.type, "id": args.id}
     if cmd == "privacy":
         return dict(zip(["screenSharing", "microphoneInUse", "locationInUse"], call("GetPrivacyState")))
@@ -618,6 +708,7 @@ def main(argv=None):
         in (
             "config",
             "window",
+            "layer",
             "workspace",
             "monitor",
             "input",

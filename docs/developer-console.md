@@ -3,13 +3,19 @@
 Press **Alt+F2** to open the console in an unlocked Gnoblin session.
 Choose JavaScript or Lua using the tabs above the prompt.
 
+![Gnoblin's developer console open in JavaScript mode](images/gnoblin-developer-console.png)
+
+To capture it from a disposable devkit profile, run
+`scripts/capture-doc-examples.sh console`.
+
 Disable the Alt+F2 binding in `~/.config/gnoblin/init.lua` with:
 
 ```lua
 gnoblin.configure {
-    keybindings = {
-        shell = {
-            panel_run_dialog = {},
+    shortcuts = {
+        ["disable-run-dialog"] = {
+            action = "gnome:shell.panel_run_dialog",
+            binding = {},
         },
     },
 }
@@ -79,7 +85,7 @@ Lua keeps a separate working copy. After changing settings through JavaScript
 or the config file, use `:reload` before editing in Lua again so you do not
 apply an outdated copy.
 
-Live edits support rules, animations, shortcuts, keybindings and permissions.
+Live edits support rules, animations, shortcuts and permissions.
 Saved feature preferences, autostart, renderer services and startup protocols
 must be changed in the file instead.
 

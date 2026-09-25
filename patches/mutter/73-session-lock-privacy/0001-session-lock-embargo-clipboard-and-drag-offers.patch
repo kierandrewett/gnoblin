@@ -4,13 +4,34 @@ Date: Thu, 24 Sep 2026 21:52:55 +0100
 Subject: [PATCH] session-lock: embargo clipboard and drag offers
 
 ---
- src/wayland/meta-wayland-data-device.c        | 17 +++++++++++++++++
- src/wayland/meta-wayland-data-offer-primary.c |  9 +++++++++
- src/wayland/meta-wayland-data-offer.c         | 15 +++++++++++++++
- 3 files changed, 41 insertions(+)
+ src/wayland/meta-wayland-data-device-primary.c |  9 +++++++++
+ src/wayland/meta-wayland-data-device.c         | 25 +++++++++++++++++++++++++
+ src/wayland/meta-wayland-data-offer-primary.c  |  9 +++++++++
+ src/wayland/meta-wayland-data-offer.c          | 15 +++++++++++++++
+ src/x11/meta-x11-selection.c                   | 13 +++++++++++++
+ 5 files changed, 71 insertions(+)
 
+diff --git a/src/wayland/meta-wayland-data-device-primary.c b/src/wayland/meta-wayland-data-device-primary.c
+index 52824e685..118e7240e 100644
+--- a/src/wayland/meta-wayland-data-device-primary.c
++++ b/src/wayland/meta-wayland-data-device-primary.c
+@@ -37,2 +37,3 @@
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-session-lock.h"
+ #include "wayland/meta-wayland-seat.h"
+@@ -182,2 +183,10 @@ primary_device_set_selection (struct wl_client   *client,
+ 
++  if (meta_wayland_session_lock_is_active (
++        meta_wayland_seat_get_compositor (data_device->seat)))
++    {
++      if (source)
++        meta_wayland_data_source_cancel (source);
++      return;
++    }
++
+   if (wl_resource_get_client (resource) != data_device->focus_client)
 diff --git a/src/wayland/meta-wayland-data-device.c b/src/wayland/meta-wayland-data-device.c
-index f4004d148..45edff716 100644
+index f4004d148..92532aa4d 100644
 --- a/src/wayland/meta-wayland-data-device.c
 +++ b/src/wayland/meta-wayland-data-device.c
 @@ -50,2 +50,3 @@
@@ -36,6 +57,17 @@ index f4004d148..45edff716 100644
 +    }
 +
    if (origin_resource)
+@@ -1146,2 +1163,10 @@ data_device_set_selection (struct wl_client   *client,
+ 
++  if (meta_wayland_session_lock_is_active (
++        meta_wayland_seat_get_compositor (data_device->seat)))
++    {
++      if (source)
++        meta_wayland_data_source_cancel (source);
++      return;
++    }
++
+   if (wl_resource_get_client (resource) != data_device->focus_client)
 diff --git a/src/wayland/meta-wayland-data-offer-primary.c b/src/wayland/meta-wayland-data-offer-primary.c
 index 2efd83447..8477842bf 100644
 --- a/src/wayland/meta-wayland-data-offer-primary.c
@@ -83,6 +115,32 @@ index 317526ada..3f52819a1 100644
 +    }
 +
    selection_type = offer->selection_type;
+diff --git a/src/x11/meta-x11-selection.c b/src/x11/meta-x11-selection.c
+index cb16a495d..3d7dbf7c5 100644
+--- a/src/x11/meta-x11-selection.c
++++ b/src/x11/meta-x11-selection.c
+@@ -22,5 +22,8 @@
+ #include "core/meta-selection-private.h"
++#include "meta/meta-context.h"
+ #include "meta/meta-selection-source-memory.h"
++#include "meta/meta-wayland-compositor.h"
+ #include "mtk/mtk.h"
+ #include "mtk/mtk-x11.h"
++#include "wayland/meta-wayland-session-lock.h"
+ #include "x11/meta-selection-source-x11-private.h"
+@@ -233,2 +236,12 @@ meta_x11_selection_handle_selection_request (MetaX11Display *x11_display,
+ 
++  MetaContext *context = meta_display_get_context (display);
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (context);
++
++  if (compositor && meta_wayland_session_lock_is_active (compositor))
++    {
++      send_selection_notify (x11_display, event, FALSE);
++      return TRUE;
++    }
++
+   selection = meta_display_get_selection (display);
+
 -- 
 2.55.0
-

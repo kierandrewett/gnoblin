@@ -48,8 +48,8 @@ static struct wl_buffer* create_buffer(struct panel* panel, uint32_t width, uint
     munmap(pixels, (size_t)size);
 
     struct wl_shm_pool* pool = wl_shm_create_pool(panel->shm, fd, size);
-    struct wl_buffer* buffer = wl_shm_pool_create_buffer(
-        pool, 0, (int)width, (int)height, stride, WL_SHM_FORMAT_ARGB8888);
+    struct wl_buffer* buffer =
+        wl_shm_pool_create_buffer(pool, 0, (int)width, (int)height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
     if (buffer)
@@ -57,8 +57,8 @@ static struct wl_buffer* create_buffer(struct panel* panel, uint32_t width, uint
     return buffer;
 }
 
-static void layer_configure(void* data, struct zwlr_layer_surface_v1* layer,
-                            uint32_t serial, uint32_t width, uint32_t height) {
+static void layer_configure(void* data, struct zwlr_layer_surface_v1* layer, uint32_t serial,
+                            uint32_t width, uint32_t height) {
     struct panel* panel = data;
     zwlr_layer_surface_v1_ack_configure(layer, serial);
     if (!width)
@@ -96,8 +96,8 @@ static void registry_global(void* data, struct wl_registry* registry, uint32_t n
                             const char* interface, uint32_t version) {
     struct panel* panel = data;
     if (!strcmp(interface, wl_compositor_interface.name))
-        panel->compositor = wl_registry_bind(registry, name, &wl_compositor_interface,
-                                             version < 4 ? version : 4);
+        panel->compositor =
+            wl_registry_bind(registry, name, &wl_compositor_interface, version < 4 ? version : 4);
     else if (!strcmp(interface, wl_shm_interface.name))
         panel->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     else if (!strcmp(interface, zwlr_layer_shell_v1_interface.name))
@@ -136,15 +136,16 @@ int main(void) {
         panel.shell, panel.surface, NULL, ZWLR_LAYER_SHELL_V1_LAYER_TOP, "gnoblin-e2e-panel");
     zwlr_layer_surface_v1_add_listener(panel.layer, &layer_listener, &panel);
     zwlr_layer_surface_v1_set_size(panel.layer, 0, PANEL_HEIGHT);
-    zwlr_layer_surface_v1_set_anchor(panel.layer,
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+    zwlr_layer_surface_v1_set_anchor(panel.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+                                                      ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+                                                      ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
     zwlr_layer_surface_v1_set_exclusive_zone(panel.layer, PANEL_HEIGHT);
     zwlr_layer_surface_v1_set_keyboard_interactivity(
         panel.layer, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     wl_surface_commit(panel.surface);
 
-    while (wl_display_dispatch(display) >= 0) {}
+    while (wl_display_dispatch(display) >= 0) {
+    }
     wl_display_disconnect(display);
     return 0;
 }

@@ -15,8 +15,7 @@ using coordinates relative to the dock's PanelWindow:
 ```javascript
 function updateTarget(toplevel) {
     const point = icon.mapToItem(dock.contentItem, 0, 0);
-    toplevel.setRectangle(dock,
-        Qt.rect(point.x, point.y, icon.width, icon.height));
+    toplevel.setRectangle(dock, Qt.rect(point.x, point.y, icon.width, icon.height));
 }
 ```
 
@@ -32,15 +31,15 @@ During entry and exit animations, Gnoblin moves the displayed panel without
 asking the client to resize its buffer. Space reserved for the panel (its
 exclusive zone) stays unchanged, and it remains on the same monitor.
 
-When a panel changes size, Gnoblin keeps its old buffer aligned to its chosen
+When a panel changes size, Gnoblin keeps its previous buffer aligned to its chosen
 edge until the client submits the new buffer. The client must still set its
 Wayland anchors and margins correctly.
 
 Use a namespace rule with `animation = "none"` when the client owns its
-whole-surface transition. See [animations](/config/animations).
+whole-surface transition. See [animations](/guides/animations).
 
 ## Input and window control
 
 Use the [compositor bridge](compositor-bridge.md) for shortcuts and window state.
-Use the [window-menu contract](/config/window_menu#write-a-handler) for titlebar menus
-and [snapping contract](/config/window_snapping#shell-integration) for layout pickers.
+Use the [window-menu contract](/guides/window_menu#write-a-handler) for titlebar menus
+and [snapping contract](/guides/window_snapping#shell-integration) for layout pickers.

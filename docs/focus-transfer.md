@@ -3,7 +3,7 @@
 In Gnoblin, activating an application raises its window, restores it if minimised,
 switches workspace and transfers keyboard focus.
 
-A request can still bring the app to the front even if its timestamp is old or
+A request can still bring the app to the front even if its timestamp is stale or
 its Wayland activation token is not tied to a recent key or pointer event.
 Gnoblin does not limit those requests to marking the app as needing attention. Explicit no-focus hints and restrictions on
 special windows still apply.

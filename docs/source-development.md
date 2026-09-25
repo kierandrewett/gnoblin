@@ -49,8 +49,7 @@ To test the patched portal backend in your test session:
 ./install/libexec/xdg-desktop-portal-gnome -r
 ```
 
-See [permission policy](/config/permissions) before testing remote access.
-Old custom remembered-grant files no longer provide approval.
+See [permission policy](/guides/permissions) before testing remote access.
 
 ## Verify
 

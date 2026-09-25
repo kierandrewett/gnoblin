@@ -33,10 +33,7 @@ XcursorImages* gnoblin_hyprcursor_load(const char* theme, const char* shape, int
         size > 1024)
         return nullptr;
 
-    const char* override_theme = g_getenv("HYPRCURSOR_THEME");
-    const std::string requested = override_theme && *override_theme ? override_theme
-                                  : theme                           ? theme
-                                                                    : "";
+    const std::string requested = theme && *theme ? theme : "";
     if (requested.empty())
         return nullptr;
 
@@ -44,8 +41,8 @@ XcursorImages* gnoblin_hyprcursor_load(const char* theme, const char* shape, int
         if (!manager || loaded_theme != requested) {
             gnoblin_hyprcursor_invalidate();
             Hyprcursor::SManagerOptions options;
-            // A missing theme must retain GNOME's fallback, not pick a random
-            // Hyprcursor theme from the library's search paths.
+            // A missing theme must not select a random Hyprcursor theme from
+            // the library's search paths.
             options.allowDefaultFallback = false;
             manager = std::make_unique<Hyprcursor::CHyprcursorManager>(requested.c_str(), options);
             loaded_theme = requested;

@@ -42,11 +42,14 @@ and preserves the APT archive stored on that branch. GitHub Pages must use
 - Explain an option beside its example: accepted values, default, units and reload.
 - Keep tables short. Link to details instead of packing paragraphs into cells.
 - Keep user instructions separate from protocol and testing notes.
+- Capture screenshots in a fresh devkit profile or VM and inspect them for personal data before publishing.
+- Show real interface activity, without placeholder output. Put commands and explanatory text in prose or code blocks, not in staged terminal screenshots.
 - Check published package names before updating installation commands.
 
 Installation is organised around the package-first approach used by
 [niri](https://niri-wm.github.io/niri/Getting-Started.html) and
 [Hyprland](https://wiki.hypr.land/Getting-Started/Installation/).
 
-Dated experiments belong in the [archive](archive.md), excluded from site search.
-They are evidence of a specific test, not current installation instructions.
+Dated experiments and superseded design proposals are kept under
+`design/archive/` in the source repository. They are not part of the published
+user documentation.

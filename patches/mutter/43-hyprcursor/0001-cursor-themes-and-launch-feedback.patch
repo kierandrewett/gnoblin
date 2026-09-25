@@ -60,7 +60,7 @@ index 4f8c0c9ba..a9ba38738 100644
 +option('hyprcursor',
 +  type: 'feature',
 +  value: 'auto',
-+  description: 'Enable Gnoblin Hyprcursor themes with Xcursor fallback'
++  description: 'Enable Gnoblin Hyprcursor themes'
 +)
 +
  option('opengl',
@@ -233,4 +233,3 @@ index 60c16f5d6..bdd5b944f 100644
 +gboolean meta_cursor_tracker_get_gnoblin_launch_cursor (MetaCursorTracker *tracker);
 -- 
 2.55.0
-

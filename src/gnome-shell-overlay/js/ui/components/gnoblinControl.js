@@ -14,9 +14,21 @@ import * as Permissions from "./gnoblinPermissions.js";
 // runtime feature toggles (osd + per-type, screenshot, notifications), and
 // the Wayland soft-reload all hang off this same object.
 
-import { Autostart, ConfigFile, FEATURE_KEYS, Shortcuts, CommandShortcuts, ShortcutInput, applyWindowPreferences, applyCompositorPreferences, applyInputPreferences } from "./gnoblinConfig.js";
+import {
+    Autostart,
+    ConfigFile,
+    FEATURE_KEYS,
+    Shortcuts,
+    CommandShortcuts,
+    ShortcutInput,
+    applyWindowPreferences,
+    applyCompositorPreferences,
+    applyInputPreferences,
+} from "./gnoblinConfig.js";
 import { WindowRules } from "./gnoblinRules.js";
+import * as Workspaces from "./gnoblinWorkspaces.js";
 import Gio from "gi://Gio";
+import Clutter from "gi://Clutter";
 import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
@@ -31,6 +43,11 @@ import { LaunchFeedback } from "./gnoblinLaunchFeedback.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
+const CLUTTER_EVENT_NAMES = new Map(
+    Object.entries(Clutter.EventType)
+        .filter(([key]) => Number.isNaN(Number(key)))
+        .map(([key, value]) => [value, key]),
+);
 const SCHEMA_ID = "org.gnoblin.shell";
 const DISABLED_KEY = "disabled-features";
 const PORTAL_GRANT_KINDS = ["screen-cast", "remote-desktop"];
@@ -193,6 +210,12 @@ const FEATURES = {
     // The separate notification daemon reads this setting before owning the bus.
     notifications: { summary: "Own org.freedesktop.Notifications", apply() {} },
     "input-source-switcher": { summary: "Native GNOME keyboard-layout switcher", apply() {} },
+    wallpaper: {
+        summary: "Show the GNOME desktop background",
+        apply(enabled) {
+            Main.layoutManager?.setGnoblinWallpaperEnabled(enabled);
+        },
+    },
 };
 
 // Console edits share the config owner and validation used by file reloads.
@@ -708,6 +731,48 @@ export class Component {
         this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
         activeConfig = this._config;
         this._config.start();
+        this._configFocusId = global.display.connect("notify::focus-window", () => {
+            this._dispatchWindowEvent("focus_changed", global.display.focus_window);
+        });
+        this._configEventId = global.display.connect("gnoblin-config-event", (_display, _event, document) => {
+            this._config?.applyRuntimeDocument(document);
+        });
+        this._eventWindows = new Map();
+        for (const window of global.display.list_all_windows()) this._watchEventWindow(window);
+        this._configWindowId = global.display.connect("window-created", (_display, window) => {
+            this._dispatchWindowEvent("window_created", window);
+            this._watchEventWindow(window);
+        });
+        this._configInputId = global.stage.connect("captured-event", (_stage, event) => {
+            const type = event.type();
+            const name = CLUTTER_EVENT_NAMES.get(type) ?? `event_${type}`;
+            const payload = { type: name, time: event.get_time() };
+            if (
+                [
+                    Clutter.EventType.MOTION,
+                    Clutter.EventType.BUTTON_PRESS,
+                    Clutter.EventType.BUTTON_RELEASE,
+                    Clutter.EventType.SCROLL,
+                ].includes(type)
+            ) {
+                const [x, y] = event.get_coords();
+                payload.x = x;
+                payload.y = y;
+            }
+            if (type === Clutter.EventType.BUTTON_PRESS || type === Clutter.EventType.BUTTON_RELEASE)
+                payload.button = event.get_button();
+            if (type === Clutter.EventType.KEY_PRESS || type === Clutter.EventType.KEY_RELEASE)
+                payload.key_symbol = event.get_key_symbol();
+            if (type === Clutter.EventType.SCROLL) {
+                const [dx, dy] = event.get_scroll_delta();
+                payload.scroll_x = dx;
+                payload.scroll_y = dy;
+                payload.scroll_direction = String(event.get_scroll_direction());
+            }
+            this._config.dispatchEvent(`input.${name.toLowerCase()}`, payload);
+            return Clutter.EVENT_PROPAGATE;
+        });
+        this._dispatchWindowEvent("focus_changed", global.display.focus_window);
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -772,6 +837,24 @@ export class Component {
     }
 
     disable() {
+        if (this._configFocusId) {
+            global.display.disconnect(this._configFocusId);
+            this._configFocusId = 0;
+        }
+        if (this._configWindowId) {
+            global.display.disconnect(this._configWindowId);
+            this._configWindowId = 0;
+        }
+        if (this._configEventId) {
+            global.display.disconnect(this._configEventId);
+            this._configEventId = 0;
+        }
+        if (this._configInputId) {
+            global.stage.disconnect(this._configInputId);
+            this._configInputId = 0;
+        }
+        for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
+        this._eventWindows?.clear();
         // Script disposers can still use window rules, config and the event bus.
         if (this._scripts) {
             this._scripts.destroy();
@@ -945,12 +1028,17 @@ export class Component {
     }
 
     _applyConfig(next) {
+        Workspaces.configure(next["window-management"]["workspace-ids"] ?? [], (index) =>
+            Meta.prefs_get_workspace_name(index),
+        );
         applyWindowPreferences(next["window-management"]);
         applyCompositorPreferences(next.compositor);
         applyInputPreferences(next.input);
-        Keyboard.configureGnoblinInputSources(next["input-sources"]?.sources ?? null,
+        Keyboard.configureGnoblinInputSources(
+            next["input-sources"]?.sources ?? null,
             next["input-sources"]?.["per-window"] ?? false,
-            next.input?.keyboard?.["xkb-options"] ?? null);
+            next.input?.keyboard?.["xkb-options"] ?? null,
+        );
         try {
             this._shortcuts.apply(next);
         } catch (error) {
@@ -974,6 +1062,25 @@ export class Component {
         this._windowRules.refresh(next);
         autostart.apply(next.autostart);
         this._permissionPolicy = next.permissions;
+        Meta.prefs_set_gnoblin_cursor_config(next.cursor.theme, next.cursor.size);
+    }
+
+    _dispatchWindowEvent(event, window) {
+        if (!this._config) return;
+        this._config.dispatchEvent(event, {
+            app_id: window?.get_gtk_application_id() || "",
+            wm_class: window?.get_wm_class() || "",
+            title: window?.get_title() || "",
+        });
+    }
+
+    _watchEventWindow(window) {
+        if (this._eventWindows.has(window)) return;
+        const id = window.connect("unmanaged", () => {
+            this._dispatchWindowEvent("window_unmanaged", window);
+            this._eventWindows.delete(window);
+        });
+        this._eventWindows.set(window, id);
     }
 
     // --- feature toggles ---

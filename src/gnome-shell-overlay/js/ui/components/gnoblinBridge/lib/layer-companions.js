@@ -1,7 +1,9 @@
 import Meta from "gi://Meta";
-import Clutter from "gi://Clutter";
+import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
+import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
+import * as Animation from "resource:///org/gnome/shell/ui/components/gnoblinAnimation.js";
 
 // Raise existing panel buffers with an independent overlay. This does not need
 // a frame or a Wayland request from the process that owns the panels.
@@ -75,25 +77,38 @@ export class LayerCompanions {
         }
         const run = { remaining: motions.length };
         this.exitRun = run;
+        let completed = false;
+        const finishOne = () => {
+            if (this.exitRun !== run || completed) return;
+            if (--run.remaining === 0) {
+                completed = true;
+                done();
+            }
+        };
         for (const { actor, offset } of motions) {
-            this.exiting.set(actor, actor.translation_y);
-            actor.ease({
-                translation_y: actor.translation_y + offset,
-                duration: 180,
-                mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                onStopped: () => {
-                    if (this.exitRun === run && --run.remaining === 0) done();
-                },
-            });
+            const fromY = actor.translation_y;
+            this.exiting.set(actor, { translation: fromY, controller: null });
+            const custom = Config.getAnimationForEvent("layer-companion-close");
+            const spec = Animation.resolve(
+                custom?.name ?? "gnoblin-layer-companion-close",
+                "layer-companion-close",
+                { actor, fromY, toY: fromY + offset },
+                custom,
+            );
+            // Match Clutter's normal reduced-motion behavior for shell actor
+            // transitions while keeping the same shared animation path.
+            if (!St.Settings.get().enable_animations) spec.duration = 0;
+            const entry = this.exiting.get(actor);
+            entry.controller = Animation.run(actor, spec, { onComplete: finishOne });
         }
     }
 
     cancelDismiss() {
         this.exitRun = null;
-        for (const [actor, translation] of this.exiting) {
+        for (const [actor, { translation, controller }] of this.exiting) {
             if (!this.signals.has(actor)) continue;
-            actor.remove_transition("translation-y");
-            actor.translation_y = translation;
+            if (controller) controller.cancel({ restore: true });
+            else actor.translation_y = translation;
         }
         this.exiting.clear();
     }

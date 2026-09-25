@@ -9,8 +9,11 @@ import St from "gi://St";
 import System from "system";
 
 import * as Main from "../main.js";
+import * as SessionLock from "./gnoblinSessionLock.js";
 import { consoleConfig } from "./gnoblinControl.js";
 import { createGjsIntrospector } from "./gnoblinConsoleIntrospection.js";
+import * as Animation from "./gnoblinAnimation.js";
+import * as GnoblinConfig from "./gnoblinConfig.js";
 import { DEFAULTS, FEATURE_KEYS } from "./gnoblinConfig.js";
 import { ConsoleEvaluator, LuaConsoleEvaluator, LuaValue, isInspectable, preview } from "./gnoblinConsoleEvaluator.js";
 
@@ -41,7 +44,7 @@ function consoleHelp(topic = "") {
         "",
         'Lua: gnoblin.set({shell = {["layer-duration"] = 350}}), then :apply',
         ":help  :apply (Lua)  :undo  :reload  :reset (variables only)",
-        "Live: animations, window rules, shortcuts, keybindings and permissions.",
+        "Live: animations, window rules, shortcuts and permissions.",
         "Live edits do not write config files; file reload replaces them.",
         "Saved feature preferences, autostart and frame services require file edits. Protocol changes need a new session.",
         "Escape dismisses suggestions first, then closes. Alt+F2 closes immediately.",
@@ -131,6 +134,7 @@ export const DeveloperConsole = GObject.registerClass(
         _init() {
             super._init({ name: "gnoblin-developer-console", visible: false, reactive: true });
             this._open = false;
+            this._animation = null;
             this.connect("captured-event", (_actor, event) => this._capturedEvent(event));
             this._destroyed = false;
             this._expanded = false;
@@ -363,7 +367,11 @@ export const DeveloperConsole = GObject.registerClass(
         }
 
         _allowed() {
-            return global.session_mode === "gnoblin" && Main.sessionMode.isPrimary && !Main.sessionMode.isLocked;
+            return (
+                global.session_mode === "gnoblin" &&
+                Main.sessionMode.isPrimary &&
+                !SessionLock.isLocked(Main.sessionMode.isLocked)
+            );
         }
 
         get isOpen() {
@@ -384,7 +392,6 @@ export const DeveloperConsole = GObject.registerClass(
         open() {
             if (this._open || !this._allowed() || this._destroyed) return false;
             this._resize();
-            this._panel.remove_all_transitions();
             Main.uiGroup.set_child_above_sibling(this, null);
             this.show();
             const grab = Main.pushModal(this, { actionMode: Shell.ActionMode.LOOKING_GLASS });
@@ -400,17 +407,29 @@ export const DeveloperConsole = GObject.registerClass(
             // final focus target so the first keystroke is ready for JavaScript.
             global.stage.set_key_focus(this._entry);
             this._complete();
-            this._panel.translation_y = -this.height;
-            this._panel.ease({
-                translation_y: 0,
-                duration: this._duration(),
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            });
+            this._animate("console-open", true);
             return true;
         }
 
-        _duration() {
-            return St.Settings.get().enable_animations ? 140 : 0;
+        _animate(event, opening) {
+            const configured = GnoblinConfig.getAnimationForEvent(event);
+            const name = configured?.name ?? `gnoblin-console-${opening ? "open" : "close"}`;
+            const height = this.height;
+            const fallback = {
+                name,
+                event,
+                duration: 140,
+                ease: "ease-out-quad",
+                from: { y: opening ? -height : 0 },
+                to: { y: opening ? 0 : -height },
+            };
+            const spec = Animation.resolve(name, event, { actor: this._panel }, configured ?? fallback);
+            if (!St.Settings.get().enable_animations) spec.duration = 0;
+            this._animation = Animation.run(this._panel, spec, {
+                onComplete: (finished) => {
+                    if (finished && !opening && !this._open) this.hide();
+                },
+            });
         }
 
         close(immediate = false) {
@@ -419,23 +438,17 @@ export const DeveloperConsole = GObject.registerClass(
             this._hideCompletions();
             if (this._diagnosticTimer) GLib.source_remove(this._diagnosticTimer);
             this._diagnosticTimer = 0;
-            this._panel.remove_all_transitions();
             if (this._grab) {
                 Main.popModal(this._grab);
                 this._grab = null;
             }
-            if (immediate || !this._duration()) {
+            if (immediate || !St.Settings.get().enable_animations) {
+                this._animation?.cancel({ restore: true });
+                this._animation = null;
                 this.hide();
                 return;
             }
-            this._panel.ease({
-                translation_y: -this.height,
-                duration: this._duration(),
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    if (!this._open) this.hide();
-                },
-            });
+            this._animate("console-close", false);
         }
 
         _resize() {

@@ -29,13 +29,30 @@ Window commands use the private bridge socket:
 { "event": "reply", "id": "REQUEST_ID", "result": { "windows": [] } }
 ```
 
-Errors keep the request ID and use `event: "error"` with a message.
-Other command names include `monitors`, `workspaces`,
-`workspace-switch` and `window`.
+The request `id` is an opaque string used to match a reply. `command` selects
+the operation:
+
+| Command            | Purpose                               |
+| ------------------ | ------------------------------------- |
+| `windows`          | List managed windows.                 |
+| `monitors`         | List monitors and work areas.         |
+| `workspaces`       | List workspace positions and IDs.     |
+| `workspace-switch` | Activate a workspace by ID or number. |
+| `window`           | Apply an action to a listed window.   |
+
+Errors use `event: "error"`, retain the request ID, and include a message.
+Replies use `event: "reply"`; `result` contains operation-specific data.
+`pending: true` acknowledges an asynchronous request, not its final state.
+See the [bridge operation reference](/compositor-bridge#operation-index) for
+payload fields and selector values.
 
 ## Change a window
 
-Request (the window ID comes from a previous list):
+The `window` command's `action` selects an operation such as `"move"`. See the
+[`gnoblinctl` window reference](/gnoblinctl#window-actions) for all actions.
+
+`window` is a stable string ID from a previous list. For `"move"`, `x` and
+`y` are logical desktop-pixel coordinates:
 
 ```json
 { "op": "command", "id": "move-1", "command": "window", "action": "move", "window": "42", "x": 100, "y": 80 }

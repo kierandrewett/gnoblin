@@ -17,6 +17,7 @@
 *.swp
 *~
 .DS_Store
+.env
 
 # Python bytecode cache
 __pycache__/
@@ -27,9 +28,12 @@ __pycache__/
 /banks/
 /result
 /result-*
-
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+# Local dependency, Beads state, and generated documentation output.
+node_modules
+.beads/
+docs/.vitepress/dist/

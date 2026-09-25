@@ -4,13 +4,12 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import time
 
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
 config = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
-shutil.copytree("/usr/lib/gnoblin/share/gnoblin/scripts", config / "scripts")
+config.mkdir(parents=True, exist_ok=True)
 (config / "init.lua").write_text(
     'gnoblin.window_rule { match = { type = "window", focused = false }, opacity = 0.95 }\n'
 )

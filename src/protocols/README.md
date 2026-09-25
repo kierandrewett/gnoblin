@@ -24,9 +24,9 @@ All Gnoblin-owned globals are available only in the Gnoblin session. Each
 defaults on within that session and can be disabled through its `protocols`
 key in `init.lua`.
 
-`session-lock/` and `output-management/` are deferred implementation plans
-with vendored protocol XML. They are not compiled, registered, configurable,
-or claimed as supported.
+`session-lock/` and `output-management/` are not supported globals.
+The session-lock startup boundary is compiled but advertises no global until
+the compositor can enforce a secure lock. Output management remains XML only.
 
 ## Adding an aggregated protocol
 

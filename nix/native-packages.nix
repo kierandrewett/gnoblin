@@ -95,7 +95,12 @@ in
       version = (component "gnome-shell").version;
       source = "gnome-shell";
       requiresSameMajor = [ "gnoblin-shell" ];
-      requires = [ "gnome-session" "wireplumber" "playerctl" "brightnessctl" ];
+      requires = [
+        "gnome-session"
+        "wireplumber"
+        "playerctl"
+        "brightnessctl"
+      ];
     };
   };
 }

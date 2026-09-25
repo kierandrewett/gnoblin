@@ -25,7 +25,7 @@ configure("auto")
 (root / "scripts/corner-test.js").write_text(
     (Path(__file__).resolve().parents[1] / "tests/window-corners-native.js").read_text()
 )
-subprocess.run(["gnoblinctl", "script", "reload"], check=True)
+subprocess.run(["gnoblinctl", "reload"], check=True)
 qml = root / "shadow-client.qml"
 qml.write_text("""import QtQuick
 import Quickshell

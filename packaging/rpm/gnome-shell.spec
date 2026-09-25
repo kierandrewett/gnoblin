@@ -30,7 +30,7 @@ URL:            https://wiki.gnome.org/Projects/GnomeShell
 Source0:        gnome-shell-%{tarball_version}.tar.xz
 
 # gnoblin-session subpackage sources (session mode, login entry, systemd
-# --user units, control tools) — staged into the RPM sources directory by
+# --user units and control tools) — staged into the RPM sources directory by
 # scripts/make-tarball.sh alongside Source0. These live at the gnoblin repo
 # root (src/data/session/, src/tools/), not inside this tarball, since the
 # rest of gnoblin's changes to gnome-shell itself are pre-applied above.
@@ -45,8 +45,9 @@ Source8:        gnoblin-shell-service
 Source9:        gnoblinctl
 Source10:       00_org.gnoblin.mutter.gschema.override
 Source11:       gnome-session@gnoblin.target.d.conf
-Source13:       gnoblin-seed-config
-Source14:       init.lua.example
+Source12:       gnoblin-seed-config
+Source13:       init.lua.example
+Source14:       Adwaita-Hyprcursor.tar.xz
 
 # gnoblin patches (tooling, control, settings, reload, branding) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -163,6 +164,7 @@ Gnoblin's patched GNOME Shell, installed privately alongside stock GNOME Shell.
 
 %package -n gnoblin-session
 Summary: Gnoblin login session and command-line tool
+License: GPL-2.0-or-later AND (LGPL-3.0-or-later OR CC-BY-SA-3.0)
 Requires: %{name}%{?_isa} = %{version}-%{release}
 Requires: gnome-session
 Requires: systemd
@@ -194,13 +196,16 @@ rm -f %{buildroot}%{_libdir}/systemd/user/org.gnome.Shell-disable-extensions.ser
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
 install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm644 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
+install -Dm755 %{SOURCE12} %{buildroot}%{_libexecdir}/gnoblin-seed-config
+install -Dm644 %{SOURCE13} %{buildroot}%{_datadir}/gnoblin/init.lua.example
 printf '%%s\n' '%{_lib}' > %{buildroot}%{_libexecdir}/gnoblin-libdir
 install -Dm755 %{SOURCE7} %{buildroot}%{_bindir}/gnoblin-session
-install -Dm755 %{SOURCE13} %{buildroot}%{_libexecdir}/gnoblin-seed-config
-install -Dm644 %{SOURCE14} %{buildroot}%{_datadir}/gnoblin/init.lua.example
 install -Dm755 %{SOURCE8} %{buildroot}%{_bindir}/gnoblin-shell-service
 install -Dm755 %{SOURCE9} %{buildroot}%{_bindir}/gnoblinctl
 install -Dm644 %{SOURCE10} %{buildroot}%{_datadir}/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override
+mkdir -p %{buildroot}%{_datadir}/icons
+tar -xJf %{SOURCE14} -C %{buildroot}%{_datadir}/icons
+
 # Only Gnoblin-named entry points are installed outside the private runtime.
 install -Dm644 %{SOURCE3} %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
 sed -i 's|^Exec=.*|Exec=%{_bindir}/gnoblin-session|' \
@@ -233,8 +238,6 @@ desktop-file-validate gnoblin-validation.desktop
 
 %files -n gnoblin-session
 /usr/bin/gnoblinctl
-/usr/libexec/gnoblin-seed-config
-/usr/share/gnoblin/init.lua.example
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session
 /usr/lib/systemd/user/org.gnoblin.Shell.target

@@ -14,6 +14,8 @@ import { FullscreenReturnGuard } from "./lib/fullscreen-return-guard.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Config from "resource:///org/gnome/shell/ui/components/gnoblinConfig.js";
 import * as SessionLock from "resource:///org/gnome/shell/ui/components/gnoblinSessionLock.js";
+import * as Animation from "resource:///org/gnome/shell/ui/components/gnoblinAnimation.js";
+import * as Workspaces from "resource:///org/gnome/shell/ui/components/gnoblinWorkspaces.js";
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
 
@@ -56,6 +58,7 @@ export class CompositorBridge {
         this.modifierCheck = 0;
         this.modifierPoll = 0;
         this.windows = new Map();
+        this.animationPreviews = new Map();
         this.setupPrivacy();
         this.windowSnap = new WindowSnap(this);
         const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), "gnoblin"]);
@@ -76,8 +79,13 @@ export class CompositorBridge {
             return true;
         });
         this.service.start();
-        this.accelerator = global.display.connect("accelerator-activated", (_display, action) => this.activate(action));
-        this.overlayKey = global.display.connect("overlay-key", () => this.activate("overlay-key"));
+        this.accelerator = global.display.connect("accelerator-activated", (_display, action) =>
+            this.activate(action, "press"),
+        );
+        this.deactivated = global.display.connect("accelerator-deactivated", (_display, action) =>
+            this.activate(action, "release"),
+        );
+        this.overlayKey = global.display.connect("overlay-key", () => this.activate("overlay-key", "release"));
         this.capture = global.stage.connect("event", (_stage, event) => this.event(event));
         this.returnClickCapture = global.stage.connect("captured-event", (_stage, event) =>
             this.fullscreenReturnGuard.handle(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE,
@@ -86,6 +94,7 @@ export class CompositorBridge {
             if (SessionLock.isLocked(Main.sessionMode.isLocked)) {
                 this.windowSnap.cancel();
                 this.end("cancelled");
+                this.cancelAnimationPreviews();
             }
         });
         // Native lock state is read synchronously from Mutter. Poll it only at
@@ -110,7 +119,8 @@ export class CompositorBridge {
             typeof handler !== "function"
         )
             throw new Error("Compositor script operations must use a namespaced name and a function handler");
-        if (this.extensionOperations.has(operation)) throw new Error(`Compositor operation already registered: ${operation}`);
+        if (this.extensionOperations.has(operation))
+            throw new Error(`Compositor operation already registered: ${operation}`);
         this.extensionOperations.set(operation, handler);
         return () => {
             if (this.extensionOperations.get(operation) === handler) this.extensionOperations.delete(operation);
@@ -333,7 +343,12 @@ export class CompositorBridge {
         }
         if (record.op === "snap-context") {
             const window = global.display.focus_window;
-            if (SessionLock.isLocked(Main.sessionMode.isLocked) || !window || !this.eligible(window) || !window.allows_resize())
+            if (
+                SessionLock.isLocked(Main.sessionMode.isLocked) ||
+                !window ||
+                !this.eligible(window) ||
+                !window.allows_resize()
+            )
                 throw new Error("Focus a resizable window to choose a snap region");
             const monitor = Main.layoutManager.monitors[window.get_monitor()];
             const area = window.get_workspace().get_work_area_for_monitor(monitor.index);
@@ -423,7 +438,9 @@ export class CompositorBridge {
             ].includes(record.hold) ||
             (record.modal !== undefined && typeof record.modal !== "boolean") ||
             (record.captureInput !== undefined && typeof record.captureInput !== "boolean") ||
+            (record.trigger !== undefined && !["press", "release"].includes(record.trigger)) ||
             (record.accelerator === "Super" && record.hold !== 0) ||
+            (record.accelerator === "Super" && record.trigger === "press") ||
             client.bindings.size >= 32 ||
             client.bindings.has(record.id)
         )
@@ -435,13 +452,16 @@ export class CompositorBridge {
             ? "overlay-key"
             : reserved?.action || global.display.grab_accelerator(record.accelerator, Meta.KeyBindingFlags.NONE);
         if (action === Meta.KeyBindingAction.NONE) throw new Error(`shortcut already claimed: ${record.accelerator}`);
-        const binding = reserved || {
-            client,
-            id: record.id,
-            hold: record.hold,
-            modal: record.modal !== false,
-            captureInput: record.captureInput === true,
-            action,
+        const binding = {
+            ...(reserved || {
+                client,
+                id: record.id,
+                hold: record.hold,
+                modal: record.modal !== false,
+                captureInput: record.captureInput === true,
+                action,
+            }),
+            trigger: record.trigger ?? (overlay ? "release" : "press"),
         };
         client.bindings.set(record.id, binding);
         this.actions.set(action, binding);
@@ -452,9 +472,14 @@ export class CompositorBridge {
         this.send(client, { event: "bound", id: record.id });
     }
 
-    activate(action) {
+    activate(action, trigger = "press") {
         const binding = this.actions.get(action);
-        if (!binding || SessionLock.isLocked(Main.sessionMode.isLocked)) return;
+        if (
+            !binding ||
+            (binding.trigger ?? (binding.action === "overlay-key" ? "release" : "press")) !== trigger ||
+            SessionLock.isLocked(Main.sessionMode.isLocked)
+        )
+            return false;
         if (binding.captureInput)
             Main.componentManager?._allComponents?.gnoblinControl?._shortcutInput?.begin(binding.id);
         if (this.active && this.active.client !== binding.client) this.end("cancelled");
@@ -490,6 +515,7 @@ export class CompositorBridge {
         // A release may precede the client receiving activation. Send both
         // records in order instead of waiting for the client to map a surface.
         if (this.active && !this.modifiersHeld(global.get_pointer()[2], this.active.hold)) this.checkModifiers();
+        return true;
     }
 
     modifiersHeld(state, hold) {
@@ -570,8 +596,7 @@ export class CompositorBridge {
         if (type === Clutter.EventType.KEY_PRESS) {
             if (this.active.fallback && this.switcherFallback.key(event.get_key_symbol())) return Clutter.EVENT_STOP;
             const action = global.display.get_keybinding_action(event.get_key_code(), event.get_state());
-            if (this.actions.has(action)) this.activate(action);
-            else
+            if (!this.actions.has(action) || !this.activate(action, "press"))
                 this.send(this.active.client, {
                     event: "key",
                     key: event.get_key_symbol(),
@@ -743,7 +768,8 @@ export class CompositorBridge {
                 if (!visible) throw new Error("window image buffer unavailable");
             }
             stream.close(null);
-            if (client.closed || SessionLock.isLocked(Main.sessionMode.isLocked) || !this.windows.has(request.window)) return;
+            if (client.closed || SessionLock.isLocked(Main.sessionMode.isLocked) || !this.windows.has(request.window))
+                return;
             const bytes = stream.steal_as_bytes().toArray();
             this.send(client, {
                 event: "preview",
@@ -774,9 +800,10 @@ export class CompositorBridge {
     }
 
     dismissRevealedUi() {
-        const [name, owner] = [...this.uiSessions.owners].find(([, candidate]) =>
-            candidate.state?.revealCompanions && typeof candidate.state.surface === "string",
-        ) ?? [];
+        const [name, owner] =
+            [...this.uiSessions.owners].find(
+                ([, candidate]) => candidate.state?.revealCompanions && typeof candidate.state.surface === "string",
+            ) ?? [];
         if (name) this.dismissUiSession(name, "hide");
     }
 
@@ -819,6 +846,7 @@ export class CompositorBridge {
         signals.push(
             window.connect("unmanaged", () => {
                 this.windowSnap.forget(id);
+                this.cancelPreviewsForTarget(id);
                 this.windows.delete(id);
                 for (const signal of signals) window.disconnect(signal);
                 this.publishWindows();
@@ -836,13 +864,20 @@ export class CompositorBridge {
                 const monitor = Main.layoutManager.monitors[window.get_monitor()];
                 const frame = window.get_frame_rect();
                 const app = tracker.get_window_app(window);
+                const gtkAppId = window.get_gtk_application_id() || "";
+                const wmClass = window.get_wm_class() || "";
                 return {
                     id,
                     title: window.title || "",
                     appId: app && !app.is_window_backed() ? app.get_id() : window.get_wm_class() || "",
+                    gtkAppId,
+                    wmClass,
+                    ruleAppId: gtkAppId || wmClass,
                     focused: global.display.focus_window === window,
                     minimized: window.minimized,
                     workspace: window.get_workspace()?.index() + 1 || null,
+                    workspaceId: window.get_workspace() ? Workspaces.getId(window.get_workspace()) : null,
+                    workspaceNumber: window.get_workspace()?.index() + 1 || null,
                     monitorIndex: window.get_monitor(),
                     maximized: window.get_maximize_flags() === Meta.MaximizeFlags.BOTH,
                     fullscreen: window.is_fullscreen(),
@@ -857,6 +892,8 @@ export class CompositorBridge {
     }
 
     control(record) {
+        if (record.command === "animation") return this.animationCommand(record);
+        if (record.command === "layers") return { surfaces: this.layerRecords() };
         if (record.command === "capture-windows") {
             if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("Session is locked.");
             const windows = global.display.sort_windows_by_stacking(
@@ -871,12 +908,14 @@ export class CompositorBridge {
                         const actor = window.get_compositor_private();
                         const paintBoxResult = actor?.get_paint_box();
                         const paintBox = Array.isArray(paintBoxResult) ? paintBoxResult[1] : paintBoxResult;
-                        const paintWidth = paintBox && Number.isFinite(paintBox.x1) && Number.isFinite(paintBox.x2)
-                            ? Math.max(1, Math.ceil(paintBox.x2 - paintBox.x1))
-                            : 0;
-                        const paintHeight = paintBox && Number.isFinite(paintBox.y1) && Number.isFinite(paintBox.y2)
-                            ? Math.max(1, Math.ceil(paintBox.y2 - paintBox.y1))
-                            : 0;
+                        const paintWidth =
+                            paintBox && Number.isFinite(paintBox.x1) && Number.isFinite(paintBox.x2)
+                                ? Math.max(1, Math.ceil(paintBox.x2 - paintBox.x1))
+                                : 0;
+                        const paintHeight =
+                            paintBox && Number.isFinite(paintBox.y1) && Number.isFinite(paintBox.y2)
+                                ? Math.max(1, Math.ceil(paintBox.y2 - paintBox.y1))
+                                : 0;
                         const app = Shell.WindowTracker.get_default().get_window_app(window);
                         const texture = actor?.get_texture()?.get_texture();
                         return {
@@ -910,6 +949,12 @@ export class CompositorBridge {
                         .filter((window) => this.eligible(window)).length,
                 })),
             };
+        if (record.command === "workspace-list")
+            return {
+                workspaces: Array.from({ length: manager.n_workspaces }, (_, index) =>
+                    this.workspaceDescription(manager.get_workspace_by_index(index)),
+                ),
+            };
         if (record.command === "monitors")
             return {
                 monitors: Main.layoutManager.monitors.map((monitor) => ({
@@ -922,15 +967,53 @@ export class CompositorBridge {
                     scale: global.display.get_monitor_scale(monitor.index),
                 })),
             };
-        if (SessionLock.isLocked(Main.sessionMode.isLocked)) throw new Error("window management is unavailable while the session is locked");
-        const workspace = () => {
-            if (!Number.isInteger(record.workspace) || record.workspace < 1 || record.workspace > manager.n_workspaces)
-                throw new Error("workspace not found; list workspaces first");
-            return manager.get_workspace_by_index(record.workspace - 1);
+        if (SessionLock.isLocked(Main.sessionMode.isLocked))
+            throw new Error("window management is unavailable while the session is locked");
+        const workspace = (selector = null) => {
+            if (!selector) {
+                if (
+                    !Number.isInteger(record.workspace) ||
+                    record.workspace < 1 ||
+                    record.workspace > manager.n_workspaces
+                )
+                    throw new Error("workspace not found; list workspaces first");
+                selector = { number: record.workspace };
+            }
+            return Workspaces.resolve(selector);
         };
         if (record.command === "workspace-switch") {
-            workspace().activate(global.get_current_time());
-            return { ok: true, pending: true, workspace: record.workspace };
+            const target = workspace(this.workspaceSelector(record));
+            target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return { ok: true, pending: true, workspace: info.number, ...info };
+        }
+        if (record.command === "workspace-next" || record.command === "workspace-previous") {
+            const count = manager.n_workspaces;
+            if (!count) throw new Error("no workspaces are available");
+            const delta = record.command === "workspace-next" ? 1 : -1;
+            const index = (manager.get_active_workspace_index() + delta + count) % count;
+            const target = manager.get_workspace_by_index(index);
+            target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return { ok: true, pending: true, workspace: info.number, ...info };
+        }
+        if (record.command === "workspace-move-active") {
+            const window = global.display.focus_window;
+            if (!window || !this.eligible(window)) throw new Error("no active window available to move");
+            const target = workspace(this.workspaceSelector(record));
+            const follow = record.follow ?? false;
+            if (typeof follow !== "boolean") throw new Error("follow must be a boolean");
+            window.change_workspace(target);
+            if (follow) target.activate(global.get_current_time());
+            const info = this.workspaceDescription(target);
+            return {
+                ok: true,
+                pending: true,
+                follow,
+                workspace: info.number,
+                ...info,
+                window: String(window.get_stable_sequence()),
+            };
         }
         if (record.command !== "window") throw new Error("unknown compositor command");
         const actions = [
@@ -1056,9 +1139,20 @@ export class CompositorBridge {
                 window.move_resize_frame(true, frame.x, frame.y, record.width, record.height);
                 break;
             }
-            case "workspace":
-                window.change_workspace(workspace());
-                break;
+            case "workspace": {
+                const target = workspace(this.workspaceSelector(record, "workspace"));
+                window.change_workspace(target);
+                const info = this.workspaceDescription(target);
+                return {
+                    ok: true,
+                    pending: true,
+                    window: String(window.get_stable_sequence()),
+                    action: record.action,
+                    workspace: info.number,
+                    workspaceId: info.id,
+                    workspaceNumber: info.number,
+                };
+            }
             case "monitor":
                 if (
                     !Number.isInteger(record.monitor) ||
@@ -1069,6 +1163,283 @@ export class CompositorBridge {
                 break;
         }
         return { ok: true, pending: true, window: String(window.get_stable_sequence()), action: record.action };
+    }
+
+    workspaceSelector(record, legacyField = null) {
+        const hasId = Object.hasOwn(record, "workspaceId");
+        const hasNumber = Object.hasOwn(record, "workspaceNumber");
+        if (hasId && hasNumber) throw new Error("specify a workspace id or number, not both");
+        if (hasId) {
+            if (typeof record.workspaceId !== "string" || !record.workspaceId)
+                throw new Error("workspaceId must be a nonempty string");
+            return { id: record.workspaceId };
+        }
+        if (hasNumber) {
+            if (!Number.isInteger(record.workspaceNumber) || record.workspaceNumber < 1)
+                throw new Error("workspaceNumber must be a positive integer");
+            return { number: record.workspaceNumber };
+        }
+        if (legacyField && Number.isInteger(record[legacyField])) return { number: record[legacyField] };
+        return null;
+    }
+
+    workspaceDescription(workspace) {
+        return {
+            ...Workspaces.describe(workspace),
+            windows: workspace.list_windows().filter((window) => this.eligible(window)).length,
+        };
+    }
+
+    layerRecords() {
+        return [...this.windows]
+            .map(([id, { window }]) => ({
+                id,
+                namespace: Meta.gnoblin_layer_namespace(window),
+                title: window.title || "",
+            }))
+            .filter(({ namespace }) => namespace !== null);
+    }
+
+    animationCommand(record) {
+        if (SessionLock.isLocked(Main.sessionMode.isLocked))
+            throw new Error("animation previews are unavailable while the session is locked");
+        const action = record.action;
+        if (action === "list") {
+            const internalEvents = new Set([
+                "console-open",
+                "console-close",
+                "shadow-change",
+                "tile-preview-open",
+                "tile-preview-close",
+                "dialog-dim",
+                "dialog-undim",
+                "layer-companion-close",
+                "workspace-switch",
+            ]);
+            const animations = Animation.presets().map((preset) => ({
+                ...preset,
+                previewable: preset.name !== "none" && !internalEvents.has(preset.event),
+            }));
+            animations.push(
+                ...(Config.settings.animations ?? []).map(({ name, event, duration, ease }) => ({
+                    name,
+                    event,
+                    duration,
+                    ease,
+                    previewable: duration !== 0 && !internalEvents.has(event),
+                })),
+            );
+            const unique = new Map(
+                animations.map((animation) => [`${animation.name}\0${animation.event ?? ""}`, animation]),
+            );
+            return { animations: [...unique.values()] };
+        }
+        if (action === "surfaces") return { surfaces: this.layerRecords() };
+        if (action === "inspect" || action === "preview") {
+            if (
+                typeof record.name !== "string" ||
+                !/^[a-zA-Z0-9_-]{1,80}$/.test(record.name) ||
+                (record.event !== undefined &&
+                    (typeof record.event !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(record.event)))
+            )
+                throw new Error("invalid animation name or event");
+            const targetType = record.targetType ?? "window";
+            let window = null;
+            let actor = null;
+            if (targetType === "window") {
+                window =
+                    record.target === "active" ? global.display.focus_window : this.windows.get(record.target)?.window;
+            } else if (targetType === "layer" || targetType === "namespace") {
+                const candidates = [...this.windows.values()]
+                    .map(({ window: candidate }) => candidate)
+                    .filter((candidate) => {
+                        const namespace = Meta.gnoblin_layer_namespace(candidate);
+                        return (
+                            namespace !== null &&
+                            (targetType === "layer"
+                                ? String(candidate.get_stable_sequence()) === String(record.target)
+                                : namespace === record.target)
+                        );
+                    });
+                if (candidates.length !== 1)
+                    throw new Error(
+                        candidates.length
+                            ? `layer namespace matches multiple surfaces (${candidates.map((candidate) => candidate.get_stable_sequence()).join(", ")}); use --layer ID`
+                            : "layer surface not found",
+                    );
+                window = candidates[0];
+            } else {
+                throw new Error("invalid animation target type");
+            }
+            if (!window) throw new Error("animation target window no longer available");
+            const isLayer = Meta.gnoblin_layer_namespace(window) !== null;
+            if (window.is_override_redirect() || (window.skip_taskbar && !isLayer))
+                throw new Error("animation target window no longer available");
+            actor = window.get_compositor_private();
+            if (!actor) throw new Error("animation target has no compositor actor");
+            const namespace = Meta.gnoblin_layer_namespace(window);
+            const properties = Config.windowProperties(window);
+            const monitor = Main.layoutManager.monitors[window.get_monitor()] ?? null;
+            const frame = window.get_frame_rect();
+            const custom = (Config.settings.animations ?? []).find(
+                (animation) =>
+                    animation.name === record.name && (record.event === undefined || animation.event === record.event),
+            );
+            const preset = Animation.presets().find((candidate) => candidate.name === record.name);
+            if (!custom && !preset) throw new Error(`animation not found: ${record.name}`);
+            const supportedEvents = new Set([
+                ...Animation.presets()
+                    .map((candidate) => candidate.event)
+                    .filter(Boolean),
+                ...(Config.settings.animations ?? []).map((animation) => animation.event),
+            ]);
+            const context = {
+                ...properties,
+                actor,
+                window,
+                monitor,
+                targetGeom: [false, null],
+                rtl: Clutter.get_default_text_direction() === Clutter.TextDirection.RTL,
+                offset: [0, 0],
+            };
+            const requestedEvent =
+                record.event ?? custom?.event ?? preset?.event ?? (namespace !== null ? "layer-open" : "open");
+            if (requestedEvent === "minimize" || requestedEvent === "restore")
+                context.targetGeom = Config.minimizeTarget(window, monitor);
+            if (namespace !== null && (requestedEvent === "layer-open" || requestedEvent === "layer-close"))
+                context.offset = Config.layerOffset(Meta.gnoblin_layer_anchor(window), frame, monitor);
+            const spec = Animation.resolve(record.name, requestedEvent, context, custom);
+            if (!spec) throw new Error(`animation not found: ${record.name}`);
+            const event = spec.event;
+            if (!supportedEvents.has(event)) throw new Error(`unsupported animation event: ${event}`);
+            if (!Config.animationNameSupports(record.name, [event]))
+                throw new Error(`${record.name} does not support ${event}`);
+            const exactPreset = Animation.presets().find(
+                (candidate) => candidate.name === record.name && candidate.event !== null,
+            );
+            if (exactPreset && exactPreset.event !== event)
+                throw new Error(`${record.name} is for the ${exactPreset.event} event; requested ${event}`);
+            if ((event === "layer-open" || event === "layer-close") && namespace === null)
+                throw new Error(`${event} requires a layer-shell surface target`);
+            if (namespace !== null && (event === "minimize" || event === "restore" || event === "workspace-switch"))
+                throw new Error(`${event} previews require a window target`);
+            const internalEvents = new Set([
+                "console-open",
+                "console-close",
+                "shadow-change",
+                "tile-preview-open",
+                "tile-preview-close",
+                "dialog-dim",
+                "dialog-undim",
+                "layer-companion-close",
+                "workspace-switch",
+            ]);
+            if (internalEvents.has(event))
+                throw new Error(
+                    `${event} targets an internal shell actor and cannot be previewed on a window or layer surface`,
+                );
+            const matchProperties = { ...properties };
+            const publicContext = {
+                ...matchProperties,
+                actor: {
+                    x: actor.x,
+                    y: actor.y,
+                    width: actor.width,
+                    height: actor.height,
+                },
+                monitor: monitor ? { x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height } : null,
+                targetGeom:
+                    context.targetGeom[0] && context.targetGeom[1]
+                        ? [
+                              true,
+                              {
+                                  x: context.targetGeom[1].x,
+                                  y: context.targetGeom[1].y,
+                                  width: context.targetGeom[1].width,
+                                  height: context.targetGeom[1].height,
+                              },
+                          ]
+                        : [false, null],
+                offset: [...context.offset],
+                rtl: context.rtl,
+            };
+            if (action === "inspect")
+                return {
+                    name: record.name,
+                    event,
+                    target: String(window.get_stable_sequence()),
+                    properties: matchProperties,
+                    context: publicContext,
+                    spec,
+                };
+            if (spec.duration <= 0) throw new Error("animation has zero duration and cannot be stepped");
+            if (window.minimized || !actor.visible || !window.showing_on_its_workspace())
+                throw new Error("animation preview target must be visible and unminimized");
+            for (const [sessionId, current] of this.animationPreviews) {
+                if (current.actor === actor) {
+                    current.controller.cancel({ restore: true });
+                    this.animationPreviews.delete(sessionId);
+                }
+            }
+            const session = GLib.uuid_string_random();
+            let entry;
+            let controller = null;
+            let completed = false;
+            controller = Animation.run(actor, spec, {
+                paused: !record.autoplay,
+                onFrame: () => {},
+                onComplete: (finished) => {
+                    completed = finished;
+                    if (entry && this.animationPreviews.get(session) === entry) this.animationPreviews.delete(session);
+                    if (finished) {
+                        controller?.cancel({ restore: true });
+                        this.sendToSubscribers({ event: "animation-preview-finished", session }, () => true);
+                    }
+                },
+            });
+            entry = { controller, actor, target: String(window.get_stable_sequence()), name: record.name, event };
+            if (completed) controller.cancel({ restore: true });
+            else this.animationPreviews.set(session, entry);
+            return { session, target: entry.target, name: record.name, event, paused: !record.autoplay, spec };
+        }
+        if (typeof record.session !== "string" || !this.animationPreviews.has(record.session))
+            throw new Error("animation preview session not found");
+        const entry = this.animationPreviews.get(record.session);
+        if (action === "seek") {
+            if (
+                typeof record.progress !== "number" ||
+                !Number.isFinite(record.progress) ||
+                record.progress < 0 ||
+                record.progress > 1
+            )
+                throw new Error("progress must be between 0 and 1");
+            entry.controller.seek(record.progress);
+        } else if (action === "step") {
+            if (!Number.isInteger(record.milliseconds) || record.milliseconds < 1 || record.milliseconds > 60000)
+                throw new Error("step milliseconds out of range");
+            entry.controller.step(record.milliseconds);
+        } else if (action === "play") entry.controller.play();
+        else if (action === "pause") entry.controller.pause();
+        else if (action === "stop") {
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(record.session);
+        } else throw new Error("unknown animation action");
+        return { ok: true, session: record.session, action };
+    }
+
+    cancelPreviewsForTarget(target) {
+        for (const [session, entry] of this.animationPreviews) {
+            if (entry.target !== target) continue;
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(session);
+        }
+    }
+
+    cancelAnimationPreviews() {
+        for (const [session, entry] of this.animationPreviews) {
+            entry.controller.cancel({ restore: true });
+            this.animationPreviews.delete(session);
+        }
     }
 
     showWindowMenu(window, x, y) {
@@ -1164,6 +1535,7 @@ export class CompositorBridge {
     destroy() {
         global.window_manager.disconnect(this.windowMenu);
         this.windowSnap.destroy();
+        this.cancelAnimationPreviews();
         this.end("cancelled");
         global.__gnoblinPublishPrivacy = null;
         if (this.remoteSignal) this.remoteController.disconnect(this.remoteSignal);
@@ -1174,6 +1546,7 @@ export class CompositorBridge {
         this.layerCompanions.destroy();
         this.switcherFallback.destroy();
         global.display.disconnect(this.accelerator);
+        global.display.disconnect(this.deactivated);
         global.display.disconnect(this.overlayKey);
         global.stage.disconnect(this.capture);
         global.stage.disconnect(this.returnClickCapture);

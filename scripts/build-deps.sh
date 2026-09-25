@@ -61,7 +61,7 @@ install_build_dependencies() {
     case "$family" in
         fedora)
             "$build_assume_yes" && confirm=(-y)
-            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build
+            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build inkscape adwaita-cursor-theme
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
                 python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
                 mesa-libEGL-devel
@@ -77,7 +77,7 @@ install_build_dependencies() {
                 gnome-shell mutter gnome-session gnome-settings-daemon
                 wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
                 glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
-                sassc cmake gettext xorg-xwayland python-docutils)
+                sassc cmake gettext xorg-xwayland python-docutils inkscape adwaita-cursors)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
             ;;
@@ -87,7 +87,8 @@ install_build_dependencies() {
                 frontend=(env DEBIAN_FRONTEND=noninteractive)
             fi
             packages=(build-essential git just meson ninja-build pkg-config cmake gettext
-                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils
+                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils inkscape
+                adwaita-icon-theme
                 gobject-introspection libgirepository-2.0-dev libglib2.0-dev
                 libgtk-4-dev libadwaita-1-dev libgjs-dev libglycin-2-dev
                 libhyprcursor-dev liblua5.4-dev libatk-bridge2.0-dev libatk1.0-dev
@@ -106,6 +107,9 @@ install_build_dependencies() {
                 libxkbcommon-x11-dev libxkbregistry-dev libxrandr-dev xwayland
                 xkb-data gsettings-desktop-schemas-dev gnome-settings-daemon-dev
                 gnome-shell gnome-session-bin gnome-session-common gnome-settings-daemon systemd-dev)
+            if apt-cache show hyprcursor-util >/dev/null 2>&1; then
+                packages+=(hyprcursor-util)
+            fi
             if "$bundle_debian"; then
                 local -a base_packages=()
                 local package
@@ -124,7 +128,8 @@ install_build_dependencies() {
             "$build_assume_yes" && confirm=(--non-interactive)
             packages=(git just meson ninja python3 gcc gcc-c++ make cmake gettext-tools
                 pkgconf-pkg-config sassc desktop-file-utils python3-docutils
-                python3-packaging readline-devel iso-codes pam-devel lua54-devel gnome-shell gnome-session gnome-settings-daemon)
+                python3-packaging readline-devel iso-codes pam-devel lua54-devel gnome-shell gnome-session
+                gnome-settings-daemon inkscape adwaita-icon-theme hyprcursor)
             capabilities+=('pkgconfig(libadwaita-1)' 'pkgconfig(xkeyboard-config)')
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" refresh
             # The minimal CI image gains busybox-gawk while bootstrapping Git,

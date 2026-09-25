@@ -6,6 +6,7 @@ import GObject from "gi://GObject";
 import Meta from "gi://Meta";
 import { WindowFrame } from "./gnoblinFrames.js";
 import * as Config from "./gnoblinConfig.js";
+import * as Workspaces from "./gnoblinWorkspaces.js";
 import { WindowCorners, WindowBorders, ToolkitCache } from "./gnoblinCorners.js";
 import { BackdropRedraw } from "./gnoblinBackdropRedraw.js";
 import { BackgroundEffects } from "./gnoblinBackgroundEffects.js";
@@ -53,6 +54,7 @@ export class WindowRules {
         this._destroyed = false;
         this._config = Config.settings;
         this._actors = new Map();
+        this._initialWorkspaceHandled = new WeakSet();
         this._backdropRedraw = new BackdropRedraw();
         this._cornerToolkits = new ToolkitCache();
         this._sources = new Map();
@@ -62,6 +64,15 @@ export class WindowRules {
         this._backgroundEffects = new BackgroundEffects((actor) => this._apply(actor));
         this._updateRuleDependencies(this._config);
         this._map = global.window_manager.connect("map", (_wm, actor) => this._apply(actor));
+        this._workspaceRemoved = global.workspace_manager.connect("workspace-removed", () =>
+            this._workspaceNumbersChanged(),
+        );
+        this._workspacesReordered = global.workspace_manager.connect("workspaces-reordered", () =>
+            this._workspaceNumbersChanged(),
+        );
+        this._windowCreated = global.display.connect("window-created", (_display, window) =>
+            this._assignInitialWorkspace(window),
+        );
         this._focusedActor = global.display.focus_window?.get_compositor_private() ?? null;
         this._focus = global.display.connect("notify::focus-window", () => {
             const previous = this._focusedActor;
@@ -89,14 +100,60 @@ export class WindowRules {
         });
     }
 
+    _assignInitialWorkspace(window) {
+        if (this._destroyed || this._initialWorkspaceHandled.has(window)) return;
+        // Mutter keeps attached dialogs on their parent's workspace. Applying
+        // an app placement rule to one would break that relationship.
+        if (window.get_transient_for?.()) {
+            this._initialWorkspaceHandled.add(window);
+            return;
+        }
+        if (Meta.gnoblin_layer_namespace(window) !== null) {
+            this._initialWorkspaceHandled.add(window);
+            return;
+        }
+        // Both Mutter creation paths assign the initial or active workspace
+        // before emitting window-created. Override-redirect windows have no
+        // workspace and cannot receive a workspace placement rule.
+        if (!window.get_workspace()) return;
+        this._initialWorkspaceHandled.add(window);
+        try {
+            const target = Config.initialWorkspaceTarget(Config.windowProperties(window), this._config);
+            if (!target) return;
+            const workspace = Workspaces.resolve(target);
+            if (!workspace) throw new Error("target workspace is unavailable");
+            window.change_workspace(workspace);
+            if (window.get_workspace() !== workspace)
+                throw new Error("Mutter did not move the window to the target workspace");
+        } catch (error) {
+            console.warn(`gnoblin-window-rule: initial workspace placement failed: ${error.message}`);
+        }
+    }
+
+    _workspaceNumbersChanged() {
+        if (this._destroyed || !this._hasWorkspaceNumberRules) return;
+        for (const [actor, entry] of this._actors) {
+            const workspace = actor.meta_window?.get_workspace();
+            const number = workspace ? workspace.index() + 1 : null;
+            if (number === entry.workspaceNumber) continue;
+            entry.workspaceNumber = number;
+            this._schedule(actor);
+        }
+    }
+
     _updateRuleDependencies(config) {
         this._hasFocusedRules = Boolean(Meta.gnoblin_window_frame_get);
         this._hasTitleRules = Boolean(Meta.gnoblin_window_frame_get);
+        this._hasWorkspaceRules = false;
+        this._hasWorkspaceNumberRules = false;
         this._shaderPaths = new Map();
         this._shaderSourcePaths = new Set();
         for (const rule of config["window-rules"]) {
             this._hasFocusedRules ||= Object.hasOwn(rule.match, "focused");
             this._hasTitleRules ||= Object.hasOwn(rule.match, "title");
+            this._hasWorkspaceRules ||=
+                Object.hasOwn(rule.match, "workspace-id") || Object.hasOwn(rule.match, "workspace-number");
+            this._hasWorkspaceNumberRules ||= Object.hasOwn(rule.match, "workspace-number");
             if (rule.shader) {
                 const path = this._shaderPath(rule.shader);
                 this._shaderPaths.set(rule.shader, path);
@@ -175,12 +232,17 @@ export class WindowRules {
                 .get_children()
                 .find((child) => !child._gnoblinDecoration && child.get_name() !== "gnoblin-native-frame");
         if (!surface || !actor.meta_window) return;
+        const currentWorkspace = actor.meta_window.get_workspace();
         if (!entry) {
             const title = actor.meta_window.connect("notify::title", () => {
                 if (this._hasTitleRules) this._schedule(actor);
             });
+            const workspaceChanged = actor.meta_window.connect("workspace-changed", () => {
+                if (this._hasWorkspaceRules) this._schedule(actor);
+            });
             const destroy = actor.connect("destroy", () => {
                 actor.meta_window?.disconnect(title);
+                actor.meta_window?.disconnect(workspaceChanged);
                 entry.corners?.destroy();
                 entry.borders?.destroy();
                 entry.frame?.destroy();
@@ -192,10 +254,12 @@ export class WindowRules {
             entry = {
                 surface,
                 title,
+                workspaceChanged,
                 destroy,
                 width,
                 height,
                 opacity: surface.opacity,
+                workspaceNumber: currentWorkspace ? currentWorkspace.index() + 1 : null,
                 blur: null,
                 shader: null,
                 shaderKey: null,
@@ -204,6 +268,7 @@ export class WindowRules {
             };
             this._actors.set(actor, entry);
         }
+        entry.workspaceNumber = currentWorkspace ? currentWorkspace.index() + 1 : null;
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
         if (Meta.gnoblin_window_frame_get?.(actor.meta_window).recursiveUnpack().supported) {
             if (!entry.frame) entry.frame = new WindowFrame(actor, () => this._schedule(actor));
@@ -276,6 +341,9 @@ export class WindowRules {
         this._backgroundEffects.destroy();
         this._backdropRedraw.destroy();
         global.window_manager.disconnect(this._map);
+        global.workspace_manager.disconnect(this._workspaceRemoved);
+        global.workspace_manager.disconnect(this._workspacesReordered);
+        global.display.disconnect(this._windowCreated);
         global.display.disconnect(this._focus);
         for (const entry of this._sources.values()) {
             entry.monitor?.cancel();

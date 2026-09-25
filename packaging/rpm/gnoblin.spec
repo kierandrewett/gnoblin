@@ -1,16 +1,16 @@
 # Generated from nix/native-packages.nix; do not edit.
 Name:           gnoblin
-Version:        0.1.4
+Version:        0.1.5
 Epoch:          1
 Release:        1%{?dist}
 Summary:        Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kdrew7/gnoblin
 BuildArch:      noarch
-Requires:       gnoblin-gsettings-desktop-schemas >= 0.1.4
-Requires:       gnoblin-mutter >= 0.1.4
-Requires:       gnoblin-session >= 0.1.4
-Requires:       gnoblin-shell >= 0.1.4
+Requires:       gnoblin-gsettings-desktop-schemas >= 0.1.5
+Requires:       gnoblin-mutter >= 0.1.5
+Requires:       gnoblin-session >= 0.1.5
+Requires:       gnoblin-shell >= 0.1.5
 Requires:       gnoblin-gsettings-desktop-schemas < 52
 Requires:       gnoblin-mutter < 52
 Requires:       gnoblin-session < 52
@@ -20,8 +20,8 @@ Requires:       gjs >= 1.85.90
 Requires:       glib2 >= 2.86.0
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
-Requires:       libinput >= 1.31.0
-Requires:       pipewire >= 1.6.0
+Requires:       libinput >= 1.30.0
+Requires:       pipewire >= 1.4.0
 Requires:       playerctl
 Requires:       libwayland-client >= 1.26
 Requires:       wireplumber

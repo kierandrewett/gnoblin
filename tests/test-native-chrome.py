@@ -213,7 +213,7 @@ export default function (api) {
     const owner = Gio.bus_own_name(
         Gio.BusType.SESSION, 'org.gnoblin.NativeChromeTest',
         Gio.BusNameOwnerFlags.NONE, null, null, null);
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         object.unexport();
         Gio.bus_unown_name(owner);
     });

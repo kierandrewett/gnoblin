@@ -57,7 +57,7 @@ export default function enable(api) {
         flush();
         return GLib.SOURCE_CONTINUE;
     });
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         GLib.source_remove(tick);
         global.window_manager.disconnect(map);
         global.window_manager.disconnect(destroy);
@@ -65,7 +65,7 @@ export default function enable(api) {
 }
 """.replace("REPORT", json.dumps(str(report))).replace("MOTION", json.dumps(str(motion)))
 )
-subprocess.run(["gnoblinctl", "script", "reload"], check=True)
+subprocess.run(["gnoblinctl", "reload"], check=True)
 
 cases = [
     (13, "slide", 240),

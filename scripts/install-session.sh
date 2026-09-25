@@ -92,6 +92,16 @@ install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.de
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
     "$PREFIX/share/wayland-sessions/gnoblin.desktop"
 
+# Install Gnoblin's vector Adwaita cursor theme beside the session data. The
+# compiled theme includes Xcursor fallbacks from the host's Adwaita package.
+theme_build="$(mktemp -d)"
+trap 'rm -rf -- "$theme_build"' EXIT
+python3 "$ROOT/scripts/build-adwaita-hyprcursor.py" \
+    --output "$theme_build/Adwaita-Hyprcursor" \
+    --fallback "${ADWAITA_CURSOR_FALLBACK:-/usr/share/icons/Adwaita}"
+install -d "$PREFIX/share/icons/Adwaita-Hyprcursor"
+cp -a "$theme_build/Adwaita-Hyprcursor/." "$PREFIX/share/icons/Adwaita-Hyprcursor/"
+
 # Gnoblin-specific systemd --user units (ExecStart/Environment= need the
 # resolved absolute prefix, so the *.service is generated from its .in).
 install -Dm755 "$ROOT/src/tools/gnoblin-shell-service" "$PREFIX/bin/gnoblin-shell-service"
@@ -127,6 +137,7 @@ echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path h
 echo "     libexec/gnoblin-libdir                  (installed library-directory contract)"
 echo "     bin/gnoblin-session                      (login-manager wrapper)"
 echo "     share/gnoblin/init.lua.example           (first-login user config template)"
+echo "     share/icons/Adwaita-Hyprcursor           (vector and Xcursor theme)"
 echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
 echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
 echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"

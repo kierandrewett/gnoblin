@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -43,19 +44,48 @@ struct state {
   uint32_t serial, width, height;
 };
 
+static void
+report_display_error (struct wl_display *display, const char *where)
+{
+  const struct wl_interface *interface = NULL;
+  uint32_t id = 0;
+  uint32_t code = wl_display_get_protocol_error (display, &interface, &id);
+  int error = wl_display_get_error (display);
+
+  fprintf (stderr, "%s: display error=%d protocol=%s#%u code=%u\n", where,
+           error, interface ? interface->name : "none", id, code);
+}
+
 static int
 wait_until (struct state *state, bool *condition, int seconds)
 {
   struct timespec start, now;
+  int64_t deadline_ms;
   clock_gettime (CLOCK_MONOTONIC, &start);
+  deadline_ms = (int64_t) start.tv_sec * 1000 + start.tv_nsec / 1000000 + seconds * 1000;
   while (!*condition)
     {
-      int result = wl_display_dispatch (state->display);
-      if (result < 0)
-        return -1;
+      struct pollfd poll_fd = { .fd = wl_display_get_fd (state->display), .events = POLLIN };
+      int64_t now_ms;
+      int timeout_ms;
+
+      if (wl_display_dispatch_pending (state->display) < 0)
+        { report_display_error (state->display, "pending event dispatch"); return -1; }
+      if (*condition)
+        break;
       clock_gettime (CLOCK_MONOTONIC, &now);
-      if (now.tv_sec - start.tv_sec >= seconds)
+      now_ms = (int64_t) now.tv_sec * 1000 + now.tv_nsec / 1000000;
+      if (now_ms >= deadline_ms)
         return 0;
+      timeout_ms = (int) (deadline_ms - now_ms);
+      if (wl_display_flush (state->display) < 0 && errno != EAGAIN)
+        { report_display_error (state->display, "display flush"); return -1; }
+      if (poll (&poll_fd, 1, timeout_ms) < 0)
+        { perror ("poll"); return -1; }
+      if (poll_fd.revents == 0)
+        return 0;
+      if (wl_display_dispatch (state->display) < 0)
+        { report_display_error (state->display, "event dispatch"); return -1; }
     }
   return 1;
 }
@@ -170,8 +200,10 @@ start_lock (struct state *state)
   state->lock_surface = ext_session_lock_v1_get_lock_surface (state->lock, state->surface,
                                                                state->output);
   ext_session_lock_surface_v1_add_listener (state->lock_surface, &surface_listener, state);
-  if (wl_display_roundtrip (state->display) < 0 || !state->configured)
-    return -1;
+  if (wl_display_roundtrip (state->display) < 0)
+    { report_display_error (state->display, "lock-surface roundtrip"); return -1; }
+  if (!state->configured)
+    { fputs ("lock surface received no configure\n", stderr); return -1; }
   return create_buffer (state);
 }
 

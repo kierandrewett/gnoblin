@@ -1,6 +1,7 @@
 import * as Permissions from "./gnoblinPermissions.js";
 import * as Corners from "./gnoblinCornerGeometry.js";
 import * as Frames from "./gnoblinFramePolicy.js";
+import * as Workspaces from "./gnoblinWorkspaces.js";
 // Live shell settings. Protocol registration remains a compositor-startup operation.
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -17,15 +18,27 @@ export const FEATURE_KEYS = Object.freeze([
     "screenshot",
     "notifications",
     "input-source-switcher",
+    "wallpaper",
 ]);
 
+const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 export const WINDOW_PREFERENCES = Object.freeze({
-    "focus-mode": "click", "focus-new-windows": "smart", "raise-on-click": true,
-    "auto-raise": false, "auto-raise-delay": 500, "focus-change-on-pointer-rest": false,
-    "action-double-click-titlebar": "toggle-maximize", "action-middle-click-titlebar": "lower",
-    "action-right-click-titlebar": "menu", "dynamic-workspaces": false,
-    "num-workspaces": 4, "workspaces-only-on-primary": false, "edge-tiling": false,
-    "center-new-windows": false, "attach-modal-dialogs": false, "workspace-names": [],
+    "focus-mode": "click",
+    "focus-new-windows": "smart",
+    "raise-on-click": true,
+    "auto-raise": false,
+    "auto-raise-delay": 500,
+    "focus-change-on-pointer-rest": false,
+    "action-double-click-titlebar": "toggle-maximize",
+    "action-middle-click-titlebar": "lower",
+    "action-right-click-titlebar": "menu",
+    "dynamic-workspaces": false,
+    "num-workspaces": 4,
+    "workspaces-only-on-primary": false,
+    "edge-tiling": false,
+    "center-new-windows": false,
+    "attach-modal-dialogs": false,
+    "workspace-names": [],
 });
 export const COMPOSITOR_PREFERENCES = Object.freeze({
     "enable-animations": true,
@@ -34,38 +47,76 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [] });
+const windowDefaults = () => ({ ...WINDOW_PREFERENCES, "workspace-names": [], "workspace-ids": [] });
 const TITLEBAR_ACTIONS = new Set([
-    "toggle-maximize", "toggle-maximize-horizontally",
-    "toggle-maximize-vertically", "minimize", "none", "lower", "menu",
+    "toggle-maximize",
+    "toggle-maximize-horizontally",
+    "toggle-maximize-vertically",
+    "minimize",
+    "none",
+    "lower",
+    "menu",
 ]);
 const INPUT_FIELDS = Object.freeze({
-    mouse: { speed: "number", "left-handed": "boolean", "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"] },
-    touchpad: { speed: "number", "left-handed": ["right", "left", "mouse"], "natural-scroll": "boolean", "accel-profile": ["default", "flat", "adaptive"],
-        "tap-to-click": "boolean", "tap-button-map": ["default", "lrm", "lmr"], "tap-and-drag": "boolean", "tap-and-drag-lock": "boolean",
-        "disable-while-typing": "boolean", "edge-scrolling-enabled": "boolean", "two-finger-scrolling-enabled": "boolean",
-        "click-method": ["default", "none", "areas", "fingers"] },
-    keyboard: { repeat: "boolean", delay: "milliseconds", "repeat-interval": "milliseconds", "remember-numlock-state": "boolean",
-        "numlock-state": "boolean", "xkb-options": "strings" },
+    mouse: {
+        speed: "number",
+        "left-handed": "boolean",
+        "natural-scroll": "boolean",
+        "accel-profile": ["default", "flat", "adaptive"],
+    },
+    touchpad: {
+        speed: "number",
+        "scroll-speed": "number",
+        "left-handed": ["right", "left", "mouse"],
+        "natural-scroll": "boolean",
+        "accel-profile": ["default", "flat", "adaptive"],
+        "tap-to-click": "boolean",
+        "tap-button-map": ["default", "lrm", "lmr"],
+        "tap-and-drag": "boolean",
+        "tap-and-drag-lock": "boolean",
+        "disable-while-typing": "boolean",
+        "edge-scrolling-enabled": "boolean",
+        "two-finger-scrolling-enabled": "boolean",
+        "click-method": ["default", "none", "areas", "fingers"],
+    },
+    keyboard: {
+        repeat: "boolean",
+        delay: "milliseconds",
+        "repeat-interval": "milliseconds",
+        "remember-numlock-state": "boolean",
+        "numlock-state": "boolean",
+        "xkb-options": "strings",
+    },
     tablets: { mapping: ["absolute", "relative"], "left-handed": "boolean", "keep-aspect": "boolean" },
-    styluses: { "button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
+    styluses: {
+        "button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
         "secondary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
         "tertiary-button-action": ["default", "middle", "right", "back", "forward", "switch-monitor", "keybinding"],
-        "button-keybinding": "string", "secondary-button-keybinding": "string", "tertiary-button-keybinding": "string" },
+        "button-keybinding": "string",
+        "secondary-button-keybinding": "string",
+        "tertiary-button-keybinding": "string",
+    },
 });
-const isTable = value => value !== null && typeof value === "object" && !Array.isArray(value);
+const isTable = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 function validateInputFields(group, values, path) {
     if (!isTable(values)) throw new Error(`${path}: expected a table`);
     for (const [key, value] of Object.entries(values)) {
         const kind = INPUT_FIELDS[group][key];
         if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
-        const valid = Array.isArray(kind) ? kind.includes(value) :
-            kind === "boolean" ? typeof value === "boolean" :
-            kind === "number" ? typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1 :
-            kind === "milliseconds" ? Number.isInteger(value) && value >= 1 && value <= 10000 :
-            kind === "strings" ? Array.isArray(value) && value.every(item => typeof item === "string" && !item.includes("\0")) :
-            typeof value === "string" && !value.includes("\0");
+        const valid = Array.isArray(kind)
+            ? kind.includes(value)
+            : kind === "boolean"
+              ? typeof value === "boolean"
+              : kind === "number"
+                ? typeof value === "number" &&
+                  Number.isFinite(value) &&
+                  (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
+                : kind === "milliseconds"
+                  ? Number.isInteger(value) && value >= 1 && value <= 10000
+                  : kind === "strings"
+                    ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
+                    : typeof value === "string" && !value.includes("\0");
         if (!valid) throw new Error(`${path}.${key}: invalid value`);
     }
 }
@@ -78,7 +129,13 @@ function validateInput(input) {
         } else if (group === "tablets" || group === "styluses") {
             if (!isTable(values)) throw new Error(`input.${group}: expected a table`);
             for (const [device, fields] of Object.entries(values)) {
-                if (!(group === "tablets" ? /^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$/ : /^(?:[0-9a-fA-F]+|default-[0-9a-fA-F]{4}:[0-9a-fA-F]{4})$/).test(device))
+                if (
+                    !(
+                        group === "tablets"
+                            ? /^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$/
+                            : /^(?:[0-9a-fA-F]+|default-[0-9a-fA-F]{4}:[0-9a-fA-F]{4})$/
+                    ).test(device)
+                )
                     throw new Error(`input.${group}: invalid device identifier ${device}`);
                 validateInputFields(group, fields, `input.${group}.${device}`);
             }
@@ -89,13 +146,22 @@ function validateInput(input) {
 }
 
 function validateInputSources(value) {
-    if (!isTable(value) || Object.keys(value).some(key => !["sources", "per-window"].includes(key)))
+    if (!isTable(value) || Object.keys(value).some((key) => !["sources", "per-window"].includes(key)))
         throw new Error("input-sources must contain sources and per-window only");
     if (value["per-window"] !== undefined && typeof value["per-window"] !== "boolean")
         throw new Error("input-sources.per-window: expected a boolean");
-    if (!Array.isArray(value.sources) || !value.sources.every(source => isTable(source) &&
-        Object.keys(source).length === 2 && ["xkb", "ibus"].includes(source.type) &&
-        typeof source.id === "string" && source.id.length > 0 && !source.id.includes("\0")))
+    if (
+        !Array.isArray(value.sources) ||
+        !value.sources.every(
+            (source) =>
+                isTable(source) &&
+                Object.keys(source).length === 2 &&
+                ["xkb", "ibus"].includes(source.type) &&
+                typeof source.id === "string" &&
+                source.id.length > 0 &&
+                !source.id.includes("\0"),
+        )
+    )
         throw new Error("input-sources.sources: expected {type, id} records");
 }
 
@@ -109,6 +175,7 @@ export const DEFAULTS = Object.freeze({
     "layer-animation": "slide",
     "layer-duration": 220,
     "layer-easing": "ease-out-cubic",
+    animations: [],
     permissions: Permissions.DEFAULT_POLICY,
     autostart: [],
     "window-rules": [],
@@ -116,9 +183,14 @@ export const DEFAULTS = Object.freeze({
     keybindings: {},
 });
 
-export let settings = { ...DEFAULTS,
-    "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
-    input: null, "input-sources": null };
+export let settings = {
+    ...DEFAULTS,
+    cursor: { ...DEFAULT_CURSOR },
+    "window-management": windowDefaults(),
+    compositor: { ...COMPOSITOR_PREFERENCES },
+    input: null,
+    "input-sources": null,
+};
 
 const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
     "blur",
@@ -131,6 +203,294 @@ const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
 const BORDER_GEOMETRY_KEYS = Object.freeze(["radius", "smoothing", "padding"]);
 const STRING_MATCH_KEYS = new Set(["app-id", "title", "layer"]);
 const WINDOW_RULE_MATCHERS = new WeakMap();
+
+const ANIMATION_EVENTS = new Set([
+    "minimize",
+    "restore",
+    "open",
+    "close",
+    "dialog-open",
+    "dialog-close",
+    "layer-open",
+    "layer-close",
+    "workspace-switch",
+    "console-open",
+    "console-close",
+    "shadow-change",
+    "layer-companion-close",
+    "resize",
+    "tile-preview-open",
+    "tile-preview-close",
+    "dialog-dim",
+    "dialog-undim",
+]);
+const ACTOR_ANIMATION_PROPERTIES = new Set([
+    "x",
+    "y",
+    "scale",
+    "scale_x",
+    "scale_y",
+    "scale-x",
+    "scale-y",
+    "rotation",
+    "opacity",
+]);
+const TILE_PREVIEW_PROPERTIES = new Set(["x", "y", "width", "height", "opacity"]);
+const SCALAR_ANIMATION_EVENTS = new Set(["shadow-change", "dialog-dim", "dialog-undim", "workspace-switch", "resize"]);
+function animationPropertiesForEvent(event) {
+    if (SCALAR_ANIMATION_EVENTS.has(event)) return new Set(["progress"]);
+    if (event === "tile-preview-open" || event === "tile-preview-close") return TILE_PREVIEW_PROPERTIES;
+    return ACTOR_ANIMATION_PROPERTIES;
+}
+const ANIMATION_EASINGS = new Set([
+    "linear",
+    "ease-in-quad",
+    "ease-out-quad",
+    "ease-in-out-cubic",
+    "ease-in-cubic",
+    "ease-out-cubic",
+    "ease-out-expo",
+    "ease-out-back",
+]);
+
+function validateAnimationEase(ease, path, event) {
+    if (typeof ease === "string" && ANIMATION_EASINGS.has(ease)) return;
+    if (
+        isTable(ease) &&
+        Object.keys(ease).every((key) => ["type", "x1", "y1", "x2", "y2"].includes(key)) &&
+        ease.type === "cubic-bezier" &&
+        [ease.x1, ease.y1, ease.x2, ease.y2].every(
+            (value) => typeof value === "number" && Number.isFinite(value) && value >= -2 && value <= 2,
+        ) &&
+        [ease.x1, ease.x2].every((value) => value >= 0 && value <= 1)
+    )
+        return;
+    throw new Error(`${path}: expected a supported named easing or cubic-bezier table`);
+}
+
+function validateAnimationValues(values, path, allowEmpty = false, event = undefined) {
+    const properties = animationPropertiesForEvent(event);
+    if (
+        !isTable(values) ||
+        (!allowEmpty && Object.keys(values).length === 0) ||
+        Object.keys(values).some((key) => !properties.has(key))
+    )
+        throw new Error(`${path}: expected animation properties`);
+    for (const [key, value] of Object.entries(values)) {
+        const scale = ["scale", "scale_x", "scale_y", "scale-x", "scale-y"].includes(key);
+        if (
+            typeof value !== "number" ||
+            !Number.isFinite(value) ||
+            (key === "progress" &&
+                !["shadow-change", "dialog-dim", "dialog-undim", "workspace-switch", "resize"].includes(event)) ||
+            (["width", "height"].includes(key) && !["tile-preview-open", "tile-preview-close"].includes(event)) ||
+            (["width", "height"].includes(key) && value < 0) ||
+            (["opacity", "progress"].includes(key)
+                ? value < 0 || value > 1
+                : scale
+                  ? value < 0 || value > 100
+                  : key === "rotation"
+                    ? Math.abs(value) > 36000
+                    : Math.abs(value) > 100000)
+        )
+            throw new Error(`${path}.${key}: invalid animation value`);
+    }
+}
+
+function validateAnimations(document) {
+    const animations = document.animations ?? [];
+    if (!Array.isArray(animations) || animations.length > 256)
+        throw new Error("animations must use gnoblin.animation declarations (maximum 256)");
+    const names = new Set();
+    for (const animation of animations) {
+        if (
+            !isTable(animation) ||
+            Object.keys(animation).some(
+                (key) =>
+                    !["name", "event", "duration", "ease", "from", "to", "keyframes", "target", "origin"].includes(key),
+            ) ||
+            typeof animation.name !== "string" ||
+            !/^[a-zA-Z0-9_-]{1,80}$/.test(animation.name) ||
+            names.has(animation.name) ||
+            !ANIMATION_EVENTS.has(animation.event) ||
+            (animation.duration !== undefined &&
+                (!Number.isInteger(animation.duration) || animation.duration < 0 || animation.duration > 10000))
+        )
+            throw new Error("animation requires a unique name and supported event; duration must be 0 to 10000 ms");
+        names.add(animation.name);
+        if (animation.ease !== undefined)
+            validateAnimationEase(animation.ease, `animation ${animation.name}.ease`, animation.event);
+        if (animation.from !== undefined)
+            validateAnimationValues(animation.from, `animation ${animation.name}.from`, true, animation.event);
+        if (animation.to !== undefined)
+            validateAnimationValues(animation.to, `animation ${animation.name}.to`, true, animation.event);
+        if (animation.from === undefined && animation.to === undefined && animation.keyframes === undefined)
+            throw new Error(`animation ${animation.name}: expected from/to values or keyframes`);
+        if (
+            animation.from !== undefined &&
+            animation.to !== undefined &&
+            Object.keys(animation.from).length === 0 &&
+            Object.keys(animation.to).length === 0 &&
+            animation.keyframes === undefined
+        )
+            throw new Error(`animation ${animation.name}: from/to cannot both be empty`);
+        if (animation.keyframes !== undefined) {
+            const frames = animation.keyframes;
+            if (!Array.isArray(frames) || frames.length < 2 || frames.length > 128)
+                throw new Error(`animation ${animation.name}.keyframes: expected 2 to 128 frames`);
+            let previous = -1;
+            for (const [index, frame] of frames.entries()) {
+                const properties = animationPropertiesForEvent(animation.event);
+                if (
+                    !isTable(frame) ||
+                    Object.keys(frame).some((key) => !["at", "ease", ...properties].includes(key)) ||
+                    typeof frame.at !== "number" ||
+                    !Number.isFinite(frame.at) ||
+                    frame.at < 0 ||
+                    frame.at > 1 ||
+                    frame.at <= previous
+                )
+                    throw new Error(`animation ${animation.name}.keyframes[${index + 1}]: invalid frame or order`);
+                previous = frame.at;
+                const values = Object.fromEntries(Object.entries(frame).filter(([key]) => properties.has(key)));
+                validateAnimationValues(
+                    values,
+                    `animation ${animation.name}.keyframes[${index + 1}]`,
+                    false,
+                    animation.event,
+                );
+                if (frame.ease !== undefined)
+                    validateAnimationEase(
+                        frame.ease,
+                        `animation ${animation.name}.keyframes[${index + 1}].ease`,
+                        animation.event,
+                    );
+            }
+            if (frames[0].at !== 0 || frames.at(-1).at !== 1)
+                throw new Error(`animation ${animation.name}.keyframes: first and last at values must be 0 and 1`);
+        }
+        if (
+            animation.target !== undefined &&
+            (typeof animation.target !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(animation.target))
+        )
+            throw new Error(`animation ${animation.name}.target: expected a target name`);
+        if (
+            animation.origin !== undefined &&
+            !(
+                typeof animation.origin === "string" &&
+                [
+                    "center",
+                    "top-left",
+                    "top-center",
+                    "top-right",
+                    "bottom-left",
+                    "bottom-center",
+                    "bottom-right",
+                ].includes(animation.origin)
+            ) &&
+            !(
+                Array.isArray(animation.origin) &&
+                animation.origin.length === 2 &&
+                animation.origin.every(
+                    (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1,
+                )
+            )
+        )
+            throw new Error(`animation ${animation.name}.origin: expected a named pivot or normalized [x, y]`);
+    }
+    return animations;
+}
+
+export function getAnimation(name, event = undefined) {
+    return settings.animations.find(
+        (animation) => animation.name === name && (event === undefined || animation.event === event),
+    );
+}
+
+export function getAnimationForEvent(event, name = undefined) {
+    return settings.animations.find(
+        (animation) => animation.event === event && (name === undefined || animation.name === name),
+    );
+}
+
+const BUILTIN_ANIMATION_EVENTS = Object.freeze({
+    "gnome-minimize": "minimize",
+    "gnome-restore": "restore",
+    "gnome-open": "open",
+    "gnome-close": "close",
+    "gnome-dialog-open": "dialog-open",
+    "gnome-dialog-close": "dialog-close",
+    "gnoblin-layer-open": "layer-open",
+    "gnoblin-layer-close": "layer-close",
+    "gnome-workspace-switch": "workspace-switch",
+    "gnome-resize": "resize",
+    "gnome-tile-preview-open": "tile-preview-open",
+    "gnome-tile-preview-close": "tile-preview-close",
+    "gnome-dialog-dim": "dialog-dim",
+    "gnome-dialog-undim": "dialog-undim",
+    "gnoblin-console-open": "console-open",
+    "gnoblin-console-close": "console-close",
+    "gnoblin-shadow-change": "shadow-change",
+    "gnoblin-layer-companion-close": "layer-companion-close",
+});
+const BUILTIN_ANIMATION_EVENT_SETS = Object.freeze({
+    zoom: ["minimize", "restore"],
+    fade: ["minimize", "restore", "open", "close", "dialog-open", "dialog-close", "layer-open", "layer-close"],
+    slide: ["layer-open", "layer-close"],
+    none: [...ANIMATION_EVENTS],
+    gnome: ["minimize", "restore", "open", "close", "dialog-open", "dialog-close", "layer-open", "layer-close"],
+});
+
+export function animationNameSupports(name, events, animations = settings.animations) {
+    const custom = animations.find((animation) => animation.name === name);
+    if (custom) return events.includes(custom.event);
+    if (BUILTIN_ANIMATION_EVENT_SETS[name])
+        return events.some((event) => BUILTIN_ANIMATION_EVENT_SETS[name].includes(event));
+    return events.includes(BUILTIN_ANIMATION_EVENTS[name]);
+}
+
+export function animationSelection(value, event, fallback = undefined) {
+    if (typeof value === "string") return value;
+    if (!isTable(value)) return fallback;
+    const alias = event === "layer-open" ? value.in : event === "layer-close" ? value.out : undefined;
+    return value[event] ?? alias ?? fallback;
+}
+
+export function windowAnimation(properties, event, config = settings) {
+    let selected = null;
+    let overrides = {};
+    for (const rule of config["window-rules"]) {
+        if (!windowRuleMatches(rule, properties) || rule.animation === undefined) continue;
+        if (typeof rule.animation === "string") {
+            if (!animationNameSupports(rule.animation, [event], config.animations)) continue;
+            selected = rule.animation;
+            overrides = {};
+        } else {
+            const name =
+                rule.animation[event] ??
+                (event === "layer-open" ? rule.animation.in : event === "layer-close" ? rule.animation.out : undefined);
+            if (name !== undefined) {
+                selected = name;
+                overrides = {
+                    ...(rule.animation.duration !== undefined ? { duration: rule.animation.duration } : {}),
+                    ...((rule.animation.ease ?? rule.animation.easing) !== undefined
+                        ? { ease: rule.animation.ease ?? rule.animation.easing }
+                        : {}),
+                };
+            }
+        }
+    }
+    if (selected === null) return null;
+    const registered = config.animations.find((animation) => animation.name === selected && animation.event === event);
+    return {
+        ...(registered ?? {}),
+        name: selected,
+        event,
+        ...overrides,
+        _hasRuleDuration: Object.hasOwn(overrides, "duration"),
+        _hasRuleEase: Object.hasOwn(overrides, "ease"),
+    };
+}
 
 function windowRuleMatchers(rule) {
     const cached = WINDOW_RULE_MATCHERS.get(rule);
@@ -148,17 +508,44 @@ function compileWindowRuleMatchers(rules) {
 }
 
 export function parseDocument(document) {
-    const next = { ...DEFAULTS,
-        "window-management": windowDefaults(), compositor: { ...COMPOSITOR_PREFERENCES },
-        input: null, "input-sources": null };
+    const next = {
+        ...DEFAULTS,
+        cursor: { ...DEFAULT_CURSOR },
+        "window-management": windowDefaults(),
+        compositor: { ...COMPOSITOR_PREFERENCES },
+        input: null,
+        "input-sources": null,
+    };
     Frames.validateRenderers(document["frame-renderers"]);
     next.permissions = Permissions.validate(document.permissions);
+    const cursor = document.cursor ?? {};
+    if (!cursor || Array.isArray(cursor) || typeof cursor !== "object") throw new Error("cursor must be a table");
+    for (const [key, value] of Object.entries(cursor)) {
+        if (key === "theme") {
+            if (typeof value !== "string" || !value.trim() || value.includes("\0"))
+                throw new Error("cursor.theme: expected a nonempty theme name");
+        } else if (key === "size") {
+            if (!Number.isInteger(value) || value < 1 || value > 256)
+                throw new Error("cursor.size: expected 1 to 256 logical pixels");
+        } else {
+            throw new Error(`unknown cursor setting: ${key}`);
+        }
+        next.cursor[key] = value;
+    }
     const windowManagement = document["window-management"] ?? {};
     if (!windowManagement || Array.isArray(windowManagement) || typeof windowManagement !== "object")
         throw new Error("window-management must be a table");
     for (const [key, value] of Object.entries(windowManagement)) {
         if (key === "constrain-drag-to-work-area") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
+        } else if (key === "workspace-ids") {
+            if (
+                !Array.isArray(value) ||
+                value.length > 36 ||
+                !value.every((id) => typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)) ||
+                new Set(value).size !== value.length
+            )
+                throw new Error(`${key}: expected up to 36 unique workspace IDs`);
         } else if (!Object.hasOwn(WINDOW_PREFERENCES, key)) {
             throw new Error(`unknown window-management setting: ${key}`);
         } else if (key === "focus-mode") {
@@ -174,8 +561,11 @@ export function parseDocument(document) {
             if (!Number.isInteger(value) || value < 1 || value > 36)
                 throw new Error(`${key}: expected 1 to 36 workspaces`);
         } else if (key === "workspace-names") {
-            if (!Array.isArray(value) || value.length > 36 ||
-                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0")))
+            if (
+                !Array.isArray(value) ||
+                value.length > 36 ||
+                !value.every((name) => typeof name === "string" && name.length <= 80 && !name.includes("\0"))
+            )
                 throw new Error(`${key}: expected up to 36 names of at most 80 characters`);
         } else if (typeof value !== "boolean") {
             throw new Error(`${key}: expected a boolean`);
@@ -203,12 +593,13 @@ export function parseDocument(document) {
         validateInputSources(document["input-sources"]);
         next["input-sources"] = document["input-sources"];
     }
+    next.animations = validateAnimations(document);
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== "object") throw new Error("shell must be a table");
     for (const [key, value] of Object.entries(shell)) {
         if (
             !Object.hasOwn(DEFAULTS, key) ||
-            ["autostart", "window-rules", "shortcuts", "keybindings", "permissions"].includes(key)
+            ["autostart", "window-rules", "shortcuts", "animations", "keybindings", "permissions"].includes(key)
         )
             throw new Error(`unknown shell setting: ${key}`);
         if (key === "window-menu") {
@@ -222,10 +613,25 @@ export function parseDocument(document) {
         } else if (FEATURE_KEYS.includes(key) || key === "window-switcher") {
             if (typeof value !== "boolean") throw new Error(`${key}: expected a boolean`);
         } else if (key === "minimize-animation") {
-            if (!["zoom", "fade", "none", "gnome"].includes(value))
-                throw new Error(`${key}: expected zoom, fade, none, or gnome`);
+            if (
+                (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(value)) &&
+                (!isTable(value) ||
+                    Object.keys(value).some((event) => !["minimize", "restore"].includes(event)) ||
+                    Object.values(value).some(
+                        (name) => typeof name !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(name),
+                    ))
+            )
+                throw new Error(`${key}: expected a built-in name or {minimize, restore} animation names`);
         } else if (key === "layer-animation") {
-            if (!["slide", "fade", "none"].includes(value)) throw new Error(`${key}: expected slide, fade, or none`);
+            if (
+                (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(value)) &&
+                (!isTable(value) ||
+                    Object.keys(value).some((event) => !["layer-open", "layer-close", "in", "out"].includes(event)) ||
+                    Object.values(value).some(
+                        (name) => typeof name !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(name),
+                    ))
+            )
+                throw new Error(`${key}: expected a built-in name or {layer-open, layer-close} animation names`);
         } else if (key === "layer-easing") {
             if (!["ease-out-cubic", "ease-out-quad", "ease-in-out-cubic", "linear"].includes(value))
                 throw new Error(`${key}: unsupported easing`);
@@ -253,12 +659,14 @@ export function parseDocument(document) {
     const entries = document.autostart ?? [];
     if (!Array.isArray(entries)) throw new Error("autostart must use [[autostart]] tables");
     const names = new Set();
+    const normalizedEntries = [];
     for (const entry of entries) {
+        const when = entry?.when === undefined ? "on_login" : entry.when;
         if (
             !entry ||
             typeof entry !== "object" ||
             Array.isArray(entry) ||
-            Object.keys(entry).some((key) => !["name", "command"].includes(key)) ||
+            Object.keys(entry).some((key) => !["name", "command", "when", "restart"].includes(key)) ||
             typeof entry.name !== "string" ||
             !entry.name.trim() ||
             names.has(entry.name) ||
@@ -268,11 +676,17 @@ export function parseDocument(document) {
             !entry.command[0]
         )
             throw new Error("autostart requires a unique name and a nonempty command array");
+        if (when !== "on_login") throw new Error('autostart.when: expected "on_login"');
+        const restart = entry.restart ?? "never";
+        if (!["never", "on_failure", "always"].includes(restart))
+            throw new Error('autostart.restart: expected "never", "on_failure", or "always"');
         names.add(entry.name);
+        normalizedEntries.push({ name: entry.name, command: entry.command, when, restart });
     }
-    next.autostart = entries;
+    next.autostart = normalizedEntries;
     const rules = document["window-rules"] ?? [];
     if (!Array.isArray(rules)) throw new Error("window-rules must use [[window-rules]] tables");
+    const configuredWorkspaceIds = new Set(next["window-management"]["workspace-ids"]);
     for (const rule of rules) {
         if (
             !rule ||
@@ -284,6 +698,7 @@ export function parseDocument(document) {
                 (key) =>
                     ![
                         "match",
+                        "workspace",
                         "blur",
                         "blur-ignore-shadows",
                         "opacity",
@@ -300,12 +715,35 @@ export function parseDocument(document) {
         for (const [key, value] of Object.entries(rule.match)) {
             if (key === "focused") {
                 if (typeof value !== "boolean") throw new Error("focused match must be boolean");
+            } else if (key === "workspace-id") {
+                if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value))
+                    throw new Error("workspace-id match must be a valid workspace ID");
+                if (!configuredWorkspaceIds.has(value))
+                    throw new Error(`workspace-id match references unknown workspace ID: ${value}`);
+            } else if (key === "workspace-number") {
+                if (!Number.isInteger(value) || value < 1 || value > 36)
+                    throw new Error("workspace-number match must be from 1 to 36");
             } else if (["app-id", "title", "layer"].includes(key)) {
                 if (typeof value !== "string" || value.length > 512)
                     throw new Error("rule matcher must be a regex string");
             } else if (key !== "type" || !["layer", "window"].includes(value)) {
                 throw new Error("unknown window rule match");
             }
+        }
+        if (rule.workspace !== undefined) {
+            const target = rule.workspace;
+            if (
+                !isTable(target) ||
+                Object.keys(target).length !== 1 ||
+                (Object.hasOwn(target, "id") &&
+                    (typeof target.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(target.id))) ||
+                (Object.hasOwn(target, "number") &&
+                    (!Number.isInteger(target.number) || target.number < 1 || target.number > 36)) ||
+                (!Object.hasOwn(target, "id") && !Object.hasOwn(target, "number"))
+            )
+                throw new Error("workspace effect must contain exactly one valid id or number");
+            if (Object.hasOwn(target, "id") && !configuredWorkspaceIds.has(target.id))
+                throw new Error(`workspace effect references unknown workspace ID: ${target.id}`);
         }
         if (rule.corners !== undefined) Corners.validate(rule.corners);
         if (rule.borders !== undefined) Corners.validateBorders(rule.borders);
@@ -322,23 +760,74 @@ export function parseDocument(document) {
         if (rule.animation !== undefined) {
             const animation = rule.animation;
             if (typeof animation === "string") {
-                if (!["slide", "fade", "none"].includes(animation))
-                    throw new Error("rule animation must be slide, fade, or none");
+                if (!/^[a-zA-Z0-9_-]{1,80}$/.test(animation))
+                    throw new Error("rule animation must be a built-in or named animation");
             } else {
                 if (
                     !animation ||
                     Array.isArray(animation) ||
                     typeof animation !== "object" ||
-                    Object.keys(animation).some((key) => !["in", "out", "duration", "easing"].includes(key)) ||
-                    ["in", "out"].some(
-                        (key) => animation[key] !== undefined && !["slide", "fade", "none"].includes(animation[key]),
+                    Object.keys(animation).some(
+                        (key) =>
+                            ![
+                                "in",
+                                "out",
+                                "duration",
+                                "easing",
+                                "ease",
+                                "open",
+                                "close",
+                                "dialog-open",
+                                "dialog-close",
+                                "layer-open",
+                                "layer-close",
+                                "minimize",
+                                "restore",
+                                "workspace-switch",
+                                "console-open",
+                                "console-close",
+                                "shadow-change",
+                                "layer-companion-close",
+                                "resize",
+                                "tile-preview-open",
+                                "tile-preview-close",
+                                "dialog-dim",
+                                "dialog-undim",
+                            ].includes(key),
+                    ) ||
+                    [
+                        "in",
+                        "out",
+                        "open",
+                        "close",
+                        "dialog-open",
+                        "dialog-close",
+                        "layer-open",
+                        "layer-close",
+                        "minimize",
+                        "restore",
+                        "workspace-switch",
+                        "console-open",
+                        "console-close",
+                        "shadow-change",
+                        "layer-companion-close",
+                        "resize",
+                        "tile-preview-open",
+                        "tile-preview-close",
+                        "dialog-dim",
+                        "dialog-undim",
+                    ].some(
+                        (key) =>
+                            animation[key] !== undefined &&
+                            (typeof animation[key] !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(animation[key])),
                     ) ||
                     (animation.duration !== undefined &&
                         (!Number.isInteger(animation.duration) ||
                             animation.duration < 0 ||
                             animation.duration > 5000)) ||
-                    (animation.easing !== undefined &&
-                        !["ease-out-cubic", "ease-out-quad", "ease-in-out-cubic", "linear"].includes(animation.easing))
+                    (animation.easing !== undefined && !ANIMATION_EASINGS.has(animation.easing)) ||
+                    (animation.ease !== undefined &&
+                        !(typeof animation.ease === "string" && ANIMATION_EASINGS.has(animation.ease)))
                 )
                     throw new Error("invalid layer animation policy");
             }
@@ -375,6 +864,43 @@ export function parseDocument(document) {
     compileWindowRuleMatchers(rules);
     next["window-rules"] = rules;
     Object.assign(next, validateShortcuts(document));
+    const validateSelection = (setting, eventKeys, eventAliases = {}) => {
+        const value = next[setting];
+        if (typeof value === "string") {
+            if (next.animations.some((animation) => animation.name === value))
+                throw new Error(`${setting}: custom animations are event-specific; use an event map`);
+            if (!eventKeys.every((event) => animationNameSupports(value, [event], next.animations)))
+                throw new Error(`${setting}: unknown or incompatible animation ${value}`);
+            return;
+        }
+        for (const [key, name] of Object.entries(value)) {
+            const event = eventAliases[key] ?? key;
+            if (!animationNameSupports(name, [event], next.animations))
+                throw new Error(`${setting}.${key}: animation ${name} does not support ${event}`);
+        }
+    };
+    validateSelection("minimize-animation", ["minimize", "restore"]);
+    validateSelection("layer-animation", ["layer-open", "layer-close"], { in: "layer-open", out: "layer-close" });
+    for (const rule of rules) {
+        if (
+            typeof rule.animation === "string" &&
+            !animationNameSupports(rule.animation, [...ANIMATION_EVENTS], next.animations)
+        )
+            throw new Error(`window rule: unknown animation ${rule.animation}`);
+        if (isTable(rule.animation)) {
+            for (const [key, name] of Object.entries(rule.animation)) {
+                const event = key === "in" ? "layer-open" : key === "out" ? "layer-close" : key;
+                if (ANIMATION_EVENTS.has(event) && !animationNameSupports(name, [event], next.animations))
+                    throw new Error(`window rule: animation ${name} does not support ${event}`);
+            }
+        }
+        const shadowAnimation = rule.corners?.["shadow-animation"]?.animation;
+        if (
+            shadowAnimation !== undefined &&
+            !animationNameSupports(shadowAnimation, ["shadow-change"], next.animations)
+        )
+            throw new Error(`window rule: shadow animation ${shadowAnimation} must support shadow-change`);
+    }
     return next;
 }
 
@@ -407,32 +933,71 @@ function acceleratorIdentity(value) {
 }
 
 export function validateShortcuts(document) {
-    const shortcuts = document.shortcuts ?? [];
-    const keybindings = document.keybindings ?? {};
-    if (!Array.isArray(shortcuts) || shortcuts.length > 256)
+    const declarations = document.shortcuts ?? [];
+    const keybindings = Object.fromEntries(
+        Object.entries(document.keybindings ?? {}).map(([group, entries]) => [
+            group,
+            entries && typeof entries === "object" && !Array.isArray(entries) ? { ...entries } : entries,
+        ]),
+    );
+    if (!Array.isArray(declarations) || declarations.length > 256)
         throw new Error("shortcuts must use [[shortcuts]] tables (maximum 256)");
     const names = new Set(),
         accelerators = new Set();
-    for (const entry of shortcuts) {
+    const shortcuts = [];
+    const declaredActions = new Set();
+    for (const entry of declarations) {
         if (
             !entry ||
             typeof entry !== "object" ||
             Array.isArray(entry) ||
-            Object.keys(entry).some((key) => !["name", "binding", "command", "capture-input"].includes(key)) ||
+            Object.keys(entry).some(
+                (key) => !["name", "binding", "command", "action", "capture-input"].includes(key),
+            ) ||
             (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean") ||
             typeof entry.name !== "string" ||
             !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.name) ||
             names.has(entry.name) ||
-            !Array.isArray(entry.command) ||
-            !entry.command.length ||
-            !entry.command[0] ||
-            !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0"))
+            (entry.action === undefined) === (entry.command === undefined)
         )
-            throw new Error("shortcut requires a unique name, binding and nonempty command array");
-        const identity = acceleratorIdentity(entry.binding);
-        if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
+            throw new Error("shortcut requires a unique name and exactly one of action or command");
         names.add(entry.name);
-        accelerators.add(identity);
+        if (entry.action !== undefined) {
+            const match = /^(gnome:shell|wm|mutter|wayland)\.([a-z0-9]+(?:_[a-z0-9]+)*)$/.exec(entry.action);
+            if (!match || !Array.isArray(entry.binding))
+                throw new Error(
+                    'built-in shortcut requires a namespaced shell action or action = "group.action" and a binding list',
+                );
+            const [, namespace, key] = match;
+            const group = namespace === "gnome:shell" ? "shell" : namespace;
+            const actionKey = `${group}.${key}`;
+            if (declaredActions.has(actionKey)) throw new Error(`duplicate built-in shortcut action: ${entry.action}`);
+            declaredActions.add(actionKey);
+            const schema = Gio.SettingsSchemaSource.get_default().lookup(KEYBINDING_SCHEMAS[group], true);
+            const nativeKey = gsettingsKey(key);
+            if (!schema.has_key(nativeKey) || schema.get_key(nativeKey).get_value_type().dup_string() !== "as")
+                throw new Error(`unknown built-in shortcut action: ${entry.action}`);
+            for (const binding of entry.binding) {
+                const identity = acceleratorIdentity(binding);
+                if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${binding}`);
+                accelerators.add(identity);
+            }
+            keybindings[group] ??= {};
+            keybindings[group][key] = entry.binding;
+        } else {
+            if (
+                !Array.isArray(entry.command) ||
+                !entry.command.length ||
+                !entry.command[0] ||
+                !entry.command.every((arg) => typeof arg === "string" && !arg.includes("\0")) ||
+                (entry["capture-input"] !== undefined && typeof entry["capture-input"] !== "boolean")
+            )
+                throw new Error("command shortcut requires a nonempty command array");
+            const identity = acceleratorIdentity(entry.binding);
+            if (accelerators.has(identity)) throw new Error(`duplicate shortcut: ${entry.binding}`);
+            accelerators.add(identity);
+            shortcuts.push(entry);
+        }
     }
     if (!keybindings || typeof keybindings !== "object" || Array.isArray(keybindings))
         throw new Error("keybindings must be a table");
@@ -442,6 +1007,7 @@ export function validateShortcuts(document) {
         if (!schema || !entries || typeof entries !== "object" || Array.isArray(entries))
             throw new Error(`unknown keybinding group: ${group}`);
         for (const [key, bindings] of Object.entries(entries)) {
+            if (declaredActions.has(`${group}.${key}`)) continue;
             if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(key))
                 throw new Error(`invalid keybinding name: ${group}.${key}; use snake_case`);
             const nativeKey = gsettingsKey(key);
@@ -490,46 +1056,88 @@ export class Shortcuts {
 }
 
 function keybindingVariant(groups) {
-    return new GLib.Variant("a{sv}", Object.fromEntries(
-        Object.entries(groups).map(([group, entries]) => [group, new GLib.Variant("a{sv}", Object.fromEntries(
-            Object.entries(entries).map(([key, bindings]) => [gsettingsKey(key), new GLib.Variant("as", bindings)]),
-        ))]),
-    ));
+    return new GLib.Variant(
+        "a{sv}",
+        Object.fromEntries(
+            Object.entries(groups).map(([group, entries]) => [
+                group,
+                new GLib.Variant(
+                    "a{sv}",
+                    Object.fromEntries(
+                        Object.entries(entries).map(([key, bindings]) => [
+                            gsettingsKey(key),
+                            new GLib.Variant("as", bindings),
+                        ]),
+                    ),
+                ),
+            ]),
+        ),
+    );
 }
 
 export function applyWindowPreferences(preferences) {
-    const values = Object.fromEntries(Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
-        key,
-        new GLib.Variant(Array.isArray(fallback) ? "as" : typeof fallback === "boolean" ? "b" : typeof fallback === "number" ? "i" : "s",
-            preferences[key] ?? fallback),
-    ]));
+    const values = Object.fromEntries(
+        Object.entries(WINDOW_PREFERENCES).map(([key, fallback]) => [
+            key,
+            new GLib.Variant(
+                Array.isArray(fallback)
+                    ? "as"
+                    : typeof fallback === "boolean"
+                      ? "b"
+                      : typeof fallback === "number"
+                        ? "i"
+                        : "s",
+                preferences[key] ?? fallback,
+            ),
+        ]),
+    );
     Meta.prefs_apply_gnoblin_window_preferences(new GLib.Variant("a{sv}", values));
 }
 
 export function applyCompositorPreferences(preferences) {
-    const values = Object.fromEntries(Object.entries(COMPOSITOR_PREFERENCES).map(([key, fallback]) => [
-        key, new GLib.Variant(typeof fallback === "boolean" ? "b" : "s", preferences[key] ?? fallback),
-    ]));
+    const values = Object.fromEntries(
+        Object.entries(COMPOSITOR_PREFERENCES).map(([key, fallback]) => [
+            key,
+            new GLib.Variant(typeof fallback === "boolean" ? "b" : "s", preferences[key] ?? fallback),
+        ]),
+    );
     Meta.prefs_apply_gnoblin_compositor_preferences(new GLib.Variant("a{sv}", values));
 }
 
 function inputVariant(group, values) {
-    return new GLib.Variant("a{sv}", Object.fromEntries(Object.entries(values).map(([key, value]) => {
-        if (group === "tablets" || group === "styluses")
-            return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
-        const type = Array.isArray(value) ? "as" : typeof value === "boolean" ? "b" :
-            typeof value === "number" ? key === "speed" ? "d" : "u" : "s";
-        return [key, new GLib.Variant(type, value)];
-    })));
+    return new GLib.Variant(
+        "a{sv}",
+        Object.fromEntries(
+            Object.entries(values).map(([key, value]) => {
+                if (group === "tablets" || group === "styluses")
+                    return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
+                const type = Array.isArray(value)
+                    ? "as"
+                    : typeof value === "boolean"
+                      ? "b"
+                      : typeof value === "number"
+                        ? ["speed", "scroll-speed"].includes(key)
+                            ? "d"
+                            : "u"
+                        : "s";
+                return [key, new GLib.Variant(type, value)];
+            }),
+        ),
+    );
 }
 
 export function applyInputPreferences(input) {
-    const groups = Object.fromEntries(Object.entries(input ?? {})
-        .filter(([key]) => key !== "orientation-lock")
-        .map(([key, value]) => [key, inputVariant(key, value)]));
+    const groups = Object.fromEntries(
+        Object.entries(input ?? {})
+            .filter(([key]) => key !== "orientation-lock")
+            .map(([key, value]) => [key, inputVariant(key, value)]),
+    );
     global.display.apply_gnoblin_input_config(input === null ? null : new GLib.Variant("a{sv}", groups));
-    Meta.prefs_apply_gnoblin_keyboard_preferences(input?.keyboard?.["xkb-options"] !== undefined
-        ? inputVariant("keyboard", { "xkb-options": input.keyboard["xkb-options"] }) : null);
+    Meta.prefs_apply_gnoblin_keyboard_preferences(
+        input?.keyboard?.["xkb-options"] !== undefined
+            ? inputVariant("keyboard", { "xkb-options": input.keyboard["xkb-options"] })
+            : null,
+    );
     const orientationManager = global.backend.get_orientation_manager();
     if (input && Object.hasOwn(input, "orientation-lock"))
         orientationManager.set_orientation_locked(input["orientation-lock"]);
@@ -728,26 +1336,45 @@ export function minimizeTarget(window, monitor) {
 export class Autostart {
     constructor() {
         this._started = new Set();
+        this._entries = new Map();
     }
 
     apply(entries) {
-        for (const { name, command } of entries) {
+        this._entries = new Map(entries.map((entry) => [entry.name, entry]));
+        for (const { name, command, when = "on_login", restart = "never" } of entries) {
+            if (when !== "on_login") throw new Error(`unsupported autostart trigger: ${when}`);
             if (this._started.has(name)) continue;
-            try {
-                const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
-                this._started.add(name);
-                child.wait_async(null, (process, result) => {
-                    try {
-                        process.wait_finish(result);
-                        if (!process.get_successful()) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
-                    } catch (e) {
-                        console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
-                    }
-                });
-                console.log(`gnoblin-autostart: started ${name}`);
-            } catch (e) {
-                console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
-            }
+            this._launch({ name, command, when, restart });
+        }
+    }
+
+    _scheduleRestart(name) {
+        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            const entry = this._entries.get(name);
+            if (entry && ["on_failure", "always"].includes(entry.restart)) this._launch(entry);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _launch({ name, command, restart }) {
+        try {
+            const child = Gio.Subprocess.new(command, Gio.SubprocessFlags.NONE);
+            this._started.add(name);
+            child.wait_async(null, (process, result) => {
+                let successful = false;
+                try {
+                    process.wait_finish(result);
+                    successful = process.get_successful();
+                } catch (e) {
+                    console.warn(`gnoblin-autostart: ${name}: ${e.message}`);
+                }
+                if (!successful) console.warn(`gnoblin-autostart: ${name} exited unsuccessfully`);
+                if (restart === "always" || (restart === "on_failure" && !successful)) this._scheduleRestart(name);
+            });
+            console.log(`gnoblin-autostart: started ${name}`);
+        } catch (e) {
+            console.warn(`gnoblin-autostart: could not start ${name}: ${e.message}`);
+            if (restart !== "never") this._scheduleRestart(name);
         }
     }
 }
@@ -790,28 +1417,81 @@ export class ConfigFile {
 
     reload() {
         const path = this.path;
-        let next;
-        // Mutter and Shell evaluate the same Lua files, in the same order.
-        // Keep failed dependencies watched so fixing a module retries it.
-        const loaded = Meta.gnoblin_load_config(path).recursiveUnpack();
-        this._setWatchedFiles(loaded.paths ?? [path], loaded.directories ?? []);
-        if (loaded.error) throw new Error(loaded.error);
         try {
-            next = parseDocument(loaded.document);
+            // Mutter and Shell evaluate the same Lua files, in the same order.
+            // Keep failed dependencies watched so fixing a module retries it.
+            const loaded = Meta.gnoblin_load_config(path).recursiveUnpack();
+            this._setWatchedFiles(loaded.paths ?? [path], loaded.directories ?? []);
+            if (loaded.error) throw new Error(loaded.error);
+            const next = parseDocument(loaded.document);
+            const services = Object.fromEntries(
+                Object.entries(loaded.document["frame-renderers"] ?? {}).map(([name, argv]) => [
+                    name,
+                    new GLib.Variant("as", argv),
+                ]),
+            );
+            Meta.gnoblin_frame_renderers_configure(new GLib.Variant("a{sv}", services), true);
+            this._apply(next);
+            Meta.gnoblin_finish_config_load(true);
+            settings = next;
+            this._document = cloneDocument(loaded.document);
+            this._events = new Set(loaded.events ?? []);
+            this._liveUndo = [];
+            this.dispatchPointerWindowAtPointer();
         } catch (error) {
+            Meta.gnoblin_finish_config_load(false);
             throw new Error(`${path}: ${error.message}`);
         }
-        const services = Object.fromEntries(
-            Object.entries(loaded.document["frame-renderers"] ?? {}).map(([name, argv]) => [
-                name,
-                new GLib.Variant("as", argv),
-            ]),
-        );
-        Meta.gnoblin_frame_renderers_configure(new GLib.Variant("a{sv}", services), true);
-        this._apply(next);
-        settings = next;
-        this._document = cloneDocument(loaded.document);
-        this._liveUndo = [];
+    }
+
+    dispatchPointerWindowAtPointer() {
+        const [x, y] = global.get_pointer();
+        let actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+        while (actor && !actor.meta_window) actor = actor.get_parent();
+        const window = actor?.meta_window;
+        this.dispatchEvent("pointer_window_changed", {
+            app_id: window?.get_gtk_application_id() || "",
+            wm_class: window?.get_wm_class() || "",
+            title: window?.get_title() || "",
+        });
+    }
+
+    dispatchEvent(event, payload = {}) {
+        if (!this._events?.has(event) && !this._events?.has("*")) return;
+        try {
+            const variants = Object.fromEntries(
+                Object.entries(payload).map(([key, value]) => {
+                    const type = typeof value === "boolean" ? "b" : typeof value === "number" ? "d" : "s";
+                    return [key, new GLib.Variant(type, value == null ? "" : value)];
+                }),
+            );
+            const result = Meta.gnoblin_dispatch_config_event(
+                event,
+                new GLib.Variant("a{sv}", variants),
+            ).recursiveUnpack();
+            if (result.error) throw new Error(result.error);
+            const next = parseDocument(result.document);
+            if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            settings = next;
+            this._document = cloneDocument(result.document);
+            Meta.gnoblin_finish_config_event(true);
+        } catch (error) {
+            Meta.gnoblin_finish_config_event(false);
+            console.warn(`gnoblin config event ${event}: ${error.message}`);
+        }
+    }
+
+    applyRuntimeDocument(document) {
+        try {
+            document = document.recursiveUnpack();
+            const next = parseDocument(document);
+            if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
+            settings = next;
+            this._document = cloneDocument(document);
+        } catch (error) {
+            Meta.gnoblin_finish_config_event(false);
+            console.warn(`gnoblin runtime event: ${error.message}`);
+        }
     }
 
     document() {
@@ -828,7 +1508,19 @@ export class ConfigFile {
                     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)))
                     : item;
             });
-        const live = new Set(["cursor", "window-management", "compositor", "input", "input-sources", "shell", "window-rules", "shortcuts", "keybindings", "permissions"]);
+        const live = new Set([
+            "cursor",
+            "window-management",
+            "compositor",
+            "input",
+            "input-sources",
+            "shell",
+            "window-rules",
+            "animations",
+            "shortcuts",
+            "keybindings",
+            "permissions",
+        ]);
         for (const key of new Set([...Object.keys(previous), ...Object.keys(document)])) {
             if (!live.has(key) && stable(previous[key]) !== stable(document[key]))
                 throw new Error(`${key}: edit the config file and reload; protocol changes need a new session`);
@@ -961,6 +1653,17 @@ export function layerOffset(anchor, rect, monitor) {
     return [x, y];
 }
 
+function windowRuleMatches(rule, properties) {
+    for (const [key, matcher] of windowRuleMatchers(rule)) {
+        if (key === "type" || key === "focused" || key === "workspace-id" || key === "workspace-number") {
+            if (properties[key] !== matcher) return false;
+        } else if (properties[key] === null || !matcher.test(properties[key] ?? "")) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Later matching rules override individual effects, leaving others intact.
 export function windowEffects(properties, config = settings, defaultBlur = 0) {
     const effects = {
@@ -976,18 +1679,7 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
     effects.frame = { ...Frames.defaults };
     let borderGeometryOverrides = null;
     for (const rule of config["window-rules"]) {
-        let matches = true;
-        for (const [key, matcher] of windowRuleMatchers(rule)) {
-            if (
-                key === "type" || key === "focused"
-                    ? properties[key] !== matcher
-                    : properties[key] === null || !matcher.test(properties[key] ?? "")
-            ) {
-                matches = false;
-                break;
-            }
-        }
-        if (matches) {
+        if (windowRuleMatches(rule, properties)) {
             if (rule.frame !== undefined) effects.frame = { ...effects.frame, ...rule.frame };
             if (rule.corners !== undefined) effects.corners = Corners.merge(effects.corners, rule.corners);
             if (rule.borders !== undefined) {
@@ -1012,23 +1704,85 @@ export function windowEffects(properties, config = settings, defaultBlur = 0) {
     return effects;
 }
 
+// Placement is evaluated only by the initial window-created handler. A later
+// title/focus/workspace/config update must never reassign an existing window.
+export function initialWorkspaceTarget(properties, config = settings) {
+    let target = null;
+    for (const rule of config["window-rules"])
+        if (rule.workspace !== undefined && windowRuleMatches(rule, properties)) target = rule.workspace;
+    return target;
+}
+
 export function windowProperties(window) {
     const namespace = Meta.gnoblin_layer_namespace(window);
+    const workspace = window.get_workspace();
+    let workspaceDescription = null;
+    if (workspace) {
+        try {
+            const manager = global.workspace_manager;
+            let number = null;
+            for (let index = 0; index < manager.n_workspaces; index++) {
+                if (manager.get_workspace_by_index(index) === workspace) {
+                    number = index + 1;
+                    break;
+                }
+            }
+            workspaceDescription = { id: Workspaces.getId(workspace), number };
+        } catch {
+            // Workspace metadata may be transient while Mutter is configuring
+            // its workspace manager; the rest of the window rules still apply.
+        }
+    }
     return {
         "app-id": window.get_gtk_application_id() || window.get_wm_class() || "",
         title: window.get_title() || "",
         layer: namespace,
         type: namespace !== null ? "layer" : "window",
         focused: window.has_focus(),
+        "workspace-id": workspaceDescription?.id ?? null,
+        "workspace-number": workspaceDescription?.number ?? null,
     };
 }
 
 // Resolve each phase independently; string rules retain their existing meaning.
 export function layerAnimation(properties, opening, config = settings) {
-    const rule = windowEffects(properties, config).animation;
+    const event = opening ? "layer-open" : "layer-close";
+    const fallback = opening ? "slide" : "slide";
+    const rule = windowAnimation(properties, event, config);
+    const policy = windowEffects(properties, config).animation;
+    const configured = config["layer-animation"];
+    const hasEventSelection =
+        isTable(configured) && (Object.hasOwn(configured, event) || Object.hasOwn(configured, opening ? "in" : "out"));
+    const eventAnimation = config.animations.find((entry) => entry.event === event);
+    const animation =
+        rule?.name ??
+        (hasEventSelection
+            ? animationSelection(configured, event, fallback)
+            : (eventAnimation?.name ?? animationSelection(configured, event, fallback)));
+    const registered = config.animations.find((entry) => entry.name === animation && entry.event === event);
+    const hasPresetTiming = Boolean(registered || BUILTIN_ANIMATION_EVENTS[animation] || animation === "gnome");
+    const hasDurationOverride = Boolean(rule?._hasRuleDuration || (isTable(policy) && policy.duration !== undefined));
+    const hasEaseOverride = Boolean(
+        rule?._hasRuleEase || (isTable(policy) && (policy.ease !== undefined || policy.easing !== undefined)),
+    );
     return {
-        animation: typeof rule === "string" ? rule : (rule[opening ? "in" : "out"] ?? config["layer-animation"]),
-        duration: typeof rule === "object" ? (rule.duration ?? config["layer-duration"]) : config["layer-duration"],
-        easing: typeof rule === "object" ? (rule.easing ?? config["layer-easing"]) : config["layer-easing"],
+        animation,
+        duration: hasDurationOverride
+            ? rule?._hasRuleDuration
+                ? rule.duration
+                : policy.duration
+            : hasPresetTiming
+              ? undefined
+              : config["layer-duration"],
+        easing: hasEaseOverride
+            ? rule?._hasRuleEase
+                ? rule.ease
+                : (policy.ease ?? policy.easing)
+            : hasPresetTiming
+              ? undefined
+              : config["layer-easing"],
+        hasDurationOverride,
+        hasEaseOverride,
+        policy,
     };
 }

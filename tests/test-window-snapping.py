@@ -21,7 +21,7 @@ if not str(config).startswith("/tmp/gnoblin-gs."):
     raise SystemExit("Run only as GNOBLIN_TEST_DBUS_CLIENT inside scripts/run-gnome-shell.sh")
 
 scripts = config / "gnoblin/scripts"
-(scripts / "lib").mkdir(parents=True, exist_ok=True)
+scripts.mkdir(parents=True, exist_ok=True)
 boundary_config = config / "gnoblin" / "init.lua"
 boundary_config.parent.mkdir(parents=True, exist_ok=True)
 boundary_config.write_text(
@@ -32,12 +32,8 @@ boundary_config.write_text(
 }
 """
 )
-shutil.copy(repo / "src/scripts/compositor-bridge.js", scripts)
-for source in (repo / "src/scripts/lib").glob("*"):
-    if source.is_file():
-        shutil.copy(source, scripts / "lib")
 shutil.copy(repo / "tests/window-snapping-input.js", scripts / "snap-input.js")
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
 root = Path(os.environ.get("BINGUX_SOURCE", str(repo.parent / "bingux"))) / "shell/bingux"
 qs_command = os.environ.get("GNOBLIN_QS", "qs")
 fixture = config / "snap-fixture"

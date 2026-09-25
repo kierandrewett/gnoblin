@@ -7,6 +7,8 @@
   gjs,
   unzip,
   hyprcursor,
+  inkscape,
+  adwaita-icon-theme,
   lua5_4,
   libepoxy,
   libglycin,
@@ -34,7 +36,8 @@
 let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
   gnomeVersion = versions.components.gnome-shell.version;
-  gnoblinVersion = (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnoblin-version.json")).version;
+  gnoblinVersion =
+    (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnoblin-version.json")).version;
   patchesFor =
     project:
     lib.sort (left: right: builtins.lessThan (toString left) (toString right)) (
@@ -175,6 +178,9 @@ let
     nativeBuildInputs = [
       makeWrapper
       wrapGAppsHook3
+      inkscape
+      hyprcursor
+      python3
     ];
     installPhase = ''
       install -Dm644 src/data/session/modes/gnoblin.json \
@@ -190,11 +196,17 @@ let
       install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
       install -Dm755 src/tools/gnoblin-seed-config "$out/libexec/gnoblin-seed-config"
       install -Dm644 src/data/init.lua.example "$out/share/gnoblin/init.lua.example"
+      python3 ${gnoblinSrc}/scripts/build-adwaita-hyprcursor.py \
+        --output "$TMPDIR/Adwaita-Hyprcursor" \
+        --fallback "${adwaita-icon-theme}/share/icons/Adwaita"
+      mkdir -p "$out/share/icons"
+      cp -a "$TMPDIR/Adwaita-Hyprcursor" "$out/share/icons/Adwaita-Hyprcursor"
       install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
       install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
       install -Dm644 gnoblin-version.json "$out/share/gnoblin/version.json"
       substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
       wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
+
       install -Dm644 src/data/session/gnoblin.desktop \
           "$out/share/wayland-sessions/gnoblin.desktop"
 
@@ -211,11 +223,11 @@ let
   runtime = symlinkJoin {
     name = "gnoblin-runtime-${gnomeVersion}";
     paths = [
+      glib
       gnoblinMutter
       gnoblinShell
       gnoblinSchemas
       session
-      glib
       wireplumber
       playerctl
       brightnessctl
@@ -295,7 +307,11 @@ let
     meta = {
       description = "Patched Mutter and GNOME Shell session with an external-chrome contract";
       homepage = "https://github.com/kierandrewett/gnoblin";
-      license = lib.licenses.gpl2Plus;
+      license = with lib.licenses; [
+        gpl2Plus
+        lgpl3Plus
+        cc-by-sa-30
+      ];
       platforms = lib.platforms.x86_64;
     };
   };

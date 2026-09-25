@@ -1,0 +1,94 @@
+From 5dcd25144275e7788ad08263b8b606ffad07bfb4 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 00:35:00 +0100
+Subject: [PATCH] input: configure touchpad scroll speed
+
+---
+ src/backends/meta-input-settings-private.h | 3 +++
+ src/backends/meta-input-settings.c        | 28 ++++++++++++++++++++++++++++
+ src/wayland/meta-wayland-pointer.c        | 29 +++++++++++++++++++++++++++--
+ 3 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -194,6 +194,8 @@ void meta_input_settings_notify_kbd_a11y_change (MetaInputSettings     *input_se
+ 
+ MetaBackend * meta_input_settings_get_backend (MetaInputSettings *input_settings);
+ 
++double meta_input_settings_get_touchpad_scroll_speed (MetaInputSettings *input_settings);
++
+ GDesktopStylusButtonAction meta_input_settings_get_tool_button_action (MetaInputSettings       *input_settings,
+                                                                        ClutterInputDevice      *device,
+                                                                        ClutterInputDeviceTool  *tool,
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -2180,7 +2180,25 @@ meta_input_settings_get_backend (MetaInputSettings *settings)
+ 
+   return priv->backend;
+ }
+ 
++double
++meta_input_settings_get_touchpad_scroll_speed (MetaInputSettings *input_settings)
++{
++  MetaInputSettingsPrivate *priv;
++  GVariant *value;
++  double speed = 1.0;
++
++  g_return_val_if_fail (META_IS_INPUT_SETTINGS (input_settings), 1.0);
++
++  priv = meta_input_settings_get_instance_private (input_settings);
++  value = gnoblin_setting (input_settings, priv->touchpad_settings, "scroll-speed");
++  if (value && g_variant_is_of_type (value, G_VARIANT_TYPE_DOUBLE))
++    speed = g_variant_get_double (value);
++  g_clear_pointer (&value, g_variant_unref);
++
++  return CLAMP (speed, 0.0, 2.0);
++}
++
+ void
+ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+                                          GVariant    *input)
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -49,6 +49,7 @@
+ #include "backends/meta-backend-private.h"
+ #include "backends/meta-cursor-renderer.h"
+ #include "backends/meta-cursor-tracker-private.h"
++#include "backends/meta-input-settings-private.h"
+ #include "backends/meta-cursor-xcursor.h"
+ #include "clutter/clutter.h"
+ #include "cogl/cogl.h"
+@@ -884,13 +885,26 @@ handle_scroll_event (MetaWaylandPointer *pointer,
+     case CLUTTER_SCROLL_SMOOTH:
+       {
+         double dx, dy;
++        double scroll_speed = 1.0;
++        ClutterInputDevice *source_device = clutter_event_get_source_device (event);
+         /* Clutter smooth scroll events are in discrete steps (1 step = 1.0 long
+          * vector along one axis). To convert to smooth scroll events that are
+          * in pointer motion event space, multiply the vector with the 10. */
+         const double factor = 10.0;
+         clutter_event_get_scroll_delta (event, &dx, &dy);
++        if (source == WL_POINTER_AXIS_SOURCE_FINGER && source_device &&
++            clutter_input_device_get_device_type (source_device) == CLUTTER_TOUCHPAD_DEVICE)
++          {
++            MetaInputSettings *input_settings =
++              meta_backend_get_input_settings (backend_from_pointer (pointer));
++
++            if (input_settings)
++              {
++                scroll_speed = meta_input_settings_get_touchpad_scroll_speed (input_settings);
++              }
++          }
+-        x_value = wl_fixed_from_double (dx * factor);
+-        y_value = wl_fixed_from_double (dy * factor);
++        x_value = wl_fixed_from_double (dx * factor * scroll_speed);
++        y_value = wl_fixed_from_double (dy * factor * scroll_speed);
+ 
+         if (source == WL_POINTER_AXIS_SOURCE_WHEEL)
+           {
+-- 
+2.51.0

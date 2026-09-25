@@ -66,7 +66,7 @@ export default function(api) {
   GLib.file_set_contents(GLib.build_filenamev([GLib.get_user_config_dir(), 'blur-result.json']), JSON.stringify({frames, paintMs:paint/1000, cpuTicks:cpu()-initial, cacheBuilds:blur?.get_cache_build_count?.() ?? null, maskUniformSetups, maskPaints, maskPaintsDuringSample: initialMaskPaints === null ? null : maskPaints - initialMaskPaints, maskUniformSetupsDuringSample: initialMaskUniformSetups === null ? null : maskUniformSetups - initialMaskUniformSetups}));
   timer = 0; return GLib.SOURCE_REMOVE;
  });
- api._disposers.push(() => {if(timer) GLib.source_remove(timer); global.stage.disconnect(before); global.stage.disconnect(after);});
+ api.addCleanup(() => {if(timer) GLib.source_remove(timer); global.stage.disconnect(before); global.stage.disconnect(after);});
 }
 """)
 proc = subprocess.Popen(
@@ -75,7 +75,7 @@ proc = subprocess.Popen(
 try:
     time.sleep(2)
     subprocess.run(
-        [str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl"), "script", "reload"],
+        [str(Path(__file__).resolve().parents[1] / "src/tools/gnoblinctl"), "reload"],
         check=True,
         stdout=subprocess.DEVNULL,
     )

@@ -282,7 +282,7 @@ export default function (api) {
     const owner = Gio.bus_own_name(
         Gio.BusType.SESSION, 'org.gnoblin.DeveloperConsoleTest',
         Gio.BusNameOwnerFlags.NONE, null, null, null);
-    api._disposers.push(() => {
+    api.addCleanup(() => {
         object.unexport();
         Gio.bus_unown_name(owner);
         keyboard?.run_dispose();
@@ -335,7 +335,7 @@ def wait_marker(phase, timeout=5):
     raise AssertionError(current)
 
 
-subprocess.run([str(ROOT / "src/tools/gnoblinctl"), "script", "reload"], check=True)
+subprocess.run([str(ROOT / "src/tools/gnoblinctl"), "reload"], check=True)
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
     try:
@@ -624,7 +624,7 @@ print("PASS: Escape releases the modal grab and hides the console")
 value(call("RunBinding"))
 opened_again = wait_for(lambda current: current["open"])
 assert opened_again["open"] and opened_again["lookingGlassAlias"], opened_again
-print("PASS: the panel-run-dialog keybinding opens the developer console")
+print("PASS: the Alt+F2 key opens the developer console")
 if MARKER.exists():
     MARKER.unlink()
 # Let the stock NetworkManager/Polkit probes settle before changing session

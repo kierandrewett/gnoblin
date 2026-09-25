@@ -85,13 +85,13 @@ try:
     call("window", "resize", identity, 600, 400)
     until(state, lambda row: abs(row["geometry"]["width"] - 600) < 20 and abs(row["geometry"]["height"] - 400) < 30)
     workspaces = call("workspace", "list")["workspaces"]
-    destination = workspaces[-1]["id"]
-    call("window", "workspace", identity, destination)
-    until(state, lambda row: row["workspace"] == destination)
-    call("workspace", "switch", destination)
+    destination = workspaces[-1]
+    call("window", "workspace", identity, "--id", destination["id"])
+    until(state, lambda row: row["workspaceNumber"] == destination["number"])
+    call("workspace", "switch", "--id", destination["id"])
     until(
         lambda: call("workspace", "list")["workspaces"],
-        lambda rows: any(row["id"] == destination and row["active"] for row in rows),
+        lambda rows: any(row["id"] == destination["id"] and row["active"] for row in rows),
     )
     call("window", "monitor", identity, 0)
     assert state()["monitorIndex"] == 0

@@ -1,0 +1,170 @@
+From 4d61492dca220780eabe5bca0ef764c6189d35aa Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Thu, 24 Sep 2026 22:42:56 +0100
+Subject: [PATCH] shell: route workspace switches through animation engine
+
+Use the shared animation sampler for Gnoblin workspace switching while keeping stock GNOME transitions native. Preserve gesture snap geometry and completion handling.
+---
+ js/ui/workspaceAnimation.js | 95 ++++++++++++++++++++++++++++++-------
+ 1 file changed, 79 insertions(+), 16 deletions(-)
+
+diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
+index 93ff655d6..34aaf21b1 100644
+--- a/js/ui/workspaceAnimation.js
++++ b/js/ui/workspaceAnimation.js
+@@ -10,10 +10,69 @@ import * as SwipeTracker from './swipeTracker.js';
+ import * as Util from '../misc/util.js';
+ 
+ import * as Main from './main.js';
++import * as GnoblinAnimation from './components/gnoblinAnimation.js';
++import * as GnoblinConfig from './components/gnoblinConfig.js';
+ 
+ export const WINDOW_ANIMATION_TIME = 250;
+ export const WORKSPACE_SPACING = 100;
+ 
++function resolveWorkspaceAnimation(duration = null) {
++    if (global.session_mode !== 'gnoblin') {
++        return {
++            duration: duration ?? WINDOW_ANIMATION_TIME,
++            ease: 'ease-out-cubic',
++            from: {},
++            to: {},
++        };
++    }
++
++    const custom = GnoblinConfig.getAnimationForEvent('workspace-switch');
++    const spec = GnoblinAnimation.resolve(
++        custom?.name ?? 'gnome-workspace-switch', 'workspace-switch', {}, custom);
++    const easing = custom?.ease ?? custom?.easing ?? spec.ease;
++
++    return {
++        ...spec,
++        duration: St.Settings.get().enable_animations
++            ? custom?.duration ?? duration ?? spec.duration
++            : 0,
++        ease: easing,
++    };
++}
++
++function runWorkspaceProgress(monitorGroup, targetProgress, duration, onComplete) {
++    if (global.session_mode !== 'gnoblin') {
++        monitorGroup.ease_property('progress', targetProgress, {
++            duration: duration ?? WINDOW_ANIMATION_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            onComplete,
++        });
++        return {
++            cancel: () => monitorGroup.remove_all_transitions(),
++        };
++    }
++
++    const animation = resolveWorkspaceAnimation(duration);
++    const spec = {
++        ...animation,
++        from: {...animation.from, progress: animation.from?.progress ?? 0},
++        to: {...animation.to, progress: animation.to?.progress ?? 1},
++    };
++    const startProgress = monitorGroup.progress;
++    const progressDistance = targetProgress - startProgress;
++
++    return GnoblinAnimation.runValues(spec, {
++        actor: monitorGroup,
++        onFrame: values => {
++            monitorGroup.progress = startProgress + progressDistance * values.progress;
++        },
++        onComplete: finished => {
++            if (finished)
++                Promise.resolve().then(() => onComplete?.());
++        },
++    });
++}
++
+ export const BaseWorkspaceGroup = GObject.registerClass(
+ class BaseWorkspaceGroup extends Clutter.Actor {
+     constructor(workspace, monitor, movingWindow) {
+@@ -406,6 +465,7 @@ export class WorkspaceAnimationController {
+ 
+         switchData.gestureActivated = false;
+         switchData.inProgress = false;
++        switchData.progressAnimations = new Map();
+ 
+         if (!workspaceIndices)
+             workspaceIndices = [...Array(nWorkspaces).keys()];
+@@ -433,6 +493,10 @@ export class WorkspaceAnimationController {
+     }
+ 
+     _finishWorkspaceSwitch(switchData) {
++        for (const animation of switchData.progressAnimations?.values() ?? [])
++            animation.cancel();
++        switchData.progressAnimations?.clear();
++
+         Main.wm.unblockWorkspaceUpdates();
+         global.compositor.enable_unredirect();
+ 
+@@ -484,20 +548,18 @@ export class WorkspaceAnimationController {
+             monitorGroup.progress = monitorGroup.getWorkspaceProgress(fromWs);
+             const progress = monitorGroup.getWorkspaceProgress(toWs);
+ 
+-            const params = {
+-                duration: WINDOW_ANIMATION_TIME,
+-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+-            };
+-
++            let animation;
+             if (monitorGroup.index === Main.layoutManager.primaryIndex) {
+-                params.onComplete = () => {
++                animation = runWorkspaceProgress(monitorGroup, progress, null, () => {
+                     this._finishWorkspaceSwitch(this._switchData);
+                     onComplete();
+                     this._swipeTracker.enabled = true;
+-                };
++                });
++            } else {
++                animation = runWorkspaceProgress(monitorGroup, progress);
+             }
+ 
+-            monitorGroup.ease_property('progress', progress, params);
++            this._switchData.progressAnimations.set(monitorGroup, animation);
+         }
+     }
+ 
+@@ -523,6 +585,9 @@ export class WorkspaceAnimationController {
+         if (this._switchData && this._switchData.gestureActivated) {
+             for (const group of this._switchData.monitors)
+                 group.remove_all_transitions();
++            for (const animation of this._switchData.progressAnimations.values())
++                animation.cancel();
++            this._switchData.progressAnimations.clear();
+         } else {
+             this._prepareWorkspaceSwitch();
+         }
+@@ -561,20 +626,18 @@ export class WorkspaceAnimationController {
+         for (const monitorGroup of this._switchData.monitors) {
+             const progress = monitorGroup.getWorkspaceProgress(newWs);
+ 
+-            const params = {
+-                duration,
+-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+-            };
+-
++            let animation;
+             if (monitorGroup.index === Main.layoutManager.primaryIndex) {
+-                params.onComplete = () => {
++                animation = runWorkspaceProgress(monitorGroup, progress, duration, () => {
+                     if (!newWs.active)
+                         newWs.activate(endTime);
+                     this._finishWorkspaceSwitch(switchData);
+-                };
++                });
++            } else {
++                animation = runWorkspaceProgress(monitorGroup, progress, duration);
+             }
+ 
+-            monitorGroup.ease_property('progress', progress, params);
++            switchData.progressAnimations.set(monitorGroup, animation);
+         }
+     }
+ 
+-- 
+2.55.0
+

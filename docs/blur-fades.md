@@ -5,11 +5,11 @@ both the panel and its blur should disappear. Pixel transparency alone cannot
 tell Gnoblin which of those two cases is happening.
 
 This page explains how shell developers mark animated regions. For normal
-desktop settings, see [animations](/config/animations).
+desktop settings, see [animations](/guides/animations).
 
 ## Whole-window fades
 
-Let Gnoblin animate the whole surface using a [layer animation](/config/animations#per-surface-animations).
+Let Gnoblin animate the whole surface using a [layer animation](/guides/animations#per-surface-animations).
 It fades the window and the blur behind it together.
 Do not also fade the client buffer for the same transition.
 

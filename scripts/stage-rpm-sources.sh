@@ -36,6 +36,12 @@ case "$PROJECT" in
         install -m 0644 -- "$ROOT/src/data/init.lua.example" "$OUTDIR/init.lua.example"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
         install -m 0644 -- "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
+        theme_build="$(mktemp -d)"
+        trap 'rm -rf -- "$theme_build"' EXIT
+        python3 "$ROOT/scripts/build-adwaita-hyprcursor.py" \
+            --output "$theme_build/Adwaita-Hyprcursor" \
+            --fallback "${ADWAITA_CURSOR_FALLBACK:-/usr/share/icons/Adwaita}"
+        tar -C "$theme_build" -cJf "$OUTDIR/Adwaita-Hyprcursor.tar.xz" Adwaita-Hyprcursor
         ;;
     *)
         echo "unknown RPM source project: $PROJECT" >&2

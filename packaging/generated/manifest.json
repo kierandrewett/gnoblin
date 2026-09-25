@@ -5,7 +5,7 @@
       "meta": true,
       "requires": [],
       "requiresSameMajor": ["gnoblin-session"],
-      "version": "0.1.4"
+      "version": "0.1.5"
     },
     "gnoblin-gsettings-desktop-schemas": {
       "requires": ["glib"],
@@ -38,7 +38,7 @@
     }
   },
   "release": {
-    "gnoblinVersion": "0.1.4",
+    "gnoblinVersion": "0.1.5",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
     "mutterApi": "51",
@@ -87,7 +87,7 @@
       }
     },
     "libinput": {
-      "minVersion": "1.31.0",
+      "minVersion": "1.30.0",
       "names": {
         "arch": "libinput",
         "deb": "libinput10",
@@ -95,7 +95,7 @@
       }
     },
     "pipewire": {
-      "minVersion": "1.6.0",
+      "minVersion": "1.4.0",
       "names": {
         "arch": "pipewire",
         "deb": "pipewire",

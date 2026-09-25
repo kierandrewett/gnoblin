@@ -55,7 +55,7 @@ class CliTests(unittest.TestCase):
         for words in (
             ["window", "resize", "active", "0", "40"],
             ["--timeout", "0", "ping"],
-            ["window", "workspace", "2", "0"],
+            ["window", "workspace", "2", "--number", "0"],
             ["launch", "begin", "token", "app", "-1"],
             ["feature", "enable"],
             ["ping", "extra"],
@@ -71,20 +71,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(ctl.dbus("GetFeature", "s", [identity], run=run), [False])
         self.assertEqual(run.call_args.args[0][-2:], ["s", identity])
         self.assertEqual(run.call_count, 1)
-
-    def test_input_fallback_is_only_for_absent_interfaces(self):
-        call = Mock(side_effect=[ctl.CommandError("Unknown method ListInputSources"), [[]]])
-        self.assertEqual(ctl.input_call("ListInputSources", call=call), [[]])
-        self.assertEqual(call.call_args.kwargs["service"], "org.gnoblin.InputSources")
-        for error in (
-            ctl.CommandError("Unknown input source: xkb/Unknown method"),
-            ctl.CommandError("Access denied"),
-            subprocess.TimeoutExpired("busctl", 5),
-        ):
-            call = Mock(side_effect=error)
-            with self.assertRaises(type(error)):
-                ctl.input_call("SetInputSource", "ss", ["xkb", "gb"], call=call)
-            self.assertEqual(call.call_count, 1)
 
     def test_socket_handles_fragments_and_unrelated_events(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -3,7 +3,6 @@
 // than Apple's private .continuous path. The parameterisation is inspired by
 // Rounded Window Corners Reborn:
 // https://github.com/flexagoon/rounded-window-corners (GPL-3.0-or-later).
-import Clutter from "gi://Clutter";
 import Cogl from "gi://Cogl";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -12,6 +11,8 @@ import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import St from "gi://St";
 import * as Geometry from "./gnoblinCornerGeometry.js";
+import * as Animation from "./gnoblinAnimation.js";
+import * as Config from "./gnoblinConfig.js";
 
 export const CSD_FRAME_SAMPLING_VERSION = 2;
 export const SSD_BORDER_STACKING_VERSION = 1;
@@ -355,6 +356,23 @@ function rgba(hex) {
     return [0, 2, 4, 6].map((offset) => parseInt(digits.slice(offset, offset + 2), 16) / 255);
 }
 
+function shadowAnimation(animation) {
+    const named = animation.animation
+        ? Config.getAnimation(animation.animation, "shadow-change")
+        : Config.getAnimationForEvent("shadow-change");
+    const spec = Animation.resolve(
+        named?.name ?? "gnoblin-shadow-change",
+        "shadow-change",
+        { duration: animation.duration, easing: animation.easing },
+        named,
+    );
+    if (!named) {
+        spec.duration = animation.duration;
+        spec.ease = animation.easing;
+    }
+    return spec;
+}
+
 // Analytic shadow: one shader pass, no CSS blur render targets or white
 // silhouette to subtract. The window-shaped cutout preserves translucent bodies.
 const ShadowEffect = GObject.registerClass(
@@ -409,47 +427,45 @@ cogl_color_out = mix(resultA,resultB,fadeProgress)*cogl_color_in;
             this.uniform("radius", [g.radius]);
             this.uniform("exponent", [g.exponent]);
             const key = JSON.stringify(layers);
+            const spec = shadowAnimation(animation);
             if (
                 key !== this.targetKey ||
-                (this.timeline && (animation.duration === 0 || !St.Settings.get().enable_animations))
+                (this.animationRun && (spec.duration === 0 || !St.Settings.get().enable_animations))
             ) {
                 this.queued = { layers, animation };
-                if (!this.timeline || animation.duration === 0 || !St.Settings.get().enable_animations)
-                    this.startFade();
+                if (!this.animationRun || spec.duration === 0 || !St.Settings.get().enable_animations) this.startFade();
             } else this.queued = null;
             this.uploadLayers();
         }
         startFade() {
             const { layers, animation } = this.queued;
             this.queued = null;
-            this.timeline?.stop();
-            this.timeline = null;
+            this.animationRun?.cancel();
+            this.animationRun = null;
             this.from = this.to || [];
             this.to = layers;
             this.targetKey = JSON.stringify(layers);
-            const duration = St.Settings.get().enable_animations ? animation.duration : 0;
-            this.uniform("fadeProgress", [duration > 0 ? 0 : 1]);
+            // The old per-rule duration/easing remains the fallback when no
+            // registered shadow-change animation was selected.
+            const spec = shadowAnimation(animation);
+            if (!St.Settings.get().enable_animations) spec.duration = 0;
+            this.uniform("fadeProgress", [spec.duration > 0 ? 0 : 1]);
             this.uploadLayers();
-            if (!duration) return;
-            const modes = {
-                linear: Clutter.AnimationMode.LINEAR,
-                "ease-out-cubic": Clutter.AnimationMode.EASE_OUT_CUBIC,
-                "ease-out-quad": Clutter.AnimationMode.EASE_OUT_QUAD,
-                "ease-in-out-cubic": Clutter.AnimationMode.EASE_IN_OUT_CUBIC,
-            };
-            const timeline = Clutter.Timeline.new_for_actor(this.get_actor(), duration);
-            this.timeline = timeline;
-            timeline.set_progress_mode(modes[animation.easing]);
-            timeline.connect("new-frame", () => {
-                this.uniform("fadeProgress", [timeline.get_progress()]);
-                this.queue_repaint();
+            let run;
+            run = Animation.runValues(spec, {
+                actor: this.get_actor(),
+                onFrame: (values) => {
+                    this.uniform("fadeProgress", [values.progress]);
+                    this.queue_repaint();
+                },
+                onComplete: (finished) => {
+                    if (this.animationRun === run) this.animationRun = null;
+                    if (!finished) return;
+                    this.uniform("fadeProgress", [1]);
+                    if (this.queued) this.startFade();
+                },
             });
-            timeline.connect("completed", () => {
-                this.timeline = null;
-                this.uniform("fadeProgress", [1]);
-                if (this.queued) this.startFade();
-            });
-            timeline.start();
+            if (!run.finished) this.animationRun = run;
         }
         uploadLayers() {
             const g = this.geometry;
@@ -470,8 +486,8 @@ cogl_color_out = mix(resultA,resultB,fadeProgress)*cogl_color_in;
             }
         }
         stop() {
-            this.timeline?.stop();
-            this.timeline = null;
+            this.animationRun?.cancel();
+            this.animationRun = null;
             this.queued = null;
         }
     },
