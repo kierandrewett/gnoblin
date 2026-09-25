@@ -153,7 +153,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         '    _private_typelib="$_schema_typelib:$_private_typelib"\n'
         '    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/mutter subprojects/mutter --prefix="$_prefix" --libdir=lib --buildtype=release -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir="$_prefix/lib/udev"\n'
         "    meson compile -C build/mutter\n"
-        '    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib:$_prefix/lib/mutter-51" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false\n'
+        '    env PKG_CONFIG_PATH="$PWD/build/mutter/meson-uninstalled:$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib:$_prefix/lib/mutter-51" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false\n'
         "    meson compile -C build/gnome-shell\n"
         "}\n\n"
         "package() {\n"
