@@ -55,7 +55,7 @@ jobs:
             ./build.sh
 
       - name: Test Lua runtime GVariant ownership
-        run: ./tests/test-config.sh
+        run: ./tests/test-config.sh lua-config
 
       - name: Verify lifecycle session runtime
         run: |
