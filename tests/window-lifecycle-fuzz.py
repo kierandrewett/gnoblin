@@ -31,6 +31,7 @@ from gnoblin_test_session import (  # noqa: E402
     eval_shell,
     send_pointer,
     shell_window,
+    shell_windows,
     start_minimal_testing_shell,
     wait_for,
 )
@@ -654,6 +655,14 @@ def run_inside() -> int:
             eval_shell("true")
     except Exception as error:
         failure = {"error": str(error), "traceback": traceback.format_exc(), "seed": plan["seed"]}
+        try:
+            failure["windows_at_failure"] = shell_windows()
+        except Exception as diagnostic_error:
+            failure["windows_diagnostic_error"] = str(diagnostic_error)
+        failure["fixture_processes"] = {
+            str(window_id): {"pid": process.pid, "returncode": process.poll()}
+            for window_id, process in processes.items()
+        }
         save_json(plan_path.parent / "client-failure.json", failure)
         print(f"lifecycle fuzz failure: {error}\n{failure['traceback']}", file=sys.stderr, flush=True)
     finally:
