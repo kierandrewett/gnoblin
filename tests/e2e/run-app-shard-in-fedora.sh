@@ -3,7 +3,7 @@ set -euo pipefail
 trap 'chmod -R a+rX "$ARTIFACT_DIR" 2>/dev/null || true' EXIT
 
 dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
-    gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon \
+    gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon python3-gobject \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor util-linux
 
 tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \

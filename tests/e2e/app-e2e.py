@@ -18,6 +18,11 @@ import threading
 import time
 import traceback
 
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
@@ -100,6 +105,7 @@ def run_parent() -> int:
         {
             "GNOBLIN_TEST_UNSAFE_MODE": "1",
             "GNOBLIN_TEST_XWAYLAND": "1",
+            "GNOBLIN_TEST_MDK": "1",
             "GNOBLIN_TEST_CLIENT": str(SCRIPT),
             "GNOBLIN_APP_E2E_INNER": "1",
             "GNOBLIN_E2E_SHARD_FILE": str(shard_path),
@@ -270,6 +276,38 @@ def app_command(app: dict) -> list[str]:
     return ["gtk-launch", app["launch"]]
 
 
+def app_environment() -> dict[str, str]:
+    """Give launchers the compositor's actual nested Wayland/XWayland endpoints."""
+    connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    reply = connection.call_sync(
+        "org.gnome.Mutter.Devkit",
+        "/org/gnome/Mutter/Devkit",
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        GLib.Variant("(ss)", ("org.gnome.Mutter.Devkit", "Env")),
+        GLib.VariantType.new("(v)"),
+        Gio.DBusCallFlags.NONE,
+        5000,
+        None,
+    )
+    compositor_environment = reply.unpack()[0].unpack()
+    display = compositor_environment.get("DISPLAY")
+    xauthority = compositor_environment.get("XAUTHORITY")
+    if not display or not xauthority:
+        raise RuntimeError(
+            "Mutter devkit did not publish DISPLAY and XAUTHORITY for the nested XWayland server: "
+            f"{compositor_environment!r}"
+        )
+
+    env = os.environ.copy()
+    env.update(compositor_environment)
+    # The shell itself forces Wayland, but launched applications need to select
+    # their native backend or fall back to the XWayland display Mutter provides.
+    env.pop("GDK_BACKEND", None)
+    env.pop("QT_QPA_PLATFORM", None)
+    return env
+
+
 def close_sequence(sequence: int, timeout: float = 10) -> str:
     state = window_state(sequence)
     if state is None:
@@ -293,7 +331,14 @@ def close_sequence(sequence: int, timeout: float = 10) -> str:
     return "window-delete-fallback"
 
 
-def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir: Path, launch_timeout: float) -> dict:
+def run_one_app(
+    app: dict,
+    events_path: Path,
+    screenshot_dir: Path,
+    console_dir: Path,
+    launch_timeout: float,
+    client_environment: dict[str, str],
+) -> dict:
     baseline = {window["sequence"] for window in shell_windows()}
     if app["source"] == "flathub-popular":
         # The private document-portal stub returns this mount point. Flatpak's
@@ -315,7 +360,12 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir:
     with log_path.open("w") as log:
         try:
             process = subprocess.Popen(
-                app_command(app), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
+                app_command(app),
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=client_environment,
+                start_new_session=True,
             )
         except Exception as error:
             state.update(status="launch-error", error=str(error))
@@ -328,9 +378,7 @@ def run_one_app(app: dict, events_path: Path, screenshot_dir: Path, console_dir:
                 candidates = [
                     window for window in shell_windows() if window["sequence"] not in baseline and window["title"]
                 ]
-                if any(window["ready"] is not None for window in candidates):
-                    return [window for window in candidates if window["ready"]]
-                return [window for window in candidates if window["mapped"]]
+                return [window for window in candidates if window["ready"] and window["mapped"]]
 
             try:
                 new_windows = wait_for(
@@ -620,6 +668,12 @@ def run_inside() -> int:
     summary_path = Path(os.environ["GNOBLIN_E2E_SUMMARY"])
     screenshot_dir = Path(os.environ["GNOBLIN_E2E_SCREENSHOTS"])
     console_dir = Path(os.environ["GNOBLIN_E2E_ARTIFACT_DIR"]) / "application-logs"
+    client_environment = app_environment()
+    print(
+        "Nested compositor app environment: "
+        f"WAYLAND_DISPLAY={client_environment.get('WAYLAND_DISPLAY')} DISPLAY={client_environment['DISPLAY']}",
+        flush=True,
+    )
     event_path = events_path
     event_path.parent.mkdir(parents=True, exist_ok=True)
     event_path.write_text("")
@@ -662,7 +716,7 @@ def run_inside() -> int:
                 outcomes.append(outcome)
                 write_event(events_path, {"phase": "application-complete", **outcome})
                 continue
-            outcome = run_one_app(app, events_path, screenshot_dir, console_dir, launch_timeout)
+            outcome = run_one_app(app, events_path, screenshot_dir, console_dir, launch_timeout, client_environment)
             outcomes.append(outcome)
             write_event(events_path, {"phase": "application-complete", **outcome})
             if index % 10 == 0:

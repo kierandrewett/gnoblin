@@ -184,6 +184,7 @@ x11_args=(--no-x11)
 debug_args=()
 if [[ "${GNOBLIN_TEST_UNSAFE_MODE:-0}" == 1 ]]; then debug_args=(--unsafe-mode); fi
 if [[ "${GNOBLIN_TEST_XWAYLAND:-0}" == 1 ]]; then x11_args=(); fi
+if [[ "${GNOBLIN_TEST_MDK:-0}" == 1 ]]; then debug_args+=(--devkit); fi
 monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
 shell_command=("$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE"
