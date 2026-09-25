@@ -1,44 +1,73 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 7a527924a91f384514d857f87d6495d8d2d7387f Mon Sep 17 00:00:00 2001
 From: Gnoblin contributors <gnoblin@localhost>
-Date: Thu, 24 Sep 2026 12:00:00 +0000
+Date: Fri, 25 Sep 2026 02:49:39 +0100
 Subject: [PATCH] gnoblin: add a toggle for native wallpaper rendering
 
-Keep GNOME's native per-monitor wallpaper renderer enabled in Gnoblin by
-default, and allow Gnoblin to toggle those background actors at runtime.
-
 ---
+ js/ui/layout.js             | 11 +++++++++++
+ js/ui/workspaceAnimation.js |  6 +++++-
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
 diff --git a/js/ui/layout.js b/js/ui/layout.js
-index 7a9e14b40..41407d5d7 100644
+index 9871e0635..a8c1f04c6 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -218,1 +218,2 @@ export const LayoutManager = GObject.registerClass({
-         this._pendingLoadBackground = false;
+@@ -205,6 +205,7 @@ export const LayoutManager = GObject.registerClass({
+         this._trackedActors = [];
+         this._topActors = [];
+         this._startingUp = true;
 +        this._gnoblinWallpaperEnabled = true;
-@@ -532,0 +533,6 @@ export const LayoutManager = GObject.registerClass({
+ 
+         // Set up stage hierarchy to group all UI actors under one container.
+         this.uiGroup = new UiActor({name: 'uiGroup'});
+@@ -532,6 +533,12 @@ export const LayoutManager = GObject.registerClass({
+         return promise;
+     }
+ 
 +    setGnoblinWallpaperEnabled(enabled) {
 +        this._gnoblinWallpaperEnabled = Boolean(enabled);
 +        if (Main.sessionMode.currentMode === 'gnoblin')
 +            this._updateBackgrounds().catch(logError);
 +    }
 +
-@@ -536,1 +547,5 @@ export const LayoutManager = GObject.registerClass({
+     async _updateBackgrounds() {
+         this._bgLoadCancellable?.cancel();
+         this._bgLoadCancellable = null;
+@@ -541,6 +548,10 @@ export const LayoutManager = GObject.registerClass({
+ 
          this._bgManagers = [];
+ 
 +        // Gnoblin uses GNOME's background renderer as a built-in feature.
 +        if (Main.sessionMode.currentMode === 'gnoblin' && !this._gnoblinWallpaperEnabled)
-+            return Promise.resolve();
++            return;
 +
+         if (Main.sessionMode.isGreeter)
+             return Promise.resolve();
+ 
 diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
-index 06c599728..712b30061 100644
+index fcfda8a57..a3b86f6bc 100644
 --- a/js/ui/workspaceAnimation.js
 +++ b/js/ui/workspaceAnimation.js
-@@ -162,1 +162,5 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+@@ -174,6 +174,10 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+     }
+ 
      _createBackground() {
 +        if (Main.sessionMode.currentMode === 'gnoblin' &&
 +            !Main.layoutManager._gnoblinWallpaperEnabled)
 +            return;
 +
-@@ -175,1 +179,1 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+         const background = new Meta.BackgroundGroup();
+         this.add_child(background);
+ 
+@@ -187,7 +191,7 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
+     _onDestroy() {
+         super._onDestroy();
+ 
 -        this._bgManager.destroy();
 +        this._bgManager?.destroy();
---
-2.45.0
+     }
+ });
+ 
+-- 
+2.55.0
+
