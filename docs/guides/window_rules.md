@@ -144,11 +144,12 @@ gnoblin.configure {
 }
 ```
 
-IDs must be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Positions
-without a configured ID get generated `@session-N` IDs for the current session;
-those generated IDs are not suitable for saved rules or scripts.
-`workspace_names` controls displayed labels and is independent of IDs.
-Any `workspace_id` matcher or `{id = ...}` placement target must name an ID in
+Each ID must be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
+Unconfigured positions get generated `@session-N` IDs for the current session;
+these IDs are unsuitable for saved rules or scripts.
+
+`workspace_names` sets displayed labels independently of IDs. Every
+`workspace_id` matcher and `{id = ...}` placement target must use an ID from
 `workspace_ids`. An undeclared ID makes the configuration invalid.
 
 Match a window's current workspace by ID or by its current one-based position:

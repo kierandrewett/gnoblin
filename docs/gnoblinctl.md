@@ -42,11 +42,13 @@ gnoblinctl window match
 gnoblinctl window match 42 --json
 ```
 
-The result includes the GTK application ID, WM class, and `rule_app_id`.
-Gnoblin uses the GTK ID when available and falls back to the WM class. The
-`match` object shows the corresponding `type`, `app_id`, `title`, and current
-`focused` value. Use the raw `app_id` and `title` values in a rule; the CLI's
-`APP ID` column in `window list` is a desktop-entry ID and can be different.
+The result shows the GTK application ID, WM class, and `rule_app_id` used by
+window rules. Gnoblin uses the GTK ID when available and otherwise uses the WM
+class.
+
+The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
+raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
+shows a desktop-entry ID, which can differ.
 
 `restore` removes minimisation. Use `unmaximize` and `unfullscreen`
 for those states. `close` requests a normal close, including unsaved-work prompts.

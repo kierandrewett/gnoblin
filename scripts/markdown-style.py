@@ -112,6 +112,14 @@ def structural_issues(path: Path) -> list[tuple[int, str]]:
                         f"paragraph has {words} prose words (usual limit 60); split it or turn independent facts into a list",
                     )
                 )
+            inline_terms = set(re.findall(r"`([^`\n]+)`", text))
+            if words >= 30 and len(inline_terms) >= 6:
+                issues.append(
+                    (
+                        number,
+                        f"paragraph has {len(inline_terms)} inline-code terms across {words} prose words; group definitions into bullets or short paragraphs",
+                    )
+                )
 
     for index, (kind, number, _text) in enumerate(blocks):
         if kind != "table" or (index and blocks[index - 1][0] == "table"):

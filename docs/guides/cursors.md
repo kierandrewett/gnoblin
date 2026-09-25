@@ -2,12 +2,15 @@
 
 [Configuration reference](/config/configure)
 
-Gnoblin reads the compositor cursor theme and size from
-`~/.config/gnoblin/init.lua`. The config API is `cursor.theme` and
-`cursor.size`; Gnoblin currently renders those settings with Hyprcursor.
-The defaults are theme `Adwaita-Hyprcursor` and size `24` logical pixels.
-`theme` accepts an installed Hyprcursor theme name. `size` accepts an integer
-from `1` to `256` logical pixels. Omitted values use the defaults.
+Set the compositor cursor theme and size in `~/.config/gnoblin/init.lua`.
+Gnoblin renders these settings with Hyprcursor.
+
+- `cursor.theme` accepts an installed Hyprcursor theme name. Its default is
+  `Adwaita-Hyprcursor`.
+- `cursor.size` accepts an integer from `1` to `256` logical pixels. Its
+  default is `24`.
+
+Omitted values use these defaults.
 
 ## Select a theme
 

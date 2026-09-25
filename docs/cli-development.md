@@ -48,10 +48,11 @@ payload fields and selector values.
 
 ## Change a window
 
-The `window` command's `action` selects an operation such as `"move"`; the
-complete action list is in the [`gnoblinctl` window reference](/gnoblinctl#window-actions).
-`window` is a stable string ID from a previous list. For `"move"`, `x` and
-`y` are logical desktop-pixel coordinates:
+The `window` command's `action` selects an operation such as `"move"`. See the
+[`gnoblinctl` window reference](/gnoblinctl#window-actions) for all actions.
+Use the stable string ID returned by a previous window list.
+
+For `"move"`, `x` and `y` are logical desktop-pixel coordinates:
 
 ```json
 { "op": "command", "id": "move-1", "command": "window", "action": "move", "window": "42", "x": 100, "y": 80 }

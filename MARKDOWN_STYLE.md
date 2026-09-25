@@ -133,6 +133,9 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
   or when to use an option.
 - Avoid prose blobs made of many inline-code terms separated by commas or
   semicolons. Turn the independent facts into headings, lists, or tables.
+- When a paragraph contains six or more inline-code terms and at least 30
+  prose words, split the definitions into bullets or short paragraphs and
+  group related terms together.
 - Do not explain obvious visible content in a screenshot or talk down to the
   reader. Explain decisions, steps, constraints, and behavior they cannot
   infer from the image alone.
@@ -140,6 +143,7 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
   API behavior to make prose shorter.
 - A paragraph should usually stay below 60 words. Split it when its subject or
   purpose changes, and use a list when it defines several independent facts.
-  The Markdown validator flags paragraphs over 60 words and table cells over
+  The Markdown validator flags paragraphs over 60 words, paragraphs with six
+  or more inline-code terms and at least 30 prose words, and table cells over
   24 words for review; the counts are prompts to improve scanability, not a
   reason to break a coherent explanation into fragments.

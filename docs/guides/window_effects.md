@@ -118,9 +118,11 @@ gnoblin.window_rule {
 }
 ```
 
-`x` and `y` move the shadow; positive values move it right and down. `blur`
-softens its edge, `spread` grows it, and `opacity` controls its darkness.
-You can also set `color`. Supply one shadow table or a list of up to four.
+The shadow's `x` and `y` offsets move it right and down when positive.
+`blur` softens its edge, `spread` grows it, and `opacity` controls its
+darkness. Set `color` to choose its color.
+
+Supply one shadow table or a list of up to four.
 
 To make the shadow change smoothly when focus changes:
 
