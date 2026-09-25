@@ -20,16 +20,17 @@ release pipeline or COPR publication changes.
   Ubuntu 24.04 test also assumed a package script directory that is not
   installed when no integrations are shipped. No GitHub release or COPR build
   was published from that tag.
-- Tag `gnoblin-v0.1.6` contains the keyboard-startup and smoke-fixture fixes.
-  Its release workflow is building Debian/Ubuntu packages. The first Fedora
-  43/44 verification on that commit failed because the bridge resource patch
-  duplicated entries already added by the overlay resource patch. Commit
-  `52982ab` removes that redundant patch and is on `main`. The verification
-  build on its descendant passed on Fedora 43; Fedora 44 stopped before source
-  compilation when GNOME GitLab returned HTTP 503 fetching Mutter. The rolling
-  openSUSE dependency job also failed on an unavailable package. A retry is
-  needed for Fedora 44. No Fedora 43 RPM or fresh-host runtime verification
-  has yet been published.
+- Tag `gnoblin-v0.1.6` contains the keyboard-startup and smoke-fixture fixes,
+  but its release workflow failed on all three Debian/Ubuntu builds. The logs
+  identify a duplicate `gnoblinLaunchFeedback.js` GResource registration; no
+  GitHub release or COPR build was published from that tag.
+- Commit `52982ab` removes the redundant resource patch. The Fedora 43/44
+  source-build checks passed on `835ca3b`. Tag `gnoblin-v0.1.7` points to
+  `3131fb0`; its source assets and Debian 13, Ubuntu 24.04, and Ubuntu 26.04
+  runtime/package builds have passed. The three clean install smoke tests are
+  running in Release workflow `36074745709`. COPR publication waits for that
+  workflow to finish successfully. No Fedora 43 RPM or fresh-host runtime
+  verification has yet been published.
 - The GitHub source tree can be newer than the latest tagged COPR release.
   Check the latest release tag and COPR build before describing an installed
   package as current.
@@ -88,6 +89,7 @@ redundant later patch is removed in `52982ab`. The Fedora 43 source build
 passed on the first retry; Fedora 44 then hit a transient GitLab 503 while
 fetching Mutter, but a subsequent run on `835ca3b` passed both Fedora source
 builds. Version `0.1.7` carries that fix and the synchronized RPM/Arch
-metadata. A tagged release must still pass its package builds, followed by a
-COPR build and Fedora 43 installation check, before this compatibility change
-is complete.
+metadata. Its source assets and all three Debian/Ubuntu package builds passed;
+clean installation smoke tests, a COPR build, and Fedora 43 package
+installation/runtime checks remain before this compatibility change is
+complete.
