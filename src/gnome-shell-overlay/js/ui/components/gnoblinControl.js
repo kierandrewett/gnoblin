@@ -26,6 +26,7 @@ import {
     applyInputPreferences,
 } from "./gnoblinConfig.js";
 import { WindowRules } from "./gnoblinRules.js";
+import { TouchpadGestureRouter } from "./gnoblinTouchpadGestures.js";
 import * as Workspaces from "./gnoblinWorkspaces.js";
 import Gio from "gi://Gio";
 import Clutter from "gi://Clutter";
@@ -42,6 +43,7 @@ import * as Config from "../../misc/config.js";
 import { CompositorBridge } from "./gnoblinBridge/compositor-bridge.js";
 import { LaunchFeedback } from "./gnoblinLaunchFeedback.js";
 import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
+import { TouchpadGestureRouter } from "./gnoblinTouchpadGestures.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
@@ -737,6 +739,7 @@ export class Component {
         );
         this._permissionPolicy = { default: "deny", rules: [] };
         this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
+        this._touchpadGestureRouter = new TouchpadGestureRouter();
         activeConfig = this._config;
         this._config.start();
         // GNOME exposes the desktop's preferred color scheme through this
@@ -759,8 +762,10 @@ export class Component {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
             this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
         });
-        this._configEventId = global.display.connect("gnoblin-config-event", (_display, _event, document) => {
+        this._configEventId = global.display.connect("gnoblin-config-event", (_display, event, document, payload) => {
             this._config?.applyRuntimeDocument(document);
+            if (event !== "mutter.touchpad.gesture") return false;
+            return this._touchpadGestureRouter.handle(payload.recursiveUnpack());
         });
         this._eventWindows = new Map();
         for (const window of global.display.list_all_windows()) this._watchEventWindow(window);
@@ -879,6 +884,26 @@ export class Component {
             this._scripts = null;
             activeScriptHost = null;
         }
+        if (this._configFocusId) {
+            global.display.disconnect(this._configFocusId);
+            this._configFocusId = 0;
+        }
+        if (this._configWindowId) {
+            global.display.disconnect(this._configWindowId);
+            this._configWindowId = 0;
+        }
+        if (this._configEventId) {
+            global.display.disconnect(this._configEventId);
+            this._configEventId = 0;
+        }
+        this._touchpadGestureRouter?.destroy();
+        this._touchpadGestureRouter = null;
+        if (this._configInputId) {
+            global.stage.disconnect(this._configInputId);
+            this._configInputId = 0;
+        }
+        for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
+        this._eventWindows?.clear();
         if (this._compositorBridge) {
             this._compositorBridge.destroy();
             if (global.__gnoblinCompositorBridge === this._compositorBridge) delete global.__gnoblinCompositorBridge;
@@ -1057,9 +1082,7 @@ export class Component {
     }
 
     _applyConfig(next) {
-        // The Lua config parser exposes the top-level declaration array here.
-        // The registry uses it to assign stable IDs and names; Mutter's
-        // derived baseline count comes from the parsed window preferences.
+        this._touchpadGestureRouter?.configure(next["touchpad-gestures"]);
         Workspaces.setEventDispatcher((event, payload) => this._config?.dispatchEvent(event, payload));
         applyWindowPreferences(next["window-management"]);
         Workspaces.configure(next.workspaces ?? [], (index) => Meta.prefs_get_workspace_name(index));

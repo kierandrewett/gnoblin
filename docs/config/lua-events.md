@@ -91,6 +91,28 @@ Gnoblin also exposes the Wayland pointer-window transition as
 `mutter.wayland.pointer-window-changed`, with `app_id`, `wm_class`, and
 `title`. The older `pointer_window_changed` name remains available.
 
+Touchpad swipe, pinch, and hold input is available as
+`mutter.touchpad.gesture`. Gnoblin dispatches one event for each phase before the
+frontend handles that input event.
+
+Each event includes its gesture type, phase, finger count, and timestamp. Swipe
+updates include unaccelerated movement deltas. Pinch updates include scale and
+angle changes. Accumulate the deltas in a callback to measure total movement.
+Hold events have no movement fields.
+
+```lua
+gnoblin.on("mutter.touchpad.gesture", function(event)
+    if event.gesture == "swipe" and event.phase == "update" then
+        print(event.fingers, event.dx, event.dy)
+    end
+end)
+```
+
+This event exposes input data to the active Lua config and to frontend
+integrations connected to Mutter's `gnoblin-config-event` signal. It does not
+choose an action by itself. A frontend can use the phases to drive its own
+workspace, overview, or window animations.
+
 Every signal event includes `source` and `signal`.
 
 - Scalar signal arguments appear as `arg0`, `arg1`, and so on. Their GObject

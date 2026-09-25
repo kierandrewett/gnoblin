@@ -1,0 +1,195 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] shell: route configurable touchpad gestures through Gnoblin
+
+Connect GNOME Shell's interactive swipe trackers to the Gnoblin gesture
+configuration while keeping their existing progress-driven animations.
+---
+diff --git a/js/ui/appDisplay.js b/js/ui/appDisplay.js
+index 85f7b08..dd9621c 100644
+--- a/js/ui/appDisplay.js
++++ b/js/ui/appDisplay.js
+@@ -616,6 +616,7 @@ var BaseAppView = GObject.registerClass({
+             Clutter.Orientation.HORIZONTAL,
+             Shell.ActionMode.ALL,
+             {
++                gestureAction: 'app-grid.progress',
+                 name: 'AppDisplay swipe tracker',
+             });
+         this._swipeTracker.orientation = Clutter.Orientation.HORIZONTAL;
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+index 41fd1c1..761a069 100644
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -499,6 +499,7 @@ const EmojiPager = GObject.registerClass({
+             Clutter.Orientation.HORIZONTAL,
+             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+             {
++                gestureAction: 'emoji-pager.progress',
+                 allowDrag: true,
+                 allowScroll: true,
+                 name: 'EmojiPager swipe tracker',
+diff --git a/js/ui/overview.js b/js/ui/overview.js
+index da3427b..aecf77c 100644
+--- a/js/ui/overview.js
++++ b/js/ui/overview.js
+@@ -230,6 +230,7 @@ export class Overview extends Signals.EventEmitter {
+                 allowDrag: false,
+                 allowScroll: false,
+                 name: 'Overview swipe tracker',
++                gestureAction: 'overview.progress',
+                 phase: Clutter.EventPhase.CAPTURE,
+             });
+         swipeTracker.orientation = Clutter.Orientation.VERTICAL;
+diff --git a/js/ui/swipeTracker.js b/js/ui/swipeTracker.js
+index 05b5b2c..a5164f6 100644
+--- a/js/ui/swipeTracker.js
++++ b/js/ui/swipeTracker.js
+@@ -5,6 +5,7 @@ import Mtk from 'gi://Mtk';
+ 
+ import * as Main from './main.js';
+ import * as Params from '../misc/params.js';
++import * as GnoblinConfig from './components/gnoblinConfig.js';
+ 
+ // FIXME: ideally these values matches physical touchpad size. We can get the
+ // correct values for gnome-shell specifically, since mutter uses libinput
+@@ -103,12 +104,15 @@ const TouchpadSwipeGesture = GObject.registerClass({
+         'end':    {param_types: [GObject.TYPE_UINT, GObject.TYPE_DOUBLE]},
+     },
+ }, class TouchpadSwipeGesture extends GObject.Object {
+-    _init(actor, allowedModes) {
++    _init(actor, allowedModes, gestureAction = null) {
+         super._init();
+         this._allowedModes = allowedModes;
++        this._gestureAction = gestureAction;
+         this._state = TouchpadState.NONE;
+         this._cumulativeX = 0;
+         this._cumulativeY = 0;
++        this._fingerCount = 0;
++        this._gesturePath = [{x: 0, y: 0}];
+         this._touchpadSettings = new Gio.Settings({
+             schema_id: 'org.gnome.desktop.peripherals.touchpad',
+         });
+@@ -121,10 +125,14 @@ const TouchpadSwipeGesture = GObject.registerClass({
+         if (event.type() !== Clutter.EventType.TOUCHPAD_SWIPE)
+             return Clutter.EVENT_PROPAGATE;
+ 
+-        if (event.get_gesture_phase() === Clutter.TouchpadGesturePhase.BEGIN)
++        if (event.get_gesture_phase() === Clutter.TouchpadGesturePhase.BEGIN) {
+             this._state = TouchpadState.NONE;
++            this._fingerCount = event.get_touchpad_gesture_finger_count();
++            this._gesturePath = [{x: 0, y: 0}];
++        }
+ 
+-        if (event.get_touchpad_gesture_finger_count() < GESTURE_FINGER_COUNT)
++        if (GnoblinConfig.settings['touchpad-gestures'] === null &&
++            event.get_touchpad_gesture_finger_count() < GESTURE_FINGER_COUNT)
+             return Clutter.EVENT_PROPAGATE;
+ 
+         if ((this._allowedModes & Main.actionMode) === 0)
+@@ -153,6 +161,8 @@ const TouchpadSwipeGesture = GObject.registerClass({
+         if (this._state === TouchpadState.PENDING) {
+             this._cumulativeX += dx;
+             this._cumulativeY += dy;
++            if (dx !== 0 || dy !== 0)
++                this._gesturePath.push({x: this._cumulativeX, y: this._cumulativeY});
+ 
+             const cdx = this._cumulativeX;
+             const cdy = this._cumulativeY;
+@@ -162,11 +172,27 @@ const TouchpadSwipeGesture = GObject.registerClass({
+                 const gestureOrientation = Math.abs(cdx) > Math.abs(cdy)
+                     ? Clutter.Orientation.HORIZONTAL
+                     : Clutter.Orientation.VERTICAL;
+-
+                 this._cumulativeX = 0;
+                 this._cumulativeY = 0;
+ 
+-                if (gestureOrientation === this.orientation) {
++                const contexts = [];
++                if (Main.keyboard?._keyboard?._emojiSelection?.visible) {
++                    contexts.push('emoji-picker');
++                } else {
++                    if (Main.actionMode & Shell.ActionMode.NORMAL)
++                        contexts.push('normal');
++                    if (Main.actionMode & Shell.ActionMode.OVERVIEW) {
++                        const inAppGrid = Boolean(Main.overview._overview?.controls?.appDisplay?.visible);
++                        contexts.push(inAppGrid ? 'app-grid' : 'overview');
++                    }
++                    if (Main.actionMode & Shell.ActionMode.UNLOCK_SCREEN)
++                        contexts.push('unlock-screen');
++                }
++                const configured = this._gestureAction
++                    ? GnoblinConfig.touchpadGestureMatches(this._gestureAction, this._fingerCount, this._gesturePath, contexts)
++                    : null;
++
++                if (gestureOrientation === this.orientation && configured !== false) {
+                     this._state = TouchpadState.HANDLING;
+                     this.emit('begin', time, x, y);
+                 } else {
+@@ -371,6 +397,7 @@ export const SwipeTracker = GObject.registerClass({
+             allowScroll: true,
+             phase: Clutter.EventPhase.BUBBLE,
+             name: 'SwipeTracker',
++            gestureAction: null,
+         });
+ 
+         super._init();
+@@ -405,7 +432,7 @@ export const SwipeTracker = GObject.registerClass({
+             null);
+         actor.add_action_full(params.name, params.phase, this._panGesture);
+ 
+-        this._touchpadGesture = new TouchpadSwipeGesture(actor, allowedModes);
++        this._touchpadGesture = new TouchpadSwipeGesture(actor, allowedModes, params.gestureAction);
+         this._touchpadGesture.connect('begin', this._beginTouchpadGesture.bind(this));
+         this._touchpadGesture.connect('update', this._updateTouchpadGesture.bind(this));
+         this._touchpadGesture.connect('end', this._endTouchpadGesture.bind(this));
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index 21b4736..a62fb62 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -585,6 +585,7 @@ export const UnlockDialog = GObject.registerClass({
+             Clutter.Orientation.VERTICAL,
+             Shell.ActionMode.UNLOCK_SCREEN,
+             {
++                gestureAction: 'unlock-screen.progress',
+                 name: 'UnlockDialog swipe tracker',
+             });
+         this._swipeTracker.connect('begin', this._swipeBegin.bind(this));
+diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
+index fcfda8a..59df1c5 100644
+--- a/js/ui/workspaceAnimation.js
++++ b/js/ui/workspaceAnimation.js
+@@ -378,6 +378,7 @@ export class WorkspaceAnimationController {
+                 allowDrag: false,
+                 phase: Clutter.EventPhase.CAPTURE,
+                 name: 'WorkspaceAnimation swipe tracker',
++                gestureAction: 'workspace.progress',
+             });
+         swipeTracker.connect('begin', this._switchWorkspaceBegin.bind(this));
+         swipeTracker.connect('update', this._switchWorkspaceUpdate.bind(this));
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -159,6 +159,8 @@
+     <file>ui/components/gnoblinFramePolicy.js</file>
+     <file>ui/components/gnoblinControl.js</file>
+     <file>ui/components/gnoblinSessionLock.js</file>
+     <file>ui/components/gnoblinMutterEvents.js</file>
++    <file>ui/components/gnoblinTouchpadGestures.js</file>
++    <file>ui/components/gnoblinTouchpadGestureCore.js</file>
+     <file>ui/components/gnoblinNotificationBridge.js</file>
+     <file>ui/components/gnoblinRecovery.js</file>
+diff --git a/js/ui/workspacesView.js b/js/ui/workspacesView.js
+index 5fcfbb7..d933ed3 100644
+--- a/js/ui/workspacesView.js
++++ b/js/ui/workspacesView.js
+@@ -870,6 +870,7 @@ export class WorkspacesDisplay extends St.Widget {
+             Clutter.Orientation.HORIZONTAL,
+             Shell.ActionMode.OVERVIEW,
+             {
++                gestureAction: 'overview-workspaces.progress',
+                 allowDrag: false,
+                 name: 'WorkspacesView swipe tracker',
+             });

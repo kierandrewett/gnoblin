@@ -38,3 +38,5 @@ gnome-shell js/ui/components/gnoblinBridge/lib/ui-sessions.js js/ui/components/g
 gnome-shell js/ui/components/gnoblinBridge/lib/window-snap.js js/ui/components/gnoblinBridge/lib/window-snap.js
 gnome-shell js/ui/components/gnoblinBridge/lib/window-switcher-fallback.js js/ui/components/gnoblinBridge/lib/window-switcher-fallback.js
 gnome-shell js/ui/components/gnoblinLaunchFeedback.js js/ui/components/gnoblinLaunchFeedback.js
+gnome-shell js/ui/components/gnoblinTouchpadGestures.js js/ui/components/gnoblinTouchpadGestures.js
+gnome-shell js/ui/components/gnoblinTouchpadGestureCore.js js/ui/components/gnoblinTouchpadGestureCore.js

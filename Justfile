@@ -431,6 +431,9 @@ arch PROJ:
 test-config:
     ./tests/test-config.sh
 
+test-touchpad-gestures:
+    npm run test:touchpad-gestures
+
 # Best of 3, fails past BOOT_BUDGET_MS (default 1350). This catches startup
 # regressions in the patched shell; the script documents the headless test
 # boundary and the real-hardware follow-up.

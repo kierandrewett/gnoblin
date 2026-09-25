@@ -5,11 +5,12 @@ Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
 
 ---
  src/core/display.c                 |  9 ++++
- src/core/util.c                    | 67 +++++++++++++++++++++++++++++-
+ src/core/util.c                    | 72 +++++++++++++++++++++++++++++++-
  src/meta/display.h                 |  5 +++
  src/meta/util.h                    |  8 ++++
  src/wayland/meta-wayland-pointer.c | 27 +++++++++++++++
- 5 files changed, 115 insertions(+), 1 deletion(-)
+ meson.build                        |  1 +
+ 6 files changed, 122 insertions(+), 1 deletion(-)
 
 diff --git a/src/core/display.c b/src/core/display.c
 index 45b860eb8..91c4769b9 100644
@@ -23,7 +24,7 @@ index 45b860eb8..91c4769b9 100644
    WINDOW_CREATED,
    WINDOW_DEMANDS_ATTENTION,
    WINDOW_MARKED_URGENT,
-@@ -351,6 +352,14 @@ meta_display_class_init (MetaDisplayClass *klass)
+@@ -351,6 +352,15 @@ meta_display_class_init (MetaDisplayClass *klass)
                    NULL, NULL, NULL,
                    G_TYPE_NONE, 2, META_TYPE_WINDOW, G_TYPE_INT64);
  
@@ -32,8 +33,9 @@ index 45b860eb8..91c4769b9 100644
 +                  G_TYPE_FROM_CLASS (klass),
 +                  G_SIGNAL_RUN_LAST,
 +                  0,
-+                  NULL, NULL, NULL,
-+                  G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_VARIANT);
++                  g_signal_accumulator_true_handled, NULL,
++                  NULL,
++                  G_TYPE_BOOLEAN, 3, G_TYPE_STRING, G_TYPE_VARIANT, G_TYPE_VARIANT);
 +
    display_signals[WINDOW_CREATED] =
      g_signal_new ("window-created",
@@ -63,7 +65,7 @@ index 5b89e5ce2..06accd2fb 100644
    g_variant_builder_add (&result, "{sv}", "paths",
                           g_variant_new_strv (
                             paths ? (const char * const *) paths->pdata : NULL,
-@@ -793,3 +797,64 @@ meta_encode_hex (gpointer data,
+@@ -793,3 +797,70 @@ meta_encode_hex (gpointer data,
  
    return g_string_free_and_steal (encoded);
  }
@@ -106,11 +108,13 @@ index 5b89e5ce2..06accd2fb 100644
 +#endif
 +}
 +
-+void
++gboolean
 +meta_display_dispatch_gnoblin_event (MetaDisplay *display,
 +                                     const char  *event,
 +                                     GVariant    *payload)
 +{
++  gboolean frontend_consumed = FALSE;
++
 +#ifdef HAVE_WAYLAND
 +  g_autoptr (GError) error = NULL;
 +  g_autoptr (GVariant) document =
@@ -119,15 +123,20 @@ index 5b89e5ce2..06accd2fb 100644
 +  if (error)
 +    {
 +      g_warning ("gnoblin Lua event %s: %s", event, error->message);
-+      return;
++      return FALSE;
 +    }
 +  if (document)
 +    {
-+      g_signal_emit_by_name (display, "gnoblin-config-event", event, document);
++      g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
++                             payload, &frontend_consumed);
 +      gnoblin_config_finish_event (TRUE);
 +    }
++  return frontend_consumed;
++#else
++  return FALSE;
 +#endif
 +}
+
 diff --git a/src/meta/display.h b/src/meta/display.h
 index 8773263e0..d40d2ca75 100644
 --- a/src/meta/display.h
@@ -137,7 +146,7 @@ index 8773263e0..d40d2ca75 100644
                                                GVariant    *input);
  
 +META_EXPORT
-+void meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++gboolean meta_display_dispatch_gnoblin_event (MetaDisplay *display,
 +                                          const char  *event,
 +                                          GVariant    *payload);
 +
@@ -215,5 +224,16 @@ index b33b3a845..48651566c 100644
    if (pointer->focus_surface && pointer->focus_surface->resource)
      old_client = wl_resource_get_client (pointer->focus_surface->resource);
    if (surface && surface->resource)
+diff --git a/meson.build b/meson.build
+index 72527ee..beaf7fe 100644
+--- a/meson.build
++++ b/meson.build
+@@ -556,5 +556,6 @@ cdata.set('HAVE_GL', have_gl)
+ cdata.set('HAVE_GLES2', have_gles2)
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
++cdata.set('HAVE_WAYLAND', true)
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
 -- 
 2.55.0
