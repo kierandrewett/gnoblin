@@ -17,6 +17,10 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             self.assertIn("%global __provides_exclude_from ^%{_prefix}/.*$", content)
             self.assertIn("pkgconfig(", content)
             self.assertNotIn("mesa-libEGL-devel", content)
+        self.assertIn(
+            "BuildRequires:  pkgconfig(udev)",
+            (SPECS / "mutter.spec").read_text(),
+        )
 
     def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
         for name in ("gsettings-desktop-schemas.spec", "mutter.spec", "gnome-shell.spec"):

@@ -69,6 +69,7 @@ BuildRequires:  pkgconfig(pixman-1)
 BuildRequires:  pkgconfig(sm)
 BuildRequires:  pkgconfig(sysprof-capture-4)
 BuildRequires:  pkgconfig(umockdev-1.0)
+BuildRequires:  pkgconfig(udev)
 BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
 BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
 BuildRequires:  pkgconfig(xkbcommon)

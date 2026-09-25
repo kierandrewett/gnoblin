@@ -108,6 +108,12 @@ release pipeline or COPR publication changes.
   the helper with explicit host Meson commands and explicit private install
   directories. The new full RPM/coinstall/removal workflow must pass before
   updating target gate values.
+- Commit `a55f4069` stages GNOME 51 schemas in Arch's temporary build prefix
+  before Mutter configuration and replaces the Tumbleweed schema spec's
+  private-prefix Meson lookup. Run `36148646285` then progressed through the
+  schema RPM and failed configuring Mutter because `pkgconfig(udev)` was not
+  required. The current spec fix adds that capability; package-chain and
+  stock-GNOME install/removal evidence still need a successful exact-main run.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
