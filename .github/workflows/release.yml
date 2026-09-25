@@ -72,7 +72,7 @@ jobs:
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
             python python-docutils python-packaging sassc sysprof wayland wireplumber \
             xdg-desktop-portal-gnome xorg-xwayland
-          pacman -Q --qf '%n %v-%r\n' gnome-shell mutter > /tmp/stock-gnome-packages
+          pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
           pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
           pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
       - uses: actions/download-artifact@v4
@@ -106,12 +106,12 @@ jobs:
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/share/gnome-session/sessions/gnoblin.session
-          cmp /tmp/stock-gnome-packages <(pacman -Q --qf '%n %v-%r\n' gnome-shell mutter)
+          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
           pacman -R --noconfirm gnoblin
           ! pacman -Q gnoblin
-          cmp /tmp/stock-gnome-packages <(pacman -Q --qf '%n %v-%r\n' gnome-shell mutter)
+          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
       - uses: actions/upload-artifact@v4
