@@ -72,6 +72,9 @@ jobs:
           mkdir -p e2e-ci-artifacts
           python3 tests/e2e/app-catalog.test.py
           python3 tests/e2e/app-catalog.py --output e2e-ci-artifacts/app-catalog.json
+          # Keep executable modes and symlinks intact across artifact transfer.
+          # Each app shard restores this tar before launching gnome-shell.
+          tar -cf e2e-ci-artifacts/gnoblin-install-prefix.tar -C "$GITHUB_WORKSPACE" install
 
       - name: Select requested app shards
         id: matrix
@@ -99,7 +102,7 @@ jobs:
         with:
           name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            install/
+            e2e-ci-artifacts/gnoblin-install-prefix.tar
             e2e-ci-artifacts/app-catalog.json
           compression-level: 0
           if-no-files-found: error
@@ -132,6 +135,12 @@ jobs:
         with:
           name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}
+
+      - name: Restore executable Gnoblin prefix
+        run: |
+          tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
+            --no-same-owner -C "$GITHUB_WORKSPACE"
+          test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 
       - name: Add Flathub and select this shard
         env:
@@ -166,6 +175,7 @@ jobs:
           fi
           install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
           chown -R e2e:e2e "$ARTIFACT_DIR"
+          runuser -u e2e -- test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
           runuser -u e2e -- env \
             XDG_RUNTIME_DIR="/run/user/$e2e_uid" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
