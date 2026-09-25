@@ -59,11 +59,12 @@ class BuildDependencies(unittest.TestCase):
                     self.assertIn("libsysprof-capture-4-dev", commands[1])
                 if family == "opensuse":
                     self.assertIn("refresh", commands[0])
-                    self.assertIn("remove", commands[1])
-                    self.assertIn("busybox-gawk", commands[1])
-                    self.assertIn("--non-interactive", commands[2])
-                    self.assertIn("gawk", commands[2])
-                    self.assertIn("pkgconfig(wayland-server)", commands[2])
+                    # Tumbleweed no longer provides busybox-gawk. The setup
+                    # script removes it only when an older image has it.
+                    self.assertEqual(len(commands), 2)
+                    self.assertIn("--non-interactive", commands[1])
+                    self.assertIn("gawk", commands[1])
+                    self.assertIn("pkgconfig(wayland-server)", commands[1])
                 if family == "arch":
                     self.assertIn("-S", commands[0])
                     self.assertIn("glycin", commands[0])
