@@ -125,8 +125,10 @@ gnoblin.configure {
     protocols = {},
     -- Protocol switches are booleans. Available names:
     -- wlr_layer_shell, wlr_screencopy, ext_foreign_toplevel_list,
-    -- wlr_foreign_toplevel_management, ext_data_control, ext_idle_notify,
-    -- wlr_gamma_control, wlr_output_power_management, ext_background_effect_v1.
+    -- wlr_foreign_toplevel_management, xdg_decoration, window_frame_renderer,
+    -- ext_data_control, ext_idle_notify, wlr_gamma_control,
+    -- wlr_output_power_management, ext_background_effect_v1, blur_fade,
+    -- ext_session_lock.
 
     -- Layer-shell clients can preserve the active app when they appear.
     layer_shell = {
