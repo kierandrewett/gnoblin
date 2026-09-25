@@ -134,6 +134,7 @@ export default defineConfig({
                 collapsed: true,
                 items: [
                     { text: "Integration", link: "/shell-integration" },
+                    { text: "Shell D-Bus API", link: "/shell-dbus-api" },
                     { text: "Compositor bridge", link: "/compositor-bridge" },
                     { text: "Bridge examples", link: "/bridge-examples" },
                     { text: "Wayland protocols", link: "/wayland-protocols" },
