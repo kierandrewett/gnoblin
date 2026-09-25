@@ -1,34 +1,64 @@
-From c596921a1e396f0f5296fdb0223704dc9eb5a8c9 Mon Sep 17 00:00:00 2001
-From: Gnoblin Build <build@gnoblin.local>
-Date: Thu, 24 Sep 2026 23:24:11 +0100
-Subject: [PATCH] input: allow GNOME 51 builds with libinput 1.30
+From 67b59bc52790a5bc4418ce16f49e44d85956bcbf Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 00:30:00 +0000
+Subject: [PATCH] core: expose live Gnoblin cursor preferences
 
+Allow Shell configuration reloads to apply the validated cursor theme and size
+through Mutter's preference notifications.
 ---
- meson.build                                      | 7 +++++--
- src/backends/native/meta-input-settings-native.c | 4 ++++
- 2 files changed, 9 insertions(+), 2 deletions(-)
+ src/core/prefs.c | 36 ++++++++++++++++++++++++++++++++++++
+ src/meta/prefs.h |  5 +++++
+ 2 files changed, 41 insertions(+)
 
-diff --git a/meson.build b/meson.build
-index 2ed0a8a4d..c74be2f33 100644
---- a/meson.build
-+++ b/meson.build
-@@ -53 +53 @@ wayland_protocols_req = '>= 1.48'
--libinput_req = '>= 1.31.0'
-+libinput_req = '>= 1.30.0'
-@@ -58 +58 @@ libdrm_req = '>= 2.4.118'
--libpipewire_req = '>= 1.6.0'
-+libpipewire_req = '>= 1.4.0'
-@@ -252,0 +253,3 @@ libinput_dep = dependency('libinput', version: libinput_req)
-+if libinput_dep.version().version_compare('>= 1.31.0')
-+  add_project_arguments('-DHAVE_LIBINPUT_DWT_TIMEOUT', language: 'c')
-+endif
-diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
-index 39f8e7611..3bbcc52a7 100644
---- a/src/backends/native/meta-input-settings-native.c
-+++ b/src/backends/native/meta-input-settings-native.c
-@@ -290,0 +291 @@ meta_input_settings_native_set_disable_while_typing_timeout (MetaInputSettings
-+#ifdef HAVE_LIBINPUT_DWT_TIMEOUT
-@@ -291,0 +293,3 @@ meta_input_settings_native_set_disable_while_typing_timeout (MetaInputSettings
-+#else
-+    (void) millis;
-+#endif
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 4b43d21cb..28f349d6b 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -985,0 +986,18 @@ is_gnoblin_session (void)
++static void
++set_gnoblin_cursor_config (const char *theme,
++                           int         size)
++{
++  if (g_strcmp0 (cursor_theme, theme) != 0)
++    {
++      g_free (cursor_theme);
++      cursor_theme = g_strdup (theme);
++      queue_changed (META_PREF_CURSOR_THEME);
++    }
++
++  if (cursor_size != size)
++    {
++      cursor_size = size;
++      queue_changed (META_PREF_CURSOR_SIZE);
++    }
++}
++
+@@ -1538,0 +1557,18 @@ meta_prefs_get_cursor_theme (void)
++/**
++ * meta_prefs_set_gnoblin_cursor_config:
++ * @theme: installed cursor theme name
++ * @size: cursor size in logical pixels
++ *
++ * Apply Gnoblin's cursor settings in a live Gnoblin session.
++ */
++void
++meta_prefs_set_gnoblin_cursor_config (const char *theme,
++                                      int         size)
++{
++  g_return_if_fail (is_gnoblin_session ());
++  g_return_if_fail (theme != NULL && theme[0] != '\0');
++  g_return_if_fail (size >= 1 && size <= 256);
++
++  set_gnoblin_cursor_config (theme, size);
++}
++
+diff --git a/src/meta/prefs.h b/src/meta/prefs.h
+index b16405b38..590bac807 100644
+--- a/src/meta/prefs.h
++++ b/src/meta/prefs.h
+@@ -222,0 +223,5 @@ int         meta_prefs_get_cursor_size       (void);
++/* Update live cursor preferences for Gnoblin sessions. */
++META_EXPORT
++void        meta_prefs_set_gnoblin_cursor_config (const char *theme,
++                                                  int         size);
++
