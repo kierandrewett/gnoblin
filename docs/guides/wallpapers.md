@@ -40,22 +40,10 @@ gsettings set org.gnome.desktop.background color-shading-type 'solid'
 
 GNOME picture placement and slideshow settings continue to apply when images
 are configured. Use GNOME Settings → Appearance to choose a picture or solid
-color. No Gnoblin autostart entry is needed.
+color.
 
-## Use another wallpaper client
+## Use another wallpaper renderer
 
-Disable Gnoblin's built-in renderer before starting another client, so two
-backgrounds are not drawn at once:
-
-```lua
-gnoblin.configure {
-    shell = {wallpaper = false},
-    autostart = {
-        {name = "wallpaper", command = {"swaybg", "-c", "#242424"}},
-    },
-}
-```
-
-The custom command is an ordinary Gnoblin autostart entry. See the
-[autostart reference](/config/configure/autostart) for its restart and login
-options.
+Set `shell.wallpaper = false` before using a separate wallpaper renderer. This
+leaves background ownership to that renderer and avoids drawing two backgrounds
+at once. Follow the renderer's own instructions to configure it.
