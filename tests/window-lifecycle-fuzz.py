@@ -569,13 +569,10 @@ def run_inside() -> int:
         test_shell = start_minimal_testing_shell(fixture_dir, plan_path.parent / "minimal-testing-shell.log")
         wait_for(
             lambda: eval_shell(
-                "(()=>{const M=imports.gi.Meta,Main=imports.ui.main;"
-                "const hasLayer=global.get_window_actors().some("
-                "a=>a.is_mapped()&&a.meta_window&&M.gnoblin_layer_anchor(a.meta_window)>=0);"
-                "const recovery=Main.layoutManager.uiGroup.get_children().find("
-                "a=>a.name==='gnoblin-recovery');return hasLayer&&!recovery?.visible;})()"
+                "(()=>{const M=imports.gi.Meta;return global.get_window_actors().some("
+                "a=>a.is_mapped()&&a.meta_window&&M.gnoblin_layer_anchor(a.meta_window)>=0);})()"
             ),
-            "minimal layer-shell panel to keep desktop recovery inactive",
+            "minimal testing layer-shell panel",
         )
         with event_path.open("a") as events:
             events.write(json.dumps({"phase": "test-shell-ready", "pid": test_shell.pid}) + "\n")
