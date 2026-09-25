@@ -203,6 +203,12 @@ const FEATURES = {
     // The separate notification daemon reads this setting before owning the bus.
     notifications: { summary: "Own org.freedesktop.Notifications", apply() {} },
     "input-source-switcher": { summary: "Native GNOME keyboard-layout switcher", apply() {} },
+    wallpaper: {
+        summary: "Show the GNOME desktop background",
+        apply(enabled) {
+            Main.layoutManager?.setGnoblinWallpaperEnabled(enabled);
+        },
+    },
 };
 
 // Console edits share the config owner and validation used by file reloads.

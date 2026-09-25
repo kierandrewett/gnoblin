@@ -1,64 +1,61 @@
 # Wallpapers
 
-The session starts `gnoblin-gnome-wallpaper` from its autostart entry. The
-client creates a non-interactive `zwlr_layer_shell_v1` surface on the
-background layer for each monitor.
+Gnoblin includes wallpaper rendering in GNOME Shell. It reads the desktop
+background settings from `org.gnome.desktop.background` and applies them to
+each monitor. You do not need to install or start a wallpaper daemon.
 
-The client reads `org.gnome.desktop.background` through GNOME's `GnomeBG`
-renderer. Existing GNOME picture, placement, color and slideshow settings
-continue to apply. Gnoblin does not draw the wallpaper inside GNOME Shell.
-
-The default entry can be removed or replaced in `~/.config/gnoblin/init.lua`:
+The built-in renderer is enabled by default. Turn it off in
+`~/.config/gnoblin/init.lua`:
 
 ```lua
 gnoblin.configure {
-    autostart = {
-        ["gnoblin-gnome-wallpaper"] = {enable = false},
-        my_wallpaper = {command = {"my-wallpaper-daemon"}},
+    shell = {
+        wallpaper = false,
     },
 }
 ```
 
-Autostart commands use argument arrays and start once per login. See
-[autostart](/guides/autostart) for named entries. The
-[configuration loading guide](/guides/files_and_load_order) explains how the
-default entry combines with your config.
+Set `wallpaper = true` to enable it again. The setting is persisted in
+Gnoblin's feature preferences and applies on configuration reload. You can
+also toggle the feature with `gnoblinctl feature wallpaper enable` or
+`gnoblinctl feature wallpaper disable`.
 
-## Build your own wallpaper system
+## Systems without wallpaper images
 
-Use the standard [wlr-layer-shell protocol](/wayland-protocols)
-from any toolkit or language with a Wayland client library. For every output,
-create a surface with these properties:
+Wallpaper images are optional. GNOME's background renderer paints the
+configured color before loading a picture. If no picture is selected or its
+file is missing, that color remains visible, so a fresh system still gets a
+desktop background without a wallpaper bundle or image file. Set GNOME's
+`primary-color` and, for a gradient, `secondary-color` in
+`org.gnome.desktop.background` to choose the color.
 
-- Select the `background` layer and anchor all four edges so the surface fills
-  the output.
-- Set keyboard interactivity to `none` and the exclusive zone to `-1`. The
-  wallpaper should not take focus or reserve panel space.
-- Track output additions, removals, and size changes. Recreate or resize the
-  corresponding surface when the output layout changes.
-- Keep drawing and input handling in your client. Gnoblin supplies placement
-  and stacking; it does not impose an image format, animation model, or settings
-  interface on custom clients.
+For a solid dark background, set GNOME's picture style to `none` and choose a
+color:
 
-GNOME-compatible clients can use `GnomeBG` for image scaling and color
-controls. Other clients can use their own renderer and configuration.
+```sh
+gsettings set org.gnome.desktop.background picture-options 'none'
+gsettings set org.gnome.desktop.background primary-color '#242424'
+gsettings set org.gnome.desktop.background color-shading-type 'solid'
+```
 
-Register a custom wallpaper program under a distinct autostart name, unless it
-replaces the default entry. If both programs start, both surfaces occupy the
-background layer.
+GNOME picture placement and slideshow settings continue to apply when images
+are configured. Use GNOME Settings → Appearance to choose a picture or solid
+color. No Gnoblin autostart entry is needed.
 
-### Existing clients
+## Use another wallpaper client
 
-- [swaybg](https://github.com/swaywm/swaybg) is a straightforward fit: it
-  explicitly supports compositors implementing `wlr-layer-shell` and
-  `wl_output` version 4.
-- [swww](https://github.com/LGFae/swww) offers runtime control and animated
-  transitions. Check its current compositor requirements before choosing it.
-- [hyprpaper](https://github.com/hyprwm/hyprpaper) is designed for Hyprland and
-  provides socket controls. Gnoblin users can consider it where the needed
-  Hyprland integration is available; [swaybg](https://github.com/swaywm/swaybg)
-  is a compositor-generic option based directly on `wlr-layer-shell`.
+Disable Gnoblin's built-in renderer before starting another client, so two
+backgrounds are not drawn at once:
 
-Layer-shell clients need a compositor that advertises `zwlr_layer_shell_v1`.
-Gnoblin enables this protocol by default; protocol availability is described in
-the [protocol catalog](/wayland-protocols).
+```lua
+gnoblin.configure {
+    shell = {wallpaper = false},
+    autostart = {
+        {name = "wallpaper", command = {"swaybg", "-c", "#242424"}},
+    },
+}
+```
+
+The custom command is an ordinary Gnoblin autostart entry. See the
+[autostart reference](/config/configure/autostart) for its restart and login
+options.

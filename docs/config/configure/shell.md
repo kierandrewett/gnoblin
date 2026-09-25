@@ -1,33 +1,33 @@
 # gnoblin.configure.shell
 
-Configure this part of `gnoblin.configure` with the `shell` key.
+Put these fields inside `gnoblin.configure {shell = {...}}`. Configuration
+changes apply on reload. Rows marked as persistent are stored in GSettings.
 
-Put these fields inside `gnoblin.configure {shell = {...}}`. Changes apply on
-configuration reload unless the row says the preference is persisted.
+| Key                     | Accepted values                                                          | Default                                   | Effect                                                               |
+| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------------- |
+| `minimize_animation`    | `"zoom"`, `"fade"`, `"none"`, `"gnome"`, or an event map                 | `"zoom"`                                  | Selects the minimize and restore animation.                          |
+| `minimize_duration`     | Integer milliseconds, 0–5000                                             | `200`                                     | Sets the minimize and restore duration.                              |
+| `minimize_target`       | `{x, y}` in desktop logical pixels                                       | Dock target, then bottom centre           | Sets where minimized windows animate toward.                         |
+| `layer_animation`       | `"slide"`, `"fade"`, `"none"`, or an event map                           | `"slide"`                                 | Selects layer-surface open and close animations.                     |
+| `layer_duration`        | Integer milliseconds, 0–5000                                             | `220`                                     | Sets the layer-surface animation duration.                           |
+| `layer_easing`          | `"linear"`, `"ease-out-quad"`, `"ease-out-cubic"`, `"ease-in-out-cubic"` | `"ease-out-cubic"`                        | Controls the layer-surface animation curve.                          |
+| `window_menu`           | Command argument list                                                    | Empty                                     | Runs the command when a window menu is requested.                    |
+| `window_switcher`       | Boolean                                                                  | `false`                                   | Enables GNOME's app, window, and group switchers.                    |
+| `notifications`         | Boolean                                                                  | Initially disabled; persists in GSettings | Enables Gnoblin's notification service.                              |
+| `input_source_switcher` | Boolean                                                                  | Initially disabled; persists in GSettings | Enables GNOME's keyboard-layout switcher.                            |
+| `wallpaper`             | Boolean                                                                  | `true`; persists in GSettings             | Shows GNOME backgrounds; uses the configured color without an image. |
 
-| Key                     | Values                                                                   | Default                                   |
-| ----------------------- | ------------------------------------------------------------------------ | ----------------------------------------- |
-| `minimize_animation`    | `"zoom"`, `"fade"`, `"none"`, `"gnome"`                                  | `"zoom"`                                  |
-| `minimize_duration`     | 0–5000 ms                                                                | `200`                                     |
-| `minimize_target`       | `{x, y}` in desktop logical pixels                                       | Dock target, then bottom centre           |
-| `layer_animation`       | `"slide"`, `"fade"`, `"none"`                                            | `"slide"`                                 |
-| `layer_duration`        | 0–5000 ms                                                                | `220`                                     |
-| `layer_easing`          | `"linear"`, `"ease-out-quad"`, `"ease-out-cubic"`, `"ease-in-out-cubic"` | `"ease-out-cubic"`                        |
-| `window_menu`           | Command argument list                                                    | Empty                                     |
-| `window_switcher`       | Boolean                                                                  | `false`                                   |
-| `notifications`         | Boolean                                                                  | Initially disabled; persists in GSettings |
-| `input_source_switcher` | Boolean                                                                  | Initially disabled; persists in GSettings |
+## Animation choices
 
-`minimize_animation` and `layer_animation` select a built-in name or a map of
-event names to custom animation names. Their accepted values and motion are
-described in the [animation guide](/guides/animations). `minimize_target` is a
-two-number `{x, y}` position in logical desktop pixels; omitted coordinates use
-the dock target or bottom-center fallback.
+Animation settings also accept a map of event names to custom animation
+names. See the [animation guide](/guides/animations) for events and examples.
+`minimize_target` uses logical desktop pixels; if no dock target is available,
+Gnoblin uses the bottom-centre of the screen.
 
-`window_menu` runs its nonempty argument array when the menu is requested; an
-empty array leaves the menu unhandled. `window_switcher`, `notifications`, and
-`input_source_switcher` enable or disable the corresponding shell feature.
-Notification and input-source preferences persist in GSettings.
+## Feature preferences
+
+Feature enablement preferences persist in GSettings. The other settings apply
+on configuration reload.
 
 Guides: [animations](/guides/animations), [native features](/guides/session_settings),
-[window menu](/guides/window_menu).
+[wallpapers](/guides/wallpapers), [window menu](/guides/window_menu).

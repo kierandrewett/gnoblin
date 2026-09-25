@@ -17,6 +17,7 @@ export const FEATURE_KEYS = Object.freeze([
     "screenshot",
     "notifications",
     "input-source-switcher",
+    "wallpaper",
 ]);
 
 export const WINDOW_PREFERENCES = Object.freeze({
@@ -172,7 +173,7 @@ export const DEFAULTS = Object.freeze({
     "layer-easing": "ease-out-cubic",
     animations: [],
     permissions: Permissions.DEFAULT_POLICY,
-    autostart: [{ name: "gnoblin-gnome-wallpaper", command: ["gnoblin-gnome-wallpaper"] }],
+    autostart: [],
     "window-rules": [],
     shortcuts: [],
     keybindings: {},

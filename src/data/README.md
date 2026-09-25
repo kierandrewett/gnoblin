@@ -29,10 +29,10 @@ treating them as passive examples.
       `$XDG_CONFIG_HOME/gnoblin/init.lua`; the selected file is evaluated as Lua.
     - An unset key uses the caller's enabled default. Stock session modes do not
       register the Gnoblin globals.
-- `gnoblin-gnome-wallpaper` is a separate GTK layer-shell client installed from
-  `src/tools/`. Its autostart entry restarts it if it exits during the session.
-  The client uses GNOME background settings through `GnomeBG`; Gnoblin Shell's
-  desktop background actors are disabled in Gnoblin mode.
+- Gnoblin's wallpaper is a built-in GNOME Shell feature. It uses GNOME's
+  per-monitor background manager and desktop background settings; no separate
+  wallpaper process or autostart entry is required. The feature is enabled by
+  default and can be toggled with `shell.wallpaper`.
 
 ## Verification
 
