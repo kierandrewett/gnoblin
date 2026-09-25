@@ -88,6 +88,11 @@ release pipeline or COPR publication changes.
   recipe, Nix channel evaluations, and Tumbleweed dependency-resolution path.
   These are implementation paths, not support claims. Check
   `packaging/targets.json` before describing per-distro status.
+- Manual DEB workflow run `36143640335` completed private package builds and
+  clean install/coinstall/removal checks for Debian 13, Ubuntu 24.04, and
+  Ubuntu 26.04. Debian 12 and Ubuntu 22.04 remain probe-only due to missing
+  host runtime interfaces. The newer DEB targets remain candidates: no
+  graphical login gate has run.
 - A real Arch `makepkg` run caught that the generated recipe expanded `$srcdir`
   before `makepkg` initialized it. The generator now computes that private
   build path inside the build/package functions. The builder also installs
@@ -98,6 +103,11 @@ release pipeline or COPR publication changes.
   package build when later commits are pushed. Stable Nix channels still have
   dependency-floor blockers and do not have installable channel-specific
   package outputs; successful evaluation is not NixOS release support.
+- The first Tumbleweed SRPM reached `%build` but exposed the RPM Meson helper
+  resolving its executable under `/usr/lib/gnoblin`. Commit `0614f077` replaces
+  the helper with explicit host Meson commands and explicit private install
+  directories. The new full RPM/coinstall/removal workflow must pass before
+  updating target gate values.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
