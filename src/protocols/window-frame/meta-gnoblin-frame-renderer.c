@@ -56,6 +56,8 @@ struct _Frame {
     guint32 serial, state;
     int width, height;
     guint pressed, hover;
+    guint last_event, last_action, event_count;
+    float last_x, last_y;
     guint32 last_title_click_time;
     float last_title_click_x, last_title_click_y;
     guint actions[3], n_buttons;
@@ -409,9 +411,12 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
     float sx, sy, x, y;
     guint action;
     ClutterEventType type = clutter_event_type(event);
+    frame->last_event = type;
+    frame->event_count++;
     if (type == CLUTTER_LEAVE) {
         frame_cursor(frame, 0);
         frame->hover = 0;
+        frame->last_action = 0;
         redraw_buttons(frame);
         if (frame->external && frame->resource)
             gnoblin_window_frame_v1_send_interaction(frame->resource, 0, !!frame->pressed);
@@ -423,6 +428,9 @@ static gboolean frame_event(ClutterActor* actor, ClutterEvent* event, gpointer d
     clutter_event_get_coords(event, &sx, &sy);
     clutter_actor_transform_stage_point(frame->root, sx, sy, &x, &y);
     action = hit_action(frame, x, y);
+    frame->last_x = x;
+    frame->last_y = y;
+    frame->last_action = action;
     frame_cursor(frame, action);
     if (!action && type != CLUTTER_BUTTON_RELEASE)
         return CLUTTER_EVENT_PROPAGATE;
@@ -557,6 +565,14 @@ GVariant* meta_gnoblin_frame_renderer_status(MetaWindow* window) {
     g_variant_builder_add(&b, "{sv}", "serial", g_variant_new_uint32(frame ? frame->serial : 0));
     g_variant_builder_add(&b, "{sv}", "hover", g_variant_new_uint32(frame ? frame->hover : 0));
     g_variant_builder_add(&b, "{sv}", "pressed", g_variant_new_uint32(frame ? frame->pressed : 0));
+    g_variant_builder_add(&b, "{sv}", "last_event",
+                          g_variant_new_uint32(frame ? frame->last_event : 0));
+    g_variant_builder_add(&b, "{sv}", "last_action",
+                          g_variant_new_uint32(frame ? frame->last_action : 0));
+    g_variant_builder_add(&b, "{sv}", "event_count",
+                          g_variant_new_uint32(frame ? frame->event_count : 0));
+    g_variant_builder_add(&b, "{sv}", "last_x", g_variant_new_double(frame ? frame->last_x : 0));
+    g_variant_builder_add(&b, "{sv}", "last_y", g_variant_new_double(frame ? frame->last_y : 0));
     GVariantBuilder regions;
     g_variant_builder_init(&regions, G_VARIANT_TYPE("a(uiiii)"));
     if (frame && frame->external && frame->role) {
