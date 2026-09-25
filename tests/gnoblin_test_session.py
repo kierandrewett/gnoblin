@@ -48,10 +48,10 @@ def window_by_sequence_expression(sequence: int) -> str:
 
 
 def shell_window(title: str) -> dict | None:
-    window = window_by_title_expression(title)
     return eval_shell(
-        f"(()=>{{const w={window};if(!w)return null;const r=w.get_frame_rect();"
-        "return {x:r.x,y:r.y,width:r.width,height:r.height,minimized:w.minimized,"
+        f"(()=>{{const a=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
+        "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect();"
+        "return {x:r.x,y:r.y,width:r.width,height:r.height,minimized:w.minimized,mapped:a.is_mapped(),"
         "fullscreen:w.fullscreen,maximized:w.maximized_horizontally&&w.maximized_vertically,"
         "layout:imports.gi.Meta.gnoblin_window_frame_get(w).recursiveUnpack()};})()"
     )

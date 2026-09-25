@@ -413,7 +413,14 @@ def run_inside() -> int:
         state = None
         while time.monotonic() < deadline:
             state = state_for(window_id)
-            if state and state["layout"]["border"][0] == top:
+            presentation = state["layout"]["presentation"] if state else {}
+            if (
+                state
+                and not state["minimized"]
+                and state["mapped"]
+                and presentation["visible"]
+                and state["layout"]["border"][0] == top
+            ):
                 return state
             time.sleep(0.04)
         raise TimeoutError(f"timed out waiting for native frame on window {window_id}; last state={state!r}")
@@ -476,10 +483,23 @@ def run_inside() -> int:
             state = prepare_frame(window_id)
             x, y = frame_button_center(state, 2)
             send_pointer("move", x, y)
-            wait_for(
-                lambda: frame_interaction(window_id, "hover") == 2,
-                f"close button hover on window {window_id}",
-            )
+            try:
+                wait_for(
+                    lambda: frame_interaction(window_id, "hover") == 2,
+                    f"close button hover on window {window_id}",
+                )
+            except TimeoutError as error:
+                diagnostic = eval_shell(
+                    "(()=>{const C=imports.gi.Clutter,p=global.get_pointer();"
+                    f"const w=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
+                    f"let actor=global.stage.get_actor_at_pos(C.PickMode.REACTIVE,{x},{y});"
+                    "const pick=[];while(actor){pick.push(String(actor));actor=actor.get_parent();}"
+                    "const r=w?.meta_window.get_frame_rect();return {requested:["
+                    f"{x},{y}],pointer:[p[0],p[1]],pick,minimized:w?.meta_window.minimized,"
+                    "mapped:w?.is_mapped(),frame:r&&[r.x,r.y,r.width,r.height],"
+                    "layout:w&&imports.gi.Meta.gnoblin_window_frame_get(w.meta_window).recursiveUnpack()};})()"
+                )
+                raise TimeoutError(f"{error}; input diagnostic={diagnostic!r}") from error
             send_pointer("press", x, y)
             wait_for(
                 lambda: frame_interaction(window_id, "pressed") == 2,
