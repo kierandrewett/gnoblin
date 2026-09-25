@@ -389,6 +389,7 @@ def run_one_app(
     launch_timeout: float,
     client_environment: dict[str, str],
     splashscreen_type: int,
+    modal_dialog_type: int,
 ) -> dict:
     baseline = {window["sequence"] for window in shell_windows()}
     if app["source"] == "flathub-popular":
@@ -426,7 +427,7 @@ def run_one_app(
         try:
 
             def app_windows() -> list[dict]:
-                return application_window_candidates(shell_windows(), baseline, splashscreen_type)
+                return application_window_candidates(shell_windows(), baseline, splashscreen_type, modal_dialog_type)
 
             try:
                 new_windows = wait_for(
@@ -440,7 +441,6 @@ def run_one_app(
                 state.update(status="no-window", error=str(error), process_exit_code=process.poll())
                 return state
 
-            new_windows.sort(key=lambda window: window["sequence"])
             state["screenshot"] = screenshot(app, screenshot_dir)
             state["windows"] = [window["sequence"] for window in new_windows]
             state["window_observations"] = [window_state(window["sequence"]) for window in new_windows]
@@ -745,6 +745,7 @@ def run_inside() -> int:
             }
         launch_timeout = float(os.environ.get("GNOBLIN_E2E_LAUNCH_TIMEOUT", "25"))
         splashscreen_type = eval_shell("imports.gi.Meta.WindowType.SPLASHSCREEN")
+        modal_dialog_type = eval_shell("imports.gi.Meta.WindowType.MODAL_DIALOG")
         for index, app in enumerate(shard["apps"], start=1):
             print(f"app E2E [{index}/{len(shard['apps'])}] {app['source']} {app['app_id']}", flush=True)
             installation = install_results.get(app["app_id"])
@@ -767,6 +768,7 @@ def run_inside() -> int:
                 launch_timeout,
                 client_environment,
                 splashscreen_type,
+                modal_dialog_type,
             )
             outcomes.append(outcome)
             write_event(events_path, {"phase": "application-complete", **outcome})

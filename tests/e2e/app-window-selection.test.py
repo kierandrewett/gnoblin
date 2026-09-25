@@ -14,13 +14,13 @@ def main() -> int:
     windows = [
         {"sequence": 2, "title": "previous app", "type": 0, "ready": True, "mapped": True},
         {"sequence": 15, "title": "startup splash", "type": 8, "ready": True, "mapped": True},
-        {"sequence": 16, "title": "modal dialog", "type": 4, "ready": True, "mapped": True},
         {"sequence": 17, "title": "PSPP Data Editor", "type": 0, "ready": True, "mapped": True},
         {"sequence": 18, "title": "", "type": 0, "ready": True, "mapped": True},
         {"sequence": 19, "title": "not ready", "type": 0, "ready": False, "mapped": True},
         {"sequence": 20, "title": "not mapped", "type": 0, "ready": True, "mapped": False},
+        {"sequence": 16, "title": "modal dialog", "type": 4, "ready": True, "mapped": True},
     ]
-    selected = application_window_candidates(windows, baseline={2}, splashscreen_type=8)
+    selected = application_window_candidates(windows, baseline={2}, splashscreen_type=8, modal_dialog_type=4)
     if [window["sequence"] for window in selected] != [16, 17]:
         raise SystemExit(f"expected only the mapped application toplevel, got {selected!r}")
     print("PASS: modal dialogs are retained while prior, splash, and non-ready windows are excluded")
