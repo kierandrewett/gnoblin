@@ -1,45 +1,53 @@
 # gnoblin.configure.autostart
 
-`autostart` maps a name to a command that Gnoblin starts in the user session.
-Put this in `~/.config/gnoblin/init.lua`. A new entry starts after reload if
-you are already logged in; otherwise it starts at the next login.
+`autostart` maps each entry name to a command Gnoblin starts in the user
+session. Put these settings in `~/.config/gnoblin/init.lua`.
 
-| Field     | Accepted values                              | Default and effect                                                                         |
-| --------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Name      | Nonempty, unique name in the `autostart` map | Identifies the entry when another config merges or disables it.                            |
-| `command` | Nonempty array of strings                    | Required. Runs directly, without shell expansion.                                          |
-| `when`    | `"on_login"`                                 | `"on_login"`; starts once per session login. This is currently the only supported trigger. |
-| `enable`  | Boolean                                      | `true`; set to `false` to disable an imported entry. This does not stop a running process. |
-| `restart` | `"never"`, `"on_failure"`, or `"always"`     | `"never"`; controls whether Gnoblin starts the command again after it exits.               |
+| Field     | Accepted values                       | Default and effect                                   |
+| --------- | ------------------------------------- | ---------------------------------------------------- |
+| Name      | 1–80 letters, numbers, `_` or `-`     | Identifies the entry when another config merges it.  |
+| `command` | Nonempty array of strings             | Required. Runs directly, without shell expansion.    |
+| `when`    | `"on_login"`                          | `"on_login"`; currently the only supported trigger.  |
+| `restart` | `"never"`, `"on_failure"`, `"always"` | `"never"`; retry after 2 seconds when selected.      |
+| `enable`  | Boolean                               | `true`; set to `false` to disable an imported entry. |
 
-Reuse a name to change an imported command. Omitted fields keep their earlier
-values.
+Use the same name to override an imported command. Omitted fields keep their
+earlier values. Disabling an entry prevents future launches but does not stop
+a process that is already running.
 
 ```lua
 gnoblin.configure {
     autostart = {
-        panel = {
-            command = {"waybar", "--config", "/home/you/.config/waybar/config"},
-            restart = "on_failure",
-        },
+        panel = {command = {"waybar", "--config", "/home/you/.config/waybar/config"}},
     },
 }
 ```
 
-Replace the example path with your own. Use one array item per command
-argument. For shell syntax such as pipes, explicitly run a shell; see
-[command syntax](/guides/shortcuts#commands-and-shell-syntax).
+If an earlier config file defines `waybar`, you can change it directly by
+name. `enable` defaults to `true`:
 
-Use `restart = "always"` for a long-running client that should stay available.
-Gnoblin waits two seconds before restarting an exited process.
+```lua
+gnoblin.configure.autostart.waybar.enable = false
+```
 
-`"on_failure"` restarts only after a nonzero exit or signal; `"never"` starts
-the command once and does not retry a failed launch. When restarting is
-enabled, Gnoblin also retries a command that fails to launch, using the same
-two-second delay. Gnoblin's built-in wallpaper renderer does not use autostart.
+![Firefox below Waybar in a Gnoblin session](../../images/gnoblin-waybar-firefox.png)
 
-See the [autostart guide](/guides/autostart) for launch timing, overrides,
-and process behavior.
+_Waybar starts as an independent session client; Firefox is a regular application window._
+
+Loop over autostart entries loaded earlier in the config:
+
+```lua
+for name, entry in pairs(gnoblin.configure.autostart) do
+    if entry.enable then
+        print(name, table.concat(entry.command, " "))
+    end
+end
+```
+
+Use one array item per command argument. Commands run directly, so pipes,
+redirection and other shell syntax require explicitly launching a shell. See
+[command syntax](/guides/shortcuts#commands-and-shell-syntax) and the
+[autostart guide](/guides/autostart) for launch timing and overrides.
 
 ## Type definition
 
@@ -52,8 +60,8 @@ gnoblin.configure {
         ["entry-name"] = {
             command = {string, ...},
             when = "on_login"?,
-            enable = boolean?,
             restart = "never" | "on_failure" | "always"?,
+            enable = boolean?,
         },
     },
 }

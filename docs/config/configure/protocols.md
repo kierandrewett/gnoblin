@@ -3,9 +3,9 @@
 Enable or disable a Wayland protocol that Gnoblin exposes to clients. Changes
 apply at the next login because the compositor registers protocols at startup.
 
-| Setting          | Values  | Default | Effect                                                |
-| ---------------- | ------- | ------- | ----------------------------------------------------- |
-| `protocols.NAME` | Boolean | `true`  | Advertises or hides the named global in Gnoblin mode. |
+| Setting          | Values  | Default                       | Effect                                                                  |
+| ---------------- | ------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `protocols.NAME` | Boolean | `true` in the Gnoblin session | Exposes the named protocol (`true`) or hides it from clients (`false`). |
 
 Use one of the protocol names below as the `NAME` key:
 

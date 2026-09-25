@@ -3,15 +3,14 @@
 [Configuration reference](/config/configure)
 
 Set the compositor cursor theme and size in `~/.config/gnoblin/init.lua`.
-Gnoblin currently renders these settings with Hyprcursor.
+Gnoblin renders these settings with Hyprcursor.
 
-Set these fields in `gnoblin.configure`:
-
-- `cursor.theme` — Installed Hyprcursor theme name. The default is
+- `cursor.theme` accepts an installed Hyprcursor theme name. Its default is
   `Adwaita-Hyprcursor`.
-- `cursor.size` — Integer from `1` to `256` logical pixels. The default is `24`.
+- `cursor.size` accepts an integer from `1` to `256` logical pixels. Its
+  default is `24`.
 
-Omitted fields use their defaults.
+Omitted values use these defaults.
 
 ## Select a theme
 
@@ -33,6 +32,8 @@ To select the Adwaita artwork theme:
 ```lua
 gnoblin.configure {cursor = {theme = "Adwaita-Hyprcursor", size = 24}}
 ```
+
+![The pointer visible while Fuzzel searches for Firefox](../images/gnoblin-waybar-launcher.png)
 
 ## Hyprcursor support
 

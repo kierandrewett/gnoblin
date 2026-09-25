@@ -12,9 +12,9 @@ Bingux is one separate project built on these interfaces.
 | Surfaces         | Layer-shell placement, exclusive zones and effects      | Bar, dock, wallpaper and overlays              |
 | Desktop services | Portals, permission policy and optional native features | Notification daemon and other visible controls |
 
-![Firefox under Waybar in a clean Gnoblin session](images/gnoblin-waybar-firefox.png)
+![Firefox in a Gnoblin session with the Bingux dock](images/gnoblin-bingux-firefox.png)
 
-_Firefox is an ordinary client window; Waybar is a separate desktop client._
+_Bingux is one separate shell example; Gnoblin provides the compositor and window management._
 
 The [configuration reference](/config/configure) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
@@ -43,12 +43,16 @@ gnoblin.configure {
 }
 ```
 
+![GNOME Settings open under Waybar](images/gnoblin-waybar-settings.png)
+
+_A stock GNOME app beneath Waybar._
+
 Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cursors)
 to select it or use another installed theme.
 
 Capture this example from the checkout with
-`scripts/capture-doc-examples.sh waybar-firefox`. It uses a disposable config
-and profile; see the [capture script](devkit.md#documentation-captures) for setup.
+`scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
+profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
 If your existing `init.lua` loads files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported
@@ -57,20 +61,12 @@ explain why the order matters.
 
 Log in to Gnoblin, then run `gnoblinctl config path` to confirm the active
 file. Run `gnoblinctl config reload` to apply edits; Gnoblin reports any
-configuration errors.
-
-Autostart launches each named command once per login. An entry can restart
-after exit with `restart = "on_failure"` or `restart = "always"`. Adding a
-new name during reload starts it, while removing a name does not stop a running
-process. See the [autostart guide](/guides/autostart) for details.
+configuration errors. See the [autostart guide](/guides/autostart) for launch
+timing and named entries.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
 modules or write a module using [window data](compositor-bridge.md#windows-and-controls).
-
-![GNOME Settings open under Waybar in a fresh Gnoblin profile](images/gnoblin-waybar-settings.png)
-
-_A stock GNOME app running alongside independent Waybar and Mako clients._
 
 ## Give each visible function an owner
 
