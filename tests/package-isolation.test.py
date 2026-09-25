@@ -178,9 +178,7 @@ class IsolationTests(unittest.TestCase):
         schemas = subprocess.check_output(
             ["rpmspec", "-P", str(ROOT / "packaging/rpm/gsettings-desktop-schemas.spec")], text=True
         )
-        mutter = subprocess.check_output(
-            ["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True
-        )
+        mutter = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True)
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         self.assertIn("Name:           gnoblin-gsettings-desktop-schemas", schemas)
         self.assertIn("--prefix=/usr/lib/gnoblin", schemas)
@@ -189,9 +187,11 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("BuildRequires: gnoblin-gsettings-desktop-schemas >= 51.0", mutter)
         self.assertIn("GI_GIR_PATH=/usr/lib/gnoblin/share/gir-1.0", mutter)
         self.assertIn("GI_GIR_PATH=%{_datadir}/gir-1.0", (ROOT / "packaging/rpm/gnome-shell.spec").read_text())
+        env_script = (ROOT / "src/tools/gnoblin-env.sh").read_text()
+        self.assertIn('local shell_libdir="$prefix/$libdir/gnome-shell"', env_script)
         self.assertIn(
-            'GI_TYPELIB_PATH="$prefix/$libdir/girepository-1.0:',
-            (ROOT / "src/tools/gnoblin-env.sh").read_text(),
+            'export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api',
+            env_script,
         )
         self.assertLess(
             publisher.index('copr-cli build "$project" "$schemas_srpm"'),
