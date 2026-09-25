@@ -31,6 +31,14 @@ gnoblin.configure {
 With Mako, set [`shell.notifications`](/config/configure/shell) to `false` so
 Gnoblin does not also own the notification service:
 
+```lua
+gnoblin.configure {shell = {notifications = false}}
+```
+
+![GNOME notification settings open under Waybar in a clean Gnoblin session](../images/gnoblin-waybar-notifications.png)
+
+_GNOME Settings shows per-app notification controls in this Waybar session._
+
 Notifications and the layout-popup setting are saved in GNOME's settings
 database (GSettings). To turn them off again, set them to `false`; deleting
 the Lua lines leaves the saved values in place.
