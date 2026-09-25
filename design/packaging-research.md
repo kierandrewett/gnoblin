@@ -56,14 +56,14 @@ session services, and update lifecycle.
 The release and package paths present in this checkout do not yet match the
 requested coverage:
 
-| Family   | Present path                                                                    | Missing coverage                                                                                                              |
-| -------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Fedora   | COPR; Fedora 43, 44, 45                                                         | EL adapter; complete release install/coexistence and graphical-session proof                                                  |
-| Debian   | Signed APT archive; Debian 13                                                   | Debian 11/12 host runtime and package compatibility                                                                           |
-| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                      | Ubuntu 22.04 host runtime compatibility                                                                                       |
-| Arch     | Self-contained PKGBUILD, deterministic source bundle, build/install/remove gate | First co-install run found a schema staging conflict; fixed and rerunning; graphical-session proof and repository publication |
-| openSUSE | Tumbleweed RPM specs, clean-image resolver and private package-chain build      | Install/coexistence retry after private typelib dependency fix; OBS publication and session proof                             |
-| NixOS    | Pinned package/module paths for 25.05, 25.11, 26.05 and unstable                | 26.05 private Wayland/Mutter slice builds; full Shell/session and coexistence proof; older stable channels remain blocked     |
+| Family   | Present path                                                                    | Missing coverage                                                                                                                |
+| -------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Fedora   | COPR; Fedora 43, 44, 45                                                         | EL adapter; complete release install/coexistence and graphical-session proof                                                    |
+| Debian   | Signed APT archive; Debian 13                                                   | Debian 11/12 host runtime and package compatibility                                                                             |
+| Ubuntu   | Signed APT archive; Ubuntu 24.04 and 26.04                                      | Ubuntu 22.04 host runtime compatibility                                                                                         |
+| Arch     | Self-contained PKGBUILD, deterministic source bundle, build/install/remove gate | Exact-main build, stock-GNOME co-install and removal passed; graphical-session proof and repository publication                 |
+| openSUSE | Tumbleweed RPM specs, clean-image resolver and private package-chain build      | Latest install/coexistence retry is running after filtering the private Meta typelib; OBS publication and session proof         |
+| NixOS    | Pinned package/module paths for 25.05, 25.11, 26.05 and unstable                | 26.05 full package builds with private Wayland; install/session/coexistence proof missing; older stable channels remain blocked |
 
 The package URL generator emitted `https://github.com/kdrew7/gnoblin` for both
 RPM and Arch metadata. That owner returns HTTP 404; the canonical

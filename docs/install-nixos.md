@@ -12,11 +12,12 @@ floors.
 
 NixOS 26.05 has an experimental package and module. It builds Wayland 1.26 and
 the matching scanner privately for Gnoblin's Mutter; neither package replaces
-the host Wayland or stock GNOME. The pinned private Mutter build passes.
+the host Wayland or stock GNOME. The complete pinned Gnoblin package output
+builds, including Shell and its runtime closure.
 
-The full Shell/runtime build, login, coexistence, and removal have not passed.
-Treat this as a test path, not supported session installation. Its separate
-module is `inputs.gnoblin.nixosModules.nixos_26_05` and selects
+Login, GNOME coexistence, and removal have not passed. Treat this as a test
+path, not supported session installation. Its separate module is
+`inputs.gnoblin.nixosModules.nixos_26_05` and selects
 `inputs.gnoblin.packages.x86_64-linux.gnoblin-nixos-26_05`.
 
 The flake exposes the exact pinned-channel assessment for integrators:

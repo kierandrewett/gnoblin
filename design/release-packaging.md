@@ -148,24 +148,36 @@ release pipeline or COPR publication changes.
   metadata and the co-install/removal job is rerunning. The Fedora 43, 44, and
   45 clean source builds passed on `c54e3d4b`; Arch's release-style package
   build is still running. These package checks do not cover graphical login.
-- The 26.05 Nix adapter now pins Wayland 1.26 and its matching scanner only in
-  the private Mutter closure, with a separate `gnoblin-nixos-26_05` package and
-  `nixosModules.nixos_26_05`. The default rolling package/module stays on its
-  existing channel. Nix flake evaluation, module selection, and the private
-  Mutter build pass; full Shell/runtime, GNOME coexistence, and graphical login
-  remain unverified. The public install guide labels this path experimental.
+- The 26.05 Nix adapter pins Wayland 1.26 and its matching scanner for the
+  private Gnoblin package and exports a separate
+  `nixosModules.nixos_26_05`. A full local build first failed because Shell's
+  pkg-config lookup found host Wayland 1.25 through private Mutter's `.pc`
+  dependency. `nix/package.nix` now adds the private Wayland dev output to
+  Shell's pkg-config path when that adapter is selected. The full package
+  output and `nix flake check --no-build` pass, and CI now builds both Mutter
+  and the complete package. Installation, stock-GNOME coexistence, and
+  graphical login remain unverified; the public guide continues to label this
+  path experimental.
 - The exact-main Arch release-style gate on `c54e3d4b` built the package, then
   failed its co-install transaction because Meson reinstalled schema outputs
   under the absolute temporary build-prefix path. Commit `187e95cc` packages
   only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the full
   build/co-install/removal gate is rerunning. Do not count Arch as passing yet.
+- The corrected Arch run `36157414890` on `4b3e5daf` passed package build,
+  stock-GNOME co-install, and Gnoblin removal. Tumbleweed's corrected private
+  RPM chain also builds and passes package isolation; the first co-install
+  retry exposed one additional private `Meta` typelib requirement. The SUSE
+  and Fedora Shell specs now filter it, with incremented release counters;
+  the rerun `36158322082` is still installing stock GNOME before the Gnoblin
+  transaction. Fedora 43/44/45 clean source builds and Fedora 44's
+  co-install/removal check passed on run `36157414890`.
 - Commit `ac70ae2b` corrects NixOS host-floor reporting against Gnoblin's
   Mutter compatibility patches: libinput's required floor is 1.30, while
   PipeWire 1.4 is accepted, so neither should be reported at raw upstream
-  Mutter's higher floor. `nix flake check --no-build -L` passes, and channel
-  evaluation still reports Wayland 1.26/GJS/GLib blockers on stable channels.
-  Only the pinned 26.05 private Mutter closure has built; full Shell, install,
-  coexistence, and graphical login remain unverified.
+  Mutter's higher floor. `nix flake check --no-build -L` passes. The channel
+  assessment still reports actual Wayland/GJS/GLib blockers on the default
+  stable-channel package outputs; the separate 26.05 adapter supplies private
+  Wayland for its complete package build as described above.
 - The first private Debian 12 source-closure attempt now reaches GLib 2.90's
   Meson configure step and records the concrete bootstrap blocker:
   `/usr/bin/g-ir-scanner` 1.74 is below the required 1.80. The builder can

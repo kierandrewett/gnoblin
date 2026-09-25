@@ -90,7 +90,9 @@ jobs:
             toString (builtins.head host.config.services.displayManager.sessionPackages)
               == toString flake.packages.x86_64-linux.gnoblin-nixos-26_05'
       - name: Build the pinned Wayland and private Mutter closure
-        run: nix build -L .#gnoblin-nixos-26_05.gnoblinMutter
+        run: |
+          nix build -L .#gnoblin-nixos-26_05.gnoblinMutter
+          nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
