@@ -159,7 +159,7 @@ jobs:
           runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$package_dir"
       - name: Install beside stock GNOME, then remove Gnoblin
         run: |
-          package="$(find "$RUNNER_TEMP/gnoblin-arch-package" -maxdepth 1 -name 'gnoblin-*.pkg.tar.zst' -print -quit)"
+          package="$(find "$RUNNER_TEMP/gnoblin-arch-package" -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
           test -n "$package"
           if bsdtar -tf "$package" | grep -Fq 'build-prefix/schemas/'; then
             echo "Arch package contains the temporary schema build prefix" >&2

@@ -134,9 +134,51 @@ release pipeline or COPR publication changes.
   package as current.
 
 - Commits `bf30386b` and `fa9b3b94` corrected the Tumbleweed udev requirement and raised the Fedora Mutter/Shell build dependency declarations to match the pinned GNOME 51 source floors. A fresh Tumbleweed CI build then exposed missing `argcomplete`; that is now declared in the native SUSE spec. The exact-main build/coinstall/removal workflow has not yet verified these fixes.
+- Tumbleweed can resolve the GNOME 51 dependency floors and the exact Mutter RPM compiled successfully after declaring its `cvt` and `rst2man` build tools. Its first install attempt found RPM-generated external requirements for Mutter's own private Clutter/Cogl/Mtk typelibs. The current specs filter those private typelib requirements and bump Fedora RPM release counters; verify the updated chain before counting this as an install gate.
 - The current packaging audit adds automated RPM repository probes for Rocky 8/9/10 and openSUSE Leap 15.6/16.0/Tumbleweed. The probe separates five host runtime floors from build-only API requirements and the Mutter development package's Wayland Protocols floor. Rocky and Leap are expected to remain blocked by their repository-provided versions; Tumbleweed is expected to clear package-build floors. Probe readiness alone does not establish build, installation, co-installation, or graphical-session support.
 - Arch's generated `PKGBUILD` now stages the privately built Mutter into a temporary build prefix before configuring Shell. It feeds staged pkg-config, GIR, and typelib paths to Shell and checks that headers and libraries resolve from that private stage. This addresses the exact `mutter-clutter-51` configure failure from Verify run `36148646223`; the corrected full Arch package run is still required.
 - Stable NixOS channel package attributes now fail early with recorded dependency blockers instead of implying support through `nixpkgs-unstable`. The 25.05, 25.11, and 26.05 channels remain unsupported for GNOME 51 pending viable dependency/runtime boundaries and package/install/coexistence evidence.
+
+- Commit `c54e3d4b` corrects the pinned GNOME 51 host floors to GJS 1.87.1
+  and Wayland Protocols 1.48, sourced directly from the exact Shell and Mutter
+  Meson commits. Its Tumbleweed job built the full private RPM chain and passed
+  the package-isolation check. Stock-GNOME co-install then found a generated
+  `typelib(GnomeQR)` dependency escaping from Gnoblin's private Shell tree;
+  commit `87bf1b61` filters that private typelib from Fedora and SUSE RPM
+  metadata and the co-install/removal job is rerunning. The Fedora 43, 44, and
+  45 clean source builds passed on `c54e3d4b`; Arch's release-style package
+  build is still running. These package checks do not cover graphical login.
+- The 26.05 Nix adapter now pins Wayland 1.26 and its matching scanner only in
+  the private Mutter closure, with a separate `gnoblin-nixos-26_05` package and
+  `nixosModules.nixos_26_05`. The default rolling package/module stays on its
+  existing channel. Nix flake evaluation, module selection, and the private
+  Mutter build pass; full Shell/runtime, GNOME coexistence, and graphical login
+  remain unverified. The public install guide labels this path experimental.
+- The exact-main Arch release-style gate on `c54e3d4b` built the package, then
+  failed its co-install transaction because Meson reinstalled schema outputs
+  under the absolute temporary build-prefix path. Commit `187e95cc` packages
+  only the runtime typelib and schema XML beneath `/usr/lib/gnoblin`; the full
+  build/co-install/removal gate is rerunning. Do not count Arch as passing yet.
+- Commit `ac70ae2b` corrects NixOS host-floor reporting against Gnoblin's
+  Mutter compatibility patches: libinput's required floor is 1.30, while
+  PipeWire 1.4 is accepted, so neither should be reported at raw upstream
+  Mutter's higher floor. `nix flake check --no-build -L` passes, and channel
+  evaluation still reports Wayland 1.26/GJS/GLib blockers on stable channels.
+  Only the pinned 26.05 private Mutter closure has built; full Shell, install,
+  coexistence, and graphical login remain unverified.
+- The first private Debian 12 source-closure attempt now reaches GLib 2.90's
+  Meson configure step and records the concrete bootstrap blocker:
+  `/usr/bin/g-ir-scanner` 1.74 is below the required 1.80. The builder can
+  order and select declared dependency subgraphs and safely extract archives
+  under Python 3.10/3.11, but this does not add GTK/GCR to the production
+  manifest. Debian 12 and Ubuntu 22.04 remain unsupported pending a separate
+  GLib-without-introspection -> private scanner -> final GLib/GIRepository 2 ->
+  GTK 4.14/GCR4 compatibility closure.
+- On the exact `4b3e5daf` workflow run, the Tumbleweed private RPM chain has
+  built and passed package isolation; stock-GNOME co-install/removal is still
+  in progress. The Arch package/co-install gate and Fedora 43/44/45 source
+  builds are also still running. Record their results only after the jobs
+  finish; package build alone does not establish graphical session support.
 
 ## Release flow
 

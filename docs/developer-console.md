@@ -37,8 +37,9 @@ The console closes on lock. Each language keeps its own unfinished input and sta
 
 ```javascript
 windows();
-gnoblin.get();
-gnoblin.set("shell.layer-duration", 350);
+const config = gnoblin.get();
+config.shell["layer-duration"] = 350;
+gnoblin.apply(config);
 gnoblin.undo();
 gnoblin.reload();
 ```

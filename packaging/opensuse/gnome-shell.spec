@@ -4,13 +4,13 @@
 %global _localstatedir %{_prefix}/var
 %global _sharedstatedir %{_prefix}/var/lib
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)])$
+%global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|GnomeQR|Meta|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %bcond_with gnoblin_stack
 
 Name:           gnoblin-shell
 Version:        51.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Private GNOME Shell runtime for Gnoblin
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
@@ -36,12 +36,13 @@ BuildRequires:  gcc-c++
 BuildRequires:  gettext-tools
 BuildRequires:  git
 BuildRequires:  meson
+BuildRequires:  sassc
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
 BuildRequires:  pkgconfig(gcr-4) >= 3.90.0
 BuildRequires:  pkgconfig(gio-2.0) >= 2.86
 BuildRequires:  pkgconfig(girepository-2.0) >= 2.86.0
-BuildRequires:  pkgconfig(gjs-1.0) >= 1.85.90
+BuildRequires:  pkgconfig(gjs-1.0) >= 1.87.1
 BuildRequires:  pkgconfig(glib-2.0) >= 2.86
 BuildRequires:  pkgconfig(gnome-autoar-0)
 BuildRequires:  pkgconfig(gnome-desktop-4)
@@ -62,7 +63,7 @@ BuildRequires:  pkgconfig(xfixes)
 BuildRequires:  gnoblin-gsettings-desktop-schemas >= 51
 BuildRequires:  gnoblin-mutter-devel >= 51
 %endif
-Requires:       gjs >= 1.85.90
+Requires:       gjs >= 1.87.1
 Requires:       glib2 >= 2.86
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
@@ -106,6 +107,7 @@ test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
 DESTDIR=%{buildroot} /usr/bin/meson install -C build --no-rebuild
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
 rm -f %{buildroot}%{_libdir}/systemd/user/org.gnome.Shell-disable-extensions.service
+install -Dm644 %{SOURCE15} %{buildroot}%{_datadir}/licenses/gnoblin-session/COPYING
 install -Dm644 %{SOURCE1} %{buildroot}%{_datadir}/gnome-shell/modes/gnoblin.json
 install -Dm644 %{SOURCE2} %{buildroot}%{_datadir}/gnome-session/sessions/gnoblin.session
 install -Dm644 %{SOURCE6} %{buildroot}%{_libexecdir}/gnoblin-env.sh
@@ -147,7 +149,7 @@ desktop-file-validate gnoblin-validation.desktop
 %{_prefix}/
 
 %files -n gnoblin-session
-%license %{SOURCE15}
+%license %{_datadir}/licenses/gnoblin-session/COPYING
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
 /usr/share/gnome-session/sessions/gnoblin.session
@@ -156,5 +158,11 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Fri Sep 25 2026 Gnoblin contributors
+- Filter private Meta typelib requirement from Shell.
+
+* Fri Sep 25 2026 Gnoblin contributors
+- Stage the session package license in the buildroot.
+
 * Fri Sep 25 2026 Gnoblin contributors
 - Initial openSUSE Tumbleweed adapter.

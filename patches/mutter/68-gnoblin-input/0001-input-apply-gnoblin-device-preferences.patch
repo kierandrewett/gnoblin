@@ -4,12 +4,12 @@ Date: Thu, 24 Sep 2026 21:31:13 +0100
 Subject: [PATCH] input: apply Gnoblin device preferences from live config
 
 ---
- src/backends/meta-input-settings.c | 352 +++++++++++++++++++++++++----
- src/meta/display.h                 |  12 +
- 2 files changed, 320 insertions(+), 44 deletions(-)
+ src/backends/meta-input-settings.c | 375 ++++++++++++++++++++++++++++++++-----
+ src/meta/display.h                |  12 ++
+ 2 files changed, 337 insertions(+), 50 deletions(-)
 
 diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
-index 1d247b568..3126dc881 100644
+index 1d247b568..ba660b0e7 100644
 --- a/src/backends/meta-input-settings.c
 +++ b/src/backends/meta-input-settings.c
 @@ -33,6 +33,8 @@
@@ -164,7 +164,7 @@ index 1d247b568..3126dc881 100644
 +        {
 +          const char *nick = g_variant_get_string (value, NULL);
 +          const char * const *nicks = NULL;
-+          static const char * const accel[] = { "default", "flat", "adaptive", NULL };
++          static const char * const accel[] = { "default", "flat", "adaptive", "custom", NULL };
 +          static const char * const handed[] = { "right", "left", "mouse", NULL };
 +          static const char * const tap_map[] = { "default", "lrm", "lmr", NULL };
 +          static const char * const click[] = { "default", "none", "areas", "fingers", NULL };
@@ -248,16 +248,46 @@ index 1d247b568..3126dc881 100644
  
        /* Also update touchpads if they're following mouse settings */
        if (touchpad_handedness == G_DESKTOP_TOUCHPAD_HANDEDNESS_MOUSE)
-@@ -424,7 +587,7 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+@@ -414,6 +577,7 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+   GDesktopPointerAccelProfile profile;
+   MetaCustomAccelConfig pointer_accel_config = { 0 };
+   g_autoptr (GVariant) custom_accel_config = NULL;
++  g_autoptr (GVariant) gnoblin_accel_curve = NULL;
+   g_autoptr (GVariant) step_variant = NULL;
+   g_autoptr (GVariant) speeds_variant = NULL;
+   double default_points[] = { 0.0, 1.0 };
+@@ -424,13 +588,23 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
    };
    gboolean use_fallback = FALSE;
  
 -  profile = g_settings_get_enum (settings, "accel-profile");
+-  custom_accel_config = g_settings_get_value (settings, "custom-accel-config");
+-
+-  step_variant = g_variant_lookup_value (custom_accel_config, "pointer-step",
+-                                         G_VARIANT_TYPE ("d"));
+-  speeds_variant = g_variant_lookup_value (custom_accel_config, "pointer-speeds",
+-                                           G_VARIANT_TYPE ("ad"));
 +  profile = input_get_enum (input_settings, settings, "accel-profile");
-   custom_accel_config = g_settings_get_value (settings, "custom-accel-config");
++  gnoblin_accel_curve = gnoblin_setting (input_settings, settings, "accel-curve");
++  if (gnoblin_accel_curve)
++    {
++      step_variant = g_variant_lookup_value (gnoblin_accel_curve, "step",
++                                             G_VARIANT_TYPE ("d"));
++      speeds_variant = g_variant_lookup_value (gnoblin_accel_curve, "points",
++                                               G_VARIANT_TYPE ("ad"));
++    }
++  else
++    {
++      custom_accel_config = g_settings_get_value (settings, "custom-accel-config");
++      step_variant = g_variant_lookup_value (custom_accel_config, "pointer-step",
++                                             G_VARIANT_TYPE ("d"));
++      speeds_variant = g_variant_lookup_value (custom_accel_config, "pointer-speeds",
++                                               G_VARIANT_TYPE ("ad"));
++    }
  
-   step_variant = g_variant_lookup_value (custom_accel_config, "pointer-step",
-@@ -522,7 +685,7 @@ update_middle_click_emulation (MetaInputSettings  *input_settings,
+   if (!step_variant || !speeds_variant)
+     {
+@@ -522,7 +696,7 @@ update_middle_click_emulation (MetaInputSettings  *input_settings,
    if (device)
      {
        settings_device_set_bool_setting (input_settings, device, func,
@@ -266,7 +296,7 @@ index 1d247b568..3126dc881 100644
      }
    else
      {
-@@ -530,7 +693,7 @@ update_middle_click_emulation (MetaInputSettings  *input_settings,
+@@ -530,7 +704,7 @@ update_middle_click_emulation (MetaInputSettings  *input_settings,
                                   CLUTTER_INPUT_CAPABILITY_POINTER,
                                   CLUTTER_INPUT_CAPABILITY_NONE,
                                   NULL, func,
@@ -275,7 +305,7 @@ index 1d247b568..3126dc881 100644
      }
  }
  
-@@ -563,7 +726,7 @@ update_device_speed (MetaInputSettings      *input_settings,
+@@ -563,7 +737,7 @@ update_device_speed (MetaInputSettings      *input_settings,
          return;
  
        settings_device_set_double_setting (input_settings, device, func,
@@ -284,7 +314,7 @@ index 1d247b568..3126dc881 100644
      }
    else
      {
-@@ -572,19 +735,19 @@ update_device_speed (MetaInputSettings      *input_settings,
+@@ -572,19 +746,19 @@ update_device_speed (MetaInputSettings      *input_settings,
                                     (CLUTTER_INPUT_CAPABILITY_TOUCHPAD |
                                      CLUTTER_INPUT_CAPABILITY_TRACKPOINT),
                                     func,
@@ -307,7 +337,7 @@ index 1d247b568..3126dc881 100644
      }
  }
  
-@@ -615,7 +778,7 @@ update_device_natural_scroll (MetaInputSettings      *input_settings,
+@@ -615,7 +789,7 @@ update_device_natural_scroll (MetaInputSettings      *input_settings,
          return;
  
        settings_device_set_bool_setting (input_settings, device, func,
@@ -316,7 +346,7 @@ index 1d247b568..3126dc881 100644
      }
    else
      {
-@@ -623,13 +786,13 @@ update_device_natural_scroll (MetaInputSettings      *input_settings,
+@@ -623,13 +797,13 @@ update_device_natural_scroll (MetaInputSettings      *input_settings,
                                   CLUTTER_INPUT_CAPABILITY_POINTER,
                                   CLUTTER_INPUT_CAPABILITY_TOUCHPAD,
                                   NULL, func,
@@ -332,7 +362,7 @@ index 1d247b568..3126dc881 100644
      }
  }
  
-@@ -652,7 +815,7 @@ update_touchpad_disable_while_typing (MetaInputSettings  *input_settings,
+@@ -652,7 +826,7 @@ update_touchpad_disable_while_typing (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -341,7 +371,7 @@ index 1d247b568..3126dc881 100644
    timeout_ms = g_settings_get_uint (priv->touchpad_settings, key_timeout);
  
    if (device)
-@@ -733,7 +896,7 @@ update_touchpad_tap_enabled (MetaInputSettings  *input_settings,
+@@ -733,7 +907,7 @@ update_touchpad_tap_enabled (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -350,7 +380,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -769,7 +932,7 @@ update_touchpad_tap_button_map (MetaInputSettings  *input_settings,
+@@ -769,7 +943,7 @@ update_touchpad_tap_button_map (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -359,7 +389,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -803,7 +966,7 @@ update_touchpad_tap_and_drag_enabled (MetaInputSettings  *input_settings,
+@@ -803,7 +977,7 @@ update_touchpad_tap_and_drag_enabled (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -368,7 +398,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -839,7 +1002,7 @@ update_touchpad_tap_and_drag_lock_enabled (MetaInputSettings  *input_settings,
+@@ -839,7 +1013,7 @@ update_touchpad_tap_and_drag_lock_enabled (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -377,7 +407,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -876,8 +1039,8 @@ update_touchpad_edge_scroll (MetaInputSettings *input_settings,
+@@ -876,8 +1050,8 @@ update_touchpad_edge_scroll (MetaInputSettings *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -388,7 +418,7 @@ index 1d247b568..3126dc881 100644
    two_finger_scroll_available = g_hash_table_size (priv->two_finger_devices) > 0;
  
    /* If both are enabled we prefer two finger. */
-@@ -917,7 +1080,7 @@ update_touchpad_two_finger_scroll (MetaInputSettings *input_settings,
+@@ -917,7 +1091,7 @@ update_touchpad_two_finger_scroll (MetaInputSettings *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -397,7 +427,7 @@ index 1d247b568..3126dc881 100644
  
    /* Disable edge since they can't both be set. */
    if (two_finger_scroll_enabled)
-@@ -960,7 +1123,7 @@ update_touchpad_click_method (MetaInputSettings *input_settings,
+@@ -960,7 +1134,7 @@ update_touchpad_click_method (MetaInputSettings *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -406,7 +436,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -994,7 +1157,7 @@ update_touchpad_send_events (MetaInputSettings  *input_settings,
+@@ -994,7 +1168,7 @@ update_touchpad_send_events (MetaInputSettings  *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -415,7 +445,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -1038,7 +1201,7 @@ update_scroll_button (MetaInputSettings        *input_settings,
+@@ -1038,7 +1212,7 @@ update_scroll_button (MetaInputSettings        *input_settings,
    /* This key is 'i' in the schema but it also specifies a minimum
     * range of 0 so the cast here is safe. */
    button = (guint) g_settings_get_int (settings, "scroll-wheel-emulation-button");
@@ -424,7 +454,7 @@ index 1d247b568..3126dc881 100644
  
    if (device)
      {
-@@ -1105,7 +1268,7 @@ update_pointing_stick_scroll_method (MetaInputSettings  *input_settings,
+@@ -1105,7 +1279,7 @@ update_pointing_stick_scroll_method (MetaInputSettings  *input_settings,
    GDesktopPointingStickScrollMethod method;
    ClutterInputCapabilities caps;
  
@@ -433,7 +463,7 @@ index 1d247b568..3126dc881 100644
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
  
    if (device)
-@@ -1148,9 +1311,9 @@ update_keyboard_repeat (MetaInputSettings *input_settings)
+@@ -1148,9 +1322,9 @@ update_keyboard_repeat (MetaInputSettings *input_settings)
    gboolean repeat;
  
    priv = meta_input_settings_get_instance_private (input_settings);
@@ -446,7 +476,7 @@ index 1d247b568..3126dc881 100644
  
    delay = MAX (1, delay);
    interval = MAX (1, interval);
-@@ -1181,7 +1344,7 @@ update_tablet_keep_aspect (MetaInputSettings  *input_settings,
+@@ -1181,7 +1355,7 @@ update_tablet_keep_aspect (MetaInputSettings  *input_settings,
    if (!info)
      return;
  
@@ -455,7 +485,7 @@ index 1d247b568..3126dc881 100644
  
    if (keep_aspect)
      aspect_ratio = info->aspect_ratio;
-@@ -1205,7 +1368,7 @@ update_tablet_mapping (MetaInputSettings  *input_settings,
+@@ -1205,7 +1379,7 @@ update_tablet_mapping (MetaInputSettings  *input_settings,
      return;
  
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -464,7 +494,7 @@ index 1d247b568..3126dc881 100644
  
    settings_device_set_uint_setting (input_settings, device,
                                      input_settings_class->set_tablet_mapping,
-@@ -1281,7 +1444,7 @@ update_tablet_left_handed (MetaInputSettings  *input_settings,
+@@ -1281,7 +1455,7 @@ update_tablet_left_handed (MetaInputSettings  *input_settings,
  #endif
  
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
@@ -473,7 +503,7 @@ index 1d247b568..3126dc881 100644
  
    settings_device_set_bool_setting (input_settings, device,
                                      input_settings_class->set_left_handed,
-@@ -1440,7 +1603,7 @@ load_keyboard_a11y_settings (MetaInputSettings *input_settings)
+@@ -1440,7 +1614,7 @@ load_keyboard_a11y_settings (MetaInputSettings *input_settings)
    kbd_a11y_settings.controls = 0;
    for (i = 0; i < G_N_ELEMENTS (keyboard_a11y_settings_flags_pair); i++)
      {
@@ -482,7 +512,7 @@ index 1d247b568..3126dc881 100644
          kbd_a11y_settings.controls |= keyboard_a11y_settings_flags_pair[i].flag;
      }
  
-@@ -1522,6 +1685,12 @@ lookup_device_settings (ClutterInputDevice *device)
+@@ -1522,6 +1696,12 @@ lookup_device_settings (ClutterInputDevice *device)
                            group, vendor, product);
  
    settings = g_settings_new_with_path (schema, path);
@@ -495,7 +525,7 @@ index 1d247b568..3126dc881 100644
    g_free (path);
  
    return settings;
-@@ -1558,6 +1727,20 @@ lookup_tool_settings (ClutterInputDeviceTool *tool,
+@@ -1558,6 +1738,20 @@ lookup_tool_settings (ClutterInputDeviceTool *tool,
    tool_settings =
      g_settings_new_with_path ("org.gnome.desktop.peripherals.tablet.stylus",
                                path);
@@ -516,7 +546,7 @@ index 1d247b568..3126dc881 100644
    g_object_set_qdata_full (G_OBJECT (tool), quark_tool_settings, tool_settings,
                             (GDestroyNotify) g_object_unref);
    g_free (path);
-@@ -1740,9 +1923,9 @@ update_stylus_buttonmap (MetaInputSettings      *input_settings,
+@@ -1740,9 +1934,9 @@ update_stylus_buttonmap (MetaInputSettings      *input_settings,
  
    tool_settings = lookup_tool_settings (tool, device);
  
@@ -529,7 +559,7 @@ index 1d247b568..3126dc881 100644
  
    input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
    input_settings_class->set_stylus_button_map (input_settings, device, tool,
-@@ -1972,6 +2155,8 @@ meta_input_settings_class_init (MetaInputSettingsClass *klass)
+@@ -1972,6 +2166,8 @@ meta_input_settings_class_init (MetaInputSettingsClass *klass)
  
    quark_tool_settings =
      g_quark_from_static_string ("meta-input-settings-tool-settings");
@@ -538,7 +568,7 @@ index 1d247b568..3126dc881 100644
  
    signals[KBD_A11Y_CHANGED] =
      g_signal_new ("kbd-a11y-changed",
-@@ -2031,10 +2216,16 @@ meta_input_settings_maybe_save_numlock_state (MetaInputSettings *input_settings,
+@@ -2031,10 +2227,16 @@ meta_input_settings_maybe_save_numlock_state (MetaInputSettings *input_settings,
  
    priv = meta_input_settings_get_instance_private (input_settings);
  
@@ -557,7 +587,7 @@ index 1d247b568..3126dc881 100644
      return;
  
    g_settings_set_boolean (priv->keyboard_settings, "numlock-state", numlock_state);
-@@ -2048,8 +2239,13 @@ meta_input_settings_maybe_restore_numlock_state (MetaInputSettings *input_settin
+@@ -2048,8 +2250,13 @@ meta_input_settings_maybe_restore_numlock_state (MetaInputSettings *input_settin
  
    priv = meta_input_settings_get_instance_private (input_settings);
  
@@ -573,7 +603,7 @@ index 1d247b568..3126dc881 100644
  
    return numlock_state;
  }
-@@ -2129,6 +2325,69 @@ meta_input_settings_get_backend (MetaInputSettings *settings)
+@@ -2129,6 +2336,69 @@ meta_input_settings_get_backend (MetaInputSettings *settings)
    return priv->backend;
  }
  
@@ -643,7 +673,7 @@ index 1d247b568..3126dc881 100644
  GDesktopStylusButtonAction
  meta_input_settings_get_tool_button_action (MetaInputSettings       *input_settings,
                                              ClutterInputDevice      *device,
-@@ -2154,7 +2413,7 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
+@@ -2154,7 +2424,7 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
        gboolean mouse_is_left_handed;
  
        mouse_is_left_handed =
@@ -652,7 +682,7 @@ index 1d247b568..3126dc881 100644
  
        /* These tools are mouse-like, thus are not re-mappable and
         * follow mouse settings
-@@ -2201,11 +2460,16 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
+@@ -2201,11 +2471,16 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
  
        key = g_strdup_printf ("%s-action", prefix);
        settings = lookup_tool_settings (tool, device);
@@ -695,5 +725,4 @@ index 443d3b739..8773263e0 100644
  MetaWindow *meta_display_get_focus_window (MetaDisplay *display);
  
 -- 
-2.55.0
-
+2.50.1

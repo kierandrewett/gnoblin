@@ -37,13 +37,47 @@ The requirements are not guesses from package names. The checked-out Mutter
 Meson files require GTK `>= 4.14`, Glycin `>= 2.0.beta.2`, libei/libeis
 `>= 1.3.901`, libdisplay-info `>= 0.2`, GLib `>= 2.81.1`, and current Wayland
 interfaces. The GNOME Shell Meson files require `gcr-4`, `girepository-2.0`,
-GLib/Gio `>= 2.86`, and GJS `>= 1.85.90`. Repeat this inspection in the
+GLib/Gio `>= 2.86`, and GJS `>= 1.87.1`. Repeat this inspection in the
 release-clean source worktree when source pins change; an arbitrary developer
 submodule checkout is not release evidence.
 
 Debian 12's Rust 1.63 is also below the modern toolchain used by the existing
 private Glycin and Hyprcursor build path. A pinned build-only toolchain solves
 that compiler problem, but it does not solve the runtime ABI issues above.
+
+### First source-closure attempt
+
+On 2026-09-25, a clean Debian 12 container installed only compiler, graphics,
+introspection, crypto, and archive bootstrap packages. The private dependency
+builder downloaded and configured GLib 2.90.0, then stopped before compilation:
+
+```
+Program g-ir-scanner found: NO found 1.74.0 but need: '>= 1.80.0'
+```
+
+This is the first concrete source-closure blocker. Debian 12's
+`gobject-introspection` package supplies scanner 1.74.0, while GLib 2.90.0
+requires scanner 1.80.0 or newer when introspection is enabled. The target
+cannot build the final private GLib directly from the current flat manifest.
+
+The next implementation must use an explicit bootstrap graph:
+
+1. Build the pinned GLib source once with introspection disabled in the private
+   prefix.
+2. Build a pinned GObject Introspection 1.80+ scanner against that bootstrap
+   GLib, as a build-only tool.
+3. Rebuild the pinned GLib with introspection enabled. This produces the
+   private `girepository-2.0.pc` interface and typelibs required by Shell.
+4. Build private GDK-Pixbuf, Pango, Graphene, GTK 4.14+, and GCR 4 before GJS,
+   GNOME Desktop, Mutter, and Shell.
+
+The dependency builder now supports declared dependency ordering and building
+a selected declared subgraph. Its archive extraction also supports the Python
+3.10/3.11 `tarfile` API used by Ubuntu 22.04 and Debian 12 while retaining
+staging path and link containment checks. The production DEB manifest does
+not include the unproven GTK/GCR graph, and the workflow still records both
+targets as blocked. This is deliberately not a package-build or package-
+transaction result.
 
 ## Boundary: what can be private
 

@@ -1,4 +1,8 @@
-{ self }:
+{
+  self,
+  defaultPackage ? (system: self.packages.${system}.gnoblin),
+  defaultPackageText ? "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin",
+}:
 {
   config,
   lib,
@@ -15,8 +19,8 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${system}.gnoblin;
-      defaultText = lib.literalExpression "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin";
+      default = defaultPackage system;
+      defaultText = lib.literalExpression defaultPackageText;
       description = "The Gnoblin package that provides the session, systemd user units, and control tools.";
     };
   };

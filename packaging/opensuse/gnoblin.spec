@@ -10,7 +10,7 @@ Requires:       gnoblin-mutter >= 51
 Requires:       gnoblin-session >= 51
 Requires:       gnoblin-shell >= 51
 Requires:       brightnessctl
-Requires:       gjs >= 1.85.90
+Requires:       gjs >= 1.87.1
 Requires:       glib2 >= 2.86
 Requires:       gnome-session
 Requires:       gnome-settings-daemon

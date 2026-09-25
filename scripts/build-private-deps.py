@@ -16,6 +16,103 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def order_recipes(recipes):
+    """Return manifest recipes in dependency order and reject an ambiguous closure."""
+    by_name = {}
+    for recipe in recipes:
+        name = recipe.get("name")
+        if not isinstance(name, str) or not name:
+            raise RuntimeError("Every private dependency recipe needs a non-empty name")
+        if name in by_name:
+            raise RuntimeError(f"Private dependency manifest contains {name} more than once")
+        if not isinstance(recipe.get("requires", []), list) or not all(
+            isinstance(dependency, str) for dependency in recipe.get("requires", [])
+        ):
+            raise RuntimeError(f"Private dependency {name} has invalid requires")
+        by_name[name] = recipe
+
+    ordered = []
+    visiting = set()
+    complete = set()
+
+    def visit(name):
+        if name in complete:
+            return
+        if name in visiting:
+            raise RuntimeError(f"Private dependency cycle includes {name}")
+        recipe = by_name.get(name)
+        if recipe is None:
+            raise RuntimeError(f"Private dependency {name} is required but not declared")
+        visiting.add(name)
+        for dependency in recipe.get("requires", []):
+            visit(dependency)
+        visiting.remove(name)
+        complete.add(name)
+        ordered.append(recipe)
+
+    for recipe in recipes:
+        visit(recipe["name"])
+    return ordered
+
+
+def select_recipes(recipes, names):
+    """Select named recipes and every declared private prerequisite."""
+    if not names:
+        return recipes
+    by_name = {recipe["name"]: recipe for recipe in recipes}
+    selected = set()
+
+    def include(name):
+        recipe = by_name.get(name)
+        if recipe is None:
+            raise RuntimeError(f"Private dependency {name} is not declared")
+        if name in selected:
+            return
+        selected.add(name)
+        for dependency in recipe.get("requires", []):
+            include(dependency)
+
+    for name in names:
+        include(name)
+    return [recipe for recipe in recipes if recipe["name"] in selected]
+
+
+def verify_private_interfaces(prefix, recipes, env):
+    """Reject a compatibility build that silently falls back to host GI data."""
+    expected = {typelib for recipe in recipes for typelib in recipe.get("private_typelibs", [])}
+    if any(recipe["name"] == "glib" for recipe in recipes):
+        pkgconfig = prefix / "lib64/pkgconfig/girepository-2.0.pc"
+        if not pkgconfig.is_file():
+            raise RuntimeError(f"Private GLib did not install GIRepository 2: {pkgconfig}")
+    typelib_dir = prefix / "lib64/girepository-1.0"
+    for typelib in sorted(expected):
+        path = typelib_dir / typelib
+        if not path.is_file():
+            raise RuntimeError(f"Private compatibility typelib is missing: {path}")
+    if not any(recipe["name"] == "gjs" for recipe in recipes):
+        return
+    imports = ["imports.gi.GLib"]
+    if any(recipe["name"] == "gnome-desktop" for recipe in recipes):
+        imports.extend(["imports.gi.versions.GnomeDesktop = '4.0'", "imports.gi.GnomeDesktop", "imports.gi.GnomeQR"])
+    namespaces = {
+        "GdkPixbuf-2.0.typelib": "GdkPixbuf",
+        "Gdk-4.0.typelib": "Gdk",
+        "Gtk-4.0.typelib": "Gtk",
+        "Gcr-4.typelib": "Gcr",
+    }
+    for typelib in sorted(expected):
+        namespace = namespaces.get(typelib)
+        if namespace:
+            imports.append(f"imports.gi.{namespace}")
+    runtime_env = env.copy()
+    runtime_env.pop("LD_LIBRARY_PATH", None)
+    system_typelibs = subprocess.check_output(
+        ["pkg-config", "--variable=typelibdir", "gobject-introspection-1.0"], env=env, text=True
+    ).strip()
+    runtime_env["GI_TYPELIB_PATH"] += ":" + system_typelibs
+    subprocess.run([str(prefix / "bin/gjs"), "-c", "; ".join(imports)], env=runtime_env, check=True)
+
+
 def fix_linkage(directory, prefix):
     """Keep each installed ELF's private search path after Meson's install fixups."""
     patcher = prefix / "bin/patchelf"
@@ -79,6 +176,32 @@ def build_environment(prefix):
     return env
 
 
+def extract_archive(archive, destination):
+    """Extract a source archive without permitting paths or links outside its staging tree.
+
+    Python 3.10 and 3.11 do not have tarfile's ``filter='data'`` API.  The
+    compatibility runtime is built on Ubuntu 22.04 and Debian 12, so retain
+    the same boundary explicitly rather than requiring a newer interpreter.
+    """
+    root = destination.resolve()
+    with tarfile.open(archive) as source:
+        for member in source.getmembers():
+            member_path = destination / member.name
+            if Path(member.name).is_absolute() or not member_path.resolve().is_relative_to(root):
+                raise RuntimeError(f"Archive member escapes source staging: {member.name}")
+            if member.ischr() or member.isblk() or member.isfifo():
+                raise RuntimeError(f"Archive member has unsupported type: {member.name}")
+            if member.issym():
+                link_path = member_path.parent / member.linkname
+            elif member.islnk():
+                link_path = destination / member.linkname
+            else:
+                continue
+            if Path(member.linkname).is_absolute() or not link_path.resolve().is_relative_to(root):
+                raise RuntimeError(f"Archive link escapes source staging: {member.name}")
+        source.extractall(destination)
+
+
 def checked_archive(recipe, downloads):
     archive = downloads / recipe["url"].rsplit("/", 1)[1]
     if not archive.exists():
@@ -116,8 +239,7 @@ def build(recipe, prefix, cache, env, jobs, manifest=None):
         staging = work / "extract"
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
-        with tarfile.open(checked_archive(recipe, downloads)) as archive:
-            archive.extractall(staging, filter="data")
+        extract_archive(checked_archive(recipe, downloads), staging)
         children = list(staging.iterdir())
         if len(children) != 1 or not children[0].is_dir():
             raise RuntimeError(f"Expected a single source directory for {recipe['name']}")
@@ -226,6 +348,12 @@ def main():
     parser.add_argument("--fix-runtime", action="store_true", help="Record private library paths in ./install binaries")
     parser.add_argument("--runtime-prefix", type=Path, default=ROOT / "install")
     parser.add_argument("--jobs", type=int, default=min(os.cpu_count() or 2, 8))
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        metavar="RECIPE",
+        help="Build only named private recipes and their declared private prerequisites",
+    )
     parser.add_argument("--run", nargs=argparse.REMAINDER, help="Run a build command in the private environment")
     args = parser.parse_args()
     prefix = args.prefix.resolve()
@@ -257,6 +385,12 @@ def main():
     if args.run:
         return subprocess.call(args.run, env=env)
     recipes = json.loads(args.manifest.read_text())
+    if not isinstance(recipes, list):
+        parser.error("private dependency manifest must contain a JSON array")
+    try:
+        recipes = order_recipes(select_recipes(recipes, args.only))
+    except RuntimeError as error:
+        parser.error(str(error))
     if args.dry_run:
         print(f"Build private dependencies in {prefix}:")
         for recipe in recipes:
@@ -274,21 +408,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX)
             for recipe in recipes:
                 build(recipe, prefix, args.cache.resolve(), env, args.jobs, args.manifest)
-            runtime_env = env.copy()
-            runtime_env.pop("LD_LIBRARY_PATH", None)
-            system_typelibs = subprocess.check_output(
-                ["pkg-config", "--variable=typelibdir", "gobject-introspection-1.0"], env=env, text=True
-            ).strip()
-            runtime_env["GI_TYPELIB_PATH"] += ":" + system_typelibs
-            subprocess.run(
-                [
-                    str(prefix / "bin/gjs"),
-                    "-c",
-                    "imports.gi.versions.GnomeDesktop = '4.0'; imports.gi.GLib; imports.gi.GnomeDesktop; imports.gi.GnomeQR;",
-                ],
-                env=runtime_env,
-                check=True,
-            )
+            verify_private_interfaces(prefix, recipes, env)
     except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
         print(f"[deps] {error}")
         return 1

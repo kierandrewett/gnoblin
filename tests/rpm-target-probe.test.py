@@ -25,9 +25,12 @@ class RpmTargetProbeTests(unittest.TestCase):
         )
         self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredScope"], "development-package-contract")
         self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredPackage"], "gnoblin-mutter-devel")
-        self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["floorSource"], "nix/native-packages.nix:74-78")
+        self.assertEqual(
+            probe.REQUIREMENTS["wayland-protocols"]["floorSource"],
+            "subprojects/mutter/meson.build:50,217-218",
+        )
         for item in probe.REQUIREMENTS.values():
-            self.assertRegex(item["floorSource"], r"^[^:]+:[0-9]+(?:-[0-9]+)?(?:,[0-9]+)?$")
+            self.assertRegex(item["floorSource"], r"^[^:]+:[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)?$")
 
     def test_rpm_specs_match_source_build_closure_floors(self):
         for component in ("girepository", "gcr4", "glycin", "hyprcursor", "libdisplay-info"):

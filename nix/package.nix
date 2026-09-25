@@ -5,6 +5,8 @@
   symlinkJoin,
   glib,
   gjs,
+  wayland ? null,
+  waylandScanner ? null,
   unzip,
   hyprcursor,
   inkscape,
@@ -69,39 +71,55 @@ let
   # Use the channel's GCC 16 toolchain where it exists. Stable channels which
   # predate GCC 16 build hyprcursor and its C++ closure with their default
   # stdenv, so the fallback keeps the consumer in that same ABI closure.
-  gnoblinMutter = (mutter.override { stdenv = gcc16Stdenv; }).overrideAttrs (old: {
-    pname = "gnoblin-mutter";
-    version = versions.components.mutter.version;
-    src = mutterSrc;
-    # Nixpkgs patches target its own GNOME source revision. Gnoblin carries a
-    # complete patch stack rebased onto the release pinned in the manifest.
-    patches = patchesFor "mutter";
-    prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
-    postPatch = old.postPatch or "";
-    preConfigure = ''
-      export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    ''
-    + (old.preConfigure or "");
-    postInstall = (old.postInstall or "") + ''
-      # Mutter declares this split output even when gi-docgen has nothing to
-      # install for the selected feature set. Keep the derivation contract.
-      mkdir -p "$devdoc"
-    '';
-    buildInputs =
-      map (
-        dependency:
-        if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
-      ) (old.buildInputs or [ ])
-      ++ [
-        hyprcursor
-        lua5_4
-      ];
-    mesonFlags =
-      lib.filter (
-        flag: !(lib.hasPrefix "-Degl_device=" flag || lib.hasPrefix "-Dwayland_eglstream=" flag)
-      ) (old.mesonFlags or [ ])
-      ++ [ "-Dhyprcursor=enabled" ];
-  });
+  gnoblinMutter =
+    (mutter.override (
+      {
+        stdenv = gcc16Stdenv;
+      }
+      // lib.optionalAttrs (wayland != null) {
+        inherit wayland;
+      }
+      // lib.optionalAttrs (waylandScanner != null) {
+        wayland-scanner = waylandScanner;
+      }
+    )).overrideAttrs
+      (old: {
+        pname = "gnoblin-mutter";
+        version = versions.components.mutter.version;
+        src = mutterSrc;
+        # Nixpkgs patches target its own GNOME source revision. Gnoblin carries a
+        # complete patch stack rebased onto the release pinned in the manifest.
+        patches = patchesFor "mutter";
+        prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
+        postPatch = old.postPatch or "";
+        preConfigure =
+          lib.optionalString (wayland != null) ''
+            export PKG_CONFIG_PATH="${wayland.dev}/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          ''
+          + ''
+            export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          ''
+          + (old.preConfigure or "");
+        postInstall = (old.postInstall or "") + ''
+          # Mutter declares this split output even when gi-docgen has nothing to
+          # install for the selected feature set. Keep the derivation contract.
+          mkdir -p "$devdoc"
+        '';
+        buildInputs =
+          map (
+            dependency:
+            if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
+          ) (old.buildInputs or [ ])
+          ++ [
+            hyprcursor
+            lua5_4
+          ];
+        mesonFlags =
+          lib.filter (
+            flag: !(lib.hasPrefix "-Degl_device=" flag || lib.hasPrefix "-Dwayland_eglstream=" flag)
+          ) (old.mesonFlags or [ ])
+          ++ [ "-Dhyprcursor=enabled" ];
+      });
 
   gnoblinShell =
     (gnomeShell.override {

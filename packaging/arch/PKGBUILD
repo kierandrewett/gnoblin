@@ -8,7 +8,7 @@ arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
 makedepends=('adwaita-cursors' 'base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'inkscape' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')
-depends=('brightnessctl' 'gjs>=1.85.90' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
+depends=('brightnessctl' 'gjs>=1.87.1' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
 
 source=("$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz")
 sha256sums=('SKIP')
@@ -68,7 +68,8 @@ build() {
 package() {
     local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     cd "$srcdir/$pkgname-$pkgver" || return
-    install -d "$pkgdir$_prefix/share/glib-2.0/schemas"
+    install -d "$pkgdir$_prefix/lib/girepository-1.0" "$pkgdir$_prefix/share/glib-2.0/schemas"
+    cp -a --no-preserve=ownership "$_build_prefix/schemas/lib/girepository-1.0/." "$pkgdir$_prefix/lib/girepository-1.0/"
     cp -a --no-preserve=ownership "$_build_prefix/schemas/share/glib-2.0/schemas/." "$pkgdir$_prefix/share/glib-2.0/schemas/"
     meson install -C build/mutter --destdir "$pkgdir" --no-rebuild
     meson install -C build/gnome-shell --destdir "$pkgdir" --no-rebuild

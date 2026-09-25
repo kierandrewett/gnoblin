@@ -62,14 +62,16 @@ const INPUT_FIELDS = Object.freeze({
         speed: "number",
         "left-handed": "boolean",
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive"],
+        "accel-profile": ["default", "flat", "adaptive", "custom"],
+        "accel-curve": "accel-curve",
     },
     touchpad: {
         speed: "number",
         "scroll-speed": "number",
         "left-handed": ["right", "left", "mouse"],
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive"],
+        "accel-profile": ["default", "flat", "adaptive", "custom"],
+        "accel-curve": "accel-curve",
         "tap-to-click": "boolean",
         "tap-button-map": ["default", "lrm", "lmr"],
         "tap-and-drag": "boolean",
@@ -106,17 +108,25 @@ function validateInputFields(group, values, path) {
         if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
         const valid = Array.isArray(kind)
             ? kind.includes(value)
-            : kind === "boolean"
-              ? typeof value === "boolean"
-              : kind === "number"
-                ? typeof value === "number" &&
-                  Number.isFinite(value) &&
-                  (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
-                : kind === "milliseconds"
-                  ? Number.isInteger(value) && value >= 1 && value <= 10000
-                  : kind === "strings"
-                    ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
-                    : typeof value === "string" && !value.includes("\0");
+            : kind === "accel-curve"
+              ? isTable(value) &&
+                Object.keys(value).length === 2 &&
+                Number.isFinite(value.step) &&
+                value.step > 0 &&
+                Array.isArray(value.points) &&
+                value.points.length >= 2 &&
+                value.points.every((point) => typeof point === "number" && Number.isFinite(point) && point >= 0)
+              : kind === "boolean"
+                ? typeof value === "boolean"
+                : kind === "number"
+                  ? typeof value === "number" &&
+                    Number.isFinite(value) &&
+                    (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
+                  : kind === "milliseconds"
+                    ? Number.isInteger(value) && value >= 1 && value <= 10000
+                    : kind === "strings"
+                      ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
+                      : typeof value === "string" && !value.includes("\0");
         if (!valid) throw new Error(`${path}.${key}: invalid value`);
     }
 }
@@ -1111,12 +1121,15 @@ function inputVariant(group, values) {
             Object.entries(values).map(([key, value]) => {
                 if (group === "tablets" || group === "styluses")
                     return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
+                if (isTable(value)) return [key, inputVariant(key, value)];
                 const type = Array.isArray(value)
-                    ? "as"
+                    ? key === "points"
+                        ? "ad"
+                        : "as"
                     : typeof value === "boolean"
                       ? "b"
                       : typeof value === "number"
-                        ? ["speed", "scroll-speed"].includes(key)
+                        ? ["speed", "scroll-speed", "step"].includes(key)
                             ? "d"
                             : "u"
                         : "s";

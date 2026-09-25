@@ -1,6 +1,8 @@
 # gnoblin.configure.keybindings
 
-Configure this part of `gnoblin.configure` with the `keybindings` key.
+Use `keybindings` to override a GNOME action directly by its schema group and
+key. For named command shortcuts or named built-in actions, use
+[`gnoblin.configure.shortcuts`](/config/configure/shortcuts).
 
 Override a built-in action by group and action name. For example, bind the
 window-manager `close` action to Super+Q:

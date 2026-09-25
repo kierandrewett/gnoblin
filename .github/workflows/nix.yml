@@ -29,13 +29,13 @@ jobs:
             package_evaluates: "false"
             module_evaluates: "false"
             evaluation_blocker: '"missing-libglycin"'
-            build_blockers: '["missing-libglycin","glib-below-2.86","gjs-below-1.85.90","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
+            build_blockers: '["missing-libglycin","glib-below-2.86","gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
           - attribute: nixos_25_11
             release: "25.11"
             package_evaluates: "true"
             module_evaluates: "true"
             evaluation_blocker: "null"
-            build_blockers: '["wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
+            build_blockers: '["gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
           - attribute: nixos_26_05
             release: "26.05"
             package_evaluates: "true"
@@ -61,6 +61,36 @@ jobs:
           test "$module_status" = "${{ matrix.channel.module_evaluates }}"
           test "$evaluation_blocker" = '${{ matrix.channel.evaluation_blocker }}'
           test "$build_blockers" = '${{ matrix.channel.build_blockers }}'
+  build-nixos-26-05-private-compositor:
+    name: Build NixOS 26.05 private compositor closure
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Evaluate the private package and NixOS module
+        run: |
+          rolling_package="$(nix eval --raw .#packages.x86_64-linux.gnoblin.drvPath)"
+          private_package="$(nix eval --raw .#packages.x86_64-linux.gnoblin-nixos-26_05.drvPath)"
+          test "$rolling_package" != "$private_package"
+          nix eval --impure --json --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              host = flake.inputs.nixpkgs_26_05.lib.nixosSystem {
+                system = "x86_64-linux";
+                modules = [
+                  flake.nixosModules.nixos_26_05
+                  {
+                    system.stateVersion = "26.05";
+                    programs.gnoblin.enable = true;
+                  }
+                ];
+              };
+            in
+            toString (builtins.head host.config.services.displayManager.sessionPackages)
+              == toString flake.packages.x86_64-linux.gnoblin-nixos-26_05'
+      - name: Build the pinned Wayland and private Mutter closure
+        run: nix build -L .#gnoblin-nixos-26_05.gnoblinMutter
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
