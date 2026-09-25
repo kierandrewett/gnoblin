@@ -23,7 +23,7 @@ jobs:
       - name: Install checkout and RPM tools
         run: |
           zypper --non-interactive refresh
-          zypper --non-interactive install git rpm-build
+          zypper --non-interactive install git rpm-build python3
       - uses: actions/checkout@v4
       - name: Parse adapter boundaries
         run: python3 tests/opensuse-packaging.test.py
