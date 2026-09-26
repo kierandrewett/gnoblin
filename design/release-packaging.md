@@ -5,6 +5,21 @@ release pipeline or COPR publication changes.
 
 ## Candidate release validation (2026-09-26)
 
+- Release run `36230307572` built Debian 13, Ubuntu 24.04/26.04, Arch,
+  openSUSE Tumbleweed, and NixOS 26.05 artifacts. Their package installation,
+  GNOME co-installation, and removal gates passed. COPR Mutter build `11038026`
+  passed Fedora 44/45 and failed Fedora 43 because PipeWire 1.4 lacks the
+  capability/HDR APIs and device-ID SPA property used by Mutter 51.
+- The compatibility patch now keeps common tag parameters outside the optional
+  capability code, uses numeric logging for color enums missing in PipeWire
+  1.4, and gates device ID separately at PipeWire 1.6. The next COPR Mutter
+  release is `51.0-27.gnoblin`; the next 0.1.7 DEB revision is `-4` because
+  revisions `-1` through `-3` are immutable.
+- APT suite indexes were corrected and republished by `36232880003` at
+  `gh-pages` commit `f95cc80e`. The index contents now match each Ubuntu suite;
+  confirm the newest Pages build and live custom domain before treating the
+  APT repository as available.
+
 - The Wayland config fix is validated by DEB builds and installed reload/window
   smoke checks on Debian 13 and Ubuntu 24.04/26.04 in release runs
   `36218054872` and `36220527312`.

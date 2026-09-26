@@ -3,23 +3,27 @@ From: Gnoblin Build <build@gnoblin.local>
 Date: Sat, 26 Sep 2026 09:00:00 +0100
 Subject: [PATCH] screencast: keep device negotiation optional on older PipeWire
 
-PipeWire capability and peer-capability parameters were added in 1.5.84.
-Mutter 51 otherwise builds against PipeWire 1.4, so keep the newer
-device-ID negotiation path conditional on the installed PipeWire API.
+PipeWire capability and HDR color APIs were added in 1.5.84, and the
+SPA device-ID format property was added in 1.6.0. Mutter 51 otherwise
+builds against PipeWire 1.4, so keep those newer APIs conditional on the
+installed PipeWire version.
 
 ---
 diff --git a/meson.build b/meson.build
 index cdd13b683..3cf6a3c55 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -278,2 +278,5 @@ if have_remote_desktop
+@@ -278,2 +278,8 @@ if have_remote_desktop
    libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
 +  if libpipewire_dep.version().version_compare('>= 1.5.84')
 +    add_project_arguments('-DHAVE_PIPEWIRE_CAPABILITIES', language: 'c')
 +  endif
++  if libpipewire_dep.version().version_compare('>= 1.6.0')
++    add_project_arguments('-DHAVE_PIPEWIRE_DEVICE_ID', language: 'c')
++  endif
  endif
+
 diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source.c
-index 263a05d4e..e71c27c41 100644
 --- a/src/backends/meta-stream-source.c
 +++ b/src/backends/meta-stream-source.c
 @@ -24,14 +24,22 @@
@@ -45,29 +49,155 @@ index 263a05d4e..e71c27c41 100644
  #include <spa/param/video/format-utils.h>
  #include <spa/pod/dynamic.h>
  #include <spa/utils/result.h>
-@@ -1894,2 +1896,3 @@
+@@ -341,10 +349,12 @@
+       modifiers &&
+       meta_is_device_id_valid (device_id))
+     {
++#ifdef HAVE_PIPEWIRE_DEVICE_ID
+       spa_pod_builder_prop (pod_builder,
+                             SPA_FORMAT_VIDEO_deviceId,
+                             SPA_POD_PROP_FLAG_MANDATORY);
+       spa_pod_builder_bytes (pod_builder, &device_id, sizeof device_id);
++#endif
+     }
+ 
+   spa_pod_builder_add (pod_builder,
+@@ -1825,6 +1835,7 @@
+                               enum spa_video_color_primaries   *spa_color_primaries,
+                               enum spa_video_transfer_function *spa_transfer_function)
+ {
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+   ClutterColorStateParams *color_state_params;
+   const ClutterColorimetry *colorimetry;
+   const ClutterEOTF *eotf;
+@@ -1846,6 +1857,11 @@
+       *spa_transfer_function = SPA_VIDEO_TRANSFER_SMPTE2084;
+       return TRUE;
+     }
++#else
++  (void) color_state;
++  (void) spa_color_primaries;
++  (void) spa_transfer_function;
++#endif
+ 
+   return FALSE;
+ }
+@@ -2015,6 +2031,7 @@
+     }
+ }
+ 
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
  static void
  append_capabilities_dict_entry (MetaStreamSource *source,
-@@ -1984,2 +1987,3 @@
+                                 GArray           *capabilities)
+@@ -2034,6 +2051,7 @@
+                                       device_id_encoded);
+   g_array_append_val (capabilities, dict_entry);
+ }
 +#endif
+ 
+ static void
+ build_tag_params (MetaStreamSource       *source,
+@@ -2077,6 +2095,7 @@
+   spa_tag_build_end (pod_builder, &tag_frame);
+ }
+ 
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+ static void
+ build_capability_params (MetaStreamSource       *source,
+                          struct spa_pod_builder *pod_builder,
+@@ -2104,6 +2123,7 @@
+   spa_param_dict_build_dict (pod_builder, SPA_PARAM_Capability,
+                              &SPA_DICT_INIT (items, capabilities->len));
+ }
++#endif
+ 
  static void
  build_stream_params (MetaStreamSource       *source,
-@@ -1990,3 +1994,5 @@ build_stream_params (MetaStreamSource       *source,
+@@ -2112,7 +2132,9 @@
+ {
+   build_format_params (source, pod_builder, pod_offsets);
    build_tag_params (source, pod_builder, pod_offsets);
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
    build_capability_params (source, pod_builder, pod_offsets);
 +#endif
  }
-@@ -2473,2 +2479,3 @@
+ 
+ static GPtrArray *
+@@ -2297,13 +2319,14 @@
+ 
+   switch (priv->video_format.color_primaries)
+     {
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+     case SPA_VIDEO_COLOR_PRIMARIES_BT2020:
+       colorspace = CLUTTER_COLORSPACE_BT2020;
+       break;
++#endif
+     default:
+-      g_warning ("Unhandled color primaries %s",
+-                 spa_debug_type_find_name (spa_type_video_color_primaries,
+-                                           priv->video_format.color_primaries));
++      g_warning ("Unhandled color primaries %d",
++                 (int) priv->video_format.color_primaries);
+       G_GNUC_FALLTHROUGH;
+     case SPA_VIDEO_COLOR_PRIMARIES_BT709:
+       colorspace = CLUTTER_COLORSPACE_SRGB;
+@@ -2312,13 +2335,14 @@
+ 
+   switch (priv->video_format.transfer_function)
+     {
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+     case SPA_VIDEO_TRANSFER_SMPTE2084:
+       transfer_function = CLUTTER_TRANSFER_FUNCTION_PQ;
+       break;
++#endif
+     default:
+-      g_warning ("Unhandled transfer function %s",
+-                 spa_debug_type_find_name (spa_type_video_transfer_function,
+-                                           priv->video_format.transfer_function));
++      g_warning ("Unhandled transfer function %d",
++                 (int) priv->video_format.transfer_function);
+       G_GNUC_FALLTHROUGH;
+     case SPA_VIDEO_TRANSFER_GAMMA22:
+       transfer_function = CLUTTER_TRANSFER_FUNCTION_GAMMA22;
+@@ -2371,16 +2395,14 @@
+               "Updated PipeWire stream format, "
+               "format: %s, "
+               "size: %dx%d, "
+-              "color primaries: %s, "
+-              "transfer function: %s",
++              "color primaries: %d, "
++              "transfer function: %d",
+               spa_debug_type_find_name (spa_type_video_format,
+                                         priv->video_format.format),
+               priv->video_format.size.width,
+               priv->video_format.size.height,
+-              spa_debug_type_find_name (spa_type_video_color_primaries,
+-                                        priv->video_format.color_primaries),
+-              spa_debug_type_find_name (spa_type_video_transfer_function,
+-                                        priv->video_format.transfer_function));
++              (int) priv->video_format.color_primaries,
++              (int) priv->video_format.transfer_function);
+ 
+   update_color_state (source);
+ 
+@@ -2594,6 +2616,7 @@
+     }
+ }
+ 
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
  static void
  negotiate_with_device_cb (gpointer user_data)
-@@ -2561,2 +2568,3 @@
+ {
+@@ -2681,6 +2704,7 @@
+                                  "[mutter] negotiate_with_device_cb");
+     }
+ }
 +#endif
+ 
  static void
  on_stream_param_changed (void                 *data,
-@@ -2576,7 +2584,9 @@ on_stream_param_changed (void                 *data,
+@@ -2700,9 +2724,11 @@
      case SPA_PARAM_Tag:
        on_tag_param_changed (source, param);
        break;
@@ -77,5 +207,8 @@ index 263a05d4e..e71c27c41 100644
        break;
 +#endif
      }
+ }
+ 
+
 --
 2.55.0

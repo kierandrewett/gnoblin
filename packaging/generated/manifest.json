@@ -42,7 +42,7 @@
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
     "mutterApi": "51",
-    "mutterRpmRelease": "26.gnoblin",
+    "mutterRpmRelease": "27.gnoblin",
     "rpmEpoch": 1
   },
   "requirements": {

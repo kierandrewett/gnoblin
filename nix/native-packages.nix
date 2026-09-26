@@ -34,7 +34,7 @@ in
     gnoblinVersion = gnoblinRelease.version;
     # Keep the meta package coupled to the private Mutter build that contains
     # the current compositor fixes.  This is an RPM release, not a GNOME ABI.
-    mutterRpmRelease = "26.gnoblin";
+    mutterRpmRelease = "27.gnoblin";
     # Older COPR metadata used 51.0 as the Gnoblin package version.  Preserve
     # a clean public version while making this package sortable as its successor.
     rpmEpoch = 1;
