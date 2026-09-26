@@ -25,6 +25,9 @@ release pipeline or COPR publication changes.
   screen casting without that optional negotiation. Fedora and openSUSE RPM
   declarations now use the 1.4 API floor. Rebuild all three COPR chroots
   before claiming Fedora 43 package availability.
+- The next Mutter RPM release is 51.0-25.gnoblin, and the generated RPM
+  metapackage now requires that exact build. Keep the release manifest and
+  metapackage synchronized whenever the Mutter RPM release changes.
 - That run's APT job correctly refused different bytes for the already
   published 0.1.7 package versions. The exact immutable Debian/Ubuntu package
   payloads were restored to the GitHub release draft and its checksums updated;
