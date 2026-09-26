@@ -12,6 +12,17 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 PREFIX = Path("/usr/lib/gnoblin")
+
+
+def sha256_file(path):
+    """Hash large inputs without relying on Python 3.11's file_digest."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 PUBLIC_FILES = (
     "share/wayland-sessions/gnoblin.desktop",
     "share/gnome-session/sessions/gnoblin.session",
@@ -268,8 +279,7 @@ def main():
         )
         check_layout(stage)
         subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(stage), str(artifact)], check=True)
-    with artifact.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    digest = sha256_file(artifact)
     artifact.with_suffix(".deb.sha256").write_text(f"{digest}  {artifact.name}\n")
     print(artifact)
 

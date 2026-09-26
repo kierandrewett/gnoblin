@@ -16,6 +16,15 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def sha256_file(path):
+    """Hash large inputs without relying on Python 3.11's file_digest."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def order_recipes(recipes):
     """Return manifest recipes in dependency order and reject an ambiguous closure."""
     by_name = {}
@@ -212,8 +221,7 @@ def checked_archive(recipe, downloads):
         with urllib.request.urlopen(recipe["url"], timeout=60) as response, temporary.open("wb") as target:
             shutil.copyfileobj(response, target)
         temporary.replace(archive)
-    with archive.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    digest = sha256_file(archive)
     if digest != recipe["sha256"]:
         raise RuntimeError(f"Checksum mismatch: {archive}. Remove it before retrying.")
     return archive
