@@ -17,6 +17,7 @@ import * as Permissions from "./gnoblinPermissions.js";
 import {
     Autostart,
     ConfigFile,
+    DEFAULT_CURSOR,
     FEATURE_KEYS,
     Shortcuts,
     CommandShortcuts,
@@ -1146,7 +1147,8 @@ export class Component {
         this._windowRules.refresh(next);
         autostart.apply(next.autostart);
         this._permissionPolicy = next.permissions;
-        Meta.prefs_set_gnoblin_cursor_config(next.cursor.theme, next.cursor.size);
+        const cursor = { ...DEFAULT_CURSOR, ...next.cursor };
+        Meta.prefs_set_gnoblin_cursor_config(cursor.theme, cursor.size);
     }
 
     // --- feature toggles ---

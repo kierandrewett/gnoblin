@@ -45,7 +45,7 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
+export const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 const windowDefaults = () => ({
     ...WINDOW_PREFERENCES,
     "dynamic-workspaces": false,
