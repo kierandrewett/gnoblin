@@ -44,6 +44,8 @@ FATAL_LOG = re.compile(
     re.IGNORECASE,
 )
 FRAME_POLICY = [3, 0, 0, 0, 0, 36, 2, 2, 2]
+APP_WINDOW_STABLE_SECONDS = 4.0
+APP_WINDOW_SETTLE_TIMEOUT_SECONDS = 15.0
 
 
 def save_json(path: Path, value: object) -> None:
@@ -55,6 +57,57 @@ def default_artifact_dir(index: int) -> Path:
     state_home = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return state_home / "gnoblin" / "app-e2e" / f"{stamp}-shard-{index:02d}"
+
+
+def wait_for_stable_application_windows(
+    get_windows, stable_for: float, timeout: float
+) -> tuple[list[dict], bool, float]:
+    """Wait for splash-to-main-window changes to finish before controlling clients."""
+    started = time.monotonic()
+    last_signature = None
+    stable_since = None
+    latest_windows: list[dict] = []
+
+    def stable_windows() -> list[dict] | None:
+        nonlocal last_signature, stable_since, latest_windows
+        current = get_windows()
+        now = time.monotonic()
+        latest_windows = current
+        signature = tuple(
+            tuple(
+                window.get(key)
+                for key in (
+                    "sequence",
+                    "pid",
+                    "title",
+                    "type",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "ready",
+                    "mapped",
+                    "minimized",
+                    "fullscreen",
+                    "maximized",
+                )
+            )
+            for window in current
+        )
+        if current and signature == last_signature:
+            if stable_since is not None and now - stable_since >= stable_for:
+                return current
+        else:
+            last_signature = signature if current else None
+            stable_since = now if current else None
+        return None
+
+    try:
+        windows = wait_for(stable_windows, f"stable app windows for {stable_for:.1f}s", timeout=timeout)
+        assert isinstance(windows, list)
+        return windows, True, round(time.monotonic() - started, 3)
+    except TimeoutError:
+        return latest_windows, False, round(time.monotonic() - started, 3)
 
 
 def run_parent() -> int:
@@ -265,8 +318,7 @@ def request_is_below_minimum(request: dict[str, object] | None, state: dict | No
         and isinstance(hint, list)
         and len(hint) == 3
         and hint[0] is True
-        and rect[2] < hint[1]
-        and rect[3] < hint[2]
+        and (rect[2] < hint[1] or rect[3] < hint[2])
     )
 
 
@@ -502,10 +554,13 @@ def run_one_app(
                 new_windows = wait_for(
                     app_windows, f"{app['app_id']} to map a Wayland/X11 window", timeout=launch_timeout
                 )
-                time.sleep(0.6)
-                new_windows = app_windows()
+                new_windows, startup_settled, startup_settle_seconds = wait_for_stable_application_windows(
+                    app_windows,
+                    stable_for=APP_WINDOW_STABLE_SECONDS,
+                    timeout=APP_WINDOW_SETTLE_TIMEOUT_SECONDS,
+                )
                 if not new_windows:
-                    raise TimeoutError(f"{app['app_id']} closed its first window before the test began")
+                    raise TimeoutError(f"{app['app_id']} closed its first window before a stable window appeared")
             except TimeoutError as error:
                 launcher_exit_code = process.poll()
                 state.update(
@@ -517,6 +572,12 @@ def run_one_app(
                 )
                 return state
 
+            state["window_startup"] = {
+                "settled": startup_settled,
+                "stable_seconds": APP_WINDOW_STABLE_SECONDS,
+                "settle_seconds": startup_settle_seconds,
+                "timeout_seconds": APP_WINDOW_SETTLE_TIMEOUT_SECONDS,
+            }
             state["screenshot"] = screenshot(app, screenshot_dir)
             state["windows"] = [window["sequence"] for window in new_windows]
             state["window_observations"] = [window_state(window["sequence"]) for window in new_windows]

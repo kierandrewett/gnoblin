@@ -116,10 +116,15 @@ whether each app maps a window, then captures a screenshot and checks activation
 native frames, move/resize, titlebar dragging, resize handles, maximize,
 minimize, fullscreen and close. It also saves the app's stdout and stderr.
 
+After the first window maps, the driver waits for the app's window set and
+geometry to remain unchanged for four seconds, with a 15-second bound. This lets
+startup splash windows hand off to the real app window before controls begin; the
+trace records whether the window set settled before the bound.
+
 Resize traces include the requested frame rectangle, before/after bounds and
-the app's minimum and maximum size hints. A request below both minimum-size
-hints is recorded as constrained; each resizable app must still complete a
-valid resize request.
+the app's minimum and maximum size hints. A request is recorded as constrained
+if either requested dimension is below its matching minimum hint; each resizable
+app must still complete a valid resize request.
 
 Window-state traces also include all monitor bounds. Before the physical
 resize-handle probe, the driver positions a window to expose a visible right
