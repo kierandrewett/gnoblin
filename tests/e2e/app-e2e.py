@@ -414,11 +414,11 @@ echo '--- sandbox identity ---'
 id
 cat /etc/os-release
 printf '\n--- Vulkan-related environment ---\n'
-env | sort | grep -E '^(VK_|MESA_|LIBGL_|LD_LIBRARY_PATH|FLATPAK_GL_DRIVERS=)' || true
+env | sort | grep -E '^(VK_|MESA_|LIBGL_|LD_LIBRARY_PATH|FLATPAK_GL_DRIVERS=|XDG_(DATA|CONFIG)_DIRS=)' || true
 printf '\n--- Vulkan ICD manifests visible in sandbox ---\n'
-find /usr/share/vulkan /usr/lib/vulkan /usr/lib64/vulkan /usr/lib/extensions -type f -path '*/vulkan/icd.d/*.json' -print -exec cat {} \; 2>/dev/null
+find /usr \( -type f -o -type l \) -path '*/vulkan/icd.d/*.json' -print -exec cat {} \; 2>/dev/null
 printf '\n--- lavapipe and Vulkan loader libraries visible in sandbox ---\n'
-find /usr/lib /usr/lib64 -maxdepth 8 \( -type f -o -type l \) \( -name 'libvulkan_lvp.so' -o -name 'libvulkan.so.1' \) -print 2>/dev/null
+find /usr/lib /usr/lib64 -maxdepth 10 \( -type f -o -type l \) \( -name 'libvulkan_lvp.so' -o -name 'libvulkan.so.1' \) -print 2>/dev/null
 if command -v ldconfig >/dev/null 2>&1; then ldconfig -p 2>/dev/null | grep -i vulkan || true; fi
 printf '\n--- Vulkan device nodes visible in sandbox ---\n'
 ls -la /dev/dri /dev/vulkan 2>&1 || true
@@ -442,17 +442,87 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         probe,
     ]
     with diagnostic_path.open("w") as log:
-        log.write("--- host Flatpak GL drivers ---\n")
+        log.write("--- host Flatpak runtime and GL extension metadata ---\n")
+        commands = [
+            ["flatpak", "--version"],
+            ["flatpak", "--installations"],
+            ["flatpak", "list", "--system", "--runtime", "--columns=ref,origin"],
+            ["flatpak", "info", "--system", "--show-extensions", app["install"]],
+            ["flatpak", "info", "--system", "--show-location", app["install"]],
+        ]
+        for command in commands:
+            log.write(f"\n$ {' '.join(command)}\n")
+            try:
+                subprocess.run(
+                    command,
+                    env=environment,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                log.write(f"Could not run Flatpak metadata probe: {error}\n")
+        runtime_command = ["flatpak", "info", "--system", "--show-runtime", app["install"]]
         try:
-            subprocess.run(
-                ["flatpak", "--gl-drivers"],
+            log.write(f"\n$ {' '.join(runtime_command)}\n")
+            runtime_result = subprocess.run(
+                runtime_command,
                 env=environment,
-                stdout=log,
-                stderr=subprocess.STDOUT,
+                capture_output=True,
+                text=True,
                 timeout=10,
+                check=False,
             )
+            runtime_ref = runtime_result.stdout.strip()
+            log.write(f"\nApp runtime reference: {runtime_ref or '(unavailable)'}\n")
+            log.write(runtime_result.stderr)
+            if runtime_result.returncode == 0 and runtime_ref:
+                extension_command = [
+                    "flatpak",
+                    "info",
+                    "--system",
+                    "--show-extensions",
+                    runtime_ref,
+                ]
+                log.write(f"\n$ {' '.join(extension_command)}\n")
+                subprocess.run(
+                    extension_command,
+                    env=environment,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=False,
+                )
+                installed_extensions = subprocess.run(
+                    ["flatpak", "list", "--system", "--runtime", "--columns=ref"],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                for extension_ref in installed_extensions.stdout.splitlines():
+                    if "org.freedesktop.Platform.GL." not in extension_ref:
+                        continue
+                    location_command = [
+                        "flatpak",
+                        "info",
+                        "--system",
+                        "--show-location",
+                        extension_ref,
+                    ]
+                    log.write(f"\n$ {' '.join(location_command)}\n")
+                    subprocess.run(
+                        location_command,
+                        env=environment,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        timeout=10,
+                        check=False,
+                    )
         except (OSError, subprocess.TimeoutExpired) as error:
-            log.write(f"Could not list host Flatpak GL drivers: {error}\n")
+            log.write(f"Could not inspect app runtime extensions: {error}\n")
         log.write("\n--- app sandbox probe ---\n")
         try:
             result = subprocess.run(

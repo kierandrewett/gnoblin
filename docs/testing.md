@@ -191,7 +191,8 @@ reproduction/repair request when it fails. Re-run a shard locally after
 installing its recorded apps with:
 
 Flatpak apps that fail to map also include a `flatpak-runtime-diagnostics/`
-log with the selected host GL drivers and the app sandbox's Vulkan ICD files,
+log with the app's Flatpak runtime and extension metadata and locations, plus
+the sandbox's Vulkan ICD manifests,
 libraries, environment and device nodes. It runs `vulkaninfo` in the sandbox
 when the app runtime provides it.
 
