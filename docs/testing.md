@@ -112,9 +112,14 @@ whether each app maps a window, then captures a screenshot and checks activation
 native frames, move/resize, titlebar dragging, resize handles, maximize,
 minimize, fullscreen and close. It also saves the app's stdout and stderr.
 
-A shard fails if an app cannot be installed or mapped, a supported window
-operation is rejected, a window cannot close, or the compositor fails. The
-artifacts distinguish those outcomes.
+The pull-request run attempts every app in shard 0 but gates on the pinned
+Alacritty close regression. The repair artifact still records outcomes from
+the other apps.
+
+Scheduled and manually dispatched runs use strict gating. A shard fails if an
+app cannot be installed or mapped, a supported window operation is rejected,
+a window cannot close, or the compositor fails. Those runs keep the full
+per-app report for follow-up.
 
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.

@@ -26,5 +26,7 @@ docker run --rm --privileged \
     --env SHARD_INDEX \
     --env ARTIFACT_DIR \
     --env TRACE_CRASH \
+    --env "GNOBLIN_E2E_FAILURE_POLICY=${GNOBLIN_E2E_FAILURE_POLICY:-strict}" \
+    --env "GNOBLIN_E2E_REQUIRED_APP_IDS=${GNOBLIN_E2E_REQUIRED_APP_IDS:-}" \
     fedora:44 \
     bash "$container_workspace/tests/e2e/run-app-shard-in-fedora.sh"

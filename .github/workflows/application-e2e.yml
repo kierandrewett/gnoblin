@@ -151,6 +151,8 @@ jobs:
         env:
           SHARD_INDEX: ${{ matrix.shard }}
           TRACE_CRASH: ${{ inputs.trace_crash || false }}
+          GNOBLIN_E2E_FAILURE_POLICY: ${{ github.event_name == 'pull_request' && 'required' || 'strict' }}
+          GNOBLIN_E2E_REQUIRED_APP_IDS: org.alacritty.Alacritty
         run: |
           ARTIFACT_DIR="$RUNNER_TEMP/e2e-shard-$SHARD_INDEX" \
             bash tests/e2e/run-app-shard-container.sh

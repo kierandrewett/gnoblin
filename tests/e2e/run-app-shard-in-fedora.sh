@@ -21,6 +21,8 @@ runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
 ./tests/start-system-bus.sh
 
 e2e_uid="$(id -u e2e)"
+e2e_failure_policy="${GNOBLIN_E2E_FAILURE_POLICY:-strict}"
+e2e_required_app_ids="${GNOBLIN_E2E_REQUIRED_APP_IDS:-}"
 mkdir -p "$ARTIFACT_DIR"
 python3 scripts/devkit_dbus.py \
     "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE"
@@ -52,5 +54,7 @@ runuser -u e2e -- env \
     GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor" \
     GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json" \
     GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
+    GNOBLIN_E2E_FAILURE_POLICY="$e2e_failure_policy" \
+    GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids" \
     GNOBLIN_E2E_TIMEOUT=3300 \
     python3 tests/e2e/app-e2e.py

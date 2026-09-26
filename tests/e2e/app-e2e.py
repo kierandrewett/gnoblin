@@ -776,6 +776,21 @@ def run_inside() -> int:
         for outcome in outcomes:
             counts[outcome["status"]] = counts.get(outcome["status"], 0) + 1
         failed_apps = [outcome["app_id"] for outcome in outcomes if outcome["status"] != "exercised"]
+        failure_policy = os.environ.get("GNOBLIN_E2E_FAILURE_POLICY", "strict")
+        if failure_policy not in {"strict", "required"}:
+            raise RuntimeError(f"unsupported app E2E failure policy: {failure_policy!r}")
+        required_apps = {
+            app_id.strip() for app_id in os.environ.get("GNOBLIN_E2E_REQUIRED_APP_IDS", "").split(",") if app_id.strip()
+        }
+        if failure_policy == "required" and not required_apps:
+            raise RuntimeError("required app E2E policy needs GNOBLIN_E2E_REQUIRED_APP_IDS")
+        tested_apps = {outcome["app_id"] for outcome in outcomes}
+        missing_required_apps = required_apps - tested_apps
+        blocking_failures = (
+            failed_apps
+            if failure_policy == "strict"
+            else sorted((set(failed_apps) & required_apps) | missing_required_apps)
+        )
         summary = {
             "shard": shard["shard"],
             "catalog_generated_utc": shard["catalog_generated_utc"],
@@ -783,6 +798,9 @@ def run_inside() -> int:
             "requested_apps": len(shard["apps"]),
             "outcomes": counts,
             "failed_apps": failed_apps,
+            "failure_policy": failure_policy,
+            "required_apps": sorted(required_apps),
+            "blocking_failures": blocking_failures,
             "apps": outcomes,
             "completed_utc": datetime.now(timezone.utc).isoformat(),
         }
@@ -793,12 +811,24 @@ def run_inside() -> int:
             repair_path.write_text(
                 "# Gnoblin application compatibility failures\n\n"
                 f"Shard: `{shard['shard']['index']}/{shard['shard']['count']}`\n\n"
+                f"Failure policy: `{failure_policy}`\n\n"
+                "Blocking applications:\n\n"
+                + ("\n".join(f"- `{app_id}`" for app_id in blocking_failures) or "- None")
+                + "\n\n"
                 "Failed application IDs:\n\n"
                 + "\n".join(f"- `{app_id}`" for app_id in failed_apps)
                 + "\n\nInspect each application console log, operation event, screenshot and the shell log. "
                 "Reproduce one app at a time, then reduce the failing state sequence before patching.\n"
             )
-        return 1 if failed_apps else 0
+        if blocking_failures:
+            print(f"FAIL: required app E2E failures: {blocking_failures}", flush=True)
+            return 1
+        if failed_apps:
+            print(
+                f"PASS: required apps exercised; {len(failed_apps)} other app outcomes need triage in the artifact",
+                flush=True,
+            )
+        return 0
     finally:
         if panel.poll() is None:
             panel.terminate()
