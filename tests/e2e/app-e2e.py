@@ -368,6 +368,18 @@ def stop_process_group(process: subprocess.Popen, grace_seconds: float = 2.0) ->
         process.wait(timeout=2)
 
 
+def pid_is_alive(pid: int | None) -> bool | None:
+    if pid is None or pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def app_environment() -> dict[str, str]:
     """Give launchers the compositor's actual nested Wayland/XWayland endpoints."""
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -495,13 +507,13 @@ def run_one_app(
                 if not new_windows:
                     raise TimeoutError(f"{app['app_id']} closed its first window before the test began")
             except TimeoutError as error:
-                process_exit_code = process.poll()
+                launcher_exit_code = process.poll()
                 state.update(
                     status="no-window",
                     error=str(error),
                     elapsed_seconds=round(time.monotonic() - started, 3),
-                    process_exit_code=process_exit_code,
-                    process_alive_at_timeout=process_exit_code is None,
+                    launcher_exit_code=launcher_exit_code,
+                    launcher_alive_at_timeout=launcher_exit_code is None,
                 )
                 return state
 
@@ -515,6 +527,7 @@ def run_one_app(
             )
 
             control_failed = False
+            window_client_pids: dict[int, int | None] = {}
             for mapped in new_windows:
                 sequence = mapped["sequence"]
                 resize_capability_seen = False
@@ -522,11 +535,13 @@ def run_one_app(
                 window_disappeared = False
                 current = window_state(sequence)
                 if current is None:
+                    window_client_pids[sequence] = None
                     result = {"window": sequence, "operation": "observe", "status": "window-disappeared"}
                     state["operations"].append(result)
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
                     control_failed = True
                     continue
+                window_client_pids[sequence] = current.get("pid")
 
                 def record(operation: str, status: str, **details: object) -> None:
                     result = {"window": sequence, "operation": operation, "status": status, **details}
@@ -547,6 +562,9 @@ def run_one_app(
                         "before": window_evidence(before),
                         "after": None,
                     }
+                    client_pid = before.get("pid") if before else None
+                    details["client_pid"] = client_pid
+                    details["client_pid_alive_at_disappearance"] = pid_is_alive(client_pid)
                     if error is not None:
                         details["error"] = str(error)
                     if request_details:
@@ -967,9 +985,17 @@ def run_one_app(
                 else ("exercised" if state["windows"] else "no-window")
             )
             state["elapsed_seconds"] = round(time.monotonic() - started, 3)
-            process_exit_code = process.poll()
-            state["process_exit_code"] = process_exit_code
-            state["process_alive_at_end"] = process_exit_code is None
+            state["window_processes"] = [
+                {
+                    "window": sequence,
+                    "client_pid": pid,
+                    "client_pid_alive_at_sequence_end": pid_is_alive(pid),
+                }
+                for sequence, pid in window_client_pids.items()
+            ]
+            launcher_exit_code = process.poll()
+            state["launcher_exit_code"] = launcher_exit_code
+            state["launcher_alive_at_end"] = launcher_exit_code is None
             return state
         except BaseException:
             process.send_signal(signal.SIGTERM) if process.poll() is None else None

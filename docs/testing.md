@@ -132,8 +132,9 @@ records that constraint instead of sending pointer events outside the display.
 
 If an app window disappears during an operation, the trace records that first
 operation and skips the remaining controls for that window. App outcomes also
-include the process exit code, or whether the process was still alive when the
-window-map timeout or test sequence ended.
+include the launcher's exit code and whether each mapped client PID remains
+alive when the sequence ends. A disappearance record captures that PID's
+liveness at the time the window vanishes.
 
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
