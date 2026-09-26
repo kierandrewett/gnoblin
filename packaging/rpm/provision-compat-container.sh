@@ -33,6 +33,20 @@ case "${ID}:${VERSION_ID}" in
             python3-setuptools flex bison gettext-tools libffi-devel pcre2-devel zlib-devel \
             libmount-devel libselinux-devel tar xz patch git
         ;;
+    opensuse-leap:15.6)
+        zypper --non-interactive --quiet install --no-recommends \
+            gcc gcc-c++ make pkg-config python3-devel flex bison gettext-tools \
+            libffi-devel pcre2-devel zlib-devel libmount-devel libselinux-devel \
+            libopenssl-devel sqlite3-devel tar gzip xz patch git curl
+        python_archive=/tmp/Python-3.9.20.tgz
+        curl --fail --location --silent --show-error \
+            --output "$python_archive" https://www.python.org/ftp/python/3.9.20/Python-3.9.20.tgz
+        echo '1e71f006222666e0a39f5a47be8221415c22c4dd8f25334cc41aee260b3d379e  /tmp/Python-3.9.20.tgz' | sha256sum --check --status
+        tar -xzf "$python_archive" -C /tmp
+        (cd /tmp/Python-3.9.20 && ./configure --prefix=/opt/gnoblin-python39 --with-ensurepip=install && make -j2 && make install)
+        /opt/gnoblin-python39/bin/python3.9 -m venv /opt/gnoblin-rpm-compat-tools
+        /opt/gnoblin-rpm-compat-tools/bin/pip install --disable-pip-version-check --quiet setuptools meson==1.10.1 ninja
+        ;;
     *)
         echo "The private GLib/GI bootstrap gate currently supports EL 8/9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
         exit 2
