@@ -218,7 +218,8 @@ let
       install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
       install -Dm755 src/tools/gnoblin-seed-config "$out/libexec/gnoblin-seed-config"
       install -Dm644 src/data/init.lua.example "$out/share/gnoblin/init.lua.example"
-      python3 ${gnoblinSrc}/scripts/build-adwaita-hyprcursor.py \
+      LD_LIBRARY_PATH="${lib.makeLibraryPath [ librsvg ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+        python3 ${gnoblinSrc}/scripts/build-adwaita-hyprcursor.py \
         --output "$TMPDIR/Adwaita-Hyprcursor" \
         --fallback "${adwaita-icon-theme}/share/icons/Adwaita"
       mkdir -p "$out/share/icons"
