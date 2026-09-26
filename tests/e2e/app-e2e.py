@@ -394,6 +394,7 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             f"--env=DISPLAY={client_environment['DISPLAY']}",
             f"--env=LANG={client_environment['LANG']}",
             "--env=LIBGL_ALWAYS_SOFTWARE=1",
+            "--env=SLINT_WGPU_CPU=1",
             f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
             f"--env=VK_ICD_FILENAMES={FLATPAK_LAVAPIPE_ICD}",
             "--env=VK_LOADER_DEBUG=error,warn,info,driver",
@@ -403,6 +404,8 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
         ]
         # The runtime extension stores its ICD manifests outside the loader's
         # default search paths, so select its sandboxed lavapipe manifest.
+        # Slint's WGPU renderer otherwise rejects Mesa's CPU Vulkan adapter;
+        # this override allows lavapipe in the software-only CI environment.
         # Loader diagnostics remain in the per-app stderr log for Vulkan apps.
         command.append(app["launch"])
         return command
@@ -419,7 +422,7 @@ echo '--- sandbox identity ---'
 id
 cat /etc/os-release
 printf '\n--- Vulkan-related environment ---\n'
-env | sort | grep -E '^(VK_|MESA_|LIBGL_|LD_LIBRARY_PATH|FLATPAK_GL_DRIVERS=|XDG_(DATA|CONFIG)_DIRS=)' || true
+env | sort | grep -E '^(VK_|SLINT_WGPU_CPU=|MESA_|LIBGL_|LD_LIBRARY_PATH|FLATPAK_GL_DRIVERS=|XDG_(DATA|CONFIG)_DIRS=)' || true
 printf '\n--- Vulkan ICD manifests visible in sandbox ---\n'
 find /usr \( -type f -o -type l \) -path '*/vulkan/icd.d/*.json' -print -exec cat {} \; 2>/dev/null
 printf '\n--- lavapipe and Vulkan loader libraries visible in sandbox ---\n'
@@ -439,6 +442,7 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         f"--env=DISPLAY={client_environment['DISPLAY']}",
         f"--env=LANG={client_environment['LANG']}",
         "--env=LIBGL_ALWAYS_SOFTWARE=1",
+        "--env=SLINT_WGPU_CPU=1",
         f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
         f"--env=VK_ICD_FILENAMES={FLATPAK_LAVAPIPE_ICD}",
         "--env=VK_LOADER_DEBUG=error,warn,info,driver",
