@@ -47,6 +47,22 @@ MD5sum: 09e5b65ff9fead7d716f266ab1320ccf
 SHA256: ed8b884752a6b460d2c4e7ec10c0dd4e8c4da5f88b603da5df534b3e043b6101
 
 Package: gnoblin
+Version: 51.0+gnoblin0.1.7-1~debian13
+Architecture: amd64
+Maintainer: Gnoblin Developers <release@gnoblin.local>
+Section: x11
+Priority: optional
+Installed-Size: 303231
+Depends: adwaita-icon-theme, brightnessctl, bubblewrap, dbus-user-session, dconf-gsettings-backend, gir1.2-accountsservice-1.0:amd64 (>= 23.13.9-7), gir1.2-adw-1:amd64 (>= 1.7.6-1~deb13u1), gir1.2-appstream-1.0:amd64 (>= 1.0.5-1), gir1.2-atk-1.0:amd64 (>= 2.56.2-1+deb13u2), gir1.2-atspi-2.0:amd64 (>= 2.56.2-1+deb13u2), gir1.2-camel-1.2:amd64 (>= 3.56.2-0+deb13u1), gir1.2-colord-1.0:amd64 (>= 1.4.7-3), gir1.2-ecal-2.0:amd64 (>= 3.56.2-0+deb13u1), gir1.2-edataserver-1.2:amd64 (>= 3.56.2-0+deb13u1), gir1.2-freedesktop:amd64 (>= 1.84.0-1), gir1.2-gck-2:amd64 (>= 4.4.0.1-3), gir1.2-gcr-4:amd64 (>= 4.4.0.1-3), gir1.2-gdkpixbuf-2.0:amd64 (>= 2.42.12+dfsg-4+deb13u1), gir1.2-gdm-1.0 (>= 48.0-2), gir1.2-geoclue-2.0:amd64 (>= 2.7.2-2), gir1.2-girepository-2.0:amd64 (>= 1.84.0-1), gir1.2-gnomeautoar-0.1:amd64 (>= 0.4.5-2), gir1.2-gnomebluetooth-3.0:amd64 (>= 47.1-1), gir1.2-graphene-1.0:amd64 (>= 1.10.8-5), gir1.2-gstreamer-1.0:amd64 (>= 1.26.2-2), gir1.2-gtk-3.0, gir1.2-gtk-3.0:amd64 (>= 3.24.49-3), gir1.2-gtk-4.0:amd64 (>= 4.18.6+ds-2), gir1.2-gudev-1.0:amd64 (>= 238-6), gir1.2-gweather-4.0:amd64 (>= 4.4.4-1), gir1.2-harfbuzz-0.0:amd64 (>= 10.2.0-1+deb13u1), gir1.2-ibus-1.0:amd64 (>= 1.5.32-2), gir1.2-ical-3.0:amd64 (>= 3.0.20-1+b1), gir1.2-json-1.0:amd64 (>= 1.10.6+ds-2), gir1.2-nm-1.0:amd64 (>= 1.52.1-1), gir1.2-nma4-1.0:amd64 (>= 1.10.6-5), gir1.2-pango-1.0:amd64 (>= 1.56.3-1), gir1.2-polkit-1.0 (>= 126-2), gir1.2-rsvg-2.0:amd64 (>= 2.60.0+dfsg-1), gir1.2-secret-1:amd64 (>= 0.21.7-1), gir1.2-soup-3.0:amd64 (>= 3.6.5-3), gir1.2-upowerglib-1.0:amd64 (>= 1.90.9-1), gnome-session-bin, gnome-session-common, gnome-settings-daemon, gsettings-desktop-schemas, iso-codes, libatk-bridge2.0-0t64 (>= 2.5.3), libatk1.0-0t64 (>= 2.2.0), libc6 (>= 2.39), libcairo-gobject2 (>= 1.10.0), libcairo2 (>= 1.14.0), libcanberra0 (>= 0.2), libcolord2 (>= 1.4.5), libdbus-1-3 (>= 1.10), libdrm2 (>= 2.4.119), libecal-2.0-3 (>= 3.33.4), libedataserver-1.2-27t64 (>= 3.25.90), libegl1, libelf1t64 (>= 0.142), libepoxy0 (>= 1.0), libevdev2 (>= 1.10.0), libexpat1 (>= 2.0.1), libffi8 (>= 3.4), libfontconfig1 (>= 2.12.6), libfribidi0 (>= 0.19.2), libgbm1 (>= 21.3.0~rc1), libgcc-s1 (>= 4.3), libgcr-4-4 (>= 3.8.0), libgdk-pixbuf-2.0-0 (>= 2.25.2), libgl1, libgles2, libglib2.0-bin, libgraphene-1.0-0 (>= 1.10.0), libgtk-4-1 (>= 4.12.0), libgudev-1.0-0 (>= 238), libharfbuzz0b (>= 0.6.0), libheif1 (>= 1.13.0), libical3t64 (>= 3.0.0), libjson-glib-1.0-0 (>= 1.5.2), liblcms2-2 (>= 2.6), liblua5.4-0 (>= 5.4.6), libmount1 (>= 2.40~rc2), libncursesw6 (>= 6), libnm0 (>= 1.4.0), libpango-1.0-0 (>= 1.45.5), libpangocairo-1.0-0 (>= 1.18.0), libpcre2-8-0 (>= 10.22), libpixman-1-0 (>= 0.25.2), libpolkit-agent-1-0 (>= 0.99), libpolkit-gobject-1-0 (>= 0.94), libpulse-mainloop-glib0 (>= 0.99.1), libpulse0 (>= 0.99.1), libreadline8t64 (>= 6.0), librsvg2-2 (>= 2.52.5), libseccomp2 (>= 2.1.0), libsecret-1-0 (>= 0.7), libselinux1 (>= 3.1~), libstartup-notification0 (>= 0.11), libstdc++6 (>= 13.1), libsystemd0 (>= 237), libtinfo6 (>= 6), libtomlplusplus3t64 (>= 3.2.0), libudev1 (>= 196), libwacom9 (>= 2.13.0), libx11-6 (>= 2:1.7.0), libx11-xcb1, libxau6 (>= 1:1.0.11), libxcb-res0 (>= 1.10), libxcb1, libxcomposite1 (>= 1:0.4.6), libxcursor1 (>> 1.1.2), libxext6, libxfixes3 (>= 1:6.0.0), libxi6 (>= 2:1.2.99.4), libxinerama1 (>= 2:1.1.4), libxkbcommon0 (>= 1.0.0), libxkbregistry0 (>= 1.0.0), libxml2 (>= 2.7.4), libxrandr2 (>= 2:1.2.99.3), libzip5 (>= 1.0), playerctl, python3, python3-gi, systemd, wireplumber, xdg-desktop-portal-gnome, xwayland, zlib1g (>= 1:1.2.2)
+Homepage: https://github.com/kierandrewett/gnoblin
+Description: Wayland desktop with a private GNOME runtime
+ Installs a separate Gnoblin login session without replacing GNOME.
+Filename: pool/main/g/gnoblin/gnoblin_51.0+gnoblin0.1.7-1~debian13_amd64.deb
+Size: 64277756
+MD5sum: 1dbb076e9d8d46ea4431091f5133c7e0
+SHA256: d7d2e6e198b928f006229cb021c25957d2919f5406e967b783785f0e8f361e24
+
+Package: gnoblin
 Version: 51.0-1~debian13
 Architecture: amd64
 Maintainer: Gnoblin Developers <release@gnoblin.local>
