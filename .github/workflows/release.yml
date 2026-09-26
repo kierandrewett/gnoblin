@@ -54,6 +54,16 @@ jobs:
     with:
       ref: ${{ inputs.tag || github.ref }}
 
+  opensuse-package:
+    uses: ./.github/workflows/opensuse-rpm.yml
+    with:
+      ref: ${{ inputs.tag || github.ref }}
+
+  nixos-release:
+    uses: ./.github/workflows/nix.yml
+    with:
+      ref: ${{ inputs.tag || github.ref }}
+
   arch-package:
     needs: [source-packages, debian-packages]
     runs-on: ubuntu-latest
@@ -125,7 +135,12 @@ jobs:
         run: pacman -Scc --noconfirm
 
   github-release:
-    needs: [source-packages, debian-packages, arch-package]
+    needs:
+      - source-packages
+      - debian-packages
+      - arch-package
+      - opensuse-package
+      - nixos-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -147,6 +162,22 @@ jobs:
           name: arch-package-${{ env.RELEASE_TAG }}
           path: release-assets
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: opensuse-tumbleweed-rpms
+          path: opensuse-rpms
+          merge-multiple: true
+      - name: Flatten openSUSE RPM assets
+        run: |
+          mkdir -p release-assets
+          mapfile -d '' rpms < <(
+            find opensuse-rpms -type f -name '*.rpm' \
+              ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
+          )
+          (("${#rpms[@]}" > 0))
+          for rpm in "${rpms[@]}"; do
+            cp -- "$rpm" "release-assets/opensuse-$(basename "$rpm")"
+          done
       - name: Checksum all release assets
         run: |
           cd release-assets

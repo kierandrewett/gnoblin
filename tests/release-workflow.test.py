@@ -51,6 +51,39 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
+    def test_release_waits_for_and_publishes_opensuse_rpms(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        opensuse = (ROOT / ".github/workflows/opensuse-rpm.yml").read_text()
+        self.assertIn("opensuse-package:", workflow)
+        self.assertIn("uses: ./.github/workflows/opensuse-rpm.yml", workflow)
+        self.assertIn("with:\n      ref:", workflow)
+        self.assertIn("opensuse-package", workflow.split("github-release:", 1)[1].split("apt-repository:", 1)[0])
+        self.assertIn("name: opensuse-tumbleweed-rpms", opensuse)
+        self.assertIn("workflow_call:", opensuse)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", opensuse)
+        self.assertIn("Flatten openSUSE RPM assets", workflow)
+        self.assertIn("find opensuse-rpms -type f -name '*.rpm'", workflow)
+        self.assertIn("! -name '*-debuginfo-*'", workflow)
+        self.assertIn("! -name '*-debugsource-*'", workflow)
+        self.assertIn('"release-assets/opensuse-$(basename "$rpm")"', workflow)
+
+    def test_release_builds_the_pinned_nixos_package_before_publication(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        nix = (ROOT / ".github/workflows/nix.yml").read_text()
+        self.assertIn("nixos-release:", workflow)
+        self.assertIn("uses: ./.github/workflows/nix.yml", workflow)
+        self.assertIn("nixos-release", workflow.split("github-release:", 1)[1].split("apt-repository:", 1)[0])
+        self.assertIn("workflow_call:", nix)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", nix)
+        self.assertIn("nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05", nix)
+        self.assertIn("test -x result/bin/gnoblinctl", nix)
+        self.assertIn("test -f result/share/wayland-sessions/gnoblin.desktop", nix)
+        self.assertIn(
+            "session_executable=\"$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)\"",
+            nix,
+        )
+        self.assertNotIn("release-nixos-26-05:", nix)
+
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
         self.assertIn("COPR_CONFIG:", workflow)

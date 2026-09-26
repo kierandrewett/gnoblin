@@ -9,6 +9,18 @@ on:
       - "packaging/opensuse/**"
       - "tests/opensuse-packaging.test.py"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to build
+        type: string
+        default: main
+        required: true
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to build
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -30,6 +42,7 @@ jobs:
           zypper --non-interactive install git hyprcursor inkscape patch rpm-build tar xz python3
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref || github.sha }}
           submodules: recursive
       - name: Trust the checked-out source tree in the container
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -57,7 +70,7 @@ jobs:
           name: opensuse-tumbleweed-rpms
           path: ${{ runner.temp }}/rpmbuild/RPMS/**/*.rpm
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   tumbleweed-coinstall:
     name: Tumbleweed GNOME coexistence and removal
@@ -71,6 +84,8 @@ jobs:
           zypper --non-interactive refresh
           zypper --non-interactive install python3 rpm
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: opensuse-tumbleweed-rpms

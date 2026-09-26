@@ -3,6 +3,23 @@
 This is internal release engineering material. Keep it current whenever the
 release pipeline or COPR publication changes.
 
+## Release workflow coverage added 2026-09-26
+
+- The tagged Release workflow now builds the openSUSE Tumbleweed RPM chain from
+  the release ref, runs its stock-GNOME co-install/removal checks, and attaches
+  the resulting RPMs to the GitHub release. This is a direct RPM download, not
+  an OBS repository.
+- The tagged Release workflow calls the Nix workflow against the same ref and
+  builds the pinned NixOS 26.05 package before GitHub release publication. The
+  Nix distribution path remains the tagged flake source; this does not create a
+  binary cache or prove graphical login.
+- EL 8/9/10 remain without a release package path. The RPM capability probes
+  show that the unchanged host dependency contract does not resolve there. A
+  private dependency closure and EL package adapter are still required before
+  an EL artifact can be built honestly.
+- These paths are implemented but are not release evidence until a tagged
+  Release workflow has completed and the assets or flake build are verified.
+
 ## Current state (2026-09-25)
 
 - `gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
