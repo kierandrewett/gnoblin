@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Callable
 
 import gi
 
@@ -641,14 +642,22 @@ def app_environment() -> dict[str, str]:
     return env
 
 
-def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -> tuple[str, dict[str, object]]:
+def close_sequence(
+    sequence: int,
+    modal_dialog_type: int,
+    timeout: float = 10,
+    screenshot_after_miss: Callable[[], str | None] | None = None,
+) -> tuple[str, dict[str, object]]:
     state = window_state(sequence)
     if state is None:
         return "already-closed", {}
 
     windows_before_close = {window["sequence"] for window in shell_windows()}
     has_gnoblin_frame = gnoblin_frame_visible(state)
-    click_details: dict[str, object] = {}
+    click_details: dict[str, object] = {
+        "window_before_close": window_evidence(state),
+        "frame_presentation_before_close": state["layout"].get("presentation"),
+    }
     if has_gnoblin_frame or not state["fullscreen"]:
         if has_gnoblin_frame:
             try:
@@ -656,18 +665,20 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
                 close_region = next(
                     item for item in state["layout"]["presentation"]["regions"] if item[0] == FRAME_ACTION_CLOSE
                 )
-                click_details = {
-                    "button": "gnoblin-close",
-                    "target": [close_x, close_y],
-                    "region": close_region,
-                }
+                click_details.update(
+                    {
+                        "button": "gnoblin-close",
+                        "target": [close_x, close_y],
+                        "region": close_region,
+                    }
+                )
             except RuntimeError as error:
-                click_details = {"button": "gnoblin-close", "target_error": str(error)}
+                click_details.update({"button": "gnoblin-close", "target_error": str(error)})
                 close_x = close_y = None
         else:
             close_x = state["x"] + max(12, state["width"] - 20)
             close_y = state["y"] + 18
-            click_details = {"button": "client-titlebar-close", "target": [close_x, close_y]}
+            click_details.update({"button": "client-titlebar-close", "target": [close_x, close_y]})
         if close_x is not None and close_y is not None:
             send_pointer("move", state["x"] + state["width"] // 2, close_y)
             time.sleep(0.025)
@@ -686,6 +697,7 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
                 if post_click_state is None:
                     send_pointer("move", 4, 780)
                     return method, {**click_details, "closed_after_timeout": True}
+                click_details["window_after_close_click"] = window_evidence(post_click_state)
                 post_click_windows = shell_windows()
                 same_process_windows = [
                     window
@@ -698,6 +710,8 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
                     {key: window[key] for key in ("sequence", "title", "type", "pid", "x", "y", "width", "height")}
                     for window in same_process_windows
                 ]
+                if screenshot_after_miss is not None:
+                    click_details["screenshot_after_close_click_miss"] = screenshot_after_miss()
 
                 def newly_opened_application_modal() -> dict | None:
                     return next(
@@ -1337,7 +1351,11 @@ def run_one_app(
                     if initial is None:
                         mark_window_disappeared("close")
                     else:
-                        close_method, close_details = close_sequence(sequence, modal_dialog_type)
+                        close_method, close_details = close_sequence(
+                            sequence,
+                            modal_dialog_type,
+                            screenshot_after_miss=lambda: screenshot(app, screenshot_dir, "close-click-miss"),
+                        )
                         if close_method == "application-modal-opened":
                             close_details["screenshot"] = screenshot(app, screenshot_dir, "close-dialog")
                         close_result = {

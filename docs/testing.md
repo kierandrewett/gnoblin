@@ -194,8 +194,9 @@ checklist.
 
 Each shard artifact contains its exact catalog slice, installation report,
 per-app logs and screenshots, JSONL operation trace, summary, shell log and a
-reproduction/repair request when it fails. Re-run a shard locally after
-installing its recorded apps with:
+reproduction/repair request when it fails. A missed titlebar close also saves a
+screenshot and window/frame state before fallback cleanup. Re-run a shard
+locally after installing its recorded apps with:
 
 Flatpak apps that fail to map also include a `flatpak-runtime-diagnostics/`
 log with the app's Flatpak runtime and extension metadata and locations, plus
