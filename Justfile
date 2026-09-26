@@ -116,7 +116,7 @@ package-deb: deb
 [private]
 init:
     git submodule sync --recursive
-    git submodule update --init --recursive
+    ./scripts/checkout-submodules-with-retry.sh
     ./scripts/ensure-release-subprojects.sh
     just prepare-tarball-sources
     @echo "mutter               -> $(git -C subprojects/mutter               describe --tags --always)"

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/retry-command.sh"
 
 projects=(mutter gnome-shell gnome-control-center xdg-desktop-portal-gnome)
 
@@ -15,7 +16,7 @@ for project in "${projects[@]}"; do
         exit 1
     }
 
-    git -C "$subproject" fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+    gnoblin_retry_command git -C "$subproject" fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
     expected="$(git -C "$subproject" rev-parse "$tag^{commit}")"
     actual="$(git -C "$subproject" rev-parse HEAD)"
     if [ "$actual" = "$expected" ]; then
