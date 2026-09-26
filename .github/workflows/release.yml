@@ -188,6 +188,20 @@ jobs:
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft
+            mapfile -t existing_assets < <(
+              gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+                --json assets --jq '.assets[].name'
+            )
+            declare -A desired_assets=()
+            for asset_path in release-assets/*; do
+              desired_assets["${asset_path##*/}"]=1
+            done
+            for asset in "${existing_assets[@]}"; do
+              if [[ -z "${desired_assets[$asset]:-}" ]]; then
+                gh release delete-asset "$RELEASE_TAG" "$asset" \
+                  --repo "$GITHUB_REPOSITORY" --yes
+              fi
+            done
             gh release upload "$RELEASE_TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --clobber
           else

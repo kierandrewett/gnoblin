@@ -63,6 +63,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--clobber", workflow)
         self.assertIn('--title "Gnoblin ${RELEASE_TAG#gnoblin-v}"', workflow)
         release_publish = workflow.split("  github-release:\n", 1)[1].split("  apt-repository:", 1)[0]
+        self.assertIn("declare -A desired_assets=()", release_publish)
+        self.assertIn('gh release delete-asset "$RELEASE_TAG" "$asset"', release_publish)
         self.assertNotIn("./scripts/gnoblin-version.py", release_publish)
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)

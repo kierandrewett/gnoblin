@@ -41,6 +41,13 @@ release pipeline or COPR publication changes.
   after earlier Mutter patches shifted the source. The patch now anchors its
   edits to the PipeWire dependency and affected functions; rerun the source and
   Nix builds before allowing publication.
+- Release run `36226790588` passed the source, Nix, openSUSE, Arch, and all three
+  Debian/Ubuntu build/install gates. Its APT publication passed with Debian
+  revision `-2`. COPR initially stopped at source-RPM selection because the
+  draft still contained the obsolete Mutter 51.0-24 asset beside 51.0-25. The
+  stale asset was removed and the COPR job rerun. The release workflow now
+  removes draft assets absent from the fresh build before upload, preventing
+  this repair failure on later releases.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,
