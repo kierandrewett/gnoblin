@@ -690,19 +690,19 @@ export class WindowCorners {
         });
     }
 
-    remove() {
-        if (this.effect) this.surface.remove_effect(this.effect);
+    remove(surfaceGone = false) {
+        if (this.effect && !surfaceGone) this.surface.remove_effect(this.effect);
         this.effect = null;
         this.shadow?.destroy();
         this.shadow = null;
     }
-    destroy() {
+    destroy(surfaceGone = false) {
         if (this.pending) GLib.source_remove(this.pending);
         this.pending = 0;
         this.unwatch();
         for (const [object, id] of this.signals) object.disconnect(id);
         this.signals = [];
-        this.remove();
+        this.remove(surfaceGone);
     }
 }
 

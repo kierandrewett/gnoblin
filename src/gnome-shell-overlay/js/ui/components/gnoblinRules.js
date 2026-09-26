@@ -28,6 +28,10 @@ void main() {
 }`;
 }
 
+function isWindowSurface(child) {
+    return !child._gnoblinDecoration && child.get_name() !== "gnoblin-native-frame";
+}
+
 const WindowShader = GObject.registerClass(
     class GnoblinWindowShader extends Clutter.ShaderEffect {
         _init(source, uniforms) {
@@ -221,17 +225,49 @@ export class WindowRules {
         return entry.source;
     }
 
+    _forgetSurface(entry, surface, surfaceAlive, restoreOpacity = false) {
+        if (entry.surface !== surface) return;
+        if (surfaceAlive) {
+            if (entry.surfaceDestroy) surface.disconnect(entry.surfaceDestroy);
+            if (entry.width) surface.disconnect(entry.width);
+            if (entry.height) surface.disconnect(entry.height);
+            if (restoreOpacity) surface.opacity = entry.opacity;
+            if (entry.shader) surface.remove_effect(entry.shader);
+        }
+        entry.surface = null;
+        entry.surfaceDestroy = 0;
+        entry.width = 0;
+        entry.height = 0;
+        entry.opacity = null;
+        // Surface actors can be replaced while the MetaWindowActor remains
+        // mapped. Effects and size observers belong to that individual actor.
+        entry.shader = null;
+        entry.shaderKey = null;
+        entry.corners?.destroy(!surfaceAlive);
+        entry.corners = null;
+        entry.borders?.destroy();
+        entry.borders = null;
+    }
+
+    _trackSurface(actor, entry, surface) {
+        entry.surface = surface;
+        entry.opacity = surface.opacity;
+        entry.width = surface.connect("notify::width", () => this._schedule(actor));
+        entry.height = surface.connect("notify::height", () => this._schedule(actor));
+        entry.surfaceDestroy = surface.connect("destroy", () => {
+            if (entry.surface !== surface) return;
+            this._forgetSurface(entry, surface, false);
+            this._schedule(actor);
+        });
+    }
+
     _apply(actor) {
         if (this._destroyed) return;
         let entry = this._actors.get(actor);
         // Shadows are inserted before the client surface. A new rules owner
         // must never attach client effects or size listeners to that decoration.
-        const surface =
-            entry?.surface ||
-            actor
-                .get_children()
-                .find((child) => !child._gnoblinDecoration && child.get_name() !== "gnoblin-native-frame");
-        if (!surface || !actor.meta_window) return;
+        const surface = actor.get_children().find(isWindowSurface) ?? null;
+        if (!actor.meta_window) return;
         const currentWorkspace = actor.meta_window.get_workspace();
         if (!entry) {
             const title = actor.meta_window.connect("notify::title", () => {
@@ -241,24 +277,36 @@ export class WindowRules {
                 if (this._hasWorkspaceRules) this._schedule(actor);
             });
             const destroy = actor.connect("destroy", () => {
+                this._actors.delete(actor);
+                this._pending.delete(actor);
+                if (entry.surface)
+                    this._forgetSurface(entry, entry.surface, actor.get_children().includes(entry.surface));
                 actor.meta_window?.disconnect(title);
                 actor.meta_window?.disconnect(workspaceChanged);
                 entry.corners?.destroy();
                 entry.borders?.destroy();
                 entry.frame?.destroy();
-                this._actors.delete(actor);
-                this._pending.delete(actor);
             });
-            const width = surface.connect("notify::width", () => this._schedule(actor));
-            const height = surface.connect("notify::height", () => this._schedule(actor));
+            const childAdded = actor.connect("child-added", (_actor, child) => {
+                if (isWindowSurface(child)) this._schedule(actor);
+            });
+            const childRemoved = actor.connect("child-removed", (_actor, child) => {
+                if (entry.surface === child) {
+                    this._forgetSurface(entry, child, true);
+                    this._schedule(actor);
+                }
+            });
             entry = {
-                surface,
+                surface: null,
                 title,
                 workspaceChanged,
                 destroy,
-                width,
-                height,
-                opacity: surface.opacity,
+                childAdded,
+                childRemoved,
+                surfaceDestroy: 0,
+                width: 0,
+                height: 0,
+                opacity: null,
                 workspaceNumber: currentWorkspace ? currentWorkspace.index() + 1 : null,
                 blur: null,
                 shader: null,
@@ -267,6 +315,14 @@ export class WindowRules {
                 borders: null,
             };
             this._actors.set(actor, entry);
+        }
+        if (!surface) {
+            if (entry.surface) this._forgetSurface(entry, entry.surface, false);
+            return;
+        }
+        if (entry.surface !== surface) {
+            if (entry.surface) this._forgetSurface(entry, entry.surface, actor.get_children().includes(entry.surface));
+            this._trackSurface(actor, entry, surface);
         }
         entry.workspaceNumber = currentWorkspace ? currentWorkspace.index() + 1 : null;
         const effects = Config.windowEffects(Config.windowProperties(actor.meta_window), this._config);
@@ -351,13 +407,13 @@ export class WindowRules {
         this._sources.clear();
         for (const [actor, entry] of this._actors) {
             actor.disconnect(entry.destroy);
+            actor.disconnect(entry.childAdded);
+            actor.disconnect(entry.childRemoved);
             actor.meta_window.disconnect(entry.title);
             actor.meta_window.disconnect(entry.workspaceChanged);
-            entry.surface.disconnect(entry.width);
-            entry.surface.disconnect(entry.height);
-            entry.surface.opacity = entry.opacity;
+            if (entry.surface)
+                this._forgetSurface(entry, entry.surface, actor.get_children().includes(entry.surface), true);
             if (entry.blur) actor.remove_effect(entry.blur);
-            if (entry.shader) entry.surface.remove_effect(entry.shader);
             entry.corners?.destroy();
             entry.borders?.destroy();
             entry.frame?.destroy();
