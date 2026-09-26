@@ -43,7 +43,8 @@ if [[ -n "$e2e_app_ids" ]]; then
 fi
 mkdir -p "$ARTIFACT_DIR"
 python3 scripts/devkit_dbus.py \
-    "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE"
+    "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE" --flatpak-portal
+runuser -u e2e -- python3 tests/devkit-flatpak-portal.test.py
 
 flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 python3 tests/e2e/app-catalog.py \
@@ -75,5 +76,6 @@ runuser -u e2e -- env \
     GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
     GNOBLIN_E2E_FAILURE_POLICY="$e2e_failure_policy" \
     GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids" \
+    GNOBLIN_TEST_FLATPAK_PORTAL=1 \
     GNOBLIN_E2E_TIMEOUT=3300 \
     python3 tests/e2e/app-e2e.py

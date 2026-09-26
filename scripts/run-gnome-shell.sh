@@ -155,7 +155,11 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 
 # Reuse the devkit's isolated dbus config generator (no host portal leakage).
-DBUS_SESSION_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
+dbus_config_args=()
+if [ "${GNOBLIN_TEST_FLATPAK_PORTAL:-0}" = 1 ]; then
+    dbus_config_args+=(--flatpak-portal)
+fi
+DBUS_SESSION_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT" "${dbus_config_args[@]}")" || exit 1
 BUS_ADDRESS_FILE="$DK/bus-address"
 SHELL_REAL_PID_FILE="$DK/shell-pid"
 

@@ -150,6 +150,8 @@ per-app report for follow-up.
 
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.
+Each nested session provides Flatpak's runtime portal on its private D-Bus so
+sandboxed clients that require it at startup can launch.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
 a virtual 1280x800 monitor and software rendering. Even-numbered shards add a
