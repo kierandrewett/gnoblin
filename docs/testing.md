@@ -169,15 +169,21 @@ The private session bus provides Flatpak's runtime portal for sandboxed clients
 and the IBus daemon for Shell input-method integration. The runner activates and
 probes IBus on that bus before launching Shell.
 
-The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
-a virtual 1280x800 monitor and software rendering. Even-numbered shards add a
-1024x768 secondary monitor. Manual runs can set `extra_monitor` to a different
-secondary size when isolating monitor-size constraints. The suite exercises
-real Flatpak and RPM clients against real Gnoblin windows without a physical GPU
-or logged-in desktop.
+The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code on a
+virtual 1280x800 monitor. It uses Mesa software OpenGL and the lavapipe Vulkan
+ICD. Even-numbered shards add a 1024x768 monitor. Manual runs can set
+`extra_monitor` to a different secondary size for monitor-size checks.
 
-GPU drivers, physical input devices and a hardware login need separate coverage
-using the [hardware verification](real-hardware-verification.md) checklist.
+Each shard starts private PipeWire, WirePlumber and PulseAudio compatibility
+services. It disables hardware monitors and makes a null sink the default audio
+output, so sound is discarded.
+
+The suite exercises real Flatpak and RPM clients against real Gnoblin windows
+without a physical GPU, audio device or logged-in desktop.
+
+Hardware GPU and audio drivers, physical input devices and a hardware login need
+separate coverage using the [hardware verification](real-hardware-verification.md)
+checklist.
 
 Each shard artifact contains its exact catalog slice, installation report,
 per-app logs and screenshots, JSONL operation trace, summary, shell log and a

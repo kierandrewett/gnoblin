@@ -14,6 +14,7 @@
 #      GNOBLIN_TEST_SCRIPT_ROOT (optional directory of Gnoblin script fixtures),
 #      GNOBLIN_TEST_GSETTINGS_BACKEND (default memory),
 #      GNOBLIN_TEST_DISABLE_NOTIFICATIONS=1 to seed that feature as disabled,
+#      GNOBLIN_TEST_PIPEWIRE=1 starts private PipeWire audio for app E2E,
 #      GNOBLIN_TEST_UNSAFE_MODE=1 enables Eval on the private test bus only,
 #      MONITOR (default 1280x800), SETTLE (startup timeout seconds, default 25),
 #      EXTRA_MONITOR (optional second virtual monitor, e.g. 1920x1200),
@@ -327,6 +328,11 @@ elif [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
         --args "${shell_command[@]}")
 fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
+if [[ "${GNOBLIN_TEST_PIPEWIRE:-0}" == 1 ]]; then
+    audio_artifact_dir="${GNOBLIN_E2E_ARTIFACT_DIR:-$GNOBLIN_STATE_DIR}"
+    shell_command=("$ROOT/tests/e2e/run-app-with-virtual-audio.sh"
+        "$audio_artifact_dir" "$SHELL_REAL_PID_FILE" -- "${shell_command[@]}")
+fi
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
     bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1";
         if [[ "${GNOBLIN_TEST_IBUS_DAEMON:-0}" == 1 ]]; then

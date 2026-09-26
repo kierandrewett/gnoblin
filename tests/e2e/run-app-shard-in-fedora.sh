@@ -4,7 +4,8 @@ trap 'chmod -R a+rX "$ARTIFACT_DIR" 2>/dev/null || true' EXIT
 
 dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
     gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon python3-gobject \
-    xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor ibus util-linux
+    xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor ibus util-linux \
+    mesa-vulkan-drivers vulkan-tools pipewire pipewire-pulseaudio wireplumber pulseaudio-utils
 trace_env=()
 if [[ "${TRACE_CRASH:-false}" == true ]]; then
     dnf -y install gdb
@@ -42,6 +43,18 @@ if [[ -n "$e2e_app_ids" ]]; then
     done
 fi
 mkdir -p "$ARTIFACT_DIR"
+vulkan_icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+if [[ ! -r "$vulkan_icd" ]]; then
+    echo "Mesa lavapipe ICD is missing: $vulkan_icd" >&2
+    exit 1
+fi
+VK_ICD_FILENAMES="$vulkan_icd" vulkaninfo --summary >"$ARTIFACT_DIR/software-vulkan.txt" 2>&1
+if ! grep -Eiq 'llvmpipe|lavapipe' "$ARTIFACT_DIR/software-vulkan.txt"; then
+    cat "$ARTIFACT_DIR/software-vulkan.txt" >&2
+    echo "Vulkan preflight did not find Mesa lavapipe" >&2
+    exit 1
+fi
+grep -Ei 'deviceName|driverName' "$ARTIFACT_DIR/software-vulkan.txt" | head -10
 python3 scripts/devkit_dbus.py \
     "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE" --flatpak-portal --ibus-daemon
 runuser -u e2e -- python3 tests/devkit-flatpak-portal.test.py
@@ -79,5 +92,7 @@ runuser -u e2e -- env \
     GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids" \
     GNOBLIN_TEST_FLATPAK_PORTAL=1 \
     GNOBLIN_TEST_IBUS_DAEMON=1 \
+    GNOBLIN_TEST_PIPEWIRE=1 \
+    GNOBLIN_E2E_VULKAN_ICD="$vulkan_icd" \
     GNOBLIN_E2E_TIMEOUT=3300 \
     python3 tests/e2e/app-e2e.py

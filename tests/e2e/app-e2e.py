@@ -151,6 +151,8 @@ def run_parent() -> int:
         "catalog_generated_utc": catalog["generated_utc"],
         "fedora_appstream_sha256": catalog.get("fedora_appstream_sha256"),
         "extra_monitor": os.environ.get("GNOBLIN_E2E_EXTRA_MONITOR") or None,
+        "software_vulkan_icd": os.environ.get("GNOBLIN_E2E_VULKAN_ICD"),
+        "private_pipewire": os.environ.get("GNOBLIN_TEST_PIPEWIRE") == "1",
     }
     save_json(artifact_dir / "run.json", run_info)
 
@@ -382,7 +384,7 @@ def shell_drag(start_x: int, start_y: int, end_x: int, end_y: int) -> None:
 
 def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
     if app["source"] == "flathub-popular":
-        return [
+        command = [
             "flatpak",
             "run",
             f"--env=DISPLAY={client_environment['DISPLAY']}",
@@ -391,8 +393,12 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             # Grant both real endpoints; fallback-x11 masks X11 when Wayland exists.
             "--socket=wayland",
             "--socket=x11",
-            app["launch"],
         ]
+        vulkan_icd = client_environment.get("VK_ICD_FILENAMES")
+        if vulkan_icd:
+            command.append(f"--env=VK_ICD_FILENAMES={vulkan_icd}")
+        command.append(app["launch"])
+        return command
     return ["gtk-launch", app["launch"]]
 
 
@@ -462,6 +468,11 @@ def app_environment() -> dict[str, str]:
     if env.get("LANG") in (None, "", "C", "C.UTF-8", "POSIX"):
         env["LANG"] = "en_US.UTF-8"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    vulkan_icd = os.environ.get("GNOBLIN_E2E_VULKAN_ICD")
+    if vulkan_icd:
+        if not Path(vulkan_icd).is_file():
+            raise RuntimeError(f"configured Vulkan ICD does not exist: {vulkan_icd}")
+        env["VK_ICD_FILENAMES"] = vulkan_icd
     # The shell itself forces Wayland, but launched applications need to select
     # their native backend or fall back to the XWayland display Mutter provides.
     env.pop("GDK_BACKEND", None)
@@ -472,7 +483,8 @@ def app_environment() -> dict[str, str]:
         f"DISPLAY={display} "
         f"XAUTHORITY-readable={os.access(xauthority, os.R_OK)} "
         f"XDG_RUNTIME_DIR={env.get('XDG_RUNTIME_DIR')} "
-        f"LANG={env['LANG']} LIBGL_ALWAYS_SOFTWARE=1",
+        f"LANG={env['LANG']} LIBGL_ALWAYS_SOFTWARE=1 "
+        f"VK_ICD_FILENAMES={env.get('VK_ICD_FILENAMES', '(default)')}",
         flush=True,
     )
     return env
