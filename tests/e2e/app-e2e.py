@@ -211,9 +211,42 @@ def window_state(sequence: int) -> dict | None:
         "maximized:!!w.get_maximize_flags(),"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
         "can_maximize:w.can_maximize(),can_minimize:w.can_minimize(),"
+        "can_close:typeof w.can_close==='function'?w.can_close():null,"
+        "min_size:typeof w.get_min_size==='function'?w.get_min_size():null,"
+        "max_size:typeof w.get_max_size==='function'?w.get_max_size():null,"
         "focused:global.display.focus_window===w,"
         "layout:imports.gi.Meta.gnoblin_window_frame_get(w).recursiveUnpack()};})()"
     )
+
+
+def window_evidence(state: dict | None) -> dict | None:
+    """Keep failed-operation traces useful without duplicating full layout state."""
+    if state is None:
+        return None
+    return {
+        key: state.get(key)
+        for key in (
+            "x",
+            "y",
+            "width",
+            "height",
+            "monitor",
+            "can_move",
+            "can_resize",
+            "can_close",
+            "min_size",
+            "max_size",
+            "maximized",
+            "fullscreen",
+        )
+    } | {"frame_border": (state.get("layout") or {}).get("border")}
+
+
+def capture_window_evidence(sequence: int) -> dict | None:
+    try:
+        return window_evidence(window_state(sequence))
+    except Exception as error:
+        return {"observation_error": str(error)}
 
 
 def mutate(sequence: int, body: str) -> object:
@@ -467,25 +500,55 @@ def run_one_app(
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
 
                 def invoke(
-                    operation: str, body: str, verify, timeout: float = 2.5, capability: str | None = None
+                    operation: str,
+                    body: str,
+                    verify,
+                    timeout: float = 2.5,
+                    capability: str | None = None,
+                    request: dict[str, object] | None = None,
                 ) -> str:
                     nonlocal control_failed
                     current_state = window_state(sequence)
                     if capability and current_state and not current_state[capability]:
                         record(operation, "not-supported", capability=capability)
                         return "not-supported"
+                    request_details = {"request": request} if request is not None else {}
                     try:
                         mutate(sequence, body)
                         observed = wait_for(verify, operation, timeout=timeout)
-                        record(operation, "observed", observed=observed)
+                        if request is not None:
+                            record(
+                                operation,
+                                "observed",
+                                observed=observed,
+                                before=window_evidence(current_state),
+                                after=capture_window_evidence(sequence),
+                                **request_details,
+                            )
+                        else:
+                            record(operation, "observed", observed=observed)
                         return "observed"
                     except TimeoutError as error:
-                        record(operation, "not-observed", error=str(error))
+                        record(
+                            operation,
+                            "not-observed",
+                            error=str(error),
+                            before=window_evidence(current_state),
+                            after=capture_window_evidence(sequence),
+                            **request_details,
+                        )
                         if capability and current_state and current_state[capability]:
                             control_failed = True
                         return "not-observed"
                     except Exception as error:
-                        record(operation, "unsupported-or-error", error=str(error))
+                        record(
+                            operation,
+                            "unsupported-or-error",
+                            error=str(error),
+                            before=window_evidence(current_state),
+                            after=capture_window_evidence(sequence),
+                            **request_details,
+                        )
                         if capability and current_state and current_state[capability]:
                             control_failed = True
                         return "unsupported-or-error"
@@ -566,6 +629,7 @@ def run_one_app(
                             )(window_state(sequence)),
                             timeout=1.5,
                             capability="can_resize",
+                            request={"frame_rect": [x, y, width, height]},
                         )
 
                 monitor_count = eval_shell("global.display.get_n_monitors()")
@@ -665,6 +729,7 @@ def run_one_app(
                     "w.unmake_fullscreen()",
                     lambda: (lambda after: after is not None and not after["fullscreen"])(window_state(sequence)),
                 )
+                initial = None
                 try:
                     initial = window_state(sequence)
                     close_method = close_sequence(sequence)
@@ -675,7 +740,14 @@ def run_one_app(
                         control_failed = True
                 except Exception as error:
                     state["operations"].append(
-                        {"window": sequence, "operation": "close", "status": "error", "error": str(error)}
+                        {
+                            "window": sequence,
+                            "operation": "close",
+                            "status": "error",
+                            "error": str(error),
+                            "before": window_evidence(initial),
+                            "after": capture_window_evidence(sequence),
+                        }
                     )
             close_failed = any(
                 operation.get("operation") == "close" and operation.get("status") == "error"
