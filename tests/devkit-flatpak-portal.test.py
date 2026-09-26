@@ -37,6 +37,17 @@ def main() -> int:
         for key in ("HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"):
             pathlib.Path(env[key]).mkdir()
 
+        default_dir = root / "default"
+        subprocess.run(
+            [sys.executable, str(ROOT / "scripts/devkit_dbus.py"), str(default_dir), str(ROOT)],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        if (default_dir / "dbus-services" / f"{SERVICE_NAME}.service").exists():
+            raise RuntimeError("the default devkit D-Bus config unexpectedly exposes Flatpak's portal")
+
         config = subprocess.check_output(
             [sys.executable, str(ROOT / "scripts/devkit_dbus.py"), str(dbus_dir), str(ROOT), "--flatpak-portal"],
             env=env,
