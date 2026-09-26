@@ -28,6 +28,26 @@ makepkg -si
 The repository copy of `PKGBUILD` uses `SKIP` only as a generated development
 template. Do not use it to install a release: use the checked release asset.
 
+## Build dependency installation errors
+
+`makepkg -si` installs the recipe's build dependencies with pacman before it
+starts compiling. If pacman reports a conflicting file such as
+`/usr/share/inkscape/palettes/elementary.gpl`, that is an existing file on the
+machine which the package database does not allow the `inkscape` package to
+install over. Gnoblin has not started building yet.
+
+Check which package, if any, owns the path:
+
+```bash
+pacman -Qo /usr/share/inkscape/palettes/elementary.gpl
+```
+
+If it is owned by another package, inspect that package before changing
+anything. If pacman says no package owns it, preserve or remove the stale file
+only after confirming it is safe to do so, then install the missing dependency
+and rerun `makepkg -si`. Do not use pacman's `--overwrite '*'`; that can replace
+unrelated system files.
+
 ## Current status
 
 The recipe is designed for a clean Arch build environment with stock GNOME
