@@ -30,6 +30,7 @@ from gnoblin_test_session import (  # noqa: E402
     application_window_candidates,
     compile_minimal_testing_shell,
     eval_shell,
+    frame_button_center,
     send_pointer,
     shell_windows,
     wait_for,
@@ -335,10 +336,11 @@ def write_event(path: Path, event: dict) -> None:
         stream.write(json.dumps(event, sort_keys=True) + "\n")
 
 
-def screenshot(app: dict, directory: Path) -> str | None:
+def screenshot(app: dict, directory: Path, suffix: str | None = None) -> str | None:
     directory.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(app["app_id"].encode()).hexdigest()[:12]
-    path = directory / f"{app['source']}-{digest}.png"
+    name_suffix = f"-{suffix}" if suffix else ""
+    path = directory / f"{app['source']}-{digest}{name_suffix}.png"
     result = subprocess.run(
         [
             "gdbus",
@@ -476,30 +478,49 @@ def app_environment() -> dict[str, str]:
     return env
 
 
-def close_sequence(sequence: int, timeout: float = 10) -> str:
+def close_sequence(sequence: int, timeout: float = 10) -> tuple[str, dict[str, object]]:
     state = window_state(sequence)
     if state is None:
-        return "already-closed"
+        return "already-closed", {}
 
     has_gnoblin_frame = bool(state["layout"]["border"][0])
+    click_details: dict[str, object] = {}
     if has_gnoblin_frame or not state["fullscreen"]:
-        close_x = state["x"] + max(12, state["width"] - 20)
-        close_y = state["y"] + 18
-        send_pointer("move", close_x, close_y)
-        time.sleep(0.025)
-        send_pointer("click", close_x, close_y)
-        button_name = "Gnoblin titlebar close button" if has_gnoblin_frame else "client titlebar close button"
-        try:
-            wait_for(lambda: window_state(sequence) is None, button_name, timeout=2)
-            send_pointer("move", 4, 780)
-            return "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
-        except TimeoutError:
-            pass
+        if has_gnoblin_frame:
+            try:
+                close_x, close_y = frame_button_center(state, 2)
+                close_region = next(item for item in state["layout"]["presentation"]["regions"] if item[0] == 2)
+                click_details = {
+                    "button": "gnoblin-close",
+                    "target": [close_x, close_y],
+                    "region": close_region,
+                }
+            except RuntimeError as error:
+                click_details = {"button": "gnoblin-close", "target_error": str(error)}
+                close_x = close_y = None
+        else:
+            close_x = state["x"] + max(12, state["width"] - 20)
+            close_y = state["y"] + 18
+            click_details = {"button": "client-titlebar-close", "target": [close_x, close_y]}
+        if close_x is not None and close_y is not None:
+            send_pointer("move", state["x"] + state["width"] // 2, close_y)
+            time.sleep(0.025)
+            send_pointer("move", close_x, close_y)
+            time.sleep(0.025)
+            send_pointer("click", close_x, close_y)
+            button_name = "Gnoblin titlebar close button" if has_gnoblin_frame else "client titlebar close button"
+            try:
+                wait_for(lambda: window_state(sequence) is None, button_name, timeout=2)
+                send_pointer("move", 4, 780)
+                method = "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
+                return method, click_details
+            except TimeoutError:
+                pass
     if window_state(sequence) is not None:
         mutate(sequence, "w.delete(global.get_current_time())")
         wait_for(lambda: window_state(sequence) is None, "window close", timeout=timeout)
     send_pointer("move", 4, 780)
-    return "window-delete-fallback"
+    return "window-delete-fallback", click_details
 
 
 def run_one_app(
@@ -757,20 +778,24 @@ def run_one_app(
                     )
 
                 try:
-                    if window_state(sequence) is None:
+                    current = window_state(sequence)
+                    if current is None:
                         mark_window_disappeared("native-frame")
                         continue
-                    mutate(
-                        sequence,
-                        "imports.gi.Meta.gnoblin_window_frame_set(w,"
-                        f"new imports.gi.GLib.Variant('(iiiiiiiii)',{json.dumps(FRAME_POLICY)}))",
-                    )
-                    wait_for(
-                        lambda: (window_state(sequence) or {}).get("layout", {}).get("border", [0])[0] == 36,
-                        "Gnoblin native frame",
-                        timeout=2,
-                    )
-                    record("native-frame", "observed")
+                    if not current["layout"].get("supported"):
+                        record("native-frame", "not-supported", capability="Wayland toplevel")
+                    else:
+                        mutate(
+                            sequence,
+                            "imports.gi.Meta.gnoblin_window_frame_set(w,"
+                            f"new imports.gi.GLib.Variant('(iiiiiiiii)',{json.dumps(FRAME_POLICY)}))",
+                        )
+                        wait_for(
+                            lambda: (window_state(sequence) or {}).get("layout", {}).get("border", [0])[0] == 36,
+                            "Gnoblin native frame",
+                            timeout=2,
+                        )
+                        record("native-frame", "observed")
                 except Exception as error:
                     after = capture_window_evidence(sequence)
                     if after is None:
@@ -1025,13 +1050,27 @@ def run_one_app(
                     if initial is None:
                         mark_window_disappeared("close")
                     else:
-                        close_method = close_sequence(sequence)
-                        close_result = {"window": sequence, "operation": "close", "status": close_method}
+                        close_method, close_details = close_sequence(sequence)
+                        close_result = {
+                            "window": sequence,
+                            "operation": "close",
+                            "status": close_method,
+                            **close_details,
+                        }
                         state["operations"].append(close_result)
                         write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
                         if initial["layout"]["border"][0] and close_method != "titlebar-close-button":
                             control_failed = True
                 except Exception as error:
+                    try:
+                        after_full_state = window_state(sequence)
+                    except Exception:
+                        after_full_state = None
+                    try:
+                        remaining_windows = app_windows()
+                    except Exception as observation_error:
+                        remaining_windows = [{"observation_error": str(observation_error)}]
+                    close_error_screenshot = screenshot(app, screenshot_dir, "close-error")
                     state["operations"].append(
                         {
                             "window": sequence,
@@ -1039,7 +1078,11 @@ def run_one_app(
                             "status": "error",
                             "error": str(error),
                             "before": window_evidence(initial),
-                            "after": capture_window_evidence(sequence),
+                            "after": window_evidence(after_full_state),
+                            "frame_presentation_after": (after_full_state or {}).get("layout", {}).get("presentation"),
+                            "application_windows_after": remaining_windows,
+                            "screenshot_after": close_error_screenshot,
+                            "client_pid_alive_after": pid_is_alive((initial or {}).get("pid")),
                         }
                     )
             close_failed = any(
