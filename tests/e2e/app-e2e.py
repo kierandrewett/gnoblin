@@ -612,16 +612,53 @@ def run_one_app(
             window_client_pids: dict[int, int | None] = {}
             for mapped in new_windows:
                 sequence = mapped["sequence"]
+                client_pid = mapped.get("pid")
+                window_client_pids[sequence] = client_pid
                 resize_capability_seen = False
                 resize_verified = False
                 window_disappeared = False
                 current = window_state(sequence)
                 if current is None:
-                    window_client_pids[sequence] = None
-                    result = {"window": sequence, "operation": "observe", "status": "window-disappeared"}
+                    successful_same_process_closes = [
+                        operation
+                        for operation in state["operations"]
+                        if operation.get("operation") == "close"
+                        and operation.get("status")
+                        in (
+                            "titlebar-close-button",
+                            "client-titlebar-close-button",
+                            "window-delete-fallback",
+                        )
+                        and window_client_pids.get(operation.get("window")) == client_pid
+                    ]
+                    try:
+                        remaining_application_windows = app_windows()
+                    except Exception as error:
+                        remaining_application_windows = [{"observation_error": str(error)}]
+                    same_process_windows = [
+                        candidate for candidate in remaining_application_windows if candidate.get("pid") == client_pid
+                    ]
+                    closed_with_application = (
+                        client_pid is not None
+                        and bool(successful_same_process_closes)
+                        and not same_process_windows
+                        and not any("observation_error" in candidate for candidate in remaining_application_windows)
+                    )
+                    result = {
+                        "window": sequence,
+                        "operation": "observe",
+                        "status": "closed-with-application" if closed_with_application else "window-disappeared",
+                        "client_pid": client_pid,
+                        "client_pid_alive_at_observation": pid_is_alive(client_pid),
+                        "closed_after_window": (
+                            successful_same_process_closes[-1].get("window") if successful_same_process_closes else None
+                        ),
+                        "remaining_application_windows": remaining_application_windows,
+                    }
                     state["operations"].append(result)
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
-                    control_failed = True
+                    if not closed_with_application:
+                        control_failed = True
                     continue
                 window_client_pids[sequence] = current.get("pid")
 
