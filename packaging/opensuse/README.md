@@ -11,6 +11,11 @@ dependencies in a clean Tumbleweed image. It deliberately omits the internal
 Gnoblin schema and compositor packages because an OBS project must build those
 in this order:
 
+When installing the external requirements, it retries a failed transaction up
+to three times and forces a repository refresh between attempts. Tumbleweed's
+rolling mirrors can briefly advertise package metadata before all mirrors have
+the corresponding RPMs.
+
 1. `gnoblin-gsettings-desktop-schemas`
 2. `gnoblin-mutter` and `gnoblin-mutter-devel`
 3. `gnoblin-shell` and `gnoblin-session`

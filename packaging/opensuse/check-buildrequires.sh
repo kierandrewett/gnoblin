@@ -41,7 +41,20 @@ if [[ -s "$requirements" ]]; then
     # their version constraints.  Do not turn this into a package-name list:
     # those names vary across Tumbleweed snapshots.
     if ((install)); then
-        xargs -r -d '\n' zypper --non-interactive install --no-recommends <"$requirements"
+        installed=0
+        for attempt in 1 2 3; do
+            if xargs -r -d '\n' zypper --non-interactive install --no-recommends <"$requirements"; then
+                installed=1
+                break
+            fi
+
+            if ((attempt < 3)); then
+                printf 'Tumbleweed install failed; refreshing repositories before retry %s/3\n' "$((attempt + 1))" >&2
+                zypper --non-interactive refresh --force
+                sleep "$((attempt * 10))"
+            fi
+        done
+        ((installed))
     else
         xargs -r -d '\n' zypper --non-interactive install --dry-run --no-recommends <"$requirements"
     fi
