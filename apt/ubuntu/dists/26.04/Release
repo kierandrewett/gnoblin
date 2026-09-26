@@ -2,10 +2,10 @@ Origin: Gnoblin
 Label: Gnoblin
 Suite: 26.04
 Codename: 26.04
-Date: Sat, 26 Sep 2026 10:27:19 GMT
+Date: Sat, 26 Sep 2026 12:30:29 GMT
 Architectures: amd64
 Components: main
 Description: Gnoblin packages for Ubuntu 26.04 LTS
 SHA256:
- 37bce3052d0dab367c09071b06f33f1ef714eb0413da2465726037d11a4490de            33905 main/binary-amd64/Packages
- 3ef1428637ba4e7aa92c5086bb95050c259087051749d2b3d3f3c4461449c014             2589 main/binary-amd64/Packages.gz
+ 5eda333264e87453e10db1f05a7377fc9449dc104eb206078bca4817e91a94d8             4269 main/binary-amd64/Packages
+ 8c969ce1f64a8989dcb4c04983351b29348c95f44495a30388f450b5ff14d025             1706 main/binary-amd64/Packages.gz
