@@ -134,6 +134,10 @@ jobs:
           ./scripts/make-tarball.sh gsettings-desktop-schemas "$source_dir"
           ./scripts/make-tarball.sh mutter "$source_dir"
           ./scripts/make-tarball.sh gnome-shell "$source_dir"
+          python3 scripts/build-adwaita-hyprcursor.py \
+            --output "$source_dir/Adwaita-Hyprcursor" \
+            --fallback /usr/share/icons/Adwaita
+          tar -C "$source_dir" -cJf "$source_dir/Adwaita-Hyprcursor.tar.xz" Adwaita-Hyprcursor
           version="$(./scripts/gnoblin-version.py get version)"
           gnome_version="$(./scripts/gnoblin-version.py get gnomeVersion)"
           source_bundle="$package_dir/gnoblin-$version-gnome-$gnome_version-arch-source.tar.xz"
@@ -141,7 +145,8 @@ jobs:
             "$source_bundle" "$version" \
             "$source_dir/gsettings-desktop-schemas-$gnome_version.tar.xz" \
             "$source_dir/mutter-$gnome_version.tar.xz" \
-            "$source_dir/gnome-shell-$gnome_version.tar.xz"
+            "$source_dir/gnome-shell-$gnome_version.tar.xz" \
+            "$source_dir/Adwaita-Hyprcursor.tar.xz"
           source_sha256="$(sha256sum "$source_bundle" | awk '{print $1}')"
           python3 scripts/sync-package-manifest.py arch-release \
             --output "$package_dir/PKGBUILD" \
