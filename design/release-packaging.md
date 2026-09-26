@@ -5,6 +5,13 @@ release pipeline or COPR publication changes.
 
 ## Candidate release validation (2026-09-26)
 
+- Release run `36236893302` passed the package builds and install checks for
+  Debian 13, Ubuntu 24.04/26.04, Arch and openSUSE Tumbleweed. APT refused to
+  replace Debian revision `-4` because its published checksum differs from the
+  rebuilt package; the next release uses `-5`. COPR built Mutter successfully
+  for Fedora 43/44/45, then exposed a missing `gcc-c++` build requirement for
+  private GJS in the Shell package. Shell RPM release `51.0-22` adds it.
+
 - Release run `36230307572` built Debian 13, Ubuntu 24.04/26.04, Arch,
   openSUSE Tumbleweed, and NixOS 26.05 artifacts. Their package installation,
   GNOME co-installation, and removal gates passed. COPR Mutter build `11038026`

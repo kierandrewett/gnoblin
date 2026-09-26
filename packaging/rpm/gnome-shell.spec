@@ -22,7 +22,7 @@ Version:        51.0
 %global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        21.gnoblin%{?dist}
+Release:        22.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -75,6 +75,7 @@ Source16:       gjs-%{gjs_version}.tar.xz
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
 BuildRequires:  sassc
 BuildRequires:  meson
 BuildRequires:  git
@@ -277,6 +278,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-22.gnoblin
+- Build bundled GJS with the C++ compiler in Fedora buildroots.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-21.gnoblin
 - Bundle a private GNOME 51-compatible GJS runtime for Fedora 43.
 
