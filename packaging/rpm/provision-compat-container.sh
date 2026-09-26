@@ -9,6 +9,15 @@ fi
 
 source /etc/os-release
 case "${ID}:${VERSION_ID}" in
+    rocky:8 | rocky:8.* | rhel:8 | rhel:8.* | almalinux:8 | almalinux:8.*)
+        dnf -qy install \
+            gcc gcc-c++ make pkgconf-pkg-config python3 python3-devel python3-pip \
+            python3-setuptools python39 python39-devel python39-pip python39-setuptools \
+            flex bison gettext libffi-devel pcre2-devel zlib-devel libselinux-devel \
+            tar xz patch git
+        python3.9 -m venv /opt/gnoblin-rpm-compat-tools
+        /opt/gnoblin-rpm-compat-tools/bin/pip install --disable-pip-version-check --quiet setuptools meson==1.10.1 ninja
+        ;;
     rocky:9 | rocky:9.* | rhel:9 | rhel:9.* | almalinux:9 | almalinux:9.* | \
         rocky:10 | rocky:10.* | rhel:10 | rhel:10.* | almalinux:10 | almalinux:10.*)
         dnf -qy install \
@@ -25,7 +34,7 @@ case "${ID}:${VERSION_ID}" in
             libmount-devel libselinux-devel tar xz patch git
         ;;
     *)
-        echo "The private GLib/GI bootstrap gate currently supports EL 9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
+        echo "The private GLib/GI bootstrap gate currently supports EL 8/9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
         exit 2
         ;;
 esac

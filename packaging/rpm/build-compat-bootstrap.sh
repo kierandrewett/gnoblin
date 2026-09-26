@@ -8,7 +8,12 @@ if [[ ${EUID} -eq 0 ]]; then
 fi
 
 source /etc/os-release
+python=python3
 case "${ID}:${VERSION_ID}" in
+    rocky:8 | rocky:8.* | rhel:8 | rhel:8.* | almalinux:8 | almalinux:8.*)
+        python=python3.9
+        export PATH="/opt/gnoblin-rpm-compat-tools/bin:${PATH}"
+        ;;
     rocky:9 | rocky:9.* | rhel:9 | rhel:9.* | almalinux:9 | almalinux:9.* | \
         rocky:10 | rocky:10.* | rhel:10 | rhel:10.* | almalinux:10 | almalinux:10.*)
         export PATH="/opt/gnoblin-rpm-compat-tools/bin:${PATH}"
@@ -16,7 +21,7 @@ case "${ID}:${VERSION_ID}" in
     opensuse-leap:16.0)
         ;;
     *)
-        echo "The private GLib/GI bootstrap gate currently supports EL 9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
+        echo "The private GLib/GI bootstrap gate currently supports EL 8/9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
         exit 2
         ;;
 esac
@@ -24,7 +29,7 @@ esac
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd "$repo_root"
 prefix="$repo_root/build/rpm-compat/deps"
-python3 scripts/build-private-deps.py \
+"$python" scripts/build-private-deps.py \
     --prefix "$prefix" \
     --cache "$repo_root/build/rpm-compat/cache" \
     --manifest packaging/rpm/compat-bootstrap.json \

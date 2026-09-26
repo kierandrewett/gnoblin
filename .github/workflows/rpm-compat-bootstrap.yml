@@ -32,6 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: rocky-8
+            image: quay.io/rockylinux/rockylinux:8
           - target: rocky-9
             image: quay.io/rockylinux/rockylinux:9
           - target: rocky-10

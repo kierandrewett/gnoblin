@@ -8,11 +8,20 @@
     "options": []
   },
   {
+    "name": "pcre2",
+    "version": "10.45",
+    "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.bz2",
+    "sha256": "21547f3516120c75597e5b30a992e27a592a31950b5140e7b8bfde3f192033c4",
+    "requires": ["patchelf"],
+    "build_system": "autotools",
+    "options": []
+  },
+  {
     "name": "glib-bootstrap",
     "version": "2.90.0",
     "url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz",
     "sha256": "17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f",
-    "requires": ["patchelf"],
+    "requires": ["patchelf", "pcre2"],
     "options": ["-Dtests=false", "-Dinstalled_tests=false", "-Ddocumentation=false", "-Dintrospection=disabled"]
   },
   {
