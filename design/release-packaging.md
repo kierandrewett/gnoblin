@@ -31,8 +31,13 @@ release pipeline or COPR publication changes.
   package-install, stock-GNOME coexistence, and removal transaction, so it is
   the sole Fedora candidate; none has passed a graphical-session gate.
 - COPR has Fedora 43, 44, and 45 x86_64 chroots enabled. The existing
-  published build has no Fedora 45 packages yet; the 0.1.7 release must build
-  and pass clean installs in all three chroots.
+  published build has no Fedora 43 or 45 packages. Inspection of COPR's public
+  build API showed that `copr-cli build` received no `--chroot` arguments, so
+  the `.fc44` source RPM built only in Fedora 44 despite all three project
+  chroots being enabled. `scripts/publish-copr.sh` now requests Fedora 43, 44,
+  and 45 explicitly for each dependency-ordered source RPM. The fix remains
+  unverified until a tagged release completes the three-chroot builds and
+  version-pinned install/removal checks.
 - The current source candidate is Gnoblin 0.1.7 on GNOME 51.0. The
   `gnoblin-v0.1.7` tag points at `682a8f5`, which is also on `main`.
 - Release run `36132144715` built all packages and passed Debian 13 and Ubuntu

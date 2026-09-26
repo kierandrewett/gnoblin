@@ -191,7 +191,7 @@ jobs:
           else
             gh release create "$RELEASE_TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-              --title "Gnoblin $(./scripts/gnoblin-version.py get version) (GNOME $(./scripts/gnoblin-version.py get gnomeVersion))"
+              --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
           fi
 
   apt-repository:

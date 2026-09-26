@@ -57,7 +57,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
-        self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
+        self.assertIn('--title "Gnoblin ${RELEASE_TAG#gnoblin-v}"', workflow)
+        release_publish = workflow.split("  github-release:\n", 1)[1].split("  apt-repository:", 1)[0]
+        self.assertNotIn("./scripts/gnoblin-version.py", release_publish)
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
         self.assertIn("pattern: debian-package-*", workflow)
@@ -103,6 +105,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
+        publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         self.assertIn("COPR_CONFIG:", workflow)
         self.assertIn("required: true", workflow)
         self.assertIn('gh release download "$RELEASE_TAG"', workflow)
@@ -111,6 +114,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('dnf -y install --refresh "gnoblin-$expected_version"', workflow)
         self.assertIn('test "$installed_version" = "$expected_version"', workflow)
         self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)
+        self.assertIn("chroots=(fedora-43-x86_64 fedora-44-x86_64 fedora-45-x86_64)", publisher)
+        self.assertIn('copr-cli build "${arguments[@]}" "$project" "$package"', publisher)
+        for package in ("schemas_srpm", "mutter_srpm", "shell_srpm", "meta_srpm"):
+            self.assertIn(f'build_in_supported_fedora_chroots "${package}"', publisher)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):
         workflow = (ROOT / ".github/workflows/nix.yml").read_text()
