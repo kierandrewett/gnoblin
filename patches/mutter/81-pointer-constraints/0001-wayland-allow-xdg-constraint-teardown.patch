@@ -1,0 +1,41 @@
+From 3fdfaa3b5bfe40d828cc29e4f85ad00ddd9eb1ae Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 05:00:00 +0100
+Subject: [PATCH] wayland: allow pointer constraints during xdg teardown
+
+Unmanaging an xdg toplevel clears its window association before the xdg
+resource destructor has finished. Pointer focus repicking can re-evaluate a
+constraint during that interval. Such constraints cannot be enabled without
+a window, but the xdg role is valid and the check should not emit a warning.
+---
+ src/wayland/meta-wayland-pointer-constraints.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-pointer-constraints.c b/src/wayland/meta-wayland-pointer-constraints.c
+index 1438a80aaa..1fd60f0540 100644
+--- a/src/wayland/meta-wayland-pointer-constraints.c
++++ b/src/wayland/meta-wayland-pointer-constraints.c
+@@ -38,6 +38,7 @@
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-region.h"
+ #include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-subsurface.h"
+ #include "wayland/meta-wayland-surface-private.h"
++#include "wayland/meta-wayland-xdg-shell.h"
+ 
+@@ -470,10 +471,13 @@ should_constraint_be_enabled (MetaWaylandPointerConstraint *constraint)
+        * Locks from Xwayland may come before we have had the opportunity to
+        * associate the X11 Window with the wl_surface.
+        * For subsurfaces the window of the ancestor might be gone already.
++       * An xdg surface can also temporarily lose its window while the
++       * toplevel is being unmapped and pointer focus is being repicked.
+        */
+       g_warn_if_fail (
+ #ifdef HAVE_XWAYLAND
+         meta_wayland_surface_is_xwayland (constraint->surface) ||
+ #endif
++        META_IS_WAYLAND_XDG_SURFACE (constraint->surface->role) ||
+         META_IS_WAYLAND_SUBSURFACE (constraint->surface->role));
+       return FALSE;
+-- 
+2.55.0
