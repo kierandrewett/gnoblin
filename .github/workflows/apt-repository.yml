@@ -26,7 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
@@ -62,7 +61,7 @@ jobs:
             --keyring packaging/apt/gnoblin-archive-keyring.asc \
             --signing-key "$GNOBLIN_APT_SIGNING_KEY" \
             --passphrase-file "$RUNNER_TEMP/apt-signing-passphrase"
-      - name: Publish the archive and request a Pages build
+      - name: Publish the archive to gh-pages
         run: |
           cd "$RUNNER_TEMP/pages"
           git config user.name 'Gnoblin release automation'
@@ -72,7 +71,6 @@ jobs:
             git commit -m "apt: publish $RELEASE_TAG"
             git push origin HEAD:gh-pages
           fi
-          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -88,5 +86,8 @@ jobs:
           mkdir -p docs/.vitepress/dist/apt
           cp -a "$RUNNER_TEMP/pages/apt/." docs/.vitepress/dist/apt/
           test -s docs/.vitepress/dist/apt/gnoblin-archive-keyring.asc
+          python3 scripts/prepare-apt-pages.py \
+            --archive docs/.vitepress/dist/apt \
+            --output docs/.vitepress/dist/_redirects
           npx --yes wrangler@4.140.0 pages deploy docs/.vitepress/dist \
             --project-name=gnoblin-docs --branch=main

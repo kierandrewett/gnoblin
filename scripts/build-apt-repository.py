@@ -75,12 +75,13 @@ def package_stanza(package: Path, relative_name: Path) -> str:
     )
 
 
-def write_packages(archive_root: Path, suite: Suite) -> list[Path]:
+def write_packages(archive_root: Path, suite: Suite, latest_version: str | None = None) -> list[Path]:
     pool = archive_root / suite.archive / "pool" / "main" / "g" / "gnoblin"
     packages = [
         package
         for package in sorted(pool.glob("*.deb"))
-        if control_fields(package).get("Version", "").endswith(f"~{suite.version_suffix}")
+        if (version := control_fields(package).get("Version", "")).endswith(f"~{suite.version_suffix}")
+        and (latest_version is None or version == latest_version)
     ]
     if not packages:
         raise ValueError(f"{suite.archive} {suite.suite} has no packages")
@@ -135,7 +136,7 @@ def sign(release: Path, key: str, passphrase: str) -> None:
     subprocess.run([*command, "--clearsign", "--output", release.with_name("InRelease"), release], check=True)
 
 
-def add_package(archive_root: Path, downloads: Path, suite: Suite) -> None:
+def add_package(archive_root: Path, downloads: Path, suite: Suite) -> str:
     source = downloads / suite.asset
     if not source.is_file():
         raise ValueError(f"missing release asset: {source}")
@@ -151,6 +152,7 @@ def add_package(archive_root: Path, downloads: Path, suite: Suite) -> None:
         raise ValueError(f"refusing to replace published package {destination}")
     if not destination.exists():
         shutil.copy2(source, destination)
+    return version
 
 
 def main() -> None:
@@ -180,8 +182,8 @@ def main() -> None:
     if args.signing_key and not passphrase:
         parser.error("signing passphrase is empty")
     for suite in SUITES:
-        add_package(args.archive, args.downloads, suite)
-        indexes = write_packages(args.archive, suite)
+        latest_version = add_package(args.archive, args.downloads, suite)
+        indexes = write_packages(args.archive, suite, latest_version)
         release = write_release(args.archive, suite, indexes)
         if args.signing_key:
             sign(release, args.signing_key, passphrase)

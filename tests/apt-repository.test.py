@@ -45,11 +45,13 @@ class AptRepositoryTests(unittest.TestCase):
 
                 for release, suffix in (("24.04", "ubuntu24.04"), ("26.04", "ubuntu26.04")):
                     suite = apt_repository.Suite("ubuntu", release, "unused.deb", suffix, f"Ubuntu {release}")
-                    apt_repository.write_packages(root / "apt", suite)
+                    latest_version = f"51.0+gnoblin0.1.7-3~{suffix}"
+                    apt_repository.write_packages(root / "apt", suite, latest_version)
                     index = (root / "apt/ubuntu/dists" / release / "main/binary-amd64/Packages").read_text(
                         encoding="utf-8"
                     )
-                    self.assertIn(f"~{suffix}", index)
+                    self.assertIn(latest_version, index)
+                    self.assertNotIn(f"0.1.7-2~{suffix}", index)
                     other_suffix = "ubuntu26.04" if suffix == "ubuntu24.04" else "ubuntu24.04"
                     self.assertNotIn(f"~{other_suffix}", index)
             finally:

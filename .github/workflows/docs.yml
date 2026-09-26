@@ -5,20 +5,14 @@ on:
       [
         "docs/**",
         "scripts/docs-vitepress-postbuild.mjs",
+        "scripts/prepare-apt-pages.py",
         "package.json",
         "package-lock.json",
         ".github/workflows/docs.yml",
       ]
   push:
     branches: [main]
-    paths:
-      [
-        "docs/**",
-        "scripts/docs-vitepress-postbuild.mjs",
-        "package.json",
-        "package-lock.json",
-        ".github/workflows/docs.yml",
-      ]
+    paths: ["docs/**", "scripts/docs-vitepress-postbuild.mjs", "package.json", "package-lock.json"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,6 +56,9 @@ jobs:
           mkdir -p docs/.vitepress/dist/apt
           git archive origin/gh-pages apt | tar -x -C docs/.vitepress/dist
           test -s docs/.vitepress/dist/apt/gnoblin-archive-keyring.asc
+          python3 scripts/prepare-apt-pages.py \
+            --archive docs/.vitepress/dist/apt \
+            --output docs/.vitepress/dist/_redirects
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

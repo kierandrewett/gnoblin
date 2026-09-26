@@ -19,6 +19,12 @@ release pipeline or COPR publication changes.
   `gh-pages` commit `f95cc80e`. The index contents now match each Ubuntu suite;
   confirm the newest Pages build and live custom domain before treating the
   APT repository as available.
+- `gnoblin.org` is served by the Cloudflare Pages VitePress project, not the
+  legacy GitHub Pages build. Include the `gh-pages` APT archive in that deploy.
+  Cloudflare Pages rejects files over 25 MiB, so publish the small signed
+  indexes/keyring and redirect each indexed `.deb` path to that release's
+  GitHub asset. Index only the release version being published so redirects
+  never point at an asset removed from the current release draft.
 
 - The Wayland config fix is validated by DEB builds and installed reload/window
   smoke checks on Debian 13 and Ubuntu 24.04/26.04 in release runs
