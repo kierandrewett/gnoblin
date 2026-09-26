@@ -130,6 +130,11 @@ right edge.
 If the window or monitor leaves no valid drag path, the trace
 records that constraint instead of sending pointer events outside the display.
 
+If an app window disappears during an operation, the trace records that first
+operation and skips the remaining controls for that window. App outcomes also
+include the process exit code, or whether the process was still alive when the
+window-map timeout or test sequence ended.
+
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
 whether the window still exists and whether Mutter reports it can close.
