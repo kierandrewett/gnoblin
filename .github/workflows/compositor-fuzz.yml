@@ -78,10 +78,36 @@ jobs:
       - name: Exercise unconfigured xdg toplevel disconnect
         run: |
           builder_uid="$(id -u builder)"
-          runuser -u builder -- env \
+          artifact_dir="$RUNNER_TEMP/protocol-boundary"
+          mkdir -p "$artifact_dir"
+          debug_env=()
+          if [[ "${{ inputs.trace_shutdown_critical }}" == "true" ]]; then
+            debug_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
+          fi
+          test_status=0
+          if runuser -u builder -- env \
+            "${debug_env[@]}" \
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
-            bash tests/test-protocol-boundaries.sh
+            bash tests/test-protocol-boundaries.sh; then
+            :
+          else
+            test_status=$?
+          fi
+          shell_log="/home/builder/.local/state/gnoblin/gnome-shell-last.log"
+          if [[ -f "$shell_log" ]]; then
+            cp "$shell_log" "$artifact_dir/gnome-shell.log"
+          fi
+          exit "$test_status"
+
+      - name: Keep protocol boundary test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-protocol-boundary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/protocol-boundary/
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Verify fatal log diagnostics
         run: bash tests/test-log-diagnostics.sh

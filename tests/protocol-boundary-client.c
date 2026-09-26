@@ -492,7 +492,16 @@ static bool test_disconnect_unconfigured_toplevel(struct wl_display* display) {
 
     wl_display_disconnect(disconnect_display);
     if (wl_display_roundtrip(display) < 0) {
-        fprintf(stderr, "FAIL: compositor did not survive unconfigured toplevel disconnect\n");
+        const struct wl_interface* interface = NULL;
+        uint32_t object_id = 0;
+        uint32_t code = wl_display_get_protocol_error(display, &interface, &object_id);
+        int error = wl_display_get_error(display);
+
+        fprintf(stderr,
+                "FAIL: compositor did not survive unconfigured toplevel disconnect: "
+                "wayland_error=%d (%s), protocol_error=%s#%u code=%u\n",
+                error, error ? strerror(error) : "none", interface ? interface->name : "none",
+                object_id, code);
         return false;
     }
 
