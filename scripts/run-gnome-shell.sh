@@ -284,6 +284,21 @@ commands 2
   bt 40
   continue
 end
+break meta_wayland_xdg_toplevel_configure
+commands 9
+  silent
+  set $gnoblin_xdg_priv = (MetaWaylandXdgSurfacePrivate *) g_type_instance_get_private((GTypeInstance *) $rdi, meta_wayland_xdg_surface_get_type())
+  if !$gnoblin_xdg_priv->has_initial_config
+    set $gnoblin_surface = meta_wayland_surface_role_get_surface((MetaWaylandSurfaceRole *) $rdi)
+    set $gnoblin_window = meta_wayland_surface_get_window($gnoblin_surface)
+    printf "GNOBLIN_GDB_EARLY_XDG_CONFIGURE: initial=%d configure_sent=%d surface=%p window=%p\n", $gnoblin_xdg_priv->has_initial_config, $gnoblin_xdg_priv->configure_sent, $gnoblin_surface, $gnoblin_window
+    if $gnoblin_window
+      printf "GNOBLIN_GDB_EARLY_XDG_WINDOW: pid=%d ready=%d title=%s\n", meta_window_get_pid($gnoblin_window), meta_window_is_ready($gnoblin_window), meta_window_get_title($gnoblin_window)
+    end
+    bt 24
+  end
+  continue
+end
 run
 GDB
     shell_command=(gdb --nx --batch --quiet --command "$gdb_commands" --args "${shell_command[@]}")
