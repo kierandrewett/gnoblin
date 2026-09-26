@@ -4,42 +4,72 @@ Date: Sat, 26 Sep 2026 00:00:00 +0000
 Subject: [PATCH] wayland: tolerate an unavailable keyboard keymap
 
 Keep keymap replacement transactional so an allocation failure does not discard
-Mutter's last usable keymap. If no keymap file can be provided, send the
-Wayland no-keymap variant instead of dereferencing a null file or leaving the
-client without a keymap event.
+Mutter's last usable keymap. When the compositor has no keymap, send the
+protocol's no-keymap variant with a valid, empty descriptor; Wayland still
+requires a valid file descriptor for this event.
 
 ---
- src/wayland/meta-wayland-keyboard.c | 30 +++++++++++++++++++++++-------
- 1 file changed, 23 insertions(+), 7 deletions(-)
+ src/wayland/meta-wayland-keyboard.c | 57 +++++++++++++++++++++++++++++++++++++++++----------------
+ 1 file changed, 42 insertions(+), 15 deletions(-)
 
 --- a/src/wayland/meta-wayland-keyboard.c
 +++ b/src/wayland/meta-wayland-keyboard.c
-@@ -123,6 +123,14 @@
+@@ -46,6 +46,7 @@
+ #include "config.h"
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <glib.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -115,6 +116,25 @@
+ }
+ 
+ static void
++send_no_keymap (struct wl_resource *resource)
++{
++  int fd;
++
++  fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
++  if (fd == -1)
++    {
++      g_warning ("Opening /dev/null for keymap event failed: %s",
++                 strerror (errno));
++      return;
++    }
++
++  wl_keyboard_send_keymap (resource,
++                           WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,
++                           fd, 0);
++  close (fd);
++}
++
++static void
+ send_keymap (MetaWaylandKeyboard *keyboard,
+              struct wl_resource  *resource)
+ {
+@@ -123,6 +143,12 @@
    size_t size;
    MtkAnonymousFileMapmode mapmode;
  
 +  if (!xkb_info->keymap_rofile)
 +    {
-+      wl_keyboard_send_keymap (resource,
-+                               WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,
-+                               -1, 0);
++      send_no_keymap (resource);
 +      return;
 +    }
 +
    if (wl_resource_get_version (resource) < 7)
      mapmode = MTK_ANONYMOUS_FILE_MAPMODE_SHARED;
    else
-@@ -134,6 +142,9 @@
+@@ -134,6 +160,7 @@
    if (fd == -1)
      {
        g_warning ("Creating a keymap file failed: %s", strerror (errno));
-+      wl_keyboard_send_keymap (resource,
-+                               WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP,
-+                               -1, 0);
++      send_no_keymap (resource);
        return;
      }
  
-@@ -162,6 +173,7 @@
+@@ -162,6 +189,7 @@
    MetaBackend *backend = backend_from_keyboard (keyboard);
    MetaWaylandXkbInfo *xkb_info = &keyboard->xkb_info;
    char *keymap_string;
@@ -47,7 +77,7 @@ client without a keymap event.
    size_t keymap_size;
  
    if (keymap == NULL)
-@@ -170,32 +182,30 @@
+@@ -170,32 +198,30 @@
        return;
      }
  
@@ -90,3 +120,17 @@ client without a keymap event.
  
    inform_clients_of_new_keymap (keyboard);
  
+@@ -601,9 +627,10 @@
+   if (!update_pressed_keys (&keyboard->pressed_keys, evdev_code, is_press))
+     return;
+ 
+-  xkb_state_update_key (keyboard->xkb_info.state,
+-                        hardware_keycode,
+-                        is_press ? XKB_KEY_DOWN : XKB_KEY_UP);
++  if (keyboard->xkb_info.state)
++    xkb_state_update_key (keyboard->xkb_info.state,
++                          hardware_keycode,
++                          is_press ? XKB_KEY_DOWN : XKB_KEY_UP);
+ }
+ 
+ gboolean
