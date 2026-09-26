@@ -14,6 +14,7 @@
   lua5_4,
   libepoxy,
   libglycin,
+  librsvg,
   python3,
   wrapGAppsHook3,
   systemd,
@@ -202,6 +203,7 @@ let
       wrapGAppsHook3
       librsvg
       hyprcursor
+      librsvg
       python3
     ];
     installPhase = ''
