@@ -31,7 +31,11 @@ release pipeline or COPR publication changes.
 - That run's APT job correctly refused different bytes for the already
   published 0.1.7 package versions. The exact immutable Debian/Ubuntu package
   payloads were restored to the GitHub release draft and its checksums updated;
-  rerun the APT job and verify its published hashes before release publication.
+  rerunning only the APT job then passed without changing those packages.
+- Since the corrected Mutter source changes the 0.1.7 build, the next release
+  workflow run uses Debian package revision `-2`; revision `-1` remains
+  immutable. The `gnoblin-v0.1.7` tag must point at the corrected release commit
+  before rerunning the full Release workflow.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,

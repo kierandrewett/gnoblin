@@ -23,7 +23,11 @@ class ReleaseWorkflowTests(unittest.TestCase):
         version = subprocess.check_output(
             [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
         ).strip()
-        self.assertEqual(subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(), "1")
+        expected_revision = "2" if version == "0.1.7" else "1"
+        self.assertEqual(
+            subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(),
+            expected_revision,
+        )
         for tag in ("main", "v51.0", "gnoblin-v0.1", "gnoblin-v0.1.0-1", "gnoblin-v0.1.0.1"):
             self.assertNotEqual(subprocess.run([str(script), tag], capture_output=True).returncode, 0)
 
