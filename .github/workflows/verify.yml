@@ -104,9 +104,9 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel brightnessctl cmake desktop-file-utils egl-wayland \
-            evolution-data-server gettext git glib2-devel gobject-introspection inkscape \
+            evolution-data-server gettext git glib2-devel gobject-introspection \
             gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
-            libadwaita libdisplay-info libei libinput libxkbcommon \
+            libadwaita libdisplay-info libei libinput librsvg libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
             python python-docutils python-packaging sassc sysprof wayland wireplumber \
             xdg-desktop-portal-gnome xorg-xwayland

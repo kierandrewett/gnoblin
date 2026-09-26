@@ -18,9 +18,19 @@ class PackageLayoutTests(unittest.TestCase):
         provision = (ROOT / "scripts/provision-deb-container.sh").read_text()
         dependencies = (ROOT / "scripts/build-deps.sh").read_text()
         self.assertIn("legacy_private_gtk=false", provision)
-        self.assertIn('install_build_dependencies debian true false "$legacy_private_gtk"', provision)
+        self.assertIn("private_deb_addons=true", provision)
+        self.assertIn(
+            'install_build_dependencies debian true false "$legacy_private_gtk" "$private_deb_addons"', provision
+        )
         filtered = dependencies.split('if "$legacy_private_gtk"; then', 1)[1].split("fi", 1)[0]
         self.assertIn("libgtk-4-dev", filtered)
+
+    def test_private_deb_addons_do_not_require_missing_host_glycin_or_hyprcursor(self):
+        dependencies = (ROOT / "scripts/build-deps.sh").read_text()
+        filtered = dependencies.split('if "$private_deb_addons"; then', 1)[1].split("fi", 1)[0]
+        self.assertIn("libglycin-2-dev", filtered)
+        self.assertIn("libhyprcursor-dev", filtered)
+        self.assertNotIn("libgtk-4-dev", filtered)
 
     def test_legacy_compatibility_runtime_pins_private_pango_for_gtk4(self):
         recipes = json.loads((ROOT / "packaging/deb/compat-bootstrap.json").read_text())

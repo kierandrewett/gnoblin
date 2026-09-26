@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false}
+    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false} private_deb_addons=${5:-false}
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -63,7 +63,7 @@ install_build_dependencies() {
             "$build_assume_yes" && confirm=(-y)
             packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build adwaita-cursor-theme
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
-                python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
+                python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel librsvg2
                 mesa-libEGL-devel
                 pam-devel lua-devel cvt gnome-shell gnome-session gnome-settings-daemon
                 xkeyboard-config-devel xorg-x11-server-Xwayland)
@@ -76,7 +76,7 @@ install_build_dependencies() {
                 glib2-devel gobject-introspection gjs gtk4 libadwaita
                 gnome-shell mutter gnome-session gnome-settings-daemon
                 wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
-                glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
+                glycin libxkbcommon libxkbfile libxres librsvg sysprof evolution-data-server
                 sassc cmake gettext xorg-xwayland python-docutils adwaita-cursors)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
@@ -122,6 +122,19 @@ install_build_dependencies() {
                             libei-dev | libeis-dev | libgcr-4-dev | libgnome-desktop-4-dev | \
                             libgirepository-2.0-dev | libgjs-dev | libgtk-4-dev | \
                             libglycin-2-dev | libhyprcursor-dev | libjxl-dev) ;;
+                        *) base_packages+=("$package") ;;
+                    esac
+                done
+                packages=("${base_packages[@]}")
+            elif "$private_deb_addons"; then
+                # build-deb.sh supplies these from the pinned private manifest
+                # on Debian 13 and Ubuntu 24.04. Those suites do not publish
+                # the matching development packages, while GTK stays host-owned.
+                local -a base_packages=()
+                local package
+                for package in "${packages[@]}"; do
+                    case "$package" in
+                        libglycin-2-dev | libhyprcursor-dev) ;;
                         *) base_packages+=("$package") ;;
                     esac
                 done
