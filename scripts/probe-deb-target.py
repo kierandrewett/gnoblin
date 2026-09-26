@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Measure whether an older Debian-family image can build Gnoblin 51.
+"""Record stock-host GNOME API gaps on older Debian-family targets.
 
-This is a diagnostic gate, not a package installer.  It records the current
-stock repository state before a target is added to the Debian package build
-matrix.  The current private runtime deliberately does not bundle GTK, GCR,
-or GIRepository, so those interfaces must either exist at compatible versions
-on the target or gain a separately reviewed private-runtime implementation.
+The older-target package path supplies these interfaces in Gnoblin's private
+runtime. This report describes the host dependency floor; it is not a package
+build blocker when that private compatibility path is used.
 """
 
 from __future__ import annotations
@@ -18,6 +16,7 @@ import sys
 
 
 TARGETS = {
+    ("debian", "11"): "debian11",
     ("debian", "12"): "debian12",
     ("ubuntu", "22.04"): "ubuntu22.04",
 }
@@ -79,7 +78,7 @@ def main() -> int:
     identity = (distro.get("ID"), distro.get("VERSION_ID"))
     target = TARGETS.get(identity)
     if target is None:
-        parser.error("only Debian 12 and Ubuntu 22.04 are probe targets")
+        parser.error("only Debian 11/12 and Ubuntu 22.04 are probe targets")
 
     subprocess.run(["apt-get", "update"], check=True)
     observed: dict[str, str | None] = {package: candidate(package) for package in REQUIREMENTS}
@@ -95,13 +94,12 @@ def main() -> int:
         "target": target,
         "distribution": {"id": identity[0], "version": identity[1]},
         "private_runtime_boundary": [
-            "GTK, GIRepository, and GCR stay outside the current private DEB runtime.",
-            "libei, libdisplay-info, Glycin, and Hyprcursor can be built privately only after their build chain resolves.",
+            "GTK, GIRepository, GCR, libei, libdisplay-info, Glycin, and Hyprcursor are built in the private compatibility runtime.",
             "GDM/PAM, systemd/logind, gnome-session, GNOME Settings Daemon, D-Bus, PipeWire, WirePlumber, udev, and Mesa remain host-owned.",
         ],
         "requirements": observed,
         "blockers": blockers,
-        "result": "blocked" if blockers else "ready-for-private-runtime-design",
+        "result": "stock-host-interface-gap" if blockers else "stock-host-meets-interface-floor",
     }
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output:

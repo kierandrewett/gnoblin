@@ -24,7 +24,10 @@ class Suite:
 
 
 SUITES = (
+    Suite("debian", "11", "gnoblin-debian11-amd64.deb", "debian11", "Gnoblin packages for Debian 11"),
+    Suite("debian", "12", "gnoblin-debian12-amd64.deb", "debian12", "Gnoblin packages for Debian 12"),
     Suite("debian", "13", "gnoblin-debian13-amd64.deb", "debian13", "Gnoblin packages for Debian 13"),
+    Suite("ubuntu", "22.04", "gnoblin-ubuntu22.04-amd64.deb", "ubuntu22.04", "Gnoblin packages for Ubuntu 22.04 LTS"),
     Suite("ubuntu", "24.04", "gnoblin-ubuntu24.04-amd64.deb", "ubuntu24.04", "Gnoblin packages for Ubuntu 24.04 LTS"),
     Suite("ubuntu", "26.04", "gnoblin-ubuntu26.04-amd64.deb", "ubuntu26.04", "Gnoblin packages for Ubuntu 26.04 LTS"),
 )

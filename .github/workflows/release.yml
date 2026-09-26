@@ -53,7 +53,6 @@ jobs:
     uses: ./.github/workflows/deb.yml
     with:
       ref: ${{ inputs.tag || github.ref }}
-      release_build: true
 
   opensuse-package:
     uses: ./.github/workflows/opensuse-rpm.yml
@@ -66,7 +65,7 @@ jobs:
       ref: ${{ inputs.tag || github.ref }}
 
   arch-package:
-    needs: [source-packages, debian-packages]
+    needs: [source-packages]
     runs-on: ubuntu-latest
     container: archlinux:base
     timeout-minutes: 180
@@ -76,10 +75,10 @@ jobs:
       - name: Install stock GNOME and package build requirements
         run: |
           pacman -Syu --noconfirm --needed \
-            adwaita-cursors base-devel brightnessctl cmake desktop-file-utils egl-wayland \
+            base-devel brightnessctl cmake desktop-file-utils egl-wayland \
             evolution-data-server gettext git glib2-devel gobject-introspection \
             gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
-            inkscape libadwaita libdisplay-info libei libinput libxkbcommon \
+            libadwaita libdisplay-info libei libinput libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
             python python-docutils python-packaging sassc sysprof wayland wireplumber \
             xdg-desktop-portal-gnome xorg-xwayland
@@ -114,6 +113,7 @@ jobs:
           pacman -Q gnoblin
           test -x /usr/lib/gnoblin/bin/gnome-shell
           test -x /usr/lib/gnoblin/bin/gnoblin-session
+          test -f /usr/lib/gnoblin/share/icons/Adwaita-Hyprcursor/manifest.hl
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/share/gnome-session/sessions/gnoblin.session
@@ -126,9 +126,11 @@ jobs:
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
       - uses: actions/upload-artifact@v4
+        # makepkg may also emit a split debug package; publish only the
+        # installable Gnoblin session package as the release asset.
         with:
           name: arch-package-${{ env.RELEASE_TAG }}
-          path: build/*.pkg.tar.zst
+          path: build/gnoblin-[0-9]*.pkg.tar.zst
           if-no-files-found: error
           retention-days: 30
       - name: Remove package cache

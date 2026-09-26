@@ -9,11 +9,6 @@ on:
       ref:
         type: string
         required: true
-      release_build:
-        description: Skip long-running experimental builds for unsupported older distributions
-        type: boolean
-        required: false
-        default: false
   workflow_dispatch:
     inputs:
       ref:
@@ -38,61 +33,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
           - image: debian:12
             target: debian12
           - image: ubuntu:22.04
             target: ubuntu22.04
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - name: Install checkout tools
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - name: Record current host dependency blockers
+      - name: Record the stock host interface gap
         run: scripts/probe-deb-target.py --expect-blocked --output "build/deb-probes/${{ matrix.target }}.json"
       - uses: actions/upload-artifact@v4
         with:
           name: deb-probe-${{ matrix.target }}
           path: build/deb-probes/${{ matrix.target }}.json
           if-no-files-found: error
-
-  compatibility-dependency-build:
-    if: inputs.release_build != true
-    name: Experimental GTK/GCR closure (${{ matrix.target }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: debian:12
-            target: debian12
-          - image: ubuntu:22.04
-            target: ubuntu22.04
-    container: ${{ matrix.image }}
-    steps:
-      - name: Install checkout tools
-        run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-      - name: Prepare the isolated dependency builder
-        run: |
-          scripts/provision-deb-compat-container.sh
-          mkdir -p build/compat-dependencies
-          chown -R builder "$GITHUB_WORKSPACE"
-          chown -R builder build/compat-dependencies
-      - name: Build the pinned private GTK/GCR closure
-        run: |
-          runuser -u builder -- env PATH="/opt/gnoblin-compat-build-tools/bin:$PATH" \
-            python3 scripts/build-private-deps.py \
-              --prefix /usr/lib/gnoblin/deps \
-              --manifest packaging/deb/compat-bootstrap.json \
-              --cache "$GITHUB_WORKSPACE/build/compat-dependencies" \
-              --only gcr4 --jobs 2
-          runuser -u builder -- env PKG_CONFIG_PATH=/usr/lib/gnoblin/deps/lib64/pkgconfig \
-            pkg-config --modversion wayland-client gtk4 gcr-4
 
   build:
     runs-on: ubuntu-latest
@@ -101,14 +70,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
+            compatibility: true
           - image: debian:13
             target: debian13
+            compatibility: false
+          - image: debian:12
+            target: debian12
+            compatibility: true
           - image: ubuntu:24.04
             target: ubuntu24.04
+            compatibility: false
+          - image: ubuntu:22.04
+            target: ubuntu22.04
+            compatibility: true
           - image: ubuntu:26.04
             target: ubuntu26.04
+            compatibility: false
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - name: Install checkout tools
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
@@ -116,27 +106,52 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
       - name: Prepare build container
+        env:
+          COMPATIBILITY: ${{ matrix.compatibility }}
         run: |
-          scripts/provision-deb-container.sh
+          if [[ "$COMPATIBILITY" == true ]]; then
+            scripts/provision-deb-compat-container.sh
+            mkdir -p build/compat-dependencies
+            chown -R builder build/compat-dependencies
+          else
+            scripts/provision-deb-container.sh
+          fi
           chown -R builder "$GITHUB_WORKSPACE"
       - name: Build private runtime and package
         env:
           PACKAGE_REF: ${{ inputs.ref || github.sha }}
+          COMPATIBILITY: ${{ matrix.compatibility }}
         run: |
           revision=1
           if [[ "$PACKAGE_REF" == refs/tags/gnoblin-v* || "$PACKAGE_REF" == gnoblin-v* ]]; then
             revision="$(scripts/check-release-tag.sh "${PACKAGE_REF#refs/tags/}")"
           fi
-          runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \
-            GNOBLIN_BUILD_JOBS=2 scripts/build-deb.sh --revision "$revision"
+          if [[ "$COMPATIBILITY" == true ]]; then
+            runuser -u builder -- env PATH="/opt/gnoblin-compat-build-tools/bin:$PATH" \
+              GNOBLIN_BUILD_JOBS=2 scripts/build-deb-compat-runtime.sh --revision "$revision"
+          else
+            runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \
+              GNOBLIN_BUILD_JOBS=2 scripts/build-deb.sh --revision "$revision"
+          fi
       - name: Include dependency sources
         env:
           TARGET: ${{ matrix.target }}
+          COMPATIBILITY: ${{ matrix.compatibility }}
         run: |
-          mapfile -d '' cargo_sources < <(find build/dependencies -type d -path '*/cargo-home/registry/src' -print0)
-          tar -cJf "dist/deb/gnoblin-$TARGET-dependency-sources.tar.xz" \
-            -C build/dependencies downloads \
-            -C "$GITHUB_WORKSPACE" build/deb-dependencies.json packaging/deb/patches "${cargo_sources[@]}"
+          if [[ "$COMPATIBILITY" == true ]]; then
+            dependency_root=build/compat-dependencies
+            mapfile -d '' cargo_sources < <(find "$dependency_root" -type d -path '*/cargo-home/registry/src' -print0)
+            tar -cJf "dist/deb/gnoblin-$TARGET-dependency-sources.tar.xz" \
+              -C "$dependency_root" downloads \
+              -C "$GITHUB_WORKSPACE" build/compat-runtime-dependencies.json \
+              build-dependencies.json packaging/deb/compat-bootstrap.json \
+              packaging/deb/build-dependencies.json packaging/deb/patches "${cargo_sources[@]}"
+          else
+            mapfile -d '' cargo_sources < <(find build/dependencies -type d -path '*/cargo-home/registry/src' -print0)
+            tar -cJf "dist/deb/gnoblin-$TARGET-dependency-sources.tar.xz" \
+              -C build/dependencies downloads \
+              -C "$GITHUB_WORKSPACE" build/deb-dependencies.json packaging/deb/patches "${cargo_sources[@]}"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: debian-package-${{ matrix.target }}
@@ -152,14 +167,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
           - image: debian:13
             target: debian13
+          - image: debian:12
+            target: debian12
           - image: ubuntu:24.04
             target: ubuntu24.04
+          - image: ubuntu:22.04
+            target: ubuntu22.04
           - image: ubuntu:26.04
             target: ubuntu26.04
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}

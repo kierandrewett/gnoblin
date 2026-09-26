@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-25",
+  "as_of": "2026-09-26",
   "research": {
     "image_check": "skopeo inspect, 2026-09-25",
     "lifecycle_sources": [
@@ -160,9 +160,9 @@
       "image": "debian:11",
       "lifecycle": "upstream-lts-ended",
       "adapter": "deb",
-      "status": "probe-needed",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/deb.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,

@@ -190,7 +190,7 @@ class IsolationTests(unittest.TestCase):
         env_script = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertIn('local shell_libdir="$prefix/$libdir/gnome-shell"', env_script)
         self.assertIn(
-            'export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api',
+            'export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/gjs/girepository-1.0:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api',
             env_script,
         )
         self.assertLess(

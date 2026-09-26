@@ -18,12 +18,22 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("PACKAGE_REF: ${{ inputs.ref || github.sha }}", build)
         self.assertIn("ref: ${{ inputs.ref || github.sha }}", install)
 
+    def test_debian_compatibility_targets_are_built_installed_and_removed_on_release(self):
+        workflow = (ROOT / ".github/workflows/deb.yml").read_text()
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
+        install = workflow.split("\n  install:\n", 1)[1]
+        for target in ("debian11", "debian12", "ubuntu22.04"):
+            self.assertIn(f"target: {target}", build)
+            self.assertIn(f"target: {target}", install)
+        self.assertIn("scripts/build-deb-compat-runtime.sh --revision", build)
+        self.assertIn("scripts/provision-deb-compat-container.sh", build)
+
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
         version = subprocess.check_output(
             [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
         ).strip()
-        expected_revision = "4" if version == "0.1.7" else "1"
+        expected_revision = "6" if version == "0.1.7" else "1"
         self.assertEqual(
             subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(),
             expected_revision,
@@ -40,6 +50,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         for project in ("gsettings-desktop-schemas", "mutter", "gnome-shell", "gnoblin"):
             self.assertIn(f'build-srpm.sh" {project}', script)
         self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD", script)
+        self.assertIn('"$SOURCES/Adwaita-Hyprcursor.tar.xz"', script)
         self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz", script)
         self.assertIn("SHA256SUMS", script)
 
@@ -52,7 +63,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('tags:\n      - "gnoblin-v*"', workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("pages: write", workflow)
-        self.assertIn("needs: [source-packages, debian-packages]", workflow)
+        arch_gate = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
+        self.assertIn("needs: [source-packages]", arch_gate)
         release_gate = workflow.split("  github-release:\n", 1)[1].split("    runs-on:", 1)[0]
         for job in ("source-packages", "debian-packages", "arch-package", "opensuse-package", "nixos-release"):
             self.assertIn(f"      - {job}\n", release_gate)
@@ -72,7 +84,6 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("merge-multiple: true", workflow)
         self.assertIn("name: debian-package-${{ matrix.target }}", (ROOT / ".github/workflows/deb.yml").read_text())
         self.assertNotIn("pattern: deb-*", workflow)
-        self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
@@ -93,6 +104,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
         arch = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
         self.assertIn("-name 'gnoblin-[0-9]*.pkg.tar.zst'", arch)
         self.assertIn("pacman -Q gnoblin", arch)
+        self.assertIn("path: build/gnoblin-[0-9]*.pkg.tar.zst", arch)
+        self.assertNotIn("path: build/*.pkg.tar.zst", arch)
+        self.assertIn("share/icons/Adwaita-Hyprcursor/manifest.hl", arch)
+
+    def test_arch_build_uses_the_release_cursor_theme_without_inkscape(self):
+        pkgbuild = (ROOT / "packaging/arch/PKGBUILD").read_text()
+        bundle = (ROOT / "packaging/arch/build-source-bundle.sh").read_text()
+        self.assertNotIn("'inkscape'", pkgbuild)
+        self.assertIn("Adwaita-Hyprcursor.tar.xz", bundle)
+        self.assertIn("cp -a Adwaita-Hyprcursor/.", pkgbuild)
 
     def test_release_waits_for_and_publishes_opensuse_rpms(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()

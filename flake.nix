@@ -133,6 +133,17 @@
           wayland = gnoblinWayland;
           waylandScanner = gnoblinWaylandScanner;
         };
+      # Nix packages carry their complete dependency closure.  The older stable
+      # NixOS channels cannot build GNOME 51 against their host GNOME stack, so
+      # select the release-pinned rolling closure for Gnoblin only.  The host
+      # package set remains untouched: its GNOME Shell and Mutter are still the
+      # selected packages for the stock GNOME session.
+      mkStableGnoblin =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        mkGnoblin pkgs { };
       assessChannel =
         system: channel:
         let
@@ -164,22 +175,6 @@
             buildBlockers
             ;
         };
-      mkChannelPackage =
-        system: channel:
-        let
-          assessment = assessChannel system channel;
-        in
-        if assessment.buildBlockers == [ ] then
-          mkGnoblin assessment.pkgs { }
-        else
-          throw ''
-            Gnoblin does not currently provide an installable package for NixOS ${channel.release}.
-            This channel is blocked by: ${nixpkgs.lib.concatStringsSep ", " assessment.buildBlockers}.
-
-            Gnoblin GNOME 51 needs a separately tested private/backported dependency closure for
-            these integration libraries. See docs/install-nixos.md and
-            lib.nixChannelEvaluations for the exact pinned-channel assessment.
-          '';
       # These values evaluate a package and enabled NixOS module with the exact
       # release channel pinned in flake.lock. They do not build or run a
       # compositor, so a true result is not a session or coexistence claim.
@@ -195,11 +190,24 @@
               hasLibglycin
               buildBlockers
               ;
-            gnoblin = if hasLibglycin then mkGnoblin pkgs { } else null;
+            gnoblin =
+              if channel.release == "25.05" || channel.release == "25.11" then
+                mkStableGnoblin system
+              else if hasLibglycin then
+                mkGnoblin pkgs { }
+              else
+                null;
+            module =
+              if channel.release == "25.05" then
+                self.nixosModules.nixos_25_05
+              else if channel.release == "25.11" then
+                self.nixosModules.nixos_25_11
+              else
+                self.nixosModules.default;
             moduleTest = channel.input.lib.nixosSystem {
               inherit system;
               modules = [
-                self.nixosModules.default
+                module
                 {
                   system.stateVersion = channel.release;
                   programs.gnoblin = {
@@ -209,9 +217,10 @@
                 }
               ];
             };
-            packageEvaluation = if hasLibglycin then builtins.tryEval gnoblin.drvPath else { success = false; };
+            packageEvaluation =
+              if gnoblin != null then builtins.tryEval gnoblin.drvPath else { success = false; };
             moduleEvaluation =
-              if hasLibglycin then
+              if gnoblin != null then
                 builtins.tryEval (
                   toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)
                 )
@@ -221,16 +230,19 @@
           {
             inherit (channel) release;
             compiler = if hasGcc16Stdenv then "gcc16Stdenv" else "stdenv";
-            evaluationBlocker = if hasLibglycin then null else "missing-libglycin";
+            evaluationBlocker = if gnoblin != null then null else "missing-libglycin";
             inherit buildBlockers;
             package.evaluates = packageEvaluation.success;
             module.evaluates = moduleEvaluation.success;
           }
         ) nixpkgsChannels
       );
-      nixChannelPackages = forAllSystems (
-        system: nixpkgs.lib.mapAttrs (_: channel: mkChannelPackage system channel) nixpkgsChannels
-      );
+      nixChannelPackages = forAllSystems (system: {
+        nixos_25_05 = mkStableGnoblin system;
+        nixos_25_11 = mkStableGnoblin system;
+        nixos_26_05 = mkNixos26_05Gnoblin system;
+        nixos_unstable = mkStableGnoblin system;
+      });
     in
     {
       packages = forAllSystems (
@@ -240,6 +252,8 @@
         in
         rec {
           gnoblin = mkGnoblin pkgs { };
+          gnoblin-nixos-25_05 = mkStableGnoblin system;
+          gnoblin-nixos-25_11 = mkStableGnoblin system;
           gnoblin-nixos-26_05 = mkNixos26_05Gnoblin system;
           default = gnoblin;
         }
@@ -326,6 +340,16 @@
         inherit self;
         defaultPackage = system: self.packages.${system}.gnoblin-nixos-26_05;
         defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-26_05";
+      };
+      nixosModules.nixos_25_05 = import ./nix/module.nix {
+        inherit self;
+        defaultPackage = system: self.packages.${system}.gnoblin-nixos-25_05;
+        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-25_05";
+      };
+      nixosModules.nixos_25_11 = import ./nix/module.nix {
+        inherit self;
+        defaultPackage = system: self.packages.${system}.gnoblin-nixos-25_11;
+        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-25_11";
       };
     };
 }

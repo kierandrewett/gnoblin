@@ -230,9 +230,10 @@ release pipeline or COPR publication changes.
   utility. The new exact-main package runs must still pass before recording
   Arch or Tumbleweed package gates.
 - Commit `4cb52603` changed Nix full-build concurrency to preserve a long
-  package build when later commits are pushed. Stable Nix channels still have
-  dependency-floor blockers and do not have installable channel-specific
-  package outputs; successful evaluation is not NixOS release support.
+  package build when later commits are pushed. The stable NixOS channels still
+  record their host dependency-floor blockers, but the 25.05 and 25.11 module
+  outputs now select a private, pinned Gnoblin closure rather than attempting
+  to replace their host GNOME packages.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
@@ -254,7 +255,16 @@ release pipeline or COPR publication changes.
 
 - The current packaging audit adds automated RPM repository probes for Rocky 8/9/10 and openSUSE Leap 15.6/16.0/Tumbleweed. The probe separates five host runtime floors from build-only API requirements and the Mutter development package's Wayland Protocols floor. Rocky and Leap remain blocked by their repository-provided versions. Tumbleweed's later package and coexistence gate is recorded below; a probe alone would not establish build, installation, co-installation, or graphical-session support.
 - Arch's generated `PKGBUILD` stages the privately built Mutter into a temporary build prefix before configuring Shell. It feeds staged pkg-config, GIR, and typelib paths to Shell and checks that headers and libraries resolve from that private stage. This fixed the `mutter-clutter-51` configure failure from Verify run `36148646223`; the completed package result is recorded below.
-- Stable NixOS channel package attributes fail early with recorded dependency blockers instead of implying support through `nixpkgs-unstable`. The 25.05 and 25.11 channels remain unsupported. The separate 26.05 closure now has a successful package-build gate, but remains unsupported pending installation, stock-GNOME coexistence, removal, and graphical-session evidence.
+- NixOS 25.05 and 25.11 expose `gnoblin-nixos-25_05` and
+  `gnoblin-nixos-25_11` package attributes with matching channel modules. Both
+  names resolve to the same lock-file-pinned private Gnoblin closure, built
+  from the rolling input because each stable host lacks required GNOME 51
+  interfaces. The Nix workflow job `build-nixos-25-stable-private-runtime`
+  evaluates both modules against their exact channel inputs, builds that
+  closure once, and retains `nixos-25-stable-private-runtime-metadata` with
+  the resulting Nix store path. It does not replace the host `gnome-shell` or
+  `mutter` package, and it does not prove installation, removal, or graphical
+  session login.
 
 - Commit `c54e3d4b` corrects the pinned GNOME 51 host floors to GJS 1.87.1
   and Wayland Protocols 1.48, sourced directly from the exact Shell and Mutter

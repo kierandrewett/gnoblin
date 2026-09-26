@@ -106,16 +106,22 @@ install_build_dependencies() {
                 libxext-dev libxfixes-dev libxi-dev libxinerama-dev libxkbcommon-dev
                 libxkbcommon-x11-dev libxkbregistry-dev libxrandr-dev xwayland
                 xkb-data gsettings-desktop-schemas-dev gnome-settings-daemon-dev
-                gnome-shell gnome-session-bin gnome-session-common gnome-settings-daemon systemd-dev)
+                gnome-shell gnome-session-bin gnome-session-common gnome-settings-daemon)
             if apt-cache show hyprcursor-util >/dev/null 2>&1; then
                 packages+=(hyprcursor-util)
             fi
             if "$bundle_debian"; then
+                # The compatibility closure builds these GNOME 51 development
+                # interfaces privately; the host packages are missing or too
+                # old on Debian 12 and Ubuntu 22.04.
                 local -a base_packages=()
                 local package
                 for package in "${packages[@]}"; do
                     case "$package" in
-                        libglycin-2-dev | libhyprcursor-dev | libgjs-dev) ;;
+                        just | xcvt | libadwaita-1-dev | libdisplay-info-dev | \
+                            libei-dev | libeis-dev | libgcr-4-dev | libgnome-desktop-4-dev | \
+                            libgirepository-2.0-dev | libgjs-dev | libgtk-4-dev | \
+                            libglycin-2-dev | libhyprcursor-dev | libjxl-dev) ;;
                         *) base_packages+=("$package") ;;
                     esac
                 done

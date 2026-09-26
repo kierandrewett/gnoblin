@@ -152,6 +152,35 @@ checksum-verified build-only Rust toolchain is required before this runner can
 reach the remaining libei, display-info, cursor, Mutter, Shell, package and
 session gates.
 
+The experimental container now installs only the `rustc`, `cargo` and
+`rust-std` components for Rust 1.85.1 under
+`/opt/gnoblin-compat-build-tools`. `scripts/bootstrap-compat-rust.py` verifies
+each archive against the upstream 1.85.1 channel manifest before invoking its
+component installer. The compiler is build-only: it is not staged below
+`/usr/lib/gnoblin`, included in a DEB, exported into the host environment, or
+used by a host session service. The initial pin covers x86_64 Linux, matching
+the published DEB architecture and CI runners.
+
+With that compiler and the pinned Meson 1.10.1 tool on `PATH`, a clean Debian
+12 Glycin 2.0.0 configure reached its first non-toolchain requirement:
+`libseccomp`. The compatibility container installs `libseccomp-dev` as a host
+build prerequisite. It is a system call filtering library used while building
+the private image loader; it is not a GNOME session service and does not alter
+the private-runtime ownership boundary.
+
+The next configure pass resolved libseccomp and then required the normal
+image-codec development interface `libheif`, which is likewise installed from
+the target archive as `libheif-dev`. No private GNOME library has been
+substituted during these checks.
+
+That package is only version 1.15.1, below Glycin's `>= 1.17.0` source floor.
+The compatibility graph therefore pins upstream libheif 1.17.6 as a private
+library, checksum `8390baf4913eda0a183e132cec62b875fb2ef507ced5ddddc98dfd2f17780aee`.
+Its codec libraries remain host dependencies recorded by the eventual DEB;
+the graph does not add codecs, udev rules, a GNOME service or a global loader
+path. This private library still needs a clean target build and Glycin runtime
+test before it can be considered part of a supported package closure.
+
 The first Ubuntu 22.04 GTK attempt exposed another host floor: GTK 4.14.5
 requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
 manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols

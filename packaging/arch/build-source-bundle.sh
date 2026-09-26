@@ -7,8 +7,8 @@
 # scripts/make-tarball.sh and include Gnoblin's patch stacks.
 set -euo pipefail
 
-if [ "$#" -ne 5 ]; then
-    echo "Usage: $0 <output> <gnoblin-version> <schemas.tar.xz> <mutter.tar.xz> <shell.tar.xz>" >&2
+if [ "$#" -ne 6 ]; then
+    echo "Usage: $0 <output> <gnoblin-version> <schemas.tar.xz> <mutter.tar.xz> <shell.tar.xz> <Adwaita-Hyprcursor.tar.xz>" >&2
     exit 2
 fi
 
@@ -17,6 +17,7 @@ VERSION="$2"
 SCHEMAS="$(realpath "$3")"
 MUTTER="$(realpath "$4")"
 SHELL="$(realpath "$5")"
+CURSORS="$(realpath "$6")"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" show -s --format=%ct HEAD)}"
 STAGING="$(mktemp -d)"
@@ -25,7 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for source in "$SCHEMAS" "$MUTTER" "$SHELL"; do
+for source in "$SCHEMAS" "$MUTTER" "$SHELL" "$CURSORS"; do
     [ -f "$source" ] || {
         echo "missing prepared component source: $source" >&2
         exit 1
@@ -38,6 +39,7 @@ git -C "$ROOT" archive --format=tar HEAD | tar -xf - -C "$STAGING/$TOP"
 install -m 0644 -- "$SCHEMAS" "$STAGING/$TOP/sources/"
 install -m 0644 -- "$MUTTER" "$STAGING/$TOP/sources/"
 install -m 0644 -- "$SHELL" "$STAGING/$TOP/sources/"
+install -m 0644 -- "$CURSORS" "$STAGING/$TOP/sources/"
 
 mkdir -p "$(dirname "$OUTPUT")"
 tar -C "$STAGING" \
