@@ -540,6 +540,7 @@ gnome-layer-animation-verify:
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-resize.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-animation.py" ./scripts/run-gnome-shell.sh
     GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-lifecycle.py" ./scripts/run-gnome-shell.sh
+    GNOBLIN_CONFIG='' GNOBLIN_PREFIX="{{prefix}}" GNOBLIN_TEST_DBUS_CLIENT="{{justfile_directory()}}/tests/test-layer-remap.py" ./scripts/run-gnome-shell.sh
 
 [private]
 gnome-window-effects-verify:
