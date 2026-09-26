@@ -37,6 +37,12 @@ python3 -m venv --system-site-packages /opt/gnoblin-compat-build-tools
 /opt/gnoblin-compat-build-tools/bin/pip install meson==1.10.1
 python3 scripts/bootstrap-compat-rust.py --prefix /opt/gnoblin-compat-build-tools
 export PATH="/opt/gnoblin-compat-build-tools/bin:$PATH"
+# Mozilla's JavaScript engine needs cbindgen 0.27 or newer.  Debian 11/12
+# and Ubuntu 22.04 ship an older package, so install this build-only tool next
+# to the pinned Rust compiler instead of using the host executable.
+CARGO_HOME=/opt/gnoblin-compat-build-tools/cargo-home \
+    /opt/gnoblin-compat-build-tools/bin/cargo install cbindgen \
+    --version 0.28.0 --locked --root /opt/gnoblin-compat-build-tools
 CARGO_HOME=/opt/gnoblin-compat-build-tools/cargo-home \
     /opt/gnoblin-compat-build-tools/bin/cargo install just \
     --version 1.40.0 --locked --root /opt/gnoblin-compat-build-tools

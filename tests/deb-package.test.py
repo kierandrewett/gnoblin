@@ -44,6 +44,11 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertIn("Pango-1.0.typelib", pango["private_typelibs"])
         self.assertIn("pango", gtk4["requires"])
 
+    def test_legacy_compatibility_runtime_uses_modern_cbindgen(self):
+        provision = (ROOT / "scripts/provision-deb-compat-container.sh").read_text()
+        self.assertIn("cargo install cbindgen", provision)
+        self.assertIn("--version 0.28.0", provision)
+
     def test_distributed_copyright_keeps_company_and_upstream_attribution(self):
         text = package.debian_copyright_text()
         self.assertIn("Copyright © 2026 Working Directory Ltd.", text)
