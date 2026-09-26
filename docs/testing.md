@@ -193,8 +193,9 @@ installing its recorded apps with:
 Flatpak apps that fail to map also include a `flatpak-runtime-diagnostics/`
 log with the app's Flatpak runtime and extension metadata and locations, plus
 the sandbox's Vulkan ICD manifests,
-libraries, environment and device nodes. It runs `vulkaninfo` in the sandbox
-when the app runtime provides it.
+libraries, environment and device nodes. The log records the shell-probe
+command and exit code; the probe runs inside the app sandbox and runs
+`vulkaninfo` when the app runtime provides it.
 
 ```sh
 GNOBLIN_PREFIX="$PWD/install" \

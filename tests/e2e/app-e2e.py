@@ -428,7 +428,7 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
 """
     environment = client_environment.copy()
     environment.pop("VK_ICD_FILENAMES", None)
-    command = [
+    probe_command = [
         "flatpak",
         "run",
         "--verbose",
@@ -451,11 +451,11 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
             ["flatpak", "info", "--system", "--show-extensions", app["install"]],
             ["flatpak", "info", "--system", "--show-location", app["install"]],
         ]
-        for command in commands:
-            log.write(f"\n$ {' '.join(command)}\n")
+        for metadata_command in commands:
+            log.write(f"\n$ {' '.join(metadata_command)}\n")
             try:
                 subprocess.run(
-                    command,
+                    metadata_command,
                     env=environment,
                     stdout=log,
                     stderr=subprocess.STDOUT,
@@ -525,15 +525,17 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         except (OSError, subprocess.TimeoutExpired) as error:
             log.write(f"Could not inspect app runtime extensions: {error}\n")
         log.write("\n--- app sandbox probe ---\n")
+        log.write(f"$ {' '.join(probe_command)}\n")
         try:
             result = subprocess.run(
-                command,
+                probe_command,
                 env=environment,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 timeout=30,
                 check=False,
             )
+            log.write(f"\nSandbox probe exit code: {result.returncode}\n")
             return {"path": str(diagnostic_path), "return_code": result.returncode}
         except (OSError, subprocess.TimeoutExpired) as error:
             log.write(f"Could not complete app sandbox probe: {error}\n")
