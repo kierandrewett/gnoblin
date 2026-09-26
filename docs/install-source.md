@@ -11,6 +11,9 @@ Keep the checkout there if you register it as a login session.
 
 This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
 newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
+The bundled Adwaita-Hyprcursor theme uses librsvg and hyprcursor-util.
+Inkscape is not required.
+
 The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
 mtdev, Lua, gnome-desktop and the PipeWire client libraries. Other development libraries must already be installed on the host.
 

@@ -8,15 +8,13 @@ if [ "$(id -u)" -ne 0 ] || { [ ! -f /.dockerenv ] && [ ! -f /run/.containerenv ]
 fi
 cd -- "$(dirname -- "$(realpath -- "$0")")/.."
 source /etc/os-release
-bundle=false
+legacy_private_gtk=false
 case "$ID:$VERSION_ID" in
     ubuntu:26.04) rust_packages=(rustc cargo libmozjs-140-dev) ;;
     ubuntu:24.04)
-        bundle=true
         rust_packages=(rustc-1.85 cargo-1.85 g++-14)
         ;;
     debian:13)
-        bundle=true
         rust_packages=(rustc cargo python3-legacy-cgi g++-14)
         ;;
     debian:12 | ubuntu:22.04)
@@ -31,14 +29,16 @@ case "$ID:$VERSION_ID" in
         ;;
 esac
 source scripts/build-deps.sh
-install_build_dependencies debian true false "$bundle"
+install_build_dependencies debian true false "$legacy_private_gtk"
 apt-get install -y --no-install-recommends "${rust_packages[@]}" \
     python3-venv python3-jinja2 clang llvm cbindgen libreadline-dev zip zlib1g-dev valac \
     libheif-dev libjxl-dev libfontconfig-dev libevdev-dev hwdata libzip-dev libtomlplusplus-dev \
     bubblewrap dpkg-dev fakeroot patchelf curl ca-certificates foot \
     dbus-x11 xauth python3-gi-cairo gir1.2-accountsservice-1.0 gir1.2-upowerglib-1.0
 if [ "$ID:$VERSION_ID" = ubuntu:26.04 ]; then
-    apt-get install -y --no-install-recommends hyprcursor-util
+    # Mutter requires the generic udev pkg-config module. On Ubuntu 26.04
+    # libudev-dev exports libudev.pc, while systemd-dev exports udev.pc.
+    apt-get install -y --no-install-recommends hyprcursor-util systemd-dev
 fi
 python3 -m venv --system-site-packages /opt/gnoblin-build-tools
 /opt/gnoblin-build-tools/bin/pip install meson==1.10.1

@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3 bundle_debian=${4:-false}
+    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false}
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -61,7 +61,7 @@ install_build_dependencies() {
     case "$family" in
         fedora)
             "$build_assume_yes" && confirm=(-y)
-            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build inkscape adwaita-cursor-theme
+            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build adwaita-cursor-theme
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
                 python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
                 mesa-libEGL-devel
@@ -77,7 +77,7 @@ install_build_dependencies() {
                 gnome-shell mutter gnome-session gnome-settings-daemon
                 wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
                 glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
-                sassc cmake gettext xorg-xwayland python-docutils inkscape adwaita-cursors)
+                sassc cmake gettext xorg-xwayland python-docutils adwaita-cursors)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
             ;;
@@ -87,7 +87,7 @@ install_build_dependencies() {
                 frontend=(env DEBIAN_FRONTEND=noninteractive)
             fi
             packages=(build-essential git just meson ninja-build pkg-config cmake gettext
-                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils inkscape
+                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils
                 adwaita-icon-theme
                 gobject-introspection libgirepository-2.0-dev libglib2.0-dev
                 libgtk-4-dev libadwaita-1-dev libgjs-dev libglycin-2-dev
@@ -110,7 +110,7 @@ install_build_dependencies() {
             if apt-cache show hyprcursor-util >/dev/null 2>&1; then
                 packages+=(hyprcursor-util)
             fi
-            if "$bundle_debian"; then
+            if "$legacy_private_gtk"; then
                 # The compatibility closure builds these GNOME 51 development
                 # interfaces privately; the host packages are missing or too
                 # old on Debian 12 and Ubuntu 22.04.
@@ -153,7 +153,7 @@ install_build_dependencies() {
             packages=(git just meson ninja python3 gcc gcc-c++ make cmake gettext-tools
                 pkgconf-pkg-config sassc desktop-file-utils python3-docutils
                 python3-packaging readline-devel iso-codes pam-devel lua54-devel gnome-shell gnome-session
-                gnome-settings-daemon inkscape adwaita-icon-theme hyprcursor)
+                gnome-settings-daemon adwaita-icon-theme hyprcursor)
             capabilities+=('pkgconfig(libadwaita-1)' 'pkgconfig(xkeyboard-config)')
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" refresh
             # Older minimal images gained busybox-gawk while bootstrapping Git,

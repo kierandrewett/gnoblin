@@ -2,6 +2,7 @@
 """Check that Debian packages cannot export files over stock GNOME."""
 
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,6 +14,26 @@ spec.loader.exec_module(package)
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_modern_deb_provisioning_keeps_host_gtk4_development_files(self):
+        provision = (ROOT / "scripts/provision-deb-container.sh").read_text()
+        dependencies = (ROOT / "scripts/build-deps.sh").read_text()
+        self.assertIn("legacy_private_gtk=false", provision)
+        self.assertIn('install_build_dependencies debian true false "$legacy_private_gtk"', provision)
+        filtered = dependencies.split('if "$legacy_private_gtk"; then', 1)[1].split("fi", 1)[0]
+        self.assertIn("libgtk-4-dev", filtered)
+
+    def test_legacy_compatibility_runtime_pins_private_pango_for_gtk4(self):
+        recipes = json.loads((ROOT / "packaging/deb/compat-bootstrap.json").read_text())
+        by_name = {recipe["name"]: recipe for recipe in recipes}
+        pango = by_name["pango"]
+        gtk4 = by_name["gtk4"]
+        self.assertEqual(pango["version"], "1.50.14")
+        self.assertEqual(pango["sha256"], "1d67f205bfc318c27a29cfdfb6828568df566795df0cb51d2189cde7f2d581e8")
+        self.assertIn("pango.pc", pango["private_pkgconfig"])
+        self.assertIn("pangocairo.pc", pango["private_pkgconfig"])
+        self.assertIn("Pango-1.0.typelib", pango["private_typelibs"])
+        self.assertIn("pango", gtk4["requires"])
+
     def test_distributed_copyright_keeps_company_and_upstream_attribution(self):
         text = package.debian_copyright_text()
         self.assertIn("Copyright © 2026 Working Directory Ltd.", text)
