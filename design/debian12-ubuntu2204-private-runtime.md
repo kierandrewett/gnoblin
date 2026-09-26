@@ -152,6 +152,15 @@ checksum-verified build-only Rust toolchain is required before this runner can
 reach the remaining libei, display-info, cursor, Mutter, Shell, package and
 session gates.
 
+The experimental container now installs only the `rustc`, `cargo` and
+`rust-std` components for Rust 1.85.1 under
+`/opt/gnoblin-compat-build-tools`. `scripts/bootstrap-compat-rust.py` verifies
+each archive against the upstream 1.85.1 channel manifest before invoking its
+component installer. The compiler is build-only: it is not staged below
+`/usr/lib/gnoblin`, included in a DEB, exported into the host environment, or
+used by a host session service. The initial pin covers x86_64 Linux, matching
+the published DEB architecture and CI runners.
+
 The first Ubuntu 22.04 GTK attempt exposed another host floor: GTK 4.14.5
 requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
 manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
