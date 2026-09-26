@@ -8,7 +8,7 @@ release pipeline or COPR publication changes.
 - Release run `36236893302` passed the package builds and install checks for
   Debian 13, Ubuntu 24.04/26.04, Arch and openSUSE Tumbleweed. APT refused to
   replace Debian revision `-4` because its published checksum differs from the
-  rebuilt package; the next release uses `-5`. COPR built Mutter successfully
+  rebuilt package; the corrected package used `-5`. COPR built Mutter successfully
   for Fedora 43/44/45, then exposed a missing `gcc-c++` build requirement for
   private GJS in the Shell package. Shell RPM release `51.0-22` adds it.
 - Release run `36239667423` passed the rebuilt DEBs and their install checks,
@@ -18,6 +18,16 @@ release pipeline or COPR publication changes.
   `-fPIC`, breaking a bundled GObject Introspection test library. Shell RPM
   release `51.0-23` removes the global PIE flags and uses Meson's `b_pie`
   option so executable targets stay PIE while shared libraries remain PIC.
+- Release run `36242668258` passed the Shell `51.0-23` source build, all three
+  DEB build/install checks, Arch co-install/removal, openSUSE co-install/removal,
+  and the NixOS 26.05 closure. APT correctly refused to replace Debian revision
+  `-5`: `/usr/share/doc/gnoblin/build-info.json` records the source commit, so
+  each tag commit produces a different package checksum even when the DEB
+  sources are otherwise unchanged. The next corrected package must use `-6`.
+  COPR Shell `51.0-23` reached GNOME Shell introspection but failed because
+  `g-ir-scanner` linked a temporary helper as PIE without compiling it with
+  `-fPIE`. Shell RPM `51.0-24` enables Meson's built-in PIE handling for Shell
+  itself as well as the private GJS build.
 
 - Release run `36230307572` built Debian 13, Ubuntu 24.04/26.04, Arch,
   openSUSE Tumbleweed, and NixOS 26.05 artifacts. Their package installation,
@@ -26,9 +36,9 @@ release pipeline or COPR publication changes.
   capability/HDR APIs and device-ID SPA property used by Mutter 51.
 - The compatibility patch now keeps common tag parameters outside the optional
   capability code, uses numeric logging for color enums missing in PipeWire
-  1.4, and gates device ID separately at PipeWire 1.6. The next COPR Mutter
-  release is `51.0-27.gnoblin`; revisions `-1` through `-4` of the 0.1.7 DEB
-  are already published and immutable. The corrected package must use `-5`.
+  1.4, and gates device ID separately at PipeWire 1.6. The COPR Mutter release
+  is `51.0-27.gnoblin`; DEB revisions `-1` through `-5` of the 0.1.7 package
+  are published and immutable. The corrected package must use `-6`.
 - APT suite indexes were corrected and republished by `36232880003` at
   `gh-pages` commit `f95cc80e`. The index contents now match each Ubuntu suite;
   confirm the newest Pages build and live custom domain before treating the
