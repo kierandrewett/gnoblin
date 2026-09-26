@@ -28,7 +28,7 @@ esac
 source scripts/build-deps.sh
 install_build_dependencies debian true false true
 apt-get install -y --no-install-recommends \
-    bison ca-certificates clang cbindgen flex libdrm-dev libegl-dev libepoxy-dev \
+    bison ca-certificates clang cbindgen flex gnupg libdrm-dev libegl-dev libepoxy-dev \
     libffi-dev libgbm-dev libgcrypt20-dev libgles-dev libgraphene-1.0-dev libheif-dev libseccomp-dev \
     libjpeg-dev libmount-dev libp11-kit-dev libpango1.0-dev \
     libpcre2-dev libpng-dev libsecret-1-dev libtiff-dev libwebp-dev \
