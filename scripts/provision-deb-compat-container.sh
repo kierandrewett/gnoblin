@@ -26,6 +26,10 @@ apt-get install -y --no-install-recommends \
 python3 -m venv --system-site-packages /opt/gnoblin-compat-build-tools
 /opt/gnoblin-compat-build-tools/bin/pip install meson==1.10.1
 python3 scripts/bootstrap-compat-rust.py --prefix /opt/gnoblin-compat-build-tools
+CARGO_HOME=/opt/gnoblin-compat-build-tools/cargo-home \
+    /opt/gnoblin-compat-build-tools/bin/cargo install just \
+    --version 1.40.0 --locked --root /opt/gnoblin-compat-build-tools
+/opt/gnoblin-compat-build-tools/bin/just --version
 id builder >/dev/null 2>&1 || useradd -m builder
 install -d -o builder -g builder /usr/lib/gnoblin /usr/lib/gnoblin/deps
 printf '%s\n' 'Ready to build the pinned private GNOME compatibility runtime as builder.'
