@@ -454,9 +454,11 @@ static bool test_foreign_toplevel_stop(struct wl_display* display, struct protoc
     return true;
 }
 
-static bool test_disconnect_unconfigured_toplevel(struct wl_display* display) {
+static bool test_disconnect_unconfigured_toplevel(void) {
     struct protocols protocols = {0};
+    struct protocols observer_protocols = {0};
     struct wl_display* disconnect_display = wl_display_connect(NULL);
+    struct wl_display* observer_display;
     struct wl_registry* registry;
     struct wl_surface* surface;
     struct xdg_surface* xdg_surface;
@@ -491,20 +493,36 @@ static bool test_disconnect_unconfigured_toplevel(struct wl_display* display) {
     }
 
     wl_display_disconnect(disconnect_display);
-    if (wl_display_roundtrip(display) < 0) {
+    observer_display = wl_display_connect(NULL);
+    if (!observer_display) {
+        int error = errno;
+
+        fprintf(stderr,
+                "FAIL: compositor did not survive unconfigured toplevel disconnect: "
+                "observer connect failed: %s\n",
+                strerror(error));
+        return false;
+    }
+
+    registry = wl_display_get_registry(observer_display);
+    wl_registry_add_listener(registry, &registry_listener, &observer_protocols);
+    if (wl_display_roundtrip(observer_display) < 0 || !observer_protocols.compositor ||
+        !observer_protocols.xdg_wm_base) {
         const struct wl_interface* interface = NULL;
         uint32_t object_id = 0;
-        uint32_t code = wl_display_get_protocol_error(display, &interface, &object_id);
-        int error = wl_display_get_error(display);
+        uint32_t code = wl_display_get_protocol_error(observer_display, &interface, &object_id);
+        int error = wl_display_get_error(observer_display);
 
         fprintf(stderr,
                 "FAIL: compositor did not survive unconfigured toplevel disconnect: "
                 "wayland_error=%d (%s), protocol_error=%s#%u code=%u\n",
                 error, error ? strerror(error) : "none", interface ? interface->name : "none",
                 object_id, code);
+        wl_display_disconnect(observer_display);
         return false;
     }
 
+    wl_display_disconnect(observer_display);
     return true;
 }
 
@@ -844,7 +862,7 @@ int main(void) {
     if (!test_screencopy_boundaries(display, &protocols))
         return 1;
 
-    if (!test_disconnect_unconfigured_toplevel(display))
+    if (!test_disconnect_unconfigured_toplevel())
         return 1;
 
     wl_display_disconnect(display);
