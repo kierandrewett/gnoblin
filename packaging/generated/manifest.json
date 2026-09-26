@@ -55,7 +55,7 @@
       }
     },
     "gjs": {
-      "minVersion": "1.87.1",
+      "minVersion": null,
       "names": {
         "arch": "gjs",
         "deb": "gjs",

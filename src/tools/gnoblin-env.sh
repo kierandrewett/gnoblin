@@ -56,7 +56,7 @@ gnoblin_env_apply() {
     local mutter_api="${GNOBLIN_MUTTER_API:-51}"
     local shell_libdir="$prefix/$libdir/gnome-shell"
     export LD_LIBRARY_PATH="$shell_libdir:$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+    export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/gjs/girepository-1.0:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
     export PATH="$prefix/bin:$PATH"
     export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     # Let GSettings discover the private schemas first, then fall back to the

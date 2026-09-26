@@ -2,17 +2,22 @@
 
 Gnoblin installs alongside Fedora's GNOME packages:
 
-| Package                | Contents                                              |
-| ---------------------- | ----------------------------------------------------- |
-| `gnoblin`              | Generated complete-session metapackage                |
-| `gnoblin-mutter`       | Private Mutter runtime and a Gnoblin backlight policy |
-| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell            |
-| `gnoblin-shell`        | Private GNOME Shell runtime and session tools         |
-| `gnoblin-session`      | Login entry, user units and `gnoblinctl` command      |
+| Package                | Contents                                                 |
+| ---------------------- | -------------------------------------------------------- |
+| `gnoblin`              | Generated complete-session metapackage                   |
+| `gnoblin-mutter`       | Private Mutter runtime and a Gnoblin backlight policy    |
+| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell               |
+| `gnoblin-shell`        | Private GNOME Shell and GJS runtimes, plus session tools |
+| `gnoblin-session`      | Login entry, user units and `gnoblinctl` command         |
 
 Binaries, libraries, schemas and upstream service definitions stay under
 `/usr/lib/gnoblin`. Private libraries do not provide dependencies for Fedora's
 GNOME packages. No package replaces, conflicts with or obsoletes GNOME.
+The Shell RPM builds GJS 1.88.1 from the checksum-pinned upstream source into
+that same private prefix. This is needed on Fedora 43, whose system GJS is
+1.86.0, below GNOME Shell 51's declared 1.87.1 API floor. The private build
+uses Fedora's GLib, GIRepository and SpiderMonkey 140 libraries; it does not
+replace or upgrade Fedora's `gjs` package.
 
 [Build and install](../../docs/installation.md#fedora). Build Mutter first,
 install its private development package, then build Shell and the generated

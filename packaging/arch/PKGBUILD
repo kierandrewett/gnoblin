@@ -8,7 +8,7 @@ arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
 makedepends=('adwaita-cursors' 'base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'inkscape' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')
-depends=('brightnessctl' 'gjs>=1.87.1' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
+depends=('brightnessctl' 'gjs' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
 
 source=("$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz")
 sha256sums=('SKIP')

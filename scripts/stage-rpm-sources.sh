@@ -30,6 +30,35 @@ case "$PROJECT" in
         install -m 0644 -- \
             "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" \
             "$OUTDIR/gnome-session@gnoblin.target.d.conf"
+        python3 - "$ROOT/build-dependencies.json" "$ROOT/packaging/rpm/gnome-shell.spec" "$OUTDIR" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+import urllib.request
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+recipe = next(item for item in manifest if item["name"] == "gjs")
+spec = pathlib.Path(sys.argv[2]).read_text()
+match = re.search(r"^%global gjs_version ([0-9.]+)$", spec, re.MULTILINE)
+if not match:
+    raise SystemExit("RPM spec must pin its private GJS source version")
+version = match.group(1)
+if recipe["version"] != version:
+    raise SystemExit("RPM private GJS version must match build-dependencies.json")
+destination = pathlib.Path(sys.argv[3]) / f"gjs-{version}.tar.xz"
+if not destination.exists():
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    with urllib.request.urlopen(recipe["url"], timeout=60) as source, temporary.open("wb") as target:
+        while chunk := source.read(1024 * 1024):
+            target.write(chunk)
+    temporary.replace(destination)
+digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+if digest != recipe["sha256"]:
+    destination.unlink(missing_ok=True)
+    raise SystemExit("Pinned GJS source checksum mismatch")
+PY
         install -m 0644 -- "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
         install -m 0644 -- "$ROOT/COPYING" "$OUTDIR/gnoblin-COPYING"

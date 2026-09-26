@@ -7,7 +7,9 @@ let
   };
   requirements = {
     glib = requirement "2.86.0" "glib2" "libglib2.0-0t64" "glib2";
-    gjs = requirement "1.87.1" "gjs" "gjs" "gjs";
+    # GJS is carried in the private GNOME 51 runtime; keep the host GJS package
+    # unversioned so co-installed desktop environments retain their own copy.
+    gjs = requirement null "gjs" "gjs" "gjs";
     gnome-session = requirement null "gnome-session" "gnome-session" "gnome-session";
     gnome-settings-daemon =
       requirement null "gnome-settings-daemon" "gnome-settings-daemon"

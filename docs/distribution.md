@@ -65,7 +65,9 @@ scripts/build-srpm.sh gnoblin ./dist/sources ./dist/srpms
 ```
 
 Archives include Gnoblin's overlays and patches. They must not be replaced
-with unpatched upstream archives.
+with unpatched upstream archives. The Shell source preparation also stages the
+checksum-pinned GJS 1.88.1 source archive; the resulting RPM builds GJS inside
+`/usr/lib/gnoblin`, so Fedora 43 keeps its system GJS 1.86 package unchanged.
 
 ## Publish to COPR
 

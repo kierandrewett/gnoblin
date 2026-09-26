@@ -19,13 +19,14 @@
 
 Name:           gnoblin-shell
 Version:        51.0
+%global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        20.gnoblin%{?dist}
+Release:        21.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
-License:        GPL-2.0-or-later
+License:        GPL-2.0-or-later AND MIT
 URL:            https://wiki.gnome.org/Projects/GnomeShell
 Source0:        gnome-shell-%{tarball_version}.tar.xz
 
@@ -49,6 +50,7 @@ Source12:       gnoblin-seed-config
 Source13:       init.lua.example
 Source14:       Adwaita-Hyprcursor.tar.xz
 Source15:       gnoblin-COPYING
+Source16:       gjs-%{gjs_version}.tar.xz
 
 # gnoblin patches (tooling, control, settings, reload, branding) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -57,7 +59,6 @@ Source15:       gnoblin-COPYING
 %define eds_version 3.45.1
 %define gnome_desktop_version 44.0-7
 %define glib2_version 2.86.0
-%define gjs_version 1.87.1
 %define girepository_version 2.86.0
 %define gcr4_version 3.90.0
 %define gtk4_version 4.0.0
@@ -81,7 +82,13 @@ BuildRequires:  desktop-file-utils
 BuildRequires:  pkgconfig(libedataserver-1.2) >= %{eds_version}
 BuildRequires:  pkgconfig(gcr-4) >= %{gcr4_version}
 BuildRequires:  pkgconfig(girepository-2.0) >= %{girepository_version}
-BuildRequires:  pkgconfig(gjs-1.0) >= %{gjs_version}
+BuildRequires:  mozjs140-devel
+BuildRequires:  pkgconfig(cairo)
+BuildRequires:  pkgconfig(cairo-gobject)
+BuildRequires:  pkgconfig(cairo-xlib)
+BuildRequires:  pkgconfig(libffi)
+BuildRequires:  gobject-introspection-devel
+BuildRequires:  pkgconfig(sysprof-capture-4)
 BuildRequires:  pkgconfig(gio-2.0) >= %{glib2_version}
 BuildRequires:  pkgconfig(gnome-autoar-0)
 BuildRequires:  pkgconfig(gnome-desktop-4) >= %{gnome_desktop_version}
@@ -113,7 +120,6 @@ BuildRequires:  gnome-bluetooth-libs-devel >= %{gnome_bluetooth_version}
 # Bootstrap requirements
 BuildRequires: gtk-doc
 Requires:       gcr%{?_isa} >= %{gcr4_version}
-Requires:       gjs%{?_isa} >= %{gjs_version}
 Requires:       gtk4%{?_isa} >= %{gtk4_version}
 Requires:       libadwaita%{_isa} >= %{adwaita_version}
 Requires:       libnma-gtk4%{?_isa}
@@ -177,7 +183,7 @@ Requires: systemd
 Adds Gnoblin to the login screen without replacing the GNOME session.
 
 %prep
-%autosetup -S git -n gnome-shell-%{tarball_version}
+%autosetup -S git -n gnome-shell-%{tarball_version} -a 16
 
 %build
 export PKG_CONFIG_PATH=%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
@@ -185,14 +191,33 @@ export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 export CFLAGS="${CFLAGS} -fPIE"
+# Fedora 43 ships GJS 1.86, below the GNOME 51 API floor. Build the pinned GJS
+# into Gnoblin's private prefix so installing Gnoblin leaves the host GNOME
+# runtime untouched. Fedora's GLib, GIRepository and SpiderMonkey remain shared.
+meson setup gjs-build gjs-%{gjs_version} \
+  --prefix=%{_prefix} --libdir=%{_lib} \
+  -Dinstalled_tests=false -Dprofiler=enabled -Dreadline=disabled \
+  -Dskip_dbus_tests=true -Dskip_gtk_tests=true
+meson compile -C gjs-build
+DESTDIR=%{buildroot} meson install -C gjs-build
+gjs_pc="%{buildroot}%{_libdir}/pkgconfig/gjs-1.0.pc"
+sed -i "s|^prefix=%{_prefix}$|prefix=%{buildroot}%{_prefix}|" "$gjs_pc"
+export PKG_CONFIG_PATH="%{buildroot}%{_libdir}/pkgconfig:%{buildroot}%{_datadir}/pkgconfig:%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+export GI_TYPELIB_PATH="%{buildroot}%{_libdir}/gjs/girepository-1.0:%{buildroot}%{_libdir}/girepository-1.0:%{_datadir}/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export LD_LIBRARY_PATH="%{buildroot}%{_libdir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="%{buildroot}%{_bindir}:$PATH"
 # Refuse an accidental build against Fedora's Mutter.
 test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
   -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build
+# Restore the installed-prefix metadata before it enters the RPM payload.
+sed -i "s|^prefix=%{buildroot}%{_prefix}$|prefix=%{_prefix}|" "$gjs_pc"
 
 %install
 %meson_install
+install -Dm644 gjs-%{gjs_version}/COPYING \
+  %{buildroot}%{_datadir}/licenses/gnoblin-shell/gjs-COPYING
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
 # Gnoblin does not expose GNOME Shell extension management. The runtime uses
 # only its Gnoblin-named systemd units.
@@ -239,6 +264,7 @@ desktop-file-validate gnoblin-validation.desktop
 
 %files
 %license COPYING
+%license %{_datadir}/licenses/gnoblin-shell/gjs-COPYING
 %{_prefix}/
 
 %files -n gnoblin-session
@@ -251,6 +277,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-21.gnoblin
+- Bundle a private GNOME 51-compatible GJS runtime for Fedora 43.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-20.gnoblin
 - Filter private Meta typelib requirement.
 
