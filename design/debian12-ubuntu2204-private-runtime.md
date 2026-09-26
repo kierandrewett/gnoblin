@@ -135,6 +135,23 @@ Debian 12 and Ubuntu 22.04 remain unsupported. Private GTK/GCR typelibs must
 load in GJS, the full compositor must build, and package install, GNOME
 coexistence, removal, and graphical-session checks must pass.
 
+## Full-runtime experiment runner
+
+`scripts/build-deb-compat-runtime.sh` composes the experimental bootstrap
+graph with the pinned compositor dependencies, then follows the normal
+private-prefix build, Mutter/Shell install and DEB assembly sequence. It is
+restricted to disposable Debian 12 and Ubuntu 22.04 containers and is separate
+from `scripts/build-deb.sh` and release CI. It deliberately refuses to start
+until a Rust compiler at least 1.85 is available because the first additional
+Mutter dependency, Glycin 2.0, declares that compiler floor.
+
+This is a reproducible source-closure gate, not a support switch. It prevents
+a builder from silently using an older host library in place of Glycin or from
+mistaking the GTK/GCR success for a full GNOME runtime result. A pinned,
+checksum-verified build-only Rust toolchain is required before this runner can
+reach the remaining libei, display-info, cursor, Mutter, Shell, package and
+session gates.
+
 The first Ubuntu 22.04 GTK attempt exposed another host floor: GTK 4.14.5
 requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
 manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
