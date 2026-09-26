@@ -74,7 +74,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("workflow_call:", nix)
         self.assertIn("ref: ${{ inputs.ref || github.sha }}", nix)
         self.assertIn("nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05", nix)
-        self.assertIn("test -x result/bin/gnoblin-session", nix)
+        self.assertIn("test -x result/bin/gnoblinctl", nix)
+        self.assertIn("test -f result/share/wayland-sessions/gnoblin.desktop", nix)
+        self.assertIn(
+            "session_executable=\"$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)\"",
+            nix,
+        )
         self.assertNotIn("release-nixos-26-05:", nix)
 
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):

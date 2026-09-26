@@ -109,7 +109,10 @@ jobs:
         run: |
           nix build -L .#gnoblin-nixos-26_05.gnoblinMutter
           nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05
-          test -x result/bin/gnoblin-session
+          test -x result/bin/gnoblinctl
+          test -f result/share/wayland-sessions/gnoblin.desktop
+          session_executable="$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)"
+          test -x "$session_executable"
           nix path-info --json result | tee "$RUNNER_TEMP/nix-release-path.json"
   check:
     runs-on: ubuntu-latest
