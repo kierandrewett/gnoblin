@@ -394,9 +394,9 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             "--socket=wayland",
             "--socket=x11",
         ]
-        vulkan_icd = client_environment.get("VK_ICD_FILENAMES")
-        if vulkan_icd:
-            command.append(f"--env=VK_ICD_FILENAMES={vulkan_icd}")
+        # Flatpak exposes Vulkan drivers through its runtime GL extension.
+        # The host ICD path is outside the sandbox and overriding the runtime's
+        # driver list makes Vulkan-only apps report that no adapter exists.
         command.append(app["launch"])
         return command
     return ["gtk-launch", app["launch"]]
@@ -614,12 +614,16 @@ def run_one_app(
     }
     with log_path.open("w") as log:
         try:
+            process_environment = client_environment
+            if app["source"] == "flathub-popular":
+                process_environment = client_environment.copy()
+                process_environment.pop("VK_ICD_FILENAMES", None)
             process = subprocess.Popen(
                 app_command(app, client_environment),
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                env=client_environment,
+                env=process_environment,
                 start_new_session=True,
             )
         except Exception as error:

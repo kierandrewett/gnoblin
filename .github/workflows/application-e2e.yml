@@ -91,6 +91,7 @@ jobs:
             ./build.sh
           python3 tests/gnome-shell-overlay-resources.test.py
           python3 tests/e2e/app-window-selection.test.py
+          python3 tests/e2e/app-failure-report.test.py
           mkdir -p e2e-ci-artifacts
           python3 tests/e2e/app-catalog.test.py
           python3 tests/e2e/app-catalog.py --output e2e-ci-artifacts/app-catalog.json
@@ -177,3 +178,72 @@ jobs:
           path: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}/
           if-no-files-found: warn
           retention-days: 14
+
+  report-app-failures:
+    needs: [build-and-catalog, app-shard]
+    if: >-
+      always() && (needs.build-and-catalog.result == 'failure' || needs.app-shard.result == 'failure') &&
+      github.event_name != 'pull_request' &&
+      github.repository == 'kierandrewett/gnoblin'
+    concurrency:
+      group: gnoblin-app-e2e-issue-report-${{ github.repository }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout the failure report builder
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download app shard reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: gnoblin-app-e2e-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-app-failures
+
+      - name: Install the pinned Beads CLI
+        run: |
+          install_root="$RUNNER_TEMP/beads-install"
+          install -d "$install_root"
+          curl -fsSL -o "$install_root/beads_1.2.2_linux_amd64.tar.gz" \
+            https://github.com/steveyegge/beads/releases/download/v1.2.2/beads_1.2.2_linux_amd64.tar.gz
+          curl -fsSL -o "$install_root/checksums.txt" \
+            https://github.com/steveyegge/beads/releases/download/v1.2.2/checksums.txt
+          grep '  beads_1.2.2_linux_amd64.tar.gz$' "$install_root/checksums.txt" > "$install_root/checksum.txt"
+          (cd "$install_root" && sha256sum --check checksum.txt)
+          tar -xzf "$install_root/beads_1.2.2_linux_amd64.tar.gz" -C "$install_root" bd
+          install -m 0755 "$install_root/bd" "$RUNNER_TEMP/bd"
+
+      - name: Create or update the Beads compatibility issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          export PATH="$RUNNER_TEMP:$PATH"
+          export BEADS_DIR="$RUNNER_TEMP/gnoblin-beads/.beads"
+          mkdir -p "$RUNNER_TEMP/gnoblin-beads"
+          cd "$RUNNER_TEMP/gnoblin-beads" || exit
+          bd init --prefix gnoblin --non-interactive --skip-hooks --skip-agents
+
+          report="$RUNNER_TEMP/app-e2e-failure-report.md"
+          python3 "$GITHUB_WORKSPACE/scripts/report-app-e2e-failures.py" \
+            --artifact-root "$RUNNER_TEMP/e2e-app-failures" --output "$report"
+          issue_title="$(sed -n 's/^# //p' "$report" | head -n 1)"
+          existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
+
+          if [[ -n "$existing_url" ]]; then
+            gh issue comment "$existing_url" --body-file "$report"
+            bd github pull "$existing_url"
+            echo "Updated Beads/GitHub app compatibility issue: $existing_url"
+            exit 0
+          fi
+
+          bead_id="$(bd create --silent --title "$issue_title" --type task --priority P2 --body-file "$report")"
+          bd github push "$bead_id"
+          echo "Created Beads/GitHub app compatibility issue: $bead_id"
