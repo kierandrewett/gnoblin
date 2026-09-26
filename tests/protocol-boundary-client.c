@@ -463,6 +463,7 @@ static bool test_disconnect_unconfigured_toplevel(void) {
     struct wl_surface* surface;
     struct xdg_surface* xdg_surface;
     struct xdg_toplevel* xdg_toplevel;
+    struct xdg_surface_state xdg_state = {0};
 
     if (!disconnect_display) {
         fprintf(stderr, "FAIL: unconfigured toplevel client could not connect\n");
@@ -480,6 +481,7 @@ static bool test_disconnect_unconfigured_toplevel(void) {
 
     surface = wl_compositor_create_surface(protocols.compositor);
     xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
     xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.UnconfiguredDisconnect");
 
@@ -488,6 +490,12 @@ static bool test_disconnect_unconfigured_toplevel(void) {
      * now exercises wl_resource cleanup with the toplevel still unconfigured. */
     if (wl_display_roundtrip(disconnect_display) < 0) {
         fprintf(stderr, "FAIL: unconfigured toplevel setup failed\n");
+        wl_display_disconnect(disconnect_display);
+        return false;
+    }
+    if (xdg_state.configured) {
+        fprintf(stderr,
+                "FAIL: compositor sent initial xdg configure before the first surface commit\n");
         wl_display_disconnect(disconnect_display);
         return false;
     }
