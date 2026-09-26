@@ -144,20 +144,20 @@ REQUIREMENTS = {
     },
     "hyprcursor": {
         "capability": "pkgconfig(hyprcursor)",
-        "minimum": "0.1.13",
+        "minimum": "0.1.11",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:123",
+        "floorSource": "patches/mutter/43-hyprcursor/0001-cursor-themes-and-launch-feedback.patch:38",
         "rpmSpecDeclarations": [
             {
                 "location": "packaging/opensuse/mutter.spec:54",
                 "kind": "BuildRequires",
-                "minimum": "0.1.13",
+                "minimum": "0.1.11",
                 "note": "matches-source-floor",
             },
             {
                 "location": "packaging/rpm/mutter.spec:16,63",
                 "kind": "BuildRequires",
-                "minimum": "0.1.13",
+                "minimum": "0.1.11",
                 "note": "matches-source-floor",
             },
         ],

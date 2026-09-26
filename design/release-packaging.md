@@ -5,20 +5,19 @@ release pipeline or COPR publication changes.
 
 ## Candidate release validation (2026-09-26)
 
-- DEB builds for Debian 13 and Ubuntu 24.04/26.04 completed successfully in
-  run `36209564932`, but all three installed-package smoke tests failed before
-  exercising windows. `gnoblinctl reload` reported
-  `Gnoblin config API requires Wayland support`.
-- The root cause was in patch `76-lua-events`: Meson set `HAVE_WAYLAND`, but
-  `config.h.meson` did not declare the macro, so Mutter compiled the guarded
-  runtime hooks as no-ops. Removing the API wrapper's guard exposed an
-  incomplete unified-diff hunk; its corrected build passed, but smoke tests
-  then reported that the Lua runtime remained in its pending-load state.
-- The pending fix adds `HAVE_WAYLAND` to Mutter's generated config template so
-  existing load-commit and event hooks compile. The tagged Release run
-  `36211393712` was cancelled before publication. Do not retarget or publish
-  `gnoblin-v0.1.7` until the package build and installed reload/window tests
-  pass on all three Ubuntu/Debian targets.
+- The Wayland config fix is validated by DEB builds and installed reload/window
+  smoke checks on Debian 13 and Ubuntu 24.04/26.04 in release runs
+  `36218054872` and `36220527312`.
+- Run `36218054872` found two Arch release-gate defects: the runner omitted the
+  declared `brightnessctl` dependency, and its package selector chose the
+  `gnoblin-debug` split. Both are fixed in `main`; run `36220527312` passed the
+  Arch build and stock-GNOME co-install/removal check.
+- Run `36220527312` created the GitHub Release draft and published the APT
+  repository, but its COPR job failed while resolving
+  `pkgconfig(hyprcursor) >= 0.1.13` in Fedora 43/44/45. The Gnoblin Mutter
+  patch itself requires Hyprcursor 0.1.11; the RPM floor has been corrected to
+  that patch's API requirement. Retest this floor in all three COPR chroots
+  before publishing the release.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,

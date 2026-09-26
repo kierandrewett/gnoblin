@@ -26,7 +26,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             (SPECS / "mutter.spec").read_text(),
         )
         self.assertIn(
-            "BuildRequires:  pkgconfig(hyprcursor) >= 0.1.13",
+            "BuildRequires:  pkgconfig(hyprcursor) >= 0.1.11",
             (SPECS / "mutter.spec").read_text(),
         )
         self.assertIn(

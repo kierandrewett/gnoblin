@@ -41,6 +41,12 @@ class RpmTargetProbeTests(unittest.TestCase):
             )
             self.assertEqual({entry["note"] for entry in declarations}, {"matches-source-floor"})
 
+        self.assertEqual(probe.REQUIREMENTS["hyprcursor"]["minimum"], "0.1.11")
+        self.assertIn(
+            "patches/mutter/43-hyprcursor/0001-cursor-themes-and-launch-feedback.patch:38",
+            probe.REQUIREMENTS["hyprcursor"]["floorSource"],
+        )
+
         self.assertEqual(
             {entry["location"] for entry in probe.REQUIREMENTS["gcr4"]["rpmSpecDeclarations"]},
             {"packaging/opensuse/gnome-shell.spec:41", "packaging/rpm/gnome-shell.spec:62,82"},

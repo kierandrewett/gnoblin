@@ -51,7 +51,7 @@ BuildRequires:  pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_
 BuildRequires:  pkgconfig(graphene-gobject-1.0)
 BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires:  pkgconfig(gudev-1.0)
-BuildRequires:  pkgconfig(hyprcursor) >= 0.1.13
+BuildRequires:  pkgconfig(hyprcursor) >= 0.1.11
 BuildRequires:  pkgconfig(lcms2)
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(libcanberra)

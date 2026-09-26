@@ -13,7 +13,7 @@
 %global gtk3_version 3.19.8
 %global gtk4_version 4.14.0
 %global glycin_version 2.0.beta.2
-%global hyprcursor_version 0.1.13
+%global hyprcursor_version 0.1.11
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libdisplay_info_version 0.2
@@ -34,7 +34,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       23.gnoblin%{?dist}
+Release:       24.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -165,6 +165,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-24.gnoblin
+- Match the Hyprcursor API floor used by Gnoblin's Mutter patches.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-23.gnoblin
 - Match the GNOME 51 Wayland Protocols source floor.
 
