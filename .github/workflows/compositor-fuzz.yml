@@ -1,12 +1,25 @@
 name: Gnoblin compositor fuzz
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
+    inputs:
+      trace_first_critical:
+        description: Stop in GDB before a zero-refcount GVariant unref (diagnostic run)
+        required: false
+        default: false
+        type: boolean
+      trace_shutdown_critical:
+        description: Record GLib criticals and capture native fatal signals during shutdown
+        required: false
+        default: false
+        type: boolean
+      steps:
+        description: Random lifecycle operations after the first window (0-250; use 0 to isolate startup and shutdown)
+        required: false
+        default: 250
+        type: number
 
 permissions:
   contents: read
@@ -25,6 +38,10 @@ jobs:
     steps:
       - name: Install checkout and session tools
         run: dnf -y install git dbus-daemon
+
+      - name: Install GDB for a critical backtrace
+        if: ${{ inputs.trace_first_critical || inputs.trace_shutdown_critical }}
+        run: dnf -y install gdb
 
       - name: Checkout Gnoblin and submodules
         uses: actions/checkout@v4
@@ -47,6 +64,18 @@ jobs:
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             ./build.sh
 
+      - name: Disable false logind detection in the non-systemd container
+        run: |
+          if [[ ! -S /run/systemd/private ]]; then
+            # The Fedora image can contain /run/systemd/seats without running
+            # systemd-logind. GNOME Shell treats that path as proof of logind
+            # and its activation then fails on this disposable test bus.
+            rm -rf /run/systemd/seats
+          fi
+
+      - name: Test Lua runtime GVariant ownership
+        run: ./tests/test-config.sh lua-config
+
       - name: Verify lifecycle session runtime
         run: |
           command -v dbus-run-session
@@ -55,8 +84,52 @@ jobs:
       - name: Verify Gnoblin JavaScript resources
         run: python3 tests/gnome-shell-overlay-resources.test.py
 
+      - name: Exercise unconfigured xdg toplevel disconnect
+        run: |
+          builder_uid="$(id -u builder)"
+          artifact_dir="$RUNNER_TEMP/protocol-boundary"
+          mkdir -p "$artifact_dir"
+          debug_env=()
+          if [[ "${{ inputs.trace_shutdown_critical }}" == "true" ]]; then
+            debug_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
+          fi
+          test_status=0
+          if runuser -u builder -- env \
+            "${debug_env[@]}" \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            bash tests/test-protocol-boundaries.sh; then
+            :
+          else
+            test_status=$?
+          fi
+          shell_log="/home/builder/.local/state/gnoblin/gnome-shell-last.log"
+          if [[ -f "$shell_log" ]]; then
+            cp "$shell_log" "$artifact_dir/gnome-shell.log"
+          fi
+          exit "$test_status"
+
+      - name: Keep protocol boundary test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnoblin-protocol-boundary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/protocol-boundary/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Verify fatal log diagnostics
+        run: bash tests/test-log-diagnostics.sh
+
       - name: Run deterministic plan checks
         run: runuser -u builder -- python3 tests/window-lifecycle-fuzz.test.py
+
+      - name: Test Lua shell event registration
+        run: |
+          runuser -u builder -- env \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -c 'cd "$GNOBLIN_WORKSPACE"; source src/tools/gnoblin-env.sh; gnoblin_env_apply "$GNOBLIN_PREFIX"; gjs -m tests/lua-event-filter-test.js'
 
       - name: Run varied seeded lifecycle sessions
         id: lifecycle-fuzz
@@ -64,9 +137,20 @@ jobs:
           builder_uid="$(id -u builder)"
           artifact_root="$RUNNER_TEMP/lifecycle-fuzz"
           install -d -o builder -g builder -m 700 "$artifact_root"
+          fuzz_steps="${{ inputs.steps }}"
+          if [[ -z "$fuzz_steps" ]]; then
+            fuzz_steps=250
+          fi
+          if ! [[ "$fuzz_steps" =~ ^[0-9]+$ ]] || ((fuzz_steps > 250)); then
+            echo "steps must be an integer from 0 through 250" >&2
+            exit 2
+          fi
           seeds=(1738 99173 4294967 20260924)
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
             seeds+=(51 1701 884422 314159265)
+          fi
+          if [[ "${{ inputs.trace_first_critical }}" == "true" || "${{ inputs.trace_shutdown_critical }}" == "true" ]]; then
+            seeds=(1738)
           fi
           failed_seeds=()
           for seed in "${seeds[@]}"; do
@@ -77,12 +161,20 @@ jobs:
               extra_monitor=(EXTRA_MONITOR=1024x768)
             fi
             echo "== lifecycle seed $seed =="
+            debug_env=()
+            if [[ "${{ inputs.trace_first_critical }}" == "true" && "$seed" == "1738" ]]; then
+              debug_env+=(GNOBLIN_TEST_GDB_CRITICALS=1)
+            fi
+            if [[ "${{ inputs.trace_shutdown_critical }}" == "true" && "$seed" == "1738" ]]; then
+              debug_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
+            fi
             if ! runuser -u builder -- env \
+              "${debug_env[@]}" \
               XDG_RUNTIME_DIR="/run/user/$builder_uid" \
               "${extra_monitor[@]}" \
               GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
               python3 tests/window-lifecycle-fuzz.py \
-                --seed "$seed" --steps 250 --timeout 900 \
+                --seed "$seed" --steps "$fuzz_steps" --timeout 900 \
                 --artifact-dir "$artifact_dir"; then
               failed_seeds+=("$seed")
             fi
@@ -159,7 +251,7 @@ jobs:
             failure_file="$RUNNER_TEMP/lifecycle-fuzz/seed-$seed/failure.json"
             seed_diagnostics="No fatal diagnostic lines were captured."
             if [[ -f "$failure_file" ]]; then
-              captured="$(jq -r '.diagnostics[]? // empty' "$failure_file")"
+              captured="$(jq -r '(.diagnostics[]? // empty), (.client_failure.error? // empty)' "$failure_file")"
               if [[ -n "$captured" ]]; then
                 seed_diagnostics="$captured"
               fi
@@ -168,17 +260,18 @@ jobs:
             diagnostic_sections+="Seed $seed:"$'\n'"$seed_diagnostics"
           done
 
-          issue_title="[Gnoblin fuzz] Lifecycle regression detected"
+          issue_title="[Gnoblin fuzz] Lifecycle fuzz run failure"
           existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
           run_note="$(cat <<EOF
-          Seeded compositor lifecycle fuzzing failed again for seeds: $FAILED_SEEDS.
+          Seeded lifecycle fuzzing failed for seeds: $FAILED_SEEDS.
 
           Run: $run_url
           Commit: $GITHUB_SHA
           Artifact: gnoblin-lifecycle-fuzz-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT
           EOF
           )"
+          run_note+=$'\n\nFailure diagnostics:'"$diagnostic_sections"
 
           if [[ -n "$existing_url" ]]; then
             gh issue comment "$existing_url" --body "$run_note"
@@ -187,7 +280,7 @@ jobs:
           fi
 
           issue_body="$(cat <<EOF
-          Automated seeded lifecycle fuzzing detected that the Gnoblin compositor/session did not survive one or more runs.
+          Automated seeded lifecycle fuzzing failed. The run evidence may indicate a Gnoblin defect, a test-harness bug, or a CI/environment failure; inspect the diagnostics and artifacts before classifying it.
 
           - Failed seeds: $FAILED_SEEDS
           - Commit: $GITHUB_SHA

@@ -3,6 +3,12 @@ import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import { ConfigFile } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js";
 
+globalThis.global = {
+    get_pointer: () => [0, 0],
+    stage: { get_actor_at_pos: () => null },
+    display: { connect: () => 1, disconnect: () => {} },
+};
+
 function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
@@ -32,6 +38,7 @@ local g = require('gnoblin')
 require('appearance')
 require('appearance')
 g.set({shell = {['minimize-duration'] = 2 * 60}})
+g.on('mutter.display.notify', function() end)
 `;
 try {
     GLib.file_set_contents(
@@ -49,6 +56,8 @@ g.set({shell = {['minimize-animation'] = 'none'},
         "Lua expressions and imported settings apply",
     );
     assert(current["window-rules"].length === 1, "require loads a module once per evaluation");
+    assert(config.wantsEvent("mutter.display.notify"), "registered events are forwarded");
+    assert(!config.wantsEvent("mutter.window.unmanaged"), "unregistered events are skipped");
     settle();
     GLib.file_set_contents(
         `${modulePath}.tmp`,

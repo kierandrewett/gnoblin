@@ -715,6 +715,19 @@ get_controller (MetaWaylandCompositor *compositor)
 }
 
 void
+meta_wayland_session_lock_controller_finalize (MetaWaylandCompositor *compositor)
+{
+  MetaWaylandSessionLockController *controller;
+
+  g_return_if_fail (compositor != NULL);
+
+  controller = g_object_steal_data (G_OBJECT (compositor),
+                                    SESSION_LOCK_CONTROLLER_KEY);
+  if (controller)
+    destroy_controller (controller);
+}
+
+void
 meta_wayland_session_lock_enter_failsafe (MetaWaylandCompositor *compositor)
 {
   MetaWaylandSessionLockController *controller;

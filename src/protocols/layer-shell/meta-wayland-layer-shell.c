@@ -681,7 +681,13 @@ static void move_resize_layer_window(MetaWindow* window, MtkRectangle geom) {
 
     /* Layer-shell has its own configure/ack handshake. Once the client commits the
      * matching buffer, apply the compositor-chosen rect directly instead of
-     * feeding it through normal toplevel placement/constraining. */
+     * feeding it through normal toplevel placement/constraining. This first
+     * acknowledged buffer is the layer-surface equivalent of an xdg-toplevel's
+     * initial commit, so mark the window ready before using Mutter's shared
+     * move/resize path. */
+    if (!meta_window_is_ready(window))
+        meta_window_notify_ready(window);
+
     meta_window_move_resize_internal(window, flags, META_PLACE_FLAG_NONE, geom, NULL);
     window->unconstrained_rect = geom;
     window->unconstrained_rect_valid = TRUE;

@@ -57,7 +57,8 @@ VALID_OPERATIONS = {
 }
 FATAL_LOG = re.compile(
     r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
-    r"Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|"
+    r"Traceback \(most recent call last\)|assertion .* failed|"
+    r"GNOBLIN_GDB_(?:FATAL|ABORT): SIG(?:SEGV|ABRT|BUS|ILL)|"
     r"segmentation fault|runtime check failed|core dumped|GNOBLIN_GDB_CRITICAL",
     re.IGNORECASE,
 )

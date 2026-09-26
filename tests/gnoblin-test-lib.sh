@@ -6,7 +6,7 @@ gnoblin_log_has_fatal() {
     local log_file="${1:?log file required}"
 
     LC_ALL=C grep -E \
-        'GNOME Shell-CRITICAL|JS ERROR|Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|Aborted \(core dumped\)' \
+        'GNOME Shell-CRITICAL|Gjs-CRITICAL|JS ERROR|Traceback \(most recent call last\)|assertion .* failed|GNOBLIN_GDB_(FATAL|ABORT): SIG(SEGV|ABRT|BUS|ILL)|segmentation fault|Aborted \(core dumped\)|double free|corruption|runtime check failed|GNOBLIN_GDB_CRITICAL' \
         "$log_file"
 }
 

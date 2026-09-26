@@ -73,6 +73,22 @@ def shell_windows() -> list[dict]:
     return result or []
 
 
+def application_window_candidates(
+    windows: list[dict], baseline: set[int], splashscreen_type: int, modal_dialog_type: int
+) -> list[dict]:
+    """Return mapped app toplevels, testing modal dialogs before their parents."""
+    candidates = [
+        window
+        for window in windows
+        if window["sequence"] not in baseline
+        and window["title"]
+        and window["type"] != splashscreen_type
+        and window["ready"]
+        and window["mapped"]
+    ]
+    return sorted(candidates, key=lambda window: (window["type"] != modal_dialog_type, window["sequence"]))
+
+
 def wait_for(predicate, description: str, timeout: float = 5) -> object:
     deadline = time.monotonic() + timeout
     last = None

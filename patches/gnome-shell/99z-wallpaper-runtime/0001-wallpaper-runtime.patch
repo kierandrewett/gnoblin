@@ -1,19 +1,18 @@
-From 45ca8318615bd1d68e968dcf87c3fab4c2e5fe0c Mon Sep 17 00:00:00 2001
-From: Gnoblin Docs Audit <gnoblin-docs-audit@localhost>
-Date: Fri, 25 Sep 2026 05:20:52 +0100
-Subject: [PATCH] gnoblin: make wallpaper configurable in GNOME 51
+From 603daab5d84df00c3a20e81dc835dff8f67bd075 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:16:06 +0100
+Subject: [PATCH] shell: anchor wallpaper behavior inside LayoutManager
 
+The original zero-context hunks were applied at end of file, outside the class. Add unique surrounding lines so the state, setter, and background guard remain in LayoutManager and the JavaScript resource parses.
 ---
- js/ui/layout.js             | 10 ++++++++++
- js/ui/workspaceAnimation.js |  4 ++++
- 2 files changed, 14 insertions(+)
+ js/ui/layout.js | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
 
 diff --git a/js/ui/layout.js b/js/ui/layout.js
-index 9871e0635..b1beef195 100644
+index 47cf50cf7..4eb802bc8 100644
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -313,7 +313,8 @@ export const LayoutManager = GObject.registerClass({
-         this._backgroundGroup = new Meta.BackgroundGroup();
+@@ -313,6 +313,7 @@ export const LayoutManager = GObject.registerClass({
          global.window_group.add_child(this._backgroundGroup);
          global.window_group.set_child_below_sibling(this._backgroundGroup, null);
          this._bgManagers = [];
@@ -21,8 +20,8 @@ index 9871e0635..b1beef195 100644
  
          this._interfaceSettings = new Gio.Settings({
              schema_id: 'org.gnome.desktop.interface',
-@@ -531,5 +532,14 @@ export const LayoutManager = GObject.registerClass({
-         return promise;
+@@ -501,6 +502,12 @@ export const LayoutManager = GObject.registerClass({
+         return bgManager;
      }
  
 +    setGnoblinWallpaperEnabled(enabled) {
@@ -31,19 +30,19 @@ index 9871e0635..b1beef195 100644
 +            this._updateBackgrounds().catch(logError);
 +    }
 +
-     async _updateBackgrounds() {
+     _showSecondaryBackgrounds() {
+         for (let i = 0; i < this.monitors.length; i++) {
+             if (i !== this.primaryIndex) {
+@@ -540,6 +547,9 @@ export const LayoutManager = GObject.registerClass({
+ 
+         this._bgManagers = [];
+ 
 +        if (Main.sessionMode.currentMode === 'gnoblin' && !this._gnoblinWallpaperEnabled)
 +            return Promise.resolve();
 +
-         this._bgLoadCancellable?.cancel();
-diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
-index 320bbd50d..1cdd14c36 100644
---- a/js/ui/workspaceAnimation.js
-+++ b/js/ui/workspaceAnimation.js
-@@ -235,2 +235,6 @@ class WorkspaceBackground extends BaseWorkspaceGroup {
-     _createBackground() {
-+        if (Main.sessionMode.currentMode === 'gnoblin' &&
-+            !Main.layoutManager._gnoblinWallpaperEnabled)
-+            return;
-+
-         const background = new Meta.BackgroundGroup();
+         if (Main.sessionMode.isGreeter)
+             return Promise.resolve();
+ 
+-- 
+2.55.0
+

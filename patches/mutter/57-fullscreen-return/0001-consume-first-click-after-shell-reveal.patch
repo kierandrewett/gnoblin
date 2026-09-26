@@ -75,10 +75,10 @@ index f90f5ba51..e877435e4 100644
    if (window && !window->override_redirect &&
        (event_type == CLUTTER_KEY_PRESS ||
 diff --git a/src/core/util-private.h b/src/core/util-private.h
-index c32af71e3..c9ead19aa 100644
+index 252d1430318d881db94e42c7a201524f93e6749a..9274cfc452aea5c9ab6bdac9212437f9fe9a6f1d 100644
 --- a/src/core/util-private.h
 +++ b/src/core/util-private.h
-@@ -51,4 +51,10 @@ meta_timeval_to_microseconds (const struct timeval *tv)
+@@ -52,4 +52,10 @@ meta_timeval_to_microseconds (const struct timeval *tv)
  gboolean meta_is_gnoblin_session (void);
  
 +gboolean meta_gnoblin_consume_fullscreen_return_event (MetaDisplay *display,

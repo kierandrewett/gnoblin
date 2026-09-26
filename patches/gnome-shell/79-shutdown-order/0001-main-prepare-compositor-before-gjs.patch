@@ -1,0 +1,25 @@
+From 8f82452dc67c2f2f40bb28b4e4f4fec16a2fb1f3 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 03:40:00 +0100
+Subject: [PATCH] main: prepare compositor before releasing shell runtime
+
+Destroy Wayland clients while ShellGlobal and its GJS callbacks are alive.
+Then release GJS wrappers while Mutter's Cogl backend still exists, before
+tearing down the MetaContext.
+
+---
+ src/main.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/main.c b/src/main.c
+--- a/src/main.c
++++ b/src/main.c
+@@ -722,6 +722,8 @@ main (int argc, char **argv)
+   g_message ("Shutting down GNOME Shell");
+   _shell_global_notify_shutdown (shell_global_get ());
+   shell_profiler_shutdown ();
+ 
++  meta_context_prepare_compositor_shutdown (context);
++
+   g_debug ("Tearing down the gjs context");
+   _shell_global_destroy_gjs_context (shell_global_get ());

@@ -36,6 +36,9 @@ MONITOR="${MONITOR:-1280x800}"
 SETTLE="${SETTLE:-25}"
 MODE="${GNOBLIN_TEST_MODE:-gnoblin}"
 ENV_MODE="${GNOBLIN_TEST_ENV_MODE:-$MODE}"
+# The headless test launcher exercises compositor behavior without requiring
+# a host login manager. Set GNOBLIN_TEST_NO_LOGIND=0 to cover the systemd path.
+export GNOBLIN_TEST_NO_LOGIND="${GNOBLIN_TEST_NO_LOGIND:-1}"
 if [ -n "${GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS:-}" ]; then
     EXPECT_PRIVILEGED_PROTOCOLS="$GNOBLIN_EXPECT_PRIVILEGED_PROTOCOLS"
 elif [ "$MODE" = gnoblin ]; then
@@ -181,14 +184,146 @@ x11_args=(--no-x11)
 debug_args=()
 if [[ "${GNOBLIN_TEST_UNSAFE_MODE:-0}" == 1 ]]; then debug_args=(--unsafe-mode); fi
 if [[ "${GNOBLIN_TEST_XWAYLAND:-0}" == 1 ]]; then x11_args=(); fi
+if [[ "${GNOBLIN_TEST_MDK:-0}" == 1 ]]; then debug_args+=(--devkit); fi
 monitor_args=(--virtual-monitor "$MONITOR")
 if [[ -n "${EXTRA_MONITOR:-}" ]]; then monitor_args+=(--virtual-monitor "$EXTRA_MONITOR"); fi
+shell_command=("$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE"
+    "${monitor_args[@]}" --wayland-display "$DISP")
+if [[ "${GNOBLIN_TEST_GDB_LOG_CRITICALS:-0}" == 1 ]]; then
+    command -v gdb >/dev/null 2>&1 || {
+        echo "!! GNOBLIN_TEST_GDB_LOG_CRITICALS=1 requires gdb" >&2
+        exit 1
+    }
+    gdb_commands="$DK/trace-glib-critical.gdb"
+    cat >"$gdb_commands" <<'GDB'
+set debuginfod enabled off
+set pagination off
+set confirm off
+set breakpoint pending on
+handle SIGTERM nostop noprint pass
+break g_warn_message
+commands 1
+  silent
+  printf "GNOBLIN_GDB_WARNING: line=%d domain=%p file=%p function=%p expression=%p\n", $edx, $rdi, $rsi, $rcx, $r8
+  if $r8
+    x/s $r8
+  end
+  if $edx == 992
+    frame 1
+    set $gnoblin_surface = meta_wayland_surface_role_get_surface(surface_role)
+    set $gnoblin_window = meta_wayland_surface_get_window($gnoblin_surface)
+    set $gnoblin_xdg_priv = (MetaWaylandXdgSurfacePrivate *) g_type_instance_get_private((GTypeInstance *) surface_role, meta_wayland_xdg_surface_get_type())
+    printf "GNOBLIN_GDB_XDG_FLAGS: initial=%d configure_sent=%d first_buffer=%d\n", $gnoblin_xdg_priv->has_initial_config, $gnoblin_xdg_priv->configure_sent, $gnoblin_xdg_priv->first_buffer_attached
+    printf "GNOBLIN_GDB_XDG_STATE: surface=%p window=%p buffer=%p acked_configure=%d\n", $gnoblin_surface, $gnoblin_window, meta_wayland_surface_get_buffer($gnoblin_surface), pending->has_acked_configure_serial
+    if $gnoblin_window
+      printf "GNOBLIN_GDB_WINDOW: pid=%d sequence=%u ready=%d title=%s\n", meta_window_get_pid($gnoblin_window), meta_window_get_stable_sequence($gnoblin_window), meta_window_is_ready($gnoblin_window), meta_window_get_title($gnoblin_window)
+    end
+    frame 0
+  end
+  if $edx == 4374
+    frame 1
+    printf "GNOBLIN_GDB_WINDOW: pid=%d sequence=%u ready=%d title=%s\n", meta_window_get_pid(window), meta_window_get_stable_sequence(window), meta_window_is_ready(window), meta_window_get_title(window)
+    frame 0
+  end
+  bt 30
+  continue
+end
+break g_log
+condition 2 ($esi & 8) != 0
+set $gnoblin_color_source = (void *) 0
+set $gnoblin_color_handler = (unsigned long) 0
+break subprojects/mutter/src/wayland/meta-wayland-color-management.c:1974
+commands 3
+  silent
+  set $gnoblin_color_source = meta_color_manager
+  set $gnoblin_color_handler = color_manager->color_state_changed_handler_id
+  printf "GNOBLIN_GDB_COLOR_DISPOSE: source=%p handler=%lu\n", $gnoblin_color_source, $gnoblin_color_handler
+  bt 12
+  continue
+end
+break g_signal_handler_disconnect
+condition 4 $rdi == $gnoblin_color_source && $rsi == $gnoblin_color_handler
+commands 4
+  silent
+  printf "GNOBLIN_GDB_COLOR_DISCONNECT: source=%p handler=%lu\n", $rdi, $rsi
+  x/8gx $rdi
+  bt 14
+  continue
+end
+catch signal SIGABRT
+commands 5
+  silent
+  printf "\nGNOBLIN_GDB_ABORT: SIGABRT\n"
+  bt full 40
+  quit 1
+end
+catch signal SIGSEGV
+commands 6
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGSEGV\n"
+  bt full 40
+  quit 1
+end
+catch signal SIGBUS
+commands 7
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGBUS\n"
+  bt full 40
+  quit 1
+end
+catch signal SIGILL
+commands 8
+  silent
+  printf "\nGNOBLIN_GDB_FATAL: SIGILL\n"
+  bt full 40
+  quit 1
+end
+commands 2
+  silent
+  printf "GNOBLIN_GDB_CRITICAL: domain=%s level=%d format=%s\n", $rdi, $esi, $rdx
+  bt 40
+  continue
+end
+break meta_wayland_xdg_toplevel_configure
+commands 9
+  silent
+  set $gnoblin_xdg_priv = (MetaWaylandXdgSurfacePrivate *) g_type_instance_get_private((GTypeInstance *) $rdi, meta_wayland_xdg_surface_get_type())
+  if !$gnoblin_xdg_priv->has_initial_config
+    set $gnoblin_surface = meta_wayland_surface_role_get_surface((MetaWaylandSurfaceRole *) $rdi)
+    set $gnoblin_window = meta_wayland_surface_get_window($gnoblin_surface)
+    printf "GNOBLIN_GDB_EARLY_XDG_CONFIGURE: initial=%d configure_sent=%d surface=%p window=%p\n", $gnoblin_xdg_priv->has_initial_config, $gnoblin_xdg_priv->configure_sent, $gnoblin_surface, $gnoblin_window
+    if $gnoblin_window
+      printf "GNOBLIN_GDB_EARLY_XDG_WINDOW: pid=%d ready=%d title=%s\n", meta_window_get_pid($gnoblin_window), meta_window_is_ready($gnoblin_window), meta_window_get_title($gnoblin_window)
+    end
+    bt 24
+  end
+  continue
+end
+run
+GDB
+    shell_command=(gdb --nx --batch --quiet --command "$gdb_commands" --args "${shell_command[@]}")
+elif [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
+    command -v gdb >/dev/null 2>&1 || {
+        echo "!! GNOBLIN_TEST_GDB_CRITICALS=1 requires gdb" >&2
+        exit 1
+    }
+    shell_command=(gdb --nx --batch --quiet
+        -ex "set debuginfod enabled off"
+        -ex "set pagination off"
+        -ex "set breakpoint pending on"
+        -ex "break g_variant_unref"
+        -ex 'condition 1 *(int*)($rdi + 52) == 0'
+        -ex run
+        -ex 'printf "\nGVariant unref with zero refcount: %p\n", $rdi'
+        -ex 'x/8gx $rdi'
+        -ex "bt 30"
+        --args "${shell_command[@]}")
+fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
     bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
     gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
-    "$SHELL_BIN" --headless --wayland "${x11_args[@]}" "${debug_args[@]}" --mode="$MODE" \
-    "${monitor_args[@]}" --wayland-display "$DISP" \
+    "${shell_command[@]}" \
     >"$DK/shell.log" 2>&1 &
 SHELL_PID=$!
 

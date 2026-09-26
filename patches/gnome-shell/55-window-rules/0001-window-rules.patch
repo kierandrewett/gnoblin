@@ -11,13 +11,12 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index 97e7c30..7dcbbd9 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -146,7 +146,8 @@
+@@ -146,6 +146,7 @@
      <file>ui/components/automountManager.js</file>
      <file>ui/components/autorunManager.js</file>
      <file>ui/components/gnoblinConfig.js</file>
 +    <file>ui/components/gnoblinRules.js</file>
      <file>ui/components/gnoblinControl.js</file>
-     <file>ui/components/gnoblinMutterEvents.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
 -- 

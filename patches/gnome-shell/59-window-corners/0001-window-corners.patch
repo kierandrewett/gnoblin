@@ -11,14 +11,13 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index 696b400..c5b5042 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -149,7 +149,9 @@
+@@ -149,6 +149,8 @@
      <file>ui/components/gnoblinLayerAnimation.js</file>
      <file>ui/components/gnoblinRules.js</file>
      <file>ui/components/gnoblinBackdropRedraw.js</file>
 +    <file>ui/components/gnoblinCornerGeometry.js</file>
 +    <file>ui/components/gnoblinCorners.js</file>
      <file>ui/components/gnoblinControl.js</file>
-     <file>ui/components/gnoblinMutterEvents.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
 -- 

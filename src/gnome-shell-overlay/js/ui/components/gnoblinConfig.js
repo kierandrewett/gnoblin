@@ -1603,12 +1603,13 @@ function cloneDocument(document) {
 }
 
 export class ConfigFile {
-    constructor(path = null, apply = () => {}) {
+    constructor(path = null, apply = () => {}, eventsChanged = () => {}) {
         this._override = path || GLib.getenv("GNOBLIN_CONFIG") || null;
         this._directory = this._override
             ? GLib.path_get_dirname(this._override)
             : GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin"]);
         this._apply = apply;
+        this._eventsChanged = eventsChanged;
         this._started = false;
         this._monitors = new Map();
         this._watchedFiles = new Set();
@@ -1651,7 +1652,19 @@ export class ConfigFile {
             Meta.gnoblin_finish_config_load(true);
             settings = next;
             this._document = cloneDocument(loaded.document);
-            this._events = new Set(loaded.events ?? []);
+            const events = new Set(loaded.events ?? []);
+            const eventsChanged =
+                !this._events ||
+                events.size !== this._events.size ||
+                [...events].some((event) => !this._events.has(event));
+            this._events = events;
+            if (eventsChanged) {
+                try {
+                    this._eventsChanged();
+                } catch (error) {
+                    console.warn(`gnoblin-config: could not refresh event subscriptions: ${error.message}`);
+                }
+            }
             this._liveUndo = [];
             this._applyingReload = false;
             this.dispatchEvent("gnoblin.config.reloaded", { path });
@@ -1676,6 +1689,10 @@ export class ConfigFile {
             wm_class: window?.get_wm_class() || "",
             title: window?.get_title() || "",
         });
+    }
+
+    wantsEvent(event) {
+        return this._events?.has(event) || this._events?.has("*") || false;
     }
 
     dispatchEvent(event, payload = {}) {

@@ -47,6 +47,11 @@ import { MutterEventForwarder } from "./gnoblinMutterEvents.js";
 
 const BUS_NAME = "org.gnoblin.Shell";
 const OBJECT_PATH = "/org/gnoblin/Shell";
+const CLUTTER_EVENT_NAMES = new Map(
+    Object.entries(Clutter.EventType)
+        .filter(([key]) => Number.isNaN(Number(key)))
+        .map(([key, value]) => [value, key]),
+);
 const SCHEMA_ID = "org.gnoblin.shell";
 const DISABLED_KEY = "disabled-features";
 const PORTAL_GRANT_KINDS = ["screen-cast", "remote-desktop"];
@@ -769,7 +774,14 @@ export class Component {
             ),
         );
         this._permissionPolicy = { default: "deny", rules: [] };
-        this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
+        this._config = new ConfigFile(
+            undefined,
+            (next) => this._applyConfig(next),
+            () => {
+                this._mutterEvents?.destroy();
+                this._mutterEvents = new MutterEventForwarder(this._config);
+            },
+        );
         this._touchpadGestureRouter = new TouchpadGestureRouter();
         activeConfig = this._config;
         this._config.start();
@@ -838,11 +850,6 @@ export class Component {
         });
         this._dispatchWindowEvent("focus_changed", global.display.focus_window);
         this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
-        try {
-            this._mutterEvents = new MutterEventForwarder(this._config);
-        } catch (error) {
-            logError(error, "gnoblin-control: Mutter event forwarding startup failed");
-        }
 
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
@@ -1149,6 +1156,25 @@ export class Component {
         this._permissionPolicy = next.permissions;
         const cursor = { ...DEFAULT_CURSOR, ...next.cursor };
         Meta.prefs_set_gnoblin_cursor_config(cursor.theme, cursor.size);
+    }
+
+    _dispatchWindowEvent(event, window) {
+        if (!this._config) return;
+        this._config.dispatchEvent(event, {
+            app_id: window?.get_gtk_application_id() || "",
+            wm_class: window?.get_wm_class() || "",
+            title: window?.get_title() || "",
+        });
+    }
+
+    _watchEventWindow(window) {
+        if (this._eventWindows.has(window)) return;
+        const id = window.connect("unmanaged", () => {
+            this._dispatchWindowEvent("window_unmanaged", window);
+            this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
+            this._eventWindows.delete(window);
+        });
+        this._eventWindows.set(window, id);
     }
 
     // --- feature toggles ---

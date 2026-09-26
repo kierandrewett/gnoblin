@@ -1,0 +1,75 @@
+From 21c9662d2e87ef7906784ccf9f73d8914ce5c450 Mon Sep 17 00:00:00 2001
+From: Gnoblin contributors <gnoblin@localhost>
+Date: Fri, 25 Sep 2026 21:05:00 +0100
+Subject: [PATCH] context: prepare compositor shutdown before runtime teardown
+
+Shell must destroy Wayland clients while plugin callbacks and their GJS runtime
+are live, then dispose GJS wrappers while the Mutter renderer still exists.
+Expose an idempotent compositor preparation phase that dispose also performs
+when the caller did not run it explicitly.
+
+---
+ src/core/meta-context.c | 19 +++++++++++++++++--
+ src/meta/meta-context.h |  5 +++++
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/meta-context.c b/src/core/meta-context.c
+index b2596f1b72..755b637908 100644
+--- a/src/core/meta-context.c
++++ b/src/core/meta-context.c
+@@ -80,6 +80,7 @@ typedef struct _MetaContextPrivate
+   char *gnome_wm_keybindings;
+ 
+   gboolean unsafe_mode;
++  gboolean compositor_shutdown_prepared;
+ 
+   MetaContextState state;
+ 
+@@ -532,6 +533,21 @@ meta_context_terminate (MetaContext *context)
+   g_main_loop_quit (priv->main_loop);
+ }
+ 
++void
++meta_context_prepare_compositor_shutdown (MetaContext *context)
++{
++  MetaContextPrivate *priv;
++
++  g_return_if_fail (META_IS_CONTEXT (context));
++
++  priv = meta_context_get_instance_private (context);
++  if (!priv->wayland_compositor || priv->compositor_shutdown_prepared)
++    return;
++
++  priv->compositor_shutdown_prepared = TRUE;
++  g_signal_emit (context, signals[PREPARE_COMPOSITOR_SHUTDOWN], 0);
++}
++
+ void
+ meta_context_terminate_with_error (MetaContext *context,
+                                    GError      *error)
+@@ -799,8 +815,7 @@ meta_context_dispose (GObject *object)
+ 
+   g_clear_object (&priv->service_channel);
+ 
+-  if (priv->wayland_compositor)
+-    g_signal_emit (context, signals[PREPARE_COMPOSITOR_SHUTDOWN], 0);
++  meta_context_prepare_compositor_shutdown (context);
+ 
+   g_signal_emit (context, signals[PREPARE_SHUTDOWN], 0);
+ 
+diff --git a/src/meta/meta-context.h b/src/meta/meta-context.h
+index 6e61fe8cf3..c66ef31692 100644
+--- a/src/meta/meta-context.h
++++ b/src/meta/meta-context.h
+@@ -78,6 +78,11 @@ void meta_context_notify_ready (MetaContext *context);
+ META_EXPORT
+ void meta_context_terminate (MetaContext *context);
+ 
++/* Run compositor client shutdown callbacks before releasing plugin runtimes.
++ * Idempotent; meta_context_destroy() performs this if needed. */
++META_EXPORT
++void meta_context_prepare_compositor_shutdown (MetaContext *context);
++
+ META_EXPORT
+ void meta_context_terminate_with_error (MetaContext *context,
+                                         GError      *error);

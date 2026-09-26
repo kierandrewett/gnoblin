@@ -370,13 +370,27 @@ def compositor(request, path, timeout=5):
                     return response["result"]
 
 
+API_TEMPORARILY_UNAVAILABLE = "Gnoblin Lua API is temporarily unavailable while config reloads"
+
+
 def api_call(method, arguments, path, timeout=5):
     """Call a canonical Gnoblin session API operation through the bridge."""
-    return compositor(
-        {"op": "api", "method": method, "arguments": arguments},
-        path,
-        timeout,
-    )
+    request = {"op": "api", "method": method, "arguments": arguments}
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            message = f"{API_TEMPORARILY_UNAVAILABLE}; config reload did not finish within {timeout:g}s"
+            raise CommandError(message)
+        try:
+            return compositor(request, path, remaining)
+        except CommandError as error:
+            # Mutter rejects API calls before dispatch while it swaps Lua
+            # runtimes. Retrying only this explicit pre-dispatch response is
+            # safe for reads and mutations alike; other failures are final.
+            if API_TEMPORARILY_UNAVAILABLE not in str(error):
+                raise
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
 
 
 def dispatch(args, cli):

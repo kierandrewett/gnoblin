@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "gnoblin",
+  "project_id": "f31bed83-f27e-48a6-a10c-c0ba978f6a7e"
+}

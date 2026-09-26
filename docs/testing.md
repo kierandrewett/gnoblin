@@ -87,15 +87,24 @@ compositor checks before it is accepted.
 
 `.github/workflows/application-e2e.yml` is the app-compatibility workflow;
 `.github/workflows/compositor-fuzz.yml` is the separate seeded state-machine
-workflow. The fuzz workflow runs for pull requests, pushes to `main`, nightly,
-and manual dispatch. The app sweep runs one shard on a pull request, all shards
-weekly, or a selected/full set on manual dispatch.
+workflow. Fuzzing runs nightly at 02:41 UTC or on manual dispatch, not on
+pushes or pull requests.
+
+The app sweep runs one shard on pull requests and all shards weekly. Manual
+dispatch can run one shard or the full catalog. Add the `gnoblin-full-e2e` label
+to run all 40 shards (800 apps) on a pull request.
+
+For manual dispatch, set `app_ids` to a comma-separated list to isolate an app
+or replay an ordered sequence within the selected shard. Every ID must belong to
+that shard. For example, select shard 24 and `com.tencent.WeChat` to replay
+WeChat by itself.
 
 At workflow start, `tests/e2e/app-catalog.py` refreshes two independent sources:
 
 - The first 500 unique desktop apps in Flathub's Popular collection.
 - 300 launchable Fedora RPM applications from `appstream-data`, balanced over
   the metadata categories and excluding duplicate desktop IDs from Flathub.
+  Alacritty is included as a pinned window-close regression case.
 
 That makes an 800-application catalog without committing a stale popularity
 snapshot. The workflow divides it into 40 shards. Each app is installed or its
@@ -107,9 +116,14 @@ whether each app maps a window, then captures a screenshot and checks activation
 native frames, move/resize, titlebar dragging, resize handles, maximize,
 minimize, fullscreen and close. It also saves the app's stdout and stderr.
 
-A shard fails if an app cannot be installed or mapped, a supported window
-operation is rejected, a window cannot close, or the compositor fails. The
-artifacts distinguish those outcomes.
+The pull-request run attempts every app in shard 0 but gates on the pinned
+Alacritty close regression. The repair artifact still records outcomes from
+the other apps.
+
+Scheduled and manually dispatched runs use strict gating. A shard fails if an
+app cannot be installed or mapped, a supported window operation is rejected,
+a window cannot close, or the compositor fails. Those runs keep the full
+per-app report for follow-up.
 
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.

@@ -69,8 +69,8 @@ package() {
     local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     cd "$srcdir/$pkgname-$pkgver" || return
     install -d "$pkgdir$_prefix/lib/girepository-1.0" "$pkgdir$_prefix/share/glib-2.0/schemas"
-    cp -a "$_build_prefix/schemas/lib/girepository-1.0/." "$pkgdir$_prefix/lib/girepository-1.0/"
-    cp -a "$_build_prefix/schemas/share/glib-2.0/schemas/." "$pkgdir$_prefix/share/glib-2.0/schemas/"
+    cp -a --no-preserve=ownership "$_build_prefix/schemas/lib/girepository-1.0/." "$pkgdir$_prefix/lib/girepository-1.0/"
+    cp -a --no-preserve=ownership "$_build_prefix/schemas/share/glib-2.0/schemas/." "$pkgdir$_prefix/share/glib-2.0/schemas/"
     meson install -C build/mutter --destdir "$pkgdir" --no-rebuild
     meson install -C build/gnome-shell --destdir "$pkgdir" --no-rebuild
     rm -f "$pkgdir$_prefix/lib/systemd/user/org.gnome.Shell-disable-extensions.service"

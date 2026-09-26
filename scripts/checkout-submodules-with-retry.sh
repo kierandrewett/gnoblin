@@ -2,8 +2,10 @@
 set -euo pipefail
 
 max_attempts=5
+git config --global --add safe.directory "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
+
 for attempt in $(seq 1 "$max_attempts"); do
-    if git submodule update --init --recursive; then
+    if git submodule update --init --force --depth=1 --recursive; then
         exit 0
     fi
 

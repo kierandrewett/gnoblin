@@ -5,13 +5,39 @@ static GVariant* load(const char* path, GPtrArray** paths, GError** error) {
     return gnoblin_config_load_document(path, paths, NULL, error);
 }
 
+static void test_runtime_document_ownership(const char* path) {
+    g_autoptr(GError) error = NULL;
+    GVariant* document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_assert_false(g_variant_is_floating(document));
+
+    /* Match the Mutter wrapper: place the returned config in a result variant,
+     * then replace the runtime before releasing that result. */
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "document", document);
+    g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&builder));
+    gnoblin_config_finish_load(TRUE);
+    g_variant_unref(document);
+
+    document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_load(TRUE);
+    g_variant_unref(document);
+    g_variant_unref(g_steal_pointer(&result));
+}
+
 int main(void) {
+    g_log_set_always_fatal(G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL);
     g_autoptr(GError) error = NULL;
     g_autofree char* dir = g_dir_make_tmp("gnoblin-lua-test-XXXXXX", &error);
     g_autofree char* conf = g_build_filename(dir, "conf.d", NULL);
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
     g_autofree char* example_root = g_build_filename(dir, "example.lua", NULL);
     g_autofree char* explicit_root = g_build_filename(dir, "personal.lua", NULL);
+    g_autofree char* runtime_root = g_build_filename(dir, "runtime.lua", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
     g_autofree char* nested = g_build_filename(dir, "nested.lua", NULL);
     g_assert_no_error(error);
@@ -39,6 +65,9 @@ int main(void) {
         "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
         -1, &error));
     g_assert_no_error(error);
+    g_assert_true(g_file_set_contents(runtime_root, "return { shell={osd=false} }\n", -1, &error));
+    test_runtime_document_ownership(runtime_root);
+
     g_autoptr(GPtrArray) paths = NULL;
     g_autoptr(GVariant) document = load(root, &paths, &error);
     g_assert_no_error(error);
@@ -197,6 +226,7 @@ int main(void) {
     g_unlink(module);
     g_unlink(root);
     g_unlink(explicit_root);
+    g_unlink(runtime_root);
     g_rmdir(conf);
     g_rmdir(dir);
     g_print("PASS: Lua config, runtime events, direct values, load, glob and errors\n");
