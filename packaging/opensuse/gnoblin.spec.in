@@ -1,6 +1,6 @@
 # Generated from this template by scripts/sync-package-manifest.py.
 Name:           gnoblin
-Version:        0.1.10
+Version:        @GNOBLIN_VERSION@
 Release:        1%{?dist}
 Summary:        Gnoblin desktop session
 License:        GPL-2.0-or-later

@@ -96,6 +96,12 @@ def render_rpm(manifest: dict) -> str:
     )
 
 
+def render_opensuse_meta(manifest: dict) -> str:
+    template = ROOT / "packaging/opensuse/gnoblin.spec.in"
+    rendered = template.read_text()
+    return rendered.replace("@GNOBLIN_VERSION@", manifest["packages"]["gnoblin"]["version"])
+
+
 def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     gnome_version = manifest["release"]["gnomeVersion"]
@@ -215,6 +221,7 @@ def outputs(manifest: dict) -> dict[Path, str]:
     return {
         MANIFEST_OUTPUT: render_manifest(manifest),
         ROOT / "packaging/rpm/gnoblin.spec": render_rpm(manifest),
+        ROOT / "packaging/opensuse/gnoblin.spec": render_opensuse_meta(manifest),
         ROOT / "packaging/arch/PKGBUILD": render_arch(manifest),
     }
 

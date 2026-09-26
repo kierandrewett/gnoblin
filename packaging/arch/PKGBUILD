@@ -1,7 +1,7 @@
 # Generated from nix/native-packages.nix; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
-pkgver=0.1.9
+pkgver=0.1.10
 pkgrel=1
 pkgdesc='Gnoblin desktop session with a private GNOME runtime'
 arch=('x86_64')
