@@ -12,7 +12,7 @@ checks, but still need a verified graphical login.
 
 | System                              | Test path                                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Fedora 44                           | [COPR package candidate](install-fedora.md)                                                      |
+| Fedora 43, 44 and 45                | [COPR package candidate](install-fedora.md)                                                      |
 | Debian 13, Ubuntu 24.04 and 26.04   | [APT package candidates](install-debian.md)                                                      |
 | Arch / CachyOS                      | [Build the PKGBUILD](https://github.com/kierandrewett/gnoblin/blob/main/packaging/arch/PKGBUILD) |
 | openSUSE Tumbleweed                 | [Build the RPM](https://github.com/kierandrewett/gnoblin/blob/main/packaging/rpm/README.md)      |

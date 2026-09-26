@@ -35,15 +35,15 @@
       "lifecycle": "upstream-current",
       "adapter": "rpm-fedora",
       "status": "existing-path",
-      "support": "unsupported",
-      "ci": [".github/workflows/verify.yml"],
+      "support": "candidate",
+      "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
       "gates": {
-        "dependency-probe": false,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -77,15 +77,15 @@
       "lifecycle": "upstream-pre-release",
       "adapter": "rpm-fedora",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
       "gates": {
-        "dependency-probe": false,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {

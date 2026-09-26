@@ -13,8 +13,7 @@ session available for recovery.
 
 | Distribution        | Releases                      | Status            | Available path                                                                         |
 | ------------------- | ----------------------------- | ----------------- | -------------------------------------------------------------------------------------- |
-| Fedora              | 43, 45                        | Unsupported       | No release package claim                                                               |
-| Fedora              | 44                            | Package candidate | [COPR](install-fedora.md)                                                              |
+| Fedora              | 43, 44, 45                    | Package candidate | [COPR](install-fedora.md)                                                              |
 | Enterprise Linux    | 8, 9, 10                      | Unsupported       | No release package claim                                                               |
 | Debian              | 11, 12                        | Unsupported       | No release package claim                                                               |
 | Debian              | 13                            | Package candidate | [APT package](install-debian.md)                                                       |

@@ -1,9 +1,10 @@
 # Fedora
 
-Fedora 44 has a COPR package candidate. It passes package build, clean
-installation, stock GNOME coexistence and removal checks, but does not yet have
-a verified graphical Gnoblin login. Keep GNOME or another session available.
-See [platform support](platform-support.md) for the release status.
+Fedora 43, 44 and 45 have COPR package candidates. The shell, session, Mutter
+and schema packages pass clean installation, stock GNOME coexistence and
+removal checks on all three versions. A graphical Gnoblin login has not yet
+been verified. Keep GNOME or another session available. See
+[platform support](platform-support.md) for the release status.
 
 ## 1. Install Gnoblin
 
@@ -41,7 +42,7 @@ Log out and back in to load the updated compositor.
 Log into GNOME or another session first, then run:
 
 ```sh
-sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter
+sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-gsettings-desktop-schemas
 ```
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.
