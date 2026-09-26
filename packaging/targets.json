@@ -393,15 +393,15 @@
       "lifecycle": "channel-eol",
       "adapter": "nix",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -415,15 +415,15 @@
       "lifecycle": "channel-eol",
       "adapter": "nix",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -437,15 +437,15 @@
       "lifecycle": "channel-current",
       "adapter": "nix",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
-        "install": false,
-        "coinstall": false,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     },
     {
@@ -459,15 +459,15 @@
       "lifecycle": "rolling",
       "adapter": "nix",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
-        "install": false,
-        "coinstall": false,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
+        "removal": true
       }
     }
   ]
