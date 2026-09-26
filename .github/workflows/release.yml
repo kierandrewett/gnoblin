@@ -127,9 +127,11 @@ jobs:
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
       - uses: actions/upload-artifact@v4
+        # makepkg may also emit a split debug package; publish only the
+        # installable Gnoblin session package as the release asset.
         with:
           name: arch-package-${{ env.RELEASE_TAG }}
-          path: build/*.pkg.tar.zst
+          path: build/gnoblin-[0-9]*.pkg.tar.zst
           if-no-files-found: error
           retention-days: 30
       - name: Remove package cache

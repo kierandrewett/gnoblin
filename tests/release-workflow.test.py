@@ -93,6 +93,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         arch = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
         self.assertIn("-name 'gnoblin-[0-9]*.pkg.tar.zst'", arch)
         self.assertIn("pacman -Q gnoblin", arch)
+        self.assertIn("path: build/gnoblin-[0-9]*.pkg.tar.zst", arch)
+        self.assertNotIn("path: build/*.pkg.tar.zst", arch)
         self.assertIn("share/icons/Adwaita-Hyprcursor/manifest.hl", arch)
 
     def test_arch_build_uses_the_release_cursor_theme_without_inkscape(self):

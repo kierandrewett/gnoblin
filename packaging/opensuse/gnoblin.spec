@@ -1,5 +1,5 @@
 Name:           gnoblin
-Version:        0.1.7
+Version:        0.1.8
 Release:        1%{?dist}
 Summary:        Gnoblin desktop session
 License:        GPL-2.0-or-later
