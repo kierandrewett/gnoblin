@@ -1,0 +1,139 @@
+name: openSUSE Leap release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to build
+        type: string
+        default: main
+        required: true
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to build
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# Leap is deliberately a separate gate from Tumbleweed.  It must build the
+# same private RPM chain in each released base image, then install it beside
+# that image's stock GNOME packages.  A successful Tumbleweed build cannot
+# establish either property for Leap's fixed repository snapshots.
+jobs:
+  build:
+    name: Leap ${{ matrix.version }} RPM dependency chain
+    runs-on: ubuntu-latest
+    container: registry.opensuse.org/opensuse/leap:${{ matrix.version }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "15.6"
+            artifact: opensuse-leap-15.6-rpms
+          - version: "16.0"
+            artifact: opensuse-leap-16.0-rpms
+    steps:
+      - name: Refresh the fixed Leap repositories
+        run: zypper --non-interactive refresh
+      - name: Install checkout and RPM tools
+        run: |
+          zypper --non-interactive install \
+            git patch rpm-build tar xz python3
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          submodules: recursive
+      - name: Trust the checked-out source tree in the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Parse RPM adapter boundaries
+        run: python3 tests/opensuse-packaging.test.py
+      - name: Build private RPM chain
+        env:
+          GIT_COMMITTER_NAME: Gnoblin Package Builder
+          GIT_COMMITTER_EMAIL: package-builder@gnoblin.local
+        run: bash packaging/opensuse/build-chain.sh "$RUNNER_TEMP/rpmbuild"
+      - name: Check RPM package isolation
+        run: |
+          mapfile -t rpms < <(
+            find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
+              -name 'gnoblin-gsettings-desktop-schemas-[0-9]*.rpm' -o \
+              -name 'gnoblin-mutter-[0-9]*.rpm' -o \
+              -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
+              -name 'gnoblin-shell-[0-9]*.rpm' -o \
+              -name 'gnoblin-session-[0-9]*.rpm' \
+            \) | sort
+          )
+          python3 scripts/check-rpm-isolation.py "${rpms[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/rpmbuild/RPMS/**/*.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+  coinstall:
+    name: Leap ${{ matrix.version }} GNOME coexistence and removal
+    needs: build
+    runs-on: ubuntu-latest
+    container: registry.opensuse.org/opensuse/leap:${{ matrix.version }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "15.6"
+            artifact: opensuse-leap-15.6-rpms
+          - version: "16.0"
+            artifact: opensuse-leap-16.0-rpms
+    steps:
+      - name: Refresh the fixed Leap repositories
+        run: zypper --non-interactive refresh
+      - name: Install verification tools
+        run: zypper --non-interactive install python3 rpm
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: rpms
+      - name: Install stock GNOME before Gnoblin
+        run: |
+          zypper --non-interactive install --no-recommends \
+            gdm gnome-session gnome-shell mutter xdg-desktop-portal-gnome
+          rpm -q gnome-session gnome-shell mutter
+          rpm -V gnome-session gnome-shell mutter
+      - name: Install the private Gnoblin chain beside GNOME
+        run: |
+          mapfile -t component_rpms < <(
+            find rpms -type f \( \
+              -name 'gnoblin-gsettings-desktop-schemas-[0-9]*.rpm' -o \
+              -name 'gnoblin-mutter-[0-9]*.rpm' -o \
+              -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
+              -name 'gnoblin-shell-[0-9]*.rpm' -o \
+              -name 'gnoblin-session-[0-9]*.rpm' \
+            \) | sort
+          )
+          mapfile -t all_rpms < <(find rpms -type f -name '*.rpm' | sort)
+          python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
+          zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${all_rpms[@]}"
+          rpm -q gnoblin gnoblin-gsettings-desktop-schemas gnoblin-mutter gnoblin-shell gnoblin-session
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
+          test -f /usr/lib/systemd/user/org.gnoblin.Shell.target
+          rpm -V gnome-session gnome-shell mutter
+      - name: Remove Gnoblin and reverify stock GNOME
+        run: |
+          zypper --non-interactive remove \
+            gnoblin gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-gsettings-desktop-schemas
+          ! test -e /usr/share/wayland-sessions/gnoblin.desktop
+          ! test -e /usr/lib/systemd/user/org.gnoblin.Shell.target
+          rpm -q gnome-session gnome-shell mutter
+          rpm -V gnome-session gnome-shell mutter
