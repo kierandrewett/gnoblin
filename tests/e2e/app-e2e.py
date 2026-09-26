@@ -33,6 +33,7 @@ from gnoblin_test_session import (  # noqa: E402
     constrain_move_to_monitor,
     eval_shell,
     frame_button_center,
+    gnoblin_frame_visible,
     send_pointer,
     shell_windows,
     wait_for,
@@ -633,7 +634,7 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
         return "already-closed", {}
 
     windows_before_close = {window["sequence"] for window in shell_windows()}
-    has_gnoblin_frame = bool(state["layout"]["border"][0])
+    has_gnoblin_frame = gnoblin_frame_visible(state)
     click_details: dict[str, object] = {}
     if has_gnoblin_frame or not state["fullscreen"]:
         if has_gnoblin_frame:
@@ -1143,7 +1144,7 @@ def run_one_app(
                     )
 
                 current = window_state(sequence)
-                if current and current["layout"]["border"][0]:
+                if current and gnoblin_frame_visible(current):
                     try:
                         x, y, width, height = (current[k] for k in ("x", "y", "width", "height"))
                         shell_drag(
@@ -1334,7 +1335,7 @@ def run_one_app(
                         }
                         state["operations"].append(close_result)
                         write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
-                        if initial["layout"]["border"][0] and close_method not in (
+                        if gnoblin_frame_visible(initial) and close_method not in (
                             "titlebar-close-button",
                             "application-modal-opened",
                         ):

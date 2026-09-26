@@ -98,6 +98,13 @@ def application_window_candidates(
     )
 
 
+def gnoblin_frame_visible(state: dict) -> bool:
+    """Report a native frame from its presentation state, not its border width."""
+    layout = state.get("layout", {})
+    presentation = layout.get("presentation", {})
+    return bool(layout.get("native") and presentation.get("visible"))
+
+
 def constrain_move_to_monitor(state: dict, x: int, y: int) -> tuple[int, int]:
     """Keep as much of an E2E move target as possible within the current monitor."""
     monitor = state["monitor_rect"]

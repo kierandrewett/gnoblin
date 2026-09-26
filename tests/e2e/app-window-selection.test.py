@@ -7,7 +7,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gnoblin_test_session import application_window_candidates, constrain_move_to_monitor  # noqa: E402
+from gnoblin_test_session import (  # noqa: E402
+    application_window_candidates,
+    constrain_move_to_monitor,
+    frame_button_center,
+    gnoblin_frame_visible,
+)
 
 
 def main() -> int:
@@ -38,7 +43,31 @@ def main() -> int:
     normal = {**maximized, "x": 100, "y": 100, "width": 700, "height": 440}
     if constrain_move_to_monitor(normal, 48, 76) != (48, 76):
         raise SystemExit("normal windows must retain the requested in-bounds position")
-    print("PASS: modal and focused app windows are prioritized while prior, splash, and non-ready windows are excluded")
+    visible_frame_without_border = {
+        "x": 0,
+        "y": 28,
+        "layout": {
+            "native": True,
+            "border": [0, 0, 0, 0],
+            "presentation": {
+                "visible": True,
+                "regions": [[2, 606, 0, 36, 36]],
+            },
+        },
+    }
+    if not gnoblin_frame_visible(visible_frame_without_border):
+        raise SystemExit("an advertised native frame remains usable when its border width is zero")
+    if frame_button_center(visible_frame_without_border, 2) != (624, 46):
+        raise SystemExit("a visible native frame close probe must use its advertised button region")
+    hidden_frame = {
+        "layout": {
+            **visible_frame_without_border["layout"],
+            "presentation": {"visible": False, "regions": [[2, 606, 0, 36, 36]]},
+        }
+    }
+    if gnoblin_frame_visible(hidden_frame):
+        raise SystemExit("a hidden native frame must not be treated as a visible close target")
+    print("PASS: window selection, monitor-bounded moves, and visible-frame detection handle their edge cases")
     return 0
 
 
