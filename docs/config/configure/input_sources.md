@@ -11,7 +11,9 @@ restore GNOME's session sources.
 - `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on
   `type`.
 - `per_window` is optional and defaults to `false`. Set it to `true` to
-  remember a different source for each window.
+  remember a different source for each window. With the default `false`, all
+  windows share the same active source; switching layouts in one window changes
+  the source used in the others too.
 
 ## Choose an ID
 
@@ -57,6 +59,42 @@ gnoblin.configure {
     },
 }
 ```
+
+With `per_window = false` (or with `per_window` omitted), the selected layout is
+shared. If you switch from US to UK while typing in one window, a different
+window also uses UK when it gets focus.
+
+Set `per_window = true` when you want each window to keep its own last selected
+source:
+
+```lua
+gnoblin.configure {
+    input_sources = {
+        sources = {
+            {type = "xkb", id = "us"},
+            {type = "xkb", id = "gb"},
+        },
+        per_window = true,
+    },
+}
+```
+
+Open a terminal and a document window. Select US and UK, respectively. With
+sloppy focus, moving the pointer between windows restores each window's last
+selected layout. The same happens with click-to-focus when you click between
+them.
+
+A window without a saved selection starts with the layout that was active when
+it was first focused.
+
+Gnoblin remembers the active source per window. It does not assign layouts by
+app ID or give each window a different source list.
+
+Use [Lua events](/config/lua-events) when a rule should follow the pointer
+window or depend on its app ID. For example, the pointer-window event can
+change touchpad scroll speed for Chromium and restore the usual speed elsewhere.
+That is a separate rule from `per_window`, which remembers the layout selected
+in each focused window.
 
 Use the layout-plus-variant ID for a variant. An IBus ID must name an engine
 installed on your system:

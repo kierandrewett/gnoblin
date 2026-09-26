@@ -11,6 +11,18 @@ mutter_srpm="$(realpath "$3")"
 shell_srpm="$(realpath "$4")"
 meta_srpm="$(realpath "$5")"
 command -v copr-cli >/dev/null
+chroots=(fedora-43-x86_64 fedora-44-x86_64 fedora-45-x86_64)
+
+build_in_supported_fedora_chroots() {
+    local package="$1"
+    local chroot
+    local arguments=()
+    for chroot in "${chroots[@]}"; do
+        arguments+=(--chroot "$chroot")
+    done
+    copr-cli build "${arguments[@]}" "$project" "$package"
+}
+
 for package in "$schemas_srpm" "$mutter_srpm" "$shell_srpm" "$meta_srpm"; do
     [[ -f "$package" ]] || {
         echo "Missing source RPM: $package" >&2
@@ -25,8 +37,9 @@ done
 [[ "$(rpm -qp --qf '%{NAME}' "$mutter_srpm")" == gnoblin-mutter ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$shell_srpm")" == gnoblin-shell ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$meta_srpm")" == gnoblin ]]
-# copr-cli waits by default. A failed Mutter build stops publication here.
-copr-cli build "$project" "$schemas_srpm"
-copr-cli build "$project" "$mutter_srpm"
-copr-cli build "$project" "$shell_srpm"
-copr-cli build "$project" "$meta_srpm"
+# copr-cli waits by default. Build each dependency in all supported Fedora
+# chroots before starting its dependent package; any failed chroot stops here.
+build_in_supported_fedora_chroots "$schemas_srpm"
+build_in_supported_fedora_chroots "$mutter_srpm"
+build_in_supported_fedora_chroots "$shell_srpm"
+build_in_supported_fedora_chroots "$meta_srpm"

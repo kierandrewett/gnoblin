@@ -8,6 +8,23 @@
     "options": []
   },
   {
+    "name": "wayland",
+    "version": "1.26.0",
+    "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz",
+    "sha256": "64176eaa46e4969903e286f8e5ef8331affc17fdf03ac9b58381d2b23162b7a3",
+    "requires": ["patchelf"],
+    "private_pkgconfig": ["wayland-client.pc"],
+    "options": ["-Ddocumentation=false", "-Dtests=false"]
+  },
+  {
+    "name": "wayland-protocols",
+    "version": "1.48",
+    "url": "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.48/downloads/wayland-protocols-1.48.tar.xz",
+    "sha256": "398036ac0eb6484982ddbde7ff86848d753231f9cdeeae983f06b52946625aa1",
+    "requires": ["wayland"],
+    "options": ["-Dtests=false"]
+  },
+  {
     "name": "glib-bootstrap",
     "version": "2.90.0",
     "url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz",
@@ -47,7 +64,7 @@
     "version": "4.14.5",
     "url": "https://download.gnome.org/sources/gtk/4.14/gtk-4.14.5.tar.xz",
     "sha256": "5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d",
-    "requires": ["glib-final", "gdk-pixbuf"],
+    "requires": ["glib-final", "gdk-pixbuf", "wayland-protocols"],
     "private_pkgconfig": ["gtk4.pc"],
     "options": [
       "-Dintrospection=disabled",

@@ -16,3 +16,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate package target inventory
         run: python3 scripts/check-packaging-targets.py
+      - name: Verify release artifact and distro gates
+        run: python3 tests/release-workflow.test.py

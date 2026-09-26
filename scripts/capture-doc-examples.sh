@@ -17,6 +17,7 @@ bingux_root="${GNOBLIN_DOC_BINGUX_ROOT:-$root/../bingux}"
 bingux_config="${GNOBLIN_DOC_BINGUX_PATH:-$bingux_root/shell/bingux}"
 bingux_base_config="${GNOBLIN_DOC_BINGUX_BASE_CONFIG:-$bingux_root/packaging/gnoblin/bingux.lua}"
 bingux_frame_dir="${GNOBLIN_DOC_BINGUX_FRAME_DIR:-$bingux_root/build}"
+wallpaper="${GNOBLIN_DOC_WALLPAPER:-$root/scripts/assets/doc-wallpaper.png}"
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run the capture as a regular user" >&2
     exit 1
@@ -114,6 +115,10 @@ if [ ! -d "$cursor_theme/hyprcursors" ]; then
     echo "Adwaita-Hyprcursor is required; see docs/guides/cursors.md" >&2
     exit 1
 fi
+if [ ! -f "$wallpaper" ]; then
+    echo "Documentation wallpaper not found at $wallpaper" >&2
+    exit 1
+fi
 mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
 ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
 ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
@@ -145,6 +150,7 @@ if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
 local gnoblin = require("gnoblin")
 gnoblin.configure {
     cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    shell = {wallpaper = false},
 }
 gnoblin.load("conf.d/**/*.lua")
 LUA
@@ -454,6 +460,6 @@ if [ -z "${GNOBLIN_DOC_POINTER:-}" ]; then
 fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
-desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i /usr/share/backgrounds/fedora-workstation/flight_dark.webp -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
+desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i '$wallpaper' -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
 export GNOME_DEVKIT_EXEC="$desktop_command"
 bash "$root/scripts/run-gnome-devkit.sh"

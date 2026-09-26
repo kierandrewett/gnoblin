@@ -27,13 +27,12 @@ pointer leaves a client surface; then the window fields are empty strings.
 
 GNOME Shell events use the `gnome.shell.*` prefix.
 
-| Event name                                                     | Fields                          | Dispatched when                                                               |
-| -------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------- |
-| `gnome.shell.focus.changed`                                    | `app_id`, `wm_class`, `title`   | The keyboard-focused window changes. This can differ from the pointer window. |
-| `gnome.shell.window.created`                                   | `app_id`, `wm_class`, `title`   | A window is created.                                                          |
-| `gnome.shell.window.unmanaged`                                 | `app_id`, `wm_class`, `title`   | A window is removed.                                                          |
-| `gnome.shell.input.<type>`                                     | Fields depend on the input type | A Clutter input event reaches the shell's captured-event handler.             |
-| `gnome.shell.overview.showing`, `.shown`, `.hiding`, `.hidden` | No additional fields            | The overview changes visibility state.                                        |
+| Event name                     | Fields                          | Dispatched when                                                               |
+| ------------------------------ | ------------------------------- | ----------------------------------------------------------------------------- |
+| `gnome.shell.focus.changed`    | `app_id`, `wm_class`, `title`   | The keyboard-focused window changes. This can differ from the pointer window. |
+| `gnome.shell.window.created`   | `app_id`, `wm_class`, `title`   | A window is created.                                                          |
+| `gnome.shell.window.unmanaged` | `app_id`, `wm_class`, `title`   | A window is removed.                                                          |
+| `gnome.shell.input.<type>`     | Fields depend on the input type | A Clutter input event reaches the shell's captured-event handler.             |
 
 Common input event types are:
 
@@ -90,6 +89,28 @@ workspaces are watched as they appear.
 Gnoblin also exposes the Wayland pointer-window transition as
 `mutter.wayland.pointer-window-changed`, with `app_id`, `wm_class`, and
 `title`. The older `pointer_window_changed` name remains available.
+
+Touchpad swipe, pinch, and hold input is available as
+`mutter.touchpad.gesture`. Gnoblin dispatches one event for each phase before the
+frontend handles that input event.
+
+Each event includes its gesture type, phase, finger count, and timestamp. Swipe
+updates include unaccelerated movement deltas. Pinch updates include scale and
+angle changes. Accumulate the deltas in a callback to measure total movement.
+Hold events have no movement fields.
+
+```lua
+gnoblin.on("mutter.touchpad.gesture", function(event)
+    if event.gesture == "swipe" and event.phase == "update" then
+        print(event.fingers, event.dx, event.dy)
+    end
+end)
+```
+
+This event exposes input data to the active Lua config and to frontend
+integrations connected to Mutter's `gnoblin-config-event` signal. It does not
+choose an action by itself. A frontend can use the phases to drive its own
+workspace, overview, or window animations.
 
 Every signal event includes `source` and `signal`.
 

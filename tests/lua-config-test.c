@@ -141,6 +141,52 @@ int main(void) {
         g_variant_lookup_value(explicit_shell, "osd", G_VARIANT_TYPE_BOOLEAN);
     g_assert_true(g_variant_get_boolean(explicit_osd));
 
+    const char* event_config_source = "local g=require('gnoblin')\n"
+                                      "g.on('mutter.touchpad.gesture', function(event)\n"
+                                      "  if event.phase == 'begin' then g.workspace.list() end\n"
+                                      "end)\n";
+    g_assert_true(g_file_set_contents(explicit_root, event_config_source, -1, &error));
+    g_autoptr(GVariant) runtime_document =
+        gnoblin_config_load_runtime(explicit_root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(runtime_document);
+    gnoblin_config_finish_load(TRUE);
+
+    g_auto(GStrv) event_names = gnoblin_config_runtime_events();
+    gboolean has_touchpad_event = FALSE;
+    for (guint i = 0; event_names && event_names[i]; i++)
+        has_touchpad_event |= g_str_equal(event_names[i], "mutter.touchpad.gesture");
+    g_assert_true(has_touchpad_event);
+
+    GVariantBuilder payload_builder;
+    g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload_builder, "{sv}", "gesture", g_variant_new_string("swipe"));
+    g_variant_builder_add(&payload_builder, "{sv}", "phase", g_variant_new_string("begin"));
+    g_variant_builder_add(&payload_builder, "{sv}", "fingers", g_variant_new_int64(3));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
+    g_autoptr(GVariant) dispatched_document =
+        gnoblin_config_dispatch_event("mutter.touchpad.gesture", payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(dispatched_document);
+    g_autoptr(GVariant) operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
+    g_autoptr(GVariant) operation = g_variant_get_child_value(operations, 0);
+    g_autoptr(GVariant) method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.list");
+    gnoblin_config_finish_event(TRUE);
+
+    g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload_builder, "{sv}", "gesture", g_variant_new_string("swipe"));
+    g_variant_builder_add(&payload_builder, "{sv}", "phase", g_variant_new_string("update"));
+    g_variant_builder_add(&payload_builder, "{sv}", "fingers", g_variant_new_int64(3));
+    g_clear_pointer(&payload, g_variant_unref);
+    payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
+    g_clear_pointer(&dispatched_document, g_variant_unref);
+    dispatched_document = gnoblin_config_dispatch_event("mutter.touchpad.gesture", payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(dispatched_document);
+    gnoblin_config_finish_event(TRUE);
+
     g_assert_true(g_file_set_contents(nested, "return 1\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(root, NULL, &error);
@@ -183,6 +229,6 @@ int main(void) {
     g_unlink(runtime_root);
     g_rmdir(conf);
     g_rmdir(dir);
-    g_print("PASS: Lua config, direct values, load, glob and errors\n");
+    g_print("PASS: Lua config, runtime events, direct values, load, glob and errors\n");
     return 0;
 }

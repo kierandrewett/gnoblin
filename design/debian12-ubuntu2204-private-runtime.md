@@ -81,12 +81,12 @@ and private libraries with an RPATH to its own `lib64`, and does not contain
 `g-ir-scanner`. The final GLib build passed its private-interface check.
 
 The disposable image needed `python-is-python3`, `python3-dev`, and `flex`
-for the scanner bootstrap. This is only a source-closure result on Debian 12:
-the production DEB manifest and workflow are unchanged, and neither GTK/GCR,
-Mutter/Shell, package transactions, Ubuntu 22.04, nor graphical sessions have
-been validated. The builder still supports declared dependency ordering and
-selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
-retaining staging-path and link-containment checks.
+for the scanner bootstrap. That first result covered GLib and its scanner on
+Debian 12 only; it did not validate GTK/GCR, Mutter/Shell, package transactions,
+Ubuntu 22.04, or graphical sessions. The builder still supports declared
+dependency ordering and selected subgraphs, and its archive extraction
+supports Python 3.10/3.11 while retaining staging-path and link-containment
+checks.
 
 The next clean-image pass installed the normal host build prerequisite
 `shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then required `glycin-2`; Glycin
@@ -125,6 +125,29 @@ GCR was built with introspection, Vala and documentation disabled, so its
 runtime typelib path remains untested. The entire run is still only a private
 dependency build: Mutter/Shell, package transactions, Ubuntu 22.04, and
 graphical sessions have not been tested.
+
+`.github/workflows/deb.yml` runs this pinned graph on clean Debian 12 and
+Ubuntu 22.04 images during normal CI. The job is experimental: it does not
+generate or publish a `.deb`. Release workflows package Debian 13 and Ubuntu
+24.04/26.04.
+
+Debian 12 and Ubuntu 22.04 remain unsupported. Private GTK/GCR typelibs must
+load in GJS, the full compositor must build, and package install, GNOME
+coexistence, removal, and graphical-session checks must pass.
+
+The first Ubuntu 22.04 GTK attempt exposed another host floor: GTK 4.14.5
+requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
+manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
+1.48 before GTK.
+
+A later clean-image CI run built the private Wayland, GTK 4, and GCR graph on
+both Debian 12 and Ubuntu 22.04. The private `PKG_CONFIG_PATH` resolved
+Wayland 1.26.0, GTK 4.14.5 and GCR 4.4.0.1 on Debian 12.
+
+That CI result is still only a dependency-closure build. It does not build the
+compositor or DEB, load private GTK/GCR typelibs in GJS, install alongside GNOME,
+or start a graphical session. Debian 12's GCR configure step also required a
+host `gpg` executable, so the disposable builder now installs `gnupg`.
 
 ## Boundary: what can be private
 

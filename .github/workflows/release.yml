@@ -53,6 +53,17 @@ jobs:
     uses: ./.github/workflows/deb.yml
     with:
       ref: ${{ inputs.tag || github.ref }}
+      release_build: true
+
+  opensuse-package:
+    uses: ./.github/workflows/opensuse-rpm.yml
+    with:
+      ref: ${{ inputs.tag || github.ref }}
+
+  nixos-release:
+    uses: ./.github/workflows/nix.yml
+    with:
+      ref: ${{ inputs.tag || github.ref }}
 
   arch-package:
     needs: [source-packages, debian-packages]
@@ -125,7 +136,12 @@ jobs:
         run: pacman -Scc --noconfirm
 
   github-release:
-    needs: [source-packages, debian-packages, arch-package]
+    needs:
+      - source-packages
+      - debian-packages
+      - arch-package
+      - opensuse-package
+      - nixos-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,7 +155,7 @@ jobs:
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
-          pattern: deb-*
+          pattern: debian-package-*
           path: release-assets
           merge-multiple: true
       - uses: actions/download-artifact@v4
@@ -147,6 +163,22 @@ jobs:
           name: arch-package-${{ env.RELEASE_TAG }}
           path: release-assets
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: opensuse-tumbleweed-rpms
+          path: opensuse-rpms
+          merge-multiple: true
+      - name: Flatten openSUSE RPM assets
+        run: |
+          mkdir -p release-assets
+          mapfile -d '' rpms < <(
+            find opensuse-rpms -type f -name '*.rpm' \
+              ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
+          )
+          (("${#rpms[@]}" > 0))
+          for rpm in "${rpms[@]}"; do
+            cp -- "$rpm" "release-assets/opensuse-$(basename "$rpm")"
+          done
       - name: Checksum all release assets
         run: |
           cd release-assets
@@ -155,12 +187,13 @@ jobs:
       - name: Publish or repair GitHub release
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft
             gh release upload "$RELEASE_TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$RELEASE_TAG" release-assets/* \
-              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-              --title "Gnoblin $(./scripts/gnoblin-version.py get version) (GNOME $(./scripts/gnoblin-version.py get gnomeVersion))"
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --draft \
+              --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
           fi
 
   apt-repository:
@@ -177,3 +210,15 @@ jobs:
       tag: ${{ inputs.tag || github.ref_name }}
     secrets:
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+
+  publish-release:
+    needs: [apt-repository, copr-repository]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Publish after distro repositories are updated
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

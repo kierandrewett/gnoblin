@@ -64,6 +64,7 @@ export default defineConfig({
                                 ],
                             },
                             { text: "input_sources", link: "/config/configure/input_sources" },
+                            { text: "touchpad_gestures", link: "/config/configure/touchpad_gestures" },
                             { text: "permissions", link: "/config/configure/permissions" },
                             { text: "layer_shell", link: "/config/configure/layer_shell" },
                             { text: "protocols", link: "/config/configure/protocols" },

@@ -1,4 +1,6 @@
 import * as Permissions from "./gnoblinPermissions.js";
+import { touchpadGesturePathMatches } from "./gnoblinTouchpadGestureCore.js";
+export { touchpadGesturePathMatches } from "./gnoblinTouchpadGestureCore.js";
 import * as Corners from "./gnoblinCornerGeometry.js";
 import * as Frames from "./gnoblinFramePolicy.js";
 import * as Workspaces from "./gnoblinWorkspaces.js";
@@ -43,7 +45,7 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
+export const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
 const windowDefaults = () => ({
     ...WINDOW_PREFERENCES,
     "dynamic-workspaces": false,
@@ -187,6 +189,149 @@ function validateInputSources(value) {
         throw new Error("input-sources.sources: expected {type, id} records");
 }
 
+const TOUCHPAD_GESTURE_ACTIONS = new Set([
+    "workspace.progress",
+    "emoji-pager.progress",
+    "unlock-screen.progress",
+    "workspace.next",
+    "workspace.previous",
+    "window.close",
+    "window.minimize",
+    "window.toggle-maximize",
+]);
+const TOUCHPAD_GESTURE_DIRECTIONS = Object.freeze({
+    pinch: new Set(["in", "out"]),
+});
+const PROGRESS_GESTURE_AXES = Object.freeze({
+    "workspace.progress": "horizontal",
+    "emoji-pager.progress": "horizontal",
+    "unlock-screen.progress": "vertical",
+});
+
+function validateTouchpadGestures(value) {
+    if (!Array.isArray(value) || value.length > 64)
+        throw new Error("touchpad-gestures must be a list of at most 64 gesture tables");
+
+    const names = new Set();
+    const inputs = new Map();
+    return value.map((gesture) => {
+        if (!isTable(gesture)) throw new Error("touchpad-gestures entries must be tables");
+        const allowedKeys = [
+            "name",
+            "gesture",
+            "fingers",
+            "direction",
+            "path",
+            "action",
+            "command",
+            "when",
+            "threshold",
+            "tolerance",
+        ];
+        if (Object.keys(gesture).some((key) => !allowedKeys.includes(key)))
+            throw new Error("touchpad gesture contains an unknown field");
+        const { name, gesture: kind, fingers, direction, action, command } = gesture;
+        const when = gesture.when ?? "normal";
+        if (typeof name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name) || names.has(name))
+            throw new Error("touchpad gesture names must be unique identifiers of 1 to 64 characters");
+        names.add(name);
+        if (!new Set(["swipe", "pinch"]).has(kind)) throw new Error(`${name}: gesture must be swipe or pinch`);
+        let path = null;
+        if (kind === "swipe") {
+            if (
+                direction !== undefined ||
+                !Array.isArray(gesture.path) ||
+                gesture.path.length < 2 ||
+                gesture.path.length > 16
+            )
+                throw new Error(`${name}: swipe requires a path of 2 to 16 points and no direction`);
+            path = gesture.path.map((point) => {
+                if (
+                    !isTable(point) ||
+                    Object.keys(point).length !== 2 ||
+                    !Number.isFinite(point.x) ||
+                    !Number.isFinite(point.y) ||
+                    Math.abs(point.x) > 1 ||
+                    Math.abs(point.y) > 1
+                )
+                    throw new Error(`${name}: path points need normalized x and y values from -1 to 1`);
+                return { x: point.x, y: point.y };
+            });
+            if (
+                path[0].x !== 0 ||
+                path[0].y !== 0 ||
+                (path.at(-1).x === 0 && path.at(-1).y === 0) ||
+                path.some((point, index) => index > 0 && point.x === path[index - 1].x && point.y === path[index - 1].y)
+            )
+                throw new Error(`${name}: path must start at {x=0, y=0} and describe movement`);
+        } else if (!TOUCHPAD_GESTURE_DIRECTIONS[kind].has(direction) || gesture.path !== undefined) {
+            throw new Error(`${name}: pinch requires direction = in or out and does not use a swipe path`);
+        }
+        if (!Number.isInteger(fingers) || fingers < 2 || fingers > 5)
+            throw new Error(`${name}: fingers must be an integer from 2 to 5`);
+        if ((action === undefined) === (command === undefined))
+            throw new Error(`${name}: set exactly one of action or command`);
+        if (action !== undefined && (typeof action !== "string" || !TOUCHPAD_GESTURE_ACTIONS.has(action)))
+            throw new Error(`${name}: unsupported touchpad gesture action`);
+        if (
+            command !== undefined &&
+            (!Array.isArray(command) ||
+                command.length === 0 ||
+                !command.every((arg) => typeof arg === "string" && !arg.includes("\0")) ||
+                !command[0])
+        )
+            throw new Error(`${name}: command must be a nonempty argv array`);
+        if (!["normal", "emoji-picker", "unlock-screen", "any"].includes(when))
+            throw new Error(`${name}: when must be normal, emoji-picker, unlock-screen, or any`);
+        const threshold = gesture.threshold ?? (kind === "swipe" ? 48 : 0.12);
+        if (
+            typeof threshold !== "number" ||
+            !Number.isFinite(threshold) ||
+            (kind === "swipe" ? threshold < 16 || threshold > 240 : threshold < 0.05 || threshold > 0.5)
+        )
+            throw new Error(`${name}: invalid ${kind} threshold`);
+        const tolerance = gesture.tolerance ?? 0.22;
+        if (
+            kind === "swipe"
+                ? typeof tolerance !== "number" || !Number.isFinite(tolerance) || tolerance < 0.05 || tolerance > 0.5
+                : gesture.tolerance !== undefined
+        )
+            throw new Error(`${name}: tolerance must be 0.05 to 0.5 and applies only to swipe paths`);
+        if (typeof action === "string" && PROGRESS_GESTURE_AXES[action]) {
+            if (kind !== "swipe" || path.length !== 2)
+                throw new Error(`${name}: ${action} requires a straight path on its supported axis`);
+            const dx = path[1].x - path[0].x;
+            const dy = path[1].y - path[0].y;
+            const horizontal = Math.abs(dx) > Math.abs(dy);
+            const compatible = PROGRESS_GESTURE_AXES[action] === (horizontal ? "horizontal" : "vertical");
+            if (!compatible) throw new Error(`${name}: ${action} requires a straight path on its supported axis`);
+        }
+
+        const pathKey = path ? JSON.stringify(path.map(({ x, y }) => [x, y])) : direction;
+        const input = `${kind}:${fingers}:${pathKey}`;
+        const previousContexts = inputs.get(input) ?? [];
+        if (previousContexts.some((context) => context === "any" || when === "any" || context === when))
+            throw new Error(`${name}: another gesture already claims this input in an overlapping context`);
+        previousContexts.push(when);
+        inputs.set(input, previousContexts);
+        return { name, gesture: kind, fingers, direction, path, action, command, when, threshold, tolerance };
+    });
+}
+
+export function touchpadGestureMatches(action, fingers, path, contexts = []) {
+    const gestures = settings["touchpad-gestures"];
+    if (gestures === null) return null;
+    return gestures.some(
+        (gesture) =>
+            gesture.action === action &&
+            gesture.gesture === "swipe" &&
+            gesture.fingers === fingers &&
+            gesture.path.length === 2 &&
+            touchpadGesturePathMatches(gesture.path, path, gesture.tolerance) &&
+            (gesture.when === "any" || contexts.includes(gesture.when)),
+    );
+}
+
 export const DEFAULTS = Object.freeze({
     ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, null])),
     "window-switcher": false,
@@ -203,6 +348,7 @@ export const DEFAULTS = Object.freeze({
     "window-rules": [],
     shortcuts: [],
     keybindings: {},
+    "touchpad-gestures": null,
 });
 
 export let settings = {
@@ -212,6 +358,7 @@ export let settings = {
     compositor: { ...COMPOSITOR_PREFERENCES },
     input: null,
     "input-sources": null,
+    "touchpad-gestures": null,
 };
 
 const WINDOW_RULE_EFFECT_KEYS = Object.freeze([
@@ -634,6 +781,8 @@ export function parseDocument(document) {
         validateInputSources(document["input-sources"]);
         next["input-sources"] = document["input-sources"];
     }
+    if (document["touchpad-gestures"] !== undefined)
+        next["touchpad-gestures"] = validateTouchpadGestures(document["touchpad-gestures"]);
     next.animations = validateAnimations(document);
     const shell = document.shell ?? {};
     if (!shell || Array.isArray(shell) || typeof shell !== "object") throw new Error("shell must be a table");
@@ -1626,6 +1775,7 @@ export class ConfigFile {
             "compositor",
             "input",
             "input-sources",
+            "touchpad-gestures",
             "shell",
             "window-rules",
             "animations",

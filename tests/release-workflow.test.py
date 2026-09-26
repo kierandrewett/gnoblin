@@ -8,6 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+    def test_debian_packages_build_on_pushes_prs_and_exact_release_refs(self):
+        workflow = (ROOT / ".github/workflows/deb.yml").read_text()
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
+        install = workflow.split("\n  install:\n", 1)[1]
+        self.assertNotIn("if: inputs.ref != ''", build)
+        self.assertNotIn("if: inputs.ref != ''", install)
+        self.assertEqual(build.count("ref: ${{ inputs.ref || github.sha }}"), 1)
+        self.assertIn("PACKAGE_REF: ${{ inputs.ref || github.sha }}", build)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", install)
+
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
         version = subprocess.check_output(
@@ -39,26 +49,75 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("contents: write", workflow)
         self.assertIn("pages: write", workflow)
         self.assertIn("needs: [source-packages, debian-packages]", workflow)
+        release_gate = workflow.split("  github-release:\n", 1)[1].split("    runs-on:", 1)[0]
+        for job in ("source-packages", "debian-packages", "arch-package", "opensuse-package", "nixos-release"):
+            self.assertIn(f"      - {job}\n", release_gate)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
         self.assertIn("--verify-tag", workflow)
         self.assertIn("--clobber", workflow)
-        self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
+        self.assertIn('--title "Gnoblin ${RELEASE_TAG#gnoblin-v}"', workflow)
+        release_publish = workflow.split("  github-release:\n", 1)[1].split("  apt-repository:", 1)[0]
+        self.assertNotIn("./scripts/gnoblin-version.py", release_publish)
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
+        self.assertIn("pattern: debian-package-*", workflow)
+        self.assertIn("merge-multiple: true", workflow)
+        self.assertIn("name: debian-package-${{ matrix.target }}", (ROOT / ".github/workflows/deb.yml").read_text())
+        self.assertNotIn("pattern: deb-*", workflow)
         self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
+    def test_release_waits_for_and_publishes_opensuse_rpms(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        opensuse = (ROOT / ".github/workflows/opensuse-rpm.yml").read_text()
+        self.assertIn("opensuse-package:", workflow)
+        self.assertIn("uses: ./.github/workflows/opensuse-rpm.yml", workflow)
+        self.assertIn("with:\n      ref:", workflow)
+        self.assertIn("opensuse-package", workflow.split("github-release:", 1)[1].split("apt-repository:", 1)[0])
+        self.assertIn("name: opensuse-tumbleweed-rpms", opensuse)
+        self.assertIn("workflow_call:", opensuse)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", opensuse)
+        self.assertIn("Flatten openSUSE RPM assets", workflow)
+        self.assertIn("find opensuse-rpms -type f -name '*.rpm'", workflow)
+        self.assertIn("! -name '*-debuginfo-*'", workflow)
+        self.assertIn("! -name '*-debugsource-*'", workflow)
+        self.assertIn('"release-assets/opensuse-$(basename "$rpm")"', workflow)
+
+    def test_release_builds_the_pinned_nixos_package_before_publication(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        nix = (ROOT / ".github/workflows/nix.yml").read_text()
+        self.assertIn("nixos-release:", workflow)
+        self.assertIn("uses: ./.github/workflows/nix.yml", workflow)
+        self.assertIn("nixos-release", workflow.split("github-release:", 1)[1].split("apt-repository:", 1)[0])
+        self.assertIn("workflow_call:", nix)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", nix)
+        self.assertIn("nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05", nix)
+        self.assertIn("test -x result/bin/gnoblinctl", nix)
+        self.assertIn("test -f result/share/wayland-sessions/gnoblin.desktop", nix)
+        self.assertIn(
+            "session_executable=\"$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)\"",
+            nix,
+        )
+        self.assertNotIn("release-nixos-26-05:", nix)
+
     def test_copr_release_job_publishes_and_installs_the_tagged_source_rpms(self):
         workflow = (ROOT / ".github/workflows/copr.yml").read_text()
+        publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         self.assertIn("COPR_CONFIG:", workflow)
         self.assertIn("required: true", workflow)
         self.assertIn('gh release download "$RELEASE_TAG"', workflow)
         self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
-        self.assertIn("dnf -y install --refresh gnoblin", workflow)
+        self.assertIn("RELEASE_TAG: ${{ inputs.tag }}", workflow)
+        self.assertIn('dnf -y install --refresh "gnoblin-$expected_version"', workflow)
+        self.assertIn('test "$installed_version" = "$expected_version"', workflow)
         self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)
+        self.assertIn("chroots=(fedora-43-x86_64 fedora-44-x86_64 fedora-45-x86_64)", publisher)
+        self.assertIn('copr-cli build "${arguments[@]}" "$project" "$package"', publisher)
+        for package in ("schemas_srpm", "mutter_srpm", "shell_srpm", "meta_srpm"):
+            self.assertIn(f'build_in_supported_fedora_chroots "${package}"', publisher)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):
         workflow = (ROOT / ".github/workflows/nix.yml").read_text()

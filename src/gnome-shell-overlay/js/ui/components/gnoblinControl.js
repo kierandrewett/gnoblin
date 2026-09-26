@@ -17,6 +17,7 @@ import * as Permissions from "./gnoblinPermissions.js";
 import {
     Autostart,
     ConfigFile,
+    DEFAULT_CURSOR,
     FEATURE_KEYS,
     Shortcuts,
     CommandShortcuts,
@@ -26,6 +27,7 @@ import {
     applyInputPreferences,
 } from "./gnoblinConfig.js";
 import { WindowRules } from "./gnoblinRules.js";
+import { TouchpadGestureRouter } from "./gnoblinTouchpadGestures.js";
 import * as Workspaces from "./gnoblinWorkspaces.js";
 import Gio from "gi://Gio";
 import Clutter from "gi://Clutter";
@@ -705,6 +707,37 @@ export class Component {
         this._acceleratorCaptureSignal = 0;
     }
 
+    _dispatchWindowEvent(event, window) {
+        const getString = (method) => {
+            try {
+                return window?.[method]?.() ?? "";
+            } catch {
+                return "";
+            }
+        };
+
+        this._config?.dispatchEvent(event, {
+            app_id: getString("get_gtk_application_id"),
+            wm_class: getString("get_wm_class"),
+            title: getString("get_title"),
+        });
+    }
+
+    _watchEventWindow(window) {
+        if (!window || this._eventWindows?.has(window)) return;
+
+        try {
+            const id = window.connect("unmanaged", () => {
+                this._dispatchWindowEvent("window_unmanaged", window);
+                this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
+                this._eventWindows.delete(window);
+            });
+            this._eventWindows.set(window, id);
+        } catch (error) {
+            console.warn(`gnoblin events: could not watch window lifetime: ${error.message}`);
+        }
+    }
+
     enable() {
         this._settings = new Gio.Settings({ schema_id: SCHEMA_ID });
         this._settingsChangedId = this._settings.connect(`changed::${DISABLED_KEY}`, () => this._syncFeatureState());
@@ -749,7 +782,7 @@ export class Component {
                 this._mutterEvents = new MutterEventForwarder(this._config);
             },
         );
-        this._mutterEvents = new MutterEventForwarder(this._config);
+        this._touchpadGestureRouter = new TouchpadGestureRouter();
         activeConfig = this._config;
         this._config.start();
         // GNOME exposes the desktop's preferred color scheme through this
@@ -772,8 +805,10 @@ export class Component {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
             this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
         });
-        this._configEventId = global.display.connect("gnoblin-config-event", (_display, _event, document) => {
+        this._configEventId = global.display.connect("gnoblin-config-event", (_display, event, document, payload) => {
             this._config?.applyRuntimeDocument(document);
+            if (event !== "mutter.touchpad.gesture") return false;
+            return this._touchpadGestureRouter.handle(payload.recursiveUnpack());
         });
         this._eventWindows = new Map();
         for (const window of global.display.list_all_windows()) this._watchEventWindow(window);
@@ -881,6 +916,12 @@ export class Component {
 
     disable() {
         this._finishAcceleratorCapture(null, "Shortcut capture cancelled because the shell is reloading");
+        // Script disposers can still use window rules, config and the event bus.
+        if (this._scripts) {
+            this._scripts.destroy();
+            this._scripts = null;
+            activeScriptHost = null;
+        }
         if (this._configFocusId) {
             global.display.disconnect(this._configFocusId);
             this._configFocusId = 0;
@@ -893,18 +934,14 @@ export class Component {
             global.display.disconnect(this._configEventId);
             this._configEventId = 0;
         }
+        this._touchpadGestureRouter?.destroy();
+        this._touchpadGestureRouter = null;
         if (this._configInputId) {
             global.stage.disconnect(this._configInputId);
             this._configInputId = 0;
         }
         for (const [window, id] of this._eventWindows ?? []) window.disconnect(id);
         this._eventWindows?.clear();
-        // Script disposers can still use window rules, config and the event bus.
-        if (this._scripts) {
-            this._scripts.destroy();
-            this._scripts = null;
-            activeScriptHost = null;
-        }
         if (this._compositorBridge) {
             this._compositorBridge.destroy();
             if (global.__gnoblinCompositorBridge === this._compositorBridge) delete global.__gnoblinCompositorBridge;
@@ -1083,9 +1120,7 @@ export class Component {
     }
 
     _applyConfig(next) {
-        // The Lua config parser exposes the top-level declaration array here.
-        // The registry uses it to assign stable IDs and names; Mutter's
-        // derived baseline count comes from the parsed window preferences.
+        this._touchpadGestureRouter?.configure(next["touchpad-gestures"]);
         Workspaces.setEventDispatcher((event, payload) => this._config?.dispatchEvent(event, payload));
         applyWindowPreferences(next["window-management"]);
         Workspaces.configure(next.workspaces ?? [], (index) => Meta.prefs_get_workspace_name(index));
@@ -1119,7 +1154,8 @@ export class Component {
         this._windowRules.refresh(next);
         autostart.apply(next.autostart);
         this._permissionPolicy = next.permissions;
-        Meta.prefs_set_gnoblin_cursor_config(next.cursor.theme, next.cursor.size);
+        const cursor = { ...DEFAULT_CURSOR, ...next.cursor };
+        Meta.prefs_set_gnoblin_cursor_config(cursor.theme, cursor.size);
     }
 
     _dispatchWindowEvent(event, window) {

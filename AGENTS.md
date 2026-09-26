@@ -113,6 +113,8 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   names; inconsistent page names or paths; and gratuitous criticism of other
   projects. Replace these with real product evidence and concise, accurate
   explanation.
+- A screenshot must show one wallpaper source. When capture setup starts a
+  separate wallpaper client, disable the compositor's built-in wallpaper.
 
 ## Verification and evidence
 

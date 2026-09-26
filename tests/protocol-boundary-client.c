@@ -127,6 +127,7 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener foreign_listener =
 
 struct xdg_surface_state {
     bool configured;
+    bool maximized;
     uint32_t serial;
 };
 
@@ -153,11 +154,20 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 
 static void xdg_toplevel_configure(void* data, struct xdg_toplevel* xdg_toplevel, int32_t width,
                                    int32_t height, struct wl_array* states) {
-    (void)data;
+    struct xdg_surface_state* state = data;
+    uint32_t* value;
+
     (void)xdg_toplevel;
     (void)width;
     (void)height;
-    (void)states;
+    if (!state)
+        return;
+
+    state->maximized = false;
+    wl_array_for_each(value, states) {
+        if (*value == XDG_TOPLEVEL_STATE_MAXIMIZED)
+            state->maximized = true;
+    }
 }
 
 static void xdg_toplevel_close(void* data, struct xdg_toplevel* xdg_toplevel) {
@@ -454,6 +464,22 @@ static bool test_foreign_toplevel_stop(struct wl_display* display, struct protoc
     return true;
 }
 
+static bool expect_no_precommit_configure(struct wl_display* display,
+                                          struct xdg_surface_state* state, const char* request) {
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: precommit %s request failed\n", request);
+        return false;
+    }
+    if (state->configured) {
+        fprintf(
+            stderr,
+            "FAIL: compositor sent xdg configure after precommit %s, before first surface commit\n",
+            request);
+        return false;
+    }
+    return true;
+}
+
 static bool test_precommit_maximize_configure_order(void) {
     struct protocols protocols = {0};
     struct xdg_surface_state xdg_state = {0};
@@ -481,25 +507,44 @@ static bool test_precommit_maximize_configure_order(void) {
     xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
-    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
+    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, &xdg_state);
     xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.PrecommitMaximize");
     xdg_toplevel_set_maximized(xdg_toplevel);
 
-    if (wl_display_roundtrip(display) < 0) {
-        fprintf(stderr, "FAIL: precommit maximize request failed\n");
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_maximized")) {
         wl_display_disconnect(display);
         return false;
     }
-    if (xdg_state.configured) {
-        fprintf(stderr, "FAIL: compositor sent xdg configure after precommit maximize, before "
-                        "first surface commit\n");
+
+    xdg_toplevel_unset_maximized(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "unset_maximized")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_set_fullscreen(xdg_toplevel, NULL);
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_fullscreen")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_unset_fullscreen(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "unset_fullscreen")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_set_maximized(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_maximized")) {
         wl_display_disconnect(display);
         return false;
     }
 
     wl_surface_commit(surface);
-    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured) {
-        fprintf(stderr, "FAIL: first surface commit did not produce the initial xdg configure\n");
+    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured || !xdg_state.maximized) {
+        fprintf(
+            stderr,
+            "FAIL: first surface commit did not produce an initially maximized xdg configure\n");
         wl_display_disconnect(display);
         return false;
     }
@@ -547,18 +592,12 @@ static bool test_disconnect_unconfigured_toplevel(void) {
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
     xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.UnconfiguredDisconnect");
+    xdg_toplevel_set_minimized(xdg_toplevel);
 
     /* Role creation gives Mutter an unready MetaWindow, but we deliberately do
      * not commit a buffer or acknowledge the initial configure. Disconnecting
      * now exercises wl_resource cleanup with the toplevel still unconfigured. */
-    if (wl_display_roundtrip(disconnect_display) < 0) {
-        fprintf(stderr, "FAIL: unconfigured toplevel setup failed\n");
-        wl_display_disconnect(disconnect_display);
-        return false;
-    }
-    if (xdg_state.configured) {
-        fprintf(stderr,
-                "FAIL: compositor sent initial xdg configure before the first surface commit\n");
+    if (!expect_no_precommit_configure(disconnect_display, &xdg_state, "set_minimized")) {
         wl_display_disconnect(disconnect_display);
         return false;
     }

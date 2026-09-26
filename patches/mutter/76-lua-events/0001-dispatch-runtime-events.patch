@@ -1,19 +1,16 @@
 From 16a09db174775a54de0ef79f70ab2beefb0494f0 Mon Sep 17 00:00:00 2001
 From: Kieran Drewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 01:47:25 +0100
-Subject: [PATCH] gnoblin: keep config runtime hooks active on pinned Mutter
-
-The pinned Wayland build does not define HAVE_WAYLAND. These runtime and event
-entry points are only used by Gnoblin's Wayland compositor, so compile them
-directly instead of silently replacing config finalization with no-ops.
+Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
 
 ---
  src/core/display.c                 |  9 ++++
- src/core/util.c                    | 67 +++++++++++++++++++++++++++++-
+ src/core/util.c                    | 72 +++++++++++++++++++++++++++++++-
  src/meta/display.h                 |  5 +++
  src/meta/util.h                    |  8 ++++
  src/wayland/meta-wayland-pointer.c | 27 +++++++++++++++
- 5 files changed, 104 insertions(+), 1 deletion(-)
+ meson.build                        |  1 +
+ 6 files changed, 122 insertions(+), 1 deletion(-)
 
 diff --git a/src/core/display.c b/src/core/display.c
 index 45b860eb8..91c4769b9 100644
@@ -27,7 +24,7 @@ index 45b860eb8..91c4769b9 100644
    WINDOW_CREATED,
    WINDOW_DEMANDS_ATTENTION,
    WINDOW_MARKED_URGENT,
-@@ -351,6 +352,14 @@ meta_display_class_init (MetaDisplayClass *klass)
+@@ -351,6 +352,15 @@ meta_display_class_init (MetaDisplayClass *klass)
                    NULL, NULL, NULL,
                    G_TYPE_NONE, 2, META_TYPE_WINDOW, G_TYPE_INT64);
  
@@ -36,8 +33,9 @@ index 45b860eb8..91c4769b9 100644
 +                  G_TYPE_FROM_CLASS (klass),
 +                  G_SIGNAL_RUN_LAST,
 +                  0,
-+                  NULL, NULL, NULL,
-+                  G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_VARIANT);
++                  g_signal_accumulator_true_handled, NULL,
++                  NULL,
++                  G_TYPE_BOOLEAN, 3, G_TYPE_STRING, G_TYPE_VARIANT, G_TYPE_VARIANT);
 +
    display_signals[WINDOW_CREATED] =
      g_signal_new ("window-created",
@@ -67,7 +65,7 @@ index 5b89e5ce2..06accd2fb 100644
    g_variant_builder_add (&result, "{sv}", "paths",
                           g_variant_new_strv (
                             paths ? (const char * const *) paths->pdata : NULL,
-@@ -793,3 +797,53 @@ meta_encode_hex (gpointer data,
+@@ -793,3 +797,70 @@ meta_encode_hex (gpointer data,
  
    return g_string_free_and_steal (encoded);
  }
@@ -75,7 +73,9 @@ index 5b89e5ce2..06accd2fb 100644
 +void
 +meta_gnoblin_finish_config_load (gboolean commit)
 +{
++#ifdef HAVE_WAYLAND
 +  gnoblin_config_finish_load (commit);
++#endif
 +}
 +
 +GVariant *
@@ -87,9 +87,14 @@ index 5b89e5ce2..06accd2fb 100644
 +  g_autoptr (GVariant) document = NULL;
 +
 +  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++#ifdef HAVE_WAYLAND
 +  document = gnoblin_config_dispatch_event (event, payload, &error);
 +  if (document)
 +    g_variant_builder_add (&result, "{sv}", "document", document);
++#else
++  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
++                       "Gnoblin config events require Wayland support");
++#endif
 +  if (error)
 +    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
@@ -98,14 +103,19 @@ index 5b89e5ce2..06accd2fb 100644
 +void
 +meta_gnoblin_finish_config_event (gboolean commit)
 +{
++#ifdef HAVE_WAYLAND
 +  gnoblin_config_finish_event (commit);
++#endif
 +}
 +
-+void
++gboolean
 +meta_display_dispatch_gnoblin_event (MetaDisplay *display,
 +                                     const char  *event,
 +                                     GVariant    *payload)
 +{
++  gboolean frontend_consumed = FALSE;
++
++#ifdef HAVE_WAYLAND
 +  g_autoptr (GError) error = NULL;
 +  g_autoptr (GVariant) document =
 +    gnoblin_config_dispatch_event (event, payload, &error);
@@ -113,14 +123,20 @@ index 5b89e5ce2..06accd2fb 100644
 +  if (error)
 +    {
 +      g_warning ("gnoblin Lua event %s: %s", event, error->message);
-+      return;
++      return FALSE;
 +    }
 +  if (document)
 +    {
-+      g_signal_emit_by_name (display, "gnoblin-config-event", event, document);
++      g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
++                             payload, &frontend_consumed);
 +      gnoblin_config_finish_event (TRUE);
 +    }
++  return frontend_consumed;
++#else
++  return FALSE;
++#endif
 +}
+
 diff --git a/src/meta/display.h b/src/meta/display.h
 index 8773263e0..d40d2ca75 100644
 --- a/src/meta/display.h
@@ -130,7 +146,7 @@ index 8773263e0..d40d2ca75 100644
                                                GVariant    *input);
  
 +META_EXPORT
-+void meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++gboolean meta_display_dispatch_gnoblin_event (MetaDisplay *display,
 +                                          const char  *event,
 +                                          GVariant    *payload);
 +
@@ -208,5 +224,16 @@ index b33b3a845..48651566c 100644
    if (pointer->focus_surface && pointer->focus_surface->resource)
      old_client = wl_resource_get_client (pointer->focus_surface->resource);
    if (surface && surface->resource)
+diff --git a/meson.build b/meson.build
+index 72527ee..beaf7fe 100644
+--- a/meson.build
++++ b/meson.build
+@@ -556,5 +556,6 @@ cdata.set('HAVE_GL', have_gl)
+ cdata.set('HAVE_GLES2', have_gles2)
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
++cdata.set('HAVE_WAYLAND', true)
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
 -- 
 2.55.0

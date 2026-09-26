@@ -49,6 +49,11 @@ This keeps Gnoblin's own pinned Nixpkgs input. If your system already uses a
 compatible unstable revision, you can add
 `inputs.gnoblin.inputs.nixpkgs.follows = "nixpkgs";`.
 
+Release tags point to the source used by the release build. The tagged NixOS
+26.05 package is built in the release workflow before that tag is published.
+Pin `inputs.gnoblin.url` to a `gnoblin-v...` release tag when you want a fixed
+Gnoblin version.
+
 ## 2. Enable the module
 
 Add these entries to your host's `nixosSystem` definition, where `inputs`
@@ -56,7 +61,7 @@ is the set of flake inputs:
 
 ```nix
 modules = [
-  inputs.gnoblin.nixosModules.default
+  inputs.gnoblin.nixosModules.nixos_26_05
   ./configuration.nix
   { programs.gnoblin.enable = true; }
 ];

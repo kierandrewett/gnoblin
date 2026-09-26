@@ -101,6 +101,26 @@ gnoblin.configure {
     --     per_window = false,
     -- },
 
+    -- Define swipe gestures as paths relative to their start point.
+    -- Commands and direct actions can use multi-point paths with turns.
+    touchpad_gestures = {
+        {name = "workspace-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
+            action = "workspace.progress", when = "normal"},
+        {name = "workspace-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
+            action = "workspace.progress", when = "normal"},
+        {name = "emoji-page-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
+            action = "emoji-pager.progress", when = "emoji-picker"},
+        {name = "emoji-page-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
+            action = "emoji-pager.progress", when = "emoji-picker"},
+        {name = "unlock-screen-up", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = -1}},
+            action = "unlock-screen.progress", when = "unlock-screen"},
+        {name = "unlock-screen-down", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = 1}},
+            action = "unlock-screen.progress", when = "unlock-screen"},
+        -- Add a command gesture, for example:
+        -- {name = "open-terminal", gesture = "pinch", fingers = 4, direction = "out",
+        --     command = {"kgx"}, when = "normal"},
+    },
+
     -- Shell transitions and built-in shell features.
     shell = {
         minimize_animation = {minimize = "gnome-minimize", restore = "gnome-restore"},
@@ -219,6 +239,14 @@ gnoblin.configure {
 --         inactive_background = "#303030",
 --         button_layout = {"minimize", "maximize", "close"},
 --     },
+-- }
+
+-- For layer-shell effects, match the client's namespace as well as its type.
+-- A blanket type = "layer" opacity rule can fade a wallpaper client and show
+-- a second background through it. See /guides/window_rules and /guides/wallpapers.
+-- gnoblin.window_rule {
+--     match = {type = "layer", layer = "^my-panel$"},
+--     opacity = 0.9,
 -- }
 
 -- Portal permission rules match verified identities such as app-id:org.example.App

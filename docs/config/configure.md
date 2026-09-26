@@ -24,6 +24,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.compositor`](/config/configure/compositor)
 - [`gnoblin.configure.input`](/config/configure/input)
 - [`gnoblin.configure.input_sources`](/config/configure/input_sources)
+- [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
 - [`gnoblin.configure.permissions`](/config/configure/permissions)
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
@@ -58,6 +59,7 @@ gnoblin.configure {
     compositor = {...}?,
     input = {...}?,
     input_sources = {...}?,
+    touchpad_gestures = {...}?,
     permissions = {...}?,
     layer_shell = {...}?,
     protocols = {...}?,

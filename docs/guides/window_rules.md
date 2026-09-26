@@ -70,6 +70,24 @@ For a layer surface, run `gnoblinctl layer list` while it is running. Use the
 reported namespace as the `layer` value. Layer surfaces do not appear in
 `window list`.
 
+### Keep layer opacity scoped
+
+Layer surfaces can include wallpaper clients. A rule matching only
+`{type = "layer"}` with `opacity` can fade a wallpaper over the desktop
+background, which looks like a color overlay. Match the layer namespace too:
+
+```lua
+gnoblin.window_rule {
+    match = {type = "layer", layer = "^my-panel$"},
+    opacity = 0.9,
+}
+```
+
+Get the exact namespace with `gnoblinctl layer list`. If you run a separate
+wallpaper client, [disable Gnoblin's built-in
+wallpaper](/guides/wallpapers#use-another-wallpaper-client) so the two
+backgrounds do not stack.
+
 ## Write a matcher
 
 The string fields `app_id`, `title`, and `layer` accept **JavaScript regular
