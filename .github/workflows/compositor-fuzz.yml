@@ -64,6 +64,15 @@ jobs:
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
             ./build.sh
 
+      - name: Disable false logind detection in the non-systemd container
+        run: |
+          if [[ ! -S /run/systemd/private ]]; then
+            # The Fedora image can contain /run/systemd/seats without running
+            # systemd-logind. GNOME Shell treats that path as proof of logind
+            # and its activation then fails on this disposable test bus.
+            rm -rf /run/systemd/seats
+          fi
+
       - name: Test Lua runtime GVariant ownership
         run: ./tests/test-config.sh lua-config
 
