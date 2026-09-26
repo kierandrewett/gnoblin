@@ -1,28 +1,28 @@
 From a6c2ccff2ffc8394308bd7e2959e7d8b435ccc4a Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 3 Jul 2026 01:31:45 +0100
-Subject: [PATCH] gnoblin-control: register control and Mutter events in the JS gresource
+Subject: [PATCH] gnoblin-control: register the control component in the JS
+ gresource
 
-Register the control component and Mutter event observer as GNOME Shell
-resources. The control component is enabled by Gnoblin's session mode.
+Adds the Gnoblin control component and Mutter event observer overlay files to
+the shell's JS resource bundle. The control component itself is enabled purely
+via the gnoblin session mode's components list.
 ---
  js/js-resources.gresource.xml | 2 ++
  1 file changed, 2 insertions(+)
 
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 9b9253b..cb00d3a 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -145,6 +145,7 @@
+@@ -145,6 +145,8 @@
      <file>ui/components.js</file>
      <file>ui/components/automountManager.js</file>
      <file>ui/components/autorunManager.js</file>
 +    <file>ui/components/gnoblinControl.js</file>
++    <file>ui/components/gnoblinMutterEvents.js</file>
      <file>ui/components/keyring.js</file>
      <file>ui/components/networkAgent.js</file>
      <file>ui/components/polkitAgent.js</file>
-@@ -171,2 +172,3 @@
-     <file>ui/status/volume.js</file>
-+    <file>ui/components/gnoblinMutterEvents.js</file>
-   </gresource>
 --
 2.55.0
