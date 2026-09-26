@@ -12,33 +12,53 @@ diff --git a/meson.build b/meson.build
 index cdd13b683..3cf6a3c55 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -278,0 +279,3 @@ if have_remote_desktop
+@@ -278,2 +278,5 @@ if have_remote_desktop
+   libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
 +  if libpipewire_dep.version().version_compare('>= 1.5.84')
 +    add_project_arguments('-DHAVE_PIPEWIRE_CAPABILITIES', language: 'c')
 +  endif
+ endif
 diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source.c
-index 263a05d4e..2ff65c409 100644
+index 263a05d4e..e71c27c41 100644
 --- a/src/backends/meta-stream-source.c
 +++ b/src/backends/meta-stream-source.c
-@@ -26,0 +27 @@
+@@ -26,3 +26,5 @@
+ #include <pipewire/pipewire.h>
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
-@@ -27,0 +29 @@
+ #include <pipewire/capabilities.h>
 +#endif
-@@ -1893,0 +1896 @@ build_format_params (MetaStreamSource       *source,
+ #include <spa/debug/pod.h>
+@@ -1894,2 +1896,3 @@
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
-@@ -1983,0 +1987 @@ build_capability_params (MetaStreamSource       *source,
+ static void
+ append_capabilities_dict_entry (MetaStreamSource *source,
+@@ -1984,2 +1987,3 @@
 +#endif
-@@ -1990,0 +1995 @@ build_stream_params (MetaStreamSource       *source,
+ static void
+ build_stream_params (MetaStreamSource       *source,
+@@ -1990,3 +1994,5 @@ build_stream_params (MetaStreamSource       *source,
+   build_tag_params (source, pod_builder, pod_offsets);
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
-@@ -1991,0 +1997 @@ build_stream_params (MetaStreamSource       *source,
+   build_capability_params (source, pod_builder, pod_offsets);
 +#endif
-@@ -2472,0 +2479 @@ on_tag_param_changed (MetaStreamSource *source,
+ }
+@@ -2473,2 +2479,3 @@
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
-@@ -2560,0 +2568 @@ on_peer_capability_param_changed (MetaStreamSource     *source,
+ static void
+ negotiate_with_device_cb (gpointer user_data)
+@@ -2561,2 +2568,3 @@
 +#endif
-@@ -2578,0 +2587 @@ on_stream_param_changed (void                 *data,
+ static void
+ on_stream_param_changed (void                 *data,
+@@ -2576,7 +2584,9 @@ on_stream_param_changed (void                 *data,
+     case SPA_PARAM_Tag:
+       on_tag_param_changed (source, param);
+       break;
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
-@@ -2581,0 +2591 @@ on_stream_param_changed (void                 *data,
+     case SPA_PARAM_PeerCapability:
+       on_peer_capability_param_changed (source, param);
+       break;
 +#endif
+     }
 --
 2.55.0

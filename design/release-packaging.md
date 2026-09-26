@@ -36,6 +36,11 @@ release pipeline or COPR publication changes.
   workflow run uses Debian package revision `-2`; revision `-1` remains
   immutable. The `gnoblin-v0.1.7` tag must point at the corrected release commit
   before rerunning the full Release workflow.
+- Release run `36226484341` was cancelled after Nix found that the first
+  compatibility patch used no-context hunks that landed at the wrong locations
+  after earlier Mutter patches shifted the source. The patch now anchors its
+  edits to the PipeWire dependency and affected functions; rerun the source and
+  Nix builds before allowing publication.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,
