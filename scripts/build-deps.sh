@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3 bundle_debian=${4:-false}
+    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false}
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -110,7 +110,7 @@ install_build_dependencies() {
             if apt-cache show hyprcursor-util >/dev/null 2>&1; then
                 packages+=(hyprcursor-util)
             fi
-            if "$bundle_debian"; then
+            if "$legacy_private_gtk"; then
                 # The compatibility closure builds these GNOME 51 development
                 # interfaces privately; the host packages are missing or too
                 # old on Debian 12 and Ubuntu 22.04.

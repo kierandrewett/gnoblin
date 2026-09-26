@@ -14,6 +14,14 @@ spec.loader.exec_module(package)
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_modern_deb_provisioning_keeps_host_gtk4_development_files(self):
+        provision = (ROOT / "scripts/provision-deb-container.sh").read_text()
+        dependencies = (ROOT / "scripts/build-deps.sh").read_text()
+        self.assertIn("legacy_private_gtk=false", provision)
+        self.assertIn('install_build_dependencies debian true false "$legacy_private_gtk"', provision)
+        filtered = dependencies.split('if "$legacy_private_gtk"; then', 1)[1].split("fi", 1)[0]
+        self.assertIn("libgtk-4-dev", filtered)
+
     def test_legacy_compatibility_runtime_pins_private_pango_for_gtk4(self):
         recipes = json.loads((ROOT / "packaging/deb/compat-bootstrap.json").read_text())
         by_name = {recipe["name"]: recipe for recipe in recipes}
