@@ -26,6 +26,10 @@ e2e_required_app_ids="${GNOBLIN_E2E_REQUIRED_APP_IDS:-}"
 e2e_app_ids="${APP_IDS:-}"
 app_selection_args=()
 if [[ -n "$e2e_app_ids" ]]; then
+    if [[ "$e2e_app_ids" =~ (^|,)[[:space:]]*(,|$) ]]; then
+        echo "APP_IDS must be a comma-separated list of non-empty app IDs" >&2
+        exit 2
+    fi
     IFS=',' read -r -a requested_app_ids <<<"$e2e_app_ids"
     for app_id in "${requested_app_ids[@]}"; do
         app_id="${app_id#"${app_id%%[![:space:]]*}"}"
