@@ -62,6 +62,7 @@ def build_report(artifact_root: Path) -> str:
     attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
     commit = os.environ.get("GITHUB_SHA", "unknown")
     artifact_name = f"gnoblin-app-e2e-shard-*-{run_id}-{attempt}"
+    commit_reference = f"[`{commit}`]({server}/{repo}/commit/{commit})" if commit != "unknown" else "`unknown`"
 
     lines = [
         f"# {ISSUE_TITLE}",
@@ -69,7 +70,7 @@ def build_report(artifact_root: Path) -> str:
         "This automated report records compatibility outcomes from the real Gnoblin app E2E run. Failures can come from Gnoblin, an app, or the test environment; inspect the attached artifacts before assigning a cause.",
         "",
         f"- Run: {server}/{repo}/actions/runs/{run_id}",
-        f"- Commit: `{commit}`",
+        f"- Commit: {commit_reference}",
         f"- Expected artifact pattern: `{artifact_name}`",
         f"- Failure fingerprint: `{fingerprint}`",
         f"- Shards with summaries: {len(summaries)}",

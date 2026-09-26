@@ -56,6 +56,7 @@ class AppFailureReportTests(unittest.TestCase):
             content = report.read_text()
             self.assertIn("Application compatibility triage", content)
             self.assertIn("https://github.com/kierandrewett/gnoblin/actions/runs/77", content)
+            self.assertIn("https://github.com/kierandrewett/gnoblin/commit/abc123", content)
             self.assertIn("gnoblin-app-e2e-shard-7", content)
             self.assertIn("org.example.NoWindow", content)
             self.assertIn("org.example.Control", content)

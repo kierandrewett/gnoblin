@@ -9,6 +9,8 @@ import select
 import subprocess
 import time
 
+FRAME_ACTION_CLOSE = 2
+
 
 def eval_shell(code: str, timeout: float = 5) -> object:
     result = subprocess.run(

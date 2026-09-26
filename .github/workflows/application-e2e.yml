@@ -239,11 +239,11 @@ jobs:
 
           if [[ -n "$existing_url" ]]; then
             gh issue comment "$existing_url" --body-file "$report"
-            bd github pull "$existing_url"
+            "$GITHUB_WORKSPACE/scripts/gnoblin-issues" pull "$existing_url"
             echo "Updated Beads/GitHub app compatibility issue: $existing_url"
             exit 0
           fi
 
           bead_id="$(bd create --silent --title "$issue_title" --type task --priority P2 --body-file "$report")"
-          bd github push "$bead_id"
+          "$GITHUB_WORKSPACE/scripts/gnoblin-issues" push "$bead_id"
           echo "Created Beads/GitHub app compatibility issue: $bead_id"

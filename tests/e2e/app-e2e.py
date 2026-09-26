@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
 from gnoblin_test_session import (  # noqa: E402
+    FRAME_ACTION_CLOSE,
     application_window_candidates,
     compile_minimal_testing_shell,
     eval_shell,
@@ -501,8 +502,10 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
     if has_gnoblin_frame or not state["fullscreen"]:
         if has_gnoblin_frame:
             try:
-                close_x, close_y = frame_button_center(state, 2)
-                close_region = next(item for item in state["layout"]["presentation"]["regions"] if item[0] == 2)
+                close_x, close_y = frame_button_center(state, FRAME_ACTION_CLOSE)
+                close_region = next(
+                    item for item in state["layout"]["presentation"]["regions"] if item[0] == FRAME_ACTION_CLOSE
+                )
                 click_details = {
                     "button": "gnoblin-close",
                     "target": [close_x, close_y],

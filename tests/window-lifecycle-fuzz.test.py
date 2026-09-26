@@ -30,7 +30,7 @@ assert fuzz.frame_button_center(
         "y": 50,
         "layout": {"presentation": {"regions": [[2, 300, 10, 20, 16]]}},
     },
-    2,
+    session.FRAME_ACTION_CLOSE,
 ) == (410, 68)
 
 pointer_calls = []
