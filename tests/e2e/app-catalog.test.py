@@ -27,11 +27,15 @@ assert parsed["app_id"] == "org.example.Editor"
 assert parsed["install"] == "example-editor"
 assert parsed["launch"] == "org.example.Editor"
 assert parsed["category"] == "Development"
-legacy = catalog_module.parse_component(ET.fromstring("""
+legacy = catalog_module.parse_component(
+    ET.fromstring(
+        """
 <component type="desktop">
   <id>org.example.Legacy.desktop</id><name>Legacy</name><pkgname>legacy</pkgname>
 </component>
-"""))
+"""
+    )
+)
 assert legacy["app_id"] == "org.example.Legacy"
 assert legacy["launch"] == "org.example.Legacy"
 
@@ -63,4 +67,14 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(identities) == len(set(identities)) == len(full["apps"])
     assert sum(len(shard["apps"]) for shard in shards) == len(full["apps"])
 
-print("PASS: AppStream desktop launch mapping, source exclusion, and lossless shard coverage")
+targeted = catalog_module.select_app_ids(shards[0], ["flat-10", "flat-0"])
+assert targeted["shard"] == shards[0]["shard"]
+assert [app["app_id"] for app in targeted["apps"]] == ["flat-10", "flat-0"]
+try:
+    catalog_module.select_app_ids(shards[0], ["missing-app"])
+except ValueError as error:
+    assert "missing-app" in str(error)
+else:
+    raise AssertionError("targeting an app outside the selected shard must fail")
+
+print("PASS: AppStream mapping, deterministic sharding, and targeted app selection")

@@ -90,10 +90,14 @@ compositor checks before it is accepted.
 workflow. Fuzzing runs nightly at 02:41 UTC or on manual dispatch, not on
 pushes or pull requests.
 
-The app sweep runs one shard on a pull request, all shards weekly, or a
-selected/full set on manual dispatch. Add the
-`gnoblin-full-e2e` label to a pull request to run all 40 shards (the complete
-800-app catalog) immediately.
+The app sweep runs one shard on pull requests and all shards weekly. Manual
+dispatch can run one shard or the full catalog. Add the `gnoblin-full-e2e` label
+to run all 40 shards (800 apps) on a pull request.
+
+For manual dispatch, set `app_ids` to a comma-separated list to isolate an app
+or replay an ordered sequence within the selected shard. Every ID must belong to
+that shard. For example, select shard 24 and `com.tencent.WeChat` to replay
+WeChat by itself.
 
 At workflow start, `tests/e2e/app-catalog.py` refreshes two independent sources:
 

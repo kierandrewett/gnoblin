@@ -200,6 +200,21 @@ def shard_catalog(catalog: dict, index: int, count: int) -> dict:
     }
 
 
+def select_app_ids(shard: dict, app_ids: list[str]) -> dict:
+    """Keep an explicitly requested, ordered subset of a prepared shard."""
+    available = {app["app_id"]: app for app in shard["apps"]}
+    missing = [app_id for app_id in app_ids if app_id not in available]
+    if missing:
+        raise ValueError("requested app IDs are not in the selected shard: " + ", ".join(missing))
+    selected = []
+    seen: set[str] = set()
+    for app_id in app_ids:
+        if app_id not in seen:
+            selected.append(available[app_id])
+            seen.add(app_id)
+    return {**shard, "apps": selected}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fedora-appstream", type=Path, default=Path("/usr/share/swcatalog/xml/fedora.xml.gz"))
@@ -210,6 +225,12 @@ def main() -> int:
     parser.add_argument("--shard-index", type=int)
     parser.add_argument("--shard-count", type=int, default=40)
     parser.add_argument("--shard-output", type=Path)
+    parser.add_argument(
+        "--app-id",
+        action="append",
+        default=[],
+        help="select one app ID from the shard; may be repeated for an ordered subset",
+    )
     args = parser.parse_args()
     if args.catalog_in:
         catalog = json.loads(args.catalog_in.read_text())
@@ -232,6 +253,8 @@ def main() -> int:
         if args.shard_output is None:
             raise SystemExit("--shard-output is required with --shard-index")
         shard = shard_catalog(catalog, args.shard_index, args.shard_count)
+        if args.app_id:
+            shard = select_app_ids(shard, args.app_id)
         args.shard_output.parent.mkdir(parents=True, exist_ok=True)
         args.shard_output.write_text(json.dumps(shard, indent=2, sort_keys=True) + "\n")
         print(f"Shard {args.shard_index}/{args.shard_count}: {len(shard['apps'])} apps")

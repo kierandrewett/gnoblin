@@ -23,6 +23,20 @@ runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
 e2e_uid="$(id -u e2e)"
 e2e_failure_policy="${GNOBLIN_E2E_FAILURE_POLICY:-strict}"
 e2e_required_app_ids="${GNOBLIN_E2E_REQUIRED_APP_IDS:-}"
+e2e_app_ids="${APP_IDS:-}"
+app_selection_args=()
+if [[ -n "$e2e_app_ids" ]]; then
+    IFS=',' read -r -a requested_app_ids <<<"$e2e_app_ids"
+    for app_id in "${requested_app_ids[@]}"; do
+        app_id="${app_id#"${app_id%%[![:space:]]*}"}"
+        app_id="${app_id%"${app_id##*[![:space:]]}"}"
+        if [[ -z "$app_id" ]]; then
+            echo "APP_IDS must be a comma-separated list of non-empty app IDs" >&2
+            exit 2
+        fi
+        app_selection_args+=(--app-id "$app_id")
+    done
+fi
 mkdir -p "$ARTIFACT_DIR"
 python3 scripts/devkit_dbus.py \
     "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE"
@@ -31,6 +45,7 @@ flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/
 python3 tests/e2e/app-catalog.py \
     --catalog-in "$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
     --shard-index "$SHARD_INDEX" --shard-count 40 \
+    "${app_selection_args[@]}" \
     --shard-output "$ARTIFACT_DIR/shard.json"
 
 python3 tests/e2e/install-shard.py \
