@@ -12,10 +12,10 @@ does not define HAVE_WAYLAND. Call the Gnoblin runtime directly instead of
 building an unsupported fallback into the API wrapper.
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 06accd2fb..fbb20d51f 100644
+index 06accd2fb..5692d954f 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -838,0 +839,13 @@ meta_gnoblin_finish_config_event (gboolean commit)
+@@ -838,0 +839,12 @@ meta_gnoblin_finish_config_event (gboolean commit)
 +GVariant *
 +meta_gnoblin_call_config_api (const char *method,
 +                              GVariant   *arguments,
@@ -29,8 +29,9 @@ index 06accd2fb..fbb20d51f 100644
 +{
 +  return gnoblin_config_drain_runtime_operations ();
 +}
++
 diff --git a/src/meta/util.h b/src/meta/util.h
-index b522e30d2..5b301f3c0 100644
+index b522e30d2..d2d1334e4 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
 @@ -120,0 +121,6 @@ void meta_gnoblin_finish_config_event (gboolean commit);

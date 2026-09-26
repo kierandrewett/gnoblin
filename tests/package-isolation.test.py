@@ -194,8 +194,8 @@ class IsolationTests(unittest.TestCase):
             env_script,
         )
         self.assertLess(
-            publisher.index('copr-cli build "$project" "$schemas_srpm"'),
-            publisher.index('copr-cli build "$project" "$mutter_srpm"'),
+            publisher.index('build_in_supported_fedora_chroots "$schemas_srpm"'),
+            publisher.index('build_in_supported_fedora_chroots "$mutter_srpm"'),
         )
         isolation.validate(
             "gnoblin-gsettings-desktop-schemas",
