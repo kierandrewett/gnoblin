@@ -745,15 +745,45 @@ def run_one_app(
                                         after=window_evidence(before),
                                     )
                                     x, y, width, height = (before[k] for k in ("x", "y", "width", "height"))
-                            handle_y = min(max(y + height // 2, monitor_top + 2), monitor_bottom - 2)
                             right_edge = x + width - 2
-                            drag_end_x = min(right_edge + 38, monitor_right - 2)
+                            bottom_edge = y + height - 2
+                            drag_edge = None
+                            drag_start = drag_end = None
                             if (
                                 monitor_left + 2 <= right_edge < monitor_right - 2
-                                and drag_end_x - right_edge >= 8
-                                and monitor_top + 2 <= handle_y < monitor_bottom - 2
+                                and monitor_top + 2 <= bottom_edge < monitor_bottom - 2
                             ):
-                                shell_drag(right_edge, handle_y, drag_end_x, handle_y)
+                                drag_end = (
+                                    min(right_edge + 38, monitor_right - 2),
+                                    min(bottom_edge + 30, monitor_bottom - 2),
+                                )
+                                if drag_end[0] - right_edge >= 8 and drag_end[1] - bottom_edge >= 8:
+                                    drag_edge = "bottom-right"
+                                    drag_start = (right_edge, bottom_edge)
+                            if drag_edge is None:
+                                top_edge = y + 2
+                                top_drag_distance = min(30, top_edge - (monitor_top + 2))
+                                if monitor_left + 2 <= right_edge < monitor_right - 2 and top_drag_distance >= 8:
+                                    drag_edge = "top-right"
+                                    drag_start = (right_edge, top_edge)
+                                    drag_end = (
+                                        min(right_edge + 38, monitor_right - 2),
+                                        top_edge - top_drag_distance,
+                                    )
+                            if drag_edge is None:
+                                handle_y = min(max(y + height // 2, monitor_top + 2), monitor_bottom - 2)
+                                drag_end_x = min(right_edge + 38, monitor_right - 2)
+                                if (
+                                    monitor_left + 2 <= right_edge < monitor_right - 2
+                                    and drag_end_x - right_edge >= 8
+                                    and monitor_top + 2 <= handle_y < monitor_bottom - 2
+                                ):
+                                    drag_edge = "right"
+                                    drag_start = (right_edge, handle_y)
+                                    drag_end = (drag_end_x, handle_y)
+                            if drag_edge is not None:
+                                assert drag_start is not None and drag_end is not None
+                                shell_drag(*drag_start, *drag_end)
                                 resized = wait_for(
                                     lambda: (
                                         lambda after: (
@@ -762,13 +792,13 @@ def run_one_app(
                                             else None
                                         )
                                     )(window_state(sequence)),
-                                    "visible native-frame resize edge",
+                                    f"visible native-frame {drag_edge} resize handle",
                                     timeout=1.5,
                                 )
                                 record(
                                     "resize-handle-drag",
                                     "observed",
-                                    edge="right",
+                                    edge=drag_edge,
                                     before=window_evidence(before),
                                     after=window_evidence(resized),
                                 )
@@ -786,7 +816,13 @@ def run_one_app(
                         elif before:
                             record("resize-handle-drag", "not-supported", capability="can_resize")
                     except Exception as error:
-                        record("resize-handle-drag", "unsupported-or-error", error=str(error))
+                        record(
+                            "resize-handle-drag",
+                            "unsupported-or-error",
+                            error=str(error),
+                            before=window_evidence(before),
+                            after=capture_window_evidence(sequence),
+                        )
                         if before and before["can_resize"]:
                             control_failed = True
 

@@ -123,9 +123,12 @@ valid resize request.
 
 Window-state traces also include all monitor bounds. Before the physical
 resize-handle probe, the driver positions a window to expose a visible right
-edge when its current placement leaves no room for the pointer drag. If the
-window or monitor leaves no valid drag path, the trace records that constraint
-instead of sending pointer events to coordinates outside the display.
+edge when its current placement leaves no room for the pointer drag. It uses a
+visible bottom-right or top-right corner when available, then falls back to the
+right edge.
+
+If the window or monitor leaves no valid drag path, the trace
+records that constraint instead of sending pointer events outside the display.
 
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
