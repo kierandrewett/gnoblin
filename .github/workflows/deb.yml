@@ -83,6 +83,10 @@ jobs:
           mkdir -p build/compat-dependencies
           chown -R builder "$GITHUB_WORKSPACE"
           chown -R builder build/compat-dependencies
+      - name: Verify the pinned build-only Rust toolchain
+        run: |
+          runuser -u builder -- env PATH="/opt/gnoblin-compat-build-tools/bin:$PATH" rustc --version
+          runuser -u builder -- env PATH="/opt/gnoblin-compat-build-tools/bin:$PATH" cargo --version
       - name: Build the pinned private GTK/GCR closure
         run: |
           runuser -u builder -- env PATH="/opt/gnoblin-compat-build-tools/bin:$PATH" \

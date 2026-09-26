@@ -18,7 +18,7 @@ esac
 apt-get update
 apt-get install -y --no-install-recommends \
     build-essential bison ca-certificates flex git libdrm-dev libegl-dev libepoxy-dev \
-    libffi-dev libgbm-dev libgcrypt20-dev libgles-dev libgraphene-1.0-dev \
+    libffi-dev libgbm-dev libgcrypt20-dev libgles-dev libgraphene-1.0-dev libheif-dev libseccomp-dev \
     libgtk-4-dev libjpeg-dev libmount-dev libp11-kit-dev libpango1.0-dev \
     libpcre2-dev libpng-dev libsecret-1-dev libtiff-dev libwayland-dev \
     libwebp-dev libxkbcommon-dev libxml2-dev make meson ninja-build openssh-client \

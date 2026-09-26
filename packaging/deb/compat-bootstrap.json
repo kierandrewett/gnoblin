@@ -83,5 +83,16 @@
     "requires": ["glib-final", "gtk4"],
     "private_pkgconfig": ["gcr-4.pc"],
     "options": ["-Dvapi=false", "-Dgtk_doc=false", "-Dintrospection=false"]
+  },
+  {
+    "name": "libheif",
+    "version": "1.17.6",
+    "url": "https://github.com/strukturag/libheif/releases/download/v1.17.6/libheif-1.17.6.tar.gz",
+    "sha256": "8390baf4913eda0a183e132cec62b875fb2ef507ced5ddddc98dfd2f17780aee",
+    "build_system": "cmake",
+    "requires": ["patchelf"],
+    "targets": ["heif"],
+    "private_pkgconfig": ["libheif.pc"],
+    "options": ["-DBUILD_TESTING=OFF", "-DWITH_EXAMPLES=OFF", "-DWITH_GDK_PIXBUF=OFF"]
   }
 ]

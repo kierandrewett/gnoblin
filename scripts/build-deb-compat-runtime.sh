@@ -65,7 +65,7 @@ for recipe in [*debian, *base]:
     combined.append(recipe)
 
 required = {
-    "glib-final", "wayland", "wayland-protocols", "gtk4", "gcr4", "glycin",
+    "glib-final", "wayland", "wayland-protocols", "gtk4", "gcr4", "libheif", "glycin",
     "libei", "libdisplay-info", "hyprcursor", "mozjs", "gjs", "gnome-desktop",
 }
 missing = required - names
