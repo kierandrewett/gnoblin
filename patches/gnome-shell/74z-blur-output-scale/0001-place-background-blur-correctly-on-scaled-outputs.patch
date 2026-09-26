@@ -1,0 +1,123 @@
+From 62b97221617951acaa18d927767641c2fac28ead Mon Sep 17 00:00:00 2001
+From: Gnoblin <gnoblin@localhost>
+Date: Sat, 26 Sep 2026 19:22:09 +0100
+Subject: [PATCH] Place background blur correctly on scaled outputs
+
+The alpha mask for masked background blur is painted in actor
+coordinates into a texture sized in output pixels. On a scaled output
+the actor covered only part of that texture, and sampling it across the
+whole blur box placed coverage at a multiple of its real position and
+size, so blur appeared beside or away from the surface it belongs to.
+Scale the actor to fill the mask texture.
+
+Off-stage paints (screenshots, screencasts and screencopy) have no stage
+view, and the effect assumed stage pixels were framebuffer pixels, which
+only holds at scale 1. It then read a region of the wrong size and place
+from the capture and showed a magnified backdrop. Clutter maps the stage
+into such a framebuffer through its viewport, so derive the scale and
+offset from the viewport and clip reads to the framebuffer, as the stage
+view path already does.
+---
+ src/shell-blur-effect.c | 56 ++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 47 insertions(+), 9 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index f7bba4e96..ae7d64b13 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -634,6 +634,9 @@ update_actor_box (ShellBlurEffect     *self,
+           height = (self->paint_box.y2 - self->paint_box.y1) * sy;
+         }
+ 
++      float bounds_width = 0, bounds_height = 0;
++      gboolean clip_to_bounds = FALSE;
++
+       if (stage_view)
+         {
+           MtkRectangle stage_view_layout;
+@@ -643,7 +646,38 @@ update_actor_box (ShellBlurEffect     *self,
+ 
+           origin_x -= stage_view_layout.x;
+           origin_y -= stage_view_layout.y;
+-          /* Keep framebuffer reads inside this view, retaining the matching
++          bounds_width = stage_view_layout.width;
++          bounds_height = stage_view_layout.height;
++          clip_to_bounds = TRUE;
++        }
++      else
++        {
++          /* Off-stage paints — screenshots, screencasts, screencopy — have no
++           * stage view. Clutter maps the stage into their framebuffer through
++           * the viewport, scaled and offset to the captured area, so read the
++           * same mapping back instead of assuming stage pixels are
++           * framebuffer pixels, which only holds at scale 1. */
++          CoglFramebuffer *framebuffer =
++            clutter_paint_context_get_framebuffer (paint_context);
++          ClutterActor *stage = clutter_actor_get_stage (self->actor);
++          float stage_width = stage ? clutter_actor_get_width (stage) : 0;
++          float viewport[4];
++
++          cogl_framebuffer_get_viewport4fv (framebuffer, viewport);
++          if (stage_width > 0 && viewport[2] > 0)
++            {
++              box_scale_factor = viewport[2] / stage_width;
++              origin_x += viewport[0] / box_scale_factor;
++              origin_y += viewport[1] / box_scale_factor;
++              bounds_width = cogl_framebuffer_get_width (framebuffer) / box_scale_factor;
++              bounds_height = cogl_framebuffer_get_height (framebuffer) / box_scale_factor;
++              clip_to_bounds = TRUE;
++            }
++        }
++
++      if (clip_to_bounds)
++        {
++          /* Keep framebuffer reads inside the target, retaining the matching
+            * actor-local texture origin for masks and output coordinates. */
+           float actor_width, actor_height, transformed_width, transformed_height;
+           clutter_actor_get_size (self->actor, &actor_width, &actor_height);
+@@ -652,8 +686,8 @@ update_actor_box (ShellBlurEffect     *self,
+           float sy = actor_height > 0 ? transformed_height / actor_height : 1;
+           float left = MAX (0, origin_x);
+           float top = MAX (0, origin_y);
+-          float right = MIN (stage_view_layout.width, origin_x + width);
+-          float bottom = MIN (stage_view_layout.height, origin_y + height);
++          float right = MIN (bounds_width, origin_x + width);
++          float bottom = MIN (bounds_height, origin_y + height);
+           if (sx > 0 && sy > 0)
+             {
+               self->paint_box.x1 += (left - origin_x) / sx;
+@@ -666,12 +700,6 @@ update_actor_box (ShellBlurEffect     *self,
+           width = MAX (0, right - left);
+           height = MAX (0, bottom - top);
+         }
+-      else
+-        {
+-          /* If we're drawing off stage, just assume scale = 1, this won't work
+-           * with stage-view scaling though.
+-           */
+-        }
+ 
+       clutter_actor_box_set_origin (source_actor_box, origin_x, origin_y);
+       clutter_actor_box_set_size (source_actor_box, width, height);
+@@ -985,8 +1013,18 @@ paint_actor_mask (ShellBlurEffect *self,
+                                                           self->actor_fb.pipeline);
+       clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (alpha mask)");
+       clutter_paint_node_add_child (node, layer_node);
++      float box_width = self->paint_box.x2 - self->paint_box.x1;
++      float box_height = self->paint_box.y2 - self->paint_box.y1;
+       graphene_matrix_init_translate (&transform, &GRAPHENE_POINT3D_INIT (
+         -self->paint_box.x1, -self->paint_box.y1, 0));
++      /* The mask is painted in actor coordinates into a texture sized in
++       * output pixels. Scale it to fill that texture, or on a scaled output
++       * the coverage lands at a multiple of its real position and size. */
++      if (box_width > 0 && box_height > 0)
++        graphene_matrix_scale (&transform,
++                               cogl_texture_get_width (self->actor_fb.texture) / box_width,
++                               cogl_texture_get_height (self->actor_fb.texture) / box_height,
++                               1.f);
+       /* Keep client coverage at output resolution. Downsampling expands corners. */
+       transform_node = clutter_transform_node_new (&transform);
+       clutter_paint_node_add_child (layer_node, transform_node);
+-- 
+2.55.0
+
