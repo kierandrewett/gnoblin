@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the experimental full private GNOME runtime for older Debian-family
-# targets.  This deliberately remains separate from build-deb.sh: it does not
-# make Debian 12 or Ubuntu 22.04 a supported package target.
+# Build the complete private GNOME runtime and DEB package for older
+# Debian-family targets whose host libraries are below the GNOME 51 interface
+# floor.
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$(realpath -- "$0")")/.." && pwd)"
@@ -16,7 +16,7 @@ source /etc/os-release
 case "$ID:$VERSION_ID" in
     debian:12 | ubuntu:22.04) ;;
     *)
-        echo 'The experimental compatibility runtime is limited to Debian 12 and Ubuntu 22.04.' >&2
+        echo 'The compatibility runtime is limited to Debian 12 and Ubuntu 22.04.' >&2
         exit 2
         ;;
 esac

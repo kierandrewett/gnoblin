@@ -18,6 +18,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("PACKAGE_REF: ${{ inputs.ref || github.sha }}", build)
         self.assertIn("ref: ${{ inputs.ref || github.sha }}", install)
 
+    def test_debian_compatibility_targets_are_built_installed_and_removed_on_release(self):
+        workflow = (ROOT / ".github/workflows/deb.yml").read_text()
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
+        install = workflow.split("\n  install:\n", 1)[1]
+        for target in ("debian12", "ubuntu22.04"):
+            self.assertIn(f"target: {target}", build)
+            self.assertIn(f"target: {target}", install)
+        self.assertIn("scripts/build-deb-compat-runtime.sh --revision", build)
+        self.assertIn("scripts/provision-deb-compat-container.sh", build)
+
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
         version = subprocess.check_output(
