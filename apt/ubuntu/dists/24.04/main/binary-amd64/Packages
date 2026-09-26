@@ -1,5 +1,5 @@
 Package: gnoblin
-Version: 51.0+gnoblin0.1.7-5~ubuntu24.04
+Version: 51.0+gnoblin0.1.7-6~ubuntu24.04
 Architecture: amd64
 Maintainer: Gnoblin Developers <release@gnoblin.local>
 Section: x11
@@ -9,7 +9,7 @@ Depends: adwaita-icon-theme, brightnessctl, bubblewrap, dbus-user-session, dconf
 Homepage: https://github.com/kierandrewett/gnoblin
 Description: Wayland desktop with a private GNOME runtime
  Installs a separate Gnoblin login session without replacing GNOME.
-Filename: pool/main/g/gnoblin/gnoblin_51.0+gnoblin0.1.7-5~ubuntu24.04_amd64.deb
-Size: 70378362
-MD5sum: ac8c5694b37060b79389abbc16cd38de
-SHA256: b4202de431c96c0f831b7fd7065cb133ca30c00857ef9f76b7f999d43575f978
+Filename: pool/main/g/gnoblin/gnoblin_51.0+gnoblin0.1.7-6~ubuntu24.04_amd64.deb
+Size: 70378342
+MD5sum: 5941e622aed4d213ef2af4a38ce20698
+SHA256: 3d6ed3596c6cacc30ac2d19945784d6c991f2352a8fc00de83b9bb4b3cfa1f22
