@@ -100,7 +100,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("required: true", workflow)
         self.assertIn('gh release download "$RELEASE_TAG"', workflow)
         self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
-        self.assertIn("dnf -y install --refresh gnoblin", workflow)
+        self.assertIn("RELEASE_TAG: ${{ inputs.tag }}", workflow)
+        self.assertIn('dnf -y install --refresh "gnoblin-$expected_version"', workflow)
+        self.assertIn('test "$installed_version" = "$expected_version"', workflow)
         self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):
