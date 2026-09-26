@@ -29,6 +29,7 @@ SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
 from gnoblin_test_session import (  # noqa: E402
     eval_shell,
+    frame_button_center,
     send_pointer,
     shell_window,
     shell_windows,
@@ -104,18 +105,6 @@ def window_operation_expression(action: dict, window_expr: str) -> str:
     if op in operations:
         return operations[op]
     raise ValueError(f"unsupported operation: {op}")
-
-
-def frame_button_center(state: dict, action: int) -> tuple[int, int]:
-    """Get a frame button's actual input region from the compositor layout."""
-    regions = state["layout"]["presentation"]["regions"]
-    region = next((item for item in regions if item[0] == action), None)
-    if region is None:
-        raise RuntimeError(f"frame button action {action} has no input region")
-    return (
-        state["x"] + region[1] + region[3] // 2,
-        state["y"] + region[2] + region[4] // 2,
-    )
 
 
 def validate_plan(value: object) -> dict:

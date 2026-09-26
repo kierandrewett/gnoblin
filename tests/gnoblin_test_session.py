@@ -89,6 +89,18 @@ def application_window_candidates(
     return sorted(candidates, key=lambda window: (window["type"] != modal_dialog_type, window["sequence"]))
 
 
+def frame_button_center(state: dict, action: int) -> tuple[int, int]:
+    """Return the center of an advertised native-frame button input region."""
+    regions = state["layout"]["presentation"]["regions"]
+    region = next((item for item in regions if item[0] == action), None)
+    if region is None:
+        raise RuntimeError(f"frame button action {action} has no input region")
+    return (
+        state["x"] + region[1] + region[3] // 2,
+        state["y"] + region[2] + region[4] // 2,
+    )
+
+
 def wait_for(predicate, description: str, timeout: float = 5) -> object:
     deadline = time.monotonic() + timeout
     last = None
