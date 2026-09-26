@@ -39,6 +39,11 @@ on:
         type: string
         default: ""
         required: false
+      extra_monitor:
+        description: Optional secondary monitor size, for example 1600x1000
+        type: string
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -157,6 +162,7 @@ jobs:
           SHARD_INDEX: ${{ matrix.shard }}
           TRACE_CRASH: ${{ inputs.trace_crash || false }}
           APP_IDS: ${{ inputs.app_ids }}
+          GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE: ${{ inputs.extra_monitor }}
           GNOBLIN_E2E_FAILURE_POLICY: ${{ github.event_name == 'pull_request' && 'required' || 'strict' }}
           GNOBLIN_E2E_REQUIRED_APP_IDS: org.alacritty.Alacritty
         run: |

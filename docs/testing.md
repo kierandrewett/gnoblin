@@ -116,6 +116,34 @@ whether each app maps a window, then captures a screenshot and checks activation
 native frames, move/resize, titlebar dragging, resize handles, maximize,
 minimize, fullscreen and close. It also saves the app's stdout and stderr.
 
+After the first window maps, the driver waits for the app's window set and
+geometry to remain unchanged for four seconds, with a 15-second bound. This lets
+startup splash windows hand off to the real app window before controls begin; the
+trace records whether the window set settled before the bound.
+
+Resize traces include the requested frame rectangle, before/after bounds and
+the app's minimum and maximum size hints. A request is recorded as constrained
+if either requested dimension is below its matching minimum hint; each resizable
+app must still complete a valid resize request.
+
+Window-state traces also include all monitor bounds. Before the physical
+resize-handle probe, the driver positions a window to expose a visible right
+edge when its current placement leaves no room for the pointer drag. It uses a
+visible bottom-right or top-right corner when available, then falls back to the
+right edge.
+
+If the window or monitor leaves no valid drag path, the trace
+records that constraint instead of sending pointer events outside the display.
+
+If an app window disappears during an operation, the trace records the
+operation, client PID status and any remaining app windows, then skips the
+remaining controls for that window. Outcomes also include the launcher's exit
+code and mapped client PID status at sequence end.
+
+The close check clicks a Gnoblin or client-drawn titlebar button before sending
+a window-manager close request. A close timeout records
+whether the window still exists and whether Mutter reports it can close.
+
 The pull-request run attempts every app in shard 0 but gates on the pinned
 Alacritty close regression. The repair artifact still records outcomes from
 the other apps.
@@ -127,11 +155,15 @@ per-app report for follow-up.
 
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.
+The private session bus provides Flatpak's runtime portal for sandboxed clients
+and the IBus daemon for Shell input-method integration.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
-virtual 1280x800 monitors and software rendering. It exercises real Flatpak
-and RPM clients against real Gnoblin windows without a physical GPU or logged-in
-desktop.
+a virtual 1280x800 monitor and software rendering. Even-numbered shards add a
+1024x768 secondary monitor. Manual runs can set `extra_monitor` to a different
+secondary size when isolating monitor-size constraints. The suite exercises
+real Flatpak and RPM clients against real Gnoblin windows without a physical GPU
+or logged-in desktop.
 
 GPU drivers, physical input devices and a hardware login need separate coverage
 using the [hardware verification](real-hardware-verification.md) checklist.
