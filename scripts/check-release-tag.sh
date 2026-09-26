@@ -6,10 +6,10 @@ root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 version="$("$root/scripts/gnoblin-version.py" get version)"
 tag="${1:?release tag required}"
 if [ "$tag" = "gnoblin-v$version" ]; then
-    # 0.1.7-1 is already immutable in the APT repositories. Keep the SemVer
-    # tag while publishing the corrected source build as Debian revision 2.
+    # 0.1.7-1 and -2 are immutable in the APT repositories. Keep the SemVer
+    # tag while publishing the corrected source build as Debian revision 3.
     if [ "$version" = "0.1.7" ]; then
-        echo 2
+        echo 3
     else
         echo 1
     fi

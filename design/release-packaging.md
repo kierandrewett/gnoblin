@@ -48,6 +48,12 @@ release pipeline or COPR publication changes.
   stale asset was removed and the COPR job rerun. The release workflow now
   removes draft assets absent from the fresh build before upload, preventing
   this repair failure on later releases.
+- COPR build `11037820` then exposed three more PipeWire 1.5-only headers absent
+  from Fedora 43's PipeWire 1.4.11: `spa/param/dict.h`, `dict-utils.h`, and
+  `peer-utils.h`. The compatibility patch now guards those includes with the
+  same capability check. Since Debian revisions `-1` and `-2` are published,
+  the next release run uses Debian revision `-3`; the matching Mutter RPM
+  release is `51.0-26.gnoblin`.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,

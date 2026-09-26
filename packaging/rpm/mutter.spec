@@ -34,7 +34,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       25.gnoblin%{?dist}
+Release:       26.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -165,6 +165,9 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-26.gnoblin
+- Guard PipeWire 1.5-only SPA headers on Fedora 43 PipeWire 1.4.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-25.gnoblin
 - Build screen-cast device negotiation conditionally for PipeWire 1.4 hosts.
 

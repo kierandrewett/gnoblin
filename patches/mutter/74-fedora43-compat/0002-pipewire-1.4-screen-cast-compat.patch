@@ -22,12 +22,29 @@ diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source
 index 263a05d4e..e71c27c41 100644
 --- a/src/backends/meta-stream-source.c
 +++ b/src/backends/meta-stream-source.c
-@@ -26,3 +26,5 @@
+@@ -24,14 +24,22 @@
+ #include <fcntl.h>
+ #include <glib/gstdio.h>
  #include <pipewire/pipewire.h>
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
  #include <pipewire/capabilities.h>
 +#endif
  #include <spa/debug/pod.h>
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+ #include <spa/param/dict.h>
++#endif
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+ #include <spa/param/dict-utils.h>
++#endif
+ #include <spa/param/props.h>
+ #include <spa/param/format-utils.h>
+ #include <spa/param/tag-utils.h>
++#ifdef HAVE_PIPEWIRE_CAPABILITIES
+ #include <spa/param/peer-utils.h>
++#endif
+ #include <spa/param/video/format-utils.h>
+ #include <spa/pod/dynamic.h>
+ #include <spa/utils/result.h>
 @@ -1894,2 +1896,3 @@
 +#ifdef HAVE_PIPEWIRE_CAPABILITIES
  static void
