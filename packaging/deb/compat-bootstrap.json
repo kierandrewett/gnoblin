@@ -64,7 +64,7 @@
     "version": "4.14.5",
     "url": "https://download.gnome.org/sources/gtk/4.14/gtk-4.14.5.tar.xz",
     "sha256": "5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d",
-    "requires": ["glib-final", "gdk-pixbuf", "wayland-protocols"],
+    "requires": ["glib-final", "gdk-pixbuf", "wayland-protocols", "pango"],
     "private_pkgconfig": ["gtk4.pc"],
     "options": [
       "-Dintrospection=disabled",
@@ -83,6 +83,22 @@
     "requires": ["glib-final", "gtk4"],
     "private_pkgconfig": ["gcr-4.pc"],
     "options": ["-Dvapi=false", "-Dgtk_doc=false", "-Dintrospection=false"]
+  },
+  {
+    "name": "pango",
+    "version": "1.50.14",
+    "url": "https://download.gnome.org/sources/pango/1.50/pango-1.50.14.tar.xz",
+    "sha256": "1d67f205bfc318c27a29cfdfb6828568df566795df0cb51d2189cde7f2d581e8",
+    "requires": ["glib-final", "gobject-introspection-bootstrap"],
+    "private_pkgconfig": ["pango.pc", "pangocairo.pc", "pangoft2.pc"],
+    "private_typelibs": ["Pango-1.0.typelib", "PangoCairo-1.0.typelib"],
+    "options": [
+      "-Dgtk_doc=false",
+      "-Dintrospection=enabled",
+      "-Dinstall-tests=false",
+      "-Dsysprof=disabled",
+      "-Dlibthai=disabled"
+    ]
   },
   {
     "name": "libheif",

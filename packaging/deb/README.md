@@ -53,7 +53,7 @@ of the same GNOME release.
 The shared dependency builder reads `build-dependencies.json`. Debian 13 and
 Ubuntu 24.04 build the libraries in `packaging/deb/build-dependencies.json`,
 including SpiderMonkey and Glycin. Debian 11/12 and Ubuntu 22.04 use a pinned
-compatibility closure for GLib, Wayland, GTK, GCR, SpiderMonkey, GJS and Glycin;
+compatibility closure for GLib, Wayland, Pango, GTK, GCR, SpiderMonkey, GJS and Glycin;
 those libraries stay under `/usr/lib/gnoblin/deps` too. A checksum-verified
 Rust 1.85.1 toolchain is used only while building the older targets.
 
