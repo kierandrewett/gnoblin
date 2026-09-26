@@ -77,7 +77,11 @@ def package_stanza(package: Path, relative_name: Path) -> str:
 
 def write_packages(archive_root: Path, suite: Suite) -> list[Path]:
     pool = archive_root / suite.archive / "pool" / "main" / "g" / "gnoblin"
-    packages = sorted(pool.glob("*.deb"))
+    packages = [
+        package
+        for package in sorted(pool.glob("*.deb"))
+        if control_fields(package).get("Version", "").endswith(f"~{suite.version_suffix}")
+    ]
     if not packages:
         raise ValueError(f"{suite.archive} {suite.suite} has no packages")
     index = archive_root / suite.archive / "dists" / suite.suite / "main" / "binary-amd64" / "Packages"

@@ -54,6 +54,10 @@ release pipeline or COPR publication changes.
   same capability check. Since Debian revisions `-1` and `-2` are published,
   the next release run uses Debian revision `-3`; the matching Mutter RPM
   release is `51.0-26.gnoblin`.
+- The APT revision `-3` publication revealed that each Ubuntu suite index
+  included both Ubuntu builds from the shared pool. Filter each index by its
+  version suffix and republish the archive before treating APT availability
+  as correct. The release workflow now tests the suite-specific index rule.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,
