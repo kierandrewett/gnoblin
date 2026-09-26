@@ -403,6 +403,71 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
     return ["gtk-launch", app["launch"]]
 
 
+def capture_flatpak_runtime_diagnostics(app: dict, client_environment: dict[str, str], artifact_dir: Path) -> dict:
+    """Record Vulkan driver visibility inside a Flatpak after a no-window launch."""
+    diagnostic_dir = artifact_dir / "flatpak-runtime-diagnostics"
+    diagnostic_dir.mkdir(parents=True, exist_ok=True)
+    diagnostic_path = diagnostic_dir / f"{hashlib.sha256(app['app_id'].encode()).hexdigest()[:12]}.txt"
+    probe = r"""set +e
+echo '--- sandbox identity ---'
+id
+cat /etc/os-release
+printf '\n--- Vulkan-related environment ---\n'
+env | sort | grep -E '^(VK_|MESA_|LIBGL_|LD_LIBRARY_PATH|FLATPAK_GL_DRIVERS=)' || true
+printf '\n--- Vulkan ICD manifests visible in sandbox ---\n'
+find /usr/share/vulkan /usr/lib/vulkan /usr/lib64/vulkan /usr/lib/extensions -type f -path '*/vulkan/icd.d/*.json' -print -exec cat {} \; 2>/dev/null
+printf '\n--- lavapipe and Vulkan loader libraries visible in sandbox ---\n'
+find /usr/lib /usr/lib64 -maxdepth 8 \( -type f -o -type l \) \( -name 'libvulkan_lvp.so' -o -name 'libvulkan.so.1' \) -print 2>/dev/null
+if command -v ldconfig >/dev/null 2>&1; then ldconfig -p 2>/dev/null | grep -i vulkan || true; fi
+printf '\n--- Vulkan device nodes visible in sandbox ---\n'
+ls -la /dev/dri /dev/vulkan 2>&1 || true
+printf '\n--- in-sandbox vulkaninfo ---\n'
+if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else echo 'vulkaninfo is not installed in the app runtime'; fi
+"""
+    environment = client_environment.copy()
+    environment.pop("VK_ICD_FILENAMES", None)
+    command = [
+        "flatpak",
+        "run",
+        "--verbose",
+        f"--env=DISPLAY={client_environment['DISPLAY']}",
+        f"--env=LANG={client_environment['LANG']}",
+        "--env=LIBGL_ALWAYS_SOFTWARE=1",
+        "--socket=wayland",
+        "--socket=x11",
+        "--command=sh",
+        app["launch"],
+        "-c",
+        probe,
+    ]
+    with diagnostic_path.open("w") as log:
+        log.write("--- host Flatpak GL drivers ---\n")
+        try:
+            subprocess.run(
+                ["flatpak", "--gl-drivers"],
+                env=environment,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            log.write(f"Could not list host Flatpak GL drivers: {error}\n")
+        log.write("\n--- app sandbox probe ---\n")
+        try:
+            result = subprocess.run(
+                command,
+                env=environment,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=30,
+                check=False,
+            )
+            return {"path": str(diagnostic_path), "return_code": result.returncode}
+        except (OSError, subprocess.TimeoutExpired) as error:
+            log.write(f"Could not complete app sandbox probe: {error}\n")
+            return {"path": str(diagnostic_path), "error": str(error)}
+
+
 def stop_process_group(process: subprocess.Popen, grace_seconds: float = 2.0) -> None:
     """Stop the app and its sandbox/launcher children before the next case."""
     try:
@@ -659,6 +724,12 @@ def run_one_app(
                     launcher_exit_code=launcher_exit_code,
                     launcher_alive_at_timeout=launcher_exit_code is None,
                 )
+                if app["source"] == "flathub-popular":
+                    if launcher_exit_code is None:
+                        stop_process_group(process)
+                    state["flatpak_runtime_diagnostics"] = capture_flatpak_runtime_diagnostics(
+                        app, client_environment, events_path.parent
+                    )
                 return state
 
             state["window_startup"] = {
