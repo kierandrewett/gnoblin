@@ -22,7 +22,7 @@ Version:        51.0
 %global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        22.gnoblin%{?dist}
+Release:        23.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -190,14 +190,12 @@ Adds Gnoblin to the login screen without replacing the GNOME session.
 export PKG_CONFIG_PATH=%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
-export LDFLAGS="${LDFLAGS} -fPIE"
-export CFLAGS="${CFLAGS} -fPIE"
 # Fedora 43 ships GJS 1.86, below the GNOME 51 API floor. Build the pinned GJS
 # into Gnoblin's private prefix so installing Gnoblin leaves the host GNOME
 # runtime untouched. Fedora's GLib, GIRepository and SpiderMonkey remain shared.
 meson setup gjs-build gjs-%{gjs_version} \
   --prefix=%{_prefix} --libdir=%{_lib} \
-  -Dinstalled_tests=false -Dprofiler=enabled -Dreadline=disabled \
+  -Db_pie=true -Dinstalled_tests=false -Dprofiler=enabled -Dreadline=disabled \
   -Dskip_dbus_tests=true -Dskip_gtk_tests=true
 meson compile -C gjs-build
 DESTDIR=%{buildroot} meson install -C gjs-build
@@ -278,6 +276,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-23.gnoblin
+- Use Meson's PIE mode for bundled GJS without breaking shared test libraries.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-22.gnoblin
 - Build bundled GJS with the C++ compiler in Fedora buildroots.
 

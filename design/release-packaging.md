@@ -11,6 +11,13 @@ release pipeline or COPR publication changes.
   rebuilt package; the next release uses `-5`. COPR built Mutter successfully
   for Fedora 43/44/45, then exposed a missing `gcc-c++` build requirement for
   private GJS in the Shell package. Shell RPM release `51.0-22` adds it.
+- Release run `36239667423` passed the rebuilt DEBs and their install checks,
+  Arch co-install/removal, openSUSE Tumbleweed co-install/removal, and the
+  NixOS 26.05 closure. Its corrected Shell RPM `51.0-22` then failed all COPR
+  chroots because the GJS build appended `-fPIE` after Meson's shared-library
+  `-fPIC`, breaking a bundled GObject Introspection test library. Shell RPM
+  release `51.0-23` removes the global PIE flags and uses Meson's `b_pie`
+  option so executable targets stay PIE while shared libraries remain PIC.
 
 - Release run `36230307572` built Debian 13, Ubuntu 24.04/26.04, Arch,
   openSUSE Tumbleweed, and NixOS 26.05 artifacts. Their package installation,
