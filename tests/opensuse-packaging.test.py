@@ -101,6 +101,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("build compat-runtime.spec", chain)
         self.assertIn("gnoblin_compat_runtime", chain)
         self.assertIn('check-buildrequires.sh" --install --compat-runtime', chain)
+        self.assertIn('mkdir -p "$ROOT/build"', chain)
 
     def test_private_compatibility_runtime_has_its_own_rpm_boundary(self):
         spec = (SPECS / "compat-runtime.spec").read_text()

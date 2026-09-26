@@ -41,6 +41,7 @@ build_compatibility_runtime() {
     [[ $compatibility_runtime == 1 ]] || return
     "$ROOT/packaging/rpm/provision-compat-container.sh"
     install -d -o gnoblin-build -g gnoblin-build /usr/lib/gnoblin
+    mkdir -p "$ROOT/build"
     chown -R gnoblin-build:gnoblin-build "$ROOT/build"
     runuser -u gnoblin-build -- \
         env GNOBLIN_BUILD_JOBS="${GNOBLIN_BUILD_JOBS:-2}" \
