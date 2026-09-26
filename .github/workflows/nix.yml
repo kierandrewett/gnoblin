@@ -38,9 +38,9 @@ jobs:
         channel:
           - attribute: nixos_25_05
             release: "25.05"
-            package_evaluates: "false"
-            module_evaluates: "false"
-            evaluation_blocker: '"missing-libglycin"'
+            package_evaluates: "true"
+            module_evaluates: "true"
+            evaluation_blocker: "null"
             build_blockers: '["missing-libglycin","glib-below-2.86","gjs-below-1.87.1","wayland-below-1.26","wayland-protocols-below-1.48","libinput-below-1.30"]'
           - attribute: nixos_25_11
             release: "25.11"
@@ -114,6 +114,52 @@ jobs:
           session_executable="$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)"
           test -x "$session_executable"
           nix path-info --json result | tee "$RUNNER_TEMP/nix-release-path.json"
+  build-nixos-25-stable-private-runtime:
+    name: Build NixOS 25.05 and 25.11 private runtime closure
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: cachix/install-nix-action@v31
+      - name: Evaluate both channel modules against their pinned hosts
+        run: |
+          for release in 25_05 25_11; do
+            nix eval --impure --json --expr "
+              let
+                flake = builtins.getFlake (toString ./.);
+                host = flake.inputs.nixpkgs_$release.lib.nixosSystem {
+                  system = \"x86_64-linux\";
+                  modules = [
+                    flake.nixosModules.nixos_$release
+                    {
+                      system.stateVersion = \"''${release/_/.}\";
+                      programs.gnoblin.enable = true;
+                    }
+                  ];
+                };
+              in
+              toString (builtins.head host.config.services.displayManager.sessionPackages)
+                == toString flake.packages.x86_64-linux.gnoblin-nixos-$release
+            " | grep -qx true
+          done
+      - name: Build the shared private runtime artifact
+        run: |
+          nix build -L .#packages.x86_64-linux.gnoblin-nixos-25_05
+          test "$(nix eval --raw .#packages.x86_64-linux.gnoblin-nixos-25_05.drvPath)" = \
+              "$(nix eval --raw .#packages.x86_64-linux.gnoblin-nixos-25_11.drvPath)"
+          test -x result/bin/gnoblinctl
+          test -f result/share/wayland-sessions/gnoblin.desktop
+          test ! -e result/bin/gnome-shell
+          test ! -e result/bin/mutter
+          session_executable="$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)"
+          test -x "$session_executable"
+          nix path-info --json result | tee "$RUNNER_TEMP/nixos-25-stable-private-runtime.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nixos-25-stable-private-runtime-metadata
+          path: ${{ runner.temp }}/nixos-25-stable-private-runtime.json
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
