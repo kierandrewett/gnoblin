@@ -119,8 +119,11 @@ minimize, fullscreen and close. It also saves the app's stdout and stderr.
 Resize traces include the requested frame rectangle, before/after bounds and
 the app's minimum and maximum size hints. A request below both minimum-size
 hints is recorded as constrained; each resizable app must still complete a
-valid resize request. A close timeout records whether the window still exists
-and whether Mutter reports it can close.
+valid resize request.
+
+The close check clicks a Gnoblin or client-drawn titlebar button before sending
+a window-manager close request. A close timeout records
+whether the window still exists and whether Mutter reports it can close.
 
 The pull-request run attempts every app in shard 0 but gates on the pinned
 Alacritty close regression. The repair artifact still records outcomes from
