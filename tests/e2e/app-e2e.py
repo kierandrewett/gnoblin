@@ -565,6 +565,12 @@ def run_one_app(
                     client_pid = before.get("pid") if before else None
                     details["client_pid"] = client_pid
                     details["client_pid_alive_at_disappearance"] = pid_is_alive(client_pid)
+                    try:
+                        details["remaining_application_windows"] = [
+                            window_state(candidate["sequence"]) for candidate in app_windows()
+                        ]
+                    except Exception as evidence_error:
+                        details["remaining_application_windows_error"] = str(evidence_error)
                     if error is not None:
                         details["error"] = str(error)
                     if request_details:
