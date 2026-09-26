@@ -249,6 +249,22 @@ def capture_window_evidence(sequence: int) -> dict | None:
         return {"observation_error": str(error)}
 
 
+def request_is_below_minimum(request: dict[str, object] | None, state: dict | None) -> bool:
+    if request is None or state is None:
+        return False
+    rect = request.get("frame_rect")
+    hint = state.get("min_size")
+    return (
+        isinstance(rect, list)
+        and len(rect) == 4
+        and isinstance(hint, list)
+        and len(hint) == 3
+        and hint[0] is True
+        and rect[2] < hint[1]
+        and rect[3] < hint[2]
+    )
+
+
 def mutate(sequence: int, body: str) -> object:
     expression = window_expression(sequence)
     return eval_shell(
@@ -486,6 +502,8 @@ def run_one_app(
             control_failed = False
             for mapped in new_windows:
                 sequence = mapped["sequence"]
+                resize_capability_seen = False
+                resize_verified = False
                 current = window_state(sequence)
                 if current is None:
                     state["operations"].append(
@@ -507,11 +525,13 @@ def run_one_app(
                     capability: str | None = None,
                     request: dict[str, object] | None = None,
                 ) -> str:
-                    nonlocal control_failed
+                    nonlocal control_failed, resize_capability_seen, resize_verified
                     current_state = window_state(sequence)
                     if capability and current_state and not current_state[capability]:
                         record(operation, "not-supported", capability=capability)
                         return "not-supported"
+                    if request is not None and current_state and current_state["can_resize"]:
+                        resize_capability_seen = True
                     request_details = {"request": request} if request is not None else {}
                     try:
                         mutate(sequence, body)
@@ -525,16 +545,28 @@ def run_one_app(
                                 after=capture_window_evidence(sequence),
                                 **request_details,
                             )
+                            resize_verified = True
                         else:
                             record(operation, "observed", observed=observed)
                         return "observed"
                     except TimeoutError as error:
+                        after = capture_window_evidence(sequence)
+                        if request_is_below_minimum(request, current_state):
+                            record(
+                                operation,
+                                "constrained-by-minimum-size",
+                                error=str(error),
+                                before=window_evidence(current_state),
+                                after=after,
+                                **request_details,
+                            )
+                            return "constrained-by-minimum-size"
                         record(
                             operation,
                             "not-observed",
                             error=str(error),
                             before=window_evidence(current_state),
-                            after=capture_window_evidence(sequence),
+                            after=after,
                             **request_details,
                         )
                         if capability and current_state and current_state[capability]:
@@ -618,6 +650,14 @@ def run_one_app(
                         if not before:
                             record(f"resize-{size_name}", "window-disappeared")
                             break
+                        request = {"frame_rect": [x, y, width, height]}
+                        if size_name == "edge" and request_is_below_minimum(request, before):
+                            width = max(width, before["width"] + 80)
+                            height = before["height"]
+                            request = {
+                                "frame_rect": [x, y, width, height],
+                                "probe": "above-current-width-after-minimum-clamp",
+                            }
                         invoke(
                             f"resize-{size_name}",
                             f"w.move_resize_frame(false,{x},{y},{width},{height})",
@@ -629,7 +669,7 @@ def run_one_app(
                             )(window_state(sequence)),
                             timeout=1.5,
                             capability="can_resize",
-                            request={"frame_rect": [x, y, width, height]},
+                            request=request,
                         )
 
                 monitor_count = eval_shell("global.display.get_n_monitors()")
@@ -688,12 +728,17 @@ def run_one_app(
                                 timeout=1.5,
                             )
                             record("resize-handle-drag", "observed", state=resized)
+                            resize_verified = True
                         elif before:
                             record("resize-handle-drag", "not-supported", capability="can_resize")
                     except Exception as error:
                         record("resize-handle-drag", "unsupported-or-error", error=str(error))
                         if before and before["can_resize"]:
                             control_failed = True
+
+                if resize_capability_seen and not resize_verified:
+                    record("resize", "no-valid-resize-observed", capability="can_resize")
+                    control_failed = True
 
                 invoke(
                     "maximize",
