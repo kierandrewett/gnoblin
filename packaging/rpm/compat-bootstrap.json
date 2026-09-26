@@ -1,0 +1,37 @@
+[
+  {
+    "name": "patchelf",
+    "version": "0.19.1",
+    "url": "https://github.com/NixOS/patchelf/releases/download/0.19.1/patchelf-0.19.1.tar.bz2",
+    "sha256": "2cce01de93653829f6ab68a20c2ec275e1c00a946110704a27e928d2e6e88716",
+    "build_system": "autotools",
+    "options": []
+  },
+  {
+    "name": "glib-bootstrap",
+    "version": "2.90.0",
+    "url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz",
+    "sha256": "17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f",
+    "requires": ["patchelf"],
+    "options": ["-Dtests=false", "-Dinstalled_tests=false", "-Ddocumentation=false", "-Dintrospection=disabled"]
+  },
+  {
+    "name": "gobject-introspection-bootstrap",
+    "version": "1.80.1",
+    "url": "https://download.gnome.org/sources/gobject-introspection/1.80/gobject-introspection-1.80.1.tar.xz",
+    "sha256": "a1df7c424e15bda1ab639c00e9051b9adf5cea1a9e512f8a603b53cd199bc6d8",
+    "requires": ["glib-bootstrap"],
+    "build_only": true,
+    "patches": ["packaging/rpm/patches/gobject-introspection-python312.patch"],
+    "options": []
+  },
+  {
+    "name": "glib-final",
+    "version": "2.90.0",
+    "url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz",
+    "sha256": "17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f",
+    "requires": ["gobject-introspection-bootstrap"],
+    "private_pkgconfig": ["girepository-2.0.pc"],
+    "options": ["-Dtests=false", "-Dinstalled_tests=false", "-Ddocumentation=false", "-Dintrospection=enabled"]
+  }
+]

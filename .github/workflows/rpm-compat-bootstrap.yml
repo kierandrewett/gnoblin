@@ -1,0 +1,47 @@
+name: Private RPM runtime bootstrap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rpm-compat-bootstrap.yml"
+      - "packaging/rpm/compat-bootstrap.json"
+      - "packaging/rpm/patches/gobject-introspection-python312.patch"
+      - "packaging/rpm/provision-compat-container.sh"
+      - "packaging/rpm/build-compat-bootstrap.sh"
+      - "scripts/build-private-deps.py"
+  pull_request:
+    paths:
+      - ".github/workflows/rpm-compat-bootstrap.yml"
+      - "packaging/rpm/compat-bootstrap.json"
+      - "packaging/rpm/patches/gobject-introspection-python312.patch"
+      - "packaging/rpm/provision-compat-container.sh"
+      - "packaging/rpm/build-compat-bootstrap.sh"
+      - "scripts/build-private-deps.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: ${{ matrix.target }} private GLib/GI bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: rocky-10
+            image: quay.io/rockylinux/rockylinux:10
+          - target: opensuse-leap-16.0
+            image: registry.opensuse.org/opensuse/leap:16.0
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision build image
+        run: packaging/rpm/provision-compat-container.sh
+      - name: Build private bootstrap as an unprivileged user
+        run: |
+          chown -R gnoblin-build:gnoblin-build "$GITHUB_WORKSPACE"
+          runuser -u gnoblin-build -- packaging/rpm/build-compat-bootstrap.sh

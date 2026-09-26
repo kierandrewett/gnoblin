@@ -315,6 +315,17 @@ release pipeline or COPR publication changes.
   The production DEB manifest and workflow remain unchanged. GTK 4.14/GCR4,
   Mutter/Shell, Ubuntu 22.04, package transactions, and graphical sessions
   remain unverified; both targets stay unsupported.
+- Rocky 10.2 and openSUSE Leap 16.0 clean containers now build the same
+  minimal private GLib 2.90/GObject Introspection 1.80.1 closure through
+  `packaging/rpm/build-compat-bootstrap.sh`. The gate verifies the private
+  `girepository-2.0.pc`, `libgirepository-2.0.so`, the scanner kept under the
+  sibling build-tools prefix, and the runtime RPATH. Rocky provisions its
+  isolated Meson/Ninja virtual environment; Leap uses its repository tools.
+  This is a prerequisite check only: it does not build an RPM, publish to
+  COPR, install beside GNOME, remove a package, or start a graphical session.
+  EL 8/9, Leap 15.6, and the remaining runtime closure (including GJS and
+  target-specific unsupported dependencies) remain blocked pending their own
+  build and package transaction gates.
 - The exact-main records above supersede the earlier in-progress results.
   Inventory workflow run `36160948365` validates the 21-target schema at the
   current revision. It validates consistency of the recorded states; it does

@@ -1,0 +1,30 @@
+--- a/giscanner/ccompiler.py
++++ b/giscanner/ccompiler.py
+@@ -24,13 +24,21 @@
+ import tempfile
+ 
+ import sys
+-import distutils
+ 
+-from distutils.msvccompiler import MSVCCompiler
+-from distutils.unixccompiler import UnixCCompiler
+-from distutils.cygwinccompiler import Mingw32CCompiler
+-from distutils.sysconfig import get_config_vars
+-from distutils.sysconfig import customize_compiler as orig_customize_compiler
++try:
++    import distutils
++    from distutils.msvccompiler import MSVCCompiler
++    from distutils.unixccompiler import UnixCCompiler
++    from distutils.cygwinccompiler import Mingw32CCompiler
++    from distutils.sysconfig import get_config_vars
++    from distutils.sysconfig import customize_compiler as orig_customize_compiler
++except ModuleNotFoundError:
++    import setuptools._distutils as distutils
++    from setuptools._distutils._msvccompiler import MSVCCompiler
++    from setuptools._distutils.unixccompiler import UnixCCompiler
++    from setuptools._distutils.cygwinccompiler import Mingw32CCompiler
++    from setuptools._distutils.sysconfig import get_config_vars
++    from setuptools._distutils.sysconfig import customize_compiler as orig_customize_compiler
+ 
+ from . import utils
+ 

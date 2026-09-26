@@ -229,7 +229,17 @@ def checked_archive(recipe, downloads):
 
 def build(recipe, prefix, cache, env, jobs, manifest=None, patcher_prefix=None):
     platform_patch = ROOT / "packaging/deb/patches/mozjs-platform.patch"
-    patch_bytes = platform_patch.read_bytes() if recipe.get("build_system") == "spidermonkey" else b""
+    patches = []
+    if recipe.get("build_system") == "spidermonkey":
+        patches.append(platform_patch)
+    for relative in recipe.get("patches", []):
+        if not isinstance(relative, str):
+            raise RuntimeError(f"Private dependency {recipe['name']} has an invalid patch path")
+        patch = (ROOT / relative).resolve()
+        if not patch.is_relative_to(ROOT) or not patch.is_file():
+            raise RuntimeError(f"Private dependency {recipe['name']} patch is unavailable: {relative}")
+        patches.append(patch)
+    patch_bytes = b"".join(patch.read_bytes() for patch in patches)
     flags = {key: env.get(key, "") for key in ("CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS")}
     identity = hashlib.sha256(
         json.dumps(json.loads((manifest or ROOT / "build-dependencies.json").read_text()), sort_keys=True).encode()
@@ -256,6 +266,8 @@ def build(recipe, prefix, cache, env, jobs, manifest=None, patcher_prefix=None):
             raise RuntimeError(f"Expected a single source directory for {recipe['name']}")
         children[0].rename(sources)
         staging.rmdir()
+        for patch in patches:
+            subprocess.run(["patch", "--forward", "-p1", "-i", str(patch)], cwd=sources, check=True)
     print(f"[deps] Building {recipe['name']} {recipe['version']}", flush=True)
     # Stage first so absolute upstream install destinations cannot write to /usr.
     stage = work / "install"
@@ -264,8 +276,6 @@ def build(recipe, prefix, cache, env, jobs, manifest=None, patcher_prefix=None):
     if system in ("autotools", "spidermonkey"):
         configure = sources / ("js/src/configure" if system == "spidermonkey" else "configure")
         if system == "spidermonkey":
-            if "#undef XP_UNIX" not in (sources / "js/src/js-config.h.in").read_text():
-                subprocess.run(["patch", "-p1", "-i", str(platform_patch)], cwd=sources, check=True)
             env = {**env, "SHELL": "/bin/sh", "CC": "gcc", "CXX": "g++"}
         builddir.mkdir(parents=True, exist_ok=True)
         subprocess.run(
