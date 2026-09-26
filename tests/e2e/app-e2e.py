@@ -30,6 +30,7 @@ from gnoblin_test_session import (  # noqa: E402
     FRAME_ACTION_CLOSE,
     application_window_candidates,
     compile_minimal_testing_shell,
+    constrain_move_to_monitor,
     eval_shell,
     frame_button_center,
     send_pointer,
@@ -844,6 +845,7 @@ def run_one_app(
                     timeout: float = 2.5,
                     capability: str | None = None,
                     request: dict[str, object] | None = None,
+                    details: dict[str, object] | None = None,
                 ) -> str:
                     nonlocal control_failed, resize_capability_seen, resize_verified
                     current_state = window_state(sequence)
@@ -858,6 +860,8 @@ def run_one_app(
                     if request is not None and current_state and current_state["can_resize"]:
                         resize_capability_seen = True
                     request_details = {"request": request} if request is not None else {}
+                    if details:
+                        request_details.update(details)
                     try:
                         mutate(sequence, body)
                         observed = wait_for(verify, operation, timeout=timeout)
@@ -988,15 +992,38 @@ def run_one_app(
                     if not before:
                         mark_window_disappeared(name)
                         break
-                    invoke(
-                        name,
-                        f"w.move_frame(false,{x},{y})",
-                        lambda: (
-                            lambda after: after is not None and (after["x"], after["y"]) != (before["x"], before["y"])
-                        )(window_state(sequence)),
-                        timeout=1.5,
-                        capability="can_move",
-                    )
+                    target_x, target_y = constrain_move_to_monitor(before, x, y)
+                    if (target_x, target_y) == (before["x"], before["y"]):
+                        status = (
+                            "already-at-requested-position"
+                            if (target_x, target_y) == (x, y)
+                            else "constrained-by-monitor-geometry"
+                        )
+                        record(
+                            name,
+                            status,
+                            requested_position=[x, y],
+                            effective_position=[target_x, target_y],
+                            current_position=[before["x"], before["y"]],
+                        )
+                    else:
+                        invoke(
+                            name,
+                            f"w.move_frame(false,{target_x},{target_y})",
+                            lambda: (
+                                lambda after: (
+                                    after is not None
+                                    and (after["x"], after["y"]) == (target_x, target_y)
+                                    and (after["x"], after["y"]) != (before["x"], before["y"])
+                                )
+                            )(window_state(sequence)),
+                            timeout=1.5,
+                            capability="can_move",
+                            details={
+                                "requested_position": [x, y],
+                                "effective_position": [target_x, target_y],
+                            },
+                        )
                     for size_name, width, height in (("center", 700, 440), ("edge", 960, 620), ("small", 300, 220)):
                         before = window_state(sequence)
                         if not before:

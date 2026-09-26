@@ -98,6 +98,16 @@ def application_window_candidates(
     )
 
 
+def constrain_move_to_monitor(state: dict, x: int, y: int) -> tuple[int, int]:
+    """Keep as much of an E2E move target as possible within the current monitor."""
+    monitor = state["monitor_rect"]
+    left = monitor["x"]
+    top = monitor["y"]
+    right = max(left, left + monitor["width"] - state["width"])
+    bottom = max(top, top + monitor["height"] - state["height"])
+    return max(left, min(x, right)), max(top, min(y, bottom))
+
+
 def frame_button_center(state: dict, action: int) -> tuple[int, int]:
     """Return the center of an advertised native-frame button input region."""
     regions = state["layout"]["presentation"]["regions"]
