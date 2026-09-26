@@ -121,8 +121,26 @@ install_build_dependencies() {
                 done
                 packages=("${base_packages[@]}")
             fi
-            build_dependency_command "${privilege[@]}" apt-get update
-            build_dependency_command "${privilege[@]}" "${frontend[@]}" apt-get install --no-install-recommends "${confirm[@]}" "${packages[@]}"
+            if "$build_dry_run"; then
+                build_dependency_command "${privilege[@]}" apt-get -o Acquire::Retries=3 update
+                build_dependency_command "${privilege[@]}" "${frontend[@]}" apt-get \
+                    -o Acquire::Retries=3 install --no-install-recommends "${confirm[@]}" "${packages[@]}"
+            else
+                local apt_attempt
+                for apt_attempt in 1 2 3; do
+                    if "${privilege[@]}" apt-get -o Acquire::Retries=3 update &&
+                        "${privilege[@]}" "${frontend[@]}" apt-get -o Acquire::Retries=3 install \
+                            --no-install-recommends "${confirm[@]}" "${packages[@]}"; then
+                        break
+                    fi
+                    if ((apt_attempt == 3)); then
+                        return 1
+                    fi
+                    printf 'APT package resolution failed; refreshing indexes and retrying (%s/3).\n' \
+                        "$((apt_attempt + 1))" >&2
+                    sleep $((apt_attempt * 5))
+                done
+            fi
             ;;
         opensuse)
             "$build_assume_yes" && confirm=(--non-interactive)
