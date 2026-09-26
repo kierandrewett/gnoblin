@@ -46,7 +46,7 @@ jobs:
       - name: Install checkout and RPM tools
         run: |
           zypper --non-interactive install \
-            git meson patch rpm-build tar xz python3
+            git librsvg-2-2 meson patch rpm-build tar xz python3
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}

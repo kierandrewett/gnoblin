@@ -39,7 +39,7 @@ jobs:
       - name: Install checkout and RPM tools
         run: |
           zypper --non-interactive refresh
-          zypper --non-interactive install git hyprcursor meson patch rpm-build tar xz python3
+          zypper --non-interactive install git hyprcursor librsvg-2-2 meson patch rpm-build tar xz python3
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}

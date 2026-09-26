@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Read, verify, and advance Gnoblin's GNOME release train."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Tuple
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,7 +57,7 @@ def latest_major(project: str) -> int:
     return max(majors)
 
 
-def generated_values(data: dict) -> tuple[tuple[Path, str, str], ...]:
+def generated_values(data: dict) -> Tuple[Tuple[Path, str, str], ...]:
     components = data["components"]
     mutter = components["mutter"]
     shell = components["gnome-shell"]
@@ -126,7 +125,7 @@ def validate(data: dict, *, upstream: bool) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
     get_parser = subparsers.add_parser("get")
     get_parser.add_argument("project", choices=RELEASE_PROJECTS)
     get_parser.add_argument("field", choices=("version", "api", "commit"))
@@ -135,6 +134,8 @@ def main() -> int:
     update_parser = subparsers.add_parser("update")
     update_parser.add_argument("major", type=int)
     args = parser.parse_args()
+    if args.command is None:
+        parser.error("a command is required")
 
     data = load()
     if args.command == "get":
