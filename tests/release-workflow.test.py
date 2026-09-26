@@ -82,6 +82,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
                 f"Arch release runner does not install package runtime dependency {dependency}",
             )
 
+    def test_arch_release_installs_the_main_package_not_the_debug_split(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        arch = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
+        self.assertIn("-name 'gnoblin-[0-9]*.pkg.tar.zst'", arch)
+        self.assertIn("pacman -Q gnoblin", arch)
+
     def test_release_waits_for_and_publishes_opensuse_rpms(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         opensuse = (ROOT / ".github/workflows/opensuse-rpm.yml").read_text()
