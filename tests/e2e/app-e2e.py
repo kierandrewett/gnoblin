@@ -442,7 +442,7 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         "-c",
         probe,
     ]
-    with diagnostic_path.open("w") as log:
+    with diagnostic_path.open("w", buffering=1) as log:
         log.write("--- host Flatpak runtime and GL extension metadata ---\n")
         commands = [
             ["flatpak", "--version"],
