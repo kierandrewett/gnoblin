@@ -22,7 +22,7 @@ session available for recovery.
 | Ubuntu              | 24.04, 26.04           | Package candidate | [APT package](install-debian.md)                                                       |
 | Arch                | Current                | Package candidate | [PKGBUILD](https://github.com/kierandrewett/gnoblin/blob/main/packaging/arch/PKGBUILD) |
 | openSUSE Leap       | 15.5, 15.6, 16.0       | Unsupported       | No release package claim                                                               |
-| openSUSE Tumbleweed | Current                | Package candidate | [Release RPMs](install-opensuse.md)                                                    |
+| openSUSE Tumbleweed | Current                | Package candidate | [Release RPMs](install-opensuse.md) (available on new releases)                        |
 | NixOS               | 25.05, 25.11, unstable | Unsupported       | No installable package                                                                 |
 | NixOS               | 26.05                  | Unsupported       | [Experimental package and module](install-nixos.md)                                    |
 
