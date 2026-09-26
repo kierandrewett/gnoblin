@@ -22,7 +22,7 @@ Version:        51.0
 %global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        27.gnoblin%{?dist}
+Release:        28.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -79,7 +79,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  sassc
 BuildRequires:  meson
 BuildRequires:  git
-BuildRequires:  patchelf
+BuildRequires:  chrpath
 BuildRequires:  desktop-file-utils
 BuildRequires:  pkgconfig(libedataserver-1.2) >= %{eds_version}
 BuildRequires:  pkgconfig(gcr-4) >= %{gcr4_version}
@@ -215,6 +215,9 @@ test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
   -Dc_link_args='-fPIE' -Dcpp_link_args='-fPIE' \
   -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build
+# Meson copies this binary into the staging area after eliding its RUNPATH,
+# but leaves the old string in its ELF string table. Rewrite it before install.
+chrpath --replace '%{_libdir}' redhat-linux-build/src/gnome-shell-portal-helper
 # Restore the installed-prefix metadata before it enters the RPM payload.
 sed -i "s|^prefix=%{buildroot}%{_prefix}$|prefix=%{_prefix}|" "$gjs_pc"
 
@@ -228,12 +231,6 @@ sed -i "s|%{buildroot}%{_prefix}|%{_prefix}|g" \
   %{buildroot}%{_datadir}/dbus-1/services/org.gnome.Shell.Notifications.service \
   %{buildroot}%{_datadir}/dbus-1/services/org.gnome.Shell.Screencast.service \
   %{buildroot}%{_datadir}/dbus-1/services/org.gnome.ScreenSaver.service
-patchelf --set-rpath '%{_libdir}' \
-  %{buildroot}%{_libexecdir}/gnome-shell-portal-helper
-# The bundled GJS makes GCC record the temporary staging directory in this
-# helper's debug sections. Gnoblin deliberately ships no debuginfo package,
-# so remove those sections before RPM validates the installed payload.
-%{__strip} --strip-debug %{buildroot}%{_libexecdir}/gnome-shell-portal-helper
 install -Dm644 gjs-%{gjs_version}/COPYING \
   %{buildroot}%{_datadir}/licenses/gnoblin-shell/gjs-COPYING
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
@@ -295,6 +292,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-28.gnoblin
+- Replace the private GJS helper RUNPATH without retaining the buildroot path.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-27.gnoblin
 - Remove private GJS staging paths from generated launcher files.
 

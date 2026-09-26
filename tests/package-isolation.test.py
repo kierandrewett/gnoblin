@@ -176,22 +176,18 @@ class IsolationTests(unittest.TestCase):
             self.assertNotIn("-Degl_device", expanded)
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
-                self.assertIn("BuildRequires:  patchelf", expanded)
+                self.assertIn("BuildRequires:  chrpath", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
                 self.assertNotIn("-Dextensions_app=false", expanded)
                 self.assertIn("-Dextensions_tool=false", expanded)
                 self.assertNotIn("Requires:       gnome-control-center", expanded)
                 self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
                 self.assertIn(
-                    "patchelf --set-rpath '/usr/lib/gnoblin/lib64'",
+                    "chrpath --replace '/usr/lib/gnoblin/lib64' redhat-linux-build/src/gnome-shell-portal-helper",
                     expanded,
                 )
                 self.assertIn(
                     "s|%{buildroot}%{_prefix}|%{_prefix}|g",
-                    shell_spec,
-                )
-                self.assertIn(
-                    "%{__strip} --strip-debug %{buildroot}%{_libexecdir}/gnome-shell-portal-helper",
                     shell_spec,
                 )
 
