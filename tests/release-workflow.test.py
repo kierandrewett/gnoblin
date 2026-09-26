@@ -22,7 +22,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/deb.yml").read_text()
         build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
         install = workflow.split("\n  install:\n", 1)[1]
-        for target in ("debian12", "ubuntu22.04"):
+        for target in ("debian11", "debian12", "ubuntu22.04"):
             self.assertIn(f"target: {target}", build)
             self.assertIn(f"target: {target}", install)
         self.assertIn("scripts/build-deb-compat-runtime.sh --revision", build)

@@ -10,7 +10,10 @@ from pathlib import Path
 
 # Keep these entries aligned with build-apt-repository.py's supported suites.
 SUITES = (
+    ("debian", "11", "debian11", "gnoblin-debian11-amd64.deb"),
+    ("debian", "12", "debian12", "gnoblin-debian12-amd64.deb"),
     ("debian", "13", "debian13", "gnoblin-debian13-amd64.deb"),
+    ("ubuntu", "22.04", "ubuntu22.04", "gnoblin-ubuntu22.04-amd64.deb"),
     ("ubuntu", "24.04", "ubuntu24.04", "gnoblin-ubuntu24.04-amd64.deb"),
     ("ubuntu", "26.04", "ubuntu26.04", "gnoblin-ubuntu26.04-amd64.deb"),
 )

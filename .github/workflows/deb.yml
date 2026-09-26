@@ -9,11 +9,6 @@ on:
       ref:
         type: string
         required: true
-      release_build:
-        description: Skip long-running experimental builds for unsupported older distributions
-        type: boolean
-        required: false
-        default: false
   workflow_dispatch:
     inputs:
       ref:
@@ -38,18 +33,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
           - image: debian:12
             target: debian12
           - image: ubuntu:22.04
             target: ubuntu22.04
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - name: Install checkout tools
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - name: Record current host dependency blockers
+      - name: Record the stock host interface gap
         run: scripts/probe-deb-target.py --expect-blocked --output "build/deb-probes/${{ matrix.target }}.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -64,6 +70,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
+            compatibility: true
           - image: debian:13
             target: debian13
             compatibility: false
@@ -81,6 +90,15 @@ jobs:
             compatibility: false
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - name: Install checkout tools
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
@@ -149,6 +167,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: debian:11
+            target: debian11
           - image: debian:13
             target: debian13
           - image: debian:12
@@ -161,6 +181,15 @@ jobs:
             target: ubuntu26.04
     container: ${{ matrix.image }}
     steps:
+      - name: Pin the final Debian 11 package snapshot
+        if: matrix.target == 'debian11'
+        run: |
+          rm -f /etc/apt/sources.list.d/*
+          cat > /etc/apt/sources.list <<'EOF'
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20260831T235959Z bullseye-updates main
+          deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20260831T235959Z bullseye-security main
+          EOF
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}

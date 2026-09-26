@@ -1,13 +1,14 @@
 # Debian and Ubuntu packages
 
-Build one `gnoblin` package per target: Debian 12 and 13, Ubuntu 22.04, 24.04
-and 26.04. Each package contains the compositor, session and private runtime at
-`/usr/lib/gnoblin`. It does not replace GNOME packages.
+Build one `gnoblin` package per target: Debian 11, 12 and 13, Ubuntu 22.04,
+24.04 and 26.04. Each package contains the compositor, session and private
+runtime at `/usr/lib/gnoblin`. It does not replace GNOME packages.
 
 ## Build in a container
 
 Use Docker or Podman. The example below uses Debian 13; substitute one of the
-other target images to build for that release.
+other target images to build for that release. Debian 11 builds use the final
+Debian package snapshot from August 31, 2026.
 
 From a clean Gnoblin checkout:
 
@@ -30,7 +31,7 @@ runuser -u builder -- env PATH="/opt/gnoblin-build-tools/bin:$PATH" \
 exit
 ```
 
-For Debian 12 and Ubuntu 22.04, use `scripts/provision-deb-compat-container.sh`
+For Debian 11/12 and Ubuntu 22.04, use `scripts/provision-deb-compat-container.sh`
 and build with `PATH="/opt/gnoblin-compat-build-tools/bin:$PATH"
 scripts/build-deb-compat-runtime.sh`. That path builds the newer runtime
 libraries privately because those hosts do not provide the GNOME 51 interfaces
@@ -51,7 +52,7 @@ of the same GNOME release.
 
 The shared dependency builder reads `build-dependencies.json`. Debian 13 and
 Ubuntu 24.04 build the libraries in `packaging/deb/build-dependencies.json`,
-including SpiderMonkey and Glycin. Debian 12 and Ubuntu 22.04 use a pinned
+including SpiderMonkey and Glycin. Debian 11/12 and Ubuntu 22.04 use a pinned
 compatibility closure for GLib, Wayland, GTK, GCR, SpiderMonkey, GJS and Glycin;
 those libraries stay under `/usr/lib/gnoblin/deps` too. A checksum-verified
 Rust 1.85.1 toolchain is used only while building the older targets.
@@ -83,7 +84,7 @@ a release ready for normal desktop use.
 
 ## Release automation
 
-`.github/workflows/deb.yml` builds and tests all five targets on pushes,
+`.github/workflows/deb.yml` builds and tests all six targets on pushes,
 pull requests and release builds. Release builds use the exact tag revision.
 The release workflow waits for every target before publishing `.deb` files,
 checksums and dependency source archives to GitHub Releases. It then publishes

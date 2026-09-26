@@ -14,9 +14,9 @@ fi
 
 source /etc/os-release
 case "$ID:$VERSION_ID" in
-    debian:12 | ubuntu:22.04) ;;
+    debian:11 | debian:12 | ubuntu:22.04) ;;
     *)
-        echo 'The compatibility runtime is limited to Debian 12 and Ubuntu 22.04.' >&2
+        echo 'The compatibility runtime is limited to Debian 11/12 and Ubuntu 22.04.' >&2
         exit 2
         ;;
 esac

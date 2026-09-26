@@ -121,7 +121,7 @@ install_build_dependencies() {
                         just | xcvt | libadwaita-1-dev | libdisplay-info-dev | \
                             libei-dev | libeis-dev | libgcr-4-dev | libgnome-desktop-4-dev | \
                             libgirepository-2.0-dev | libgjs-dev | libgtk-4-dev | \
-                            libglycin-2-dev | libhyprcursor-dev) ;;
+                            libglycin-2-dev | libhyprcursor-dev | libjxl-dev) ;;
                         *) base_packages+=("$package") ;;
                     esac
                 done

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep packages for different Ubuntu releases in their own APT indexes."""
+"""Keep packages for different Debian and Ubuntu releases in their own APT indexes."""
 
 from pathlib import Path
 import os
@@ -29,31 +29,28 @@ class AptRepositoryTests(unittest.TestCase):
             previous_path = os.environ["PATH"]
             os.environ["PATH"] = f"{tools}:{previous_path}"
             try:
-                pool = root / "apt/ubuntu/pool/main/g/gnoblin"
-                pool.mkdir(parents=True)
-                versions = (
-                    "51.0+gnoblin0.1.7-2~ubuntu24.04",
-                    "51.0+gnoblin0.1.7-2~ubuntu26.04",
-                    "51.0+gnoblin0.1.7-3~ubuntu24.04",
-                    "51.0+gnoblin0.1.7-3~ubuntu26.04",
-                )
-                for version in versions:
-                    (pool / f"gnoblin_{version}_amd64.deb").write_text(
-                        f"Package: gnoblin\nVersion: {version}\nArchitecture: amd64\n",
-                        encoding="utf-8",
-                    )
+                for suite in apt_repository.SUITES:
+                    pool = root / "apt" / suite.archive / "pool/main/g/gnoblin"
+                    pool.mkdir(parents=True, exist_ok=True)
+                    for revision in (2, 3):
+                        version = f"51.0+gnoblin0.1.7-{revision}~{suite.version_suffix}"
+                        (pool / f"gnoblin_{version}_amd64.deb").write_text(
+                            f"Package: gnoblin\nVersion: {version}\nArchitecture: amd64\n",
+                            encoding="utf-8",
+                        )
 
-                for release, suffix in (("24.04", "ubuntu24.04"), ("26.04", "ubuntu26.04")):
-                    suite = apt_repository.Suite("ubuntu", release, "unused.deb", suffix, f"Ubuntu {release}")
+                for suite in apt_repository.SUITES:
+                    suffix = suite.version_suffix
                     latest_version = f"51.0+gnoblin0.1.7-3~{suffix}"
                     apt_repository.write_packages(root / "apt", suite, latest_version)
-                    index = (root / "apt/ubuntu/dists" / release / "main/binary-amd64/Packages").read_text(
-                        encoding="utf-8"
-                    )
+                    index = (
+                        root / "apt" / suite.archive / "dists" / suite.suite / "main/binary-amd64/Packages"
+                    ).read_text(encoding="utf-8")
                     self.assertIn(latest_version, index)
                     self.assertNotIn(f"0.1.7-2~{suffix}", index)
-                    other_suffix = "ubuntu26.04" if suffix == "ubuntu24.04" else "ubuntu24.04"
-                    self.assertNotIn(f"~{other_suffix}", index)
+                    for other_suite in apt_repository.SUITES:
+                        if other_suite is not suite:
+                            self.assertNotIn(f"~{other_suite.version_suffix}", index)
             finally:
                 os.environ["PATH"] = previous_path
 

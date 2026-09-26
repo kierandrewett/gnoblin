@@ -20,13 +20,13 @@ case "$ID:$VERSION_ID" in
         rust_packages=(rustc cargo python3-legacy-cgi g++-14)
         ;;
     debian:12 | ubuntu:22.04)
-        echo "$(tr '[:lower:]' '[:upper:]' <<<"$ID") $VERSION_ID is a measured Gnoblin 51 blocker, not a build target." >&2
-        echo 'Run scripts/probe-deb-target.py in this disposable image for the exact missing interfaces.' >&2
+        echo "$(tr '[:lower:]' '[:upper:]' <<<"$ID") $VERSION_ID uses the private compatibility build path." >&2
+        echo 'Run scripts/provision-deb-compat-container.sh, then scripts/build-deb-compat-runtime.sh.' >&2
         exit 2
         ;;
     *)
         echo 'Supported build containers: Debian 13, Ubuntu 24.04 and Ubuntu 26.04.' >&2
-        echo 'Debian 12 and Ubuntu 22.04 have a recorded dependency blocker; run scripts/probe-deb-target.py.' >&2
+        echo 'Debian 11/12 and Ubuntu 22.04 use scripts/provision-deb-compat-container.sh.' >&2
         exit 2
         ;;
 esac
@@ -45,8 +45,12 @@ python3 -m venv --system-site-packages /opt/gnoblin-build-tools
 if [ "$ID:$VERSION_ID" = ubuntu:24.04 ]; then
     ln -sf /usr/bin/rustc-1.85 /opt/gnoblin-build-tools/bin/rustc
     ln -sf /usr/bin/cargo-1.85 /opt/gnoblin-build-tools/bin/cargo
-    PATH="/opt/gnoblin-build-tools/bin:$PATH" cargo install --locked cbindgen --version 0.28.0 --root /opt/gnoblin-build-tools
+    export PATH="/opt/gnoblin-build-tools/bin:$PATH"
+    cargo install --locked cbindgen --version 0.28.0 --root /opt/gnoblin-build-tools
 fi
+export PATH="/opt/gnoblin-build-tools/bin:$PATH"
+cargo install --locked just --version 1.40.0 --root /opt/gnoblin-build-tools
+just --version
 id builder >/dev/null 2>&1 || useradd -m builder
 install -d -o builder -g builder /usr/lib/gnoblin
 printf '%s\n' 'Ready. As builder, with /opt/gnoblin-build-tools/bin on PATH, run scripts/build-deb.sh.'
