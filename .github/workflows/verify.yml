@@ -104,7 +104,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel brightnessctl cmake desktop-file-utils egl-wayland \
-            evolution-data-server gettext git glib2-devel gobject-introspection \
+            evolution-data-server gettext git glib2-devel gobject-introspection inkscape \
             gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
             libadwaita libdisplay-info libei libinput libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
