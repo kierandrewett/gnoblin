@@ -495,7 +495,14 @@ def run_one_app(
                 if not new_windows:
                     raise TimeoutError(f"{app['app_id']} closed its first window before the test began")
             except TimeoutError as error:
-                state.update(status="no-window", error=str(error), process_exit_code=process.poll())
+                process_exit_code = process.poll()
+                state.update(
+                    status="no-window",
+                    error=str(error),
+                    elapsed_seconds=round(time.monotonic() - started, 3),
+                    process_exit_code=process_exit_code,
+                    process_alive_at_timeout=process_exit_code is None,
+                )
                 return state
 
             state["screenshot"] = screenshot(app, screenshot_dir)
@@ -512,11 +519,12 @@ def run_one_app(
                 sequence = mapped["sequence"]
                 resize_capability_seen = False
                 resize_verified = False
+                window_disappeared = False
                 current = window_state(sequence)
                 if current is None:
-                    state["operations"].append(
-                        {"window": sequence, "operation": "observe", "status": "closed-before-test"}
-                    )
+                    result = {"window": sequence, "operation": "observe", "status": "window-disappeared"}
+                    state["operations"].append(result)
+                    write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
                     control_failed = True
                     continue
 
@@ -524,6 +532,28 @@ def run_one_app(
                     result = {"window": sequence, "operation": operation, "status": status, **details}
                     state["operations"].append(result)
                     write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **result})
+
+                def mark_window_disappeared(
+                    operation: str,
+                    *,
+                    error: Exception | None = None,
+                    before: dict | None = None,
+                    request_details: dict[str, object] | None = None,
+                ) -> None:
+                    nonlocal control_failed, window_disappeared
+                    if window_disappeared:
+                        return
+                    details: dict[str, object] = {
+                        "before": window_evidence(before),
+                        "after": None,
+                    }
+                    if error is not None:
+                        details["error"] = str(error)
+                    if request_details:
+                        details.update(request_details)
+                    record(operation, "window-disappeared", **details)
+                    window_disappeared = True
+                    control_failed = True
 
                 def invoke(
                     operation: str,
@@ -535,6 +565,11 @@ def run_one_app(
                 ) -> str:
                     nonlocal control_failed, resize_capability_seen, resize_verified
                     current_state = window_state(sequence)
+                    if window_disappeared:
+                        return "window-disappeared"
+                    if current_state is None:
+                        mark_window_disappeared(operation)
+                        return "window-disappeared"
                     if capability and current_state and not current_state[capability]:
                         record(operation, "not-supported", capability=capability)
                         return "not-supported"
@@ -559,6 +594,14 @@ def run_one_app(
                         return "observed"
                     except TimeoutError as error:
                         after = capture_window_evidence(sequence)
+                        if after is None:
+                            mark_window_disappeared(
+                                operation,
+                                error=error,
+                                before=current_state,
+                                request_details=request_details,
+                            )
+                            return "window-disappeared"
                         if request_is_below_minimum(request, current_state):
                             record(
                                 operation,
@@ -581,12 +624,21 @@ def run_one_app(
                             control_failed = True
                         return "not-observed"
                     except Exception as error:
+                        after = capture_window_evidence(sequence)
+                        if after is None:
+                            mark_window_disappeared(
+                                operation,
+                                error=error,
+                                before=current_state,
+                                request_details=request_details,
+                            )
+                            return "window-disappeared"
                         record(
                             operation,
                             "unsupported-or-error",
                             error=str(error),
                             before=window_evidence(current_state),
-                            after=capture_window_evidence(sequence),
+                            after=after,
                             **request_details,
                         )
                         if capability and current_state and current_state[capability]:
@@ -620,6 +672,9 @@ def run_one_app(
                     )
 
                 try:
+                    if window_state(sequence) is None:
+                        mark_window_disappeared("native-frame")
+                        continue
                     mutate(
                         sequence,
                         "imports.gi.Meta.gnoblin_window_frame_set(w,"
@@ -632,7 +687,11 @@ def run_one_app(
                     )
                     record("native-frame", "observed")
                 except Exception as error:
-                    record("native-frame", "unsupported-or-error", error=str(error))
+                    after = capture_window_evidence(sequence)
+                    if after is None:
+                        mark_window_disappeared("native-frame", error=error)
+                    else:
+                        record("native-frame", "unsupported-or-error", error=str(error))
 
                 for name, x, y in (
                     ("move-center", 48, 76),
@@ -641,8 +700,7 @@ def run_one_app(
                 ):
                     before = window_state(sequence)
                     if not before:
-                        record(name, "window-disappeared")
-                        control_failed = True
+                        mark_window_disappeared(name)
                         break
                     invoke(
                         name,
@@ -656,7 +714,7 @@ def run_one_app(
                     for size_name, width, height in (("center", 700, 440), ("edge", 960, 620), ("small", 300, 220)):
                         before = window_state(sequence)
                         if not before:
-                            record(f"resize-{size_name}", "window-disappeared")
+                            mark_window_disappeared(f"resize-{size_name}")
                             break
                         request = {"frame_rect": [x, y, width, height]}
                         if size_name == "edge" and request_is_below_minimum(request, before):
@@ -679,6 +737,10 @@ def run_one_app(
                             capability="can_resize",
                             request=request,
                         )
+                        if window_disappeared:
+                            break
+                    if window_disappeared:
+                        break
 
                 monitor_count = eval_shell("global.display.get_n_monitors()")
                 if monitor_count > 1:
@@ -713,9 +775,13 @@ def run_one_app(
                         )
                         record("titlebar-drag", "observed", state=dragged)
                     except Exception as error:
-                        record("titlebar-drag", "unsupported-or-error", error=str(error))
-                        if current["can_move"]:
-                            control_failed = True
+                        after = capture_window_evidence(sequence)
+                        if after is None:
+                            mark_window_disappeared("titlebar-drag", error=error, before=current)
+                        else:
+                            record("titlebar-drag", "unsupported-or-error", error=str(error))
+                            if current["can_move"]:
+                                control_failed = True
                     before = None
                     try:
                         before = window_state(sequence)
@@ -816,17 +882,21 @@ def run_one_app(
                         elif before:
                             record("resize-handle-drag", "not-supported", capability="can_resize")
                     except Exception as error:
-                        record(
-                            "resize-handle-drag",
-                            "unsupported-or-error",
-                            error=str(error),
-                            before=window_evidence(before),
-                            after=capture_window_evidence(sequence),
-                        )
-                        if before and before["can_resize"]:
-                            control_failed = True
+                        after = capture_window_evidence(sequence)
+                        if after is None:
+                            mark_window_disappeared("resize-handle-drag", error=error, before=before)
+                        else:
+                            record(
+                                "resize-handle-drag",
+                                "unsupported-or-error",
+                                error=str(error),
+                                before=window_evidence(before),
+                                after=after,
+                            )
+                            if before and before["can_resize"]:
+                                control_failed = True
 
-                if resize_capability_seen and not resize_verified:
+                if resize_capability_seen and not resize_verified and not window_disappeared:
                     record("resize", "no-valid-resize-observed", capability="can_resize")
                     control_failed = True
 
@@ -867,12 +937,15 @@ def run_one_app(
                 initial = None
                 try:
                     initial = window_state(sequence)
-                    close_method = close_sequence(sequence)
-                    close_result = {"window": sequence, "operation": "close", "status": close_method}
-                    state["operations"].append(close_result)
-                    write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
-                    if initial and initial["layout"]["border"][0] and close_method != "titlebar-close-button":
-                        control_failed = True
+                    if initial is None:
+                        mark_window_disappeared("close")
+                    else:
+                        close_method = close_sequence(sequence)
+                        close_result = {"window": sequence, "operation": "close", "status": close_method}
+                        state["operations"].append(close_result)
+                        write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
+                        if initial["layout"]["border"][0] and close_method != "titlebar-close-button":
+                            control_failed = True
                 except Exception as error:
                     state["operations"].append(
                         {
@@ -894,6 +967,9 @@ def run_one_app(
                 else ("exercised" if state["windows"] else "no-window")
             )
             state["elapsed_seconds"] = round(time.monotonic() - started, 3)
+            process_exit_code = process.poll()
+            state["process_exit_code"] = process_exit_code
+            state["process_alive_at_end"] = process_exit_code is None
             return state
         except BaseException:
             process.send_signal(signal.SIGTERM) if process.poll() is None else None
