@@ -37,7 +37,7 @@ case "${ID}:${VERSION_ID}" in
         zypper --non-interactive --quiet install --no-recommends \
             gcc gcc-c++ make pkg-config python3-devel flex bison gettext-tools \
             libffi-devel pcre2-devel zlib-devel libmount-devel libselinux-devel \
-            libopenssl-devel sqlite3-devel tar gzip xz patch git curl
+            libopenssl-devel sqlite3-devel xz-devel bzip2-devel tar gzip xz patch git curl
         python_archive=/tmp/Python-3.9.20.tgz
         curl --fail --location --silent --show-error \
             --output "$python_archive" https://www.python.org/ftp/python/3.9.20/Python-3.9.20.tgz
