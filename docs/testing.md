@@ -143,6 +143,8 @@ code and mapped client PID status at sequence end.
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
 whether the window still exists and whether Mutter reports it can close.
+If it remains after the titlebar click, the trace records the post-click frame
+action and other mapped windows from the same app process before the fallback.
 
 If a Gnoblin close click opens a new modal from that app process, the trace
 records the dialog and a screenshot as an application response and skips a

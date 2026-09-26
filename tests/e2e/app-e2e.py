@@ -516,6 +516,23 @@ def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -
                 method = "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
                 return method, click_details
             except TimeoutError:
+                post_click_state = window_state(sequence)
+                method = "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
+                if post_click_state is None:
+                    send_pointer("move", 4, 780)
+                    return method, {**click_details, "closed_after_timeout": True}
+                post_click_windows = shell_windows()
+                same_process_windows = [
+                    window
+                    for window in post_click_windows
+                    if state["pid"] is not None and window["pid"] == state["pid"]
+                ]
+                if post_click_state is not None:
+                    click_details["post_click_frame_presentation"] = post_click_state["layout"]["presentation"]
+                click_details["same_process_windows_after_click"] = [
+                    {key: window[key] for key in ("sequence", "title", "type", "pid", "x", "y", "width", "height")}
+                    for window in same_process_windows
+                ]
 
                 def newly_opened_application_modal() -> dict | None:
                     return next(
