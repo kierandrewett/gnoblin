@@ -243,6 +243,91 @@
         nixos_26_05 = mkNixos26_05Gnoblin system;
         nixos_unstable = mkStableGnoblin system;
       });
+      # NixOS installs sessions declaratively.  These values cover the three
+      # configuration transitions a release must preserve for every pinned
+      # channel: enabling Gnoblin adds its package and session, combining that
+      # package with the channel's stock GNOME binaries has no collisions, and
+      # disabling Gnoblin removes all of its declarations again.  They are
+      # consumed by the release CI next to each channel's package build.
+      nixChannelLifecycles = forAllSystems (
+        system:
+        nixpkgs.lib.mapAttrs (
+          name: channel:
+          let
+            pkgs = import channel.input { inherit system; };
+            package = nixChannelPackages.${system}.${name};
+            module =
+              if channel.release == "25.05" then
+                self.nixosModules.nixos_25_05
+              else if channel.release == "25.11" then
+                self.nixosModules.nixos_25_11
+              else if channel.release == "26.05" then
+                self.nixosModules.nixos_26_05
+              else
+                self.nixosModules.default;
+            # NixOS moved the GNOME desktop option after 25.05. Resolve the
+            # option from the pinned host rather than assuming one generation
+            # of the module API for every release channel.
+            base = channel.input.lib.nixosSystem {
+              inherit system;
+              modules = [
+                module
+                { system.stateVersion = channel.release; }
+              ];
+            };
+            stockGnomeModule =
+              if pkgs.lib.hasAttrByPath [ "services" "desktopManager" "gnome" "enable" ] base.options then
+                { services.desktopManager.gnome.enable = true; }
+              else
+                { services.xserver.desktopManager.gnome.enable = true; };
+            enabled = channel.input.lib.nixosSystem {
+              inherit system;
+              modules = [
+                module
+                stockGnomeModule
+                {
+                  system.stateVersion = channel.release;
+                  programs.gnoblin.enable = true;
+                }
+              ];
+            };
+            disabled = channel.input.lib.nixosSystem {
+              inherit system;
+              modules = [
+                module
+                stockGnomeModule
+                {
+                  system.stateVersion = channel.release;
+                }
+              ];
+            };
+            stockGnomeProfile = pkgs.buildEnv {
+              name = "gnome-and-gnoblin-${channel.release}";
+              paths = [
+                pkgs.gnome-shell
+                pkgs.mutter
+                package
+              ];
+              ignoreCollisions = false;
+            };
+          in
+          {
+            install =
+              builtins.elem package enabled.config.environment.systemPackages
+              && builtins.elem package enabled.config.services.displayManager.sessionPackages
+              && builtins.elem package enabled.config.systemd.packages;
+            removal =
+              !(builtins.elem package disabled.config.environment.systemPackages)
+              && !(builtins.elem package disabled.config.services.displayManager.sessionPackages)
+              && !(builtins.elem package disabled.config.systemd.packages);
+            coinstall = {
+              profile = stockGnomeProfile;
+              gnomeShell = "${pkgs.gnome-shell}/bin/gnome-shell";
+              mutter = "${pkgs.mutter}/bin/mutter";
+            };
+          }
+        ) nixpkgsChannels
+      );
     in
     {
       packages = forAllSystems (
@@ -332,7 +417,12 @@
       );
 
       lib = {
-        inherit nativePackages nixChannelEvaluations nixChannelPackages;
+        inherit
+          nativePackages
+          nixChannelEvaluations
+          nixChannelLifecycles
+          nixChannelPackages
+          ;
       };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };

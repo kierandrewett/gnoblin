@@ -114,6 +114,16 @@ jobs:
           session_executable="$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)"
           test -x "$session_executable"
           nix path-info --json result | tee "$RUNNER_TEMP/nix-release-path.json"
+      - name: Verify declarative install, GNOME coexistence, and removal
+        run: |
+          lifecycle=".#lib.nixChannelLifecycles.x86_64-linux.nixos_26_05"
+          test "$(nix eval --json "$lifecycle.install")" = true
+          test "$(nix eval --json "$lifecycle.removal")" = true
+          nix build -L "$lifecycle.coinstall.profile" --out-link stock-gnome-profile
+          test "$(readlink -f stock-gnome-profile/bin/gnome-shell)" = \
+              "$(nix eval --raw "$lifecycle.coinstall.gnomeShell")"
+          test "$(readlink -f stock-gnome-profile/bin/mutter)" = \
+              "$(nix eval --raw "$lifecycle.coinstall.mutter")"
   build-nixos-25-stable-private-runtime:
     name: Build NixOS 25.05 and 25.11 private runtime closure
     runs-on: ubuntu-latest
@@ -156,6 +166,18 @@ jobs:
           session_executable="$(sed -n 's/^Exec=//p' result/share/wayland-sessions/gnoblin.desktop)"
           test -x "$session_executable"
           nix path-info --json result | tee "$RUNNER_TEMP/nixos-25-stable-private-runtime.json"
+      - name: Verify declarative install, GNOME coexistence, and removal
+        run: |
+          for release in 25_05 25_11; do
+            lifecycle=".#lib.nixChannelLifecycles.x86_64-linux.nixos_$release"
+            test "$(nix eval --json "$lifecycle.install")" = true
+            test "$(nix eval --json "$lifecycle.removal")" = true
+            nix build -L "$lifecycle.coinstall.profile" --out-link "stock-gnome-profile-$release"
+            test "$(readlink -f "stock-gnome-profile-$release/bin/gnome-shell")" = \
+                "$(nix eval --raw "$lifecycle.coinstall.gnomeShell")"
+            test "$(readlink -f "stock-gnome-profile-$release/bin/mutter")" = \
+                "$(nix eval --raw "$lifecycle.coinstall.mutter")"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: nixos-25-stable-private-runtime-metadata
@@ -172,3 +194,13 @@ jobs:
         run: ./scripts/sync-package-manifest.py check
       - name: Build and test the Nix package and module
         run: nix flake check -L
+      - name: Verify unstable declarative install, GNOME coexistence, and removal
+        run: |
+          lifecycle=".#lib.nixChannelLifecycles.x86_64-linux.nixos_unstable"
+          test "$(nix eval --json "$lifecycle.install")" = true
+          test "$(nix eval --json "$lifecycle.removal")" = true
+          nix build -L "$lifecycle.coinstall.profile" --out-link stock-gnome-profile
+          test "$(readlink -f stock-gnome-profile/bin/gnome-shell)" = \
+              "$(nix eval --raw "$lifecycle.coinstall.gnomeShell")"
+          test "$(readlink -f stock-gnome-profile/bin/mutter)" = \
+              "$(nix eval --raw "$lifecycle.coinstall.mutter")"
