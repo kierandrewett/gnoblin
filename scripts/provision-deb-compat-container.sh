@@ -32,7 +32,7 @@ apt-get install -y --no-install-recommends \
     libffi-dev libgbm-dev libgcrypt20-dev libgles-dev libgraphene-1.0-dev libheif-dev libseccomp-dev \
     libjpeg-dev libmount-dev libp11-kit-dev libpango1.0-dev \
     libpcre2-dev libpng-dev libsecret-1-dev libtiff-dev libwebp-dev \
-    libxkbcommon-dev libxml2-dev llvm openssh-client python3-venv zlib1g-dev
+    libxkbcommon-dev libxml2-dev llvm openssh-client python3-dev python3-venv zlib1g-dev
 python3 -m venv --system-site-packages /opt/gnoblin-compat-build-tools
 /opt/gnoblin-compat-build-tools/bin/pip install meson==1.10.1
 python3 scripts/bootstrap-compat-rust.py --prefix /opt/gnoblin-compat-build-tools
