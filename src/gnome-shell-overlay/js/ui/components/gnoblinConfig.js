@@ -190,16 +190,9 @@ function validateInputSources(value) {
 }
 
 const TOUCHPAD_GESTURE_ACTIONS = new Set([
-    "overview.progress",
     "workspace.progress",
-    "overview-workspaces.progress",
-    "app-grid.progress",
     "emoji-pager.progress",
     "unlock-screen.progress",
-    "overview.toggle",
-    "overview.show",
-    "overview.hide",
-    "app-grid.show",
     "workspace.next",
     "workspace.previous",
     "window.close",
@@ -210,10 +203,7 @@ const TOUCHPAD_GESTURE_DIRECTIONS = Object.freeze({
     pinch: new Set(["in", "out"]),
 });
 const PROGRESS_GESTURE_AXES = Object.freeze({
-    "overview.progress": "vertical",
     "workspace.progress": "horizontal",
-    "overview-workspaces.progress": "horizontal",
-    "app-grid.progress": "horizontal",
     "emoji-pager.progress": "horizontal",
     "unlock-screen.progress": "vertical",
 });
@@ -291,8 +281,8 @@ function validateTouchpadGestures(value) {
                 !command[0])
         )
             throw new Error(`${name}: command must be a nonempty argv array`);
-        if (!["normal", "overview", "app-grid", "emoji-picker", "unlock-screen", "any"].includes(when))
-            throw new Error(`${name}: when must be normal, overview, app-grid, emoji-picker, unlock-screen, or any`);
+        if (!["normal", "emoji-picker", "unlock-screen", "any"].includes(when))
+            throw new Error(`${name}: when must be normal, emoji-picker, unlock-screen, or any`);
         const threshold = gesture.threshold ?? (kind === "swipe" ? 48 : 0.12);
         if (
             typeof threshold !== "number" ||

@@ -5,11 +5,15 @@ starts. Put `touchpad_gestures` beside `input` in `gnoblin.configure`. The
 gesture stream comes from Mutter and is available to Lua and shell frontends;
 GNOME Shell actions use GNOME's existing interactive gesture animations.
 
-If you omit `touchpad_gestures`, GNOME Shell keeps its built-in touchpad
-gestures. If you set it, the list replaces those bindings. The default
-`init.lua.example` declares GNOME's current three-finger navigation gestures in
-this list, so you can edit or remove individual entries. An empty list disables
-the configured gesture bindings:
+Gnoblin disables GNOME Shell's overview and app grid, so their gestures are not
+available in this session.
+
+If you omit `touchpad_gestures`, GNOME Shell's remaining built-in gesture
+handling stays enabled. If you set it, the list defines Gnoblin's direct actions
+and commands. The default
+`init.lua.example` shows the workspace, emoji-picker, and lock-screen gestures
+available in this session. An empty list disables the configured gesture
+bindings:
 
 ```lua
 gnoblin.configure {
@@ -73,18 +77,18 @@ gnoblin.configure {
 Commands are argument arrays, not shell command strings. Gnoblin starts the
 program after the gesture ends. Use the executable name or an absolute path.
 
-| Field       | Accepted values                                                                      | Default and meaning                                                                  |
-| ----------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`                                 | Required. Used in warnings and frontend integrations.                                |
-| `gesture`   | `"swipe"` or `"pinch"`                                                               | Required.                                                                            |
-| `fingers`   | Integer from 2 to 5                                                                  | Required.                                                                            |
-| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1                            | Required for swipes. Starts at `{x = 0, y = 0}` and must describe movement.          |
-| `direction` | Pinch: `"in"` or `"out"`                                                             | Required for pinches; do not set `path`.                                             |
-| `tolerance` | Swipe: 0.05–0.5                                                                      | Defaults to 0.22. Lower values require a closer match to the path.                   |
-| `action`    | One of the actions below                                                             | Set this or `command`, but not both.                                                 |
-| `command`   | Nonempty array of strings                                                            | Set this or `action`, but not both.                                                  |
-| `when`      | `"normal"`, `"overview"`, `"app-grid"`, `"emoji-picker"`, `"unlock-screen"`, `"any"` | Defaults to `"normal"`. Restricts the GNOME Shell action to that interface state.    |
-| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                                                       | Defaults to 48 for swipe and 0.12 for pinch. Applies to commands and direct actions. |
+| Field       | Accepted values                                           | Default and meaning                                                                   |
+| ----------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`      | Required. Used in warnings and frontend integrations.                                 |
+| `gesture`   | `"swipe"` or `"pinch"`                                    | Required.                                                                             |
+| `fingers`   | Integer from 2 to 5                                       | Required.                                                                             |
+| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and must describe movement.           |
+| `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                              |
+| `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                    |
+| `action`    | One of the actions below                                  | Set this or `command`, but not both.                                                  |
+| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                   |
+| `when`      | `"normal"`, `"emoji-picker"`, `"unlock-screen"`, `"any"`  | Defaults to `"normal"`. Restricts the command or action to that active Shell context. |
+| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Applies to commands and direct actions.  |
 
 The threshold controls when a gesture has moved far enough to run. GNOME Shell
 progress actions use Shell's own gesture-start threshold. Config loading rejects
@@ -99,14 +103,11 @@ gesture to GNOME Shell's built-in handlers.
 The `*.progress` actions connect a gesture to GNOME Shell's existing live
 animation. The user can reverse direction before lifting their fingers.
 
-| Action                           | Path shape           | What it controls                           |
-| -------------------------------- | -------------------- | ------------------------------------------ |
-| `"workspace.progress"`           | Straight, horizontal | Switch workspaces from the normal desktop. |
-| `"overview.progress"`            | Straight, vertical   | Show or hide the Activities overview.      |
-| `"overview-workspaces.progress"` | Straight, horizontal | Move between workspaces in the overview.   |
-| `"app-grid.progress"`            | Straight, horizontal | Move between app-grid pages.               |
-| `"emoji-pager.progress"`         | Straight, horizontal | Move between emoji picker pages.           |
-| `"unlock-screen.progress"`       | Straight, vertical   | Move through the lock screen.              |
+| Action                     | Path shape           | What it controls                           |
+| -------------------------- | -------------------- | ------------------------------------------ |
+| `"workspace.progress"`     | Straight, horizontal | Switch workspaces from the normal desktop. |
+| `"emoji-pager.progress"`   | Straight, horizontal | Move between emoji picker pages when open. |
+| `"unlock-screen.progress"` | Straight, vertical   | Move through the lock screen.              |
 
 Progress actions require a two-point straight path because GNOME Shell's live
 animation tracker commits to an axis as the gesture begins. Other actions and
@@ -118,10 +119,6 @@ The remaining actions run after the gesture ends:
 
 | Action                     | Effect                                     |
 | -------------------------- | ------------------------------------------ |
-| `"overview.toggle"`        | Toggle the overview.                       |
-| `"overview.show"`          | Show the overview.                         |
-| `"overview.hide"`          | Hide the overview.                         |
-| `"app-grid.show"`          | Show the app grid.                         |
 | `"workspace.next"`         | Switch to the next workspace.              |
 | `"workspace.previous"`     | Switch to the previous workspace.          |
 | `"window.close"`           | Close the focused window.                  |

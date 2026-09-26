@@ -101,30 +101,13 @@ gnoblin.configure {
     --     per_window = false,
     -- },
 
-    -- Define swipe gestures as paths relative to their start point. These
-    -- straight paths reproduce GNOME Shell's built-in three-finger navigation;
-    -- commands and direct actions can use multi-point paths with turns.
+    -- Define swipe gestures as paths relative to their start point.
+    -- Commands and direct actions can use multi-point paths with turns.
     touchpad_gestures = {
         {name = "workspace-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
             action = "workspace.progress", when = "normal"},
         {name = "workspace-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
             action = "workspace.progress", when = "normal"},
-        {name = "overview-show-up", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = -1}},
-            action = "overview.progress", when = "normal"},
-        {name = "overview-show-down", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = 1}},
-            action = "overview.progress", when = "normal"},
-        {name = "overview-hide-up", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = -1}},
-            action = "overview.progress", when = "overview"},
-        {name = "overview-hide-down", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = 1}},
-            action = "overview.progress", when = "overview"},
-        {name = "overview-workspace-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
-            action = "overview-workspaces.progress", when = "overview"},
-        {name = "overview-workspace-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
-            action = "overview-workspaces.progress", when = "overview"},
-        {name = "app-grid-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
-            action = "app-grid.progress", when = "app-grid"},
-        {name = "app-grid-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
-            action = "app-grid.progress", when = "app-grid"},
         {name = "emoji-page-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
             action = "emoji-pager.progress", when = "emoji-picker"},
         {name = "emoji-page-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},

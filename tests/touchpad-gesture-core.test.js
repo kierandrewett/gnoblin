@@ -31,6 +31,27 @@ test("Shell controller defines its window event helpers", () => {
     assert.match(controller, /^\s+_watchEventWindow\(window\)\s*\{/m);
 });
 
+test("gesture contexts and actions match the Gnoblin session UI", () => {
+    const config = readFileSync(
+        new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js", import.meta.url),
+        "utf8",
+    );
+    const shellGestures = readFileSync(
+        new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinTouchpadGestures.js", import.meta.url),
+        "utf8",
+    );
+    assert.match(config, /\["normal", "emoji-picker", "unlock-screen", "any"\]\.includes\(when\)/);
+    for (const unavailable of [
+        "overview.progress",
+        "overview-workspaces.progress",
+        "app-grid.progress",
+        "overview.toggle",
+        "app-grid.show",
+    ])
+        assert.doesNotMatch(config, new RegExp(unavailable.replaceAll(".", "\\.")));
+    assert.doesNotMatch(shellGestures, /Shell\.ActionMode\.OVERVIEW|Main\.overview/);
+});
+
 test("matches the same path with different scale and event sampling", () => {
     assert.equal(
         touchpadGesturePathMatches(rightThenDown, [
@@ -130,29 +151,25 @@ test("routes a matching swipe once, and consumes a claimed but unmatched path", 
     assert.deepEqual(fired, ["right-down"]);
 });
 
-test("passes through gestures with no matching finger count or context", () => {
+test("passes through gestures configured for an inactive supported context", () => {
     const { router, fired } = makeRouter([
         {
-            name: "app-grid",
+            name: "unlock-screen-only",
             gesture: "swipe",
-            fingers: 4,
+            fingers: 3,
             path: rightThenDown,
             threshold: 16,
             tolerance: 0.2,
-            when: "app-grid",
-            action: "app-grid.show",
+            when: "unlock-screen",
+            action: "workspace.next",
         },
     ]);
 
     assert.deepEqual(
-        swipe(
-            router,
-            [
-                [20, 0],
-                [0, 20],
-            ],
-            3,
-        ),
+        swipe(router, [
+            [20, 0],
+            [0, 20],
+        ]),
         [false, false, false, false],
     );
     assert.deepEqual(fired, []);

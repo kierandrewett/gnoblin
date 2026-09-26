@@ -8,10 +8,6 @@ import { TouchpadGestureRouter as GestureRouter } from "./gnoblinTouchpadGesture
 function gestureContexts() {
     if (Main.keyboard?._keyboard?._emojiSelection?.visible) return ["emoji-picker"];
     if (Main.actionMode & Shell.ActionMode.UNLOCK_SCREEN) return ["unlock-screen"];
-    if (Main.actionMode & Shell.ActionMode.OVERVIEW) {
-        const inAppGrid = Boolean(Main.overview._overview?.controls?.appDisplay?.visible);
-        return [inAppGrid ? "app-grid" : "overview"];
-    }
     return Main.actionMode & Shell.ActionMode.NORMAL ? ["normal"] : [];
 }
 
@@ -49,18 +45,6 @@ export class TouchpadGestureRouter {
 
         const window = global.display.focus_window;
         switch (gesture.action) {
-            case "overview.toggle":
-                Main.overview.toggle();
-                break;
-            case "overview.show":
-                Main.overview.show();
-                break;
-            case "overview.hide":
-                Main.overview.hide();
-                break;
-            case "app-grid.show":
-                Main.overview.showApps();
-                break;
             case "workspace.next":
             case "workspace.previous": {
                 const manager = global.workspace_manager;
