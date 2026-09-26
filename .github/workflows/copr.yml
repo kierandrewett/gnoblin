@@ -30,6 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:44
     timeout-minutes: 90
+    permissions:
+      # The release assets remain draft until COPR and APT publication finish.
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
