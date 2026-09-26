@@ -9,7 +9,8 @@ fi
 
 source /etc/os-release
 case "${ID}:${VERSION_ID}" in
-    rocky:10 | rocky:10.* | rhel:10 | rhel:10.* | almalinux:10 | almalinux:10.*)
+    rocky:9 | rocky:9.* | rhel:9 | rhel:9.* | almalinux:9 | almalinux:9.* | \
+        rocky:10 | rocky:10.* | rhel:10 | rhel:10.* | almalinux:10 | almalinux:10.*)
         dnf -qy install \
             gcc gcc-c++ make pkgconf-pkg-config python3 python3-devel python3-pip \
             python3-setuptools flex bison gettext libffi-devel pcre2-devel zlib-devel \
@@ -24,7 +25,7 @@ case "${ID}:${VERSION_ID}" in
             libmount-devel libselinux-devel tar xz patch git
         ;;
     *)
-        echo "The private GLib/GI bootstrap gate currently supports EL 10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
+        echo "The private GLib/GI bootstrap gate currently supports EL 9/10 and openSUSE Leap 16.0 only; got ${ID}:${VERSION_ID}." >&2
         exit 2
         ;;
 esac
