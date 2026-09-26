@@ -144,6 +144,10 @@ The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
 whether the window still exists and whether Mutter reports it can close.
 
+If a Gnoblin close click opens a new modal from that app process, the trace
+records the dialog and a screenshot as an application response and skips a
+second close request blocked by the modal.
+
 The pull-request run attempts every app in shard 0 but gates on the pinned
 Alacritty close regression. The repair artifact still records outcomes from
 the other apps.
@@ -156,7 +160,8 @@ per-app report for follow-up.
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.
 The private session bus provides Flatpak's runtime portal for sandboxed clients
-and the IBus daemon for Shell input-method integration.
+and the IBus daemon for Shell input-method integration. The runner activates and
+probes IBus on that bus before launching Shell.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
 a virtual 1280x800 monitor and software rendering. Even-numbered shards add a

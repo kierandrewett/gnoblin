@@ -478,11 +478,12 @@ def app_environment() -> dict[str, str]:
     return env
 
 
-def close_sequence(sequence: int, timeout: float = 10) -> tuple[str, dict[str, object]]:
+def close_sequence(sequence: int, modal_dialog_type: int, timeout: float = 10) -> tuple[str, dict[str, object]]:
     state = window_state(sequence)
     if state is None:
         return "already-closed", {}
 
+    windows_before_close = {window["sequence"] for window in shell_windows()}
     has_gnoblin_frame = bool(state["layout"]["border"][0])
     click_details: dict[str, object] = {}
     if has_gnoblin_frame or not state["fullscreen"]:
@@ -515,7 +516,38 @@ def close_sequence(sequence: int, timeout: float = 10) -> tuple[str, dict[str, o
                 method = "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
                 return method, click_details
             except TimeoutError:
-                pass
+
+                def newly_opened_application_modal() -> dict | None:
+                    return next(
+                        (
+                            window
+                            for window in shell_windows()
+                            if window["sequence"] not in windows_before_close
+                            and state["pid"] is not None
+                            and window["pid"] == state["pid"]
+                            and window["type"] == modal_dialog_type
+                            and window["ready"]
+                            and window["mapped"]
+                        ),
+                        None,
+                    )
+
+                try:
+                    dialog = wait_for(
+                        newly_opened_application_modal,
+                        "application modal opened after titlebar close",
+                        timeout=1,
+                    )
+                except TimeoutError:
+                    dialog = None
+                if dialog is not None:
+                    send_pointer("move", 4, 780)
+                    return "application-modal-opened", {
+                        **click_details,
+                        "application_modal": {
+                            key: dialog[key] for key in ("sequence", "title", "pid", "x", "y", "width", "height")
+                        },
+                    }
     if window_state(sequence) is not None:
         mutate(sequence, "w.delete(global.get_current_time())")
         wait_for(lambda: window_state(sequence) is None, "window close", timeout=timeout)
@@ -1087,7 +1119,9 @@ def run_one_app(
                     if initial is None:
                         mark_window_disappeared("close")
                     else:
-                        close_method, close_details = close_sequence(sequence)
+                        close_method, close_details = close_sequence(sequence, modal_dialog_type)
+                        if close_method == "application-modal-opened":
+                            close_details["screenshot"] = screenshot(app, screenshot_dir, "close-dialog")
                         close_result = {
                             "window": sequence,
                             "operation": "close",
@@ -1096,7 +1130,10 @@ def run_one_app(
                         }
                         state["operations"].append(close_result)
                         write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
-                        if initial["layout"]["border"][0] and close_method != "titlebar-close-button":
+                        if initial["layout"]["border"][0] and close_method not in (
+                            "titlebar-close-button",
+                            "application-modal-opened",
+                        ):
                             control_failed = True
                 except Exception as error:
                     try:

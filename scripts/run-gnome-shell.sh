@@ -328,7 +328,15 @@ elif [[ "${GNOBLIN_TEST_GDB_CRITICALS:-0}" == 1 ]]; then
 fi
 # The wrapper writes $$ before exec, so the pidfile holds gnome-shell's PID.
 dbus-run-session --config-file="$DBUS_SESSION_CONF" -- \
-    bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1"; printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
+    bash -c 'printf "%s\n" "$DBUS_SESSION_BUS_ADDRESS" > "$1";
+        if [[ "${GNOBLIN_TEST_IBUS_DAEMON:-0}" == 1 ]]; then
+            if ! timeout 15s gdbus introspect --session --dest=org.freedesktop.IBus --object-path=/org/freedesktop/IBus >/dev/null; then
+                echo "IBus D-Bus activation failed before GNOME Shell startup" >&2
+                exit 1
+            fi
+            echo "GNOBLIN_TEST_IBUS_READY name=org.freedesktop.IBus"
+        fi
+        printf "%s\n" "$$" > "$2"; shift 2; exec "$@"' \
     gnoblin-shell "$BUS_ADDRESS_FILE" "$SHELL_REAL_PID_FILE" \
     "${shell_command[@]}" \
     >"$DK/shell.log" 2>&1 &
