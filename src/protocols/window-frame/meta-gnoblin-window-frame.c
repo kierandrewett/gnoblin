@@ -66,6 +66,11 @@ static void request_configuration(MetaWindow* window) {
     MtkRectangle rect;
     if (!window || window->unmanaging || !window_surface(window))
         return;
+    /* xdg-decoration requests can arrive before the first client commit.
+     * Mutter's initial configure consumes the saved frame state; sending an
+     * extra configure here would skip its initial ready transition. */
+    if (!meta_window_is_ready(window))
+        return;
     meta_window_get_frame_rect(window, &rect);
     configuration = meta_wayland_window_configuration_new(
         window, rect, 0, 0, meta_window_wayland_get_geometry_scale(window),
