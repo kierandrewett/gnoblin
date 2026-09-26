@@ -156,6 +156,7 @@ class IsolationTests(unittest.TestCase):
                     self.assertFalse((prefix / relative_path).exists())
 
     def test_rpm_build_paths_and_metadata(self):
+        shell_spec = (ROOT / "packaging/rpm/gnome-shell.spec").read_text()
         for project in ("mutter", "gnome-shell"):
             expanded = subprocess.check_output(
                 ["rpmspec", "-P", str(ROOT / f"packaging/rpm/{project}.spec")], text=True
@@ -168,11 +169,24 @@ class IsolationTests(unittest.TestCase):
             self.assertNotIn("-Degl_device", expanded)
             if project == "gnome-shell":
                 self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
+                self.assertIn("BuildRequires:  patchelf", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
                 self.assertNotIn("-Dextensions_app=false", expanded)
                 self.assertIn("-Dextensions_tool=false", expanded)
                 self.assertNotIn("Requires:       gnome-control-center", expanded)
                 self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
+                self.assertIn(
+                    "patchelf --set-rpath '/usr/lib/gnoblin/lib64'",
+                    expanded,
+                )
+                self.assertIn(
+                    "s|%{buildroot}%{_prefix}|%{_prefix}|g",
+                    shell_spec,
+                )
+                self.assertIn(
+                    "%{__strip} --strip-debug %{buildroot}%{_libexecdir}/gnome-shell-portal-helper",
+                    shell_spec,
+                )
 
     def test_private_gnome_schemas_are_built_before_the_compositor(self):
         schemas = subprocess.check_output(

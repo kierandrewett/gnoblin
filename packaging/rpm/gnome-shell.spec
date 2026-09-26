@@ -22,7 +22,7 @@ Version:        51.0
 %global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        26.gnoblin%{?dist}
+Release:        27.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -79,6 +79,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  sassc
 BuildRequires:  meson
 BuildRequires:  git
+BuildRequires:  patchelf
 BuildRequires:  desktop-file-utils
 BuildRequires:  pkgconfig(libedataserver-1.2) >= %{eds_version}
 BuildRequires:  pkgconfig(gcr-4) >= %{gcr4_version}
@@ -219,6 +220,20 @@ sed -i "s|^prefix=%{buildroot}%{_prefix}$|prefix=%{_prefix}|" "$gjs_pc"
 
 %install
 %meson_install
+# The private GJS is staged beneath %%{buildroot} while Meson configures
+# GNOME Shell. Its generated D-Bus launchers and portal helper otherwise keep
+# that temporary path in the installed payload. Point them at the runtime
+# prefix before RPM's buildroot check and before the package is published.
+sed -i "s|%{buildroot}%{_prefix}|%{_prefix}|g" \
+  %{buildroot}%{_datadir}/dbus-1/services/org.gnome.Shell.Notifications.service \
+  %{buildroot}%{_datadir}/dbus-1/services/org.gnome.Shell.Screencast.service \
+  %{buildroot}%{_datadir}/dbus-1/services/org.gnome.ScreenSaver.service
+patchelf --set-rpath '%{_libdir}' \
+  %{buildroot}%{_libexecdir}/gnome-shell-portal-helper
+# The bundled GJS makes GCC record the temporary staging directory in this
+# helper's debug sections. Gnoblin deliberately ships no debuginfo package,
+# so remove those sections before RPM validates the installed payload.
+%{__strip} --strip-debug %{buildroot}%{_libexecdir}/gnome-shell-portal-helper
 install -Dm644 gjs-%{gjs_version}/COPYING \
   %{buildroot}%{_datadir}/licenses/gnoblin-shell/gjs-COPYING
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
@@ -280,6 +295,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-27.gnoblin
+- Remove private GJS staging paths from generated launcher files.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-26.gnoblin
 - Pass PIE link arguments to Fedora's GObject Introspection scanner helpers.
 
