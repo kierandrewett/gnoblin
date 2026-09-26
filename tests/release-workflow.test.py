@@ -49,6 +49,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("contents: write", workflow)
         self.assertIn("pages: write", workflow)
         self.assertIn("needs: [source-packages, debian-packages]", workflow)
+        release_gate = workflow.split("  github-release:\n", 1)[1].split("    runs-on:", 1)[0]
+        for job in ("source-packages", "debian-packages", "arch-package", "opensuse-package", "nixos-release"):
+            self.assertIn(f"      - {job}\n", release_gate)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
