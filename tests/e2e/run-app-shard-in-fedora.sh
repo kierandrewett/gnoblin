@@ -55,8 +55,8 @@ python3 tests/e2e/app-catalog.py \
 python3 tests/e2e/install-shard.py \
     "$ARTIFACT_DIR/shard.json" "$ARTIFACT_DIR/installation-report.json"
 
-extra_monitor=""
-if ((SHARD_INDEX % 2 == 0)); then
+extra_monitor="${GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE:-}"
+if [[ -z "$extra_monitor" ]] && ((SHARD_INDEX % 2 == 0)); then
     extra_monitor="1024x768"
 fi
 install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
