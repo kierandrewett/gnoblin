@@ -43,9 +43,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-          submodules: recursive
+          # The retry helper below owns the recursive checkout, so a transient
+          # upstream Git failure cannot fail this job before retry backoff.
+          submodules: false
       - name: Trust the checked-out source tree in the container
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch pinned GNOME sources with retry
+        run: |
+          git submodule sync --recursive
+          ./scripts/checkout-submodules-with-retry.sh
       - name: Parse adapter boundaries
         run: python3 tests/opensuse-packaging.test.py
       - name: Build private RPM chain

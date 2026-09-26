@@ -4,6 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT/scripts/retry-command.sh"
 TOPDIR="${1:?usage: $0 <rpmbuild-topdir>}"
 TOPDIR="$(realpath -m "$TOPDIR")"
 SOURCES="$TOPDIR/SOURCES"
@@ -15,7 +16,7 @@ mkdir -p "$SOURCES" "$BUILDROOT"
 if [[ $compatibility_runtime != 1 ]]; then
     "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
 fi
-git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
+gnoblin_retry_command git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
 for project in gsettings-desktop-schemas mutter gnome-shell; do
     "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
 done

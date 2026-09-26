@@ -9,6 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class OpenSUSELeapWorkflowTests(unittest.TestCase):
+    def test_build_checkouts_retry_pinned_submodules(self):
+        for filename in ("opensuse-rpm.yml", "opensuse-leap.yml"):
+            workflow = (ROOT / ".github/workflows" / filename).read_text()
+
+            self.assertIn("submodules: false", workflow)
+            self.assertIn("git submodule sync --recursive", workflow)
+            self.assertIn("./scripts/checkout-submodules-with-retry.sh", workflow)
+
     def test_each_supported_leap_base_builds_the_private_rpm_chain(self):
         workflow = (ROOT / ".github/workflows/opensuse-leap.yml").read_text()
 
