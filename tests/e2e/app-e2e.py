@@ -202,10 +202,13 @@ def window_state(sequence: int) -> dict | None:
     expression = window_expression(sequence)
     return eval_shell(
         f"(()=>{{const w={expression};if(!w)return null;const r=w.get_frame_rect();"
+        "const m=global.display.get_monitor_geometry(w.get_monitor());"
+        "const monitors=Array.from({length:global.display.get_n_monitors()},(_,i)=>{"
+        "const r=global.display.get_monitor_geometry(i);return {index:i,x:r.x,y:r.y,width:r.width,height:r.height};});"
         f"const a=global.get_window_actors().find(a=>a.meta_window===w);"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),"
         "type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
-        "monitor:w.get_monitor(),"
+        "monitor:w.get_monitor(),monitor_rect:{x:m.x,y:m.y,width:m.width,height:m.height},monitors,"
         "ready:w.is_ready(),mapped:a?.is_mapped()??false,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
         "maximized:!!w.get_maximize_flags(),"
@@ -231,6 +234,8 @@ def window_evidence(state: dict | None) -> dict | None:
             "width",
             "height",
             "monitor",
+            "monitor_rect",
+            "monitors",
             "can_move",
             "can_resize",
             "can_close",
@@ -716,22 +721,68 @@ def run_one_app(
                         before = window_state(sequence)
                         if before and before["can_resize"]:
                             x, y, width, height = (before[k] for k in ("x", "y", "width", "height"))
-                            shell_drag(
-                                x + width - 2, y + height - 2, min(1276, x + width + 38), min(796, y + height + 30)
-                            )
-                            resized = wait_for(
-                                lambda: (
-                                    lambda after: (
-                                        after
-                                        if after and (after["width"], after["height"]) != (width, height)
-                                        else None
+                            monitor = before["monitor_rect"]
+                            monitor_left = monitor["x"]
+                            monitor_top = monitor["y"]
+                            monitor_right = monitor_left + monitor["width"]
+                            monitor_bottom = monitor_top + monitor["height"]
+                            if x + width > monitor_right - 40 and width <= monitor["width"] - 48:
+                                resize_x = monitor_left + 24
+                                if abs(x - resize_x) > 2:
+                                    previous = window_evidence(before)
+                                    mutate(sequence, f"w.move_frame(false,{resize_x},{y})")
+                                    before = wait_for(
+                                        lambda: (
+                                            lambda after: after if after and abs(after["x"] - resize_x) <= 2 else None
+                                        )(window_state(sequence)),
+                                        "positioning window for visible resize edge",
+                                        timeout=1.5,
                                     )
-                                )(window_state(sequence)),
-                                "native-frame resize handle",
-                                timeout=1.5,
-                            )
-                            record("resize-handle-drag", "observed", state=resized)
-                            resize_verified = True
+                                    record(
+                                        "resize-handle-position",
+                                        "observed",
+                                        before=previous,
+                                        after=window_evidence(before),
+                                    )
+                                    x, y, width, height = (before[k] for k in ("x", "y", "width", "height"))
+                            handle_y = min(max(y + height // 2, monitor_top + 2), monitor_bottom - 2)
+                            right_edge = x + width - 2
+                            drag_end_x = min(right_edge + 38, monitor_right - 2)
+                            if (
+                                monitor_left + 2 <= right_edge < monitor_right - 2
+                                and drag_end_x - right_edge >= 8
+                                and monitor_top + 2 <= handle_y < monitor_bottom - 2
+                            ):
+                                shell_drag(right_edge, handle_y, drag_end_x, handle_y)
+                                resized = wait_for(
+                                    lambda: (
+                                        lambda after: (
+                                            after
+                                            if after and (after["width"], after["height"]) != (width, height)
+                                            else None
+                                        )
+                                    )(window_state(sequence)),
+                                    "visible native-frame resize edge",
+                                    timeout=1.5,
+                                )
+                                record(
+                                    "resize-handle-drag",
+                                    "observed",
+                                    edge="right",
+                                    before=window_evidence(before),
+                                    after=window_evidence(resized),
+                                )
+                                resize_verified = True
+                            else:
+                                record(
+                                    "resize-handle-drag",
+                                    "constrained-by-visible-monitor-edge",
+                                    before=window_evidence(before),
+                                    request={
+                                        "edge": "right",
+                                        "available_rightward_drag": max(0, monitor_right - right_edge),
+                                    },
+                                )
                         elif before:
                             record("resize-handle-drag", "not-supported", capability="can_resize")
                     except Exception as error:
