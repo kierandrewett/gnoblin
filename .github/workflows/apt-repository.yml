@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: apt-repository
+  group: gnoblin-static-site
   cancel-in-progress: false
 
 jobs:
@@ -73,3 +73,20 @@ jobs:
             git push origin HEAD:gh-pages
           fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Build and deploy the documentation with the APT archive
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci
+          npm run docs:build
+          mkdir -p docs/.vitepress/dist/apt
+          cp -a "$RUNNER_TEMP/pages/apt/." docs/.vitepress/dist/apt/
+          test -s docs/.vitepress/dist/apt/gnoblin-archive-keyring.asc
+          npx --yes wrangler@4.140.0 pages deploy docs/.vitepress/dist \
+            --project-name=gnoblin-docs --branch=main

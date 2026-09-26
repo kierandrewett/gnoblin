@@ -23,8 +23,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  group: gnoblin-static-site
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -49,10 +49,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/.vitepress/dist
+      - name: Include the published APT archive
+        run: |
+          git fetch origin gh-pages
+          mkdir -p docs/.vitepress/dist/apt
+          git archive origin/gh-pages apt | tar -x -C docs/.vitepress/dist
+          test -s docs/.vitepress/dist/apt/gnoblin-archive-keyring.asc
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
