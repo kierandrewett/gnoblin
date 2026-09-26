@@ -63,7 +63,7 @@ install_build_dependencies() {
             "$build_assume_yes" && confirm=(-y)
             packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build adwaita-cursor-theme
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
-                python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
+                python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel librsvg2
                 mesa-libEGL-devel
                 pam-devel lua-devel cvt gnome-shell gnome-session gnome-settings-daemon
                 xkeyboard-config-devel xorg-x11-server-Xwayland)
@@ -76,7 +76,7 @@ install_build_dependencies() {
                 glib2-devel gobject-introspection gjs gtk4 libadwaita
                 gnome-shell mutter gnome-session gnome-settings-daemon
                 wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
-                glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
+                glycin libxkbcommon libxkbfile libxres librsvg sysprof evolution-data-server
                 sassc cmake gettext xorg-xwayland python-docutils adwaita-cursors)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
