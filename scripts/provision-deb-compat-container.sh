@@ -26,7 +26,7 @@ EOF
         ;;
 esac
 source scripts/build-deps.sh
-install_build_dependencies debian true false true
+install_build_dependencies debian true false true true
 apt-get install -y --no-install-recommends \
     bison ca-certificates clang cbindgen flex gnupg libdrm-dev libegl-dev libepoxy-dev \
     libffi-dev libgbm-dev libgcrypt20-dev libgles-dev libgraphene-1.0-dev libheif-dev libseccomp-dev \

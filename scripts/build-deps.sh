@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false}
+    local family=$1 build_assume_yes=$2 build_dry_run=$3 legacy_private_gtk=${4:-false} private_deb_addons=${5:-false}
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -122,6 +122,19 @@ install_build_dependencies() {
                             libei-dev | libeis-dev | libgcr-4-dev | libgnome-desktop-4-dev | \
                             libgirepository-2.0-dev | libgjs-dev | libgtk-4-dev | \
                             libglycin-2-dev | libhyprcursor-dev | libjxl-dev) ;;
+                        *) base_packages+=("$package") ;;
+                    esac
+                done
+                packages=("${base_packages[@]}")
+            elif "$private_deb_addons"; then
+                # build-deb.sh supplies these from the pinned private manifest
+                # on Debian 13 and Ubuntu 24.04. Those suites do not publish
+                # the matching development packages, while GTK stays host-owned.
+                local -a base_packages=()
+                local package
+                for package in "${packages[@]}"; do
+                    case "$package" in
+                        libglycin-2-dev | libhyprcursor-dev) ;;
                         *) base_packages+=("$package") ;;
                     esac
                 done
