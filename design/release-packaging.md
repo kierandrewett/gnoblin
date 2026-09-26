@@ -16,8 +16,19 @@ release pipeline or COPR publication changes.
   repository, but its COPR job failed while resolving
   `pkgconfig(hyprcursor) >= 0.1.13` in Fedora 43/44/45. The Gnoblin Mutter
   patch itself requires Hyprcursor 0.1.11; the RPM floor has been corrected to
-  that patch's API requirement. Retest this floor in all three COPR chroots
-  before publishing the release.
+  that patch's API requirement.
+- Run `36223273109` passed the Fedora schema build, then failed the Mutter
+  build because Mutter 51 includes `pipewire/capabilities.h`, which is absent
+  from Fedora 43's PipeWire 1.4.11. Lowering only the dependency floor was not
+  sufficient. The compatibility patch now compiles device-ID negotiation only
+  when PipeWire 1.5.84 or newer provides those APIs; the 1.4 path retains normal
+  screen casting without that optional negotiation. Fedora and openSUSE RPM
+  declarations now use the 1.4 API floor. Rebuild all three COPR chroots
+  before claiming Fedora 43 package availability.
+- That run's APT job correctly refused different bytes for the already
+  published 0.1.7 package versions. The exact immutable Debian/Ubuntu package
+  payloads were restored to the GitHub release draft and its checksums updated;
+  rerun the APT job and verify its published hashes before release publication.
 - The current family scope has distinct remaining work: Debian 12 and Ubuntu
   22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
   Leap have no viable host dependency floor for the GNOME 51 packages; Arch,

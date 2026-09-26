@@ -19,7 +19,7 @@
 %global libdisplay_info_version 0.2
 %global libinput_version 1.27.0
 %global pixman_version 0.42
-%global pipewire_version 1.2.7
+%global pipewire_version 1.4.0
 %global lcms2_version 2.6
 %global colord_version 1.4.5
 %global libei_version 1.3.901
