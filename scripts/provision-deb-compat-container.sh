@@ -27,5 +27,5 @@ apt-get install -y --no-install-recommends \
 python3 -m venv --system-site-packages /opt/gnoblin-compat-build-tools
 /opt/gnoblin-compat-build-tools/bin/pip install meson==1.10.1
 id builder >/dev/null 2>&1 || useradd -m builder
-install -d -o builder -g builder /usr/lib/gnoblin/deps
+install -d -o builder -g builder /usr/lib/gnoblin /usr/lib/gnoblin/deps
 printf '%s\n' 'Ready to build the experimental pinned GTK/GCR closure as builder.'

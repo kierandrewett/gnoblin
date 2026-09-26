@@ -111,10 +111,14 @@ SemVer tag.
 
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
-The release workflow then publishes the same source RPMs to COPR and installs
-the result in a Fedora 44 container before it completes. The workflow requires
-the repository secret `COPR_CONFIG`, containing the publisher's `copr-cli`
-configuration. Configure it once before the first automated release:
+The release workflow assembles the assets as a GitHub draft, updates COPR and
+the signed APT archive, and only then makes the GitHub release public. A failed
+repository publication therefore leaves the release as a draft.
+
+The workflow installs the COPR result on Fedora 43, 44 and 45 before it
+completes. It requires the repository secret `COPR_CONFIG`, containing the
+publisher's `copr-cli` configuration. Configure it once before the first
+automated release:
 
 ```sh
 gh secret set COPR_CONFIG < ~/.config/copr

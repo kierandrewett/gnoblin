@@ -187,11 +187,12 @@ jobs:
       - name: Publish or repair GitHub release
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft
             gh release upload "$RELEASE_TAG" release-assets/* \
               --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$RELEASE_TAG" release-assets/* \
-              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --draft \
               --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
           fi
 
@@ -209,3 +210,15 @@ jobs:
       tag: ${{ inputs.tag || github.ref_name }}
     secrets:
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+
+  publish-release:
+    needs: [apt-repository, copr-repository]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Publish after distro repositories are updated
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
