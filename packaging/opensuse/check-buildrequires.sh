@@ -5,14 +5,18 @@
 set -euo pipefail
 
 install=0
-case "${1:-}" in
-    "") ;;
-    --install) install=1 ;;
-    *)
-        echo "Usage: $0 [--install]" >&2
-        exit 2
-        ;;
-esac
+compatibility_runtime=0
+while (($#)); do
+    case "$1" in
+        --install) install=1 ;;
+        --compat-runtime) compatibility_runtime=1 ;;
+        *)
+            echo "Usage: $0 [--install] [--compat-runtime]" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SPECS=(
@@ -31,12 +35,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+rpmspec_args=()
+if ((compatibility_runtime)); then
+    # Leap 15.6's RPM 4.14 lacks `rpmspec --with`. Defining the bcond macro
+    # makes this probe use the installed local compatibility RPM instead of
+    # trying to resolve GNOME 51 from the host repository.
+    rpmspec_args=(--define "_with_gnoblin_compat_runtime 1")
+fi
+
 for spec in "${SPECS[@]}"; do
     # `%bcond_with gnoblin_stack` is disabled by default.  Do not pass
     # rpmspec's `--without` convenience option here: RPM 4.14 in Leap 15.6
     # predates that option even though it understands `%bcond_with`.
-    rpmspec -P "$spec" >/dev/null
-    rpmspec -q --buildrequires "$spec"
+    rpmspec -P "${rpmspec_args[@]}" "$spec" >/dev/null
+    rpmspec -q --buildrequires "${rpmspec_args[@]}" "$spec"
 done | LC_ALL=C sort -u >"$requirements"
 
 if [[ -s "$requirements" ]]; then
@@ -63,5 +75,6 @@ if [[ -s "$requirements" ]]; then
     fi
 fi
 
-printf 'PASS: openSUSE Tumbleweed repository BuildRequires %s\n' \
-    "$([[ $install == 1 ]] && echo installed || echo resolve)"
+printf 'PASS: openSUSE repository BuildRequires %s%s\n' \
+    "$([[ $install == 1 ]] && echo installed || echo resolve)" \
+    "$( ((compatibility_runtime)) && echo ' with private runtime' || true)"

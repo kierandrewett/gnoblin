@@ -73,9 +73,11 @@ class OpenSUSEPackagingTests(unittest.TestCase):
     def test_check_script_uses_the_default_private_stack_boundary_portably(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
         self.assertNotIn("--without gnoblin_stack", check)
-        self.assertIn('rpmspec -P "$spec"', check)
-        self.assertIn('rpmspec -q --buildrequires "$spec"', check)
+        self.assertIn('rpmspec -P "${rpmspec_args[@]}" "$spec"', check)
+        self.assertIn('rpmspec -q --buildrequires "${rpmspec_args[@]}" "$spec"', check)
         self.assertIn("install --dry-run --no-recommends", check)
+        self.assertIn("--compat-runtime", check)
+        self.assertIn("_with_gnoblin_compat_runtime 1", check)
 
     def test_build_chain_respects_internal_dependency_order(self):
         chain = (SPECS / "build-chain.sh").read_text()
@@ -98,6 +100,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         )
         self.assertIn("build compat-runtime.spec", chain)
         self.assertIn("gnoblin_compat_runtime", chain)
+        self.assertIn('check-buildrequires.sh" --install --compat-runtime', chain)
 
     def test_private_compatibility_runtime_has_its_own_rpm_boundary(self):
         spec = (SPECS / "compat-runtime.spec").read_text()

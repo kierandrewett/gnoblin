@@ -12,7 +12,9 @@ compatibility_runtime=${GNOBLIN_COMPAT_RUNTIME:-0}
 
 mkdir -p "$SOURCES" "$BUILDROOT"
 
-"$ROOT/packaging/opensuse/check-buildrequires.sh" --install
+if [[ $compatibility_runtime != 1 ]]; then
+    "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
+fi
 git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
 for project in gsettings-desktop-schemas mutter gnome-shell; do
     "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
@@ -51,6 +53,9 @@ build_compatibility_runtime() {
 }
 
 build_compatibility_runtime
+if [[ $compatibility_runtime == 1 ]]; then
+    "$ROOT/packaging/opensuse/check-buildrequires.sh" --install --compat-runtime
+fi
 compat_args=()
 if [[ $compatibility_runtime == 1 ]]; then
     compat_args=(--with gnoblin_compat_runtime)
