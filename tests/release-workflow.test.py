@@ -70,6 +70,18 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
+    def test_arch_release_runner_installs_package_runtime_dependencies(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        arch = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
+        pkgbuild = (ROOT / "packaging/arch/PKGBUILD").read_text()
+        runtime_dependencies = pkgbuild.split("depends=(", 1)[1].split(")", 1)[0]
+        for dependency in runtime_dependencies.replace("'", "").split():
+            self.assertIn(
+                dependency,
+                arch,
+                f"Arch release runner does not install package runtime dependency {dependency}",
+            )
+
     def test_release_waits_for_and_publishes_opensuse_rpms(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         opensuse = (ROOT / ".github/workflows/opensuse-rpm.yml").read_text()
