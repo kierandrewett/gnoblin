@@ -65,7 +65,7 @@ jobs:
       ref: ${{ inputs.tag || github.ref }}
 
   arch-package:
-    needs: [source-packages, debian-packages]
+    needs: [source-packages]
     runs-on: ubuntu-latest
     container: archlinux:base
     timeout-minutes: 180

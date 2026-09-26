@@ -63,7 +63,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('tags:\n      - "gnoblin-v*"', workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("pages: write", workflow)
-        self.assertIn("needs: [source-packages, debian-packages]", workflow)
+        arch_gate = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
+        self.assertIn("needs: [source-packages]", arch_gate)
         release_gate = workflow.split("  github-release:\n", 1)[1].split("    runs-on:", 1)[0]
         for job in ("source-packages", "debian-packages", "arch-package", "opensuse-package", "nixos-release"):
             self.assertIn(f"      - {job}\n", release_gate)
