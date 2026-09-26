@@ -454,6 +454,69 @@ static bool test_foreign_toplevel_stop(struct wl_display* display, struct protoc
     return true;
 }
 
+static bool test_precommit_maximize_configure_order(void) {
+    struct protocols protocols = {0};
+    struct xdg_surface_state xdg_state = {0};
+    struct wl_display* display = wl_display_connect(NULL);
+    struct wl_registry* registry;
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+
+    if (!display) {
+        fprintf(stderr, "FAIL: precommit-state client could not connect\n");
+        return false;
+    }
+
+    registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &registry_listener, &protocols);
+    if (wl_display_roundtrip(display) < 0 || !protocols.compositor || !protocols.xdg_wm_base) {
+        fprintf(stderr, "FAIL: precommit-state client missed required globals\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_wm_base_add_listener(protocols.xdg_wm_base, &xdg_wm_base_listener, NULL);
+    surface = wl_compositor_create_surface(protocols.compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, NULL);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.PrecommitMaximize");
+    xdg_toplevel_set_maximized(xdg_toplevel);
+
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: precommit maximize request failed\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+    if (xdg_state.configured) {
+        fprintf(stderr, "FAIL: compositor sent xdg configure after precommit maximize, before "
+                        "first surface commit\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    wl_surface_commit(surface);
+    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured) {
+        fprintf(stderr, "FAIL: first surface commit did not produce the initial xdg configure\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_surface_ack_configure(xdg_surface, xdg_state.serial);
+    xdg_toplevel_destroy(xdg_toplevel);
+    xdg_surface_destroy(xdg_surface);
+    wl_surface_destroy(surface);
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: precommit-state client could not clean up\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+    wl_display_disconnect(display);
+    return true;
+}
+
 static bool test_disconnect_unconfigured_toplevel(void) {
     struct protocols protocols = {0};
     struct protocols observer_protocols = {0};
@@ -500,6 +563,8 @@ static bool test_disconnect_unconfigured_toplevel(void) {
         return false;
     }
 
+    /* Role creation gives Mutter an unready MetaWindow. Disconnecting without
+     * a commit also exercises wl_resource cleanup for an unconfigured role. */
     wl_display_disconnect(disconnect_display);
     observer_display = wl_display_connect(NULL);
     if (!observer_display) {
@@ -871,6 +936,9 @@ int main(void) {
         return 1;
 
     if (!test_disconnect_unconfigured_toplevel())
+        return 1;
+
+    if (!test_precommit_maximize_configure_order())
         return 1;
 
     wl_display_disconnect(display);
