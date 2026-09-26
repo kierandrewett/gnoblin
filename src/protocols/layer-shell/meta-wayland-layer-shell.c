@@ -1170,9 +1170,12 @@ static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_re
         return;
     }
 
+    /* A client may give the same wl_surface a new layer surface after
+     * destroying the last one and committing a null buffer, as toolkits do
+     * when they hide and re-show a window. Only a buffer rules that out; an
+     * earlier commit does not. */
     pending = meta_wayland_surface_get_pending_state(surface);
-    if ((pending->newly_attached && pending->buffer) || meta_wayland_surface_get_buffer(surface) ||
-        meta_wayland_surface_has_initial_commit(surface)) {
+    if ((pending->newly_attached && pending->buffer) || meta_wayland_surface_get_buffer(surface)) {
         wl_resource_post_error(resource, ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
                                "wl_surface@%d already has a buffer attached or committed",
                                wl_resource_get_id(surface_resource));
@@ -1186,12 +1189,15 @@ static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_re
         return;
     }
 
+    /* The role object outlives a destroyed layer surface on the same
+     * wl_surface, so start the new one from nothing: stale anchors, margins
+     * or configure serials would let it skip its initial configure. */
     layer_surface = META_WAYLAND_LAYER_SURFACE(surface->role);
+    g_free(layer_surface->namespace);
     layer_surface->namespace = g_strdup(namespace);
     layer_surface->output = output_resource ? wl_resource_get_user_data(output_resource) : NULL;
     layer_surface->initial_layer = layer;
-    layer_surface->pending.layer = layer;
-    layer_surface->current.layer = layer;
+    reset_layer_surface_state(layer_surface);
     layer_surface->closed = FALSE;
     layer_surface->output_destroyed_handler_id = 0;
     layer_surface->destroy_window_idle_id = 0;
