@@ -2,10 +2,10 @@ Origin: Gnoblin
 Label: Gnoblin
 Suite: 24.04
 Codename: 24.04
-Date: Sat, 26 Sep 2026 16:21:04 GMT
+Date: Sat, 26 Sep 2026 16:23:18 GMT
 Architectures: amd64
 Components: main
 Description: Gnoblin packages for Ubuntu 24.04 LTS
 SHA256:
- 22adb98643f592322e32165614cff18f75240e39424536f068c32ce5fa4e261e             4387 main/binary-amd64/Packages
- 81c60b100c00d9cc89638d91c05031018dc7fe20876cbdf688dcc95ff9dcfbf7             1736 main/binary-amd64/Packages.gz
+ f089f185afc258e47d5856e96bd03404b04e8674a6876998fe345fd96574a75b             4387 main/binary-amd64/Packages
+ 4d2e02ffa3d4eff71beff4bad6785facc3ae391cf9d5064a9143f51c13f4b43b             1738 main/binary-amd64/Packages.gz
