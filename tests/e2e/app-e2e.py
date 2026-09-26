@@ -48,6 +48,7 @@ FATAL_LOG = re.compile(
     re.IGNORECASE,
 )
 FRAME_POLICY = [3, 0, 0, 0, 0, 36, 2, 2, 2]
+FLATPAK_LAVAPIPE_ICD = "/usr/lib/x86_64-linux-gnu/GL/vulkan/icd.d/lvp_icd.x86_64.json"
 APP_WINDOW_STABLE_SECONDS = 4.0
 APP_WINDOW_SETTLE_TIMEOUT_SECONDS = 15.0
 
@@ -393,13 +394,13 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             f"--env=DISPLAY={client_environment['DISPLAY']}",
             f"--env=LANG={client_environment['LANG']}",
             "--env=LIBGL_ALWAYS_SOFTWARE=1",
+            f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
             # Grant both real endpoints; fallback-x11 masks X11 when Wayland exists.
             "--socket=wayland",
             "--socket=x11",
         ]
-        # Flatpak exposes Vulkan drivers through its runtime GL extension.
-        # The host ICD path is outside the sandbox and overriding the runtime's
-        # driver list makes Vulkan-only apps report that no adapter exists.
+        # The runtime extension stores its ICD manifests outside the loader's
+        # default search paths, so select its sandboxed lavapipe manifest.
         command.append(app["launch"])
         return command
     return ["gtk-launch", app["launch"]]
@@ -435,6 +436,7 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         f"--env=DISPLAY={client_environment['DISPLAY']}",
         f"--env=LANG={client_environment['LANG']}",
         "--env=LIBGL_ALWAYS_SOFTWARE=1",
+        f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
         "--socket=wayland",
         "--socket=x11",
         "--command=sh",
