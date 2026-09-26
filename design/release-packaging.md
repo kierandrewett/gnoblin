@@ -3,6 +3,29 @@
 This is internal release engineering material. Keep it current whenever the
 release pipeline or COPR publication changes.
 
+## Candidate release validation (2026-09-26)
+
+- DEB builds for Debian 13 and Ubuntu 24.04/26.04 completed successfully in
+  run `36209564932`, but all three installed-package smoke tests failed before
+  exercising windows. `gnoblinctl reload` reported
+  `Gnoblin config API requires Wayland support`.
+- The root cause was in patch `76-lua-events`: Meson set `HAVE_WAYLAND`, but
+  `config.h.meson` did not declare the macro, so Mutter compiled the guarded
+  runtime hooks as no-ops. Removing the API wrapper's guard exposed an
+  incomplete unified-diff hunk; its corrected build passed, but smoke tests
+  then reported that the Lua runtime remained in its pending-load state.
+- The pending fix adds `HAVE_WAYLAND` to Mutter's generated config template so
+  existing load-commit and event hooks compile. The tagged Release run
+  `36211393712` was cancelled before publication. Do not retarget or publish
+  `gnoblin-v0.1.7` until the package build and installed reload/window tests
+  pass on all three Ubuntu/Debian targets.
+- The current family scope has distinct remaining work: Debian 12 and Ubuntu
+  22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
+  Leap have no viable host dependency floor for the GNOME 51 packages; Arch,
+  Tumbleweed, and NixOS 26.05 still need graphical-session acceptance. Keep
+  those states aligned with `packaging/targets.json` and
+  `docs/platform-support.md`.
+
 ## Release workflow coverage added 2026-09-26
 
 - The tagged Release workflow now builds the openSUSE Tumbleweed RPM chain from

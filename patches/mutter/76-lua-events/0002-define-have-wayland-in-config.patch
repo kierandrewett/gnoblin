@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kieran Drewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 03:12:00 +0000
+Subject: [PATCH] meson: expose Wayland support in generated config
+
+The Gnoblin Mutter build sets HAVE_WAYLAND in Meson's configuration, but the
+macro is absent from config.h.meson. Without the template entry, Wayland-gated
+runtime hooks compile as no-ops even though the compositor is built with
+Wayland.
+
+---
+ config.h.meson | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/config.h.meson b/config.h.meson
+index 5e7e09b10..a9f5b3999 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -37,6 +37,9 @@
+ /* libwacom has get_num_rings() */
+ #mesondefine HAVE_LIBWACOM_GET_NUM_RINGS
+ 
++/* Define if the Wayland compositor is enabled */
++#mesondefine HAVE_WAYLAND
++
+ /* Define if you want to enable XWayland support */
+ #mesondefine HAVE_XWAYLAND
+ 
+-- 
+2.55.0
