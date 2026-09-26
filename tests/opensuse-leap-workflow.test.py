@@ -19,6 +19,7 @@ class OpenSUSELeapWorkflowTests(unittest.TestCase):
         self.assertIn("bash packaging/opensuse/build-chain.sh", workflow)
         self.assertIn('GNOBLIN_COMPAT_RUNTIME: "1"', workflow)
         self.assertIn("scripts/check-rpm-isolation.py", workflow)
+        self.assertIn("gnoblin-compat-runtime-[0-9]*.rpm", workflow)
         self.assertIn("opensuse-leap-15.6-rpms", workflow)
         self.assertIn("opensuse-leap-16.0-rpms", workflow)
 

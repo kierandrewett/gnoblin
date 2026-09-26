@@ -66,6 +66,7 @@ jobs:
         run: |
           mapfile -t rpms < <(
             find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
+              -name 'gnoblin-compat-runtime-[0-9]*.rpm' -o \
               -name 'gnoblin-gsettings-desktop-schemas-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
@@ -117,6 +118,7 @@ jobs:
         run: |
           mapfile -t component_rpms < <(
             find rpms -type f \( \
+              -name 'gnoblin-compat-runtime-[0-9]*.rpm' -o \
               -name 'gnoblin-gsettings-desktop-schemas-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \

@@ -8,6 +8,7 @@ import subprocess
 
 
 PACKAGES = {
+    "gnoblin-compat-runtime",
     "gnoblin-gsettings-desktop-schemas",
     "gnoblin-mutter",
     "gnoblin-mutter-devel",

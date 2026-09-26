@@ -85,6 +85,13 @@ class IsolationTests(unittest.TestCase):
     def test_accepts_private_runtime_and_session_entries(self):
         paths = "\n".join(sorted(isolation.PUBLIC_FILES)) + "\n/usr/lib/gnoblin/bin/gnome-shell"
         isolation.validate("gnoblin-shell", paths, "gnoblin-shell = 51.0", "", "")
+        isolation.validate(
+            "gnoblin-compat-runtime",
+            "/usr/lib/gnoblin/deps/lib64/libglib-2.0.so.0",
+            "gnoblin-compat-runtime = 51.0",
+            "",
+            "",
+        )
 
     def test_source_install_rejects_shared_prefixes_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
