@@ -63,6 +63,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("ref: ${{ inputs.ref || github.sha }}", opensuse)
         self.assertIn("Flatten openSUSE RPM assets", workflow)
         self.assertIn("find opensuse-rpms -type f -name '*.rpm'", workflow)
+        self.assertIn("! -name '*-debuginfo-*'", workflow)
+        self.assertIn("! -name '*-debugsource-*'", workflow)
         self.assertIn('"release-assets/opensuse-$(basename "$rpm")"', workflow)
 
     def test_release_builds_the_pinned_nixos_package_before_publication(self):

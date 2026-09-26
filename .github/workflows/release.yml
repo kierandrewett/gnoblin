@@ -170,7 +170,10 @@ jobs:
       - name: Flatten openSUSE RPM assets
         run: |
           mkdir -p release-assets
-          mapfile -d '' rpms < <(find opensuse-rpms -type f -name '*.rpm' -print0)
+          mapfile -d '' rpms < <(
+            find opensuse-rpms -type f -name '*.rpm' \
+              ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
+          )
           (("${#rpms[@]}" > 0))
           for rpm in "${rpms[@]}"; do
             cp -- "$rpm" "release-assets/opensuse-$(basename "$rpm")"
