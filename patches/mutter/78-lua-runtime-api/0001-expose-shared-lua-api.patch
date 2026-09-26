@@ -15,7 +15,7 @@ diff --git a/src/core/util.c b/src/core/util.c
 index 06accd2fb..5692d954f 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -838,0 +839,12 @@ meta_gnoblin_finish_config_event (gboolean commit)
+@@ -838,0 +839,13 @@ meta_gnoblin_finish_config_event (gboolean commit)
 +GVariant *
 +meta_gnoblin_call_config_api (const char *method,
 +                              GVariant   *arguments,
