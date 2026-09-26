@@ -13,8 +13,8 @@ release pipeline or COPR publication changes.
 - The compatibility patch now keeps common tag parameters outside the optional
   capability code, uses numeric logging for color enums missing in PipeWire
   1.4, and gates device ID separately at PipeWire 1.6. The next COPR Mutter
-  release is `51.0-27.gnoblin`; the next 0.1.7 DEB revision is `-4` because
-  revisions `-1` through `-3` are immutable.
+  release is `51.0-27.gnoblin`; revisions `-1` through `-4` of the 0.1.7 DEB
+  are already published and immutable. The corrected package must use `-5`.
 - APT suite indexes were corrected and republished by `36232880003` at
   `gh-pages` commit `f95cc80e`. The index contents now match each Ubuntu suite;
   confirm the newest Pages build and live custom domain before treating the
