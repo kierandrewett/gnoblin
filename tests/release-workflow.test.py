@@ -23,7 +23,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         version = subprocess.check_output(
             [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
         ).strip()
-        expected_revision = "4" if version == "0.1.7" else "1"
+        expected_revision = "6" if version == "0.1.7" else "1"
         self.assertEqual(
             subprocess.check_output([str(script), f"gnoblin-v{version}"], text=True).strip(),
             expected_revision,
