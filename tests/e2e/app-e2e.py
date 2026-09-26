@@ -280,9 +280,9 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             f"--env=DISPLAY={client_environment['DISPLAY']}",
             f"--env=LANG={client_environment['LANG']}",
             "--env=LIBGL_ALWAYS_SOFTWARE=1",
+            # Grant both real endpoints; fallback-x11 masks X11 when Wayland exists.
             "--socket=wayland",
             "--socket=x11",
-            "--socket=fallback-x11",
             app["launch"],
         ]
     return ["gtk-launch", app["launch"]]
