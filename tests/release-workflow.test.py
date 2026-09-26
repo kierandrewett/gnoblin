@@ -8,6 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+    def test_debian_packages_build_on_pushes_prs_and_exact_release_refs(self):
+        workflow = (ROOT / ".github/workflows/deb.yml").read_text()
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
+        install = workflow.split("\n  install:\n", 1)[1]
+        self.assertNotIn("if: inputs.ref != ''", build)
+        self.assertNotIn("if: inputs.ref != ''", install)
+        self.assertEqual(build.count("ref: ${{ inputs.ref || github.sha }}"), 1)
+        self.assertIn("PACKAGE_REF: ${{ inputs.ref || github.sha }}", build)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", install)
+
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
         version = subprocess.check_output(
@@ -39,6 +49,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("contents: write", workflow)
         self.assertIn("pages: write", workflow)
         self.assertIn("needs: [source-packages, debian-packages]", workflow)
+        release_gate = workflow.split("  github-release:\n", 1)[1].split("    runs-on:", 1)[0]
+        for job in ("source-packages", "debian-packages", "arch-package", "opensuse-package", "nixos-release"):
+            self.assertIn(f"      - {job}\n", release_gate)
         self.assertIn("git submodule foreach --recursive 'git fetch --force --tags origin'", workflow)
         self.assertIn("GIT_COMMITTER_NAME: Gnoblin release automation", workflow)
         self.assertIn("GIT_COMMITTER_EMAIL: release@gnoblin.local", workflow)
@@ -47,6 +60,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("Gnoblin $(./scripts/gnoblin-version.py get version)", workflow)
         self.assertIn("copr-repository:", workflow)
         self.assertIn("uses: ./.github/workflows/copr.yml", workflow)
+        self.assertIn("pattern: debian-package-*", workflow)
+        self.assertIn("merge-multiple: true", workflow)
+        self.assertIn("name: debian-package-${{ matrix.target }}", (ROOT / ".github/workflows/deb.yml").read_text())
+        self.assertNotIn("pattern: deb-*", workflow)
         self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
@@ -90,7 +107,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("required: true", workflow)
         self.assertIn('gh release download "$RELEASE_TAG"', workflow)
         self.assertIn("scripts/publish-copr.sh kierandrewett/gnoblin", workflow)
-        self.assertIn("dnf -y install --refresh gnoblin", workflow)
+        self.assertIn("RELEASE_TAG: ${{ inputs.tag }}", workflow)
+        self.assertIn('dnf -y install --refresh "gnoblin-$expected_version"', workflow)
+        self.assertIn('test "$installed_version" = "$expected_version"', workflow)
         self.assertIn("rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session", workflow)
 
     def test_nix_source_of_truth_is_a_ci_gate(self):

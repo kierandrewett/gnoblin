@@ -53,7 +53,6 @@ jobs:
           if-no-files-found: error
 
   build:
-    if: inputs.ref != ''
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -72,7 +71,7 @@ jobs:
         run: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
       - name: Prepare build container
         run: |
@@ -80,7 +79,7 @@ jobs:
           chown -R builder "$GITHUB_WORKSPACE"
       - name: Build private runtime and package
         env:
-          PACKAGE_REF: ${{ inputs.ref }}
+          PACKAGE_REF: ${{ inputs.ref || github.sha }}
         run: |
           revision=1
           if [[ "$PACKAGE_REF" == refs/tags/gnoblin-v* || "$PACKAGE_REF" == gnoblin-v* ]]; then
@@ -98,13 +97,12 @@ jobs:
             -C "$GITHUB_WORKSPACE" build/deb-dependencies.json packaging/deb/patches "${cargo_sources[@]}"
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-${{ matrix.target }}
+          name: debian-package-${{ matrix.target }}
           path: dist/deb/*
           if-no-files-found: error
           retention-days: 14
 
   install:
-    if: inputs.ref != ''
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -122,10 +120,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/download-artifact@v4
         with:
-          name: deb-${{ matrix.target }}
+          name: debian-package-${{ matrix.target }}
           path: packages
       - name: Verify checksum, install, test and remove
         env:

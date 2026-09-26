@@ -154,7 +154,7 @@ jobs:
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
-          pattern: deb-*
+          pattern: debian-package-*
           path: release-assets
           merge-multiple: true
       - uses: actions/download-artifact@v4
