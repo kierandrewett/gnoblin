@@ -5,17 +5,17 @@ Origin: Gnoblin
 Label: Gnoblin
 Suite: 24.04
 Codename: 24.04
-Date: Sat, 26 Sep 2026 09:29:00 GMT
+Date: Sat, 26 Sep 2026 10:27:17 GMT
 Architectures: amd64
 Components: main
 Description: Gnoblin packages for Ubuntu 24.04 LTS
 SHA256:
- 6f4012f3b92791df7cbc2db2cab31126abba6988ec1694ead2a61c5d02102a2e            30469 main/binary-amd64/Packages
- 6e5083630b39b635c428f1bcad3c10cc06faf911d85c27048ba17100f89f0f61             2519 main/binary-amd64/Packages.gz
+ 14c19f543166e03ca654dc8d760c6ab166d8aed2098aae17d8f592bacbc2c03f            34857 main/binary-amd64/Packages
+ 78f6d6a1a9b1ef42373cfcec45f2c16965fc3b342024f5bb3f3e5dc7d3a4ecd9             2634 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQTX1HnIX3yZ7TNvvRJ/ieBKJNfRvgUCareQXQAKCRB/ieBKJNfR
-vu3pAP9kuZXdA0nKjQkPSbNZSj3M+KVJVyh61Jd/J5Amn4vUrwD/bJ5avXe0Gaza
-FXPKnGaQ197V1kYYz2GF9lg4Y3VopA4=
-=TkN+
+iHUEARYKAB0WIQTX1HnIX3yZ7TNvvRJ/ieBKJNfRvgUCareeBgAKCRB/ieBKJNfR
+vlkyAP9hgtWVjQlB4g5+GjQaFoSqv+nes7BSRJOBSrnMrq95+AEAgEWKxfnaRssZ
+q2Rlx0h8GLffgDtJeLpi2VkWYA5o7g4=
+=N7dj
 -----END PGP SIGNATURE-----
