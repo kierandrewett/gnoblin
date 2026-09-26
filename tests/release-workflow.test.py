@@ -8,6 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWorkflowTests(unittest.TestCase):
+    def test_debian_packages_build_on_pushes_prs_and_exact_release_refs(self):
+        workflow = (ROOT / ".github/workflows/deb.yml").read_text()
+        build = workflow.split("\n  build:\n", 1)[1].split("\n  install:\n", 1)[0]
+        install = workflow.split("\n  install:\n", 1)[1]
+        self.assertNotIn("if: inputs.ref != ''", build)
+        self.assertNotIn("if: inputs.ref != ''", install)
+        self.assertEqual(build.count("ref: ${{ inputs.ref || github.sha }}"), 1)
+        self.assertIn("PACKAGE_REF: ${{ inputs.ref || github.sha }}", build)
+        self.assertIn("ref: ${{ inputs.ref || github.sha }}", install)
+
     def test_release_tags_match_the_pinned_gnoblin_semver(self):
         script = ROOT / "scripts/check-release-tag.sh"
         version = subprocess.check_output(
