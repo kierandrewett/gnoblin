@@ -9,7 +9,7 @@
   waylandScanner ? null,
   unzip,
   hyprcursor,
-  inkscape,
+  librsvg,
   adwaita-icon-theme,
   lua5_4,
   libepoxy,
@@ -200,7 +200,7 @@ let
     nativeBuildInputs = [
       makeWrapper
       wrapGAppsHook3
-      inkscape
+      librsvg
       hyprcursor
       python3
     ];
