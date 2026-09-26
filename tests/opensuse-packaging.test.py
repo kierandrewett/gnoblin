@@ -70,9 +70,11 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("Requires:       libinput10 >= 1.30", meta)
         self.assertIn("Requires:       libwayland-client0 >= 1.26", meta)
 
-    def test_check_script_keeps_the_probe_non_installing(self):
+    def test_check_script_uses_the_default_private_stack_boundary_portably(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
-        self.assertIn("--without gnoblin_stack", check)
+        self.assertNotIn("--without gnoblin_stack", check)
+        self.assertIn('rpmspec -P "$spec"', check)
+        self.assertIn('rpmspec -q --buildrequires "$spec"', check)
         self.assertIn("install --dry-run --no-recommends", check)
 
     def test_build_chain_respects_internal_dependency_order(self):

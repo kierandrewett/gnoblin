@@ -32,8 +32,11 @@ cleanup() {
 trap cleanup EXIT
 
 for spec in "${SPECS[@]}"; do
-    rpmspec -P --without gnoblin_stack "$spec" >/dev/null
-    rpmspec -q --buildrequires --without gnoblin_stack "$spec"
+    # `%bcond_with gnoblin_stack` is disabled by default.  Do not pass
+    # rpmspec's `--without` convenience option here: RPM 4.14 in Leap 15.6
+    # predates that option even though it understands `%bcond_with`.
+    rpmspec -P "$spec" >/dev/null
+    rpmspec -q --buildrequires "$spec"
 done | LC_ALL=C sort -u >"$requirements"
 
 if [[ -s "$requirements" ]]; then
