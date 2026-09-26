@@ -2,7 +2,7 @@ Origin: Gnoblin
 Label: Gnoblin
 Suite: 13
 Codename: 13
-Date: Sat, 26 Sep 2026 09:24:36 GMT
+Date: Sat, 26 Sep 2026 09:28:58 GMT
 Architectures: amd64
 Components: main
 Description: Gnoblin packages for Debian 13
