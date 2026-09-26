@@ -701,6 +701,37 @@ export class Component {
         this._acceleratorCaptureSignal = 0;
     }
 
+    _dispatchWindowEvent(event, window) {
+        const getString = (method) => {
+            try {
+                return window?.[method]?.() ?? "";
+            } catch {
+                return "";
+            }
+        };
+
+        this._config?.dispatchEvent(event, {
+            app_id: getString("get_gtk_application_id"),
+            wm_class: getString("get_wm_class"),
+            title: getString("get_title"),
+        });
+    }
+
+    _watchEventWindow(window) {
+        if (!window || this._eventWindows?.has(window)) return;
+
+        try {
+            const id = window.connect("unmanaged", () => {
+                this._dispatchWindowEvent("window_unmanaged", window);
+                this._dispatchWindowEvent("gnome.shell.window.unmanaged", window);
+                this._eventWindows.delete(window);
+            });
+            this._eventWindows.set(window, id);
+        } catch (error) {
+            console.warn(`gnoblin events: could not watch window lifetime: ${error.message}`);
+        }
+    }
+
     enable() {
         this._settings = new Gio.Settings({ schema_id: SCHEMA_ID });
         this._settingsChangedId = this._settings.connect(`changed::${DISABLED_KEY}`, () => this._syncFeatureState());

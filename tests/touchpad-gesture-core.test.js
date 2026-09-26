@@ -22,6 +22,15 @@ test("Shell controller imports the gesture router only once", () => {
     assert.equal(imports?.length, 1);
 });
 
+test("Shell controller defines its window event helpers", () => {
+    const controller = readFileSync(
+        new URL("../src/gnome-shell-overlay/js/ui/components/gnoblinControl.js", import.meta.url),
+        "utf8",
+    );
+    assert.match(controller, /^\s+_dispatchWindowEvent\(event, window\)\s*\{/m);
+    assert.match(controller, /^\s+_watchEventWindow\(window\)\s*\{/m);
+});
+
 test("matches the same path with different scale and event sampling", () => {
     assert.equal(
         touchpadGesturePathMatches(rightThenDown, [
