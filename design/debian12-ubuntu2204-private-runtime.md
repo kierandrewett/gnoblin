@@ -134,6 +134,13 @@ targets unsupported until the graph builds on both images, private GTK/GCR
 typelibs load in GJS, the complete compositor runtime builds, and install,
 coexistence, removal, and graphical-session checks pass.
 
+The first Ubuntu 22.04 GTK attempt then exposed another host floor: GTK 4.14.5
+requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
+manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
+1.48 before GTK. This is still a probe; the next clean-image run must establish
+that the private scanner, client library, protocol data, and GTK all build and
+resolve from the private prefix.
+
 ## Boundary: what can be private
 
 The executable compositor and Shell should load one coherent Gnoblin library

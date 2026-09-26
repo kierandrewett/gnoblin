@@ -92,7 +92,7 @@ jobs:
               --cache "$GITHUB_WORKSPACE/build/compat-dependencies" \
               --only gcr4 --jobs 2
           runuser -u builder -- env PKG_CONFIG_PATH=/usr/lib/gnoblin/deps/lib64/pkgconfig \
-            pkg-config --modversion gtk4 gcr-4
+            pkg-config --modversion wayland-client gtk4 gcr-4
 
   build:
     runs-on: ubuntu-latest
