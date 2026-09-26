@@ -7,6 +7,7 @@
 %global __requires_exclude ^(/usr/sbin/python3|lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|GnomeQR|Meta|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 %global tarball_version %%(echo %{version} | tr '~' '.')
 %bcond_with gnoblin_stack
+%bcond_with gnoblin_compat_runtime
 
 Name:           gnoblin-shell
 Version:        51.0
@@ -39,20 +40,28 @@ BuildRequires:  meson
 BuildRequires:  sassc
 BuildRequires:  pkgconfig(bash-completion)
 BuildRequires:  pkgconfig(epoxy)
+%if %{with gnoblin_compat_runtime}
+BuildRequires:  gnoblin-compat-runtime >= %{version}
+%else
 BuildRequires:  pkgconfig(gcr-4) >= 3.90.0
 BuildRequires:  pkgconfig(gio-2.0) >= 2.86
 BuildRequires:  pkgconfig(girepository-2.0) >= 2.86.0
 BuildRequires:  pkgconfig(gjs-1.0) >= 1.87.1
 BuildRequires:  pkgconfig(glib-2.0) >= 2.86
+%endif
 BuildRequires:  pkgconfig(gnome-autoar-0)
 BuildRequires:  pkgconfig(gnome-desktop-4)
 BuildRequires:  pkgconfig(gstreamer-base-1.0)
+%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(gtk4)
+%endif
 BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(libedataserver-1.2)
 BuildRequires:  pkgconfig(libnm)
+%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(libpipewire-0.3)
+%endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(librsvg-2.0)
 BuildRequires:  pkgconfig(libstartup-notification-1.0)
@@ -63,8 +72,12 @@ BuildRequires:  pkgconfig(xfixes)
 BuildRequires:  gnoblin-gsettings-desktop-schemas >= 51
 BuildRequires:  gnoblin-mutter-devel >= 51
 %endif
+%if %{with gnoblin_compat_runtime}
+Requires:       gnoblin-compat-runtime >= %{version}
+%else
 Requires:       gjs >= 1.87.1
 Requires:       glib2 >= 2.86
+%endif
 Requires:       gnome-session
 Requires:       gnome-settings-daemon
 Requires:       gnoblin-gsettings-desktop-schemas >= 51
@@ -89,8 +102,16 @@ Adds Gnoblin to the login screen without replacing the GNOME session.
 %autosetup -S git -n gnome-shell-%{tarball_version}
 
 %build
+%if %{with gnoblin_compat_runtime}
+export PATH=%{_prefix}/deps/bin:$PATH
+export PKG_CONFIG_PATH=%{_prefix}/deps/lib64/pkgconfig:%{_prefix}/deps/share/pkgconfig:%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+export GI_GIR_PATH=%{_prefix}/deps/share/gir-1.0:%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
+export GI_TYPELIB_PATH=%{_prefix}/deps/lib64/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}
+export LD_LIBRARY_PATH=%{_prefix}/deps/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+%else
 export PKG_CONFIG_PATH=%{_libdir}/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
+%endif
 test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
 /usr/bin/meson setup build . --buildtype=plain \
   --prefix=%{_prefix} --libdir=%{_libdir} --libexecdir=%{_libexecdir} \

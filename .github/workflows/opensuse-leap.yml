@@ -59,6 +59,8 @@ jobs:
         env:
           GIT_COMMITTER_NAME: Gnoblin Package Builder
           GIT_COMMITTER_EMAIL: package-builder@gnoblin.local
+          GNOBLIN_COMPAT_RUNTIME: "1"
+          GNOBLIN_BUILD_JOBS: "2"
         run: bash packaging/opensuse/build-chain.sh "$RUNNER_TEMP/rpmbuild"
       - name: Check RPM package isolation
         run: |

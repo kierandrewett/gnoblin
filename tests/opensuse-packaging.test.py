@@ -92,6 +92,28 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             chain.index("build gnome-shell.spec --with gnoblin_stack"),
         )
         self.assertIn("--allow-unsigned-rpm", chain)
+        self.assertLess(
+            chain.index("\nbuild_compatibility_runtime\n"),
+            chain.index("build gsettings-desktop-schemas.spec"),
+        )
+        self.assertIn("build compat-runtime.spec", chain)
+        self.assertIn("gnoblin_compat_runtime", chain)
+
+    def test_private_compatibility_runtime_has_its_own_rpm_boundary(self):
+        spec = (SPECS / "compat-runtime.spec").read_text()
+        self.assertIn("Name:           gnoblin-compat-runtime", spec)
+        self.assertIn("%global _compat_dir %{_prefix}/deps", spec)
+        self.assertIn("%global __provides_exclude_from ^%{_compat_dir}/.*$", spec)
+        self.assertIn("%global __requires_exclude ^%{_compat_dir}/.*$", spec)
+        self.assertIn("cp -a deps %{buildroot}%{_prefix}/", spec)
+
+    def test_compatibility_mode_uses_private_interfaces_for_mutter_and_shell(self):
+        for name in ("mutter.spec", "gnome-shell.spec"):
+            spec = (SPECS / name).read_text()
+            self.assertIn("%bcond_with gnoblin_compat_runtime", spec)
+            self.assertIn("BuildRequires:  gnoblin-compat-runtime >= %{version}", spec)
+            self.assertIn("%{_prefix}/deps/lib64/pkgconfig", spec)
+            self.assertIn("%{_prefix}/deps/lib64", spec)
 
 
 if __name__ == "__main__":

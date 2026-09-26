@@ -32,6 +32,13 @@ class RPMCompatibilityRuntimeManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "incomplete private RPM runtime"):
             composer.compose([ROOT / "packaging/rpm/compat-bootstrap.json"])
 
+    def test_runtime_builder_uses_the_composed_manifest_and_private_prefix(self):
+        builder = (ROOT / "packaging/rpm/build-compat-runtime.sh").read_text()
+        self.assertIn("compose-compat-runtime-manifest.py", builder)
+        self.assertIn('--prefix "$PREFIX"', builder)
+        self.assertIn('--manifest "$MANIFEST"', builder)
+        self.assertIn("PREFIX=/usr/lib/gnoblin/deps", builder)
+
 
 if __name__ == "__main__":
     unittest.main()
