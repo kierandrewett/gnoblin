@@ -81,6 +81,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: cachix/install-nix-action@v31
       - name: Evaluate the private package and NixOS module
         run: |
@@ -107,6 +109,8 @@ jobs:
         run: |
           nix build -L .#gnoblin-nixos-26_05.gnoblinMutter
           nix build -L .#packages.x86_64-linux.gnoblin-nixos-26_05
+          test -x result/bin/gnoblin-session
+          nix path-info --json result | tee "$RUNNER_TEMP/nix-release-path.json"
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -119,20 +123,3 @@ jobs:
         run: ./scripts/sync-package-manifest.py check
       - name: Build and test the Nix package and module
         run: nix flake check -L
-
-  release-nixos-26-05:
-    name: Verify the tagged NixOS 26.05 release package
-    if: inputs.ref != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-          submodules: recursive
-      - uses: cachix/install-nix-action@v31
-      - name: Build the exact tagged NixOS package
-        run: |
-          nix build -L .#gnoblin-nixos-26_05
-          test -x result/bin/gnoblin-session
-          nix path-info --json result | tee "$RUNNER_TEMP/nix-release-path.json"
