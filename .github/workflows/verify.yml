@@ -103,10 +103,10 @@ jobs:
       - name: Install stock GNOME and package build requirements
         run: |
           pacman -Syu --noconfirm --needed \
-            adwaita-cursors base-devel brightnessctl cmake desktop-file-utils egl-wayland \
+            base-devel brightnessctl cmake desktop-file-utils egl-wayland \
             evolution-data-server gettext git glib2-devel gobject-introspection \
             gjs gnome-session gnome-settings-daemon gnome-shell gtk4 hyprcursor \
-            inkscape libadwaita libdisplay-info libei libinput libxkbcommon \
+            libadwaita libdisplay-info libei libinput libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf playerctl \
             python python-docutils python-packaging sassc sysprof wayland wireplumber \
             xdg-desktop-portal-gnome xorg-xwayland

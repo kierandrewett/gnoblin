@@ -7,7 +7,7 @@ pkgdesc='Gnoblin desktop session with a private GNOME runtime'
 arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
-makedepends=('adwaita-cursors' 'base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'inkscape' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')
 depends=('brightnessctl' 'gjs' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
 
 source=("$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz")
@@ -23,6 +23,8 @@ prepare() {
         mkdir -p "subprojects/$project"
         tar -xf "${archive[0]}" -C "subprojects/$project" --strip-components=1
     done
+    tar -xf sources/Adwaita-Hyprcursor.tar.xz -C .
+    test -f Adwaita-Hyprcursor/manifest.hl
 }
 
 build() {
@@ -76,6 +78,8 @@ package() {
     rm -f "$pkgdir$_prefix/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
     install -d "$pkgdir$_prefix/deps"
     cp -a "$_build_prefix/deps/." "$pkgdir$_prefix/deps/"
+    install -d "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor"
+    cp -a Adwaita-Hyprcursor/. "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor/"
     install -Dm644 src/data/session/modes/gnoblin.json "$pkgdir$_prefix/share/gnome-shell/modes/gnoblin.json"
     install -Dm644 src/data/session/gnome-session/gnoblin.session "$pkgdir/usr/share/gnome-session/sessions/gnoblin.session"
     install -Dm644 src/data/session/gnoblin.desktop "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"

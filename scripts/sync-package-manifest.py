@@ -118,7 +118,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         "arch=('x86_64')\n"
         f"url='{PROJECT_URL}'\n"
         "license=('GPL-2.0-or-later')\n"
-        "makedepends=('adwaita-cursors' 'base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'inkscape' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')\n"
+        "makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')\n"
         f"depends=({' '.join(dependencies)})\n\n"
         f'source=("$pkgname-$pkgver-gnome-{gnome_version}-arch-source.tar.xz::{PROJECT_URL}/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-{gnome_version}-arch-source.tar.xz")\n'
         f"sha256sums=('{source_sha256}')\n\n"
@@ -132,6 +132,8 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         '        mkdir -p "subprojects/$project"\n'
         '        tar -xf "${archive[0]}" -C "subprojects/$project" --strip-components=1\n'
         "    done\n"
+        "    tar -xf sources/Adwaita-Hyprcursor.tar.xz -C .\n"
+        "    test -f Adwaita-Hyprcursor/manifest.hl\n"
         "}\n\n"
         "build() {\n"
         '    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"\n'
@@ -183,6 +185,8 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP") -> str:
         '    rm -f "$pkgdir$_prefix/lib/systemd/user/org.gnome.Shell-disable-extensions.service"\n'
         '    install -d "$pkgdir$_prefix/deps"\n'
         '    cp -a "$_build_prefix/deps/." "$pkgdir$_prefix/deps/"\n'
+        '    install -d "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor"\n'
+        '    cp -a Adwaita-Hyprcursor/. "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor/"\n'
         '    install -Dm644 src/data/session/modes/gnoblin.json "$pkgdir$_prefix/share/gnome-shell/modes/gnoblin.json"\n'
         '    install -Dm644 src/data/session/gnome-session/gnoblin.session "$pkgdir/usr/share/gnome-session/sessions/gnoblin.session"\n'
         '    install -Dm644 src/data/session/gnoblin.desktop "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"\n'

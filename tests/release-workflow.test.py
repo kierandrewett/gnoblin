@@ -40,6 +40,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         for project in ("gsettings-desktop-schemas", "mutter", "gnome-shell", "gnoblin"):
             self.assertIn(f'build-srpm.sh" {project}', script)
         self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD", script)
+        self.assertIn('"$SOURCES/Adwaita-Hyprcursor.tar.xz"', script)
         self.assertIn("gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz", script)
         self.assertIn("SHA256SUMS", script)
 
@@ -72,7 +73,6 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("merge-multiple: true", workflow)
         self.assertIn("name: debian-package-${{ matrix.target }}", (ROOT / ".github/workflows/deb.yml").read_text())
         self.assertNotIn("pattern: deb-*", workflow)
-        self.assertRegex(workflow, r"dnf -y install[^\n]*\binkscape\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\bhyprcursor\b")
         self.assertRegex(workflow, r"dnf -y install[^\n]*\badwaita-cursor-theme\b")
 
@@ -93,6 +93,14 @@ class ReleaseWorkflowTests(unittest.TestCase):
         arch = workflow.split("  arch-package:\n", 1)[1].split("\n  opensuse-package:\n", 1)[0]
         self.assertIn("-name 'gnoblin-[0-9]*.pkg.tar.zst'", arch)
         self.assertIn("pacman -Q gnoblin", arch)
+        self.assertIn("share/icons/Adwaita-Hyprcursor/manifest.hl", arch)
+
+    def test_arch_build_uses_the_release_cursor_theme_without_inkscape(self):
+        pkgbuild = (ROOT / "packaging/arch/PKGBUILD").read_text()
+        bundle = (ROOT / "packaging/arch/build-source-bundle.sh").read_text()
+        self.assertNotIn("'inkscape'", pkgbuild)
+        self.assertIn("Adwaita-Hyprcursor.tar.xz", bundle)
+        self.assertIn("cp -a Adwaita-Hyprcursor/.", pkgbuild)
 
     def test_release_waits_for_and_publishes_opensuse_rpms(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
