@@ -411,16 +411,19 @@ def close_sequence(sequence: int, timeout: float = 10) -> str:
     state = window_state(sequence)
     if state is None:
         return "already-closed"
-    if state["layout"]["border"][0]:
+
+    has_gnoblin_frame = bool(state["layout"]["border"][0])
+    if has_gnoblin_frame or not state["fullscreen"]:
         close_x = state["x"] + max(12, state["width"] - 20)
         close_y = state["y"] + 18
         send_pointer("move", close_x, close_y)
         time.sleep(0.025)
         send_pointer("click", close_x, close_y)
+        button_name = "Gnoblin titlebar close button" if has_gnoblin_frame else "client titlebar close button"
         try:
-            wait_for(lambda: window_state(sequence) is None, "titlebar close button", timeout=2)
+            wait_for(lambda: window_state(sequence) is None, button_name, timeout=2)
             send_pointer("move", 4, 780)
-            return "titlebar-close-button"
+            return "titlebar-close-button" if has_gnoblin_frame else "client-titlebar-close-button"
         except TimeoutError:
             pass
     if window_state(sequence) is not None:
