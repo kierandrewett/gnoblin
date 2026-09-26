@@ -22,7 +22,7 @@ Version:        51.0
 %global gjs_version 1.88.1
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/gnome-shell), so this spec carries no Patch: directives.
-Release:        24.gnoblin%{?dist}
+Release:        25.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:        Private GNOME Shell runtime for Gnoblin
 
@@ -207,7 +207,12 @@ export LD_LIBRARY_PATH="%{buildroot}%{_libdir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PA
 export PATH="%{buildroot}%{_bindir}:$PATH"
 # Refuse an accidental build against Fedora's Mutter.
 test "$(pkg-config --variable=prefix libmutter-51)" = "%{_prefix}"
-%meson -Db_pie=true -Dc_args='-std=gnu17' -Dcpp_args='-std=c++20' \
+# GObject Introspection compiles its temporary scanner programs directly from
+# CFLAGS instead of Meson's c_args. Fedora hardens those links as PIE, so carry
+# the PIE compile flag into the scanner environment too.
+export CFLAGS="${CFLAGS:+$CFLAGS }-fPIE"
+export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-fPIE"
+%meson -Db_pie=true -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' \
   -Dextensions_tool=false -Dtests=false -Dman=false
 %meson_build
 # Restore the installed-prefix metadata before it enters the RPM payload.
@@ -276,6 +281,9 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnome-session@gnoblin.target.d/
 
 %changelog
+* Sat Sep 26 2026 Gnoblin contributors - 51.0-25.gnoblin
+- Build GObject Introspection scanner helpers as PIE on Fedora.
+
 * Sat Sep 26 2026 Gnoblin contributors - 51.0-24.gnoblin
 - Enable Meson's PIE handling for Shell introspection helper binaries.
 
