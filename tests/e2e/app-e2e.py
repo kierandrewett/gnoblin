@@ -395,12 +395,15 @@ def app_command(app: dict, client_environment: dict[str, str]) -> list[str]:
             f"--env=LANG={client_environment['LANG']}",
             "--env=LIBGL_ALWAYS_SOFTWARE=1",
             f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
+            f"--env=VK_ICD_FILENAMES={FLATPAK_LAVAPIPE_ICD}",
+            "--env=VK_LOADER_DEBUG=error,warn,info,driver",
             # Grant both real endpoints; fallback-x11 masks X11 when Wayland exists.
             "--socket=wayland",
             "--socket=x11",
         ]
         # The runtime extension stores its ICD manifests outside the loader's
         # default search paths, so select its sandboxed lavapipe manifest.
+        # Loader diagnostics remain in the per-app stderr log for Vulkan apps.
         command.append(app["launch"])
         return command
     return ["gtk-launch", app["launch"]]
@@ -437,6 +440,8 @@ if command -v vulkaninfo >/dev/null 2>&1; then vulkaninfo --summary 2>&1; else e
         f"--env=LANG={client_environment['LANG']}",
         "--env=LIBGL_ALWAYS_SOFTWARE=1",
         f"--env=VK_DRIVER_FILES={FLATPAK_LAVAPIPE_ICD}",
+        f"--env=VK_ICD_FILENAMES={FLATPAK_LAVAPIPE_ICD}",
+        "--env=VK_LOADER_DEBUG=error,warn,info,driver",
         "--socket=wayland",
         "--socket=x11",
         "--command=sh",

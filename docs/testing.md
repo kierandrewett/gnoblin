@@ -171,8 +171,9 @@ probes IBus on that bus before launching Shell.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code on a
 virtual 1280x800 monitor. It uses Mesa software OpenGL and the lavapipe Vulkan
-ICD. Flatpak clients select lavapipe through the driver manifest inside the
-Flatpak GL extension; RPM clients use the host ICD.
+ICD. Flatpak clients select the extension's lavapipe manifest through
+`VK_DRIVER_FILES` and its legacy `VK_ICD_FILENAMES` name. Their app logs also
+retain Vulkan loader diagnostics. RPM clients use the host ICD.
 
 Even-numbered shards add a 1024x768 monitor. Manual runs can set
 `extra_monitor` to a different secondary size for monitor-size checks.
