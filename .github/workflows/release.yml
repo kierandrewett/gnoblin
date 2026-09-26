@@ -53,6 +53,7 @@ jobs:
     uses: ./.github/workflows/deb.yml
     with:
       ref: ${{ inputs.tag || github.ref }}
+      release_build: true
 
   opensuse-package:
     uses: ./.github/workflows/opensuse-rpm.yml

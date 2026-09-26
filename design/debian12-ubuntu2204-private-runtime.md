@@ -81,12 +81,12 @@ and private libraries with an RPATH to its own `lib64`, and does not contain
 `g-ir-scanner`. The final GLib build passed its private-interface check.
 
 The disposable image needed `python-is-python3`, `python3-dev`, and `flex`
-for the scanner bootstrap. This is only a source-closure result on Debian 12:
-the production DEB manifest and workflow are unchanged, and neither GTK/GCR,
-Mutter/Shell, package transactions, Ubuntu 22.04, nor graphical sessions have
-been validated. The builder still supports declared dependency ordering and
-selected subgraphs, and its archive extraction supports Python 3.10/3.11 while
-retaining staging-path and link-containment checks.
+for the scanner bootstrap. That first result covered GLib and its scanner on
+Debian 12 only; it did not validate GTK/GCR, Mutter/Shell, package transactions,
+Ubuntu 22.04, or graphical sessions. The builder still supports declared
+dependency ordering and selected subgraphs, and its archive extraction
+supports Python 3.10/3.11 while retaining staging-path and link-containment
+checks.
 
 The next clean-image pass installed the normal host build prerequisite
 `shared-mime-info` 2.2-1. GDK-Pixbuf 2.44.8 then required `glycin-2`; Glycin
@@ -125,6 +125,14 @@ GCR was built with introspection, Vala and documentation disabled, so its
 runtime typelib path remains untested. The entire run is still only a private
 dependency build: Mutter/Shell, package transactions, Ubuntu 22.04, and
 graphical sessions have not been tested.
+
+`.github/workflows/deb.yml` now attempts this pinned dependency graph on clean
+Debian 12 and Ubuntu 22.04 images during normal CI. The job is explicitly
+experimental: it does not generate or publish a `.deb`, and release workflows
+continue to package only Debian 13 and Ubuntu 24.04/26.04. Keep the two older
+targets unsupported until the graph builds on both images, private GTK/GCR
+typelibs load in GJS, the complete compositor runtime builds, and install,
+coexistence, removal, and graphical-session checks pass.
 
 ## Boundary: what can be private
 
