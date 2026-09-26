@@ -64,7 +64,7 @@ def shell_windows() -> list[dict]:
         "(()=>global.get_window_actors().map(a=>{const w=a.meta_window,r=w.get_frame_rect();"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),wm_class:w.get_wm_class(),"
         "pid:w.get_pid(),type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
-        "ready:w.is_ready(),mapped:a.is_mapped(),"
+        "ready:w.is_ready(),mapped:a.is_mapped(),focused:global.display.focus_window===w,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
         "maximized:!!w.get_maximize_flags(),"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
@@ -86,7 +86,14 @@ def application_window_candidates(
         and window["ready"]
         and window["mapped"]
     ]
-    return sorted(candidates, key=lambda window: (window["type"] != modal_dialog_type, window["sequence"]))
+    return sorted(
+        candidates,
+        key=lambda window: (
+            window["type"] != modal_dialog_type,
+            not window.get("focused", False),
+            window["sequence"],
+        ),
+    )
 
 
 def frame_button_center(state: dict, action: int) -> tuple[int, int]:

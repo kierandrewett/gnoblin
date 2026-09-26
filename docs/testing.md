@@ -121,6 +121,10 @@ geometry to remain unchanged for four seconds, with a 15-second bound. This lets
 startup splash windows hand off to the real app window before controls begin; the
 trace records whether the window set settled before the bound.
 
+The driver exercises Meta modal-dialog windows first, then the focused app
+window, then other app windows. This lets the test handle setup and confirmation
+dialogs before testing a parent window they may block.
+
 Resize traces include the requested frame rectangle, before/after bounds and
 the app's minimum and maximum size hints. A request is recorded as constrained
 if either requested dimension is below its matching minimum hint; each resizable
