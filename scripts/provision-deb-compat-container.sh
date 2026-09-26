@@ -22,7 +22,7 @@ apt-get install -y --no-install-recommends \
     libgtk-4-dev libjpeg-dev libmount-dev libp11-kit-dev libpango1.0-dev \
     libpcre2-dev libpng-dev libsecret-1-dev libtiff-dev libwayland-dev \
     libwebp-dev libxkbcommon-dev libxml2-dev make meson ninja-build openssh-client \
-    pkg-config python-is-python3 python3 python3-dev python3-pip python3-venv \
+    gnupg pkg-config python-is-python3 python3 python3-dev python3-pip python3-venv \
     shared-mime-info wayland-protocols zlib1g-dev
 python3 -m venv --system-site-packages /opt/gnoblin-compat-build-tools
 /opt/gnoblin-compat-build-tools/bin/pip install meson==1.10.1

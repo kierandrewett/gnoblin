@@ -141,6 +141,11 @@ manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
 that the private scanner, client library, protocol data, and GTK all build and
 resolve from the private prefix.
 
+On Debian 12 the expanded graph built through private GTK before GCR's Meson
+configuration required a host `gpg` executable. The disposable image now
+installs `gnupg`; the next run will check whether GCR and the same graph also
+complete on Ubuntu 22.04.
+
 ## Boundary: what can be private
 
 The executable compositor and Shell should load one coherent Gnoblin library
