@@ -241,6 +241,14 @@ gnoblin.configure {
 --     },
 -- }
 
+-- For layer-shell effects, match the client's namespace as well as its type.
+-- A blanket type = "layer" opacity rule can fade a wallpaper client and show
+-- a second background through it. See /guides/window_rules and /guides/wallpapers.
+-- gnoblin.window_rule {
+--     match = {type = "layer", layer = "^my-panel$"},
+--     opacity = 0.9,
+-- }
+
 -- Portal permission rules match verified identities such as app-id:org.example.App
 -- or host-exe:/usr/bin/example. A matching deny always wins.
 -- gnoblin.permission_rule {
