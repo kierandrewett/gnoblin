@@ -176,10 +176,12 @@ and the IBus daemon for Shell input-method integration. The runner activates and
 probes IBus on that bus before launching Shell.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code on a
-virtual 1280x800 monitor. Its Fedora app container is unprivileged and does not
-receive host GPU or audio devices. Each shard records and rejects GPU/audio
-device nodes before launching clients. It uses Mesa software OpenGL and the
-lavapipe Vulkan ICD.
+virtual 1280x800 monitor. Its Fedora app container runs without Docker's
+privileged mode. It grants `SYS_ADMIN` for Bubblewrap's nested mount namespaces
+and does not receive host GPU or audio devices.
+
+Each shard records and rejects GPU/audio device nodes before launching clients.
+It uses Mesa software OpenGL and the lavapipe Vulkan ICD.
 
 Flatpak clients select the extension's lavapipe manifest through
 `VK_DRIVER_FILES` and its legacy `VK_ICD_FILENAMES` name. They also set

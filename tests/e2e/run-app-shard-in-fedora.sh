@@ -8,7 +8,7 @@ device_paths+=(/dev/nvidia* /dev/mali* /dev/fb*)
 shopt -u nullglob
 hardware_devices=()
 {
-    printf 'Container mode: unprivileged; host device passthrough: disabled\n'
+    printf 'Container mode: non-privileged with SYS_ADMIN for Bubblewrap; host device passthrough: disabled\n'
     for device_path in "${device_paths[@]}"; do
         [[ -e "$device_path" ]] || continue
         hardware_devices+=("$device_path")

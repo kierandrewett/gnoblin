@@ -16,10 +16,11 @@ repo_name="${GITHUB_REPOSITORY##*/}"
 container_workspace="/__w/$repo_name/$repo_name"
 
 # Flatpak needs nested user/mount/network namespaces. Configure the disposable
-# GitHub runner before entering Fedora. Disable the container seccomp and
-# AppArmor profiles for bubblewrap, without granting privileged access or
-# passing host GPU/audio devices into the Fedora test container.
+# GitHub runner before entering Fedora. Bubblewrap needs SYS_ADMIN for nested
+# mounts, so grant that capability without using privileged mode or passing
+# host GPU/audio devices into the Fedora test container.
 docker run --rm \
+    --cap-add=SYS_ADMIN \
     --security-opt seccomp=unconfined \
     --security-opt apparmor=unconfined \
     --mount "type=bind,src=$GITHUB_WORKSPACE,dst=$container_workspace" \
