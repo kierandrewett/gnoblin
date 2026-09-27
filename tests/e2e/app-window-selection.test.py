@@ -104,6 +104,16 @@ def main() -> int:
     settled = wait_for_settled_close_target(lambda: next(samples), stable_seconds=0, timeout=1)
     if settled != restored_after_fullscreen:
         raise SystemExit("close-target settling must wait for restored geometry and visible frame regions")
+    moving_actor_states = iter(
+        {
+            **restored_at_work_area_origin,
+            "actor_position": [0, y],
+        }
+        for y in (0, 36, 72, 72)
+    )
+    settled_actor = wait_for_settled_close_target(lambda: next(moving_actor_states), stable_seconds=0.01, timeout=1)
+    if settled_actor["actor_position"] != [0, 72]:
+        raise SystemExit("close-target settling must wait for the frame actor's stage position")
     hidden_frame = {
         "layout": {
             **visible_frame_without_border["layout"],

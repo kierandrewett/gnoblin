@@ -168,6 +168,7 @@ def wait_for_settled_close_target(get_state, stable_seconds: float = 0.15, timeo
         presentation = layout.get("presentation") or {}
         signature = (
             *(state.get(key) for key in ("sequence", "x", "y", "width", "height", "fullscreen")),
+            tuple(state.get("actor_position") or ()),
             layout.get("supported"),
             layout.get("native"),
             layout.get("mode"),
