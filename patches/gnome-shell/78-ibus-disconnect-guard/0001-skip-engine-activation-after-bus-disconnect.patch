@@ -1,14 +1,14 @@
-From be9cb4f2dddda8320f20dada05efd7c4ed0d75b0 Mon Sep 17 00:00:00 2001
+From 6d558e678463531878f138137cd38b07bd3fa523 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 27 Sep 2026 06:47:33 +0100
-Subject: [PATCH] ibusManager: Skip engine activation after bus disconnect
+Date: Sun, 27 Sep 2026 07:25:45 +0100
+Subject: [PATCH] ibusManager: Avoid criticals when activation is cancelled
 
 ---
- js/misc/ibusManager.js | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
+ js/misc/ibusManager.js | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
 
 diff --git a/js/misc/ibusManager.js b/js/misc/ibusManager.js
-index b3279d5fc..7e9261015 100644
+index b3279d5fc..1ccb468ed 100644
 --- a/js/misc/ibusManager.js
 +++ b/js/misc/ibusManager.js
 @@ -275,7 +275,9 @@ class IBusManager extends Signals.EventEmitter {
@@ -17,11 +17,35 @@ index b3279d5fc..7e9261015 100644
          // while this._ibusSources == null on a lock screen.
 -        if (!this._ready)
 +        // The connection can close before the `disconnected` signal clears
-+        // `_ready`; never call IBus while the bus is already disconnected.
++        // `_ready`; never invoke IBus while the bus is already disconnected.
 +        if (!this._ready || !this._ibus.is_connected())
              return;
  
          const cancellable = this._cancellable;
+@@ -284,7 +286,11 @@ class IBusManager extends Signals.EventEmitter {
+                 this._MAX_INPUT_SOURCE_ACTIVATION_TIME,
+                 cancellable);
+         } catch (e) {
+-            if (!logErrorUnlessCancelled(e))
++            // `_clear()` cancels this per-connection token on disconnect, but
++            // IBus can wrap cancellation in a D-Bus error that looks fatal.
++            // Do not report it or retry the fallback against a dead bus.
++            if (cancellable?.is_cancelled() || !this._ibus.is_connected() ||
++                !logErrorUnlessCancelled(e))
+                 return;
+ 
+             try {
+@@ -292,7 +298,9 @@ class IBusManager extends Signals.EventEmitter {
+                     this._MAX_INPUT_SOURCE_ACTIVATION_TIME,
+                     cancellable);
+             } catch (e2) {
+-                logErrorUnlessCancelled(e2);
++                if (cancellable?.is_cancelled() || !this._ibus.is_connected() ||
++                    !logErrorUnlessCancelled(e2))
++                    return;
+             }
+         }
+     }
 -- 
 2.55.0
 

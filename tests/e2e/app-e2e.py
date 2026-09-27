@@ -1450,19 +1450,22 @@ def run_one_app(
 
 
 def exercise_disconnected_ibus_guard() -> dict:
-    """Reproduce a stale IBus-ready flag after its bus connection closes."""
+    """Close IBus during activation, then verify the stale-ready path is safe."""
     result = eval_shell(
         "(async()=>{const manager=Main.componentManager?._allComponents?.gnoblinControl?._inputSourceManager?._ibusManager;"
         "if(!manager)throw new Error('IBus manager was not reachable through GnoblinControl');"
         "const bus=manager._ibus;"
-        "const readyBefore=manager._ready,connectedBefore=bus.is_connected();"
-        "if(!readyBefore||!connectedBefore)throw new Error('IBus manager was not ready for disconnect probe');"
-        "bus.get_connection().close_sync(null);"
+        "const readyBefore=manager._ready,connectedBefore=bus.is_connected(),cancellable=manager._cancellable;"
+        "if(!readyBefore||!connectedBefore||!cancellable)throw new Error('IBus manager was not ready for disconnect probe');"
+        "const activation=manager._setEngine('xkb:us::eng');"
+        "GLib.idle_add(GLib.PRIORITY_HIGH,()=>{bus.get_connection().close_sync(null);return GLib.SOURCE_REMOVE;});"
+        "await activation;"
         "const connectedAfterClose=bus.is_connected();"
-        "if(connectedAfterClose)throw new Error('IBus D-Bus connection remained open after close_sync');"
+        "const cancelledAfterClose=cancellable.is_cancelled();"
+        "if(connectedAfterClose||!cancelledAfterClose)throw new Error('IBus disconnect did not cancel its in-flight activation');"
         "manager._ready=true;"
         "try{await manager._setEngine('xkb:us::eng');}finally{manager._ready=false;}"
-        "return {readyBefore,connectedBefore,connectedAfterClose,attemptedEngine:'xkb:us::eng'};})()",
+        "return {readyBefore,connectedBefore,connectedAfterClose,cancelledAfterClose,attemptedEngine:'xkb:us::eng'};})()",
         timeout=15,
     )
     if not isinstance(result, dict) or result.get("connectedAfterClose") is not False:
