@@ -1542,7 +1542,7 @@ def run_inside() -> int:
             if index % 10 == 0:
                 eval_shell("true")
         session_checks = {}
-        if os.environ.get("GNOBLIN_E2E_TEST_IBUS_DISCONNECT") == "1":
+        if os.environ.get("GNOBLIN_E2E_TEST_IBUS_DISCONNECT", "0").lower() in {"1", "true", "yes"}:
             session_checks["ibus-disconnected-engine-activation"] = exercise_disconnected_ibus_guard()
             write_event(
                 events_path,
