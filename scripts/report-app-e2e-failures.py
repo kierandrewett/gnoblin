@@ -44,15 +44,61 @@ def load_artifact_names(artifact_root: Path) -> list[str]:
         return []
 
 
+def load_expected_apps(artifact_root: Path) -> tuple[dict[str, dict], list[str]]:
+    expected: dict[str, dict] = {}
+    errors = []
+    for path in sorted(artifact_root.glob("gnoblin-app-e2e-shard-*")):
+        if not path.is_dir():
+            continue
+        manifest_path = path / "shard.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            errors.append(f"{manifest_path.relative_to(artifact_root)}: {error}")
+            continue
+        shard_index = manifest.get("shard", {}).get("index")
+        for app in manifest.get("apps", []):
+            app_id = str(app.get("app_id") or "").strip()
+            if app_id:
+                expected[app_id] = {"app": app, "shard_index": shard_index}
+    return expected, errors
+
+
 def build_report(artifact_root: Path) -> str:
     summaries, parse_errors = load_summaries(artifact_root)
     artifacts = load_artifact_names(artifact_root)
+    expected_apps, manifest_errors = load_expected_apps(artifact_root)
     outcomes = [outcome for summary in summaries for outcome in summary.get("apps", [])]
     status_counts = Counter(str(outcome.get("status") or "unknown") for outcome in outcomes)
-    failed = sorted(
+    failed_outcomes = sorted(
         (outcome for outcome in outcomes if outcome.get("status") != "exercised"),
         key=lambda outcome: (str(outcome.get("app_id") or ""), str(outcome.get("status") or "unknown")),
     )
+    outcome_app_ids = {str(outcome.get("app_id") or "") for outcome in outcomes}
+    summaries_by_shard = {
+        summary.get("shard", {}).get("index"): summary
+        for summary in summaries
+        if summary.get("shard", {}).get("index") is not None
+    }
+    unreported = []
+    for app_id, expected in expected_apps.items():
+        if app_id in outcome_app_ids:
+            continue
+        shard_index = expected["shard_index"]
+        detail = (
+            f"shard {shard_index} did not produce a summary"
+            if shard_index not in summaries_by_shard
+            else f"shard {shard_index} summary omitted this requested app"
+        )
+        unreported.append({"app_id": app_id, "status": "unreported", "error": detail})
+    unreported.sort(key=lambda outcome: str(outcome.get("app_id") or ""))
+    failed = sorted(
+        [*failed_outcomes, *unreported],
+        key=lambda outcome: (str(outcome.get("app_id") or ""), str(outcome.get("status") or "unknown")),
+    )
+    status_counts["unreported"] += len(unreported)
     fingerprint_data = sorted({(str(item.get("app_id", "")), str(item.get("status", "unknown"))) for item in failed})
     fingerprint = hashlib.sha256(json.dumps(fingerprint_data, separators=(",", ":")).encode()).hexdigest()[:16]
 
@@ -74,8 +120,10 @@ def build_report(artifact_root: Path) -> str:
         f"- Expected artifact pattern: `{artifact_name}`",
         f"- Failure fingerprint: `{fingerprint}`",
         f"- Shards with summaries: {len(summaries)}",
+        f"- Apps requested by shard manifests: {len(expected_apps)}",
         f"- Apps with outcomes: {len(outcomes)}",
-        f"- Failed app outcomes: {len(failed)}",
+        f"- Apps without outcomes: {len(unreported)}",
+        f"- Apps with failed outcomes: {len(failed_outcomes)}",
         "",
         "## Outcome counts",
         "",
@@ -108,6 +156,9 @@ def build_report(artifact_root: Path) -> str:
     if parse_errors:
         lines.extend(["", "## Unreadable summaries", ""])
         lines.extend(f"- `{markdown_text(error)}`" for error in parse_errors)
+    if manifest_errors:
+        lines.extend(["", "## Unreadable shard manifests", ""])
+        lines.extend(f"- `{markdown_text(error)}`" for error in manifest_errors)
     if not summaries:
         lines.extend(
             [

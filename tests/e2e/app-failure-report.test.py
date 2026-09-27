@@ -16,6 +16,49 @@ REPORTER = ROOT / "scripts/report-app-e2e-failures.py"
 
 
 class AppFailureReportTests(unittest.TestCase):
+    def test_report_surfaces_catalog_apps_missing_from_shard_summary(self):
+        with tempfile.TemporaryDirectory(prefix="gnoblin-app-report-", dir="/var/tmp") as raw:
+            artifact_root = Path(raw) / "artifacts"
+            shard_dir = artifact_root / "gnoblin-app-e2e-shard-4-77-1"
+            shard_dir.mkdir(parents=True)
+            (shard_dir / "shard.json").write_text(
+                json.dumps(
+                    {
+                        "shard": {"index": 4, "count": 40},
+                        "apps": [
+                            {"app_id": "org.example.Healthy", "name": "Healthy"},
+                            {"app_id": "org.example.NoWindow", "name": "No Window"},
+                            {"app_id": "org.example.Missing", "name": "Missing"},
+                        ],
+                    }
+                )
+            )
+            (shard_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "shard": {"index": 4, "count": 40},
+                        "requested_apps": 3,
+                        "outcomes": {"exercised": 1, "no-window": 1},
+                        "apps": [
+                            {"app_id": "org.example.Healthy", "status": "exercised"},
+                            {"app_id": "org.example.NoWindow", "status": "no-window"},
+                        ],
+                    }
+                )
+            )
+            report = Path(raw) / "report.md"
+            subprocess.run(
+                [sys.executable, str(REPORTER), "--artifact-root", str(artifact_root), "--output", str(report)],
+                check=True,
+            )
+
+            content = report.read_text()
+            self.assertIn("Apps requested by shard manifests: 3", content)
+            self.assertIn("Apps with outcomes: 2", content)
+            self.assertIn("Apps without outcomes: 1", content)
+            self.assertIn("org.example.Missing", content)
+            self.assertIn("`unreported`", content)
+
     def test_report_lists_failed_apps_and_omits_exercised_apps(self):
         with tempfile.TemporaryDirectory(prefix="gnoblin-app-report-", dir="/var/tmp") as raw:
             artifact_root = Path(raw) / "artifacts"
