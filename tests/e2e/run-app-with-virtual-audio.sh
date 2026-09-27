@@ -113,10 +113,18 @@ if ! grep -q 'gnoblin_e2e' "$audio_log_dir/sinks.txt"; then
     cat "$audio_log_dir/sinks.txt" >&2
     exit 1
 fi
-pactl set-default-sink gnoblin_e2e >"$audio_log_dir/default-sink-set.log" 2>&1 || {
+default_sink_set=0
+for _ in $(seq 1 50); do
+    if pactl set-default-sink gnoblin_e2e >>"$audio_log_dir/default-sink-set.log" 2>&1; then
+        default_sink_set=1
+        break
+    fi
+    sleep 0.1
+done
+if ((default_sink_set == 0)); then
     cat "$audio_log_dir/default-sink-set.log" >&2
     exit 1
-}
+fi
 
 selected_sink=
 stable_reads=0
