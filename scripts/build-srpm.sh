@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build source RPMs from previously prepared Gnoblin release sources.
 set -euo pipefail
-if [[ $# != 3 || "$1" != mutter && "$1" != gnome-shell && "$1" != gsettings-desktop-schemas && "$1" != gnoblin ]]; then
-    echo "Usage: $0 <mutter|gnome-shell|gsettings-desktop-schemas|gnoblin> <prepared-source-directory> <output-directory>" >&2
+if [[ $# != 3 || "$1" != mutter && "$1" != gnoblin-shell && "$1" != gnoblin-portal && "$1" != gnoblin ]]; then
+    echo "Usage: $0 <mutter|gnoblin-shell|gnoblin-portal|gnoblin> <prepared-source-directory> <output-directory>" >&2
     exit 2
 fi
 project="$1"
@@ -11,6 +11,10 @@ output_dir="$(realpath -m "$3")"
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
 command -v rpmbuild >/dev/null
 command -v rpmspec >/dev/null
+case "$project" in
+    mutter) "$repo_dir/scripts/stage-rpm-sources.sh" mutter "$source_dir" ;;
+    gnoblin-shell) "$repo_dir/scripts/stage-rpm-sources.sh" gnome-shell "$source_dir" ;;
+esac
 mkdir -p "$output_dir"
 spec="$repo_dir/packaging/rpm/$project.spec"
 # Do not use spectool to download Source0: upstream archives lack our patches.

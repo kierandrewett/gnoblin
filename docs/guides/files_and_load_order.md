@@ -17,7 +17,7 @@ Without that override, Gnoblin checks `init.lua`, `gnoblin.toml`, then
 `gnoblin.conf`. The TOML names are kept for existing installations. New configs
 should use `init.lua`; any selected file without a `.lua` suffix is parsed as TOML.
 
-For packaged logins, `gnoblin-session` copies
+For packaged logins, `gnoblin` copies
 `/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
 The shell loads that file when its config starts.
 

@@ -304,7 +304,7 @@ The layer's anchors determine the default slide direction. Explicit `x` and
 gnoblinctl animation list
 gnoblinctl animation surfaces
 gnoblinctl animation inspect gnome-open --window active
-session=$(gnoblinctl animation preview gnome-open --window active --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["session"])')
+session=$(gnoblinctl animation preview gnome-open --window active --format table | sed -n 's/^session: //p')
 gnoblinctl animation seek "$session" 50
 gnoblinctl animation step "$session" 16
 gnoblinctl animation play "$session"

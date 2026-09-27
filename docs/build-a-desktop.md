@@ -31,7 +31,7 @@ of them with a component you prefer. Put this in a **new**
 
 ```lua
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
     autostart = {
         bar = {command = {"waybar"}},
         notifications = {command = {"mako"}},
@@ -47,8 +47,8 @@ gnoblin.configure {
 
 _A stock GNOME app beneath Waybar._
 
-Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cursors)
-to select it or use another installed theme.
+The cursor uses your system's default theme. See the [cursor guide](/guides/cursors)
+to choose another installed theme.
 
 Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and

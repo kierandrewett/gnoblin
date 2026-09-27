@@ -1,5 +1,5 @@
 From 4050a3046670a5e2b6c1aa56a8ed116cdf435641 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:05:46 +0100
 Subject: [PATCH] Expose padded offscreen texture bounds for exact frame masks
 

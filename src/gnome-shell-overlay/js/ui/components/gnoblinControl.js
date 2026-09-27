@@ -57,6 +57,20 @@ const SUPER_RELEASE_PROTOCOL_VERSION = 1;
 const OSD_REQUEST_PROTOCOL_VERSION = 2;
 const TRIM_INTERVAL_SECONDS = 300;
 const BUILT_IN_SERVICE_SCRIPTS = new Set(["compositor-bridge.js", "input-sources.js", "launch-feedback.js"]);
+const CLUTTER_EVENT_NAMES = new Map([
+    [Clutter.EventType.KEY_PRESS, "key_press"],
+    [Clutter.EventType.KEY_RELEASE, "key_release"],
+    [Clutter.EventType.MOTION, "motion"],
+    [Clutter.EventType.ENTER, "enter"],
+    [Clutter.EventType.LEAVE, "leave"],
+    [Clutter.EventType.BUTTON_PRESS, "button_press"],
+    [Clutter.EventType.BUTTON_RELEASE, "button_release"],
+    [Clutter.EventType.SCROLL, "scroll"],
+    [Clutter.EventType.TOUCH_BEGIN, "touch_begin"],
+    [Clutter.EventType.TOUCH_UPDATE, "touch_update"],
+    [Clutter.EventType.TOUCH_END, "touch_end"],
+    [Clutter.EventType.TOUCH_CANCEL, "touch_cancel"],
+]);
 
 // The live ScriptHost, so the module-level softReload() can re-run scripts.
 let activeScriptHost = null;
@@ -769,7 +783,11 @@ export class Component {
             ),
         );
         this._permissionPolicy = { default: "deny", rules: [] };
-        this._config = new ConfigFile(undefined, (next) => this._applyConfig(next));
+        this._config = new ConfigFile(
+            undefined,
+            (next) => this._applyConfig(next),
+            () => this._syncMutterEvents(),
+        );
         this._touchpadGestureRouter = new TouchpadGestureRouter();
         activeConfig = this._config;
         this._config.start();
@@ -793,8 +811,7 @@ export class Component {
             this._dispatchWindowEvent("focus_changed", global.display.focus_window);
             this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
         });
-        this._configEventId = global.display.connect("gnoblin-config-event", (_display, event, document, payload) => {
-            this._config?.applyRuntimeDocument(document);
+        this._configEventId = global.display.connect("gnoblin-config-event", (_display, event, _document, payload) => {
             if (event !== "mutter.touchpad.gesture") return false;
             return this._touchpadGestureRouter.handle(payload.recursiveUnpack());
         });
@@ -838,12 +855,6 @@ export class Component {
         });
         this._dispatchWindowEvent("focus_changed", global.display.focus_window);
         this._dispatchWindowEvent("gnome.shell.focus.changed", global.display.focus_window);
-        try {
-            this._mutterEvents = new MutterEventForwarder(this._config);
-        } catch (error) {
-            logError(error, "gnoblin-control: Mutter event forwarding startup failed");
-        }
-
         // Apply the persisted feature state to the freshly-built subsystems.
         this._syncFeatureState();
         this._installOsdGate();
@@ -1151,6 +1162,20 @@ export class Component {
         Meta.prefs_set_gnoblin_cursor_config(cursor.theme, cursor.size);
     }
 
+    _syncMutterEvents() {
+        if (!this._config.hasMutterEventListeners()) {
+            this._mutterEvents?.destroy();
+            this._mutterEvents = null;
+            return;
+        }
+        if (this._mutterEvents) return;
+        try {
+            this._mutterEvents = new MutterEventForwarder(this._config);
+        } catch (error) {
+            logError(error, "gnoblin-control: Mutter event forwarding startup failed");
+        }
+    }
+
     // --- feature toggles ---
     _disabledList() {
         return this._settings ? this._settings.get_strv(DISABLED_KEY) : [];
@@ -1289,7 +1314,7 @@ export class Component {
             invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, error.message);
             return;
         }
-        if (!grab || !(grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
+        if (!grab || grab.is_revoked()) {
             if (grab) Main.popModal(grab);
             invocation.return_dbus_error(`${BUS_NAME}.Error.CaptureFailed`, "keyboard input is already grabbed");
             return;

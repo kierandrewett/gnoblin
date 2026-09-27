@@ -4,7 +4,7 @@
 #
 # Prepends this prefix's lookup paths via gnoblin-env.sh (shared with
 # scripts/run-gnome-shell.sh, scripts/run-gnome-devkit.sh, and
-# gnoblin-session) rather than the unit file setting them via static
+# gnoblin) rather than the unit file setting them via static
 # Environment= lines, which would overwrite whatever the systemd --user
 # manager's environment already carries (environment.d, PAM, Flatpak
 # exports, a Nix profile, ...) instead of adding to it -- important for
@@ -57,4 +57,4 @@ if [ -e "$PROFILE_MARKER" ]; then
     fi
 fi
 
-exec "$PREFIX/bin/gnome-shell"
+exec "$PREFIX/bin/gnome-shell" "$@"

@@ -9,10 +9,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 install -d -- "$OUTDIR"
 
 case "$PROJECT" in
-    mutter)
-        install -m 0644 -- \
-            "$ROOT/packaging/rpm/org.gnome.mutter.fedora.gschema.override" \
-            "$OUTDIR/org.gnome.mutter.fedora.gschema.override"
+    mutter | xdg-desktop-portal-gnome)
         ;;
     gnome-shell)
         install -m 0644 -- "$ROOT/src/data/session/modes/gnoblin.json" "$OUTDIR/gnoblin.json"
@@ -25,24 +22,27 @@ case "$PROJECT" in
             "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell.target" \
             "$OUTDIR/org.gnoblin.Shell.target"
         install -m 0644 -- \
+            "$ROOT/src/data/session/systemd-user/gnoblin-session.target" \
+            "$OUTDIR/gnoblin-session.target"
+        install -m 0644 -- \
+            "$ROOT/src/data/session/systemd-user/gnoblin-idle.service.in" \
+            "$OUTDIR/gnoblin-idle.service.in"
+        install -m 0644 -- "$ROOT/src/session/gnoblin-idle.c" \
+            "$OUTDIR/gnoblin-idle.c"
+        install -m 0644 -- \
             "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
             "$OUTDIR/org.gnoblin.Shell@wayland.service.in"
         install -m 0644 -- \
             "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" \
             "$OUTDIR/gnome-session@gnoblin.target.d.conf"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
-        install -m 0644 -- "$ROOT/src/tools/gnoblin-session" "$OUTDIR/gnoblin-session"
+        install -m 0644 -- "$ROOT/src/tools/gnoblin" "$OUTDIR/gnoblin"
         install -m 0644 -- "$ROOT/COPYING" "$OUTDIR/gnoblin-COPYING"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-seed-config" "$OUTDIR/gnoblin-seed-config"
         install -m 0644 -- "$ROOT/src/data/init.lua.example" "$OUTDIR/init.lua.example"
+        python3 "$ROOT/scripts/build-identity.py" "$OUTDIR/gnoblin-version.json"
         install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
-        install -m 0644 -- "$ROOT/src/tools/gnoblinctl" "$OUTDIR/gnoblinctl"
-        theme_build="$(mktemp -d)"
-        trap 'rm -rf -- "$theme_build"' EXIT
-        python3 "$ROOT/scripts/build-adwaita-hyprcursor.py" \
-            --output "$theme_build/Adwaita-Hyprcursor" \
-            --fallback "${ADWAITA_CURSOR_FALLBACK:-/usr/share/icons/Adwaita}"
-        tar -C "$theme_build" -cJf "$OUTDIR/Adwaita-Hyprcursor.tar.xz" Adwaita-Hyprcursor
+        install -m 0644 -- "$ROOT/src/tools/gnoblinctl.c" "$OUTDIR/gnoblinctl.c"
         ;;
     *)
         echo "unknown RPM source project: $PROJECT" >&2

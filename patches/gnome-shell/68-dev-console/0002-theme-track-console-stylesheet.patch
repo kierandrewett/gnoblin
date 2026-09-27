@@ -1,5 +1,5 @@
 From 0d04d6031d5bd411574357e3691f2a96b2e3819c Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] theme: rebuild CSS when console styles change
 

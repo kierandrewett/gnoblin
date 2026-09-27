@@ -68,6 +68,23 @@
         "url": "https://gitlab.gnome.org/GNOME/gvdb.git"
       }
     },
+    "gxdp-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1778231763,
+        "narHash": "sha256-iqChQHVxIuJ9hoVrDILIWtlyT71cjP2rRR7BoYg68Ks=",
+        "ref": "refs/heads/main",
+        "rev": "df896e3412b749947bc6f62a91a1aac8e6b6d19b",
+        "revCount": 22,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libgxdp.git"
+      },
+      "original": {
+        "rev": "df896e3412b749947bc6f62a91a1aac8e6b6d19b",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/libgxdp.git"
+      }
+    },
     "jasmineGjs": {
       "flake": false,
       "locked": {
@@ -121,11 +138,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1789785513,
-        "narHash": "sha256-B44WL6h0XoLjJ41bUPJk0X5SDinLCII//6EcBLXKiJ0=",
+        "lastModified": 1790323409,
+        "narHash": "sha256-VVTPf+Hyd5ebpjBMHmrLMSBIeW6ls48Bqtosj7CNKLA=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "20b1ddd1aa5ace70c9468305030aa4f9ef79671b",
+        "rev": "e94cb152ed51bd6e24eb4a41f1460252beb52cd2",
         "type": "github"
       },
       "original": {
@@ -183,12 +200,30 @@
         "type": "github"
       }
     },
+    "portal-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789337215,
+        "narHash": "sha256-jWc5SHji19HY6oWpxLey1o13FX+WAtmzKlWMfhjeanM=",
+        "ref": "refs/heads/main",
+        "rev": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120",
+        "revCount": 926,
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git"
+      },
+      "original": {
+        "rev": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120",
+        "type": "git",
+        "url": "https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git"
+      }
+    },
     "root": {
       "inputs": {
         "gnome-shell-src": "gnome-shell-src",
         "gsettings-desktop-schemas-src": "gsettings-desktop-schemas-src",
         "gvc": "gvc",
         "gvdb": "gvdb",
+        "gxdp-src": "gxdp-src",
         "jasmineGjs": "jasmineGjs",
         "libshew": "libshew",
         "mutter-src": "mutter-src",
@@ -196,20 +231,7 @@
         "nixpkgs_25_05": "nixpkgs_25_05",
         "nixpkgs_25_11": "nixpkgs_25_11",
         "nixpkgs_26_05": "nixpkgs_26_05",
-        "wayland-src": "wayland-src"
-      }
-    },
-    "wayland-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1784215515,
-        "narHash": "sha256-dnaXYcVfc4DfNRsAEL316eSTen9tpf+nuQbActege4E=",
-        "type": "tarball",
-        "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz"
-      },
-      "original": {
-        "type": "tarball",
-        "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz"
+        "portal-src": "portal-src"
       }
     }
   },

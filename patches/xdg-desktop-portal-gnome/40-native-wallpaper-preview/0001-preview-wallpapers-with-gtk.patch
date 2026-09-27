@@ -1,0 +1,295 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: preview wallpapers without GNOME Desktop libraries
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 76053a8..e29bb2b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -81,12 +81,11 @@ deps = [
+   meson.get_compiler('c').find_library('m'),
+   dependency('fontconfig'),
+   dependency('glib-2.0', version: '>= 2.76'),
++  dependency('glycin-2'),
+   dependency('gio-unix-2.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+   dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
+-  dependency('gnome-desktop-4'),
+-  dependency('gnome-bg-4'),
+   dependency('libgxdp'),
+   libadwaita_dep,
+   xdg_desktop_portal_dep,
+diff --git a/src/wallpaperpreview.c b/src/wallpaperpreview.c
+index a27a526..b4e7bdc 100644
+--- a/src/wallpaperpreview.c
++++ b/src/wallpaperpreview.c
+@@ -25,13 +25,11 @@
+ #include <string.h>
+ 
+ #include <gdk-pixbuf/gdk-pixbuf.h>
++#include <glycin.h>
+ #include <gio/gio.h>
+ #include <glib/gi18n.h>
+ #include <gtk/gtk.h>
+ 
+-#define GNOME_DESKTOP_USE_UNSTABLE_API
+-#include <gnome-bg/gnome-bg.h>
+-
+ #include "wallpaperpreview.h"
+ 
+ struct _WallpaperPreview {
+@@ -43,8 +41,7 @@ struct _WallpaperPreview {
+   GtkLabel *desktop_clock_label;
+   GtkWidget *drawing_area;
+ 
+-  GnomeDesktopThumbnailFactory *thumbnail_factory;
+-  GnomeBG *bg;
++  GdkPixbuf *image;
+ 
+   GSettings *desktop_settings;
+   gboolean is_24h_format;
+@@ -66,24 +63,178 @@ draw_preview_func (GtkDrawingArea *drawing_area,
+                    gpointer        data)
+ {
+   WallpaperPreview *self = WALLPAPER_PREVIEW (data);
+-  g_autoptr(GdkMonitor) monitor = NULL;
+-  g_autoptr(GdkPixbuf) pixbuf = NULL;
+-  GdkRectangle monitor_layout;
+-  GdkDisplay *display;
+-  GListModel *monitors;
+-
+-  display = gtk_widget_get_display (GTK_WIDGET (drawing_area));
+-  monitors = gdk_display_get_monitors (display);
+-  monitor = g_list_model_get_item (monitors, 0);
+-  gdk_monitor_get_geometry (monitor, &monitor_layout);
+-
+-  pixbuf = gnome_bg_create_thumbnail (self->bg,
+-                                      self->thumbnail_factory,
+-                                      &monitor_layout,
+-                                      width,
+-                                      height);
+-  gdk_cairo_set_source_pixbuf (cr, pixbuf, 0, 0);
++  double scale;
++  double image_width;
++  double image_height;
++
++  if (!self->image || width <= 0 || height <= 0)
++    return;
++
++  image_width = gdk_pixbuf_get_width (self->image);
++  image_height = gdk_pixbuf_get_height (self->image);
++  scale = MAX (width / image_width, height / image_height);
++  cairo_save (cr);
++  cairo_translate (cr,
++                   (width - image_width * scale) / 2,
++                   (height - image_height * scale) / 2);
++  cairo_scale (cr, scale, scale);
++  gdk_cairo_set_source_pixbuf (cr, self->image, 0, 0);
+   cairo_paint (cr);
++  cairo_restore (cr);
++}
++
++typedef struct {
++  GString *path_text;
++  gchar *first_path;
++  const gchar *capture_element;
++  guint static_count;
++  gboolean background;
++  gboolean animated;
++} SlideshowPreview;
++
++static void
++slideshow_start_element (GMarkupParseContext  *context,
++                         const gchar          *element_name,
++                         const gchar         **attribute_names,
++                         const gchar         **attribute_values,
++                         gpointer              user_data,
++                         GError              **error)
++{
++  SlideshowPreview *preview = user_data;
++
++  if (g_str_equal (element_name, "background"))
++    preview->background = TRUE;
++  else if (g_str_equal (element_name, "transition"))
++    preview->animated = TRUE;
++  else if (g_str_equal (element_name, "static"))
++    preview->static_count++;
++
++  if (!preview->first_path && !preview->capture_element &&
++      (g_str_equal (element_name, "file") ||
++       g_str_equal (element_name, "from") ||
++       g_str_equal (element_name, "to")))
++    {
++      preview->capture_element = g_intern_string (element_name);
++      g_string_truncate (preview->path_text, 0);
++    }
++}
++
++static void
++slideshow_text (GMarkupParseContext *context,
++                const gchar         *text,
++                gsize                length,
++                gpointer             user_data,
++                GError             **error)
++{
++  SlideshowPreview *preview = user_data;
++
++  if (preview->capture_element)
++    g_string_append_len (preview->path_text, text, length);
++}
++
++static void
++slideshow_end_element (GMarkupParseContext *context,
++                       const gchar         *element_name,
++                       gpointer             user_data,
++                       GError             **error)
++{
++  SlideshowPreview *preview = user_data;
++
++  if (g_strcmp0 (element_name, preview->capture_element) == 0)
++    {
++      preview->first_path = g_strdup (g_strstrip (preview->path_text->str));
++      preview->capture_element = NULL;
++    }
++}
++
++static gchar *
++first_slideshow_image (const gchar *path,
++                       gboolean    *animated)
++{
++  static const GMarkupParser parser = {
++    slideshow_start_element,
++    slideshow_end_element,
++    slideshow_text,
++    NULL,
++    NULL,
++  };
++  SlideshowPreview preview = { .path_text = g_string_new (NULL) };
++  g_autoptr (GMarkupParseContext) context = NULL;
++  g_autoptr (GFile) file = NULL;
++  g_autoptr (GFileInputStream) stream = NULL;
++  g_autofree gchar *contents = NULL;
++  gchar header[4096] = { 0 };
++  gssize header_length;
++  gsize length = 0;
++  gchar *image = NULL;
++
++  file = g_file_new_for_path (path);
++  stream = g_file_read (file, NULL, NULL);
++  if (!stream)
++    goto out;
++  header_length = g_input_stream_read (G_INPUT_STREAM (stream),
++                                       header, sizeof header - 1, NULL, NULL);
++  if (header_length <= 0 ||
++      !g_strstr_len (header, header_length, "<background"))
++    goto out;
++
++  if (!g_file_get_contents (path, &contents, &length, NULL))
++    goto out;
++
++  context = g_markup_parse_context_new (&parser, 0, &preview, NULL);
++  if (g_markup_parse_context_parse (context, contents, length, NULL) &&
++      g_markup_parse_context_end_parse (context, NULL) &&
++      preview.background && preview.first_path && *preview.first_path)
++    {
++      image = g_steal_pointer (&preview.first_path);
++      *animated = preview.animated || preview.static_count > 1;
++    }
++
++out:
++  g_free (preview.first_path);
++  g_string_free (preview.path_text, TRUE);
++  return image;
++}
++
++static GdkPixbuf *
++load_preview_image (const gchar *path,
++                    gboolean    *animated,
++                    GError     **error)
++{
++  g_autoptr (GFile) file = g_file_new_for_path (path);
++  g_autoptr (GlyLoader) loader = gly_loader_new (file);
++  g_autoptr (GlyImage) image = NULL;
++  g_autoptr (GlyFrame) frame = NULL;
++  g_autoptr (GdkPixbuf) decoded = NULL;
++  g_autoptr (GError) glycin_error = NULL;
++  gboolean has_alpha;
++  int width, height;
++
++  gly_loader_set_accepted_memory_formats (loader,
++      GLY_MEMORY_SELECTION_R8G8B8A8 | GLY_MEMORY_SELECTION_R8G8B8);
++  image = gly_loader_load (loader, &glycin_error);
++  if (image)
++    frame = gly_image_next_frame (image, &glycin_error);
++  if (!frame)
++    return gdk_pixbuf_new_from_file_at_scale (path, 1024, 1024,
++                                               TRUE, error);
++
++  *animated |= gly_frame_get_delay (frame) > 0;
++  has_alpha = gly_frame_get_memory_format (frame) == GLY_MEMORY_R8G8B8A8;
++  width = gly_frame_get_width (frame);
++  height = gly_frame_get_height (frame);
++  decoded = gdk_pixbuf_new_from_bytes (gly_frame_get_buf_bytes (frame),
++                                       GDK_COLORSPACE_RGB, has_alpha, 8,
++                                       width, height,
++                                       gly_frame_get_stride (frame));
++  if (width <= 1024 && height <= 1024)
++    return g_steal_pointer (&decoded);
++
++  double scale = MIN (1024.0 / width, 1024.0 / height);
++  return gdk_pixbuf_scale_simple (decoded,
++                                  MAX (1, (int) (width * scale)),
++                                  MAX (1, (int) (height * scale)),
++                                  GDK_INTERP_BILINEAR);
+ }
+ 
+ static void
+@@ -145,7 +296,7 @@ wallpaper_preview_finalize (GObject *object)
+   WallpaperPreview *self = WALLPAPER_PREVIEW (object);
+ 
+   g_clear_object (&self->desktop_settings);
+-  g_clear_object (&self->thumbnail_factory);
++  g_clear_object (&self->image);
+ 
+   g_clear_pointer (&self->previous_time, g_date_time_unref);
+ 
+@@ -170,10 +321,6 @@ wallpaper_preview_init (WallpaperPreview *self)
+ 
+   self->clock_time_timeout_id = g_timeout_add_seconds (1, update_clock_cb, self);
+ 
+-  self->bg = gnome_bg_new ();
+-  gnome_bg_set_placement (self->bg, G_DESKTOP_BACKGROUND_STYLE_ZOOM);
+-
+-  self->thumbnail_factory = gnome_desktop_thumbnail_factory_new (GNOME_DESKTOP_THUMBNAIL_SIZE_NORMAL);
+ }
+ 
+ static void
+@@ -222,14 +369,23 @@ wallpaper_preview_set_image (WallpaperPreview *self,
+                              const gchar *image_uri)
+ {
+   g_autofree char *path = NULL;
++  g_autofree char *first_image = NULL;
+   g_autoptr(GFile) image_file = NULL;
++  g_autoptr(GError) error = NULL;
++  gboolean animated = FALSE;
+ 
+   image_file = g_file_new_for_uri (image_uri);
+   path = g_file_get_path (image_file);
+-  gnome_bg_set_filename (self->bg, path);
++  if (!path)
++    return;
++  first_image = first_slideshow_image (path, &animated);
++  g_clear_object (&self->image);
++  self->image = load_preview_image (first_image ?: path, &animated, &error);
++  if (!self->image)
++    g_warning ("Could not preview wallpaper %s: %s", path, error->message);
+ 
+   gtk_widget_set_visible (self->animated_background_icon,
+-                          gnome_bg_changes_with_time (self->bg));
++                          animated);
+   gtk_stack_set_visible_child (GTK_STACK (self->stack), self->desktop_preview);
+ 
+   gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (self->drawing_area),

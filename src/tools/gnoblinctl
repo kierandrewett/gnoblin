@@ -8,30 +8,75 @@ import re
 from pathlib import Path
 import shutil
 import socket
+import subprocess
 import sys
 import time
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 
 class CommandError(Exception):
     pass
 
 
-def gnoblin_version():
-    """Return the installed Gnoblin SemVer without depending on the live shell."""
+def build_identity():
     script = Path(__file__).resolve()
+    source_root = script.parents[2]
     candidates = []
     if override := os.environ.get("GNOBLIN_VERSION_FILE"):
         candidates.append(Path(override))
-    candidates.extend((script.parent.parent / "share/gnoblin/version.json", script.parents[2] / "gnoblin-version.json"))
+    candidates.append(script.parent.parent / "share/gnoblin/version.json")
     for candidate in candidates:
         try:
-            version = json.loads(candidate.read_text())["version"]
-        except (FileNotFoundError, KeyError, ValueError):
+            return json.loads(candidate.read_text())
+        except (FileNotFoundError, ValueError):
             continue
-        if isinstance(version, str):
-            return version
-    return "unknown"
+    # A checkout has manifests rather than an installed identity file.
+    try:
+        release = json.loads((source_root / "gnoblin-version.json").read_text())
+        gnome = json.loads((source_root / "gnome-versions.json").read_text())
+        components = gnome["components"]
+    except (FileNotFoundError, KeyError, ValueError):
+        return {"version": "unknown"}
+
+    def git(*arguments):
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(source_root), *arguments], capture_output=True, text=True, check=False
+            )
+        except OSError:
+            return None
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    try:
+        provenance = json.loads((source_root / "source-provenance.json").read_text())
+    except (FileNotFoundError, ValueError):
+        provenance = {}
+    branch = git("symbolic-ref", "--quiet", "--short", "HEAD")
+    tracking_remote = git("config", "--get", f"branch.{branch}.remote") if branch else None
+    remote = provenance.get("gitRemote")
+    if not remote:
+        for name in (tracking_remote, "origin"):
+            if name:
+                remote = git("remote", "get-url", name)
+                if remote:
+                    break
+    if remote:
+        parsed = urlsplit(remote)
+        if parsed.scheme:
+            remote = urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", ""))
+    return {
+        "version": release["version"],
+        "gnomeVersion": components["gnome-shell"]["version"],
+        "mutterApi": components["mutter"]["api"],
+        "components": {name: value["version"] for name, value in components.items()},
+        "componentCommits": {name: value["commit"] for name, value in components.items()},
+        "gitSha": provenance.get("gitSha") or git("rev-parse", "HEAD"),
+        "gitRemote": remote,
+        "sourceModified": provenance.get("sourceModified")
+        if provenance
+        else bool(git("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all")),
+    }
 
 
 def default_lua_config():
@@ -61,10 +106,17 @@ def capture_accelerator(wait_seconds, socket_path):
 
 
 def version_record(shell_version):
+    identity = build_identity()
     return {
         "gnomeVersion": str(shell_version).removesuffix("-gnoblin"),
-        "gnoblinVersion": gnoblin_version(),
+        "gnoblinVersion": identity.get("version", "unknown"),
         "shellVersion": shell_version,
+        "gitRemote": identity.get("gitRemote"),
+        "gitSha": identity.get("gitSha"),
+        "components": identity.get("components", {}),
+        "componentCommits": identity.get("componentCommits", {}),
+        "mutterApi": identity.get("mutterApi"),
+        "sourceModified": identity.get("sourceModified"),
     }
 
 
@@ -113,6 +165,7 @@ def parser():
         epilog="Examples: gnoblinctl status | gnoblinctl window list | gnoblinctl config path\nUse GROUP --help to see its actions.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    root.add_argument("--version", action="store_true", help="Show installed build identity without a running session")
     commands = root.add_subparsers(dest="command", metavar="COMMAND")
 
     def add(parent, name, help_text):
@@ -687,6 +740,27 @@ def main(argv=None):
     if argv and argv[0] == "help":
         argv = [*argv[1:], "--help"]
     args = cli.parse_args(argv)
+    if args.version:
+        identity = build_identity()
+        if getattr(args, "json", False) or getattr(args, "format", "auto") == "json":
+            print(json.dumps(identity, indent=2, sort_keys=True))
+            return 0
+        print(f"Gnoblin {identity.get('version', 'unknown')} (GNOME {identity.get('gnomeVersion', 'unknown')})")
+        if identity.get("mutterApi"):
+            print(f"Mutter API: {identity['mutterApi']}")
+        labels = {
+            "gnome-shell": "Gnoblin Shell base",
+            "mutter": "Mutter base",
+            "xdg-desktop-portal-gnome": "Gnoblin portal base",
+            "gsettings-desktop-schemas": "Desktop schemas",
+        }
+        for name, version in identity.get("components", {}).items():
+            commit = identity.get("componentCommits", {}).get(name)
+            print(f"{labels.get(name, name)}: {version}" + (f" (upstream {commit[:12]})" if commit else ""))
+        print(f"Git remote: {identity.get('gitRemote') or 'unknown'}")
+        modified = " (modified source tree)" if identity.get("sourceModified") else ""
+        print(f"Git commit: {identity.get('gitSha') or 'unknown'}{modified}")
+        return 0
     defaults = {
         "format": "auto",
         "timeout": 30 if args.command == "shortcut" and args.action == "capture" else 5,

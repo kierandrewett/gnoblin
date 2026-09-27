@@ -24,13 +24,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/gnome-shell/meson.build:25",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/gnome-shell.spec:45,66",
+                "location": "packaging/opensuse/gnoblin-shell.spec:45,66",
                 "kind": "BuildRequires and Requires",
                 "minimum": "1.87.1",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/gnome-shell.spec:60,116",
+                "location": "packaging/rpm/gnoblin-shell.spec:60,116",
                 "kind": "BuildRequires and Requires",
                 "minimum": "1.87.1",
                 "note": "matches-source-floor",
@@ -66,15 +66,15 @@ REQUIREMENTS = {
     },
     "libinput": {
         "capability": "pkgconfig(libinput)",
-        "minimum": "1.30.0",
+        "minimum": "1.31.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "patches/mutter/74-fedora43-compat/0001-input-allow-libinput-1.30.patch:19-20",
+        "floorSource": "subprojects/mutter/meson.build:53",
     },
     "pipewire": {
         "capability": "pkgconfig(libpipewire-0.3)",
-        "minimum": "1.4.0",
+        "minimum": "1.6.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "patches/mutter/74-fedora43-compat/0001-input-allow-libinput-1.30.patch:25-26",
+        "floorSource": "subprojects/mutter/meson.build:58",
     },
     "gtk4": {
         "capability": "pkgconfig(gtk4)",
@@ -89,13 +89,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/gnome-shell/meson.build:27,78",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/gnome-shell.spec:43",
+                "location": "packaging/opensuse/gnoblin-shell.spec:43",
                 "kind": "BuildRequires",
                 "minimum": "2.86.0",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/gnome-shell.spec:61,83",
+                "location": "packaging/rpm/gnoblin-shell.spec:61,83",
                 "kind": "BuildRequires",
                 "minimum": "2.86.0",
                 "note": "matches-source-floor",
@@ -109,13 +109,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/gnome-shell/meson.build:26,76",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/gnome-shell.spec:41",
+                "location": "packaging/opensuse/gnoblin-shell.spec:41",
                 "kind": "BuildRequires",
                 "minimum": "3.90.0",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/gnome-shell.spec:62,82",
+                "location": "packaging/rpm/gnoblin-shell.spec:62,82",
                 "kind": "BuildRequires",
                 "minimum": "3.90.0",
                 "note": "matches-source-floor",
@@ -138,26 +138,6 @@ REQUIREMENTS = {
                 "location": "packaging/rpm/mutter.spec:15,89",
                 "kind": "BuildRequires",
                 "minimum": "2.0.beta.2",
-                "note": "matches-source-floor",
-            },
-        ],
-    },
-    "hyprcursor": {
-        "capability": "pkgconfig(hyprcursor)",
-        "minimum": "0.1.13",
-        "declaredScope": "build-closure",
-        "floorSource": "subprojects/mutter/meson.build:123",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/mutter.spec:54",
-                "kind": "BuildRequires",
-                "minimum": "0.1.13",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/mutter.spec:16,63",
-                "kind": "BuildRequires",
-                "minimum": "0.1.13",
                 "note": "matches-source-floor",
             },
         ],

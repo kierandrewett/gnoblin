@@ -1,5 +1,5 @@
 From 538e00625701dc1d4f7314b98ab153fc55bd3951 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 03:05:31 +0100
 Subject: [PATCH] Attach native frames and isolated external renderer services
 

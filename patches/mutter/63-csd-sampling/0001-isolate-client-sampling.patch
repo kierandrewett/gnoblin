@@ -1,5 +1,5 @@
 From 9b5c5234686302576edae78a0b0633ecd908fc12 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:09:27 +0100
 Subject: [PATCH] Read CSD pixels independently of actor effects and nullable
  Cairo

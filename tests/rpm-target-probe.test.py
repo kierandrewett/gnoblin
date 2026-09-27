@@ -43,11 +43,11 @@ class RpmTargetProbeTests(unittest.TestCase):
 
         self.assertEqual(
             {entry["location"] for entry in probe.REQUIREMENTS["gcr4"]["rpmSpecDeclarations"]},
-            {"packaging/opensuse/gnome-shell.spec:41", "packaging/rpm/gnome-shell.spec:62,82"},
+            {"packaging/opensuse/gnoblin-shell.spec:41", "packaging/rpm/gnoblin-shell.spec:62,82"},
         )
         self.assertEqual(
             {entry["location"] for entry in probe.REQUIREMENTS["girepository"]["rpmSpecDeclarations"]},
-            {"packaging/opensuse/gnome-shell.spec:43", "packaging/rpm/gnome-shell.spec:61,83"},
+            {"packaging/opensuse/gnoblin-shell.spec:43", "packaging/rpm/gnoblin-shell.spec:61,83"},
         )
 
     def test_treats_zypper_no_provider_status_as_a_missing_capability(self):

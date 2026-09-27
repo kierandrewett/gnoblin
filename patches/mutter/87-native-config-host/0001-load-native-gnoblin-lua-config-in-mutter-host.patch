@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] core: load compositor-only Gnoblin Lua config in native host
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index b94e905d3..7471966f2 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -66,6 +66,7 @@ command_exited_cb (GPid     command_pid,
+ }
+ 
+ static const char *plugin = "libdefault";
++static char *gnoblin_config = NULL;
+ static char **argv_ignored = NULL;
+ 
+ GOptionEntry mutter_options[] = {
+@@ -81,6 +82,12 @@ GOptionEntry mutter_options[] = {
+     N_("Mutter plugin to use"),
+     "PLUGIN",
+   },
++  {
++    "gnoblin-config", 0, 0, G_OPTION_ARG_FILENAME,
++    &gnoblin_config,
++    N_("Load a native-only Gnoblin Lua configuration"),
++    "PATH",
++  },
+   {
+     G_OPTION_REMAINING,
+     .arg = G_OPTION_ARG_STRING_ARRAY,
+@@ -90,6 +97,68 @@ GOptionEntry mutter_options[] = {
+   { NULL }
+ };
+ 
++static gboolean
++load_native_config (GError **error)
++{
++  if (!gnoblin_config)
++    return TRUE;
++
++  g_autofree char *path = g_canonicalize_filename (gnoblin_config, NULL);
++  g_autoptr (GVariant) result = meta_gnoblin_load_config (path);
++  g_autoptr (GVariant) document = NULL;
++  g_autoptr (GVariant) events = NULL;
++  const char *message = NULL;
++
++  if (g_variant_lookup (result, "error", "&s", &message))
++    {
++      g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
++                   "%s: %s", path, message);
++      goto reject;
++    }
++
++  document = g_variant_lookup_value (result, "document", G_VARIANT_TYPE_VARDICT);
++  events = g_variant_lookup_value (result, "events", G_VARIANT_TYPE_STRING_ARRAY);
++  if (!document)
++    {
++      g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
++                   "%s: Lua config did not return a document", path);
++      goto reject;
++    }
++  if (events && g_variant_n_children (events) > 0)
++    {
++      g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
++                   "%s: native compositor config does not support Lua event handlers", path);
++      goto reject;
++    }
++
++  GVariantIter iter;
++  const char *key;
++  GVariant *value;
++  g_variant_iter_init (&iter, document);
++  while (g_variant_iter_next (&iter, "{&sv}", &key, &value))
++    {
++      gboolean supported = g_str_equal (key, "protocols") ||
++                           g_str_equal (key, "layer-shell");
++      g_variant_unref (value);
++      if (!supported)
++        {
++          g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
++                       "%s: native compositor cannot apply '%s'; use a config with only protocols and layer-shell",
++                       path, key);
++          goto reject;
++        }
++    }
++
++  g_setenv ("GNOBLIN_CONFIG", path, TRUE);
++  g_setenv ("GNOME_SHELL_SESSION_MODE", "gnoblin", TRUE);
++  meta_gnoblin_finish_config_load (TRUE);
++  return TRUE;
++
++reject:
++  meta_gnoblin_finish_config_load (FALSE);
++  return FALSE;
++}
++
+ 
+ static gboolean
+ on_sigterm (gpointer user_data)
+@@ -166,6 +235,12 @@ main (int argc, char **argv)
+       return EXIT_FAILURE;
+     }
+ 
++  if (!load_native_config (&error))
++    {
++      g_printerr ("Failed to load Gnoblin config: %s\n", error->message);
++      return EXIT_FAILURE;
++    }
++
+   command_argv = g_steal_pointer (&argv_ignored);
+ 
+   meta_context_set_plugin_name (context, plugin);

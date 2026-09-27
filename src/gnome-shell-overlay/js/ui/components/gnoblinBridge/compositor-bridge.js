@@ -128,19 +128,11 @@ export class CompositorBridge {
         this.animationPreviews = new Map();
         this.setupPrivacy();
         this.windowSnap = new WindowSnap(this);
-        this.service = new Gio.SocketService();
-        this.service.add_address(
-            Gio.UnixSocketAddress.new(this.path.get_path()),
-            Gio.SocketType.STREAM,
-            Gio.SocketProtocol.DEFAULT,
-            null,
-        );
-        this.service.connect("incoming", (_service, connection) => {
-            this.accept(connection);
-            return true;
+        this.startSocketService();
+        this.socketWatch = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            this.restoreSocketPath();
+            return GLib.SOURCE_CONTINUE;
         });
-        this.service.start();
-        this.socketIdentity = socketPathIdentity(this.path);
         this.accelerator = global.display.connect("accelerator-activated", (_display, action) =>
             this.activate(action, "press"),
         );
@@ -172,6 +164,40 @@ export class CompositorBridge {
         });
         for (const actor of global.get_window_actors()) this.track(actor.meta_window);
         this.switcherFallback = new WindowSwitcherFallback(this);
+    }
+
+    startSocketService() {
+        this.service = new Gio.SocketService();
+        this.service.add_address(
+            Gio.UnixSocketAddress.new(this.path.get_path()),
+            Gio.SocketType.STREAM,
+            Gio.SocketProtocol.DEFAULT,
+            null,
+        );
+        this.service.connect("incoming", (_service, connection) => {
+            this.accept(connection);
+            return true;
+        });
+        this.service.start();
+        this.socketIdentity = socketPathIdentity(this.path);
+    }
+
+    restoreSocketPath() {
+        if (socketPathIdentity(this.path) === this.socketIdentity) return;
+        try {
+            // A listener can survive after its pathname is removed. Existing
+            // clients keep working, but new clients cannot reconnect to it.
+            prepareSocketPath(this.path);
+            this.service.stop();
+            this.service.close();
+            this.startSocketService();
+            this.socketWatchError = null;
+            console.warn(`gnoblin-compositor: restored socket ${this.path.get_path()}`);
+        } catch (error) {
+            if (this.socketWatchError !== error.message)
+                console.warn(`gnoblin-compositor: socket recovery failed: ${error.message}`);
+            this.socketWatchError = error.message;
+        }
     }
 
     apiHandlers() {
@@ -232,7 +258,6 @@ export class CompositorBridge {
             },
             "window.action": windowAction,
             "layer.list": () => ({ surfaces: this.layerRecords() }),
-            "monitor.list": () => this.control({ command: "monitors" }),
             "animation.list": () => this.animationCommand({ action: "list" }),
             "animation.surfaces": () => this.animationCommand({ action: "surfaces" }),
             "animation.inspect": (args) => this.animationCommand({ ...args, action: "inspect" }),
@@ -348,9 +373,15 @@ export class CompositorBridge {
             throw new Error("invalid API method name");
         if (!arguments_ || typeof arguments_ !== "object" || Array.isArray(arguments_))
             throw new Error("API arguments must be an object");
-        const handler = this.apiHandlers()[method];
-        if (!handler) throw new Error(`Unsupported Gnoblin API operation: ${method}`);
-        const result = handler(arguments_);
+        if (method === "window.action" && SessionLock.isLocked(Main.sessionMode.isLocked))
+            throw new Error("window management is unavailable while the session is locked");
+        const native =
+            method === "monitor.list" || method === "window.action"
+                ? Meta.gnoblin_dispatch_native_api(global.display, method, jsonDictionary(arguments_))
+                : null;
+        const handler = native ? null : this.apiHandlers()[method];
+        if (!native && !handler) throw new Error(`Unsupported Gnoblin API operation: ${method}`);
+        const result = native ? native.recursiveUnpack() : handler(arguments_);
         if (requestId !== null) {
             Promise.resolve(result).then(
                 (value) => this.apiOperationCompleted(requestId, method, true, value),
@@ -770,7 +801,7 @@ export class CompositorBridge {
                 // Input-only sessions need the stage grab so they receive
                 // navigation and release before their surface maps.
                 this.grab = Main.pushModal(global.stage, { actionMode: Shell.ActionMode.POPUP });
-                if (!(this.grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
+                if (this.grab.is_revoked()) {
                     this.end("cancelled");
                     return;
                 }
@@ -1319,6 +1350,8 @@ export class CompositorBridge {
             "monitor",
         ];
         if (!actions.includes(record.action)) throw new Error("unknown window action");
+        const native = Meta.gnoblin_dispatch_native_api(global.display, "window.action", jsonDictionary(record));
+        if (native) return native.recursiveUnpack();
         const window =
             record.window === "active" ? global.display.focus_window : this.windows.get(record.window)?.window;
         if (!window || !this.eligible(window)) throw new Error("window no longer available; list windows first");
@@ -1331,18 +1364,6 @@ export class CompositorBridge {
                 this.showWindowMenu(window, x, y);
                 break;
             }
-            case "above":
-                window.make_above();
-                break;
-            case "unabove":
-                window.unmake_above();
-                break;
-            case "stick":
-                window.stick();
-                break;
-            case "unstick":
-                window.unstick();
-                break;
             case "interactive-move":
             case "interactive-resize": {
                 const move = record.action === "interactive-move";
@@ -1368,32 +1389,8 @@ export class CompositorBridge {
             case "focus":
                 Main.activateWindow(window, global.get_current_time());
                 break;
-            case "close":
-                requireCapability(window.can_close(), "window cannot be closed");
-                window.delete(global.get_current_time());
-                break;
-            case "minimize":
-                requireCapability(window.can_minimize(), "window cannot be minimized");
-                window.minimize();
-                break;
             case "restore-or-minimize":
                 this.windowSnap.restoreOrMinimize(window);
-                break;
-            case "restore":
-                window.unminimize();
-                break;
-            case "maximize":
-                requireCapability(window.can_maximize(), "window cannot be maximized");
-                window.maximize(Meta.MaximizeFlags.BOTH);
-                break;
-            case "unmaximize":
-                window.unmaximize(Meta.MaximizeFlags.BOTH);
-                break;
-            case "fullscreen":
-                window.make_fullscreen();
-                break;
-            case "unfullscreen":
-                window.unmake_fullscreen();
                 break;
             case "move":
                 requireCapability(
@@ -1838,6 +1835,7 @@ export class CompositorBridge {
         this.windows.clear();
         this.extensionOperations.clear();
         this.clientClosedHandlers.clear();
+        if (this.socketWatch) GLib.source_remove(this.socketWatch);
         this.service.stop();
         this.service.close();
         // Another bridge may have replaced the path since this instance

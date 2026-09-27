@@ -1,5 +1,5 @@
 From 64f6ae7ca305044814fc1fcb5b0e54388487db97 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 12 Sep 2026 05:00:00 +0100
 Subject: [PATCH] wayland: remove frame callback surfaces in constant time
 

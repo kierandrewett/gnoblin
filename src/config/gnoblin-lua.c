@@ -634,11 +634,12 @@ static gboolean table_fields_allowed(lua_State* state, int index, const char* co
     return TRUE;
 }
 
-static GVariant* workspace_selector(lua_State* state, int index) {
+static GVariant* workspace_selector(lua_State* state, int index, gboolean allow_name) {
     luaL_checktype(state, index, LUA_TTABLE);
     index = lua_absindex(state, index);
     static const char* const fields[] = {"id", "number", NULL};
-    if (!table_fields_allowed(state, index, fields))
+    static const char* const rename_fields[] = {"id", "number", "name", NULL};
+    if (!table_fields_allowed(state, index, allow_name ? rename_fields : fields))
         luaL_error(state, "workspace selector accepts only id or number");
     GVariantBuilder selector;
     g_variant_builder_init(&selector, G_VARIANT_TYPE_VARDICT);
@@ -670,13 +671,14 @@ static GVariant* workspace_selector(lua_State* state, int index) {
 static void add_workspace_field(lua_State* state, GVariantBuilder* arguments, int table,
                                 const char* field) {
     lua_getfield(state, table, field);
-    GVariant* selector = workspace_selector(state, -1);
+    GVariant* selector = workspace_selector(state, -1, FALSE);
     g_variant_builder_add(arguments, "{sv}", "workspace", selector);
     lua_pop(state, 1);
 }
 
-static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments, int table) {
-    g_autoptr(GVariant) selector = workspace_selector(state, table);
+static void add_selector_arguments(lua_State* state, GVariantBuilder* arguments, int table,
+                                   gboolean allow_name) {
+    g_autoptr(GVariant) selector = workspace_selector(state, table, allow_name);
     GVariantIter iter;
     const char* key;
     GVariant* value;
@@ -736,7 +738,7 @@ static int lua_workspace_action(lua_State* state) {
         static const char* const fields[] = {"id", "number", "name", NULL};
         if (!table_fields_allowed(state, 1, fields))
             return luaL_error(state, "workspace.rename accepts only id or number and name");
-        add_selector_arguments(state, &arguments, 1);
+        add_selector_arguments(state, &arguments, 1, TRUE);
         lua_getfield(state, 1, "name");
         const char* name = luaL_checkstring(state, -1);
         if (!*name || !g_utf8_validate(name, -1, NULL) || g_utf8_strlen(name, -1) > 80)
@@ -744,7 +746,7 @@ static int lua_workspace_action(lua_State* state) {
         g_variant_builder_add(&arguments, "{sv}", "name", g_variant_new_string(name));
         lua_pop(state, 1);
     } else if (g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
-        add_selector_arguments(state, &arguments, 1);
+        add_selector_arguments(state, &arguments, 1, FALSE);
     } else if (g_str_equal(method, "workspace.move_active")) {
         luaL_checktype(state, 1, LUA_TTABLE);
         static const char* const fields[] = {"workspace", "follow", NULL};
@@ -1565,7 +1567,9 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     } else if (run.error) {
         g_propagate_error(error, g_steal_pointer(&run.error));
     }
-    runtime->document = run.result;
+    // The builder returns a floating variant. Own it before exposing another
+    // reference to the Shell; otherwise a later event can unref a stale value.
+    runtime->document = run.result ? g_variant_ref_sink(run.result) : NULL;
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
         lua_runtime_free(runtime);
         return NULL;
@@ -1641,8 +1645,13 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
     active_runtime->config.dispatching = FALSE;
     active_runtime->config.actions_in_dispatch = 0;
     lua_pop(state, 2);
-    if (!dispatched)
+    // No Shell document update is needed when Lua did not handle the event.
+    // Touchpad gestures still reach the Shell router through this signal.
+    if (!dispatched) {
+        if (!g_str_equal(event, "mutter.touchpad.gesture"))
+            return NULL;
         return g_variant_ref(active_runtime->document);
+    }
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
     GVariant* document = variant_from_lua(state, -1, 0, FALSE, 0, error);
@@ -1668,12 +1677,12 @@ GVariant* gnoblin_config_drain_runtime_operations(void) {
     g_variant_builder_init(&operations, G_VARIANT_TYPE("aa{sv}"));
     if (pending_runtime || !active_runtime || active_runtime->config.dispatching ||
         active_runtime->config.api_calling)
-        return g_variant_builder_end(&operations);
+        return g_variant_ref_sink(g_variant_builder_end(&operations));
     GPtrArray* pending = active_runtime->config.runtime_actions;
     for (guint i = 0; i < pending->len; i++)
-        g_variant_builder_add_value(&operations, g_variant_ref(g_ptr_array_index(pending, i)));
+        g_variant_builder_add_value(&operations, g_ptr_array_index(pending, i));
     g_ptr_array_set_size(pending, 0);
-    return g_variant_builder_end(&operations);
+    return g_variant_ref_sink(g_variant_builder_end(&operations));
 }
 
 GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error) {
@@ -1765,6 +1774,11 @@ void gnoblin_config_finish_load(gboolean commit) {
     } else {
         lua_runtime_free(g_steal_pointer(&pending_runtime));
     }
+}
+
+GVariant* gnoblin_config_current_document(void) {
+    return active_runtime && active_runtime->document ? g_variant_ref(active_runtime->document)
+                                                      : NULL;
 }
 
 void gnoblin_config_finish_event(gboolean commit) {

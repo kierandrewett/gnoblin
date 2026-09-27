@@ -1,5 +1,5 @@
 From 2627ef59b72088366ac869553ca626ab8da61a51 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:04:39 +0100
 Subject: [PATCH] config: share Lua init and include loading with Shell
 

@@ -86,6 +86,9 @@ The source prefixes are `mutter.display`, `mutter.window`,
 signals exposed by the running Mutter build. Newly created windows and
 workspaces are watched as they appear.
 
+Gnoblin starts this signal watcher only when the config registers one of these
+events or the `*` listener.
+
 Gnoblin also exposes the Wayland pointer-window transition as
 `mutter.wayland.pointer-window-changed`, with `app_id`, `wm_class`, and
 `title`. The older `pointer_window_changed` name remains available.

@@ -252,6 +252,7 @@ GVariant *gnoblin_console_lua(const char *operation, const char *source) {
             lua_close(console_lua);
         console_lua = NULL;
         g_clear_pointer(&console_config.paths, g_ptr_array_unref);
+        g_clear_pointer(&console_config.directories, g_ptr_array_unref);
         g_clear_pointer(&console_config.active, g_hash_table_unref);
         g_clear_pointer(&console_config.modules, g_hash_table_unref);
         g_clear_pointer(&console_config.current_path, g_free);
@@ -266,6 +267,7 @@ GVariant *gnoblin_console_lua(const char *operation, const char *source) {
     if (initializing) {
         console_handles = g_hash_table_new(g_direct_hash, g_direct_equal);
         console_config.paths = g_ptr_array_new_with_free_func(g_free);
+        console_config.directories = g_ptr_array_new_with_free_func(g_free);
         console_config.active = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
         console_config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
         console_config.current_path = gnoblin_config_path();

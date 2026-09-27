@@ -1,5 +1,5 @@
 From 3b75bf0d3c58f275ff2af39ce54708fe8f8fb8df Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 20 Sep 2026 12:00:00 +0100
 Subject: [PATCH] wayland: place XDG popups relative to SSD client geometry
 

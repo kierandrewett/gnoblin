@@ -22,6 +22,7 @@ git -C "$SM" rev-parse --git-dir >/dev/null 2>&1 ||
     }
 
 "$ROOT/scripts/subproject-state.sh" check "$PROJ" "$TAG"
+"$ROOT/scripts/manage-patches.py" check
 "$ROOT/scripts/copy-overlay.sh" "$PROJ" "$SM" --remove-destinations
 
 echo ">> resetting $PROJ to pristine tag $TAG"

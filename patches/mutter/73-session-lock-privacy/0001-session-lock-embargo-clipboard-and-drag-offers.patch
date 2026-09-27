@@ -1,5 +1,5 @@
 From ea10b18ded944b0ff81401c239988a16bbfaa8c9 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:52:55 +0100
 Subject: [PATCH] session-lock: embargo clipboard and drag offers
 

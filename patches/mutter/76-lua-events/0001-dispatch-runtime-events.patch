@@ -1,5 +1,5 @@
 From 16a09db174775a54de0ef79f70ab2beefb0494f0 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 01:47:25 +0100
 Subject: [PATCH] gnoblin: forward compositor events to the Lua runtime
 

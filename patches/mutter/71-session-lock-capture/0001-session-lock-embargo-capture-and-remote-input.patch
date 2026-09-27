@@ -1,5 +1,5 @@
 From 3ebb311fedda7c76955c096e539a038974881c37 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 22:28:38 +0100
 Subject: [PATCH] session-lock: stream presented lock scene to authorised
  remotes

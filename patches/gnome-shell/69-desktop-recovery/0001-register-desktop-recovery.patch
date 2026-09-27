@@ -1,5 +1,5 @@
 From e9b574105029f8bb7f7bbe7df72e67cf5ace1c96 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] shell: register independent desktop recovery component
 

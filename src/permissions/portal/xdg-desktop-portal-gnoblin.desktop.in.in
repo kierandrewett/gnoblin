@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Gnoblin Portal
+Icon=applications-system-symbolic
+Exec=@libexecdir@/xdg-desktop-portal-gnoblin
+NoDisplay=true

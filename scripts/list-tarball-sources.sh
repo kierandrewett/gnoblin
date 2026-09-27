@@ -20,6 +20,9 @@ case "$PROJECT" in
     gnome-shell)
         REQUIRED_SUBPROJECTS=(gvc libshew jasmine-gjs)
         ;;
+    xdg-desktop-portal-gnome)
+        REQUIRED_SUBPROJECTS=(libgxdp)
+        ;;
     *)
         echo "unknown subproject: $PROJECT" >&2
         exit 1

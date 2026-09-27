@@ -1,5 +1,5 @@
 From 45f1702593bef07580aa0ab7a87fbb8bc9f39cbc Mon Sep 17 00:00:00 2001
-From: Gnoblin Docs Audit <gnoblin-docs-audit@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 05:21:17 +0100
 Subject: [PATCH] gnoblin: guard optional workspace animation background
 

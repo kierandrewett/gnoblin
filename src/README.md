@@ -27,7 +27,7 @@ a feature lives.
   `gnoblin.conf.example`.
 - `tools/` — runtime helpers installed by `scripts/install-session.sh`:
   `gnoblinctl` (the `org.gnoblin.Shell` control front-end), `gnoblin-env.sh`
-  (the shared prefix and library lookup contract), `gnoblin-session` (the login
+  (the shared prefix and library lookup contract), `gnoblin` (the login
   entry's `Exec=` target), and `gnoblin-shell-service` (the systemd user-unit
   wrapper).
 
@@ -46,5 +46,5 @@ a feature lives.
 - Changing the documented protocol gates: update `data/gnoblin.conf.example`.
 - Changing the login-manager/systemd wiring: `data/session/gnoblin.desktop`
   (Exec= gets rewritten at install time), `data/session/systemd-user/`, and
-  `tools/gnoblin-session` / `tools/gnoblin-shell-service`. See
+  `tools/gnoblin` / `tools/gnoblin-shell-service`. See
   `scripts/install-session.sh` and `scripts/register-session.sh`.

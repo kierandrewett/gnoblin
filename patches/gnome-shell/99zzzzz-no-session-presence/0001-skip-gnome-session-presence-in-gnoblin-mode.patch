@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] gnoblin: skip session presence subscription for hidden banners
+
+---
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index b43486d28..4e91e61e2 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -727,14 +727,18 @@ export class MessageTray extends St.Widget {
+             layout_manager: new Clutter.BinLayout(),
+         });
+ 
+-        this._presence = new GnomeSession.Presence((proxy, _error) => {
+-            this._onStatusChanged(proxy.status);
+-        });
+         this._busy = false;
+         this._bannerBlocked = false;
+-        this._presence.connectSignal('StatusChanged', (proxy, senderName, [status]) => {
+-            this._onStatusChanged(status);
+-        });
++        // Gnoblin has no Shell notification banners, so it does not need the
++        // GNOME SessionManager presence service to track their busy state.
++        if (global.session_mode !== 'gnoblin') {
++            this._presence = new GnomeSession.Presence((proxy, _error) => {
++                this._onStatusChanged(proxy.status);
++            });
++            this._presence.connectSignal('StatusChanged', (proxy, senderName, [status]) => {
++                this._onStatusChanged(status);
++            });
++        }
+ 
+         const constraint = new Layout.MonitorConstraint({primary: true});
+         Main.layoutManager.panelBox.bind_property('visible',

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-tmp="$(mktemp -d /tmp/gnoblin-config-seed.XXXXXX)"
+tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
 
 prefix="$tmp/prefix"
@@ -10,7 +10,7 @@ fake_bin="$tmp/fake-bin"
 home="$tmp/home"
 config_home="$tmp/xdg-config"
 mkdir -p "$prefix/bin" "$prefix/libexec" "$prefix/share/gnoblin" "$fake_bin" "$home"
-install -m 755 "$ROOT/src/tools/gnoblin-session" "$prefix/bin/gnoblin-session"
+install -m 755 "$ROOT/src/tools/gnoblin" "$prefix/bin/gnoblin"
 install -m 644 "$ROOT/src/tools/gnoblin-env.sh" "$prefix/libexec/gnoblin-env.sh"
 install -m 755 "$ROOT/src/tools/gnoblin-seed-config" "$prefix/libexec/gnoblin-seed-config"
 install -m 644 "$ROOT/src/data/init.lua.example" "$prefix/share/gnoblin/init.lua.example"
@@ -36,7 +36,7 @@ env -u GNOBLIN_CONFIG HOME="$home" XDG_CONFIG_HOME="$config_home" \
     XDG_DATA_DIRS="$prefix/share:/usr/share" PATH="$fake_bin:$PATH" \
     GNOBLIN_TEST_CTL="$ROOT/src/tools/gnoblinctl" \
     GNOBLIN_TEST_TEMPLATE="$prefix/share/gnoblin/init.lua.example" \
-    "$prefix/bin/gnoblin-session"
+    "$prefix/bin/gnoblin"
 
 # A later login preserves local edits.
 printf '%s\n' '-- user edit' >"$config_home/gnoblin/init.lua"

@@ -11,8 +11,24 @@ For Fedora, check the session package:
 rpm -q gnoblin-session
 ```
 
-For source builds, complete [session registration](install-source.md#login-session),
-including the printed root commands. Building alone does not add a login entry.
+For source builds, run `./build.sh --register-session` after building.
+It asks for sudo to add the login entry. See [session registration](install-source.md#login-session).
+
+## The source build returns to the login screen
+
+Log into another session and read the session journal:
+
+```sh
+journalctl --user -b --no-pager
+```
+
+If it reports a missing
+`libshell-*.so` library or `Shell-*.typelib`, rebuild from the current source
+tarball and register that build again. Gnoblin's launcher must find Shell's
+private libraries and typelibs in the build prefix.
+
+Keep the extracted source directory after registration; the login entry runs
+its private binaries from that directory.
 
 ## No bar, dock or launcher
 
@@ -32,6 +48,17 @@ journalctl --user -b -u bingux.service
 
 A Qt/Quickshell version mismatch requires rebuilding or installing a matching
 Quickshell package. Restarting repeatedly will not fix that mismatch.
+
+## A network needs a browser sign-in
+
+Open the network's sign-in page in a browser. Gnoblin does not install GNOME
+Shell's captive-network helper. Its NetworkManager secret agent still handles
+Wi-Fi and VPN credential prompts.
+
+## Calendar events are not in the shell
+
+Gnoblin has no GNOME Shell date menu or calendar event server. Open a
+calendar application to view events.
 
 ## A config edit does nothing
 

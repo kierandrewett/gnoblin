@@ -1,0 +1,11 @@
+[Unit]
+Description=Gnoblin idle and screen saver inhibition
+After=graphical-session.target
+Requisite=graphical-session.target
+Before=xdg-desktop-autostart.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.ScreenSaver
+ExecStart=@PREFIX@/libexec/gnoblin-idle

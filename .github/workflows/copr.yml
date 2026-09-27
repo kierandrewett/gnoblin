@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: copr-repository
   cancel-in-progress: false
@@ -28,7 +32,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora:45
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
@@ -53,21 +57,21 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern '*.src.rpm' --dir release-assets
           shopt -s nullglob
-          schemas=(release-assets/gnoblin-gsettings-desktop-schemas-*.src.rpm)
           mutter=(release-assets/gnoblin-mutter-*.src.rpm)
           shell=(release-assets/gnoblin-shell-*.src.rpm)
+          portal=(release-assets/gnoblin-portal-*.src.rpm)
           meta=(release-assets/gnoblin-[0-9]*.src.rpm)
-          test "${#schemas[@]}" -eq 1
           test "${#mutter[@]}" -eq 1
           test "${#shell[@]}" -eq 1
+          test "${#portal[@]}" -eq 1
           test "${#meta[@]}" -eq 1
-          printf '%s\n' "${schemas[@]}" "${mutter[@]}" "${shell[@]}" "${meta[@]}"
+          printf '%s\n' "${mutter[@]}" "${shell[@]}" "${portal[@]}" "${meta[@]}"
       - name: Publish and verify the release in COPR
         run: |
           scripts/publish-copr.sh kierandrewett/gnoblin \
-            release-assets/gnoblin-gsettings-desktop-schemas-*.src.rpm \
             release-assets/gnoblin-mutter-*.src.rpm \
             release-assets/gnoblin-shell-*.src.rpm \
+            release-assets/gnoblin-portal-*.src.rpm \
             release-assets/gnoblin-[0-9]*.src.rpm
 
   install-smoke:
@@ -78,32 +82,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fedora: [43, 44, 45]
+        fedora: [45]
     container: fedora:${{ matrix.fedora }}
     timeout-minutes: 20
     steps:
-      - name: Install stock GNOME and record package ownership
+      - name: Install the published release without stock GNOME
+        run: |
+          expected_version="${RELEASE_TAG#gnoblin-v}"
+          [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          dnf -y install dnf-plugins-core
+          dnf -y copr enable kierandrewett/gnoblin
+          dnf -y --setopt=install_weak_deps=False install --refresh "gnoblin-$expected_version"
+          installed_version="$(rpm -q --qf '%{VERSION}' gnoblin)"
+          test "$installed_version" = "$expected_version"
+          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-portal gnoblin-session
+          ! rpm -q gnoblin-gnome-integration
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+          grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+          ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1
+          for package in gnome-desktop3 gnome-desktop4 gtk3; do
+            ! rpm -q "$package" >/dev/null 2>&1
+          done
+          test -f /usr/share/wayland-sessions/gnoblin.desktop
+          grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
+          for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
+            ! rpm -q "$stock_package" >/dev/null 2>&1
+          done
+          dnf -y install gnoblin-gnome-integration
+          rpm -q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
+          for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
+            ! rpm -q "$stock_package" >/dev/null 2>&1
+          done
+      - name: Install stock GNOME beside Gnoblin
         run: |
           dnf -y install gnome-shell mutter gnome-session gdm
           rpm -q gnome-shell mutter gnome-session gdm > /tmp/stock-gnome-packages
           rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/stock-gnome-owners
           test -x /usr/bin/gnome-shell
           test -x /usr/bin/mutter
-      - name: Install the published release
-        run: |
-          expected_version="${RELEASE_TAG#gnoblin-v}"
-          [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          dnf -y install dnf-plugins-core
-          dnf -y copr enable kierandrewett/gnoblin
-          dnf -y install --refresh "gnoblin-$expected_version"
-          installed_version="$(rpm -q --qf '%{VERSION}' gnoblin)"
-          test "$installed_version" = "$expected_version"
-          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-session
-          test -f /usr/share/wayland-sessions/gnoblin.desktop
-          rpm -q gnome-shell mutter gnome-session gdm > /tmp/gnome-packages-with-gnoblin
-          diff -u /tmp/stock-gnome-packages /tmp/gnome-packages-with-gnoblin
-          rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/gnome-owners-with-gnoblin
-          diff -u /tmp/stock-gnome-owners /tmp/gnome-owners-with-gnoblin
       - name: Remove Gnoblin and verify stock GNOME remains installed
         run: |
           dnf -y remove gnoblin

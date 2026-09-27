@@ -1,0 +1,3 @@
+# project source destination
+mutter gnoblin-native-control.c src/core/gnoblin-native-control.c
+mutter gnoblin-native-control.h src/core/gnoblin-native-control.h

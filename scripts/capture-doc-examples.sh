@@ -103,25 +103,10 @@ mkdir -p "$XDG_CONFIG_HOME/gnoblin" "$XDG_CONFIG_HOME/waybar" \
     "$XDG_CONFIG_HOME/mako" "$XDG_CONFIG_HOME/foot" "$XDG_CONFIG_HOME/fuzzel"
 mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures"
 
-# Make the packaged vector cursor theme available in the disposable profile.
-cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$GNOBLIN_PREFIX/share/icons/Adwaita-Hyprcursor}"
-if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$root/build/Adwaita-Hyprcursor/hyprcursors" ]; then
-    cursor_theme="$root/build/Adwaita-Hyprcursor"
-fi
-if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d /usr/share/icons/Adwaita-Hyprcursor/hyprcursors ]; then
-    cursor_theme=/usr/share/icons/Adwaita-Hyprcursor
-fi
-if [ ! -d "$cursor_theme/hyprcursors" ]; then
-    echo "Adwaita-Hyprcursor is required; see docs/guides/cursors.md" >&2
-    exit 1
-fi
 if [ ! -f "$wallpaper" ]; then
     echo "Documentation wallpaper not found at $wallpaper" >&2
     exit 1
 fi
-mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
-ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
-ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
 
 if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     command -v gnoblin-quickshell >/dev/null || {
@@ -149,7 +134,7 @@ if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 local gnoblin = require("gnoblin")
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
     shell = {wallpaper = false},
 }
 gnoblin.load("conf.d/**/*.lua")
@@ -157,7 +142,7 @@ LUA
 else
     cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
 }
 LUA
 fi

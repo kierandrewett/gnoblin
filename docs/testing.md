@@ -48,13 +48,13 @@ The private harness uses temporary HOME and XDG directories. The
 
 ## CI
 
-The verification workflow provisions disposable Fedora and Arch images, then
-runs `./build.sh` as an unprivileged user. Package provisioning is confined to
-the CI images; the user-facing build script never runs it.
+The verification workflow creates the release source tarball in a disposable
+Fedora image, extracts it without Git metadata, and runs `./build.sh` as an
+unprivileged user. It also builds the Arch package in a separate image. Package
+provisioning is confined to CI; the user-facing build script never runs it.
 
-A separate matrix checks dependency provisioning and build tests on Debian,
-Ubuntu and openSUSE. It does not prove a complete desktop installation. Run `python3 tests/build-deps.test.py` and `python3 tests/private-deps.test.py`
-to check command planning, checksums and private library links.
+A separate matrix checks dependency provisioning on Debian, Ubuntu and
+openSUSE. It does not prove a complete desktop installation.
 
 Graphical login and interactive checks still need a host.
 
@@ -114,7 +114,7 @@ artifacts distinguish those outcomes.
 Flathub apps keep their Flatpak sandbox and run without network access, so this
 suite measures desktop-window behavior rather than online service behavior.
 
-The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code with
+The Actions runner uses Fedora 45 and Gnoblin's actual Mutter/Wayland code with
 virtual 1280x800 monitors and software rendering. It exercises real Flatpak
 and RPM clients against real Gnoblin windows without a physical GPU or logged-in
 desktop.

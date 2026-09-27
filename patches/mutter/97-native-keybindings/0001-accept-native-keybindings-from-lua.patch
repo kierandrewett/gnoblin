@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] Accept native keybindings from Lua
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index d750140cb..06a514f4e 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -146,12 +146,13 @@ load_native_config (GVariant **native_document,
+                            g_str_equal (key, "compositor") ||
+                            g_str_equal (key, "autostart") ||
+                            g_str_equal (key, "shortcuts") ||
+-                           g_str_equal (key, "input");
++                           g_str_equal (key, "input") ||
++                           g_str_equal (key, "keybindings");
+       g_variant_unref (value);
+       if (!supported)
+         {
+           g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+-                       "%s: native compositor cannot apply '%s'; use supported settings such as protocols, layer-shell, workspaces, window-management, compositor, autostart, shortcuts, or input",
++                       "%s: native compositor cannot apply '%s'; use supported settings such as protocols, layer-shell, workspaces, window-management, compositor, autostart, shortcuts, input, or keybindings",
+                        path, key);
+           goto reject;
+         }

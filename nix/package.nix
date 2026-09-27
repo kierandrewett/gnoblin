@@ -5,31 +5,34 @@
   symlinkJoin,
   glib,
   gjs,
-  wayland ? null,
-  waylandScanner ? null,
   unzip,
   hyprcursor,
-  inkscape,
+  librsvg,
   adwaita-icon-theme,
   lua5_4,
   libepoxy,
   libglycin,
+  json-glib,
+  pkg-config,
   python3,
   wrapGAppsHook3,
-  systemd,
   makeWrapper,
 
   mutter,
   gnomeShell,
+  gnomePortal,
   gnomeSession,
   wireplumber,
-  playerctl,
-  brightnessctl,
   gsettings-desktop-schemas,
   gnoblinSrc,
+  gnoblinRevision ? null,
+  gnoblinSourceModified ? false,
+  gnoblinRemote ? null,
   mutterSrc,
   gnomeShellSrc,
   gsettingsDesktopSchemasSrc,
+  portalSrc,
+  gxdpSrc,
   gvdbSrc,
   gvcSrc,
   libshewSrc,
@@ -72,17 +75,9 @@ let
   # predate GCC 16 build hyprcursor and its C++ closure with their default
   # stdenv, so the fallback keeps the consumer in that same ABI closure.
   gnoblinMutter =
-    (mutter.override (
-      {
-        stdenv = gcc16Stdenv;
-      }
-      // lib.optionalAttrs (wayland != null) {
-        inherit wayland;
-      }
-      // lib.optionalAttrs (waylandScanner != null) {
-        wayland-scanner = waylandScanner;
-      }
-    )).overrideAttrs
+    (mutter.override {
+      stdenv = gcc16Stdenv;
+    }).overrideAttrs
       (old: {
         pname = "gnoblin-mutter";
         version = versions.components.mutter.version;
@@ -92,14 +87,10 @@ let
         patches = patchesFor "mutter";
         prePatch = (old.prePatch or "") + copyOverlays "mutter" + addSubproject gvdbSrc "gvdb";
         postPatch = old.postPatch or "";
-        preConfigure =
-          lib.optionalString (wayland != null) ''
-            export PKG_CONFIG_PATH="${wayland.dev}/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-          ''
-          + ''
-            export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-          ''
-          + (old.preConfigure or "");
+        preConfigure = ''
+          export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        ''
+        + (old.preConfigure or "");
         postInstall = (old.postInstall or "") + ''
           # Mutter declares this split output even when gi-docgen has nothing to
           # install for the selected feature set. Keep the derivation contract.
@@ -112,6 +103,7 @@ let
           ) (old.buildInputs or [ ])
           ++ [
             hyprcursor
+            json-glib
             lua5_4
           ];
         mesonFlags =
@@ -130,11 +122,23 @@ let
         pname = "gnoblin-shell";
         version = gnomeVersion;
         src = gnomeShellSrc;
+        # These libraries serve only the disabled captive-network helper and calendar server.
         buildInputs =
-          map (
-            dependency:
-            if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
-          ) (old.buildInputs or [ ])
+          map
+            (
+              dependency:
+              if (dependency.pname or "") == "gsettings-desktop-schemas" then gnoblinSchemas else dependency
+            )
+            (
+              builtins.filter (
+                dependency:
+                !(builtins.elem (dependency.pname or "") [
+                  "webkitgtk"
+                  "evolution-data-server"
+                  "libical"
+                ])
+              ) (old.buildInputs or [ ])
+            )
           ++ [
             libepoxy
             libglycin
@@ -146,14 +150,10 @@ let
           + addSubproject gvcSrc "gvc"
           + addSubproject libshewSrc "libshew"
           + addSubproject jasmineGjsSrc "jasmine-gjs";
-        preConfigure =
-          lib.optionalString (wayland != null) ''
-            export PKG_CONFIG_PATH="${wayland.dev}/lib/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-          ''
-          + ''
-            export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-          ''
-          + (old.preConfigure or "");
+        preConfigure = ''
+          export PKG_CONFIG_PATH="${gnoblinSchemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+        ''
+        + (old.preConfigure or "");
         # Nixpkgs' hook follows its older Shell source and names files removed in
         # 51. Keep the useful fixups, scoped to paths in the pinned release.
         postPatch = ''
@@ -173,7 +173,12 @@ let
               --replace-fail "extra_args: ['-DST_COMPILATION', '--quiet']," \
               "extra_args: ['-DST_COMPILATION', '--quiet', '--library-path=${gcc16Stdenv.cc.cc.lib}/lib'],"
         '';
-        mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dextensions_tool=false" ];
+        mesonFlags = (old.mesonFlags or [ ]) ++ [
+          "-Dextensions_tool=false"
+          "-Dportal_helper=false"
+          "-Dcalendar_server=false"
+          "-Dhotplug_sniffer=false"
+        ];
         postFixup = ''
           for service in org.gnome.ScreenSaver org.gnome.Shell.Notifications org.gnome.Shell.Screencast; do
               makeWrapper ${gjs}/bin/gjs "$out/libexec/$service" \
@@ -192,6 +197,20 @@ let
         '';
       });
 
+  gnoblinPortal = gnomePortal.overrideAttrs (old: {
+    pname = "gnoblin-portal";
+    version = versions.components.xdg-desktop-portal-gnome.version;
+    src = portalSrc;
+    patches = patchesFor "xdg-desktop-portal-gnome";
+    prePatch =
+      (old.prePatch or "") + copyOverlays "xdg-desktop-portal-gnome" + addSubproject gxdpSrc "libgxdp";
+    buildInputs = (old.buildInputs or [ ]) ++ [ libglycin ];
+    mesonFlags = (old.mesonFlags or [ ]) ++ [
+      "-Ddbus_service_dir=${placeholder "out"}/share/dbus-1/services"
+      "-Dsystemduserunitdir=${placeholder "out"}/lib/systemd/user"
+    ];
+  });
+
   session = stdenv.mkDerivation {
     pname = "gnoblin-session";
     version = gnoblinVersion;
@@ -200,9 +219,14 @@ let
     nativeBuildInputs = [
       makeWrapper
       wrapGAppsHook3
-      inkscape
+      librsvg
       hyprcursor
       python3
+      pkg-config
+    ];
+    buildInputs = [
+      glib
+      json-glib
     ];
     installPhase = ''
       install -Dm644 src/data/session/modes/gnoblin.json \
@@ -215,25 +239,35 @@ let
 
       printf '%s\n' lib > "$out/libexec/gnoblin-libdir"
 
-      install -Dm755 src/tools/gnoblin-session "$out/bin/gnoblin-session"
+      install -Dm755 src/tools/gnoblin "$out/bin/gnoblin"
       install -Dm755 src/tools/gnoblin-seed-config "$out/libexec/gnoblin-seed-config"
       install -Dm644 src/data/init.lua.example "$out/share/gnoblin/init.lua.example"
-      python3 ${gnoblinSrc}/scripts/build-adwaita-hyprcursor.py \
+      LD_LIBRARY_PATH="${librsvg}/lib:${glib.out}/lib" \
+        python3 ${gnoblinSrc}/scripts/build-adwaita-hyprcursor.py \
         --output "$TMPDIR/Adwaita-Hyprcursor" \
         --fallback "${adwaita-icon-theme}/share/icons/Adwaita"
       mkdir -p "$out/share/icons"
       cp -a "$TMPDIR/Adwaita-Hyprcursor" "$out/share/icons/Adwaita-Hyprcursor"
       install -Dm755 src/tools/gnoblin-shell-service "$out/bin/gnoblin-shell-service"
-      install -Dm755 src/tools/gnoblinctl "$out/bin/gnoblinctl"
-      install -Dm644 gnoblin-version.json "$out/share/gnoblin/version.json"
-      substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
-      wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
+      $CC -std=gnu17 -O2 -o gnoblinctl src/tools/gnoblinctl.c \
+        $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0 json-glib-1.0)
+      install -Dm755 gnoblinctl "$out/bin/gnoblinctl"
+      ${lib.optionalString (gnoblinRevision != null) ''
+        export GNOBLIN_SOURCE_GIT_SHA=${lib.escapeShellArg gnoblinRevision}
+      ''}
+      ${lib.optionalString (gnoblinRemote != null) ''
+        export GNOBLIN_SOURCE_GIT_REMOTE=${lib.escapeShellArg gnoblinRemote}
+      ''}
+      export GNOBLIN_SOURCE_MODIFIED=${if gnoblinSourceModified then "1" else "0"}
+      python3 scripts/build-identity.py "$out/share/gnoblin/version.json"
 
       install -Dm644 src/data/session/gnoblin.desktop \
           "$out/share/wayland-sessions/gnoblin.desktop"
 
       install -Dm644 src/data/session/systemd-user/org.gnoblin.Shell.target \
           "$out/lib/systemd/user/org.gnoblin.Shell.target"
+      install -Dm644 src/data/session/systemd-user/gnoblin-session.target \
+          "$out/lib/systemd/user/gnoblin-session.target"
       install -Dm644 src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf \
           "$out/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
       install -Dm644 src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in \
@@ -248,11 +282,10 @@ let
       glib
       gnoblinMutter
       gnoblinShell
+      gnoblinPortal
       gnoblinSchemas
       session
       wireplumber
-      playerctl
-      brightnessctl
     ];
     nativeBuildInputs = [
       glib
@@ -260,15 +293,11 @@ let
     ];
 
     postBuild = ''
-      for tool in gnoblin-session gnoblin-shell-service gnoblinctl; do
+      for tool in gnoblin gnoblin-shell-service; do
           rm "$out/bin/$tool"
           install -Dm755 "${gnoblinSrc}/src/tools/$tool" "$out/bin/$tool"
       done
-      substituteInPlace "$out/bin/gnoblinctl" --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
-      # The session output already contains a wrapped CLI; remove only its
-      # copied wrapper target before wrapping the updated source here.
-      rm -f "$out/bin/.gnoblinctl-wrapped"
-      wrapProgram "$out/bin/gnoblinctl" --set-default GNOBLIN_BUSCTL "${systemd}/bin/busctl"
+      printf '%s\n' '${gcc16Stdenv.cc.cc.lib}/lib' > "$out/libexec/gnoblin-cxx-lib"
       rm "$out/share/wayland-sessions/gnoblin.desktop"
       install -Dm644 "${gnoblinSrc}/src/data/session/gnoblin.desktop" \
           "$out/share/wayland-sessions/gnoblin.desktop"
@@ -284,12 +313,12 @@ let
           "$out/lib/systemd/user/org.gnome.Shell@wayland.service"
 
 
-      substituteInPlace "$out/bin/gnoblin-session" \
+      substituteInPlace "$out/bin/gnoblin" \
           --replace-fail "    gnome-session --no-reexec" \
           "    ${gnomeSession}/bin/gnome-session --no-reexec"
       substituteInPlace "$out/share/wayland-sessions/gnoblin.desktop" \
           --replace-fail "Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin" \
-          "Exec=$out/bin/gnoblin-session"
+          "Exec=$out/bin/gnoblin"
       substituteInPlace "$out/lib/systemd/user/org.gnoblin.Shell@wayland.service" \
           --replace-fail "@PREFIX@" "$out"
 
@@ -321,6 +350,7 @@ let
         gnoblinMutter
         gnoblinSchemas
         gnoblinShell
+        gnoblinPortal
         session
         ;
       providedSessions = [ "gnoblin" ];
@@ -347,19 +377,29 @@ symlinkJoin {
     # stock-named binaries, schemas and D-Bus services stay private.
     mkdir -p "$out/bin" "$out/share/wayland-sessions" \
         "$out/share/gnome-session/sessions" "$out/lib/systemd/user" \
-        "$out/share/polkit-1/actions"
+        "$out/share/polkit-1/actions" "$out/share/xdg-desktop-portal/portals" \
+        "$out/share/dbus-1/services"
+    makeWrapper ${runtime}/bin/gnoblin "$out/bin/gnoblin"
     makeWrapper ${runtime}/bin/gnoblinctl "$out/bin/gnoblinctl"
     ln -s ${runtime}/share/wayland-sessions/gnoblin.desktop \
         "$out/share/wayland-sessions/gnoblin.desktop"
     ln -s ${runtime}/share/gnome-session/sessions/gnoblin.session \
         "$out/share/gnome-session/sessions/gnoblin.session"
-    for unit in org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service \
+    for unit in gnoblin-session.target org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service \
         gnome-session@gnoblin.target.d; do
         ln -s "${runtime}/lib/systemd/user/$unit" "$out/lib/systemd/user/$unit"
     done
     sed 's/org.gnome.mutter.backlight-helper/org.gnoblin.mutter.backlight-helper/g' \
         ${gnoblinMutter}/share/polkit-1/actions/org.gnome.mutter.backlight-helper.policy \
         > "$out/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy"
+    ln -s ${runtime}/share/xdg-desktop-portal/gnoblin-portals.conf \
+        "$out/share/xdg-desktop-portal/gnoblin-portals.conf"
+    ln -s ${runtime}/share/xdg-desktop-portal/portals/gnoblin.portal \
+        "$out/share/xdg-desktop-portal/portals/gnoblin.portal"
+    ln -s ${runtime}/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \
+        "$out/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
+    ln -s ${runtime}/lib/systemd/user/xdg-desktop-portal-gnoblin.service \
+        "$out/lib/systemd/user/xdg-desktop-portal-gnoblin.service"
   '';
   passthru = {
     inherit
@@ -367,6 +407,7 @@ symlinkJoin {
       gnoblinMutter
       gnoblinSchemas
       gnoblinShell
+      gnoblinPortal
       session
       ;
     providedSessions = [ "gnoblin" ];

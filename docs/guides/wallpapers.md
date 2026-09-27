@@ -17,15 +17,18 @@ gnoblin.configure {
 
 Set `wallpaper = true` to enable it again. The setting is persisted in
 Gnoblin's feature preferences and applies on configuration reload. You can
-also toggle the feature with `gnoblinctl feature wallpaper enable` or
-`gnoblinctl feature wallpaper disable`.
+also toggle the feature with `gnoblinctl feature enable wallpaper` or
+`gnoblinctl feature disable wallpaper`. Run `gnoblinctl feature list` first
+to check that the active Shell supports the wallpaper feature. If it is
+absent, update the installed Gnoblin Shell and start a new session before
+using this setting.
 
 ## Systems without wallpaper images
 
-Wallpaper images are optional. GNOME's background renderer paints the
-configured color before loading a picture. If no picture is selected or its
-file is missing, that color remains visible, so a fresh system still gets a
-desktop background without a wallpaper bundle or image file. Set GNOME's
+Wallpaper images are optional. Gnoblin uses the host GNOME default picture
+when one is available. GNOME's background renderer paints the configured
+color before loading a picture. If no picture is configured or its file is
+missing, that color remains visible. Set GNOME's
 `primary-color` and, for a gradient, `secondary-color` in
 `org.gnome.desktop.background` to choose the color.
 
@@ -41,6 +44,10 @@ gsettings set org.gnome.desktop.background color-shading-type 'solid'
 GNOME picture placement and slideshow settings continue to apply when images
 are configured. For example, use GNOME Settings → Appearance to choose a
 picture or solid color. No Gnoblin autostart entry is needed.
+
+When an app asks to set a wallpaper through the desktop portal, Gnoblin's
+confirmation preview shows the first image in an XML slideshow and marks it
+as animated. The installed wallpaper still follows its slideshow schedule.
 
 ## Use another wallpaper client
 

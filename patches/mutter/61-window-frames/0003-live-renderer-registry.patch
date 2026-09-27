@@ -1,5 +1,5 @@
 From 761f4d9d2b4404a698ed81ada1497158b68fb2cd Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 03:05:51 +0100
 Subject: [PATCH] Expose live frame renderer reconciliation to Shell
 

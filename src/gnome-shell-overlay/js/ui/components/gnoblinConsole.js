@@ -395,7 +395,7 @@ export const DeveloperConsole = GObject.registerClass(
             Main.uiGroup.set_child_above_sibling(this, null);
             this.show();
             const grab = Main.pushModal(this, { actionMode: Shell.ActionMode.LOOKING_GLASS });
-            if (grab.get_seat_state() !== Clutter.GrabState.ALL) {
+            if (grab.is_revoked()) {
                 Main.popModal(grab);
                 this.hide();
                 return false;

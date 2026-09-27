@@ -19,9 +19,11 @@ class SessionEnvironmentTests(unittest.TestCase):
             prefix = base / "runtime"
             (prefix / "bin").mkdir(parents=True)
             (prefix / "libexec").mkdir()
-            shutil.copy2(ROOT / "src/tools/gnoblin-session", prefix / "bin/gnoblin-session")
+            (prefix / "share/gnoblin").mkdir(parents=True)
+            shutil.copy2(ROOT / "src/tools/gnoblin", prefix / "bin/gnoblin")
             shutil.copy2(ROOT / "src/tools/gnoblin-env.sh", prefix / "libexec/gnoblin-env.sh")
             shutil.copy2(ROOT / "src/tools/gnoblin-seed-config", prefix / "libexec/gnoblin-seed-config")
+            shutil.copy2(ROOT / "src/data/init.lua.example", prefix / "share/gnoblin/init.lua.example")
 
             fake_dbus = prefix / "bin/dbus-update-activation-environment"
             fake_dbus.write_text(
@@ -64,7 +66,7 @@ class SessionEnvironmentTests(unittest.TestCase):
                 "WAYLAND_DISPLAY": "wayland-9",
             }
             subprocess.run(
-                [str(prefix / "bin/gnoblin-session"), "--test-argument"],
+                [str(prefix / "bin/gnoblin"), "--test-argument"],
                 env=environment,
                 check=True,
             )
@@ -73,8 +75,8 @@ class SessionEnvironmentTests(unittest.TestCase):
             self.assertEqual(
                 events[0],
                 "dbus --systemd GNOME_SHELL_SESSION_MODE XDG_CURRENT_DESKTOP "
-                "XDG_SESSION_DESKTOP XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY XAUTHORITY "
-                "desktop=GNOME:Gnoblin mode=gnoblin",
+                "XDG_SESSION_DESKTOP XDG_SESSION_CLASS XDG_SESSION_TYPE WAYLAND_DISPLAY "
+                "DISPLAY XAUTHORITY desktop=Gnoblin:GNOME mode=gnoblin",
             )
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.OnlineAccounts@0.service", events[1])
             self.assertIn("stop --user stop dbus-:1.2-org.gnome.Identity@0.service", events[2])
@@ -84,7 +86,7 @@ class SessionEnvironmentTests(unittest.TestCase):
             )
             self.assertEqual(
                 events[4],
-                "session desktop=GNOME:Gnoblin mode=gnoblin args=--no-reexec --session=gnoblin --test-argument",
+                "session desktop=Gnoblin:GNOME mode=gnoblin args=--no-reexec --session=gnoblin --test-argument",
             )
 
 

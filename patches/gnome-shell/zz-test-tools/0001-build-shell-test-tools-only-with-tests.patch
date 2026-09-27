@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] Build Shell test tools only when tests are enabled
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 5cc3f9cf..4614c22c 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -29,12 +29,14 @@ script_data.set('pkglibdir', pkglibdir)
+ script_data.set('PYTHON', python.full_path())
+ script_data.set('VERSION', meson.project_version())
+ 
+-test_tool = configure_file(
+-  input: 'gnome-shell-test-tool.in',
+-  output: 'gnome-shell-test-tool',
+-  configuration: script_data,
+-  install_dir: bindir
+-)
++if get_option('tests')
++  test_tool = configure_file(
++    input: 'gnome-shell-test-tool.in',
++    output: 'gnome-shell-test-tool',
++    configuration: script_data,
++    install_dir: bindir
++  )
++endif
+ 
+ if get_option('extensions_tool')
+   configure_file(
+@@ -305,16 +307,18 @@ if have_portal_helper
+   )
+ endif
+ 
+-gnome_shell_perf_helper = executable('gnome-shell-perf-helper', 'shell-perf-helper.c', js_resources,
+-  dependencies: [gtk_dep, gio_dep, m_dep],
+-  include_directories: [conf_inc],
+-  install_dir: libexecdir,
+-  install: true
+-)
++if get_option('tests')
++  gnome_shell_perf_helper = executable('gnome-shell-perf-helper', 'shell-perf-helper.c', js_resources,
++    dependencies: [gtk_dep, gio_dep, m_dep],
++    include_directories: [conf_inc],
++    install_dir: libexecdir,
++    install: true
++  )
+ 
+-run_test = executable('run-js-test', 'run-js-test.c',
+-  dependencies: [gio_dep, gi_dep, gjs_dep, libshell_dep],
+-  c_args: typelib_cflags,
+-  include_directories: [conf_inc],
+-  build_rpath: mutter_typelibdir,
+-)
++  run_test = executable('run-js-test', 'run-js-test.c',
++    dependencies: [gio_dep, gi_dep, gjs_dep, libshell_dep],
++    c_args: typelib_cflags,
++    include_directories: [conf_inc],
++    build_rpath: mutter_typelibdir,
++  )
++endif

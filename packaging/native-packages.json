@@ -1,0 +1,200 @@
+{
+  "formatVersion": 1,
+  "packages": {
+    "gnoblin": {
+      "meta": true,
+      "requires": [],
+      "requiresSameMajor": ["gnoblin-session"],
+      "version": "0.1.7"
+    },
+    "gnoblin-gnome-integration": {
+      "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
+      "requiresSameMajor": ["gnoblin-session"],
+      "version": "0.1.7"
+    },
+    "gnoblin-mutter": {
+      "requires": ["glib", "gsettings-desktop-schemas", "wayland", "libinput", "pipewire"],
+      "source": "mutter",
+      "version": "51.0"
+    },
+    "gnoblin-mutter-devel": {
+      "requires": ["wayland-protocols"],
+      "requiresSameMajor": ["gnoblin-mutter"],
+      "source": "mutter",
+      "version": "51.0"
+    },
+    "gnoblin-portal": {
+      "requires": ["xdg-desktop-portal"],
+      "source": "xdg-desktop-portal-gnome",
+      "version": "51.0"
+    },
+    "gnoblin-session": {
+      "requires": ["cursor-theme", "dbus-tools", "dconf", "json-glib", "wireplumber"],
+      "requiresSameMajor": ["gnoblin-shell", "gnoblin-portal"],
+      "source": "gnome-shell",
+      "version": "51.0"
+    },
+    "gnoblin-shell": {
+      "requires": ["accountsservice", "ibus", "glib", "gjs", "gsettings-desktop-schemas"],
+      "requiresSameMajor": ["gnoblin-mutter"],
+      "source": "gnome-shell",
+      "version": "51.0"
+    }
+  },
+  "release": {
+    "archPkgRelease": 29,
+    "gnoblinVersion": "0.1.7",
+    "gnomeMajor": 51,
+    "gnomeVersion": "51.0",
+    "metaRpmRelease": 20,
+    "mutterApi": "51",
+    "mutterRpmRelease": "44.gnoblin",
+    "rpmEpoch": 1
+  },
+  "requirements": {
+    "accountsservice": {
+      "minVersion": null,
+      "names": {
+        "arch": "accountsservice",
+        "rpm": "accountsservice-libs"
+      }
+    },
+    "cursor-theme": {
+      "minVersion": null,
+      "names": {
+        "arch": "adwaita-cursors",
+        "rpm": "adwaita-cursor-theme"
+      }
+    },
+    "dbus-tools": {
+      "minVersion": null,
+      "names": {
+        "arch": "dbus",
+        "rpm": "dbus-tools"
+      }
+    },
+    "dconf": {
+      "minVersion": null,
+      "names": {
+        "arch": "dconf",
+        "rpm": "dconf"
+      }
+    },
+    "gjs": {
+      "minVersion": "1.87.1",
+      "names": {
+        "arch": "gjs",
+        "rpm": "gjs"
+      }
+    },
+    "glib": {
+      "minVersion": "2.86.0",
+      "names": {
+        "arch": "glib2",
+        "rpm": "glib2"
+      }
+    },
+    "gnome-keyring": {
+      "minVersion": null,
+      "names": {
+        "arch": "gnome-keyring",
+        "rpm": "gnome-keyring"
+      }
+    },
+    "gsettings-desktop-schemas": {
+      "minVersion": "51.0",
+      "names": {
+        "arch": "gsettings-desktop-schemas",
+        "rpm": "gsettings-desktop-schemas"
+      }
+    },
+    "gvfs": {
+      "minVersion": null,
+      "names": {
+        "arch": "gvfs",
+        "rpm": "gvfs"
+      }
+    },
+    "ibus": {
+      "minVersion": null,
+      "names": {
+        "arch": "libibus",
+        "rpm": "ibus-libs"
+      }
+    },
+    "json-glib": {
+      "minVersion": null,
+      "names": {
+        "arch": "json-glib",
+        "rpm": "json-glib"
+      }
+    },
+    "libinput": {
+      "minVersion": "1.31.0",
+      "names": {
+        "arch": "libinput",
+        "rpm": "libinput"
+      }
+    },
+    "pipewire": {
+      "minVersion": "1.6.0",
+      "names": {
+        "arch": "pipewire",
+        "rpm": "pipewire"
+      }
+    },
+    "wayland": {
+      "minVersion": "1.26",
+      "names": {
+        "arch": "wayland",
+        "rpm": "libwayland-client"
+      }
+    },
+    "wayland-protocols": {
+      "minVersion": "1.48",
+      "names": {
+        "arch": "wayland-protocols",
+        "rpm": "wayland-protocols-devel"
+      }
+    },
+    "wireplumber": {
+      "minVersion": null,
+      "names": {
+        "arch": "wireplumber",
+        "rpm": "wireplumber"
+      }
+    },
+    "xdg-desktop-portal": {
+      "minVersion": "1.21.1",
+      "names": {
+        "arch": "xdg-desktop-portal",
+        "rpm": "xdg-desktop-portal"
+      }
+    },
+    "xdg-user-dirs": {
+      "minVersion": null,
+      "names": {
+        "arch": "xdg-user-dirs",
+        "rpm": "xdg-user-dirs"
+      }
+    }
+  },
+  "sources": {
+    "gnome-shell": {
+      "commit": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
+      "version": "51.0"
+    },
+    "gsettings-desktop-schemas": {
+      "commit": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
+      "version": "51.0"
+    },
+    "mutter": {
+      "commit": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
+      "version": "51.0"
+    },
+    "xdg-desktop-portal-gnome": {
+      "commit": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120",
+      "version": "51.0"
+    }
+  }
+}

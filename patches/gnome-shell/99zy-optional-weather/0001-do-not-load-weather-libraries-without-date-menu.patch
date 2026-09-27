@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] shell: skip weather libraries in Gnoblin mode
+
+---
+diff --git a/js/misc/dependencies.js b/js/misc/dependencies.js
+index fbb83d116..0f352fa9d 100644
+--- a/js/misc/dependencies.js
++++ b/js/misc/dependencies.js
+@@ -10,7 +10,6 @@ import 'gi://Atspi?version=2.0';
+ import 'gi://Gcr?version=4';
+ import 'gi://Gdk?version=4.0';
+ import 'gi://Gdm?version=1.0';
+-import 'gi://Geoclue?version=2.0';
+ import 'gi://Gio?version=2.0';
+ import 'gi://GioUnix?version=2.0';
+ import 'gi://GDesktopEnums?version=3.0';
+@@ -20,7 +19,6 @@ import 'gi://GnomeQR?version=4.0';
+ import 'gi://GnomeDesktop?version=4.0';
+ import 'gi://Graphene?version=1.0';
+ import 'gi://GUdev?version=1.0';
+-import 'gi://GWeather?version=4.0';
+ import 'gi://IBus?version=1.0';
+ import 'gi://Pango?version=1.0';
+ import 'gi://Polkit?version=1.0';
+@@ -31,6 +29,13 @@ import 'gi://UPowerGlib?version=1.0';
+ 
+ import * as Config from './config.js';
+ 
++// Gnoblin has no date menu or weather client. Keep GNOME's version checks
++// for sessions that still create them.
++if (global.session_mode !== 'gnoblin') {
++    gi.require('Geoclue', '2.0');
++    gi.require('GWeather', '4.0');
++}
++
+ // Meta-related dependencies use a shared version
+ // from the compile-time config.
+ gi.require('Meta', Config.LIBMUTTER_API_VERSION);
+diff --git a/js/misc/weather.js b/js/misc/weather.js
+index 6146e666e..75d080321 100644
+--- a/js/misc/weather.js
++++ b/js/misc/weather.js
+@@ -1,7 +1,5 @@
+-import Geoclue from 'gi://Geoclue';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+-import GWeather from 'gi://GWeather';
+ import Shell from 'gi://Shell';
+ import * as Signals from './signals.js';
+ 
+@@ -9,7 +7,13 @@ import * as PermissionStore from './permissionStore.js';
+ 
+ import {loadInterfaceXML} from './fileUtils.js';
+ 
+-Gio._promisify(Geoclue.Simple, 'new');
++let Geoclue = null;
++export let GWeather = null;
++if (global.session_mode !== 'gnoblin') {
++    ({default: Geoclue} = await import('gi://Geoclue?version=2.0'));
++    ({default: GWeather} = await import('gi://GWeather?version=4.0'));
++    Gio._promisify(Geoclue.Simple, 'new');
++}
+ 
+ const WeatherIntegrationIface = loadInterfaceXML('org.gnome.Shell.WeatherIntegration');
+ 
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index f8e8c3f19..44def3f67 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -3,7 +3,6 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ import GObject from 'gi://GObject';
+-import GWeather from 'gi://GWeather';
+ import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+@@ -13,6 +12,8 @@ import * as PanelMenu from './panelMenu.js';
+ import * as Calendar from './calendar.js';
+ import * as Weather from '../misc/weather.js';
+ 
++const GWeather = Weather.GWeather;
++
+ import {formatDateWithCFormatString, formatTime, clearCachedLocalTimeZone} from '../misc/dateUtils.js';
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 

@@ -3,7 +3,8 @@
 
 import argparse
 import copy
-import csv
+import ctypes
+import ctypes.util
 import hashlib
 import json
 from pathlib import Path
@@ -79,6 +80,65 @@ def crop_sheet(sheet, rectangle, bounds):
     return result
 
 
+class RsvgRectangle(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double), ("width", ctypes.c_double), ("height", ctypes.c_double)]
+
+
+def query_bounds(svg):
+    """Return rendered element bounds using the system librsvg API."""
+    library = ctypes.util.find_library("rsvg-2")
+    if library is None:
+        raise RuntimeError("librsvg is required to build the Adwaita-Hyprcursor theme")
+
+    rsvg = ctypes.CDLL(library)
+    gobject = ctypes.CDLL(ctypes.util.find_library("gobject-2.0"))
+    glib = ctypes.CDLL(ctypes.util.find_library("glib-2.0"))
+    error = ctypes.c_void_p()
+    rsvg.rsvg_handle_new_from_file.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+    rsvg.rsvg_handle_new_from_file.restype = ctypes.c_void_p
+    rsvg.rsvg_handle_get_geometry_for_element.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(RsvgRectangle),
+        ctypes.POINTER(RsvgRectangle),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    rsvg.rsvg_handle_get_geometry_for_element.restype = ctypes.c_int
+    gobject.g_object_unref.argtypes = [ctypes.c_void_p]
+    glib.g_error_free.argtypes = [ctypes.c_void_p]
+
+    handle = rsvg.rsvg_handle_new_from_file(str(svg).encode(), ctypes.byref(error))
+    if not handle:
+        if error:
+            glib.g_error_free(error)
+        raise RuntimeError(f"librsvg could not load {svg}")
+
+    bounds = {}
+    try:
+        root = ET.parse(svg).getroot()
+        for element in root.iter():
+            identifier = element.get("id")
+            if not identifier:
+                continue
+            ink = RsvgRectangle()
+            logical = RsvgRectangle()
+            error = ctypes.c_void_p()
+            found = rsvg.rsvg_handle_get_geometry_for_element(
+                handle,
+                f"#{identifier}".encode(),
+                ctypes.byref(ink),
+                ctypes.byref(logical),
+                ctypes.byref(error),
+            )
+            if found:
+                bounds[identifier] = (ink.x, ink.y, ink.width, ink.height)
+            elif error:
+                glib.g_error_free(error)
+    finally:
+        gobject.g_object_unref(handle)
+    return bounds
+
+
 def build(output, fallback):
     if output.exists():
         raise FileExistsError(f"Output exists: {output}; choose a new --output directory")
@@ -104,10 +164,7 @@ def build(output, fallback):
         work = Path(temporary)
         clean = work / "sheet.svg"
         ET.ElementTree(sheet).write(clean)
-        queried = subprocess.run(["inkscape", "--query-all", str(clean)], check=True, capture_output=True, text=True)
-        bounds = {
-            row[0]: tuple(map(float, row[1:])) for row in csv.reader(queried.stdout.splitlines()) if len(row) == 5
-        }
+        bounds = query_bounds(clean)
         source = work / "source"
         source.mkdir()
         (source / "manifest.hl").write_text(

@@ -1,5 +1,5 @@
 From 2a8a71d36afb98a7adc5ad1b595a44dc51e9fb85 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 03:05:04 +0100
 Subject: [PATCH] Commit native crop and SSD geometry with client configures
 

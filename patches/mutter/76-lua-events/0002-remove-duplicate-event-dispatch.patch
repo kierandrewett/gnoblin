@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] gnoblin: remove duplicate Lua event dispatch entry point
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index db295ff2f..a33e2a6ca 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -806,28 +806,6 @@ meta_gnoblin_finish_config_load (gboolean commit)
+ #endif
+ }
+ 
+-GVariant *
+-meta_gnoblin_dispatch_config_event (const char *event,
+-                                    GVariant *payload)
+-{
+-  GVariantBuilder result;
+-  g_autoptr (GError) error = NULL;
+-  g_autoptr (GVariant) document = NULL;
+-
+-  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
+-#ifdef HAVE_WAYLAND
+-  document = gnoblin_config_dispatch_event (event, payload, &error);
+-  if (document)
+-    g_variant_builder_add (&result, "{sv}", "document", document);
+-#else
+-  g_set_error_literal (&error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+-                       "Gnoblin config events require Wayland support");
+-#endif
+-  if (error)
+-    g_variant_builder_add (&result, "{sv}", "error", g_variant_new_string (error->message));
+-  return g_variant_ref_sink (g_variant_builder_end (&result));
+-}
+-
+ void
+ meta_gnoblin_finish_config_event (gboolean commit)
+ {
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 0b1f7693a..aff729c77 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -113,9 +113,6 @@ GVariant *meta_gnoblin_load_config (const char *path);
+ META_EXPORT
+ void meta_gnoblin_finish_config_load (gboolean commit);
+ META_EXPORT
+-GVariant *meta_gnoblin_dispatch_config_event (const char *event,
+-                                               GVariant *payload);
+-META_EXPORT
+ void meta_gnoblin_finish_config_event (gboolean commit);
+ 
+ META_EXPORT

@@ -2,21 +2,27 @@
 
 Gnoblin installs alongside Fedora's GNOME packages:
 
-| Package                | Contents                                              |
-| ---------------------- | ----------------------------------------------------- |
-| `gnoblin`              | Generated complete-session metapackage                |
-| `gnoblin-mutter`       | Private Mutter runtime and a Gnoblin backlight policy |
-| `gnoblin-mutter-devel` | Private headers for building Gnoblin Shell            |
-| `gnoblin-shell`        | Private GNOME Shell runtime and session tools         |
-| `gnoblin-session`      | Login entry, user units and `gnoblinctl` command      |
+| Package                     | Contents                                              |
+| --------------------------- | ----------------------------------------------------- |
+| `gnoblin`                   | Generated complete-session metapackage                |
+| `gnoblin-mutter`            | Private Mutter runtime and a Gnoblin backlight policy |
+| `gnoblin-mutter-devel`      | Private headers for building Gnoblin Shell            |
+| `gnoblin-shell`             | Private GNOME Shell runtime and session tools         |
+| `gnoblin-portal`            | Portal backend selected by the Gnoblin session        |
+| `gnoblin-session`           | Login entry, user units and `gnoblinctl` command      |
+| `gnoblin-gnome-integration` | Optional GVfs, Keyring and user-directory services    |
 
 Binaries, libraries, schemas and upstream service definitions stay under
 `/usr/lib/gnoblin`. Private libraries do not provide dependencies for Fedora's
 GNOME packages. No package replaces, conflicts with or obsoletes GNOME.
+The integration package is a subpackage of the `gnoblin` source RPM and is not
+required by `gnoblin-session` or `gnoblin`.
+Install `gnoblin` for the complete session; `gnoblin-session` also declares
+the services needed when installed directly.
 
 [Build and install](../../docs/installation.md#fedora). Build Mutter first,
-install its private development package, then build Shell and the generated
-metapackage. COPR uses the same order; see
+install its private development package, then build Shell, the portal backend,
+and the generated metapackage. COPR uses the same order; see
 [publication](../../docs/distribution.md).
 
 Before distributing binary packages, run:

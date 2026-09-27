@@ -24,17 +24,45 @@ source "$ROOT/scripts/gnoblin-state.sh"
 gnoblin_state_dir >/dev/null || exit 1
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 SHELL_BIN="$PREFIX/bin/gnome-shell"
-MONITOR="${MONITOR:-1600x900}"
-[ -x "$SHELL_BIN" ] || {
-    echo "no gnome-shell in $PREFIX — run 'just build-local' first" >&2
-    exit 1
-}
-
 if [ "${GNOME_DEVKIT_HEADLESS:-0}" != 1 ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
-    echo "run-gnome-devkit: no host WAYLAND_DISPLAY — the nested session needs a Wayland session to render into." >&2
-    echo "  (log into Wayland, or use GNOME_DEVKIT_HEADLESS=1 for a non-visible boot)" >&2
+    echo 'run-gnome-devkit: a host Wayland display is required for the nested viewer.' >&2
+    echo 'Use GNOME_DEVKIT_HEADLESS=1 for a non-visible session.' >&2
     exit 1
 fi
+# The normal install omits Mutter's development viewer. Build it only when a
+# nested session is requested. Meson's option file also catches a stale viewer
+# binary left by an earlier build that has since disabled the devkit.
+devkit_options="$ROOT/build/ninja/mutter/meson-info/intro-buildoptions.json"
+prepare_devkit=false
+if [ ! -x "$PREFIX/libexec/mutter-devkit" ]; then
+    prepare_devkit=true
+elif [ -r "$devkit_options" ] &&
+    ! python3 -c '
+import json
+import sys
+options = {item["name"]: item["value"] for item in json.load(open(sys.argv[1], encoding="utf-8"))}
+sys.exit(1 if options.get("prefix") == sys.argv[2] and options.get("devkit") != "enabled" else 0)
+' "$devkit_options" "$PREFIX"; then
+    prepare_devkit=true
+fi
+if "$prepare_devkit"; then
+    if [ -d "$PREFIX" ] && [ ! -w "$PREFIX" ]; then
+        echo 'The installed Gnoblin prefix has no development viewer. Use a source build for --preview.' >&2
+        exit 1
+    fi
+    preview_blue='' preview_reset=''
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+        preview_blue=$'\033[1;36m'
+        preview_reset=$'\033[0m'
+    fi
+    printf '\n%s==>%s Prepare nested preview\n' "$preview_blue" "$preview_reset"
+    GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX" --target gnoblin || exit $?
+fi
+MONITOR="${MONITOR:-1600x900}"
+[ -x "$SHELL_BIN" ] || {
+    echo "no Gnoblin build in $PREFIX — run './build.sh' first" >&2
+    exit 1
+}
 
 # Host WAYLAND_DISPLAY (where the --devkit viewer window is drawn) — captured BEFORE
 # we scrub the environment below. The shell keeps it; the terminal renders here too;

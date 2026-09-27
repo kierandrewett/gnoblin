@@ -12,7 +12,6 @@ on:
       - "tests/**"
       - "subprojects/mutter"
       - "subprojects/gnome-shell"
-      - "subprojects/gnome-control-center"
       - "subprojects/xdg-desktop-portal-gnome"
   schedule:
     - cron: "18 3 * * 0"
@@ -39,7 +38,7 @@ defaults:
 jobs:
   build-and-catalog:
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora:45
     timeout-minutes: 150
     outputs:
       shards: ${{ steps.matrix.outputs.shards }}
@@ -113,7 +112,7 @@ jobs:
   app-shard:
     needs: build-and-catalog
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora:45
     timeout-minutes: 360
     strategy:
       fail-fast: false

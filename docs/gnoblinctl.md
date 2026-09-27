@@ -1,5 +1,21 @@
 # gnoblinctl
 
+Run `gnoblinctl --version` to read the installed build identity without a
+running session. It reports the Gnoblin version, GNOME component versions,
+Mutter API, source Git remote, and commit. `gnoblin --version` prints the same
+identity.
+Use `gnoblin --version --json` or `gnoblinctl --version --json` to save the
+complete build identity as JSON.
+
+In a Git checkout, the command reads the source manifests, current commit and
+tracking remote (or `origin`). In a release tarball, it reads the embedded
+source provenance. The installed command reads the identity recorded at build
+time. A modified source tree is marked beside its commit; the commit alone does
+not identify those local edits.
+
+`gnoblinctl version` also reports the live Shell version and requires an active
+Gnoblin session.
+
 [Configuration reference](/config/configure)
 
 Control Gnoblin from a terminal or script. Configure shell panels with that
@@ -79,7 +95,7 @@ visual transform; it does not minimize or close the target.
 gnoblinctl animation list
 gnoblinctl animation surfaces
 gnoblinctl animation inspect gnome-open --window active
-session=$(gnoblinctl animation preview gnome-open --window active --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["session"])')
+session=$(gnoblinctl animation preview gnome-open --window active --format table | sed -n 's/^session: //p')
 gnoblinctl animation seek "$session" 50
 gnoblinctl animation step "$session" 16
 gnoblinctl animation play "$session"
@@ -143,6 +159,12 @@ Unconfigured workspaces receive session-only IDs such as `@session-1`.
 Names are display labels and are not identifiers. Use `workspace list` to see
 each workspace's ID, number, name, active state and window count. Monitor IDs
 start at **0**.
+
+The standalone native compositor preview supports workspace list, create,
+rename, remove, switch, next, previous, and window moves by ID or number.
+Its list includes configured IDs and names, generated session IDs, active state,
+and window counts. To remove a temporary workspace, first switch away from it
+and move or close its windows. Edit the config to remove a configured workspace.
 
 `workspace create` requires `--name`:
 
@@ -266,6 +288,13 @@ IDs, titles and geometry below are illustrative:
 }
 ```
 
+The standalone native compositor preview returns the fields it owns directly:
+ID, title, app identity, focus, workspace ID and number, monitor index, maximize
+and fullscreen state, and geometry. It does not provide Shell's minimized state,
+user time, parent, or monitor-origin fields yet. In that
+preview, `appId` comes from the GTK app ID or WM class instead of Shell's
+application tracker.
+
 With `jq` installed, print just the focused window ID:
 
 ```sh
@@ -316,9 +345,9 @@ gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
 
 ## Connection problems
 
-The CLI needs Python 3 and `busctl`.
-Settings use D-Bus; window commands use the
-[compositor bridge](compositor-bridge.md).
+The installed CLI uses GLib, GIO and JSON-GLib. It sends commands through the
+[compositor bridge](compositor-bridge.md). Python is needed to build from
+source, but not to run `gnoblinctl`.
 
 The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
 Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.

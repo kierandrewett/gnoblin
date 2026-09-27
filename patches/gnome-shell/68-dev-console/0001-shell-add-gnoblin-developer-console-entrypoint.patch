@@ -1,5 +1,5 @@
 From c3ac21d34c4dbeae60e91d3d83787d9ba82a3ef2 Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 12 Sep 2026 05:30:00 +0100
 Subject: [PATCH] shell: add Gnoblin developer console entrypoint
 

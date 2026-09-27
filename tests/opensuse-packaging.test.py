@@ -11,7 +11,7 @@ SPECS = ROOT / "packaging" / "opensuse"
 
 class OpenSUSEPackagingTests(unittest.TestCase):
     def test_private_runtime_and_tumbleweed_capabilities(self):
-        for name in ("mutter.spec", "gnome-shell.spec"):
+        for name in ("mutter.spec", "gnoblin-shell.spec"):
             content = (SPECS / name).read_text()
             self.assertIn("%global _prefix /usr/lib/gnoblin", content)
             self.assertIn("%global __provides_exclude_from ^%{_prefix}/.*$", content)
@@ -39,35 +39,34 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         )
 
     def test_shell_declares_gcr_and_girepository_source_floors(self):
-        shell = (SPECS / "gnome-shell.spec").read_text()
+        shell = (SPECS / "gnoblin-shell.spec").read_text()
         self.assertIn("BuildRequires:  pkgconfig(gcr-4) >= 3.90.0", shell)
         self.assertIn("BuildRequires:  pkgconfig(girepository-2.0) >= 2.86.0", shell)
 
     def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
-        for name in ("gsettings-desktop-schemas.spec", "mutter.spec", "gnome-shell.spec"):
+        for name in ("mutter.spec", "gnoblin-shell.spec"):
             content = (SPECS / name).read_text()
             self.assertNotIn("%{_bindir}/meson", content)
-        schemas = (SPECS / "gsettings-desktop-schemas.spec").read_text()
-        self.assertIn("/usr/bin/meson setup build .", schemas)
-        self.assertIn("/usr/bin/meson compile -C build", schemas)
-        self.assertIn("/usr/bin/meson install -C build", schemas)
+        mutter = (SPECS / "mutter.spec").read_text()
+        self.assertIn("/usr/bin/meson setup build .", mutter)
+        self.assertIn("/usr/bin/meson compile -C build", mutter)
+        self.assertIn("/usr/bin/meson install -C build", mutter)
 
     def test_session_uses_host_discovery_paths_and_gnoblin_names(self):
-        shell = (SPECS / "gnome-shell.spec").read_text()
+        shell = (SPECS / "gnoblin-shell.spec").read_text()
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", shell)
         self.assertIn("/usr/lib/systemd/user/org.gnoblin.Shell.target", shell)
         self.assertIn("/usr/lib/systemd/user/gnome-session@gnoblin.target.d/", shell)
         self.assertNotIn("org.gnome.Shell@wayland.service", shell)
 
     def test_private_stack_is_not_required_for_repository_probe(self):
-        for name in ("mutter.spec", "gnome-shell.spec"):
-            content = (SPECS / name).read_text()
-            self.assertIn("%bcond_with gnoblin_stack", content)
-            self.assertIn("%if %{with gnoblin_stack}", content)
+        content = (SPECS / "gnoblin-shell.spec").read_text()
+        self.assertIn("%bcond_with gnoblin_stack", content)
+        self.assertIn("%if %{with gnoblin_stack}", content)
 
     def test_meta_uses_tumbleweed_runtime_library_names(self):
         meta = (SPECS / "gnoblin.spec").read_text()
-        self.assertIn("Requires:       libinput10 >= 1.30", meta)
+        self.assertIn("Requires:       libinput10 >= 1.31", meta)
         self.assertIn("Requires:       libwayland-client0 >= 1.26", meta)
 
     def test_check_script_keeps_the_probe_non_installing(self):
@@ -82,12 +81,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             chain.index('"$ROOT/scripts/make-tarball.sh"'),
         )
         self.assertLess(
-            chain.index("build gsettings-desktop-schemas.spec"),
-            chain.index("build mutter.spec --with gnoblin_stack"),
-        )
-        self.assertLess(
-            chain.index("build mutter.spec --with gnoblin_stack"),
-            chain.index("build gnome-shell.spec --with gnoblin_stack"),
+            chain.index("build mutter.spec"),
+            chain.index("build gnoblin-shell.spec --with gnoblin_stack"),
         )
         self.assertIn("--allow-unsigned-rpm", chain)
 

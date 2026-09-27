@@ -8,13 +8,12 @@ GNOME packages.
 
 `check-buildrequires.sh` runs `rpmspec` and asks Zypper to resolve the host
 dependencies in a clean Tumbleweed image. It deliberately omits the internal
-Gnoblin schema and compositor packages because an OBS project must build those
+Gnoblin compositor packages because an OBS project must build those
 in this order:
 
-1. `gnoblin-gsettings-desktop-schemas`
-2. `gnoblin-mutter` and `gnoblin-mutter-devel`
-3. `gnoblin-shell` and `gnoblin-session`
-4. `gnoblin`
+1. `gnoblin-mutter` and `gnoblin-mutter-devel`
+2. `gnoblin-shell`, `gnoblin-portal`, and `gnoblin-session`
+3. `gnoblin` and its optional `gnoblin-gnome-integration` subpackage
 
 The check proves that Tumbleweed can resolve the external BuildRequires. It
 does not prove a binary build, an installation, GNOME coexistence, login, or

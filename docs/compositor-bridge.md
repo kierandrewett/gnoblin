@@ -13,8 +13,25 @@ connection for you.
 The bridge is a built-in Gnoblin compositor service. It starts with the
 Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
 not need to be installed under `~/.config/gnoblin/scripts/`.
+
+The native compositor preview started with `mutter --gnoblin-config PATH` has
+a limited endpoint at the same socket path. It sends `hello` with an empty
+`features` list and accepts multiple API requests on one connection for ping,
+monitor and window listing, workspace management by ID or number, and basic window
+actions. Send `{"op":"windows"}` to receive an initial window snapshot
+and updated snapshots when windows change.
+
+The preview does not provide other subscriptions, bindings, or Shell commands.
+Its workspace IDs belong to Mutter and follow their workspace objects. Its
+window records use the GTK app ID or
+WM class because Shell's application tracker is not active in this preview.
+
 `gnoblinctl window list` uses the same socket. Check `gnoblinctl status` before
 debugging a client connection.
+
+If the socket pathname disappears or stops accepting connections while Gnoblin
+is running, the bridge restores it within a few seconds. Clients should retry
+their connection and register their bindings again after receiving `hello`.
 
 Bingux is a separate shell project that uses this interface. A custom shell can
 connect to it without installing Bingux.

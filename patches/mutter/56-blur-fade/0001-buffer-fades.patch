@@ -1,5 +1,5 @@
 From 4954d9d828fa0a3bf05df6d225dc07b01630010f Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:32:57 +0100
 Subject: [PATCH] Commit client blur fade metadata with surface state
 

@@ -1,5 +1,5 @@
 From 0bad85656294bde96c8fb6968076701aaacec347 Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 22 Jun 2026 00:35:00 +0100
 Subject: [PATCH] devkit: ignore duplicate key presses
 

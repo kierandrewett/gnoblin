@@ -18,7 +18,7 @@ defaults:
 jobs:
   lifecycle-fuzz:
     runs-on: ubuntu-latest
-    container: fedora:44
+    container: fedora:45
     timeout-minutes: 120
     outputs:
       failed_seeds: ${{ steps.lifecycle-fuzz.outputs.failed_seeds }}

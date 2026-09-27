@@ -2,15 +2,16 @@
 
 The devkit runs a nested Gnoblin session inside your Wayland desktop.
 Use it to test a build without logging out.
+The normal source build omits the viewer; the first preview builds it for you.
 
 First complete the [source build](install-source.md).
 
 ## Start
 
-From the checkout:
+From the extracted source tarball or a checkout:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just preview
+./build.sh --preview
 ```
 
 A desktop viewer and terminal open. Programs started from that terminal connect
@@ -23,7 +24,7 @@ _The nested session can run a separate bar and stock desktop applications._
 To choose a terminal explicitly:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just preview kitty
+./build.sh --preview --terminal kitty
 ```
 
 ## Try your shell
@@ -51,11 +52,10 @@ Close the terminal to stop the devkit.
 ```sh
 GNOME_DEVKIT_HEADLESS=1 \
 GNOME_DEVKIT_EXEC='gnoblinctl feature list --json' \
-GNOBLIN_PREFIX="$PWD/install" just preview
+./build.sh --preview
 ```
 
 This runs without a host Wayland display and exits after the command.
-`just test-preview` checks this environment.
 
 ## Isolation
 

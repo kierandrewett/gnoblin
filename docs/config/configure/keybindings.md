@@ -4,6 +4,10 @@ Use `keybindings` to override a GNOME action directly by its schema group and
 key. For named command shortcuts or named built-in actions, use
 [`gnoblin.configure.shortcuts`](/config/configure/shortcuts).
 
+The standalone native compositor preview applies `wm`, `mutter`, and
+`wayland` overrides at startup. Its `shell` group requires GNOME Shell and
+returns an error. Restart the native compositor after changing these settings.
+
 Override a built-in action by group and action name. For example, bind the
 window-manager `close` action to Super+Q:
 

@@ -45,7 +45,7 @@ export const COMPOSITOR_PREFERENCES = Object.freeze({
     "audible-bell": true,
     "visual-bell-type": "fullscreen-flash",
 });
-export const DEFAULT_CURSOR = Object.freeze({ theme: "Adwaita-Hyprcursor", size: 24 });
+export const DEFAULT_CURSOR = Object.freeze({ theme: "default", size: 24 });
 const windowDefaults = () => ({
     ...WINDOW_PREFERENCES,
     "dynamic-workspaces": false,
@@ -67,14 +67,16 @@ const INPUT_FIELDS = Object.freeze({
         speed: "number",
         "left-handed": "boolean",
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive"],
+        "accel-profile": ["default", "flat", "adaptive", "custom"],
+        "accel-curve": "accel-curve",
     },
     touchpad: {
         speed: "number",
         "scroll-speed": "number",
         "left-handed": ["right", "left", "mouse"],
         "natural-scroll": "boolean",
-        "accel-profile": ["default", "flat", "adaptive"],
+        "accel-profile": ["default", "flat", "adaptive", "custom"],
+        "accel-curve": "accel-curve",
         "tap-to-click": "boolean",
         "tap-button-map": ["default", "lrm", "lmr"],
         "tap-and-drag": "boolean",
@@ -103,6 +105,8 @@ const INPUT_FIELDS = Object.freeze({
     },
 });
 const isTable = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const MUTTER_SIGNAL_EVENT =
+    /^mutter\.(?:display|window|workspace-manager|workspace|backend|monitor-manager|cursor-tracker)\./;
 
 function variantForEvent(value) {
     if (typeof value === "boolean") return new GLib.Variant("b", value);
@@ -128,19 +132,31 @@ function validateInputFields(group, values, path) {
     for (const [key, value] of Object.entries(values)) {
         const kind = INPUT_FIELDS[group][key];
         if (!kind) throw new Error(`unknown input setting: ${path}.${key}`);
-        const valid = Array.isArray(kind)
-            ? kind.includes(value)
-            : kind === "boolean"
-              ? typeof value === "boolean"
-              : kind === "number"
-                ? typeof value === "number" &&
-                  Number.isFinite(value) &&
-                  (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
-                : kind === "milliseconds"
-                  ? Number.isInteger(value) && value >= 1 && value <= 10000
-                  : kind === "strings"
-                    ? Array.isArray(value) && value.every((item) => typeof item === "string" && !item.includes("\0"))
-                    : typeof value === "string" && !value.includes("\0");
+        const valid =
+            value === "inherit" ||
+            (kind === "accel-curve"
+                ? isTable(value) &&
+                  Object.keys(value).every((field) => ["step", "points"].includes(field)) &&
+                  typeof value.step === "number" &&
+                  Number.isFinite(value.step) &&
+                  value.step > 0 &&
+                  Array.isArray(value.points) &&
+                  value.points.length >= 2 &&
+                  value.points.every((point) => typeof point === "number" && Number.isFinite(point) && point >= 0)
+                : Array.isArray(kind)
+                  ? kind.includes(value)
+                  : kind === "boolean"
+                    ? typeof value === "boolean"
+                    : kind === "number"
+                      ? typeof value === "number" &&
+                        Number.isFinite(value) &&
+                        (key === "scroll-speed" ? value >= 0 && value <= 2 : value >= -1 && value <= 1)
+                      : kind === "milliseconds"
+                        ? Number.isInteger(value) && value >= 1 && value <= 10000
+                        : kind === "strings"
+                          ? Array.isArray(value) &&
+                            value.every((item) => typeof item === "string" && !item.includes("\0"))
+                          : typeof value === "string" && !value.includes("\0"));
         if (!valid) throw new Error(`${path}.${key}: invalid value`);
     }
 }
@@ -149,7 +165,8 @@ function validateInput(input) {
     if (!isTable(input)) throw new Error("input must be a table");
     for (const [group, values] of Object.entries(input)) {
         if (group === "orientation-lock") {
-            if (typeof values !== "boolean") throw new Error("input.orientation-lock: expected a boolean");
+            if (typeof values !== "boolean" && values !== "inherit")
+                throw new Error("input.orientation-lock: expected a boolean or inherit");
         } else if (group === "tablets" || group === "styluses") {
             if (!isTable(values)) throw new Error(`input.${group}: expected a table`);
             for (const [device, fields] of Object.entries(values)) {
@@ -167,6 +184,15 @@ function validateInput(input) {
             validateInputFields(group, values, `input.${group}`);
         } else throw new Error(`unknown input group: ${group}`);
     }
+}
+
+function resolveInheritedInput(values) {
+    return Object.fromEntries(
+        Object.entries(values)
+            .filter(([, value]) => value !== "inherit")
+            .map(([key, value]) => [key, isTable(value) ? resolveInheritedInput(value) : value])
+            .filter(([, value]) => !isTable(value) || Object.keys(value).length > 0),
+    );
 }
 
 function validateInputSources(value) {
@@ -775,7 +801,8 @@ export function parseDocument(document) {
     }
     if (document.input !== undefined) {
         validateInput(document.input);
-        next.input = document.input;
+        const input = resolveInheritedInput(document.input);
+        next.input = Object.keys(input).length > 0 ? input : null;
     }
     if (document["input-sources"] !== undefined) {
         validateInputSources(document["input-sources"]);
@@ -1329,19 +1356,22 @@ export function applyCompositorPreferences(preferences) {
     Meta.prefs_apply_gnoblin_compositor_preferences(new GLib.Variant("a{sv}", values));
 }
 
-function inputVariant(group, values) {
+export function inputVariant(group, values) {
     return new GLib.Variant(
         "a{sv}",
         Object.fromEntries(
             Object.entries(values).map(([key, value]) => {
                 if (group === "tablets" || group === "styluses")
                     return [key, inputVariant(group === "tablets" ? "tablet" : "stylus", value)];
+                if (isTable(value)) return [key, inputVariant(key, value)];
                 const type = Array.isArray(value)
-                    ? "as"
+                    ? value.length > 0 && value.every((item) => typeof item === "number")
+                        ? "ad"
+                        : "as"
                     : typeof value === "boolean"
                       ? "b"
                       : typeof value === "number"
-                        ? key === "speed" || key === "scroll-speed"
+                        ? key === "speed" || key === "scroll-speed" || key === "step"
                             ? "d"
                             : "u"
                         : "s";
@@ -1491,7 +1521,7 @@ export class ShortcutInput {
         if (this.ready.has(name)) return; // A toggle is closing an already focused popup.
         this.cancel();
         const grab = this.grabKeyboard();
-        if (!(grab.get_seat_state() & Clutter.GrabState.KEYBOARD)) {
+        if (grab.is_revoked()) {
             this.ungrabKeyboard(grab);
             return;
         }
@@ -1603,12 +1633,13 @@ function cloneDocument(document) {
 }
 
 export class ConfigFile {
-    constructor(path = null, apply = () => {}) {
+    constructor(path = null, apply = () => {}, eventsChanged = () => {}) {
         this._override = path || GLib.getenv("GNOBLIN_CONFIG") || null;
         this._directory = this._override
             ? GLib.path_get_dirname(this._override)
             : GLib.build_filenamev([GLib.get_user_config_dir(), "gnoblin"]);
         this._apply = apply;
+        this._eventsChanged = eventsChanged;
         this._started = false;
         this._monitors = new Map();
         this._watchedFiles = new Set();
@@ -1652,6 +1683,7 @@ export class ConfigFile {
             settings = next;
             this._document = cloneDocument(loaded.document);
             this._events = new Set(loaded.events ?? []);
+            this._eventsChanged();
             this._liveUndo = [];
             this._applyingReload = false;
             this.dispatchEvent("gnoblin.config.reloaded", { path });
@@ -1682,19 +1714,11 @@ export class ConfigFile {
         if (this._applyingReload) return;
         if (!this.wantsEvent(event)) return;
         try {
-            const result = Meta.gnoblin_dispatch_config_event(
-                event,
-                new GLib.Variant("a{sv}", eventVariantDictionary(payload)),
-            ).recursiveUnpack();
-            if (result.error) throw new Error(result.error);
-            const next = parseDocument(result.document);
-            if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
-            Meta.gnoblin_finish_config_event(true);
-            settings = next;
-            this._document = cloneDocument(result.document);
+            global.display.dispatch_gnoblin_event(event, new GLib.Variant("a{sv}", eventVariantDictionary(payload)));
+            // The display signal applies the document before Mutter commits it.
+            // Drain requested operations only after that commit has returned.
             this.drainRuntimeOperations();
         } catch (error) {
-            Meta.gnoblin_finish_config_event(false);
             console.warn(`gnoblin config event ${event}: ${error.message}`);
         }
     }
@@ -1724,12 +1748,17 @@ export class ConfigFile {
         return Boolean(this._events.has(event) || this._events.has("*"));
     }
 
+    hasMutterEventListeners() {
+        return [...this._events].some((event) => event === "*" || MUTTER_SIGNAL_EVENT.test(event));
+    }
+
     applyRuntimeDocument(document) {
         try {
             document = document.recursiveUnpack();
             const next = parseDocument(document);
             if (JSON.stringify(next) !== JSON.stringify(settings)) this._apply(next);
-            Meta.gnoblin_finish_config_event(true);
+            // Mutter commits the pending document after this signal returns.
+            // Keep it alive while GJS is still reading the signal arguments.
             settings = next;
             this._document = cloneDocument(document);
         } catch (error) {

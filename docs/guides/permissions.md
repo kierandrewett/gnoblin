@@ -7,8 +7,9 @@ control and other access. These rules decide whether Gnoblin asks you,
 approves the request or rejects it. Without rules, the usual permission
 dialogs apply.
 
-These rules require Gnoblin's [patched portal backend](/source-development#optional-components).
-They have no effect on a stock portal backend. Changes apply to new requests;
+These rules use Gnoblin's portal backend, built by `./build.sh` and selected for
+registered Gnoblin sessions. They have no effect in a stock GNOME session.
+Changes apply to new requests;
 an existing screen share stays connected.
 
 ## Choose a policy

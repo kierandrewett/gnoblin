@@ -1,5 +1,5 @@
 From 1a08f000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 22 Sep 2026 12:00:00 +0100
 Subject: [PATCH] window-management: constrain drags to reserved work areas
 

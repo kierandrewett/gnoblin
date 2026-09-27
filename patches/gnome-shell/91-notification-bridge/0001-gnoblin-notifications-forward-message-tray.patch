@@ -1,5 +1,5 @@
 From fa7e21a5a8507dcf92d1764dc4412849fe303eee Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:56:35 +0100
 Subject: [PATCH] gnoblin: bundle the MessageTray notification bridge
 

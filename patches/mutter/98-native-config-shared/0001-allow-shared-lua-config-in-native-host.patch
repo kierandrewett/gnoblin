@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] Allow shared Lua config in native Mutter host
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index 06a514f4e..0d64d0767 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -127,11 +127,8 @@ load_native_config (GVariant **native_document,
+       goto reject;
+     }
+   if (events && g_variant_n_children (events) > 0)
+-    {
+-      g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+-                   "%s: native compositor config does not support Lua event handlers", path);
+-      goto reject;
+-    }
++    g_warning ("%s: native compositor skips Lua event handlers; start the Gnoblin Shell session to use them",
++               path);
+ 
+   GVariantIter iter;
+   const char *key;
+@@ -148,11 +145,22 @@ load_native_config (GVariant **native_document,
+                            g_str_equal (key, "shortcuts") ||
+                            g_str_equal (key, "input") ||
+                            g_str_equal (key, "keybindings");
++      gboolean shell_setting = g_str_equal (key, "cursor") ||
++                               g_str_equal (key, "input-sources") ||
++                               g_str_equal (key, "touchpad-gestures") ||
++                               g_str_equal (key, "shell") ||
++                               g_str_equal (key, "window-rules") ||
++                               g_str_equal (key, "animations") ||
++                               g_str_equal (key, "frame-renderers") ||
++                               g_str_equal (key, "permissions");
+       g_variant_unref (value);
+-      if (!supported)
++      if (shell_setting)
++        g_warning ("%s: native compositor skips '%s'; this setting requires the Gnoblin Shell session",
++                   path, key);
++      else if (!supported)
+         {
+           g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+-                       "%s: native compositor cannot apply '%s'; use supported settings such as protocols, layer-shell, workspaces, window-management, compositor, autostart, shortcuts, input, or keybindings",
++                       "%s: unknown Gnoblin config section '%s'",
+                        path, key);
+           goto reject;
+         }

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-25",
+  "as_of": "2026-09-26",
   "research": {
     "image_check": "skopeo inspect, 2026-09-25",
     "lifecycle_sources": [
@@ -34,9 +34,9 @@
       "image": "fedora:43",
       "lifecycle": "upstream-current",
       "adapter": "rpm-fedora",
-      "status": "existing-path",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [".github/workflows/verify.yml"],
+      "ci": [],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -55,16 +55,16 @@
       "image": "fedora:44",
       "lifecycle": "upstream-current",
       "adapter": "rpm-fedora",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {
@@ -181,11 +181,11 @@
       "image": "debian:12",
       "lifecycle": "upstream-lts",
       "adapter": "deb",
-      "status": "existing-path",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [".github/workflows/deb.yml"],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
+        "dependency-probe": false,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -202,16 +202,16 @@
       "image": "debian:13",
       "lifecycle": "upstream-full",
       "adapter": "deb",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [".github/workflows/deb.yml"],
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {
@@ -223,11 +223,11 @@
       "image": "ubuntu:22.04",
       "lifecycle": "upstream-standard",
       "adapter": "deb",
-      "status": "existing-path",
+      "status": "planned",
       "support": "unsupported",
-      "ci": [".github/workflows/deb.yml"],
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
+        "dependency-probe": false,
         "package-build": false,
         "install": false,
         "coinstall": false,
@@ -244,16 +244,16 @@
       "image": "ubuntu:24.04",
       "lifecycle": "upstream-standard",
       "adapter": "deb",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [".github/workflows/deb.yml"],
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {
@@ -265,16 +265,16 @@
       "image": "ubuntu:26.04",
       "lifecycle": "upstream-standard",
       "adapter": "deb",
-      "status": "existing-path",
-      "support": "candidate",
-      "ci": [".github/workflows/deb.yml"],
+      "status": "planned",
+      "support": "unsupported",
+      "ci": [],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {
@@ -287,15 +287,15 @@
       "lifecycle": "rolling",
       "adapter": "pkgbuild",
       "status": "existing-path",
-      "support": "candidate",
+      "support": "unsupported",
       "ci": [".github/workflows/verify.yml", ".github/workflows/release.yml"],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {
@@ -371,15 +371,15 @@
       "lifecycle": "rolling",
       "adapter": "rpm-opensuse",
       "status": "existing-path",
-      "support": "candidate",
+      "support": "unsupported",
       "ci": [".github/workflows/opensuse-rpm.yml", ".github/workflows/rpm-target-probes.yml"],
       "gates": {
-        "dependency-probe": true,
-        "package-build": true,
-        "install": true,
-        "coinstall": true,
+        "dependency-probe": false,
+        "package-build": false,
+        "install": false,
+        "coinstall": false,
         "graphical-session": false,
-        "removal": true
+        "removal": false
       }
     },
     {

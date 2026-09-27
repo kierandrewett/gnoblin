@@ -54,13 +54,31 @@ gnoblin_env_apply() {
     export GNOBLIN_PREFIX="$prefix"
     export GNOBLIN_LIBDIR="$libdir"
     local mutter_api="${GNOBLIN_MUTTER_API:-51}"
-    export LD_LIBRARY_PATH="$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export GI_TYPELIB_PATH="$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+    local shell_libdir="$prefix/$libdir/gnome-shell"
+    local private_libdirs="$shell_libdir:$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api"
+    local private_typelibdirs="$shell_libdir:$shell_libdir/girepository-1.0"
+    private_typelibdirs+=":$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api"
+    local cxx_lib=''
+    if [ -r "$prefix/libexec/gnoblin-cxx-lib" ]; then
+        IFS= read -r cxx_lib <"$prefix/libexec/gnoblin-cxx-lib"
+    fi
+    if [ -n "$cxx_lib" ]; then
+        # Nix supplies a complete library closure. Host search paths can load
+        # older libraries first and break its ABI on a source-build machine.
+        export LD_LIBRARY_PATH="$private_libdirs:$cxx_lib"
+    else
+        export LD_LIBRARY_PATH="$private_libdirs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+    export GI_TYPELIB_PATH="$private_typelibdirs${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
     export PATH="$prefix/bin:$PATH"
     export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    # Let GSettings discover the private schemas first, then fall back to the
-    # system schemas needed by GNOME Shell services.
+    # Let GSettings discover Gnoblin's private overrides and the compatible
+    # desktop schemas supplied by the host.
     unset GSETTINGS_SCHEMA_DIR
     export GNOME_SHELL_SESSION_MODE=gnoblin
-    export XDG_CURRENT_DESKTOP=GNOME:Gnoblin
+    if [ "${GNOBLIN_STANDALONE_SESSION:-0}" = 1 ]; then
+        export XDG_CURRENT_DESKTOP=Gnoblin
+    else
+        export XDG_CURRENT_DESKTOP=Gnoblin:GNOME
+    fi
 }

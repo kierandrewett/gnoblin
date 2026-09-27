@@ -1,0 +1,310 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] Own workspace IDs in native Gnoblin compositor
+
+---
+diff --git a/src/core/meta-workspace-manager.c b/src/core/meta-workspace-manager.c
+index e013d254f..35ee92a50 100644
+--- a/src/core/meta-workspace-manager.c
++++ b/src/core/meta-workspace-manager.c
+@@ -333,7 +333,8 @@ meta_workspace_manager_remove_workspace (MetaWorkspaceManager *workspace_manager
+ 
+   new_num = g_list_length (workspace_manager->workspaces);
+ 
+-  if (!meta_prefs_get_dynamic_workspaces ())
++  if (!meta_prefs_get_dynamic_workspaces () &&
++      !g_object_get_data (G_OBJECT (workspace_manager), "gnoblin-native-workspace-count"))
+     meta_prefs_set_num_workspaces (new_num);
+ 
+   /* If deleting a workspace before the current workspace, the active
+@@ -389,7 +390,8 @@ meta_workspace_manager_append_new_workspace (MetaWorkspaceManager *workspace_man
+ 
+   new_num = g_list_length (workspace_manager->workspaces);
+ 
+-  if (!meta_prefs_get_dynamic_workspaces ())
++  if (!meta_prefs_get_dynamic_workspaces () &&
++      !g_object_get_data (G_OBJECT (workspace_manager), "gnoblin-native-workspace-count"))
+     meta_prefs_set_num_workspaces (new_num);
+ 
+   meta_display_queue_workarea_recalc (workspace_manager->display);
+@@ -1040,6 +1042,12 @@ prefs_changed_callback (MetaPreference pref,
+ {
+   MetaWorkspaceManager *workspace_manager = data;
+ 
++  /* Native Gnoblin owns this session's count without changing GNOME's saved
++   * workspace preference. Other preferences still follow the host. */
++  if (g_object_get_data (G_OBJECT (workspace_manager), "gnoblin-native-workspace-count") &&
++      (pref == META_PREF_NUM_WORKSPACES || pref == META_PREF_DYNAMIC_WORKSPACES))
++    return;
++
+   if ((pref == META_PREF_NUM_WORKSPACES ||
+        pref == META_PREF_DYNAMIC_WORKSPACES) &&
+       !meta_prefs_get_dynamic_workspaces ())
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index 5acd5c4a5..474957c89 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -139,12 +139,13 @@ load_native_config (GError **error)
+   while (g_variant_iter_next (&iter, "{&sv}", &key, &value))
+     {
+       gboolean supported = g_str_equal (key, "protocols") ||
+-                           g_str_equal (key, "layer-shell");
++                           g_str_equal (key, "layer-shell") ||
++                           g_str_equal (key, "workspaces");
+       g_variant_unref (value);
+       if (!supported)
+         {
+           g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+-                       "%s: native compositor cannot apply '%s'; use a config with only protocols and layer-shell",
++                       "%s: native compositor cannot apply '%s'; use a config with only protocols, layer-shell, and workspaces",
+                        path, key);
+           goto reject;
+         }
+diff --git a/src/core/util.c b/src/core/util.c
+index cd853b328..0e23ca6ff 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -22,6 +22,7 @@
+ #include "config.h"
+ 
+ #include "core/display-private.h"
++#include "core/meta-workspace-manager-private.h"
+ #include "core/util-private.h"
+ 
+ #include <gio/gunixinputstream.h>
+@@ -862,23 +863,97 @@ meta_gnoblin_call_config_api (const char *method,
+ #endif
+ }
+ 
++#define GNOBLIN_WORKSPACE_ID "gnoblin-native-id"
++#define GNOBLIN_WORKSPACE_NAME "gnoblin-native-name"
++#define GNOBLIN_WORKSPACE_PERSISTENT "gnoblin-native-persistent"
++
++static guint64 next_native_workspace_id = 1;
++
++static const char *
++gnoblin_native_workspace_id (MetaWorkspace *workspace)
++{
++  const char *id = g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID);
++  if (!id)
++    {
++      g_autofree char *generated =
++        g_strdup_printf ("@session-%" G_GUINT64_FORMAT, next_native_workspace_id++);
++      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID,
++                              g_steal_pointer (&generated), g_free);
++      id = g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID);
++    }
++  return id;
++}
++
++gboolean
++meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
++                                           GError     **error)
++{
++  g_autoptr (GVariant) document = gnoblin_config_current_document ();
++  MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
++  g_object_set_data (G_OBJECT (manager), "gnoblin-native-workspace-count",
++                     GINT_TO_POINTER (1));
++  g_autoptr (GVariant) configured = document
++    ? g_variant_lookup_value (document, "workspaces", G_VARIANT_TYPE ("av")) : NULL;
++  if (!configured)
++    return TRUE;
++
++  gsize desired_size = g_variant_n_children (configured);
++  if (desired_size < 1 || desired_size > G_MAXINT)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "workspaces must contain at least one entry");
++      return FALSE;
++    }
++  int desired = desired_size;
++  meta_workspace_manager_update_num_workspaces (
++    manager, meta_display_get_current_time (display), desired);
++  for (int index = 0; index < desired; index++)
++    {
++      g_autoptr (GVariant) boxed = g_variant_get_child_value (configured, index);
++      g_autoptr (GVariant) entry = g_variant_get_variant (boxed);
++      const char *id = NULL;
++      const char *name = NULL;
++      if (!g_variant_lookup (entry, "id", "&s", &id) ||
++          !g_variant_lookup (entry, "name", "&s", &name))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "configured workspace needs an ID and name");
++          return FALSE;
++        }
++      MetaWorkspace *workspace =
++        meta_workspace_manager_get_workspace_by_index (manager, index);
++      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID,
++                              g_strdup (id), g_free);
++      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
++                              g_strdup (name), g_free);
++      g_object_set_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT,
++                         GINT_TO_POINTER (1));
++    }
++  return TRUE;
++}
++
+ static GVariant *
+ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
+                                  MetaWorkspace        *workspace)
+ {
+   int index = meta_workspace_index (workspace);
+   g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
+-  const char *name = g_object_get_data (G_OBJECT (workspace), "gnoblin-native-name");
++  const char *name = g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME);
+   if (!name)
+     name = meta_prefs_get_workspace_name (index);
+   GVariantBuilder record;
+   g_variant_builder_init (&record, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&record, "{sv}", "id",
++                         g_variant_new_string (gnoblin_native_workspace_id (workspace)));
+   g_variant_builder_add (&record, "{sv}", "number", g_variant_new_int32 (index + 1));
+   g_variant_builder_add (&record, "{sv}", "name", g_variant_new_string (name));
+   g_variant_builder_add (&record, "{sv}", "active",
+                          g_variant_new_boolean (index == meta_workspace_manager_get_active_workspace_index (manager)));
+   g_variant_builder_add (&record, "{sv}", "windows",
+                          g_variant_new_int32 (g_list_length (windows)));
++  g_variant_builder_add (&record, "{sv}", "persistent",
++                         g_variant_new_boolean (g_object_get_data (
++                           G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT) != NULL));
+   return g_variant_ref_sink (g_variant_builder_end (&record));
+ }
+ 
+@@ -890,14 +965,22 @@ gnoblin_native_workspace_resolve (MetaWorkspaceManager *manager,
+   if (!selector || !g_variant_is_of_type (selector, G_VARIANT_TYPE_VARDICT))
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+-                           "workspace selector must specify a number");
++                           "workspace selector must specify an ID or number");
+       return NULL;
+     }
+   g_autoptr (GVariant) id = g_variant_lookup_value (selector, "id", NULL);
+   if (id)
+     {
+-      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+-                           "workspace IDs still require Gnoblin Shell; select by number");
++      const char *wanted = g_variant_get_string (id, NULL);
++      for (int index = 0; index < meta_workspace_manager_get_n_workspaces (manager); index++)
++        {
++          MetaWorkspace *workspace =
++            meta_workspace_manager_get_workspace_by_index (manager, index);
++          if (g_str_equal (wanted, gnoblin_native_workspace_id (workspace)))
++            return workspace;
++        }
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "workspace ID not found; list workspaces first");
+       return NULL;
+     }
+   gint64 number;
+@@ -948,9 +1031,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+       g_autoptr (GVariant) id = g_variant_lookup_value (arguments, "id", NULL);
+       if (id)
+         {
+-          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+-                               "workspace IDs still require Gnoblin Shell");
+-          return NULL;
++          const char *wanted = g_variant_get_string (id, NULL);
++          for (int index = 0; index < count; index++)
++            {
++              MetaWorkspace *existing =
++                meta_workspace_manager_get_workspace_by_index (manager, index);
++              if (g_str_equal (wanted, gnoblin_native_workspace_id (existing)))
++                {
++                  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_EXISTS,
++                                       "workspace ID already exists");
++                  return NULL;
++                }
++            }
+         }
+       const char *name = NULL;
+       if (!g_variant_lookup (arguments, "name", "&s", &name) ||
+@@ -970,8 +1062,10 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+                                "could not create workspace");
+           return NULL;
+         }
+-      meta_prefs_change_workspace_name (meta_workspace_index (workspace), name);
+-      g_object_set_data_full (G_OBJECT (workspace), "gnoblin-native-name",
++      if (id)
++        g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID,
++                                g_strdup (g_variant_get_string (id, NULL)), g_free);
++      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
+                               g_strdup (name), g_free);
+       if (activate)
+         meta_workspace_activate (workspace, meta_display_get_current_time (display));
+@@ -1001,13 +1095,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+                                    "workspace name must be a nonempty string");
+               return NULL;
+             }
+-          meta_prefs_change_workspace_name (meta_workspace_index (workspace), name);
+-          g_object_set_data_full (G_OBJECT (workspace), "gnoblin-native-name",
++          g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
+                                   g_strdup (name), g_free);
+           return gnoblin_native_workspace_record (manager, workspace);
+         }
+       if (g_str_equal (method, "workspace.remove"))
+         {
++          if (g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT))
++            {
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                                   "configured workspace cannot be removed; edit workspaces in config");
++              return NULL;
++            }
+           g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
+           if (workspace == meta_workspace_manager_get_active_workspace (manager) ||
+               windows || count <= 1)
+@@ -1017,31 +1116,6 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+               return NULL;
+             }
+           g_autoptr (GVariant) record = gnoblin_native_workspace_record (manager, workspace);
+-          g_autoptr (GSettings) settings =
+-            g_settings_new ("org.gnome.desktop.wm.preferences");
+-          g_auto (GStrv) stored_names =
+-            g_settings_get_strv (settings, "workspace-names");
+-          g_auto (GStrv) remaining_names = g_new0 (char *, count);
+-          int removed_index = meta_workspace_index (workspace);
+-          for (int old_index = 0, new_index = 0; old_index < count; old_index++)
+-            {
+-              if (old_index == removed_index)
+-                continue;
+-              MetaWorkspace *remaining =
+-                meta_workspace_manager_get_workspace_by_index (manager, old_index);
+-              const char *name =
+-                g_object_get_data (G_OBJECT (remaining), "gnoblin-native-name");
+-              if (!name && old_index < g_strv_length (stored_names))
+-                name = stored_names[old_index];
+-              remaining_names[new_index++] = g_strdup (name ? name : "");
+-            }
+-          if (!g_settings_set_strv (settings, "workspace-names",
+-                                    (const char * const *) remaining_names))
+-            {
+-              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+-                                   "could not update workspace names");
+-              return NULL;
+-            }
+           meta_workspace_manager_remove_workspace (manager, workspace,
+                                                    meta_display_get_current_time (display));
+           return g_steal_pointer (&record);
+@@ -1206,6 +1280,8 @@ gnoblin_native_window_list (MetaDisplay *display,
+           int number = meta_workspace_index (workspace) + 1;
+           g_variant_builder_add (&entry, "{sv}", "workspace", g_variant_new_int32 (number));
+           g_variant_builder_add (&entry, "{sv}", "workspaceNumber", g_variant_new_int32 (number));
++          g_variant_builder_add (&entry, "{sv}", "workspaceId",
++                                 g_variant_new_string (gnoblin_native_workspace_id (workspace)));
+         }
+       g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (meta_window_get_monitor (window)));
+       g_variant_builder_add (&entry, "{sv}", "maximized", g_variant_new_boolean (meta_window_is_maximized (window)));
+diff --git a/src/meta/util.h b/src/meta/util.h
+index ee59c75b3..d10d5167f 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -158,5 +158,7 @@ GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                                             GVariant    *arguments,
+                                             GError     **error);
+ META_EXPORT
++gboolean meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
++                                                     GError     **error);
++META_EXPORT
+ GVariant *meta_gnoblin_drain_config_runtime_operations (void);
+-

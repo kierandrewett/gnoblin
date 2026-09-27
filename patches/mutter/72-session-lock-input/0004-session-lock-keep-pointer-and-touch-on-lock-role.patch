@@ -1,5 +1,5 @@
 From ef07810e5d370f9d24c9fdcf8b477e7d956b4131 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:50:19 +0100
 Subject: [PATCH] session-lock: keep pointer and touch on lock role
 

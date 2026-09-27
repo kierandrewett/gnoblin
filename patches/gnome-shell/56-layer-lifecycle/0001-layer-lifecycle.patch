@@ -1,5 +1,5 @@
 From 34b121daceb6e6db21baa16f38e7bd62da016c3a Mon Sep 17 00:00:00 2001
-From: Kieran <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:03 +0100
 Subject: [PATCH] shell: share layer entry and destruction animations
 

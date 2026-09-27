@@ -31,6 +31,8 @@ GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrA
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
 void gnoblin_config_finish_load(gboolean commit);
+/* The committed runtime document; returns a new reference or NULL. */
+GVariant* gnoblin_config_current_document(void);
 GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error);
 /* Deferred runtime operations use a shared method registry. Event callbacks
  * enqueue operations; the host drains them only after dispatch returns. */

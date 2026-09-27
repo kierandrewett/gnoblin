@@ -4,8 +4,9 @@
 set shell := ["bash", "-uc"]
 
 # Patched subprojects built by `just build-local`.
-patch_projects := "mutter gnome-shell"
-rpm_projects := "mutter gnome-shell"
+patch_projects := "mutter gnome-shell xdg-desktop-portal-gnome"
+rpm_projects := "mutter gnoblin-shell gnoblin-portal"
+source_projects := "mutter gnome-shell xdg-desktop-portal-gnome"
 
 # Local development layout. Override both together for distro-style prefixes,
 # for example: GNOBLIN_PREFIX=/tmp/gnoblin GNOBLIN_LIBDIR=lib just build-local.
@@ -28,7 +29,7 @@ _default:
 # Fetch the pinned sources needed for a local build.
 setup: init
 
-# Build Gnoblin into ./install after private dependencies are available.
+# Build Gnoblin into ./install with compatible system development libraries.
 build-source: build-local
 
 # Open Gnoblin in a nested window on the current Wayland desktop.
@@ -107,25 +108,18 @@ test-dock-minimise: gnome-minimize-target-verify
 # Test the real-host Mutter window-management suite.
 test-window-manager: test-mutter
 
-# Build a Debian or Ubuntu package in a disposable container.
-package-deb: deb
 
 # --- implementation recipes --------------------------------------------------
 
 # Initialise / update the pinned source checkouts and mandatory Meson wraps.
 [private]
 init:
-    git submodule sync --recursive
-    git submodule update --init --recursive
-    ./scripts/ensure-release-subprojects.sh
-    just prepare-tarball-sources
-    @echo "mutter               -> $(git -C subprojects/mutter               describe --tags --always)"
-    @echo "gnome-shell          -> $(git -C subprojects/gnome-shell          describe --tags --always)"
+    ./build.sh --target prepare-sources
 
 # Materialise the pinned Meson subprojects required by no-download RPM builds.
 [private]
 prepare-tarball-sources:
-    for p in {{rpm_projects}}; do ./scripts/list-tarball-sources.sh "$p" --prepare >/dev/null || exit; done
+    for p in {{source_projects}}; do ./scripts/list-tarball-sources.sh "$p" --prepare >/dev/null || exit; done
 
 # Apply the patch series to a subproject (resets it to the pinned tag first).
 [private]
@@ -159,8 +153,7 @@ reset-all:
 # Configure + compile a subproject with meson into build/<proj> (dev build).
 [private]
 build PROJ: (patch PROJ)
-    if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_tool=false); else options=(); fi; meson setup --reconfigure build/{{PROJ}} subprojects/{{PROJ}} --buildtype={{dev_buildtype}} "${options[@]}" || meson setup build/{{PROJ}} subprojects/{{PROJ}} --buildtype={{dev_buildtype}} "${options[@]}"
-    meson compile -C build/{{PROJ}}
+    ./build.sh --target {{PROJ}}
 
 # --- dev stack: build the whole gnoblin stack into ./install and run it ------
 #
@@ -180,80 +173,33 @@ private_pkg_config_path := prefix + "/" + libdir + "/pkgconfig:" + prefix + "/sh
 private_gir_path := prefix + "/share/gir-1.0:" + env_var_or_default("GI_GIR_PATH", "")
 private_typelib_path := prefix + "/" + libdir + "/girepository-1.0:" + env_var_or_default("GI_TYPELIB_PATH", "")
 
-# Build + install the pinned GNOME schemas into the private development prefix.
-# Mutter 51 consumes schema enums while configuring, so this must precede Mutter
-# even when the host already has an older, distro-supported GNOME installation.
-[private]
-dev-schemas: check-install-prefix
-    #!/usr/bin/env bash
-    set -euo pipefail
-    sources="build/release-sources"
-    source_dir="build/gsettings-desktop-schemas-source"
-    build_dir="build/gsettings-desktop-schemas"
-    archive="$(./scripts/make-tarball.sh gsettings-desktop-schemas "$sources")"
-    rm -rf -- "$source_dir" "$build_dir"
-    mkdir -p -- "$source_dir"
-    tar -xf "$archive" -C "$source_dir" --strip-components=1
-    meson setup "$build_dir" "$source_dir" \
-      --prefix={{prefix}} --libdir={{libdir}} --buildtype={{dev_buildtype}}
-    meson install -C "$build_dir"
-
 # Build + install patched mutter (incl. the Mutter Devkit viewer) into ./install.
 [private]
-dev-mutter: dev-schemas check-install-prefix (patch "mutter")
-    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup --wipe build/mutter subprojects/mutter {{mutter_dev_opts}} || PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson setup build/mutter subprojects/mutter {{mutter_dev_opts}}
-    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}} meson install -C build/mutter
+dev-mutter:
+    ./build.sh --target mutter
 
 # Build + install patched gnome-shell against the freshly built mutter in ./install.
 # gnome-shell is the compositor+shell again; its stock UI (panel/overview/dash) is
 # stripped via the `gnoblin` session mode + a minimal native-topbar patch, and its
 # subsystems are toggled live over org.gnoblin.* — bring-your-own chrome draws the UI.
 [private]
-dev-gnome-shell: dev-mutter (patch "gnome-shell")
-    # ALWAYS build clean: `patch gnome-shell` resets the submodule (git clean/checkout)
-    # and re-copies the overlay every run, which resets source mtimes underneath the
-    # build dir. Reusing it yields a half-stale libshell/libst (observed: duplicate
-    # g_boxed_type registration → GJS boxed-prototype crash at boot). A fresh build dir
-    # is the only reliably-correct option here.
-    rm -rf build/gnome-shell
-    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}}:{{prefix}}/{{libdir}}/mutter-51 meson setup build/gnome-shell subprojects/gnome-shell {{gnome_shell_dev_opts}}
-    PKG_CONFIG_PATH={{private_pkg_config_path}} GI_GIR_PATH={{private_gir_path}} GI_TYPELIB_PATH={{private_typelib_path}}:{{prefix}}/{{libdir}}/mutter-51 meson install -C build/gnome-shell
-    rm -f {{prefix}}/lib/systemd/user/org.gnome.Shell-disable-extensions.service
+dev-gnome-shell:
+    ./build.sh --target gnome-shell
 
-# --- optional: unattended screen-share portal backend -----------------------
-#
-# xdg-desktop-portal-gnome is the org.freedesktop.impl.portal.desktop.gnome
-# backend that shows the ScreenCast source-picker and RemoteDesktop consent
-# dialogs. Gnoblin can remember the exact approved monitor, input-device, and
-# clipboard capabilities for a verified requester. Grants are scoped by portal
-# kind under $XDG_DATA_HOME/gnoblin/portal-grants/ and are written only after
-# the session starts successfully. List/revoke them with `gnoblinctl
-# portal-grants` and `gnoblinctl revoke-grant <kind> <id>`. It is not part of
-# `just build-local`; build it explicitly:
-#
-#   just dev-portal
-#
-# then (re)start the backend so it owns the impl portal, e.g.:
-#
-#   ./install/libexec/xdg-desktop-portal-gnome -r
-#
-portal_dev_opts := "--prefix=" + prefix + " --libdir=" + libdir
-
-# Build + install the patched xdg-desktop-portal-gnome backend into ./install.
+# Build Gnoblin's portal backend into the private prefix.
 [private]
-dev-portal: check-install-prefix (patch "xdg-desktop-portal-gnome")
-    meson setup --reconfigure build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}} || meson setup build/xdg-desktop-portal-gnome subprojects/xdg-desktop-portal-gnome {{portal_dev_opts}}
-    meson install -C build/xdg-desktop-portal-gnome
+dev-portal:
+    ./build.sh --target xdg-desktop-portal-gnome
 
-# Build the whole gnoblin stack (patched mutter + patched gnome-shell) into ./install.
+# Build Mutter, Shell, portal, and session data into ./install.
 [private]
-build-local: dev-gnome-shell dev-session
-    @echo ">> gnoblin stack (mutter + gnome-shell) installed in {{prefix}} — run 'just gnome-verify'"
+build-local:
+    ./build.sh
 
 # Install the gnoblin session data (session mode, gnome-session, .desktop) into ./install.
 [private]
 dev-session:
-    ./scripts/install-session.sh {{prefix}}
+    ./build.sh --target session
 
 # Reject prefixes that would overwrite an existing GNOME installation.
 [private]
@@ -262,8 +208,7 @@ check-install-prefix:
 
 # Register the gnoblin session with your live systemd --user instance (links
 # org.gnoblin.Shell.target/@wayland.service -- gnoblin-specific unit names,
-# does NOT touch org.gnome.Shell*) and print the (root) command to make
-# "Gnoblin" appear at your login manager's session picker. NOT run by
+# does NOT touch org.gnome.Shell*) and install the login manager entries. NOT run by
 # `just build-local`/`dev-session` -- it's the one step that touches state outside
 # ./install. See docs/installation.md.
 [private]
@@ -406,7 +351,15 @@ rpm PROJ:
         echo "     sudo dnf install ~/rpmbuild/RPMS/*/gnoblin-mutter-$version-*.rpm ~/rpmbuild/RPMS/*/gnoblin-mutter-devel-$version-*.rpm" >&2
         exit 1
     fi
-    just tarball {{PROJ}}
+    source_project="{{PROJ}}"
+    case "$source_project" in
+        gnoblin-shell) source_project=gnome-shell ;;
+        gnoblin-portal) source_project=xdg-desktop-portal-gnome ;;
+    esac
+    just tarball "$source_project"
+    if [[ "$source_project" == mutter || "$source_project" == gnome-shell ]]; then
+        ./scripts/stage-rpm-sources.sh "$source_project" "$HOME/rpmbuild/SOURCES"
+    fi
     rpmbuild -bb "$spec"
 
 # Build both packages. Shell requires the private gnoblin-mutter-devel package
@@ -416,10 +369,6 @@ rpm-all:
     for p in {{rpm_projects}}; do just rpm "$p" || exit; done
     rpmbuild -bb packaging/rpm/gnoblin.spec
 
-# Package a private runtime in a prepared Debian/Ubuntu build container.
-[private]
-deb:
-    ./scripts/build-deb.sh
 [private]
 arch PROJ:
     @echo "Arch packaging is planned — see packaging/arch/README.md"
@@ -474,7 +423,8 @@ test-mutter: (patch "mutter")
 [private]
 verify-fast:
     ./scripts/gnome-versions.py check
-    for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin-session src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
+    ./scripts/manage-patches.py check
+    for file in scripts/*.sh tests/*.sh src/tools/*.sh src/tools/gnoblin src/tools/gnoblin-shell-service; do bash -n "$file" || exit; done
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; PYTHONPYCACHEPREFIX="$tmp" python3 -m py_compile scripts/*.py tests/*.py tests/e2e/*.py src/tools/gnoblinctl
     ./tests/test-log-diagnostics.sh
     ./tests/test-secure-state.sh
@@ -483,7 +433,6 @@ verify-fast:
     python3 tests/session-environment.test.py
     python3 tests/package-isolation.test.py
     python3 tests/build-deps.test.py
-    python3 tests/private-deps.test.py
     python3 tests/window-lifecycle-fuzz.test.py
     python3 tests/e2e/app-catalog.test.py
     just test-config

@@ -4,18 +4,35 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TOPDIR="${1:?usage: $0 <rpmbuild-topdir>}"
+TOPDIR="${1:?usage: $0 <rpmbuild-topdir> [prepared-source-directory]}"
 TOPDIR="$(realpath -m "$TOPDIR")"
 SOURCES="$TOPDIR/SOURCES"
 BUILDROOT="$TOPDIR/BUILDROOT"
+PREPARED_SOURCES="${2:-}"
 
 mkdir -p "$SOURCES" "$BUILDROOT"
 
 "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
-git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
-for project in gsettings-desktop-schemas mutter gnome-shell; do
-    "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
-done
+if [[ -n "$PREPARED_SOURCES" ]]; then
+    for project in mutter gnome-shell xdg-desktop-portal-gnome; do
+        version="$($ROOT/scripts/gnome-versions.py get "$project" version)"
+        archive="$project"
+        if [[ "$project" == gnome-shell ]]; then archive=gnoblin-shell; fi
+        source="$PREPARED_SOURCES/$archive-$version.tar.xz"
+        [[ -f "$source" ]] || {
+            echo "Missing prepared source: $source" >&2
+            exit 1
+        }
+        install -m 0644 -- "$source" "$SOURCES/"
+    done
+else
+    git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
+    for project in mutter gnome-shell xdg-desktop-portal-gnome; do
+        "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
+    done
+fi
+"$ROOT/scripts/stage-rpm-sources.sh" mutter "$SOURCES"
+"$ROOT/scripts/stage-rpm-sources.sh" gnome-shell "$SOURCES"
 
 build() {
     local spec="$1"
@@ -34,17 +51,13 @@ install_output() {
     done
 }
 
-build gsettings-desktop-schemas.spec
-mapfile -t schema_rpms < <(find "$TOPDIR/RPMS" -type f -name 'gnoblin-gsettings-desktop-schemas-*.rpm' | sort)
-((${#schema_rpms[@]} == 1))
-install_output "${schema_rpms[@]}"
-
-build mutter.spec --with gnoblin_stack
+build mutter.spec
 mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-[0-9]*.rpm' -o -name 'gnoblin-mutter-devel-[0-9]*.rpm' \) | sort)
 ((${#mutter_rpms[@]} == 2))
 install_output "${mutter_rpms[@]}"
 
-build gnome-shell.spec --with gnoblin_stack
+build gnoblin-shell.spec --with gnoblin_stack
+build gnoblin-portal.spec
 build gnoblin.spec
 
 find "$TOPDIR/RPMS" -type f -name '*.rpm' -print | LC_ALL=C sort

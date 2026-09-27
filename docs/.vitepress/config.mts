@@ -32,9 +32,10 @@ export default defineConfig({
                         items: [
                             { text: "Choose your system", link: "/installation" },
                             { text: "Fedora", link: "/install-fedora" },
-                            { text: "Debian / Ubuntu", link: "/install-debian" },
+                            { text: "Arch", link: "/install-arch" },
                             { text: "NixOS", link: "/install-nixos" },
                             { text: "Build from source", link: "/install-source" },
+                            { text: "GNOME applications", link: "/gnome-apps" },
                         ],
                     },
                     { text: "Choose a shell", link: "/bring-your-own-shell" },

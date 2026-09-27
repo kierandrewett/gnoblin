@@ -37,7 +37,7 @@ build_dependency_command() {
 }
 
 install_build_dependencies() {
-    local family=$1 build_assume_yes=$2 build_dry_run=$3 bundle_debian=${4:-false}
+    local family=$1 build_assume_yes=$2 build_dry_run=$3
     local -a privilege=() confirm=() frontend=() packages=() capabilities=()
     [ "$(id -u)" -eq 0 ] || privilege=(sudo)
 
@@ -45,39 +45,40 @@ install_build_dependencies() {
     local module
     for module in atk atk-bridge-2.0 cairo colord egl epoxy fribidi gbm gcr-4 \
         gdk-pixbuf-2.0 gio-2.0 girepository-2.0 gjs-1.0 gl glesv2 glycin-2 \
-        gnome-autoar-0 gnome-desktop-4 gnome-settings-daemon \
         gobject-introspection-1.0 graphene-gobject-1.0 gsettings-desktop-schemas \
-        gstreamer-base-1.0 gtk4 gudev-1.0 hyprcursor json-glib-1.0 lcms2 \
-        libcanberra libdisplay-info libdrm libecal-2.0 libedataserver-1.2 \
+        gtk4 gudev-1.0 json-glib-1.0 lcms2 \
+        libcanberra libdisplay-info libdrm \
         libei-1.0 libeis-1.0 libinput libnm libpipewire-0.3 libpulse libsecret-1 \
-        libstartup-notification-1.0 libseccomp libsystemd libudev libwacom libxml-2.0 pango pangocairo pixman-1 \
-        polkit-agent-1 librsvg-2.0 sm systemd sysprof-capture-4 udev \
+        libstartup-notification-1.0 libseccomp libsystemd libudev libwacom pango pangocairo pixman-1 \
+        polkit-agent-1 librsvg-2.0 sm systemd udev \
         wayland-client wayland-cursor wayland-egl wayland-server wayland-protocols \
         x11 x11-xcb xau xcb-res xcomposite xcursor xdamage xext xfixes xi \
-        xinerama xkbcommon xkbregistry xrandr xwayland; do
+        xinerama xkbcommon xkbregistry xrandr xwayland xdg-desktop-portal; do
         capabilities+=("pkgconfig($module)")
     done
 
     case "$family" in
         fedora)
             "$build_assume_yes" && confirm=(-y)
-            packages=(git just meson ninja-build python3 gcc gcc-c++ make cmake rpm-build inkscape adwaita-cursor-theme
+            packages=(git meson ninja-build python3 gcc gcc-c++ make cmake rpm-build adwaita-cursor-theme
+                accountsservice-libs ibus-libs
                 gettext gettext-devel pkgconf-pkg-config sassc desktop-file-utils readline-devel iso-codes
                 python3-docutils python3-packaging glib2-devel libadwaita-devel expat-devel
                 mesa-libEGL-devel
-                pam-devel lua-devel cvt gnome-shell gnome-session gnome-settings-daemon
+                pam-devel lua-devel cvt
                 xkeyboard-config-devel xorg-x11-server-Xwayland)
             build_dependency_command "${privilege[@]}" dnf "${confirm[@]}" install \
                 "${packages[@]}" "${capabilities[@]}"
             ;;
         arch)
             "$build_assume_yes" && confirm=(--noconfirm)
-            packages=(base-devel git just meson ninja python python-packaging
-                glib2-devel gobject-introspection gjs gtk4 libadwaita
-                gnome-shell mutter gnome-session gnome-settings-daemon
-                wayland-protocols egl-wayland libdisplay-info libei hyprcursor lua
-                glycin libxkbcommon libxkbfile libxres sysprof evolution-data-server
-                sassc cmake gettext xorg-xwayland python-docutils inkscape adwaita-cursors)
+            packages=(base-devel git meson ninja python python-packaging accountsservice libibus
+                glib2-devel gobject-introspection gjs gcr-4
+                gtk4 libadwaita libcanberra libnm polkit startup-notification
+                wayland-protocols egl-wayland libdisplay-info libei lua
+                glycin libxkbcommon libxkbfile libxres
+                sassc cmake gettext xdg-desktop-portal
+                xorg-xwayland python-docutils adwaita-cursors)
             build_dependency_command "${privilege[@]}" pacman -S --needed \
                 "${confirm[@]}" "${packages[@]}"
             ;;
@@ -86,50 +87,37 @@ install_build_dependencies() {
                 confirm=(-y)
                 frontend=(env DEBIAN_FRONTEND=noninteractive)
             fi
-            packages=(build-essential git just meson ninja-build pkg-config cmake gettext
-                python3 python3-docutils python3-packaging python3-argcomplete xcvt sassc desktop-file-utils inkscape
+            packages=(build-essential git meson ninja-build pkg-config cmake gettext
+                python3 python3-docutils python3-packaging xcvt sassc desktop-file-utils
                 adwaita-icon-theme
-                gobject-introspection libgirepository-2.0-dev libglib2.0-dev
+                gobject-introspection gir1.2-accountsservice-1.0 gir1.2-ibus-1.0
+                libgirepository-2.0-dev libglib2.0-dev
                 libgtk-4-dev libadwaita-1-dev libgjs-dev libglycin-2-dev
-                libhyprcursor-dev liblua5.4-dev libatk-bridge2.0-dev libatk1.0-dev
+                liblua5.4-dev libatk-bridge2.0-dev libatk1.0-dev
                 libcairo2-dev libcolord-dev libegl-dev libepoxy-dev libfribidi-dev
                 libgbm-dev libgcr-4-dev libgdk-pixbuf-2.0-dev libgl-dev libgles-dev
-                libgnome-autoar-0-dev libgnome-desktop-4-dev libgraphene-1.0-dev
-                libgstreamer1.0-dev libgudev-1.0-dev libjson-glib-dev liblcms2-dev
-                libcanberra-dev libdisplay-info-dev libdrm-dev libecal2.0-dev
-                libedataserver1.2-dev libseccomp-dev libreadline-dev iso-codes libei-dev libeis-dev libinput-dev libnm-dev
+                libgraphene-1.0-dev
+                libgudev-1.0-dev libjson-glib-dev liblcms2-dev
+                libcanberra-dev libdisplay-info-dev libdrm-dev
+                libseccomp-dev libreadline-dev iso-codes libei-dev libeis-dev libinput-dev libnm-dev
                 libpipewire-0.3-dev libpulse-dev libsecret-1-dev libstartup-notification0-dev libsystemd-dev
-                libudev-dev libwacom-dev libxml2-dev libpango1.0-dev libpixman-1-dev
-                libpolkit-agent-1-dev librsvg2-dev libsm-dev libsysprof-capture-4-dev libpam0g-dev
+                libudev-dev libwacom-dev libpango1.0-dev libpixman-1-dev
+                libpolkit-agent-1-dev librsvg2-dev libsm-dev libpam0g-dev
                 libwayland-dev wayland-protocols libx11-dev libx11-xcb-dev libxau-dev
                 libxcb-res0-dev libxcomposite-dev libxcursor-dev libxdamage-dev
                 libxext-dev libxfixes-dev libxi-dev libxinerama-dev libxkbcommon-dev
                 libxkbcommon-x11-dev libxkbregistry-dev libxrandr-dev xwayland
-                xkb-data gsettings-desktop-schemas-dev gnome-settings-daemon-dev
-                gnome-shell gnome-session-bin gnome-session-common gnome-settings-daemon systemd-dev)
-            if apt-cache show hyprcursor-util >/dev/null 2>&1; then
-                packages+=(hyprcursor-util)
-            fi
-            if "$bundle_debian"; then
-                local -a base_packages=()
-                local package
-                for package in "${packages[@]}"; do
-                    case "$package" in
-                        libglycin-2-dev | libhyprcursor-dev | libgjs-dev) ;;
-                        *) base_packages+=("$package") ;;
-                    esac
-                done
-                packages=("${base_packages[@]}")
-            fi
+                xkb-data gsettings-desktop-schemas-dev xdg-desktop-portal-dev
+                systemd-dev)
             build_dependency_command "${privilege[@]}" apt-get update
             build_dependency_command "${privilege[@]}" "${frontend[@]}" apt-get install --no-install-recommends "${confirm[@]}" "${packages[@]}"
             ;;
         opensuse)
             "$build_assume_yes" && confirm=(--non-interactive)
-            packages=(git just meson ninja python3 gcc gcc-c++ make cmake gettext-tools
+            packages=(git meson ninja python3 gcc gcc-c++ make cmake gettext-tools
                 pkgconf-pkg-config sassc desktop-file-utils python3-docutils
-                python3-packaging readline-devel iso-codes pam-devel lua54-devel gnome-shell gnome-session
-                gnome-settings-daemon inkscape adwaita-icon-theme hyprcursor)
+                python3-packaging readline-devel iso-codes pam-devel lua54-devel
+                adwaita-icon-theme)
             capabilities+=('pkgconfig(libadwaita-1)' 'pkgconfig(xkeyboard-config)')
             build_dependency_command "${privilege[@]}" zypper "${confirm[@]}" refresh
             # Older minimal images gained busybox-gawk while bootstrapping Git,

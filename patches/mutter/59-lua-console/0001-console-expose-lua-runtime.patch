@@ -1,5 +1,5 @@
 From 72c32c1317ae59ed081822a94b1606717c88e42d Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:05:00 +0100
 Subject: [PATCH] console: expose persistent Lua evaluation to Shell
 

@@ -1,5 +1,5 @@
 From 9b0c66f3c5689997775e4a36b027137abe8cddaa Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 06:45:00 +0100
 Subject: [PATCH] Respect the background effect protocol gate
 

@@ -10,16 +10,14 @@
 
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4
-%global gtk3_version 3.19.8
 %global gtk4_version 4.14.0
 %global glycin_version 2.0.beta.2
-%global hyprcursor_version 0.1.13
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libdisplay_info_version 0.2
-%global libinput_version 1.27.0
+%global libinput_version 1.31.0
 %global pixman_version 0.42
-%global pipewire_version 1.2.7
+%global pipewire_version 1.6.0
 %global lcms2_version 2.6
 %global colord_version 1.4.5
 %global libei_version 1.3.901
@@ -34,7 +32,7 @@ Name:          gnoblin-mutter
 Version:       51.0
 # gnoblin: the source tarball already has gnoblin's patches applied
 # (see ../../patches/mutter), so this spec carries no Patch: directives.
-Release:       23.gnoblin%{?dist}
+Release:       44.gnoblin%{?dist}
 %global debug_package %{nil}
 Summary:       Private Mutter runtime for Gnoblin
 
@@ -42,9 +40,6 @@ Summary:       Private Mutter runtime for Gnoblin
 License:       GPL-2.0-or-later
 URL:           http://www.gnome.org
 Source0:       mutter-%{tarball_version}.tar.xz
-
-# https://pagure.io/fedora-workstation/issue/357
-Source1:       org.gnome.mutter.fedora.gschema.override
 
 # gnoblin patches (tooling, layer-shell, screencopy, window-management) are
 # pre-applied in the tarball produced by scripts/make-tarball.sh — no Patch:
@@ -57,37 +52,30 @@ BuildRequires: mesa-libGLES-devel
 BuildRequires: mesa-libGL-devel
 BuildRequires: mesa-libgbm-devel
 BuildRequires: pam-devel
-BuildRequires: pkgconfig(bash-completion)
 BuildRequires: pkgconfig(colord) >= %{colord_version}
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
-BuildRequires: pkgconfig(hyprcursor) >= %{hyprcursor_version}
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
 BuildRequires: pkgconfig(lua)
-BuildRequires: pkgconfig(libadwaita-1)
 BuildRequires: pkgconfig(libwacom)
 BuildRequires: pkgconfig(xkbcommon)
 BuildRequires: pkgconfig(glesv2)
 BuildRequires: pkgconfig(graphene-gobject-1.0)
 BuildRequires: pkgconfig(libdisplay-info) >= %{libdisplay_info_version}
 BuildRequires: pkgconfig(libpipewire-0.3) >= %{pipewire_version}
-BuildRequires: pkgconfig(sysprof-capture-4)
 BuildRequires: pkgconfig(libsystemd)
-BuildRequires: pkgconfig(umockdev-1.0)
-BuildRequires: python3-argcomplete
 BuildRequires: python3-docutils
 # Bootstrap requirements
 BuildRequires: gettext-devel git-core
 BuildRequires: gcc-c++
 BuildRequires: pkgconfig(libcanberra)
-BuildRequires: gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
+BuildRequires: pkgconfig(json-glib-1.0)
+BuildRequires: pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
 BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
-BuildRequires: pkgconfig(gnome-settings-daemon)
 BuildRequires: meson
 BuildRequires: pkgconfig(gbm)
 BuildRequires: pkgconfig(glycin-2) >= %{glycin_version}
-BuildRequires: pkgconfig(gnome-desktop-4)
 BuildRequires: pkgconfig(gudev-1.0)
 BuildRequires: pkgconfig(libdrm) >= %{libdrm_version}
 BuildRequires: pkgconfig(libei-1.0) >= %{libei_version}
@@ -95,16 +83,13 @@ BuildRequires: pkgconfig(libeis-1.0) >= %{libei_version}
 BuildRequires: pkgconfig(libstartup-notification-1.0)
 BuildRequires: pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
 BuildRequires: pkgconfig(wayland-server) >= %{wayland_server_version}
-BuildRequires: sysprof-devel
 
 BuildRequires: pkgconfig(libinput) >= %{libinput_version}
 BuildRequires: pkgconfig(pixman-1) >= %{pixman_version}
 BuildRequires: pkgconfig(xwayland)
 
-BuildRequires: python3-dbusmock
 
-Requires: gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
-Requires: gnome-settings-daemon
+Requires: gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 Requires: glib2
 Requires: polkit
 Recommends: mesa-dri-drivers
@@ -128,14 +113,14 @@ export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
 export LDFLAGS="${LDFLAGS//-Wl,-z,pack-relative-relocs/}"
 export LDFLAGS="${LDFLAGS} -fPIE"
 %meson -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
-  -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
+  -Dintrospection=true -Dlibgnome_desktop=false -Dinstall_tools=false -Dtests=disabled -Ddocs=false -Dprofiler=false -Ddevkit=disabled -Dbash_completion=false \
+  -Dhyprcursor=disabled \
   -Dudev_dir=%{_prefix}/lib/udev
 %meson_build
 
 %install
 %meson_install
 rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
-install -p %{SOURCE1} %{buildroot}%{_datadir}/glib-2.0/schemas
 # pkexec needs a globally visible policy, with a distinct action ID and helper.
 install -d %{buildroot}/usr/share/polkit-1/actions
 sed 's/org.gnome.mutter.backlight-helper/org.gnoblin.mutter.backlight-helper/g' \
@@ -165,6 +150,57 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-44.gnoblin
+- Apply native Lua keybinding overrides without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-43.gnoblin
+- Apply native Lua input settings without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-42.gnoblin
+- Register native command shortcuts without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-41.gnoblin
+- Launch native Lua autostart commands after the Wayland display starts.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-40.gnoblin
+- Apply native window and compositor preferences from the committed Lua document.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-39.gnoblin
+- Own workspace IDs and counts in the native compositor session.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-34.gnoblin
+- Answer native control requests without GNOME Shell or GJS.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-33.gnoblin
+- Load compositor-only Lua settings in the native Mutter host.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-32.gnoblin
+- Return compositor monitor details through the native Lua API dispatch path.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-31.gnoblin
+- Omit optional Python developer commands from the runtime package.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-30.gnoblin
+- Remove the unused duplicate Lua event dispatch entry point.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-29.gnoblin
+- Return owned Lua runtime operation variants to GJS.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-28.gnoblin
+- Own the Lua document before handing another reference to Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-27.gnoblin
+- Skip Shell config-document dispatch for Lua events without listeners.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-26.gnoblin
+- Define Wayland support for the compositor's Gnoblin runtime API.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-25.gnoblin
+- Release the session-lock controller before its Wayland seat and display.
+
+* Sun Sep 27 2026 Gnoblin contributors - 51.0-24.gnoblin
+- Drop the obsolete Fedora experimental-features schema override.
+
 * Fri Sep 25 2026 Gnoblin contributors - 51.0-23.gnoblin
 - Match the GNOME 51 Wayland Protocols source floor.
 

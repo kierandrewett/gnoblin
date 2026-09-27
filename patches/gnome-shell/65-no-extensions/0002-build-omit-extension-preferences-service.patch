@@ -1,5 +1,5 @@
 From c5209dcad7874f9534f92978bdf606c73abf3f0e Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 12 Sep 2026 12:30:00 +0100
 Subject: [PATCH] build: omit extension preferences service
 

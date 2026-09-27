@@ -7,7 +7,9 @@ import {
     layerOffset,
     windowEffects,
     ConfigFile,
+    inputVariant,
 } from "../src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js";
+import GLib from "gi://GLib";
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -90,6 +92,30 @@ const input = parseDocument({
         "per-window": true,
     },
 });
+const customAcceleration = parseDocument({
+    input: {
+        mouse: {
+            speed: 0.4,
+            "accel-profile": "custom",
+            "accel-curve": { step: 1.0, points: [0.0, 1.0, 2.0] },
+        },
+    },
+}).input.mouse;
+assert(
+    customAcceleration.speed === 0.4 &&
+        customAcceleration["accel-profile"] === "custom" &&
+        customAcceleration["accel-curve"].points.join(",") === "0,1,2",
+    "custom pointer acceleration parses its profile, speed, step, and numeric curve",
+);
+const encodedCustomAcceleration = inputVariant("input", { mouse: customAcceleration });
+const encodedMouse = encodedCustomAcceleration.lookup_value("mouse", new GLib.VariantType("a{sv}"));
+const encodedCurve = encodedMouse.lookup_value("accel-curve", new GLib.VariantType("a{sv}"));
+assert(
+    encodedMouse.lookup_value("speed", new GLib.VariantType("d")) !== null &&
+        encodedCurve.lookup_value("step", new GLib.VariantType("d")) !== null &&
+        encodedCurve.lookup_value("points", new GLib.VariantType("ad"))?.n_children() === 3,
+    "custom acceleration values use Mutter's double and double-array variant types",
+);
 assert(
     input.input.keyboard["xkb-options"][0] === "caps:escape" &&
         input.input.touchpad["scroll-speed"] === 0.5 &&
@@ -133,6 +159,10 @@ for (const document of [
     { cursor: { size: 257 } },
     { cursor: { unknown: true } },
     { input: { mouse: { speed: 1.1 } } },
+    { input: { mouse: { "accel-curve": { step: 0, points: [0.0, 1.0] } } } },
+    { input: { touchpad: { "accel-curve": { step: 1.0, points: [0.0] } } } },
+    { input: { mouse: { "accel-curve": { step: 1.0, points: [0.0, -1.0] } } } },
+    { input: { mouse: { "accel-curve": { step: 1.0, points: [0.0, 1.0], extra: true } } } },
     { input: { touchpad: { "scroll-speed": -0.1 } } },
     { input: { touchpad: { "scroll-speed": 2.1 } } },
     { input: { touchpad: { "click-method": "invalid" } } },

@@ -1,5 +1,5 @@
 From 4d61492dca220780eabe5bca0ef764c6189d35aa Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 22:42:56 +0100
 Subject: [PATCH] shell: route workspace switches through animation engine
 

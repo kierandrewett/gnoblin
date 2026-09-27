@@ -1,19 +1,44 @@
 # Fedora
 
-Fedora 44 has a COPR package candidate. It passes package build, clean
-installation, stock GNOME coexistence and removal checks, but does not yet have
-a verified graphical Gnoblin login. Keep GNOME or another session available.
-See [platform support](platform-support.md) for the release status.
+The COPR build targets Fedora 45. Check the latest release and COPR results
+before installing: the GNOME library requirements changed with the pinned
+upstream source. Keep GNOME or another session available.
+See [platform support](platform-support.md) for the current status.
 
 ## 1. Install Gnoblin
 
 ```sh
 sudo dnf install dnf-plugins-core
 sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf install --refresh gnoblin-session
+sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
-`gnoblin-session` pulls in Gnoblin's Mutter and Shell packages.
+`gnoblin` pulls in the session, Mutter, Shell, portal, and their runtime services.
+This command skips packages recommended by those dependencies. Install any
+optional services you need using the commands below.
+
+The Gnoblin session selects its own portal backend. If GNOME is also installed,
+that session keeps using its own portal configuration and backend.
+Gnoblin does not install `xdg-desktop-portal-gtk` or require
+`gnome-desktop4`. Package dependencies may still bring GTK3 onto a system;
+inspect the transaction before installing if that matters to you.
+
+For GNOME apps on a minimal Fedora install, add the optional
+[`gnoblin-gnome-integration` package](gnome-apps.md). It supplies common
+desktop services; install the apps you want separately.
+
+If your Thunderbolt devices need authorization, install `bolt` separately with
+`sudo dnf install bolt`. Gnoblin does not provide GNOME's Thunderbolt menu.
+For a shell that needs UPower battery data, install it with
+`sudo dnf install upower`. Gnoblin's lean login does not use GNOME's power menu.
+
+For IBus input methods, install `ibus` separately with `sudo dnf install ibus`.
+The basic session needs only `ibus-libs` and does not start the daemon until
+an IBus input source is configured.
+
+For GNOME Shell's built-in screen recorder, run
+`sudo dnf install gstreamer1 gstreamer1-plugins-good pipewire-gstreamer`.
+Portal screen sharing does not need these recording plugins.
 
 ## 2. Install a shell
 
@@ -31,7 +56,7 @@ Continue with [configuration](/config).
 ## Update
 
 ```sh
-sudo dnf upgrade --refresh gnoblin-session gnoblin-shell gnoblin-mutter
+sudo dnf upgrade --refresh gnoblin gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-portal
 ```
 
 Log out and back in to load the updated compositor.
@@ -40,8 +65,11 @@ Log out and back in to load the updated compositor.
 
 Log into GNOME or another session first, then run:
 
+If you installed the optional integration package, remove it with
+`sudo dnf remove gnoblin-gnome-integration` before removing the session.
+
 ```sh
-sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter
+sudo dnf remove gnoblin gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-portal
 ```
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.

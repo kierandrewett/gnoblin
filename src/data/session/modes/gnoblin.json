@@ -9,12 +9,11 @@
   "hasNotifications": false,
   "hasRunDialog": false,
   "hasWmMenus": false,
+  "showCalendarEvents": false,
   "showWelcomeDialog": false,
   "components": [
     "polkitAgent",
     "keyring",
-    "autorunManager",
-    "automountManager",
     "networkAgent",
     "gnoblinNotificationBridge",
     "gnoblinControl",

@@ -1,0 +1,265 @@
+From 8449c67de1420acd8afa6ab055d463a0e9dffed6 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 07:28:02 +0100
+Subject: [PATCH] Parse wallpaper slideshows without GNOME Desktop in Gnoblin
+
+---
+ js/misc/dependencies.js |   3 +-
+ js/ui/background.js     | 103 ++++++++++++++++++++++++++++++----------
+ js/ui/panel.js          |  12 ++++-
+ meson.build             |   2 -
+ src/meson.build         |   2 +
+ src/shell-util.h        |   3 ++
+ 6 files changed, 94 insertions(+), 31 deletions(-)
+
+diff --git a/js/misc/dependencies.js b/js/misc/dependencies.js
+index f70f2d986..753730a40 100644
+--- a/js/misc/dependencies.js
++++ b/js/misc/dependencies.js
+@@ -13,8 +13,6 @@ import 'gi://Gio?version=2.0';
+ import 'gi://GioUnix?version=2.0';
+ import 'gi://GDesktopEnums?version=3.0';
+ import 'gi://GdkPixbuf?version=2.0';
+-import 'gi://GnomeBG?version=4.0';
+-import 'gi://GnomeDesktop?version=4.0';
+ import 'gi://Graphene?version=1.0';
+ import 'gi://GUdev?version=1.0';
+ import 'gi://IBus?version=1.0';
+@@ -37,6 +35,7 @@ if (global.session_mode !== 'gnoblin')
+ if (global.session_mode !== 'gnoblin') {
+     gi.require('Geoclue', '2.0');
+     gi.require('GWeather', '4.0');
++    gi.require('GnomeDesktop', '4.0');
+ }
+ 
+ // Meta-related dependencies use a shared version
+diff --git a/js/ui/background.js b/js/ui/background.js
+index b443c8fbe..83e845ba8 100644
+--- a/js/ui/background.js
++++ b/js/ui/background.js
+@@ -94,8 +94,8 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Glycin from 'gi://Gly';
+-import GnomeBG from 'gi://GnomeBG';
+ import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
+ import * as Signals from '../misc/signals.js';
+ 
+ import * as LoginManager from '../misc/loginManager.js';
+@@ -838,44 +838,97 @@ class BackgroundSource {
+     }
+ }
+ 
+-const Animation = GObject.registerClass(
+-class Animation extends GnomeBG.BGSlideShow {
+-    _init(params) {
+-        super._init(params);
+-
++class Animation {
++    constructor({file}) {
++        this.file = file;
+         this.keyFrameFiles = [];
+-        this.transitionProgress = 0.0;
+-        this.transitionDuration = 0.0;
++        this.transitionProgress = 0;
++        this.transitionDuration = 0;
+         this.loaded = false;
++        this._schedule = null;
+     }
+ 
+     load_async(cancellable, callback) {
+-        super.load_async(cancellable, () => {
+-            this.loaded = true;
+-
+-            callback?.();
++        this.file.load_contents_async(cancellable, (file, result) => {
++            try {
++                const [loaded, contents] = file.load_contents_finish(result);
++                if (loaded) {
++                    const xml = new TextDecoder().decode(contents);
++                    this._schedule = JSON.parse(Shell.util_parse_wallpaper_slideshow(xml));
++                    if (this._schedule.slides.length === 1)
++                        this._schedule.slides[0].duration = GLib.MAXUINT32;
++                    this._schedule.totalDuration = this._schedule.slides.reduce(
++                        (sum, slide) => sum + slide.duration, 0);
++                }
++            } catch (error) {
++                if (!error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                    logError(error, 'Failed to load wallpaper slideshow');
++            } finally {
++                this.loaded = true;
++                callback?.();
++            }
+         });
+     }
+ 
+     update(monitor) {
+         this.keyFrameFiles = [];
+-
+-        if (this.get_num_slides() < 1)
++        this.transitionDuration = 0;
++        this.transitionProgress = 0;
++        const schedule = this._schedule;
++        if (!schedule?.totalDuration)
+             return;
+ 
+-        const [progress, duration, isFixed_, filename1, filename2] =
+-            this.get_current_slide(monitor.width, monitor.height);
+-
+-        this.transitionDuration = duration;
+-        this.transitionProgress = progress;
+-
+-        if (filename1)
+-            this.keyFrameFiles.push(Gio.File.new_for_path(filename1));
++        const now = GLib.get_real_time() / 1_000_000;
++        const elapsed = ((now - schedule.startTime) % schedule.totalDuration +
++            schedule.totalDuration) % schedule.totalDuration;
++        let slideStart = 0;
++        for (const slide of schedule.slides) {
++            if (elapsed >= slideStart + slide.duration) {
++                slideStart += slide.duration;
++                continue;
++            }
++            this.transitionDuration = slide.duration;
++            this.transitionProgress = (elapsed - slideStart) / slide.duration;
++            for (const candidates of [slide.from, slide.to]) {
++                const path = this._bestFile(candidates, monitor);
++                if (path)
++                    this.keyFrameFiles.push(Gio.File.new_for_path(path));
++            }
++            return;
++        }
++    }
+ 
+-        if (filename2)
+-            this.keyFrameFiles.push(Gio.File.new_for_path(filename2));
++    _bestFile(candidates, monitor) {
++        if (!candidates?.length)
++            return null;
++        const ratio = monitor.width / monitor.height;
++        for (const requireLarge of [true, false]) {
++            let best = null;
++            let distance = Infinity;
++            // GNOME's size list prefers the last declared variant on ties.
++            for (let i = candidates.length - 1; i >= 0; i--) {
++                const candidate = candidates[i];
++                if (requireLarge &&
++                    (candidate.width < monitor.width || candidate.height < monitor.height))
++                    continue;
++                const candidateRatio = candidate.height !== 0
++                    ? candidate.width / candidate.height
++                    : ratio;
++                const difference = Math.abs(ratio - candidateRatio);
++                if (difference < distance ||
++                    (difference === distance && best &&
++                     Math.abs(candidate.width - monitor.width) <
++                     Math.abs(best.width - monitor.width))) {
++                    best = candidate;
++                    distance = difference;
++                }
++            }
++            if (best)
++                return best.path;
++        }
++        return candidates[0].path;
+     }
+-});
++}
+ 
+ export class BackgroundManager extends Signals.EventEmitter {
+     constructor(params) {
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 49eba5a54..f5ef1712c 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -31,7 +31,6 @@ import * as ThunderboltStatus from './status/thunderbolt.js';
+ import * as AutoRotateStatus from './status/autoRotate.js';
+ import * as BackgroundAppsStatus from './status/backgroundApps.js';
+ 
+-import {DateMenuButton} from './dateMenu.js';
+ import {ATIndicator} from './status/accessibility.js';
+ import {InputSourceIndicator} from './status/keyboard.js';
+ import {DwellClickIndicator} from './status/dwellClick.js';
+@@ -434,7 +433,7 @@ class QuickSettings extends PanelMenu.Button {
+ const PANEL_ITEM_IMPLEMENTATIONS = {
+     'activities': ActivitiesButton,
+     'quickSettings': QuickSettings,
+-    'dateMenu': DateMenuButton,
++    'dateMenu': null,
+     'a11y': ATIndicator,
+     'keyboard': InputSourceIndicator,
+     'dwellClick': DwellClickIndicator,
+@@ -684,6 +683,15 @@ export class Panel extends St.Widget {
+     }
+ 
+     _ensureIndicator(role) {
++        if (role === 'dateMenu' && !PANEL_ITEM_IMPLEMENTATIONS.dateMenu) {
++            this._dateMenuImport ??= import('./dateMenu.js')
++                .then(({DateMenuButton}) => {
++                    PANEL_ITEM_IMPLEMENTATIONS.dateMenu = DateMenuButton;
++                    this._updatePanel();
++                })
++                .catch(error => logError(error, 'Failed to load date menu'));
++            return null;
++        }
+         let indicator = this.statusArea[role];
+         if (!indicator) {
+             const constructor = PANEL_ITEM_IMPLEMENTATIONS[role];
+diff --git a/meson.build b/meson.build
+index 109433374..7e876f221 100644
+--- a/meson.build
++++ b/meson.build
+@@ -31,7 +31,6 @@ mutter_req = '>= 51.0'
+ polkit_req = '>= 0.100'
+ schemas_req = '>= 50.alpha'
+ systemd_req = '>= 246'
+-gnome_desktop_req = '>= 40'
+ pipewire_req = '>= 0.3.49'
+ pango_req = '>= 1.46.0'
+ json_glib_req = '>= 1.6'
+@@ -93,7 +92,6 @@ cogl_dep = dependency(cogl_pc, version: mutter_req)
+ mutter_dep = dependency(libmutter_pc, version: mutter_req)
+ polkit_dep = dependency('polkit-agent-1', version: polkit_req)
+ schemas_dep = dependency('gsettings-desktop-schemas', version: schemas_req)
+-gnome_desktop_dep = dependency('gnome-desktop-4', version: gnome_desktop_req)
+ pango_dep = dependency('pango', version: pango_req)
+ json_glib_dep = dependency('json-glib-1.0', version: json_glib_req)
+ rsvg_dep = dependency('librsvg-2.0', version: rsvg_req)
+diff --git a/src/meson.build b/src/meson.build
+index 8c2903a0e..5d503f401 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -66,6 +66,7 @@ install_rpath = ':'.join([mutter_typelibdir, pkglibdir])
+ gnome_shell_deps = [
+   gio_unix_dep,
+   libxml_dep,
++  json_glib_dep,
+   atk_bridge_dep,
+   gdk_pixbuf_dep,
+   gjs_dep,
+@@ -185,6 +186,7 @@ libshell_sources = [
+   'shell-stack.c',
+   'shell-time-change-source.c',
+   'shell-gnoblin-xkb.c',
++  'shell-gnoblin-slideshow.c',
+   'shell-util.c',
+   'shell-window-preview.c',
+   'shell-window-preview-layout.c',
+diff --git a/src/shell-util.h b/src/shell-util.h
+index 580ff2a03..f2747d63f 100644
+--- a/src/shell-util.h
++++ b/src/shell-util.h
+@@ -85,6 +85,9 @@ gboolean shell_util_xkb_layout_info (const char  *id,
+ GStrv shell_util_xkb_languages_for_layout (const char *id);
+ char *shell_util_xkb_layout_for_locale (const char *locale);
+ 
++char *shell_util_parse_wallpaper_slideshow (const char *xml,
++                                           GError **error);
++
+ gboolean shell_util_has_x11_display_extension (MetaDisplay *display,
+                                                const char  *extension);
+ 
+-- 
+2.55.0
+

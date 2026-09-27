@@ -11,59 +11,71 @@ as supported until its graphical-session gate has passed.
 
 Gnoblin must install alongside GNOME.
 
-- RPM names: `gnoblin-mutter`, `gnoblin-shell`, `gnoblin-session`.
-- Debian/Ubuntu name: `gnoblin` (compositor, session and private libraries together).
+- RPM names: `gnoblin-mutter`, `gnoblin-shell`, `gnoblin-portal`, `gnoblin-session`,
+  and the optional `gnoblin-gnome-integration` subpackage.
+- The `gnoblin` package is the install entry point. `gnoblin-session` owns the
+  login command and session files; its package name does not change the command.
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.
+- `gnoblinctl` uses GLib/GIO and JSON-GLib at runtime. Python is a build tool,
+  not a base package requirement.
 
 Nix uses separate store outputs. Source builds use a private prefix.
 Bingux owns and releases its shell package separately.
 
 ## Package definitions
 
-`nix/native-packages.nix` defines the RPM and Arch adapters and their package-name
-mappings. Generate or verify those adapters with:
+`packaging/native-packages.json` defines the RPM and Arch package requirements
+and their distribution names. Generate or verify the adapters with Python:
 
 ```sh
-nix eval --json .#lib.nativePackages
 just package-manifest write
 just package-manifest
 ```
 
-Fedora's COPR packages use `gnoblin-session` as the entry point.
-Debian and Ubuntu use the `gnoblin` package from the signed
-[Gnoblin APT archive](install-debian.md). There is no pacman repository.
+The package check also compares pinned versions with `gnome-versions.json` and
+`gnoblin-version.json`. Nix consumes the same JSON for its optional package
+adapter; it is not required to prepare native packages.
 
-## Build Debian and Ubuntu package candidates
+Fedora's COPR packages use `gnoblin` as the install entry point. There is
+currently no Gnoblin APT or pacman repository.
 
-Debian 13, Ubuntu 24.04 LTS and Ubuntu 26.04 LTS are package candidates. Build
-separately in each distribution's container; do not reuse a newer distribution's
-binary package on a different release.
+RPM and Arch login entries launch the lean session directly, as
+`./build.sh --register-session` does for a source build. GNOME Session and
+Settings Daemon are not package requirements. The source tarball remains the
+primary install route until a distribution package passes its login gate.
 
-Follow the [container build instructions](https://github.com/kierandrewett/gnoblin/blob/main/packaging/deb/README.md).
-The builder compiles the required newer libraries into `/usr/lib/gnoblin/deps`
-and produces a `.deb` with the remaining system dependencies recorded for APT.
-No Nix installation is required.
+The optional integration subpackage adds GVfs, GNOME Keyring, and user-directory
+setup. The GTK folder-name updater is separate. This package does not install
+applications or replace Gnoblin's portal backend.
+Arch publishes it as a separate metadata-only PKGBUILD and package archive.
 
-The package tests install stock GNOME first, then exercise Gnoblin's installed
-CLI and compositor in a headless session. They also check removal and verify
-that GNOME's binary is unchanged. They establish a package candidate, not a
-supported session installation. A real login test remains required.
+## Prepare the source tarball
+
+From a clean release checkout, build the source assets first:
+
+```sh
+./scripts/build-release-assets.sh ./dist/release "" --source-only
+```
+
+The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
+Mutter, Shell, and portal sources. Extract it and run `./build.sh` to check the
+same source route users receive. The command also writes component archives,
+an Arch recipe, and checksums into `dist/release`.
+GitHub publishes the complete source tarball first, then the companion source
+assets. Package assets follow after their builds finish.
 
 ## Prepare Fedora source RPMs
 
-Use a clean release checkout and install `rpm-build` and `copr-cli`.
+Use a clean release checkout with `rpm-build` installed. The package does not
+build the optional Adwaita vector cursor theme.
 
 ```sh
-just setup
-scripts/make-tarball.sh mutter ./dist/sources
-scripts/make-tarball.sh gnome-shell ./dist/sources
-scripts/build-srpm.sh mutter ./dist/sources ./dist/srpms
-scripts/build-srpm.sh gnome-shell ./dist/sources ./dist/srpms
-scripts/build-srpm.sh gnoblin ./dist/sources ./dist/srpms
+./scripts/build-release-assets.sh ./dist/rpm-assets
 ```
 
+The command writes the source tarball before building the source RPMs.
 Archives include Gnoblin's overlays and patches. They must not be replaced
 with unpatched upstream archives.
 
@@ -73,7 +85,7 @@ Configure a Fedora account using the [COPR API page](https://copr.fedorainfraclo
 Keep credentials outside the repository.
 
 ```sh
-scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM PATH_TO_META_SRPM
+scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM PATH_TO_PORTAL_SRPM PATH_TO_META_SRPM
 ```
 
 Replace the owner and paths. The script waits for Mutter before building Shell.
@@ -100,35 +112,43 @@ git tag -s gnoblin-v0.1.0 -m "Gnoblin 0.1.0 (GNOME 51.0)"
 git push origin gnoblin-v0.1.0
 ```
 
-The release workflow builds source archives, source RPMs, Debian/Ubuntu binary
-packages and checksums. All three Debian/Ubuntu build and install tests must
-pass before assets are published.
+The release workflow publishes a self-contained Gnoblin source tarball and
+the component source archives first, then source RPMs and binary packages.
+The main tarball builds with `./build.sh` and does not need Git or submodules.
+The Fedora source RPM and openSUSE jobs use the component archives inside that
+tarball, after checking the published source assets' SHA-256 sums.
 
-Asset names and package metadata include both versions. For example, a
-Debian package is versioned `51.0+gnoblin0.1.0-1~debian13`. Dependency sources
-accompany the binaries. Manual dispatch can repair assets for an existing
-SemVer tag.
+Tagged commits create versioned releases. Other commits on
+`main` create prereleases named after their commit SHA. Manual dispatch can
+repair assets for an existing SemVer tag.
 
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
-The release workflow assembles the assets as a GitHub draft, updates COPR and
-the signed APT archive, and only then makes the GitHub release public. A failed
-repository publication therefore leaves the release as a draft.
+The source release is public as soon as its archives are ready. Package jobs
+add their artifacts when they complete. The Arch package is attached only after
+a clean installation resolves its runtime dependencies, then installs the
+optional GNOME app integration package.
 
-The workflow installs the COPR result on Fedora 43, 44 and 45 before it
-completes. It requires the repository secret `COPR_CONFIG`, containing the
-publisher's `copr-cli` configuration. Configure it once before the first
-automated release:
+A package job can fail because its
+distribution repository lacks a required dependency version; the release still
+publishes source archives and checksums for the assets that succeeded. Check
+the package jobs before advertising a package for that distribution.
+
+The COPR job installs the published Fedora package without stock GNOME, adds
+the optional app integration package, then checks coexistence with GNOME.
+The openSUSE package job checks the same installation order from its built RPMs.
+
+COPR requires the repository secret `COPR_CONFIG`, containing the publisher's
+`copr-cli` configuration. Configure it once before the first automated release:
 
 ```sh
 gh secret set COPR_CONFIG < ~/.config/copr
 ```
 
-Debian and Ubuntu package candidates are added to the signed APT archive after
-the GitHub release; Fedora users receive the resulting COPR update through
-normal `dnf` updates. Check the completed release workflow before telling users
-a package candidate is available. Do not claim graphical-session support until
-the target's login gate passes.
+Fedora users receive the resulting COPR update through normal `dnf` updates.
+Check the completed release workflow before telling users a package candidate
+is available. Do not claim graphical-session support until the target's login
+gate passes.
 
 ## Upgrade the GNOME base
 
@@ -139,10 +159,12 @@ the target's login gate passes.
 ```
 
 Use the intended major version. The script verifies upstream tags and updates
-generated version fields. Then rebase patches, update submodule references and run:
+generated version fields. Then rebase patches, update submodule references,
+refresh the pinned Nix inputs, and run:
 
 ```sh
 just check-gnome-version
+nix flake update mutter-src gnome-shell-src portal-src gxdp-src
 just verify
 ```
 

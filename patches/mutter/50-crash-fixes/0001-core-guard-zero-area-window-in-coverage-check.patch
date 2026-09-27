@@ -1,5 +1,5 @@
 From 925b633f20db6921883e53419c43824181e3ee06 Mon Sep 17 00:00:00 2001
-From: gnoblin <drewett.kieran@gmail.com>
+From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 23 Jun 2026 22:03:23 +0100
 Subject: [PATCH] core: guard zero-area window in coverage check (SIGFPE on
  layer-surface focus)

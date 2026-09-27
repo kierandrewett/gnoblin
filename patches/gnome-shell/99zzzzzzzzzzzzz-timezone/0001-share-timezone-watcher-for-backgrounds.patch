@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 07:28:02 +0100
+Subject: [PATCH] shell: share timezone watcher for wallpaper schedules
+
+---
+diff --git a/js/ui/background.js b/js/ui/background.js
+index 4edd2e5fc..b443c8fbe 100644
+--- a/js/ui/background.js
++++ b/js/ui/background.js
+@@ -95,7 +95,6 @@ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Glycin from 'gi://Gly';
+ import GnomeBG from 'gi://GnomeBG';
+-import GnomeDesktop from 'gi://GnomeDesktop';
+ import Meta from 'gi://Meta';
+ import * as Signals from '../misc/signals.js';
+ 
+@@ -128,6 +127,46 @@ const ANIMATION_MIN_WAKEUP_INTERVAL = 1.0;
+ let _backgroundCache = null;
+ let _backgroundTextureCache = null;
+ 
++// All backgrounds share one watcher; a timezone change can select a different
++// frame of a scheduled XML wallpaper.
++let _timezoneMonitor = null;
++let _timezoneChangeQueued = false;
++const _timezoneListeners = new Set();
++
++function watchTimezone(callback) {
++    _timezoneListeners.add(callback);
++    if (_timezoneMonitor)
++        return;
++
++    try {
++        _timezoneMonitor = Gio.File.new_for_path('/etc').monitor_directory(
++            Gio.FileMonitorFlags.NONE, null);
++        _timezoneMonitor.connect('changed', (_monitor, file, otherFile) => {
++            if (file?.get_basename() !== 'localtime' &&
++                otherFile?.get_basename() !== 'localtime')
++                return;
++            if (_timezoneChangeQueued)
++                return;
++            _timezoneChangeQueued = true;
++            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
++                _timezoneChangeQueued = false;
++                for (const listener of _timezoneListeners)
++                    listener();
++            });
++        });
++    } catch (error) {
++        logError(error, 'Could not monitor local timezone changes');
++    }
++}
++
++function unwatchTimezone(callback) {
++    _timezoneListeners.delete(callback);
++    if (_timezoneListeners.size === 0 && _timezoneMonitor) {
++        _timezoneMonitor.cancel();
++        _timezoneMonitor = null;
++    }
++}
++
+ function _fileEqual0(file1, file2) {
+     if (file1 === file2)
+         return true;
+@@ -411,12 +450,11 @@ const Background = GObject.registerClass({
+ 
+         this._interfaceSettings = new Gio.Settings({schema_id: INTERFACE_SCHEMA});
+ 
+-        this._clock = new GnomeDesktop.WallClock();
+-        this._clock.connectObject('notify::timezone',
+-            () => {
+-                if (this._animation)
+-                    this._loadAnimation(this._animation.file);
+-            }, this);
++        this._timezoneChanged = () => {
++            if (this._animation)
++                this._loadAnimation(this._animation.file);
++        };
++        watchTimezone(this._timezoneChanged);
+ 
+         const loginManager = LoginManager.getLoginManager();
+         loginManager.connectObject('prepare-for-sleep',
+@@ -446,8 +484,8 @@ const Background = GObject.registerClass({
+ 
+         this._fileWatches = null;
+ 
+-        this._clock.disconnectObject(this);
+-        this._clock = null;
++        unwatchTimezone(this._timezoneChanged);
++        this._timezoneChanged = null;
+ 
+         LoginManager.getLoginManager().disconnectObject(this);
+         this._settings.disconnectObject(this);

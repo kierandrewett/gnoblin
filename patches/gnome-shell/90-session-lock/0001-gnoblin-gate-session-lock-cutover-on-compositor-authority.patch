@@ -1,5 +1,5 @@
 From 45adecb68c48e05f5cea4fea6d1f48d6d0ab2e0f Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:40:50 +0100
 Subject: [PATCH] gnoblin: gate session lock cutover on secure protocol
 

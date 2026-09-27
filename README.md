@@ -25,7 +25,7 @@ regular GNOME session stays available.
 - **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
   docks, wallpapers, launchers and overlays, including layer popups and
   exclusive zones. See [bring-your-own-shell](docs/bring-your-own-shell.md).
-- **Hyprcursor support.** [Configure compositor cursors](docs/cursors.md) with
+- **Hyprcursor support.** [Configure compositor cursors](docs/guides/cursors.md) with
   the generic `cursor.theme` and `cursor.size` settings in Gnoblin's live
   config. Animated frames preserve hotspots and timing, and the same theme
   supplies launch feedback.
@@ -42,10 +42,11 @@ regular GNOME session stays available.
   and workspace feedback. Gnoblin forwards OSD requests without
   creating GNOME widgets. Native notifications and the keyboard-layout popup
   are disabled by default.
-- **Desktop recovery.** Right-click the desktop to open a terminal or Settings.
+- **Desktop recovery.** Right-click the desktop to open a terminal or Settings
+  when GNOME Settings is installed.
   If no layer surface is visible for eight seconds, a native recovery panel
   appears. These tools work independently of the external shell.
-- **Portal permissions.** The [optional portal backend](docs/permissions.md) supports persistent,
+- **Portal permissions.** The [Gnoblin portal backend](docs/guides/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.
 - **Scriptable session.** Package integrations and personal GJS scripts can
@@ -84,10 +85,20 @@ required.
 
 ## Get started
 
-Build from source with `./build.sh`. It builds private dependencies without changing host packages.
+Download the source tarball from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
+extract it, and run `./build.sh` from the extracted directory. A Git checkout
+uses the same command. The build uses compatible development libraries from
+your distribution and keeps the compositor, Shell, and portal backend in a
+private prefix.
 
-[Install](docs/installation.md) on Fedora, NixOS or from source, or
+After building, run `./build.sh --register-session` to add the lean login to
+the session picker. The [source instructions](docs/install-source.md) cover
+prerequisites and the optional GNOME Session login.
+
+[Install](docs/installation.md) on Fedora, Arch, openSUSE, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.
+On a minimal installation, [add GNOME application services](docs/gnome-apps.md)
+only if you need them.
 Every install method adds Gnoblin alongside GNOME. Your existing GNOME binaries
 and login session stay in place; choose either session at login.
 

@@ -1,25 +1,18 @@
 # NixOS
 
-The flake includes an experimental Gnoblin path for **x86_64 Linux**. No NixOS
-channel has completed the full support gate. See
+The flake evaluates compatibility for **x86_64 Linux**. It exposes a package
+only when the pinned channel supplies the required GNOME development libraries.
+If that channel has older desktop schemas, the Nix build uses the pinned GNOME
+51 source for that one dependency. No NixOS channel has
+completed the full support gate. See
 [platform support](platform-support.md) before installing.
 
 ## Stable channels
 
-The default flake package follows Nixpkgs unstable. NixOS 25.05 and 25.11 do
-not currently have installable packages: 25.05 lacks `libglycin` and multiple
-GNOME 51 dependencies, while 25.11 also lacks several required dependency
-floors.
-
-NixOS 26.05 has an experimental package and module. It builds Wayland 1.26 and
-the matching scanner privately for Gnoblin's Mutter; neither package replaces
-the host Wayland or stock GNOME. The complete pinned Gnoblin package output
-builds, including Shell and its runtime closure.
-
-Login, GNOME coexistence, and removal have not passed. Treat this as a test
-path, not supported session installation. Its separate module is
-`inputs.gnoblin.nixosModules.nixos_26_05` and selects
-`inputs.gnoblin.packages.x86_64-linux.gnoblin-nixos-26_05`.
+The default flake package follows Nixpkgs unstable when that input is compatible. The
+`lib.nixChannelPackages` entries use each named channel and require that
+channel's libraries to meet the pinned GNOME source requirements. Desktop
+schemas are the one source fallback; the remaining libraries come from Nixpkgs.
 
 The flake exposes the exact pinned-channel assessment for integrators:
 
@@ -34,10 +27,16 @@ following reports why 25.11 cannot be installed:
 nix build github:kierandrewett/gnoblin#lib.nixChannelPackages.x86_64-linux.nixos_25_11
 ```
 
-Each stable entry stops before installation and prints its recorded blockers.
+An incompatible entry stops before installation and prints its current blockers.
 It does not fall back to the unstable package or replace your system libraries.
 
-## 1. Add the flake input
+## 1. Check compatibility
+
+Run the channel assessment above and check that `buildBlockers` is empty for
+your selected channel. If it lists blockers, wait for a channel with the
+required package versions before enabling Gnoblin.
+
+## 2. Add the flake input
 
 In your existing `flake.nix`:
 
@@ -49,19 +48,18 @@ This keeps Gnoblin's own pinned Nixpkgs input. If your system already uses a
 compatible unstable revision, you can add
 `inputs.gnoblin.inputs.nixpkgs.follows = "nixpkgs";`.
 
-Release tags point to the source used by the release build. The tagged NixOS
-26.05 package is built in the release workflow before that tag is published.
+Release tags point to the source used by the release build.
 Pin `inputs.gnoblin.url` to a `gnoblin-v...` release tag when you want a fixed
 Gnoblin version.
 
-## 2. Enable the module
+## 3. Enable the module
 
 Add these entries to your host's `nixosSystem` definition, where `inputs`
 is the set of flake inputs:
 
 ```nix
 modules = [
-  inputs.gnoblin.nixosModules.nixos_26_05
+  inputs.gnoblin.nixosModules.default
   ./configuration.nix
   { programs.gnoblin.enable = true; }
 ];
@@ -74,7 +72,7 @@ Keep your existing display manager. If you have none, enable GDM in
 services.displayManager.gdm.enable = true;
 ```
 
-## 3. Rebuild and test the session
+## 4. Rebuild and test the session
 
 From your system configuration directory, run your usual rebuild command:
 
@@ -83,8 +81,14 @@ sudo nixos-rebuild switch --flake .
 ```
 
 [Install a shell](bring-your-own-shell.md), then log out and select **Gnoblin**.
-The NixOS 26.05 path has not passed login, coexistence or removal, so return to
-your existing session if it does not start. Continue with [configuration](/config)
+
+Run `gnoblin --version` to read the installed Gnoblin release, GNOME component
+versions, and source revision; use `gnoblin --version --json` for the full record.
+The Git remote may show as `unknown` because Nix does not pass the flake's
+original URL to the package build.
+
+The NixOS path has not passed login, coexistence or removal, so return to your
+existing session if it does not start. Continue with [configuration](/config)
 only after it reaches a usable desktop.
 
 ## Update or remove

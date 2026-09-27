@@ -1,5 +1,5 @@
 From a47b8e42f07ba94e5eef77c13f4827e446b12c9c Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:37 +0100
 Subject: [PATCH] shell: load scoped menu backdrop redraw policy
 

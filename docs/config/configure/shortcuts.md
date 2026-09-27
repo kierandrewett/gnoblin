@@ -14,6 +14,11 @@ gnoblin.configure {
 ```
 
 See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
+The native compositor preview accepts command shortcuts at startup. It
+supports release triggers and bare Super on release.
+
+It also applies named actions from the `wm`, `mutter`, and `wayland` groups.
+Actions from `gnome:shell` and input capture require the Shell session.
 
 ![Fuzzel searching for Firefox on a clean Waybar desktop, with the pointer visible](../../images/gnoblin-waybar-launcher.png)
 
@@ -28,11 +33,13 @@ GSettings schema, and the key must exist in that schema on your GNOME version.
 Run `gsettings list-keys SCHEMA` to discover keys. Run
 `gsettings describe SCHEMA KEY` to read one key's purpose.
 
-| Field     | Accepted values                                                     | Meaning                                                                       |
-| --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `action`  | `"gnome:shell.KEY"`, `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"` | Selects a built-in action from that schema. Use underscores in Lua key names. |
-| `binding` | GTK accelerator string for a command; array for an action           | Required. An empty action list disables its current binding.                  |
-| `command` | Nonempty array of strings                                           | Alternative to `action`; runs the program directly without shell expansion.   |
+| Field           | Accepted values                                                     | Meaning                                                                       |
+| --------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `action`        | `"gnome:shell.KEY"`, `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"` | Selects a built-in action from that schema. Use underscores in Lua key names. |
+| `binding`       | GTK accelerator string for a command; array for an action           | Required. An empty action list disables its current binding.                  |
+| `command`       | Nonempty array of strings                                           | Alternative to `action`; runs the program directly without shell expansion.   |
+| `trigger`       | `"press"` or `"release"`                                            | `"press"` by default; selects which key edge launches a command.              |
+| `capture_input` | Boolean                                                             | `false` by default; buffers typing for a Shell popup when `true`.             |
 
 Set exactly one of `action` or `command`:
 
@@ -51,6 +58,9 @@ This binds Mutter's `close` action. GNOME's [Gio.Settings reference](https://doc
 explains schema-backed settings; Gnoblin's
 [keybinding reference](/config/configure/keybindings) lists all groups and
 shows how to find keys on your system.
+
+In the native compositor preview, `wm`, `mutter`, and `wayland` actions are
+applied by Mutter at startup. `gnome:shell` actions run through GNOME Shell.
 
 The named view lets later files inspect and edit imported shortcuts. Each
 entry exposes public `snake_case` fields. `pairs` visits the names already

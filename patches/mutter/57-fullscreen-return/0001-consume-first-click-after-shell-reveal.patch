@@ -1,5 +1,5 @@
 From 212f2c5f4a3e33afccc901928a1959d383bf622f Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 03:04:43 +0100
 Subject: [PATCH] Block fullscreen input until shell chrome is hidden
 

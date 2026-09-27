@@ -1,5 +1,5 @@
 From ae988cbc57697acf29fd937fd23657acddbe7e03 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:02:02 +0100
 Subject: [PATCH] Allow global shortcuts during window drags
 

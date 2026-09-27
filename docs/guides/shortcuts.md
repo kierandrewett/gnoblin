@@ -29,6 +29,11 @@ Shortcut names use letters, numbers, `_` and `-`. A config can declare up to
 256 shortcuts. Removing a command shortcut releases its binding; it does not
 stop a launched program.
 
+The standalone native compositor preview accepts command shortcuts at startup,
+including release triggers and bare Super. It rejects Shell actions and
+`capture_input = true`; those still need the Shell session. Restart the native
+compositor after changing its config.
+
 ## Open an application launcher
 
 Bind Fuzzel to Super+D:
@@ -111,6 +116,9 @@ override restores the default on reload.
 
 Media keys use command shortcuts. The starter config includes editable volume,
 microphone mute, brightness, and playback controls.
+Volume and microphone controls use WirePlumber's `wpctl`. Brightness controls
+need `brightnessctl`, and playback controls need `playerctl`; install either
+optional command if you want its keys to work.
 
 Run `gnoblinctl config path` to see the config file used by your session. Run
 `gnoblinctl config default` to print the packaged starter config. For example,

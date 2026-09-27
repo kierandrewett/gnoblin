@@ -10,12 +10,12 @@ gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
-    -- Cursor changes are optional. Gnoblin includes this artwork; install
-    -- other Hyprcursor themes before selecting them.
+    -- Cursor changes are optional. The default uses the system cursor theme.
+    -- Source builds can use --with-vector-cursors to install Adwaita-Hyprcursor.
     cursor = {},
     -- cursor = {theme = "Adwaita-Hyprcursor", size = 24}, -- size: 1..256
 
-    -- Window focus, placement, workspaces and titlebar actions.
+    -- Window focus, placement and titlebar actions.
     window_management = {
         focus_mode = "click", -- "click", "sloppy", "mouse"
         focus_new_windows = "smart", -- Set to "strict" to prevent focus stealing.
@@ -23,10 +23,6 @@ gnoblin.configure {
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
         focus_change_on_pointer_rest = false,
-        dynamic_workspaces = false,
-        num_workspaces = 4, -- 1..36; used when dynamic_workspaces is false
-        workspace_names = {}, -- up to 36 strings, in workspace order
-        workspace_ids = {}, -- up to 36 unique stable IDs, in workspace order
         workspaces_only_on_primary = false,
         edge_tiling = false,
         center_new_windows = false,
@@ -42,6 +38,14 @@ gnoblin.configure {
         action_right_click_titlebar = "menu",
         -- Actions: "toggle-maximize", "toggle-maximize-horizontally",
         -- "toggle-maximize-vertically", "minimize", "lower", "menu", "none".
+    },
+
+    -- Give each workspace a stable ID so rules survive renaming and reordering.
+    workspaces = {
+        {id = "1", name = "Workspace 1"},
+        {id = "2", name = "Workspace 2"},
+        {id = "3", name = "Workspace 3"},
+        {id = "4", name = "Workspace 4"},
     },
 
     -- General compositor interaction preferences. Accessibility settings are
@@ -165,6 +169,8 @@ gnoblin.configure {
     -- Shortcuts use stable names. Use the same name to change an imported
     -- entry; fields you omit keep their earlier values. Set enable = false
     -- to disable one. Built-in actions use a GNOME keybinding name.
+    -- Media and brightness bindings use optional playerctl/brightnessctl
+    -- commands. Install them or point those bindings at your preferred tools.
     shortcuts = {
         screenshot = {action = "gnome:shell.show_screenshot_ui", binding = {"Print"}},
         ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},

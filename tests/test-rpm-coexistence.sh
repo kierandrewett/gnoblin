@@ -31,7 +31,7 @@ TEST_WORK="$work" "$fakeroot_command" -- bash -euo pipefail -c '
     test -x ./usr/lib/gnoblin/bin/gnome-shell
     test -L ./usr/bin/gnoblinctl
     test -f ./usr/share/wayland-sessions/gnoblin.desktop
-    grep -q "Exec=/usr/lib/gnoblin/bin/gnoblin-session" ./usr/share/wayland-sessions/gnoblin.desktop
+    grep -q "Exec=env GNOBLIN_STANDALONE_SESSION=1 /usr/lib/gnoblin/bin/gnoblin" ./usr/share/wayland-sessions/gnoblin.desktop
     grep -q "ExecStart=/usr/lib/gnoblin/bin/gnoblin-shell-service" ./usr/lib/systemd/user/org.gnoblin.Shell@wayland.service
     glib-compile-schemas --strict ./usr/lib/gnoblin/share/glib-2.0/schemas
     mapfile -t installed < <(rpm --dbpath "$TEST_WORK/db" -qa --qf "%{NAME}\n")

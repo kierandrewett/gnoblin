@@ -1,5 +1,5 @@
 From 839fb6246dc26d34097e9b8f118ae3bae55ef654 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:38 +0100
 Subject: [PATCH] Optionally exclude translucent black shadows from backdrop
  coverage
