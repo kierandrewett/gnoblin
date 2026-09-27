@@ -35,5 +35,6 @@ docker run --rm \
     --env GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE \
     --env "GNOBLIN_E2E_FAILURE_POLICY=${GNOBLIN_E2E_FAILURE_POLICY:-strict}" \
     --env "GNOBLIN_E2E_REQUIRED_APP_IDS=${GNOBLIN_E2E_REQUIRED_APP_IDS:-}" \
+    --env "GNOBLIN_E2E_TEST_IBUS_DISCONNECT=${GNOBLIN_E2E_TEST_IBUS_DISCONNECT:-0}" \
     fedora:44 \
     bash "$container_workspace/tests/e2e/run-app-shard-in-fedora.sh"

@@ -1449,6 +1449,25 @@ def run_one_app(
             stop_process_group(process)
 
 
+def exercise_disconnected_ibus_guard() -> dict:
+    """Reproduce a stale IBus-ready flag after its bus connection closes."""
+    result = eval_shell(
+        "(()=>{const manager=imports.misc.ibusManager.getIBusManager(),bus=manager._ibus;"
+        "const readyBefore=manager._ready,connectedBefore=bus.is_connected();"
+        "if(!readyBefore||!connectedBefore)throw new Error('IBus manager was not ready for disconnect probe');"
+        "bus.get_connection().close_sync(null);"
+        "const connectedAfterClose=bus.is_connected();"
+        "if(connectedAfterClose)throw new Error('IBus D-Bus connection remained open after close_sync');"
+        "manager._ready=true;"
+        "manager._setEngine('xkb:us::eng');"
+        "manager._ready=false;"
+        "return {readyBefore,connectedBefore,connectedAfterClose,attemptedEngine:'xkb:us::eng'};})()"
+    )
+    if not isinstance(result, dict) or result.get("connectedAfterClose") is not False:
+        raise RuntimeError(f"IBus disconnect probe returned unexpected state: {result!r}")
+    return result
+
+
 def run_inside() -> int:
     if not os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"):
         raise RuntimeError("the app suite must run inside scripts/run-gnome-shell.sh")
@@ -1522,6 +1541,18 @@ def run_inside() -> int:
             write_event(events_path, {"phase": "application-complete", **outcome})
             if index % 10 == 0:
                 eval_shell("true")
+        session_checks = {}
+        if os.environ.get("GNOBLIN_E2E_TEST_IBUS_DISCONNECT") == "1":
+            session_checks["ibus-disconnected-engine-activation"] = exercise_disconnected_ibus_guard()
+            write_event(
+                events_path,
+                {
+                    "phase": "session-check",
+                    "name": "ibus-disconnected-engine-activation",
+                    "status": "completed",
+                    **session_checks["ibus-disconnected-engine-activation"],
+                },
+            )
         counts: dict[str, int] = {}
         for outcome in outcomes:
             counts[outcome["status"]] = counts.get(outcome["status"], 0) + 1
@@ -1551,6 +1582,7 @@ def run_inside() -> int:
             "failure_policy": failure_policy,
             "required_apps": sorted(required_apps),
             "blocking_failures": blocking_failures,
+            "session_checks": session_checks,
             "apps": outcomes,
             "completed_utc": datetime.now(timezone.utc).isoformat(),
         }
