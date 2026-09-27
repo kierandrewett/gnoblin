@@ -2,6 +2,28 @@
 set -euo pipefail
 trap 'chmod -R a+rX "$ARTIFACT_DIR" 2>/dev/null || true' EXIT
 
+device_paths=(/dev/dri /dev/vulkan /dev/kfd /dev/dxg /dev/galcore /dev/snd)
+shopt -s nullglob
+device_paths+=(/dev/nvidia* /dev/mali* /dev/fb*)
+shopt -u nullglob
+hardware_devices=()
+{
+    printf 'Container mode: unprivileged; host device passthrough: disabled\n'
+    for device_path in "${device_paths[@]}"; do
+        [[ -e "$device_path" ]] || continue
+        hardware_devices+=("$device_path")
+        printf 'exposed device path: %s\n' "$device_path"
+        ls -la "$device_path" || true
+    done
+    if ((${#hardware_devices[@]} == 0)); then
+        printf 'Result: no GPU or audio device nodes are exposed\n'
+    fi
+} >"$ARTIFACT_DIR/device-access.txt"
+if ((${#hardware_devices[@]} > 0)); then
+    cat "$ARTIFACT_DIR/device-access.txt" >&2
+    exit 1
+fi
+
 dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
     gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon python3-gobject \
     xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor ibus util-linux \

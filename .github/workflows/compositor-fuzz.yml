@@ -292,10 +292,10 @@ jobs:
           if [[ -n "$existing_number" ]]; then
             gh issue comment "$existing_url" --body "$run_note"
             gh issue edit "$existing_url" --body "$issue_body"
-            bd github pull "$existing_number"
+            "$GITHUB_WORKSPACE/scripts/gnoblin-issues" pull "$existing_number"
             exit 0
           fi
 
           bead_id="$(bd create --silent --title "$issue_title" --type bug --priority 1 --description "$issue_body")"
           echo "Created Beads issue $bead_id for fuzz seeds $FAILED_SEEDS"
-          bd github push "$bead_id"
+          "$GITHUB_WORKSPACE/scripts/gnoblin-issues" push "$bead_id"

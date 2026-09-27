@@ -16,9 +16,12 @@ repo_name="${GITHUB_REPOSITORY##*/}"
 container_workspace="/__w/$repo_name/$repo_name"
 
 # Flatpak needs nested user/mount/network namespaces. Configure the disposable
-# GitHub runner before entering Fedora, then keep the test environment in the
-# same privileged Fedora container that receives the built Gnoblin prefix.
-docker run --rm --privileged \
+# GitHub runner before entering Fedora. Disable the container seccomp and
+# AppArmor profiles for bubblewrap, without granting privileged access or
+# passing host GPU/audio devices into the Fedora test container.
+docker run --rm \
+    --security-opt seccomp=unconfined \
+    --security-opt apparmor=unconfined \
     --mount "type=bind,src=$GITHUB_WORKSPACE,dst=$container_workspace" \
     --mount "type=bind,src=$ARTIFACT_DIR,dst=$ARTIFACT_DIR" \
     --workdir "$container_workspace" \
