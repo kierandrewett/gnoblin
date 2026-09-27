@@ -144,6 +144,12 @@ operation, client PID status and any remaining app windows, then skips the
 remaining controls for that window. Outcomes also include the launcher's exit
 code and mapped client PID status at sequence end.
 
+After state changes, the driver records the before and after window bounds,
+monitor, frame mode and frame presentation. Before clicking close, it waits for
+the nonfullscreen window geometry and any requested native close-button region
+to settle. This avoids using fullscreen bounds during the compositor's restore
+transition.
+
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
 whether the window still exists and whether Mutter reports it can close.

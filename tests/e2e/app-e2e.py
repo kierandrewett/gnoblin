@@ -38,6 +38,7 @@ from gnoblin_test_session import (  # noqa: E402
     send_pointer,
     shell_windows,
     wait_for,
+    wait_for_settled_close_target,
     window_by_sequence_expression,
 )
 
@@ -287,6 +288,7 @@ def window_evidence(state: dict | None) -> dict | None:
     """Keep failed-operation traces useful without duplicating full layout state."""
     if state is None:
         return None
+    layout = state.get("layout") or {}
     return {
         key: state.get(key)
         for key in (
@@ -305,7 +307,13 @@ def window_evidence(state: dict | None) -> dict | None:
             "maximized",
             "fullscreen",
         )
-    } | {"frame_border": (state.get("layout") or {}).get("border")}
+    } | {
+        "frame_border": layout.get("border"),
+        "frame_native": layout.get("native"),
+        "frame_supported": layout.get("supported"),
+        "frame_mode": layout.get("mode"),
+        "frame_presentation": layout.get("presentation"),
+    }
 
 
 def capture_window_evidence(sequence: int) -> dict | None:
@@ -651,6 +659,9 @@ def close_sequence(
     state = window_state(sequence)
     if state is None:
         return "already-closed", {}
+    state = wait_for_settled_close_target(lambda: window_state(sequence), stable_seconds=0.15, timeout=4)
+    if state is None:
+        return "already-closed", {}
 
     windows_before_close = {window["sequence"] for window in shell_windows()}
     has_gnoblin_frame = gnoblin_frame_visible(state)
@@ -974,7 +985,13 @@ def run_one_app(
                             )
                             resize_verified = True
                         else:
-                            record(operation, "observed", observed=observed)
+                            record(
+                                operation,
+                                "observed",
+                                observed=observed,
+                                before=window_evidence(current_state),
+                                after=capture_window_evidence(sequence),
+                            )
                         return "observed"
                     except TimeoutError as error:
                         after = capture_window_evidence(sequence)
@@ -1366,7 +1383,8 @@ def run_one_app(
                         }
                         state["operations"].append(close_result)
                         write_event(events_path, {"phase": "operation", "app_id": app["app_id"], **close_result})
-                        if gnoblin_frame_visible(initial) and close_method not in (
+                        frame_before_close = close_details.get("frame_presentation_before_close") or {}
+                        if frame_before_close.get("visible") and close_method not in (
                             "titlebar-close-button",
                             "application-modal-opened",
                         ):

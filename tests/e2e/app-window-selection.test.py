@@ -9,9 +9,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gnoblin_test_session import (  # noqa: E402
     application_window_candidates,
+    close_target_state_ready,
     constrain_move_to_monitor,
     frame_button_center,
     gnoblin_frame_visible,
+    wait_for_settled_close_target,
 )
 
 
@@ -59,6 +61,38 @@ def main() -> int:
         raise SystemExit("an advertised native frame remains usable when its border width is zero")
     if frame_button_center(visible_frame_without_border, 2) != (624, 46):
         raise SystemExit("a visible native frame close probe must use its advertised button region")
+    restoring_after_fullscreen = {
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 800,
+        "fullscreen": False,
+        "layout": {
+            "native": True,
+            "supported": True,
+            "border": [0, 0, 0, 0],
+            "presentation": {"visible": False, "regions": [[2, 1280, 0, 0, 0]]},
+        },
+    }
+    restored_after_fullscreen = {
+        **restoring_after_fullscreen,
+        "x": 0,
+        "y": 28,
+        "height": 772,
+        "layout": {
+            **restoring_after_fullscreen["layout"],
+            "border": [36, 2, 2, 2],
+            "presentation": {"visible": True, "regions": [[2, 1242, 0, 36, 36]]},
+        },
+    }
+    if close_target_state_ready(restoring_after_fullscreen):
+        raise SystemExit("a nonfullscreen flag must not make stale fullscreen geometry a valid close target")
+    if not close_target_state_ready(restored_after_fullscreen):
+        raise SystemExit("a restored visible native frame must be a valid close target")
+    samples = iter((restoring_after_fullscreen, restored_after_fullscreen, restored_after_fullscreen))
+    settled = wait_for_settled_close_target(lambda: next(samples), stable_seconds=0, timeout=1)
+    if settled != restored_after_fullscreen:
+        raise SystemExit("close-target settling must wait for restored geometry and visible frame regions")
     hidden_frame = {
         "layout": {
             **visible_frame_without_border["layout"],

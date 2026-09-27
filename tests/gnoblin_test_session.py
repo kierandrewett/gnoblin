@@ -127,6 +127,61 @@ def frame_button_center(state: dict, action: int) -> tuple[int, int]:
     )
 
 
+def close_target_state_ready(state: dict | None) -> bool:
+    """Reject stale fullscreen geometry until a requested native frame returns."""
+    if state is None or state.get("fullscreen"):
+        return False
+    layout = state.get("layout") or {}
+    if not layout.get("supported") or not layout.get("native"):
+        return True
+    presentation = layout.get("presentation") or {}
+    return bool(
+        presentation.get("visible")
+        and any(
+            region[0] == FRAME_ACTION_CLOSE and region[3] > 0 and region[4] > 0
+            for region in presentation.get("regions", [])
+            if len(region) == 5
+        )
+    )
+
+
+def wait_for_settled_close_target(get_state, stable_seconds: float = 0.15, timeout: float = 4) -> dict | None:
+    """Wait for nonfullscreen geometry and its close target to remain stable."""
+    last_signature = None
+    stable_since = None
+
+    def settled_state() -> dict | None:
+        nonlocal last_signature, stable_since
+        state = get_state()
+        now = time.monotonic()
+        if not close_target_state_ready(state):
+            last_signature = None
+            stable_since = None
+            return None
+
+        layout = state.get("layout") or {}
+        presentation = layout.get("presentation") or {}
+        signature = (
+            *(state.get(key) for key in ("sequence", "x", "y", "width", "height", "fullscreen")),
+            layout.get("supported"),
+            layout.get("native"),
+            layout.get("mode"),
+            tuple(layout.get("border") or ()),
+            presentation.get("visible"),
+            tuple(tuple(region) for region in presentation.get("regions", [])),
+            presentation.get("serial"),
+        )
+        if signature != last_signature:
+            last_signature = signature
+            stable_since = now
+            return None
+        if stable_since is not None and now - stable_since >= stable_seconds:
+            return state
+        return None
+
+    return wait_for(settled_state, "settled window close target", timeout=timeout)
+
+
 def wait_for(predicate, description: str, timeout: float = 5) -> object:
     deadline = time.monotonic() + timeout
     last = None
