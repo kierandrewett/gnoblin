@@ -8,7 +8,7 @@ device_paths+=(/dev/nvidia* /dev/mali* /dev/fb*)
 shopt -u nullglob
 hardware_devices=()
 {
-    printf 'Container mode: non-privileged with SYS_ADMIN for Bubblewrap; host device passthrough: disabled\n'
+    printf 'Container mode: Docker non-privileged; SYS_ADMIN enabled; host device passthrough: disabled\n'
     for device_path in "${device_paths[@]}"; do
         [[ -e "$device_path" ]] || continue
         hardware_devices+=("$device_path")
@@ -38,6 +38,15 @@ tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
     --no-same-owner -C "$GITHUB_WORKSPACE"
 test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 test -f "$GITHUB_WORKSPACE/install/share/gnome-shell/gnome-shell-dbus-interfaces.gresource"
+
+# A fresh procfs avoids Docker's masked proc entries, which block nested
+# Bubblewrap proc mounts in an unprivileged user namespace. Docker gives this
+# container its own PID namespace, so this procfs does not expose host tasks.
+mount -t proc proc /proc
+{
+    printf 'Fresh procfs mounted inside the Docker container PID namespace\n'
+    awk '$2 == "/proc" && $3 == "proc"' /proc/mounts
+} >"$ARTIFACT_DIR/container-procfs.txt"
 
 useradd --create-home e2e
 runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true

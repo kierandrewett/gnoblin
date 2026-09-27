@@ -177,8 +177,9 @@ probes IBus on that bus before launching Shell.
 
 The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code on a
 virtual 1280x800 monitor. Its Fedora app container runs without Docker's
-privileged mode. It grants `SYS_ADMIN` for Bubblewrap's nested mount namespaces
-and does not receive host GPU or audio devices.
+privileged mode. It grants `SYS_ADMIN` to mount a fresh procfs inside the
+container's private PID namespace for Bubblewrap. The container does not receive
+host GPU or audio devices.
 
 Each shard records and rejects GPU/audio device nodes before launching clients.
 It uses Mesa software OpenGL and the lavapipe Vulkan ICD.

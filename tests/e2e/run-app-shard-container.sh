@@ -16,9 +16,10 @@ repo_name="${GITHUB_REPOSITORY##*/}"
 container_workspace="/__w/$repo_name/$repo_name"
 
 # Flatpak needs nested user/mount/network namespaces. Configure the disposable
-# GitHub runner before entering Fedora. Bubblewrap needs SYS_ADMIN for nested
-# mounts, so grant that capability without using privileged mode or passing
-# host GPU/audio devices into the Fedora test container.
+# GitHub runner before entering Fedora. Docker masks procfs entries, which
+# makes the kernel reject nested proc mounts from a user namespace. Grant
+# SYS_ADMIN so the Fedora container can mount a fresh procfs in its private PID
+# namespace, without privileged mode or host GPU/audio device passthrough.
 docker run --rm \
     --cap-add=SYS_ADMIN \
     --security-opt seccomp=unconfined \
