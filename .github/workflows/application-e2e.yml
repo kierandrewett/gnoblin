@@ -234,12 +234,16 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/report-app-e2e-failures.py" \
             --artifact-root "$RUNNER_TEMP/e2e-app-failures" --output "$report"
           issue_title="$(sed -n 's/^# //p' "$report" | head -n 1)"
-          existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-            --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
+          existing_issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$issue_title\"" --json number,url \
+            --jq '.[0] | if . then "\(.number)\t\(.url)" else "" end')"
+          existing_number="${existing_issue%%$'\t'*}"
+          existing_url="${existing_issue#*$'\t'}"
 
-          if [[ -n "$existing_url" ]]; then
+          if [[ -n "$existing_number" ]]; then
             gh issue comment "$existing_url" --body-file "$report"
-            "$GITHUB_WORKSPACE/scripts/gnoblin-issues" pull "$existing_url"
+            gh issue edit "$existing_url" --body-file "$report"
+            "$GITHUB_WORKSPACE/scripts/gnoblin-issues" pull "$existing_number"
             echo "Updated Beads/GitHub app compatibility issue: $existing_url"
             exit 0
           fi

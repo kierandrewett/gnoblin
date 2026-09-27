@@ -261,8 +261,11 @@ jobs:
           done
 
           issue_title="[Gnoblin fuzz] Lifecycle fuzz run failure"
-          existing_url="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-            --search "in:title \"$issue_title\"" --json url --jq '.[0].url // empty')"
+          existing_issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$issue_title\"" --json number,url \
+            --jq '.[0] | if . then "\(.number)\t\(.url)" else "" end')"
+          existing_number="${existing_issue%%$'\t'*}"
+          existing_url="${existing_issue#*$'\t'}"
           run_note="$(cat <<EOF
           Seeded lifecycle fuzzing failed for seeds: $FAILED_SEEDS.
 
@@ -272,13 +275,6 @@ jobs:
           EOF
           )"
           run_note+=$'\n\nFailure diagnostics:'"$diagnostic_sections"
-
-          if [[ -n "$existing_url" ]]; then
-            gh issue comment "$existing_url" --body "$run_note"
-            bd github pull "$existing_url"
-            exit 0
-          fi
-
           issue_body="$(cat <<EOF
           Automated seeded lifecycle fuzzing failed. The run evidence may indicate a Gnoblin defect, a test-harness bug, or a CI/environment failure; inspect the diagnostics and artifacts before classifying it.
 
@@ -292,6 +288,14 @@ jobs:
           Failure diagnostics:$diagnostic_sections
           EOF
           )"
+
+          if [[ -n "$existing_number" ]]; then
+            gh issue comment "$existing_url" --body "$run_note"
+            gh issue edit "$existing_url" --body "$issue_body"
+            bd github pull "$existing_number"
+            exit 0
+          fi
+
           bead_id="$(bd create --silent --title "$issue_title" --type bug --priority 1 --description "$issue_body")"
           echo "Created Beads issue $bead_id for fuzz seeds $FAILED_SEEDS"
           bd github push "$bead_id"
