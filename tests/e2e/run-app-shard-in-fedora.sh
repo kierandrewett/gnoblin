@@ -87,7 +87,7 @@ if ! grep -Eiq 'llvmpipe|lavapipe' "$ARTIFACT_DIR/software-vulkan.txt"; then
 fi
 grep -Ei 'deviceName|driverName' "$ARTIFACT_DIR/software-vulkan.txt" | head -10
 python3 scripts/devkit_dbus.py \
-    "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE" --flatpak-portal --ibus-daemon
+    "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE" --flatpak-portal
 runuser -u e2e -- python3 tests/devkit-flatpak-portal.test.py
 runuser -u e2e -- python3 tests/devkit-ibus-daemon.test.py
 

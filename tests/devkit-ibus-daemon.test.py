@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the IBus daemon activates on the private Gnoblin test bus."""
+"""Check IBus stays owned by the private Gnoblin test session bus."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVICE_NAME = "org.freedesktop.IBus"
-OBJECT_PATH = "/org/freedesktop/IBus"
 
 
 def main() -> int:
@@ -35,48 +34,68 @@ def main() -> int:
         for key in ("HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"):
             pathlib.Path(env[key]).mkdir()
 
-        default_dir = root / "default"
-        subprocess.run(
-            [sys.executable, str(ROOT / "scripts/devkit_dbus.py"), str(default_dir), str(ROOT)],
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        service_file = default_dir / "dbus-services" / f"{SERVICE_NAME}.service"
-        if service_file.exists():
-            raise RuntimeError("the default devkit D-Bus config unexpectedly exposes IBus")
-
+        dbus_dir = root / "dbus"
         config = subprocess.check_output(
-            [
-                sys.executable,
-                str(ROOT / "scripts/devkit_dbus.py"),
-                str(root / "with-ibus"),
-                str(ROOT),
-                "--ibus-daemon",
-            ],
+            [sys.executable, str(ROOT / "scripts/devkit_dbus.py"), str(dbus_dir), str(ROOT)],
             env=env,
             text=True,
         ).strip()
+        service_file = dbus_dir / "dbus-services" / f"{SERVICE_NAME}.service"
+        if service_file.exists():
+            raise RuntimeError("the private test bus must not transiently activate IBus")
+
+        helper = ROOT / "scripts/gnoblin-test-ibus.sh"
+        pid_file = root / "ibus.pid"
+        log_file = root / "ibus.log"
+        duplicate_log = root / "duplicate.log"
+        script = f"""
+source {str(helper)!r}
+gnoblin_test_ibus_start {str(pid_file)!r} {str(log_file)!r}
+cleanup() {{ gnoblin_test_ibus_stop {str(pid_file)!r}; }}
+trap cleanup EXIT
+owner_before=$(gdbus call --session --dest=org.freedesktop.DBus \\
+    --object-path=/org/freedesktop/DBus \\
+    --method=org.freedesktop.DBus.GetNameOwner {SERVICE_NAME})
+ibus-daemon --panel disable >{str(duplicate_log)!r} 2>&1 &
+duplicate_pid=$!
+for _ in $(seq 1 50); do
+    kill -0 "$duplicate_pid" 2>/dev/null || break
+    sleep 0.1
+done
+if kill -0 "$duplicate_pid" 2>/dev/null; then
+    echo "duplicate IBus daemon did not exit" >&2
+    kill "$duplicate_pid" 2>/dev/null || true
+    wait "$duplicate_pid" 2>/dev/null || true
+    exit 1
+fi
+wait "$duplicate_pid" 2>/dev/null || true
+sleep 1
+owner_after=$(gdbus call --session --dest=org.freedesktop.DBus \\
+    --object-path=/org/freedesktop/DBus \\
+    --method=org.freedesktop.DBus.GetNameOwner {SERVICE_NAME})
+if [[ "$owner_before" != "$owner_after" ]]; then
+    echo "IBus owner changed after duplicate daemon startup: $owner_before -> $owner_after" >&2
+    exit 1
+fi
+echo "IBus daemon retained owner $owner_after across duplicate startup"
+"""
         result = subprocess.run(
             [
                 "dbus-run-session",
                 f"--config-file={config}",
                 "--",
-                "gdbus",
-                "introspect",
-                "--session",
-                f"--dest={SERVICE_NAME}",
-                f"--object-path={OBJECT_PATH}",
+                "bash",
+                "-c",
+                script,
             ],
             env=env,
             capture_output=True,
             text=True,
             timeout=20,
         )
-        if result.returncode != 0 or "node " not in result.stdout:
-            raise RuntimeError(f"IBus daemon activation failed: {result.stderr.strip()}")
-        print("IBus daemon D-Bus activation succeeded")
+        if result.returncode != 0 or "retained owner" not in result.stdout:
+            raise RuntimeError(f"private IBus startup failed: {result.stderr.strip()}\n{result.stdout}")
+        print(result.stdout.strip())
     return 0
 
 

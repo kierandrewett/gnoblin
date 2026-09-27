@@ -7,8 +7,8 @@ directory. In particular, the real document portal tries to mount FUSE at the
 user's real /run/user/.../doc. This helper writes a small per-run service dir
 with only the portal services the devkit needs plus gnoblin's document stub.
 Application E2E runs can also opt into Flatpak's session portal for sandboxed
-clients that require it at startup, and the IBus daemon used by Shell input
-focus handling.
+clients that require it at startup. The test runner starts IBus directly in the
+private session so the daemon remains owned by that session bus.
 """
 
 from __future__ import annotations
@@ -41,7 +41,6 @@ def write_config(
     repo_root: pathlib.Path,
     *,
     include_flatpak_portal: bool = False,
-    include_ibus_daemon: bool = False,
 ) -> pathlib.Path:
     tmp = tmp.resolve()
     repo_root = repo_root.resolve()
@@ -51,8 +50,6 @@ def write_config(
     service_names = [*DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES]
     if include_flatpak_portal:
         service_names.append("org.freedesktop.portal.Flatpak")
-    if include_ibus_daemon:
-        service_names.append("org.freedesktop.IBus")
     for name in service_names:
         src = system_service_dir / f"{name}.service"
         if not src.exists():
@@ -127,18 +124,12 @@ def main() -> int:
         action="store_true",
         help="include Flatpak's session portal for sandboxed application tests",
     )
-    parser.add_argument(
-        "--ibus-daemon",
-        action="store_true",
-        help="include IBus activation for Shell input-method tests",
-    )
     args = parser.parse_args()
     try:
         conf = write_config(
             args.tmpdir,
             args.repo_root,
             include_flatpak_portal=args.flatpak_portal,
-            include_ibus_daemon=args.ibus_daemon,
         )
     except Exception as exc:
         print(f"devkit-dbus: {exc}", file=sys.stderr)
