@@ -307,6 +307,13 @@ commands 9
   end
   continue
 end
+break g_return_if_fail_warning
+commands 10
+  silent
+  printf "GNOBLIN_GDB_RETURN_IF_FAIL: domain=%s function=%s expression=%s\n", $rdi, $rsi, $rdx
+  bt 40
+  continue
+end
 run
 GDB
     shell_command=(gdb --nx --batch --quiet --command "$gdb_commands" --args "${shell_command[@]}")
