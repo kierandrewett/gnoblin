@@ -146,9 +146,10 @@ def run_parent() -> int:
     if shard.get("shard") != {"index": index, "count": count} or not shard.get("apps"):
         raise RuntimeError(f"invalid or empty catalog shard {index}/{count}")
     apps = shard["apps"]
+    session_probe_only = os.environ.get("GNOBLIN_E2E_SESSION_PROBE_ONLY", "0").lower() in {"1", "true", "yes"}
     run_info = {
         "shard": shard["shard"],
-        "app_count": len(apps),
+        "app_count": 0 if session_probe_only else len(apps),
         "git_head": subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True
         ).stdout.strip(),
@@ -186,7 +187,8 @@ def run_parent() -> int:
     if os.environ.get("GNOBLIN_E2E_EXTRA_MONITOR"):
         env["EXTRA_MONITOR"] = os.environ["GNOBLIN_E2E_EXTRA_MONITOR"]
     timeout = int(os.environ.get("GNOBLIN_E2E_TIMEOUT", "7200"))
-    print(f"Gnoblin app E2E: shard={index}/{count}, apps={len(apps)}", flush=True)
+    suite_name = "Gnoblin IBus session probe" if session_probe_only else "Gnoblin app E2E"
+    print(f"{suite_name}: shard={index}/{count}, apps={0 if session_probe_only else len(apps)}", flush=True)
     print(f"Artifacts: {artifact_dir}", flush=True)
 
     log_path = artifact_dir / "runner.log"
@@ -1456,7 +1458,7 @@ def exercise_disconnected_ibus_guard() -> dict:
         "if(!manager)throw new Error('IBus manager was not reachable through GnoblinControl');"
         "const bus=manager._ibus;"
         "const readyBefore=manager._ready,connectedBefore=bus.is_connected(),cancellable=manager._cancellable;"
-        "if(!readyBefore||!connectedBefore||!cancellable)throw new Error('IBus manager was not ready for disconnect probe');"
+        "if(!readyBefore||!connectedBefore||!cancellable)throw new Error(`IBus manager was not ready for disconnect probe: ready=${readyBefore} connected=${connectedBefore} cancellable=${Boolean(cancellable)}`);"
         "const activation=manager._setEngine('xkb:us::eng');"
         "GLib.idle_add(GLib.PRIORITY_HIGH,()=>{bus.get_connection().close_sync(null);return GLib.SOURCE_REMOVE;});"
         "await activation;"
@@ -1518,7 +1520,13 @@ def run_inside() -> int:
         launch_timeout = float(os.environ.get("GNOBLIN_E2E_LAUNCH_TIMEOUT", "25"))
         splashscreen_type = eval_shell("imports.gi.Meta.WindowType.SPLASHSCREEN")
         modal_dialog_type = eval_shell("imports.gi.Meta.WindowType.MODAL_DIALOG")
-        for index, app in enumerate(shard["apps"], start=1):
+        session_probe_only = os.environ.get("GNOBLIN_E2E_SESSION_PROBE_ONLY", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        apps_to_exercise = [] if session_probe_only else shard["apps"]
+        for index, app in enumerate(apps_to_exercise, start=1):
             print(f"app E2E [{index}/{len(shard['apps'])}] {app['source']} {app['app_id']}", flush=True)
             installation = install_results.get(app["app_id"])
             if installation and installation.get("status") != "installed":
@@ -1562,12 +1570,18 @@ def run_inside() -> int:
         for outcome in outcomes:
             counts[outcome["status"]] = counts.get(outcome["status"], 0) + 1
         failed_apps = [outcome["app_id"] for outcome in outcomes if outcome["status"] != "exercised"]
-        failure_policy = os.environ.get("GNOBLIN_E2E_FAILURE_POLICY", "strict")
+        failure_policy = "strict" if session_probe_only else os.environ.get("GNOBLIN_E2E_FAILURE_POLICY", "strict")
         if failure_policy not in {"strict", "required"}:
             raise RuntimeError(f"unsupported app E2E failure policy: {failure_policy!r}")
-        required_apps = {
-            app_id.strip() for app_id in os.environ.get("GNOBLIN_E2E_REQUIRED_APP_IDS", "").split(",") if app_id.strip()
-        }
+        required_apps = (
+            set()
+            if session_probe_only
+            else {
+                app_id.strip()
+                for app_id in os.environ.get("GNOBLIN_E2E_REQUIRED_APP_IDS", "").split(",")
+                if app_id.strip()
+            }
+        )
         if failure_policy == "required" and not required_apps:
             raise RuntimeError("required app E2E policy needs GNOBLIN_E2E_REQUIRED_APP_IDS")
         tested_apps = {outcome["app_id"] for outcome in outcomes}
@@ -1581,7 +1595,7 @@ def run_inside() -> int:
             "shard": shard["shard"],
             "catalog_generated_utc": shard["catalog_generated_utc"],
             "fedora_appstream_sha256": shard.get("fedora_appstream_sha256"),
-            "requested_apps": len(shard["apps"]),
+            "requested_apps": len(apps_to_exercise),
             "outcomes": counts,
             "failed_apps": failed_apps,
             "failure_policy": failure_policy,

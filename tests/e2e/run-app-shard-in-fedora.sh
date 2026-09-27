@@ -108,23 +108,41 @@ fi
 install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
 chown -R e2e:e2e "$ARTIFACT_DIR"
 runuser -u e2e -- test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
-runuser -u e2e -- env \
-    "${trace_env[@]}" \
-    XDG_RUNTIME_DIR="/run/user/$e2e_uid" \
-    GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
-    GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
-    GNOBLIN_E2E_PREPARED_SHARD="$ARTIFACT_DIR/shard.json" \
-    GNOBLIN_E2E_SHARD_INDEX="$SHARD_INDEX" \
-    GNOBLIN_E2E_SHARD_COUNT=40 \
-    GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor" \
-    GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json" \
+e2e_env=(
+    "${trace_env[@]}"
+    XDG_RUNTIME_DIR="/run/user/$e2e_uid"
+    GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install"
+    GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json"
+    GNOBLIN_E2E_PREPARED_SHARD="$ARTIFACT_DIR/shard.json"
+    GNOBLIN_E2E_SHARD_INDEX="$SHARD_INDEX"
+    GNOBLIN_E2E_SHARD_COUNT=40
+    GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor"
+    GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json"
+    GNOBLIN_E2E_FAILURE_POLICY="$e2e_failure_policy"
+    GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids"
+    GNOBLIN_TEST_FLATPAK_PORTAL=1
+    GNOBLIN_TEST_IBUS_DAEMON=1
+    GNOBLIN_TEST_PIPEWIRE=1
+    GNOBLIN_E2E_VULKAN_ICD="$vulkan_icd"
+    GNOBLIN_E2E_TIMEOUT=3300
+)
+probe_status=0
+if [[ "${GNOBLIN_E2E_TEST_IBUS_DISCONNECT:-0}" == 1 ]]; then
+    # Exercise IBus in a clean shell session. Fcitx intentionally replaces the
+    # session's IBus service name, so probing afterward would test app order.
+    runuser -u e2e -- env "${e2e_env[@]}" \
+        GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR/ibus-probe" \
+        GNOBLIN_E2E_SESSION_PROBE_ONLY=1 \
+        GNOBLIN_E2E_TEST_IBUS_DISCONNECT=1 \
+        python3 tests/e2e/app-e2e.py || probe_status=$?
+fi
+app_status=0
+runuser -u e2e -- env "${e2e_env[@]}" \
     GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
-    GNOBLIN_E2E_FAILURE_POLICY="$e2e_failure_policy" \
-    GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids" \
-    GNOBLIN_E2E_TEST_IBUS_DISCONNECT="${GNOBLIN_E2E_TEST_IBUS_DISCONNECT:-0}" \
-    GNOBLIN_TEST_FLATPAK_PORTAL=1 \
-    GNOBLIN_TEST_IBUS_DAEMON=1 \
-    GNOBLIN_TEST_PIPEWIRE=1 \
-    GNOBLIN_E2E_VULKAN_ICD="$vulkan_icd" \
-    GNOBLIN_E2E_TIMEOUT=3300 \
-    python3 tests/e2e/app-e2e.py
+    GNOBLIN_E2E_SESSION_PROBE_ONLY=0 \
+    GNOBLIN_E2E_TEST_IBUS_DISCONNECT=0 \
+    python3 tests/e2e/app-e2e.py || app_status=$?
+if ((probe_status != 0)); then
+    exit "$probe_status"
+fi
+exit "$app_status"
