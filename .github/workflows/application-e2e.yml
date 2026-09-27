@@ -166,7 +166,7 @@ jobs:
           GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE: ${{ inputs.extra_monitor }}
           GNOBLIN_E2E_FAILURE_POLICY: ${{ github.event_name == 'pull_request' && 'required' || 'strict' }}
           GNOBLIN_E2E_REQUIRED_APP_IDS: org.alacritty.Alacritty
-          GNOBLIN_E2E_TEST_IBUS_DISCONNECT: ${{ (github.event_name == 'pull_request' || inputs.trace_crash) && '1' || '0' }}
+          GNOBLIN_E2E_TEST_IBUS_DISCONNECT: ${{ (github.event_name == 'pull_request' || github.event_name == 'schedule' || inputs.full_sweep || inputs.trace_crash) && '1' || '0' }}
         run: |
           ARTIFACT_DIR="$RUNNER_TEMP/e2e-shard-$SHARD_INDEX" \
             bash tests/e2e/run-app-shard-container.sh
