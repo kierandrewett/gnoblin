@@ -1452,8 +1452,8 @@ def run_one_app(
 def exercise_disconnected_ibus_guard() -> dict:
     """Reproduce a stale IBus-ready flag after its bus connection closes."""
     result = eval_shell(
-        "(()=>{const manager=Main.panel?.statusArea?.keyboard?._inputSourceManager?._ibusManager;"
-        "if(!manager)throw new Error('IBus manager was not reachable through the keyboard indicator');"
+        "(()=>{const manager=Main.componentManager?._allComponents?.gnoblinControl?._inputSourceManager?._ibusManager;"
+        "if(!manager)throw new Error('IBus manager was not reachable through GnoblinControl');"
         "const bus=manager._ibus;"
         "const readyBefore=manager._ready,connectedBefore=bus.is_connected();"
         "if(!readyBefore||!connectedBefore)throw new Error('IBus manager was not ready for disconnect probe');"
