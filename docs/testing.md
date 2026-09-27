@@ -150,6 +150,9 @@ the nonfullscreen window geometry and any requested native close-button region
 to settle. This avoids using fullscreen bounds during the compositor's restore
 transition.
 
+Click native frame buttons from the actor's stage coordinates after restore.
+Record both the actor and frame positions in the trace.
+
 The close check clicks a Gnoblin or client-drawn titlebar button before sending
 a window-manager close request. A close timeout records
 whether the window still exists and whether Mutter reports it can close.

@@ -61,6 +61,17 @@ def main() -> int:
         raise SystemExit("an advertised native frame remains usable when its border width is zero")
     if frame_button_center(visible_frame_without_border, 2) != (624, 46):
         raise SystemExit("a visible native frame close probe must use its advertised button region")
+    restored_at_work_area_origin = {
+        **visible_frame_without_border,
+        "y": 0,
+        "actor_position": [0, 36],
+        "layout": {
+            **visible_frame_without_border["layout"],
+            "presentation": {"visible": True, "regions": [[2, 320, 0, 36, 36]]},
+        },
+    }
+    if frame_button_center(restored_at_work_area_origin, 2) != (338, 54):
+        raise SystemExit("frame close probes must follow the transformed actor after unfullscreening")
     restoring_after_fullscreen = {
         "x": 0,
         "y": 0,

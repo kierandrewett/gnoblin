@@ -54,8 +54,9 @@ def window_by_sequence_expression(sequence: int) -> str:
 def shell_window(title: str) -> dict | None:
     return eval_shell(
         f"(()=>{{const a=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
-        "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect();"
+        "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect(),p=a.get_transformed_position();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height,minimized:w.minimized,mapped:a.is_mapped(),"
+        "actor_position:[Math.round(p[0]),Math.round(p[1])],"
         "ready:w.is_ready(),fullscreen:w.fullscreen,maximized:!!w.get_maximize_flags(),"
         "layout:imports.gi.Meta.gnoblin_window_frame_get(w).recursiveUnpack()};})()"
     )
@@ -116,14 +117,18 @@ def constrain_move_to_monitor(state: dict, x: int, y: int) -> tuple[int, int]:
 
 
 def frame_button_center(state: dict, action: int) -> tuple[int, int]:
-    """Return the center of an advertised native-frame button input region."""
+    """Return a native-frame button center in stage coordinates."""
     regions = state["layout"]["presentation"]["regions"]
     region = next((item for item in regions if item[0] == action), None)
     if region is None:
         raise RuntimeError(f"frame button action {action} has no input region")
+    # Mutter's frame rectangle can differ from the presented window actor after
+    # state transitions (for example, unfullscreening at the work-area origin).
+    # Regions are local to the frame actor, so use its transformed stage origin.
+    origin_x, origin_y = state.get("actor_position", (state["x"], state["y"]))
     return (
-        state["x"] + region[1] + region[3] // 2,
-        state["y"] + region[2] + region[4] // 2,
+        origin_x + region[1] + region[3] // 2,
+        origin_y + region[2] + region[4] // 2,
     )
 
 

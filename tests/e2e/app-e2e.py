@@ -267,9 +267,10 @@ def window_state(sequence: int) -> dict | None:
         "const m=global.display.get_monitor_geometry(w.get_monitor());"
         "const monitors=Array.from({length:global.display.get_n_monitors()},(_,i)=>{"
         "const r=global.display.get_monitor_geometry(i);return {index:i,x:r.x,y:r.y,width:r.width,height:r.height};});"
-        f"const a=global.get_window_actors().find(a=>a.meta_window===w);"
+        f"const a=global.get_window_actors().find(a=>a.meta_window===w),p=a?.get_transformed_position();"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),"
         "type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
+        "actor_position:p?[Math.round(p[0]),Math.round(p[1])]:null,"
         "monitor:w.get_monitor(),monitor_rect:{x:m.x,y:m.y,width:m.width,height:m.height},monitors,"
         "ready:w.is_ready(),mapped:a?.is_mapped()??false,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
@@ -296,6 +297,7 @@ def window_evidence(state: dict | None) -> dict | None:
             "y",
             "width",
             "height",
+            "actor_position",
             "monitor",
             "monitor_rect",
             "monitors",
