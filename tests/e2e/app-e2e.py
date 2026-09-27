@@ -1452,7 +1452,7 @@ def run_one_app(
 def exercise_disconnected_ibus_guard() -> dict:
     """Reproduce a stale IBus-ready flag after its bus connection closes."""
     result = eval_shell(
-        "(()=>{const manager=Main.componentManager?._allComponents?.gnoblinControl?._inputSourceManager?._ibusManager;"
+        "(async()=>{const manager=Main.componentManager?._allComponents?.gnoblinControl?._inputSourceManager?._ibusManager;"
         "if(!manager)throw new Error('IBus manager was not reachable through GnoblinControl');"
         "const bus=manager._ibus;"
         "const readyBefore=manager._ready,connectedBefore=bus.is_connected();"
@@ -1461,9 +1461,9 @@ def exercise_disconnected_ibus_guard() -> dict:
         "const connectedAfterClose=bus.is_connected();"
         "if(connectedAfterClose)throw new Error('IBus D-Bus connection remained open after close_sync');"
         "manager._ready=true;"
-        "manager._setEngine('xkb:us::eng');"
-        "manager._ready=false;"
-        "return {readyBefore,connectedBefore,connectedAfterClose,attemptedEngine:'xkb:us::eng'};})()"
+        "try{await manager._setEngine('xkb:us::eng');}finally{manager._ready=false;}"
+        "return {readyBefore,connectedBefore,connectedAfterClose,attemptedEngine:'xkb:us::eng'};})()",
+        timeout=15,
     )
     if not isinstance(result, dict) or result.get("connectedAfterClose") is not False:
         raise RuntimeError(f"IBus disconnect probe returned unexpected state: {result!r}")
