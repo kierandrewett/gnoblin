@@ -188,8 +188,10 @@ Even-numbered shards add a 1024x768 monitor. Manual runs can set
 `extra_monitor` to a different secondary size for monitor-size checks.
 
 Each shard starts private PipeWire, WirePlumber and PulseAudio compatibility
-services. It disables hardware monitors and makes a null sink the default audio
-output, so sound is discarded.
+services. It disables hardware monitors, selects the `gnoblin_e2e` null sink,
+and waits until both `pactl get-default-sink` and PulseAudio server info report
+that sink before launching Gnoblin. Audio is discarded, and startup fails with
+diagnostics if the default selection does not settle.
 
 The suite exercises real Flatpak and RPM clients against real Gnoblin windows
 without a physical GPU, audio device or logged-in desktop.

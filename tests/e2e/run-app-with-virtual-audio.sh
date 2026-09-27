@@ -113,11 +113,41 @@ if ! grep -q 'gnoblin_e2e' "$audio_log_dir/sinks.txt"; then
     cat "$audio_log_dir/sinks.txt" >&2
     exit 1
 fi
-pactl set-default-sink gnoblin_e2e >"$audio_log_dir/default-sink.txt" 2>&1 || {
-    cat "$audio_log_dir/default-sink.txt" >&2
+pactl set-default-sink gnoblin_e2e >"$audio_log_dir/default-sink-set.log" 2>&1 || {
+    cat "$audio_log_dir/default-sink-set.log" >&2
     exit 1
 }
+
+selected_sink=
+stable_reads=0
+for _ in $(seq 1 100); do
+    selected_sink="$(pactl get-default-sink 2>/dev/null || true)"
+    if [[ "$selected_sink" == gnoblin_e2e ]]; then
+        stable_reads=$((stable_reads + 1))
+        if ((stable_reads >= 3)); then break; fi
+    else
+        stable_reads=0
+        if ! pactl set-default-sink gnoblin_e2e >>"$audio_log_dir/default-sink-set.log" 2>&1; then
+            cat "$audio_log_dir/default-sink-set.log" >&2
+            exit 1
+        fi
+    fi
+    sleep 0.1
+done
+printf '%s\n' "$selected_sink" >"$audio_log_dir/default-sink.txt"
+if [[ "$selected_sink" != gnoblin_e2e || "$stable_reads" -lt 3 ]]; then
+    pactl info >"$audio_log_dir/pulse-info.txt" 2>&1 || true
+    echo "private PipeWire did not keep gnoblin_e2e as the default sink" >&2
+    cat "$audio_log_dir/default-sink.txt" "$audio_log_dir/pulse-info.txt" \
+        "$audio_log_dir/sinks.txt" >&2
+    exit 1
+fi
 pactl info >"$audio_log_dir/pulse-info.txt"
+if ! grep -Fxq 'Default Sink: gnoblin_e2e' "$audio_log_dir/pulse-info.txt"; then
+    echo "PulseAudio compatibility info does not report the selected E2E null sink" >&2
+    cat "$audio_log_dir/default-sink.txt" "$audio_log_dir/pulse-info.txt" >&2
+    exit 1
+fi
 echo "GNOBLIN_TEST_PIPEWIRE_READY sink=gnoblin_e2e runtime=$XDG_RUNTIME_DIR"
 
 "$@" &
