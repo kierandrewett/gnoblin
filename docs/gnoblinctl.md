@@ -25,16 +25,18 @@ shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                       | Use it to                                        |
-| ----------------------------- | ------------------------------------------------ |
-| `gnoblinctl window list`      | Find open windows and their IDs                  |
-| `gnoblinctl window match`     | Show the values a window rule can match          |
-| `gnoblinctl layer list`       | Find layer-surface namespaces                    |
-| `gnoblinctl workspace list`   | Show workspace IDs, names, positions and windows |
-| `gnoblinctl config path`      | Find the config file your session uses           |
-| `gnoblinctl config default`   | Print the bundled default `init.lua`             |
-| `gnoblinctl config reload`    | Apply edits and report config errors             |
-| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding  |
+| Command                       | Use it to                                          |
+| ----------------------------- | -------------------------------------------------- |
+| `gnoblinctl window list`      | Find open windows and their IDs                    |
+| `gnoblinctl window match`     | Show the values a window rule can match            |
+| `gnoblinctl layer list`       | Find layer-surface namespaces                      |
+| `gnoblinctl input devices`    | List detected input devices and capabilities       |
+| `gnoblinctl workspace list`   | Show workspace IDs, names, positions and windows   |
+| `gnoblinctl config path`      | Find the config file your session uses             |
+| `gnoblinctl config default`   | Print the bundled default `init.lua`               |
+| `gnoblinctl config reload`    | Apply edits and report config errors               |
+| `gnoblinctl shortcut list`    | List shortcuts registered by the native compositor |
+| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding    |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -44,14 +46,23 @@ Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 ```sh
 gnoblinctl window list
 gnoblinctl window focus 42
-gnoblinctl window minimize active
-gnoblinctl window restore active
-gnoblinctl window maximize active
+gnoblinctl window minimize 42
+gnoblinctl window toggle-minimize 42
+gnoblinctl window restore 42
+gnoblinctl window maximize 42
 gnoblinctl window close 42
 ```
 
-Use an ID from `window list`, or `active` for the focused window.
-IDs last for the window's lifetime, not across logins.
+Typed window operations take a stable ID from `window list`. IDs last for the
+window's lifetime, not across logins. The CLI keeps `active` as a compatibility
+target through the legacy window-action route. In Shell-backed sessions,
+`window focus` uses the Shell compatibility route. The standalone native
+compositor denies it because the CLI has no trusted shortcut context.
+
+To focus a window in the native compositor, a shell client must subscribe to
+`gnoblin.shortcut.activated` and call `window.focus` with its one-use context.
+Menu and interactive move or resize use the compatibility route because they
+need Shell handling or pointer interaction.
 
 To see the exact identity and title used by `gnoblin.window_rule`, run:
 
@@ -68,8 +79,12 @@ The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
 raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
 shows a desktop-entry ID, which can differ.
 
-`restore` removes minimisation. Use `unmaximize` and `unfullscreen`
-for those states. `close` requests a normal close, including unsaved-work prompts.
+`restore` removes minimisation and maximization. `restore-or-minimize` restores
+a minimized, maximized, or snapped window; otherwise it minimizes the window.
+
+`toggle-minimize` restores a minimized window or minimizes any other window.
+Use `unmaximize` and `unfullscreen` to clear those states directly. `close`
+requests a normal close, including unsaved-work prompts.
 
 Filter by focused state, exact desktop app ID or a case-insensitive substring
 of the title with `--focused`, `--app-id ID` or `--title TEXT`.
@@ -84,6 +99,21 @@ gnoblinctl layer list
 
 Use a surface's `namespace` as the `layer` value in a window rule. The
 `animation surfaces` command reports the same surfaces for animation previews.
+
+## Input devices
+
+List input devices detected by the compositor with:
+
+```sh
+gnoblinctl input devices
+```
+
+Each record reports the device name and type, seat, available capabilities,
+and vendor or product IDs when the compositor provides them. Device IDs last
+only for the current compositor session. The command returns a one-time
+snapshot; API 1.4 socket clients can also subscribe to device add and removal
+events. The existing `input list`, `input current`, and `input select`
+commands retain their Shell-backed input-source behavior.
 
 ## Animations
 
@@ -128,13 +158,17 @@ GNOME-style presets.
 gnoblinctl window move 42 100 80
 gnoblinctl window resize 42 900 600
 gnoblinctl window workspace 42 2
-gnoblinctl window monitor 42 0
+gnoblinctl window monitor 42 DP-1
 ```
 
-The move example places the window at `(100, 80)` on the desktop; the resize
-example sets its outer size to 900 × 600 logical pixels, including its frame.
-Apps can constrain the result. Geometry operations reject incompatible states
-such as fullscreen or non-resizable windows.
+The move example places the window at `(100, 80)` on the desktop. Resize sets
+its outer size to 900 × 600 logical pixels, including the frame. Apps can
+constrain the result, and geometry operations reject states such as fullscreen
+or non-resizable windows.
+
+For a stable window ID, `window monitor` takes a connector ID from
+`gnoblinctl monitor list`. The list also shows the current numeric `index`; the
+legacy `active` window target uses that index.
 
 ## Workspaces and monitors
 
@@ -153,12 +187,16 @@ gnoblinctl workspace move-active --number 2
 gnoblinctl monitor list
 ```
 
-Workspace numbers are one-based positions and may change when dynamic workspaces
-are removed. Configured IDs follow their `MetaWorkspace` when reordered.
-Unconfigured workspaces receive session-only IDs such as `@session-1`.
-Names are display labels and are not identifiers. Use `workspace list` to see
-each workspace's ID, number, name, active state and window count. Monitor IDs
-start at **0**.
+Workspace numbers are one-based positions and may change when dynamic
+workspaces are removed. Configured IDs follow their `MetaWorkspace` when
+reordered; generated IDs such as `@session-1` last for the session. Names are
+display labels. Use `workspace list` to see each ID, number, name, active state,
+and window count.
+
+Monitor IDs are active connector names such as `DP-1` and `eDP-1`. Use the
+exact ID from `gnoblinctl monitor list`. Each entry also has a current `index`
+that can change when outputs are added or removed. Cloned outputs use the
+lexicographically first active connector as their ID.
 
 The standalone native compositor preview supports workspace list, create,
 rename, remove, switch, next, previous, and window moves by ID or number.
@@ -191,27 +229,52 @@ gnoblinctl window workspace 42 --number 2
 
 Run `gnoblinctl shortcut capture`, then press the key combination. The command
 prints its GTK accelerator. Press Escape to cancel. The default timeout is 30
-seconds; set `--timeout` to an integer from 1 to 60 seconds to change it.
+seconds; set `--timeout` to an integer from 1 to 60 seconds to change it. If a
+session lock, input-capture session, or stage grab starts during capture, the
+command reports cancellation and releases keyboard input to that owner.
+
+## List configured shortcuts
+
+Run `gnoblinctl shortcut list` to list shortcuts registered by the native
+compositor. Shell integration shortcuts and disabled declarations are not
+included. Each record includes its name, binding, enabled state, trigger,
+revision, and either a command or built-in action. A binding with multiple
+accelerators is shown as a JSON array in the table.
+
+Use `--json` for structured output in a terminal or pipe:
+
+```sh
+gnoblinctl shortcut list --json
+```
 
 ## Window actions
 
-Actions without extra arguments accept an optional window ID; they use
-`active` if omitted. The geometry actions require the ID and numbers shown.
+Most actions without extra arguments accept an optional window ID; they use
+`active` if omitted. `toggle-minimize` requires an ID because it has no legacy
+active-window operation. The geometry actions require the ID and numbers shown.
 
-| Action                                   | Arguments after action                           | Effect                                                 |
-| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
-| `menu`                                   | `[ID]`                                           | Open the window menu                                   |
-| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                    |
-| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                             |
-| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                 |
-| `focus`, `close`, `minimize`             | `[ID]`                                           | Focus, request close, or minimize                      |
-| `restore-or-minimize`                    | `[ID]`                                           | Restore a maximized/snapped window; otherwise minimize |
-| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                    |
-| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                              |
-| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000    |
-| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768                |
-| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                          |
-| `monitor`                                | `ID MONITOR`                                     | Move to a zero-based monitor: 0–1024                   |
+| Action                                   | Arguments after action                           | Effect                                                  |
+| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------- |
+| `menu`                                   | `[ID]`                                           | Open the window menu                                    |
+| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                     |
+| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                              |
+| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                  |
+| `focus`, `close`, `minimize`             | `[ID]`                                           | Focus, request close, or minimize                       |
+| `restore-or-minimize`                    | `[ID]`                                           | Restore minimized/maximized/snapped; otherwise minimize |
+| `toggle-minimize`                        | `ID`                                             | Restore if minimized; otherwise minimize                |
+| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                     |
+| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                               |
+| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000     |
+| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768                 |
+| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                           |
+| `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`        |
+
+The CLI uses typed native methods for supported window actions when you pass
+an explicit ID. `active` and omitted IDs use the compatibility route.
+
+Native focus requires a live shortcut context and is not available through
+`gnoblinctl`. `toggle-minimize` requires a stable ID because the compatibility
+method does not match its behavior.
 
 ## Shell and policy commands
 
@@ -227,6 +290,7 @@ Actions without extra arguments accept an optional window ID; they use
 | `script list`                                               | List loaded package integrations and personal scripts                              |
 | `privacy`                                                   | Read screen-sharing, microphone and location indicators                            |
 | `permissions list`                                          | Read portal rules and capabilities                                                 |
+| `permissions policy`                                        | Read the committed policy and its revision (native-control API 1.16+)              |
 | `permissions check CAPABILITY IDENTITY`                     | Explain a decision for `app-id:…` or `host-exe:…`                                  |
 | `grant list`, `grant revoke KIND ID`                        | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop` |
 | `launch status`                                             | List pending launch feedback                                                       |
@@ -237,6 +301,7 @@ For example, to inspect a portal decision and change keyboard source:
 
 ```sh
 gnoblinctl permissions check screen-cast app-id:org.example.Recorder
+gnoblinctl permissions policy --json
 gnoblinctl input list --json
 gnoblinctl input select xkb us
 ```
@@ -244,6 +309,13 @@ gnoblinctl input select xkb us
 Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
+
+`grant list` waits for the portal backend and prints its validated persistent
+grants. Use a listed grant's exact `kind` and opaque `id` with `grant revoke`.
+See the [runtime API reference](/config/runtime-api#privacy-and-permissions)
+for the fields in each grant record.
+Human-readable output prints each full grant ID on its own line, even when it
+exceeds the terminal width. Use `--json` for machine-readable output.
 
 For shortcut bindings, run `gnoblinctl shortcut capture` and press a key
 combination. It consumes the captured combination, waits 30 seconds by default
@@ -288,12 +360,14 @@ IDs, titles and geometry below are illustrative:
 }
 ```
 
-The standalone native compositor preview returns the fields it owns directly:
-ID, title, app identity, focus, workspace ID and number, monitor index, maximize
-and fullscreen state, and geometry. It does not provide Shell's minimized state,
-user time, parent, or monitor-origin fields yet. In that
-preview, `appId` comes from the GTK app ID or WM class instead of Shell's
-application tracker.
+The standalone native compositor preview returns window fields from Mutter:
+ID, title and app identity, focus, minimize, workspace and monitor state,
+maximization, fullscreen state, geometry, last user time, and an optional
+transient parent ID. It also returns stacking and attention state, operation
+capabilities, optional role, and `MetaWindowType`.
+
+In this preview, `appId` comes from the GTK app ID or WM class rather than
+Shell's application tracker.
 
 With `jq` installed, print just the focused window ID:
 
@@ -301,10 +375,11 @@ With `jq` installed, print just the focused window ID:
 gnoblinctl window list --focused --json | jq -r '.windows[].id'
 ```
 
-A successful `gnoblinctl window minimize 42 --json` returns:
+A successful `gnoblinctl window minimize 42 --json` returns the affected
+stable ID:
 
 ```json
-{ "ok": true, "pending": true, "window": "42", "action": "minimize" }
+{ "id": "42" }
 ```
 
 For workspace lists, `gnoblinctl workspace list --json` returns:

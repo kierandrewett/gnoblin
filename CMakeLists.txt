@@ -17,7 +17,9 @@ target_link_libraries(gnoblinctl PRIVATE PkgConfig::GNOBLIN_CONTROL)
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"
     "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
-  BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json")
+    --ini-output "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
+  BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
+    "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
 add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
   "GNOBLIN_IDENTITY_FALLBACK=\"${CMAKE_BINARY_DIR}/gnoblinctl-identity.json\"")
@@ -98,6 +100,7 @@ add_custom_target(session
     "GNOBLIN_IDLE_BINARY=$<TARGET_FILE:gnoblin-idle>"
     "GNOBLINCTL_BINARY=$<TARGET_FILE:gnoblinctl>"
     "GNOBLIN_IDENTITY_FILE=${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
+    "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
     "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
   DEPENDS gnome-shell xdg-desktop-portal-gnome gnoblin-idle gnoblinctl
   USES_TERMINAL

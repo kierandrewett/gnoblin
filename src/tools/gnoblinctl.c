@@ -39,17 +39,18 @@ static const CommandSpec commands[] = {
     {"status", NULL},
     {"reload", NULL},
     {"privacy", NULL},
-    {"permissions", "list check"},
+    {"permissions", "list policy check"},
     {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
-               "focus close minimize restore-or-minimize restore maximize unmaximize fullscreen "
+               "focus close minimize toggle-minimize restore-or-minimize restore maximize "
+               "unmaximize fullscreen "
                "unfullscreen move resize monitor workspace"},
     {"layer", "list"},
     {"completion", NULL},
-    {"shortcut", "capture"},
+    {"shortcut", "list capture"},
     {"config", "path default reload"},
     {"workspace", "list create rename remove switch next previous move-active"},
     {"monitor", "list"},
-    {"input", "list current select"},
+    {"input", "list current select devices"},
     {"feature", "list show enable disable"},
     {"script", "list"},
     {"grant", "list revoke"},
@@ -302,6 +303,24 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
     json_builder_add_string_value(builder, id);
     json_builder_set_member_name(builder, "method");
     json_builder_add_string_value(builder, method);
+    if (g_str_equal(method, "layer.list") || g_str_equal(method, "input.devices") ||
+        g_str_equal(method, "shortcut.capture") || g_str_equal(method, "shortcut.list") ||
+        g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke") ||
+        g_str_equal(method, "permissions.policy")) {
+        json_builder_set_member_name(builder, "api_version");
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "major");
+        json_builder_add_int_value(builder, 1);
+        json_builder_set_member_name(builder, "minor");
+        json_builder_add_int_value(
+            builder, g_str_equal(method, "permissions.policy")                                  ? 16
+                     : g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke") ? 14
+                     : g_str_equal(method, "shortcut.list")                                     ? 9
+                     : g_str_equal(method, "layer.list")                                        ? 2
+                     : g_str_equal(method, "input.devices") ? 3
+                                                            : 8);
+        json_builder_end_object(builder);
+    }
     json_builder_set_member_name(builder, "arguments");
     json_builder_add_value(builder, json_node_init_object(json_node_alloc(), arguments));
     json_builder_end_object(builder);
@@ -309,7 +328,12 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
     g_autofree char* encoded = json_to_string(request, FALSE);
     g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
 
-    guint wait_timeout = cli->timeout + (g_strcmp0(method, "shortcut.capture") == 0 ? 2 : 0);
+    gboolean waits_for_operation = g_str_equal(method, "shortcut.capture") ||
+                                   g_str_equal(method, "grant.list") ||
+                                   g_str_equal(method, "grant.revoke");
+    guint wait_timeout = cli->timeout + (g_str_equal(method, "shortcut.capture") ? 2
+                                         : g_str_has_prefix(method, "grant.")    ? 6
+                                                                                 : 0);
     g_autoptr(GSocketClient) client = g_socket_client_new();
     g_socket_client_set_timeout(client, wait_timeout);
     g_autoptr(GSocketAddress) address = g_unix_socket_address_new(cli->socket_path);
@@ -329,6 +353,7 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
         return NULL;
 
     gint64 deadline = g_get_monotonic_time() + (gint64)wait_timeout * G_USEC_PER_SEC;
+    gint64 operation_request_id = 0;
     g_autoptr(GString) pending = g_string_new(NULL);
     GInputStream* input = g_io_stream_get_input_stream(G_IO_STREAM(connection));
     while (g_get_monotonic_time() < deadline) {
@@ -360,9 +385,35 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
                 return NULL;
             }
             JsonObject* response = json_node_get_object(json_parser_get_root(parser));
+            const char* event = member_string(response, "event", "");
+            gboolean legacy_completion = g_str_equal(event, "gnoblin.api.operation-completed");
+            gboolean canonical_completion = g_str_equal(event, "gnoblin.operation.completed");
+            gint64 completion_id = json_object_get_int_member_with_default(
+                response, legacy_completion ? "request_id" : "operation_id", 0);
+            if (operation_request_id > 0 && (legacy_completion || canonical_completion) &&
+                g_str_equal(member_string(response, "method", ""), method) &&
+                completion_id == operation_request_id) {
+                if (!json_object_get_boolean_member_with_default(response, "ok", FALSE)) {
+                    const char* message = member_string(response, "error", NULL);
+                    JsonObject* details = member_object(response, "error");
+                    if (!message && details)
+                        message = member_string(details, "message", NULL);
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "%s",
+                                message ? message : "Gnoblin operation failed");
+                    return NULL;
+                }
+                const char* result_key = legacy_completion ? "result" : "value";
+                JsonObject* result = member_object(response, result_key);
+                if (!result) {
+                    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                        "Invalid operation completion");
+                    return NULL;
+                }
+                JsonNode* result_node = json_object_get_member(response, result_key);
+                return json_node_copy(result_node);
+            }
             if (!g_str_equal(member_string(response, "id", ""), id))
                 continue;
-            const char* event = member_string(response, "event", "");
             if (g_str_equal(event, "error")) {
                 g_set_error_literal(
                     error, G_IO_ERROR, G_IO_ERROR_FAILED,
@@ -370,10 +421,25 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
                 return NULL;
             }
             if (g_str_equal(event, "reply")) {
-                if (!member_object(response, "result")) {
+                JsonObject* result = member_object(response, "result");
+                if (!result) {
                     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                         "Invalid compositor response");
                     return NULL;
+                }
+                if (waits_for_operation) {
+                    JsonNode* request_id = json_object_get_member(result, "request_id");
+                    if (!request_id || !JSON_NODE_HOLDS_VALUE(request_id) ||
+                        (json_node_get_value_type(request_id) != G_TYPE_INT &&
+                         json_node_get_value_type(request_id) != G_TYPE_INT64) ||
+                        json_node_get_int(request_id) <= 0 ||
+                        !g_str_equal(member_string(result, "method", ""), method)) {
+                        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                            "Invalid operation descriptor");
+                        return NULL;
+                    }
+                    operation_request_id = json_node_get_int(request_id);
+                    continue;
                 }
                 return json_node_copy(json_object_get_member(response, "result"));
             }
@@ -647,41 +713,98 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         } else if (is(action, "workspace")) {
             if (!require_count(cli, 1, 2, error))
                 goto invalid;
-            set_string(arguments, "window", arg(cli, 0));
             JsonObject* selector = new_object();
             if (!workspace_selector(cli, 1, selector, error)) {
                 json_object_unref(selector);
                 goto invalid;
             }
-            json_object_set_object_member(arguments, "workspace", selector);
-            method = "workspace.move_window";
+            if (is(arg(cli, 0), "active")) {
+                set_string(arguments, "window", arg(cli, 0));
+                json_object_set_object_member(arguments, "workspace", selector);
+                method = "workspace.move_window";
+            } else {
+                set_string(arguments, "id", arg(cli, 0));
+                json_object_set_object_member(arguments, "workspace", selector);
+                method = "window.move_to_workspace";
+            }
         } else if (action) {
-            set_string(arguments, "action", action);
             guint count = is(action, "move") || is(action, "resize") ? 3
                           : is(action, "monitor")                    ? 2
                                                                      : 1;
             guint minimum = count == 1 ? 0 : count;
             if (!require_count(cli, minimum, count, error))
                 goto invalid;
-            set_string(arguments, "window", arg(cli, 0) ? arg(cli, 0) : "active");
+            const char* window = arg(cli, 0) ? arg(cli, 0) : "active";
+            if (is(action, "toggle-minimize") && is(window, "active")) {
+                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                    "window toggle-minimize requires a stable window ID");
+                goto invalid;
+            }
+            gboolean typed =
+                !is(window, "active") && !word_in("focus menu interactive-move interactive-resize "
+                                                  "restore-or-minimize",
+                                                  action);
+            if (!typed) {
+                set_string(arguments, "action", action);
+                set_string(arguments, "window", window);
+                method = "window.action";
+            } else {
+                set_string(arguments, "id", window);
+                if (is(action, "close"))
+                    method = "window.close";
+                else if (is(action, "minimize"))
+                    method = "window.minimize";
+                else if (is(action, "restore"))
+                    method = "window.restore";
+                else if (is(action, "toggle-minimize"))
+                    method = "window.toggle_minimize";
+                else if (word_in("maximize unmaximize", action)) {
+                    method = "window.set_maximized";
+                    set_boolean(arguments, "enabled", is(action, "maximize"));
+                } else if (word_in("fullscreen unfullscreen", action)) {
+                    method = "window.set_fullscreen";
+                    set_boolean(arguments, "enabled", is(action, "fullscreen"));
+                } else if (word_in("above unabove", action)) {
+                    method = "window.set_above";
+                    set_boolean(arguments, "enabled", is(action, "above"));
+                } else if (word_in("stick unstick", action)) {
+                    method = "window.set_sticky";
+                    set_boolean(arguments, "enabled", is(action, "stick"));
+                } else if (is(action, "move"))
+                    method = "window.move";
+                else if (is(action, "resize"))
+                    method = "window.resize";
+                else if (is(action, "monitor"))
+                    method = "window.move_to_monitor";
+            }
             if (is(action, "move") || is(action, "resize") || is(action, "monitor")) {
-                const char* first = is(action, "move")     ? "x"
-                                    : is(action, "resize") ? "width"
-                                                           : "monitor";
-                const char* second = is(action, "move") ? "y" : "height";
-                gint value;
-                gint low = is(action, "move") ? -100000 : is(action, "monitor") ? 0 : 1;
-                gint high = is(action, "move") ? 100000 : is(action, "monitor") ? 1024 : 32768;
-                if (!number_arg(cli, 1, first, low, high, &value, error))
-                    goto invalid;
-                set_number(arguments, first, value);
-                if (count == 3) {
-                    if (!number_arg(cli, 2, second, low, high, &value, error))
+                if (is(action, "monitor") && typed) {
+                    const char* monitor_id = arg(cli, 1);
+                    if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
+                        !g_utf8_validate(monitor_id, -1, NULL)) {
+                        g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                            "monitor must be a connector ID from monitor list");
                         goto invalid;
-                    set_number(arguments, second, value);
+                    }
+                    set_string(arguments, "monitor", monitor_id);
+                } else {
+                    const char* first = is(action, "move")     ? "x"
+                                        : is(action, "resize") ? "width"
+                                                               : "monitor";
+                    const char* second = is(action, "move") ? "y" : "height";
+                    gint value;
+                    gint low = is(action, "move") ? -100000 : is(action, "monitor") ? 0 : 1;
+                    gint high = is(action, "move") ? 100000 : is(action, "monitor") ? 1024 : 32768;
+                    if (!number_arg(cli, 1, first, low, high, &value, error))
+                        goto invalid;
+                    set_number(arguments, first, value);
+                    if (count == 3) {
+                        if (!number_arg(cli, 2, second, low, high, &value, error))
+                            goto invalid;
+                        set_number(arguments, second, value);
+                    }
                 }
             }
-            method = "window.action";
         }
     } else if (is(command, "workspace")) {
         if (is(action, "list") || is(action, "next") || is(action, "previous"))
@@ -761,14 +884,19 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         }
         method = owned_method = g_strdup_printf("animation.%s", action);
     } else if (is(command, "input")) {
-        if (is(action, "select")) {
+        if (is(action, "devices")) {
+            if (!require_count(cli, 0, 0, error))
+                goto invalid;
+            method = "input.devices";
+        } else if (is(action, "select")) {
             if (!require_count(cli, 2, 2, error))
                 goto invalid;
             set_string(arguments, "type", arg(cli, 0));
             set_string(arguments, "id", arg(cli, 1));
-        }
-        if (action)
             method = owned_method = g_strdup_printf("input.%s", action);
+        } else if (action) {
+            method = owned_method = g_strdup_printf("input.%s", action);
+        }
     } else if (is(command, "feature")) {
         if (is(action, "show") || is(action, "enable") || is(action, "disable")) {
             if (!require_count(cli, 1, 1, error))
@@ -784,8 +912,13 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             set_string(arguments, "capability", arg(cli, 0));
             set_string(arguments, "identity", arg(cli, 1));
             method = "permissions.check";
-        } else
+        } else if (is(action, "policy")) {
+            if (!require_count(cli, 0, 0, error))
+                goto invalid;
+            method = "permissions.policy";
+        } else {
             method = "permissions.list";
+        }
     } else if (is(command, "grant")) {
         if (is(action, "revoke")) {
             if (!require_count(cli, 2, 2, error))
@@ -833,6 +966,8 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         method = "shell.ping";
     else if (is(command, "version"))
         method = "shell.version";
+    else if (is(command, "shortcut") && is(action, "list"))
+        method = "shortcut.list";
     else if (is(command, "shortcut") && is(action, "capture")) {
         g_printerr("Press a shortcut now; Escape cancels.\n");
         set_number(arguments, "timeout", cli->timeout);
@@ -920,8 +1055,10 @@ static char* human_label(const char* name) {
 static char* table_header(const char* name) {
     if (g_str_equal(name, "appId"))
         return g_strdup("APP ID");
+    if (g_str_equal(name, "monitorId"))
+        return g_strdup("MONITOR ID");
     if (g_str_equal(name, "monitorIndex"))
-        return g_strdup("MONITOR");
+        return g_strdup("MONITOR INDEX");
     if (g_str_equal(name, "shortName"))
         return g_strdup("SHORT NAME");
     g_autofree char* label = human_label(name);
@@ -959,8 +1096,15 @@ static void print_table(JsonArray* array) {
     JsonObject* first_object = json_node_get_object(first);
     g_autoptr(GPtrArray) fields = g_ptr_array_new_with_free_func(g_free);
     if (json_object_has_member(first_object, "appId")) {
-        const char* ordered[] = {"id", "focused", "workspace", "monitorIndex", "appId", "title"};
-        for (guint i = 0; i < G_N_ELEMENTS(ordered); i++)
+        const char* with_monitor_id[] = {"id",           "focused", "workspace", "monitorId",
+                                         "monitorIndex", "appId",   "title"};
+        const char* without_monitor_id[] = {"id",           "focused", "workspace",
+                                            "monitorIndex", "appId",   "title"};
+        gboolean has_monitor_id = json_object_has_member(first_object, "monitorId");
+        const char* const* ordered = has_monitor_id ? with_monitor_id : without_monitor_id;
+        guint ordered_count =
+            has_monitor_id ? G_N_ELEMENTS(with_monitor_id) : G_N_ELEMENTS(without_monitor_id);
+        for (guint i = 0; i < ordered_count; i++)
             g_ptr_array_add(fields, g_strdup(ordered[i]));
     } else {
         GList* names = json_object_get_members(first_object);
@@ -1024,6 +1168,30 @@ static void print_table(JsonArray* array) {
     }
 }
 
+static void print_grants(JsonArray* grants) {
+    guint count = json_array_get_length(grants);
+    if (count == 0) {
+        g_print("No items.\n");
+        return;
+    }
+    for (guint i = 0; i < count; i++) {
+        JsonNode* node = json_array_get_element(grants, i);
+        if (!JSON_NODE_HOLDS_OBJECT(node))
+            continue;
+        JsonObject* grant = json_node_get_object(node);
+        const char* fields[] = {"id", "kind", "requester", "devices", "clipboard", "screenStreams"};
+        for (guint field = 0; field < G_N_ELEMENTS(fields); field++) {
+            if (!json_object_has_member(grant, fields[field]))
+                continue;
+            g_autofree char* label = human_label(fields[field]);
+            g_autofree char* value = node_text(json_object_get_member(grant, fields[field]));
+            g_print("%s: %s\n", label, value);
+        }
+        if (i + 1 < count)
+            g_print("\n");
+    }
+}
+
 static void render(JsonNode* result, const char* format, gboolean raw_string) {
     if (raw_string && JSON_NODE_HOLDS_VALUE(result)) {
         g_print("%s", json_node_get_string(result));
@@ -1044,9 +1212,13 @@ static void render(JsonNode* result, const char* format, gboolean raw_string) {
         JsonObject* object = json_node_get_object(result);
         GList* members = json_object_get_members(object);
         if (members && !members->next &&
-            JSON_NODE_HOLDS_ARRAY(json_object_get_member(object, members->data)))
-            print_table(json_node_get_array(json_object_get_member(object, members->data)));
-        else
+            JSON_NODE_HOLDS_ARRAY(json_object_get_member(object, members->data))) {
+            JsonArray* array = json_node_get_array(json_object_get_member(object, members->data));
+            if (g_str_equal(members->data, "grants"))
+                print_grants(array);
+            else
+                print_table(array);
+        } else
             for (GList* item = members; item; item = item->next) {
                 g_autofree char* label = human_label(item->data);
                 g_autofree char* value = node_text(json_object_get_member(object, item->data));
@@ -1065,12 +1237,14 @@ static const char* action_usage(const char* command, const char* action) {
             return "[--app-id ID] [--title TEXT] [--focused]";
         if (g_str_equal(action, "match"))
             return "[WINDOW]";
+        if (g_str_equal(action, "toggle-minimize"))
+            return "WINDOW";
         if (g_str_equal(action, "move"))
             return "WINDOW X Y";
         if (g_str_equal(action, "resize"))
             return "WINDOW WIDTH HEIGHT";
         if (g_str_equal(action, "monitor"))
-            return "WINDOW MONITOR";
+            return "WINDOW CONNECTOR_ID_OR_INDEX";
         if (g_str_equal(action, "workspace"))
             return "WINDOW (--id ID | --number N | N)";
         return "[WINDOW]";

@@ -1,0 +1,943 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] expose Gnoblin portal grant management
+
+---
+diff --git a/src/gnoblin-portal-grants.c b/src/gnoblin-portal-grants.c
+index f2e53db..843b19e 100644
+--- a/src/gnoblin-portal-grants.c
++++ b/src/gnoblin-portal-grants.c
+@@ -7,12 +7,16 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <glib/gstdio.h>
++#include <sys/stat.h>
+ #include <unistd.h>
+ 
+ #include "gnoblin-portal-grants.h"
+ 
+ #define GRANT_GROUP "Grant"
+ #define GRANT_VERSION 1
++#define REMOTE_DESKTOP_DEVICE_TYPES_MASK (1u | 2u | 4u)
++
++static GDBusConnection *management_connection;
+ 
+ static const char *
+ grant_kind_name (GnoblinPortalGrantKind kind)
+@@ -47,6 +51,9 @@ grant_digest (const char *identity)
+   return g_strdup (g_checksum_get_string (checksum));
+ }
+ 
++static gboolean grant_directories_are_private (GnoblinPortalGrantKind  kind,
++                                                GError                 **error);
++
+ static char *
+ grant_path (GnoblinPortalGrantKind kind,
+             const char             *identity,
+@@ -88,12 +95,144 @@ grant_path (GnoblinPortalGrantKind kind,
+         g_debug ("gnoblin: cannot tighten permissions on %s: %s",
+                  directory,
+                  g_strerror (errno));
++
++      if (!grant_directories_are_private (kind, error))
++        return NULL;
+     }
+ 
+   filename = g_strconcat (digest, ".grant", NULL);
+   return g_build_filename (directory, filename, NULL);
+ }
+ 
++static gboolean
++grant_id_is_valid (const char *id)
++{
++  if (!id || strlen (id) != 70 || !g_str_has_suffix (id, ".grant"))
++    return FALSE;
++
++  for (guint i = 0; i < 64; i++)
++    if (!g_ascii_isdigit (id[i]) && (id[i] < 'a' || id[i] > 'f'))
++      return FALSE;
++
++  return TRUE;
++}
++
++static gboolean
++grant_kind_from_name (const char             *name,
++                      GnoblinPortalGrantKind *kind)
++{
++  if (g_strcmp0 (name, "screen-cast") == 0)
++    *kind = GNOBLIN_PORTAL_GRANT_SCREEN_CAST;
++  else if (g_strcmp0 (name, "remote-desktop") == 0)
++    *kind = GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP;
++  else
++    return FALSE;
++
++  return TRUE;
++}
++
++static char *
++grant_id_path (GnoblinPortalGrantKind kind,
++               const char             *id)
++{
++  g_autofree char *directory = NULL;
++
++  if (!grant_id_is_valid (id))
++    return NULL;
++
++  directory = g_build_filename (g_get_user_data_dir (),
++                                "gnoblin",
++                                "portal-grants",
++                                grant_kind_name (kind),
++                                NULL);
++  return g_build_filename (directory, id, NULL);
++}
++
++static gboolean
++grant_directory_is_private (const char  *path,
++                            GError     **error)
++{
++  struct stat statbuf;
++
++  if (g_lstat (path, &statbuf) != 0)
++    {
++      if (errno != ENOENT)
++        g_set_error (error,
++                     G_IO_ERROR,
++                     g_io_error_from_errno (errno),
++                     "Failed to inspect portal grant directory %s: %s",
++                     path,
++                     g_strerror (errno));
++      return FALSE;
++    }
++
++  if (!S_ISDIR (statbuf.st_mode) ||
++      statbuf.st_uid != getuid () ||
++      (statbuf.st_mode & 077) != 0)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   G_IO_ERROR_PERMISSION_DENIED,
++                   "Portal grant directory %s is not a private directory owned by this user",
++                   path);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++static gboolean
++grant_directories_are_private (GnoblinPortalGrantKind  kind,
++                               GError                 **error)
++{
++  g_autofree char *gnoblin_directory = NULL;
++  g_autofree char *grants_directory = NULL;
++  g_autofree char *kind_directory = NULL;
++
++  gnoblin_directory = g_build_filename (g_get_user_data_dir (), "gnoblin", NULL);
++  grants_directory = g_build_filename (gnoblin_directory, "portal-grants", NULL);
++  kind_directory = g_build_filename (grants_directory, grant_kind_name (kind), NULL);
++
++  return grant_directory_is_private (gnoblin_directory, error) &&
++         grant_directory_is_private (grants_directory, error) &&
++         grant_directory_is_private (kind_directory, error);
++}
++
++static gboolean
++grant_file_is_private_regular (const char  *path,
++                               GError     **error)
++{
++  struct stat statbuf;
++
++  if (g_lstat (path, &statbuf) != 0)
++    {
++      if (errno == ENOENT)
++        return FALSE;
++
++      g_set_error (error,
++                   G_IO_ERROR,
++                   g_io_error_from_errno (errno),
++                   "Failed to inspect portal grant %s: %s",
++                   path,
++                   g_strerror (errno));
++      return FALSE;
++    }
++
++  if (!S_ISREG (statbuf.st_mode) ||
++      statbuf.st_uid != getuid () ||
++      (statbuf.st_mode & 077) != 0)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   G_IO_ERROR_PERMISSION_DENIED,
++                   "Portal grant %s is not a private file owned by this user",
++                   path);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
+ void
+ gnoblin_portal_grant_clear (GnoblinPortalGrant *grant)
+ {
+@@ -104,6 +243,88 @@ gnoblin_portal_grant_clear (GnoblinPortalGrant *grant)
+   g_clear_pointer (&grant->streams, g_variant_unref);
+   grant->device_types = 0;
+   grant->clipboard_enabled = FALSE;
++  grant->created_at_ms = 0;
++}
++
++static guint64
++grant_file_mtime_ms (const char  *path,
++                     GError     **error)
++{
++  struct stat statbuf;
++
++  if (g_lstat (path, &statbuf) != 0)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   g_io_error_from_errno (errno),
++                   "Failed to inspect legacy portal grant %s: %s",
++                   path,
++                   g_strerror (errno));
++      return 0;
++    }
++
++  if (!S_ISREG (statbuf.st_mode) || statbuf.st_mtime < 0)
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Legacy portal grant has no usable modification time");
++      return 0;
++    }
++
++  /* The legacy format has no creation timestamp. Report only the whole-second
++   * file mtime it can establish, expressed in the API's millisecond unit. */
++  return (guint64) statbuf.st_mtime * 1000;
++}
++
++static void
++emit_grant_added (GnoblinPortalGrantKind  kind,
++                  const char             *id,
++                  const char             *identity,
++                  uint32_t                device_types,
++                  gboolean                clipboard_enabled,
++                  gboolean                has_streams,
++                  guint64                 created_at_ms)
++{
++  g_autoptr(GError) error = NULL;
++
++  if (!management_connection)
++    return;
++
++  if (!g_dbus_connection_emit_signal (management_connection,
++                                     NULL,
++                                     "/org/gnoblin/Portal/Grants",
++                                     "org.gnoblin.Portal.Grants",
++                                     "GrantAdded",
++                                     g_variant_new ("(sssubbt)",
++                                                    id,
++                                                    grant_kind_name (kind),
++                                                    identity,
++                                                    device_types,
++                                                    clipboard_enabled,
++                                                    has_streams,
++                                                    created_at_ms),
++                                     &error))
++    g_debug ("Unable to emit portal grant-added signal: %s", error->message);
++}
++
++static void
++emit_grant_removed (const char *kind_name,
++                    const char *id)
++{
++  g_autoptr(GError) error = NULL;
++
++  if (!management_connection)
++    return;
++
++  if (!g_dbus_connection_emit_signal (management_connection,
++                                     NULL,
++                                     "/org/gnoblin/Portal/Grants",
++                                     "org.gnoblin.Portal.Grants",
++                                     "GrantRemoved",
++                                     g_variant_new ("(ss)", id, kind_name),
++                                     &error))
++    g_debug ("Unable to emit portal grant-removed signal: %s", error->message);
+ }
+ 
+ static gboolean
+@@ -177,6 +398,16 @@ grant_is_valid (GnoblinPortalGrantKind  kind,
+       return FALSE;
+     }
+ 
++  if (kind == GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP &&
++      (device_types & ~REMOTE_DESKTOP_DEVICE_TYPES_MASK) != 0)
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_DATA,
++                           "Remote desktop grant contains unknown device types");
++      return FALSE;
++    }
++
+   if (kind == GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP &&
+       device_types == 0 && !clipboard_enabled && !streams)
+     {
+@@ -282,6 +513,9 @@ gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+   g_autofree char *path = NULL;
+   g_autofree char *stream_text = NULL;
+   g_autofree char *contents = NULL;
++  g_autofree char *id = NULL;
++  g_auto(GnoblinPortalGrant) existing = { 0 };
++  guint64 created_at_ms;
+   gsize contents_length;
+ 
+   if (!grant_is_valid (kind,
+@@ -296,10 +530,16 @@ gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+   if (!path)
+     return FALSE;
+ 
++  if (gnoblin_portal_grant_load (kind, identity, &existing, NULL))
++    created_at_ms = existing.created_at_ms;
++  else
++    created_at_ms = g_get_real_time () / 1000;
++
+   key_file = g_key_file_new ();
+   g_key_file_set_integer (key_file, GRANT_GROUP, "version", GRANT_VERSION);
+   g_key_file_set_string (key_file, GRANT_GROUP, "portal", grant_kind_name (kind));
+   g_key_file_set_string (key_file, GRANT_GROUP, "identity", identity);
++  g_key_file_set_uint64 (key_file, GRANT_GROUP, "created-at-ms", created_at_ms);
+   g_key_file_set_uint64 (key_file, GRANT_GROUP, "device-types", device_types);
+   g_key_file_set_boolean (key_file,
+                           GRANT_GROUP,
+@@ -316,6 +556,15 @@ gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+       !write_private_file (path, contents, contents_length, error))
+     return FALSE;
+ 
++  id = g_path_get_basename (path);
++  emit_grant_added (kind,
++                    id,
++                    identity,
++                    device_types,
++                    clipboard_enabled,
++                    streams != NULL,
++                    created_at_ms);
++
+   return TRUE;
+ }
+ 
+@@ -335,6 +584,7 @@ gnoblin_portal_grant_load (GnoblinPortalGrantKind  kind,
+   g_autoptr(GError) local_error = NULL;
+   guint64 device_types;
+   gboolean clipboard_enabled;
++  guint64 created_at_ms;
+   int version;
+ 
+   g_return_val_if_fail (grant != NULL, FALSE);
+@@ -343,7 +593,9 @@ gnoblin_portal_grant_load (GnoblinPortalGrantKind  kind,
+   path = grant_path (kind, identity, FALSE, error);
+   if (!path)
+     return FALSE;
+-  if (!g_file_test (path, G_FILE_TEST_EXISTS))
++  if (!grant_directories_are_private (kind, error))
++    return FALSE;
++  if (!grant_file_is_private_regular (path, error))
+     return FALSE;
+ 
+   if (!g_file_get_contents (path, &contents, NULL, error))
+@@ -399,10 +651,27 @@ gnoblin_portal_grant_load (GnoblinPortalGrantKind  kind,
+                        &local_error))
+     goto invalid_record;
+ 
++  if (g_key_file_has_key (key_file, GRANT_GROUP, "created-at-ms", NULL))
++    {
++      created_at_ms = g_key_file_get_uint64 (key_file,
++                                             GRANT_GROUP,
++                                             "created-at-ms",
++                                             &local_error);
++      if (local_error || created_at_ms == 0)
++        goto invalid_record;
++    }
++  else
++    {
++      created_at_ms = grant_file_mtime_ms (path, &local_error);
++      if (local_error || created_at_ms == 0)
++        goto invalid_record;
++    }
++
+   grant->identity = g_steal_pointer (&stored_identity);
+   grant->device_types = device_types;
+   grant->clipboard_enabled = clipboard_enabled;
+   grant->streams = g_steal_pointer (&streams);
++  grant->created_at_ms = created_at_ms;
+   return TRUE;
+ 
+ invalid_record:
+@@ -415,3 +684,418 @@ invalid_record:
+                local_error ? local_error->message : "record does not match its lookup key");
+   return FALSE;
+ }
++
++static GVariant *
++portal_grants_list (gboolean details)
++{
++  GVariantBuilder builder;
++
++  g_variant_builder_init (&builder,
++                          details ? G_VARIANT_TYPE ("a(sssubbt)")
++                                  : G_VARIANT_TYPE ("a(sssubb)"));
++
++  for (GnoblinPortalGrantKind kind = GNOBLIN_PORTAL_GRANT_SCREEN_CAST;
++       kind <= GNOBLIN_PORTAL_GRANT_REMOTE_DESKTOP;
++       kind++)
++    {
++      g_autofree char *directory = NULL;
++      g_autoptr(GDir) dir = NULL;
++      g_autoptr(GError) dir_error = NULL;
++      const char *name;
++
++      directory = g_build_filename (g_get_user_data_dir (),
++                                    "gnoblin",
++                                    "portal-grants",
++                                    grant_kind_name (kind),
++                                    NULL);
++      if (!grant_directories_are_private (kind, &dir_error))
++        {
++          if (dir_error)
++            g_debug ("Ignoring portal grants in %s: %s",
++                     directory,
++                     dir_error->message);
++          continue;
++        }
++
++      dir = g_dir_open (directory, 0, &dir_error);
++      if (!dir)
++        {
++          if (!g_error_matches (dir_error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
++            g_warning ("Failed to read portal grants in %s: %s",
++                       directory,
++                       dir_error->message);
++          continue;
++        }
++
++      while ((name = g_dir_read_name (dir)))
++        {
++          g_autofree char *path = NULL;
++          g_autofree char *contents = NULL;
++          g_autofree char *identity = NULL;
++          g_autoptr(GKeyFile) key_file = NULL;
++          g_autoptr(GError) error = NULL;
++          g_autoptr(GVariant) streams = NULL;
++          g_auto(GnoblinPortalGrant) grant = { 0 };
++          g_autofree char *expected_id = NULL;
++          gsize contents_length;
++
++          if (!grant_id_is_valid (name))
++            continue;
++
++          path = g_build_filename (directory, name, NULL);
++          if (!grant_file_is_private_regular (path, &error))
++            {
++              if (error)
++                g_debug ("Ignoring portal grant %s: %s", path, error->message);
++              continue;
++            }
++
++          if (!g_file_get_contents (path, &contents, &contents_length, &error))
++            {
++              g_debug ("Ignoring unreadable portal grant %s: %s",
++                       path,
++                       error->message);
++              continue;
++            }
++
++          key_file = g_key_file_new ();
++          if (!g_key_file_load_from_data (key_file,
++                                          contents,
++                                          contents_length,
++                                          G_KEY_FILE_NONE,
++                                          &error))
++            {
++              g_debug ("Ignoring invalid portal grant %s: %s", path, error->message);
++              continue;
++            }
++
++          identity = g_key_file_get_string (key_file,
++                                            GRANT_GROUP,
++                                            "identity",
++                                            &error);
++          if (!identity)
++            {
++              g_debug ("Ignoring invalid portal grant %s: %s", path, error->message);
++              continue;
++            }
++
++          expected_id = grant_digest (identity);
++          if (!expected_id || !g_str_has_prefix (name, expected_id))
++            {
++              g_debug ("Ignoring portal grant whose identity does not match %s", name);
++              continue;
++            }
++
++          if (!gnoblin_portal_grant_load (kind, identity, &grant, &error))
++            {
++              if (error)
++                g_debug ("Ignoring invalid portal grant %s: %s", path, error->message);
++              continue;
++            }
++
++          streams = grant.streams
++            ? g_variant_ref (grant.streams)
++            : NULL;
++          if (details)
++            g_variant_builder_add (&builder,
++                                   "(sssubbt)",
++                                   name,
++                                   grant_kind_name (kind),
++                                   grant.identity,
++                                   grant.device_types,
++                                   grant.clipboard_enabled,
++                                   streams != NULL,
++                                   grant.created_at_ms);
++          else
++            g_variant_builder_add (&builder,
++                                   "(sssubb)",
++                                   name,
++                                   grant_kind_name (kind),
++                                   grant.identity,
++                                   grant.device_types,
++                                   grant.clipboard_enabled,
++                                   streams != NULL);
++        }
++    }
++
++  return g_variant_builder_end (&builder);
++}
++
++GVariant *
++gnoblin_portal_grants_list (void)
++{
++  return portal_grants_list (FALSE);
++}
++
++GVariant *
++gnoblin_portal_grants_list_details (void)
++{
++  return portal_grants_list (TRUE);
++}
++
++static gboolean
++portal_grant_revoke_internal (const char  *kind_name,
++                              const char  *id,
++                              gboolean     check_created_at,
++                              guint64      expected_created_at_ms,
++                              GError     **error)
++{
++  GnoblinPortalGrantKind kind;
++  g_autofree char *path = NULL;
++  g_autoptr(GVariant) grants = NULL;
++  GVariantIter iter;
++  const char *listed_id;
++  const char *listed_kind;
++  const char *requester;
++  g_autofree char *listed_identity = NULL;
++  guint32 device_types;
++  gboolean clipboard_enabled;
++  gboolean screen_streams;
++  guint64 created_at_ms;
++  gboolean found = FALSE;
++
++  if (!grant_kind_from_name (kind_name, &kind) || !grant_id_is_valid (id))
++    {
++      g_set_error_literal (error,
++                           G_IO_ERROR,
++                           G_IO_ERROR_INVALID_ARGUMENT,
++                           "Invalid portal grant kind or ID");
++      return FALSE;
++    }
++
++  /* Only revoke entries that passed the same ownership, scope, and record
++   * validation used by ListPortalGrants(). */
++  grants = gnoblin_portal_grants_list_details ();
++  g_variant_iter_init (&iter, grants);
++  while (g_variant_iter_next (&iter,
++                              "(&s&s&subbt)",
++                              &listed_id,
++                              &listed_kind,
++                              &requester,
++                              &device_types,
++                              &clipboard_enabled,
++                              &screen_streams,
++                              &created_at_ms))
++    {
++      if (g_str_equal (listed_id, id) && g_str_equal (listed_kind, kind_name))
++        {
++          if (check_created_at && created_at_ms != expected_created_at_ms)
++            {
++              g_set_error_literal (error,
++                                   G_IO_ERROR,
++                                   G_IO_ERROR_EXISTS,
++                                   "Portal grant record is stale");
++              return FALSE;
++            }
++          listed_identity = g_strdup (requester);
++          found = TRUE;
++          break;
++        }
++    }
++
++  if (!found)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   G_IO_ERROR_NOT_FOUND,
++                   "No valid portal grant: %s/%s",
++                   kind_name,
++                   id);
++      return FALSE;
++    }
++
++  path = grant_id_path (kind, id);
++  if (!grant_directories_are_private (kind, error))
++    {
++      if (error && !*error)
++        g_set_error (error,
++                     G_IO_ERROR,
++                     G_IO_ERROR_NOT_FOUND,
++                     "No such portal grant: %s/%s",
++                     kind_name,
++                     id);
++      return FALSE;
++    }
++
++  if (!grant_file_is_private_regular (path, error))
++    {
++      if (error && !*error)
++        g_set_error (error,
++                     G_IO_ERROR,
++                     G_IO_ERROR_NOT_FOUND,
++                     "No such portal grant: %s/%s",
++                     kind_name,
++                     id);
++      return FALSE;
++    }
++
++  if (check_created_at)
++    {
++      g_auto(GnoblinPortalGrant) current = { 0 };
++
++      /* Re-read and validate the current record immediately before unlink so
++       * an old Lua snapshot cannot revoke a re-consented grant with this ID. */
++      if (!gnoblin_portal_grant_load (kind, listed_identity, &current, error))
++        return FALSE;
++      if (current.created_at_ms != expected_created_at_ms)
++        {
++          gnoblin_portal_grant_clear (&current);
++          g_set_error_literal (error,
++                               G_IO_ERROR,
++                               G_IO_ERROR_EXISTS,
++                               "Portal grant record is stale");
++          return FALSE;
++        }
++      gnoblin_portal_grant_clear (&current);
++    }
++
++  if (g_unlink (path) != 0)
++    {
++      g_set_error (error,
++                   G_IO_ERROR,
++                   g_io_error_from_errno (errno),
++                   "Failed to revoke portal grant %s/%s: %s",
++                   kind_name,
++                   id,
++                   g_strerror (errno));
++      return FALSE;
++    }
++
++  emit_grant_removed (kind_name, id);
++
++  return TRUE;
++}
++
++gboolean
++gnoblin_portal_grant_revoke (const char  *kind_name,
++                             const char  *id,
++                             GError     **error)
++{
++  return portal_grant_revoke_internal (kind_name, id, FALSE, 0, error);
++}
++
++gboolean
++gnoblin_portal_grant_revoke_if_current (const char  *kind_name,
++                                        const char  *id,
++                                        guint64      expected_created_at_ms,
++                                        GError     **error)
++{
++  return portal_grant_revoke_internal (kind_name,
++                                       id,
++                                       TRUE,
++                                       expected_created_at_ms,
++                                       error);
++}
++
++static const char grants_interface_xml[] =
++  "<node>"
++  "  <interface name='org.gnoblin.Portal.Grants'>"
++  "    <method name='ListPortalGrants'>"
++  "      <arg name='grants' type='a(sssubb)' direction='out'/>"
++  "    </method>"
++  "    <method name='ListPortalGrantDetails'>"
++  "      <arg name='grants' type='a(sssubbt)' direction='out'/>"
++  "    </method>"
++  "    <method name='RevokePortalGrant'>"
++  "      <arg name='kind' type='s' direction='in'/>"
++  "      <arg name='id' type='s' direction='in'/>"
++  "    </method>"
++  "    <method name='RevokePortalGrantIfCurrent'>"
++  "      <arg name='kind' type='s' direction='in'/>"
++  "      <arg name='id' type='s' direction='in'/>"
++  "      <arg name='created_at_ms' type='t' direction='in'/>"
++  "    </method>"
++  "    <signal name='GrantAdded'>"
++  "      <arg name='grant' type='(sssubbt)'/>"
++  "    </signal>"
++  "    <signal name='GrantRemoved'>"
++  "      <arg name='id' type='s'/>"
++  "      <arg name='kind' type='s'/>"
++  "    </signal>"
++  "  </interface>"
++  "</node>";
++
++static gboolean
++invocation_is_same_user (GDBusMethodInvocation *invocation)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = NULL;
++  const char *sender;
++  guint32 uid;
++
++  sender = g_dbus_method_invocation_get_sender (invocation);
++  if (!sender || !g_dbus_is_unique_name (sender))
++    return FALSE;
++
++  reply = g_dbus_connection_call_sync (
++    g_dbus_method_invocation_get_connection (invocation),
++    "org.freedesktop.DBus",
++    "/org/freedesktop/DBus",
++    "org.freedesktop.DBus",
++    "GetConnectionUnixUser",
++    g_variant_new ("(s)", sender),
++    G_VARIANT_TYPE ("(u)"),
++    G_DBUS_CALL_FLAGS_NONE,
++    2000,
++    NULL,
++    &error);
++  if (!reply)
++    {
++      g_debug ("Unable to verify portal-grant caller %s: %s",
++               sender,
++               error->message);
++      return FALSE;
++    }
++
++  g_variant_get (reply, "(u)", &uid);
++  return uid == getuid ();
++}
++
++static void
++return_grant_error (GDBusMethodInvocation *invocation,
++                    GError                 *error)
++{
++  const char *name = "org.gnoblin.Portal.Grants.Error.Failed";
++
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT))
++    name = "org.freedesktop.DBus.Error.InvalidArgs";
++  else if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND))
++    name = "org.gnoblin.Portal.Grants.Error.NotFound";
++  else if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_EXISTS))
++    name = "org.gnoblin.Portal.Grants.Error.Stale";
++  else if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED))
++    name = "org.freedesktop.DBus.Error.AccessDenied";
++
++  g_dbus_method_invocation_return_dbus_error (invocation, name, error->message);
++}
++
++static void
++grants_method_call (GDBusConnection       *connection,
++                    const char            *sender,
++                    const char            *object_path,
++                    const char            *interface_name,
++                    const char            *method_name,
++                    GVariant              *parameters,
++                    GDBusMethodInvocation *invocation,
++                    gpointer               user_data)
++{
++  if (!invocation_is_same_user (invocation))
++    {
++      g_dbus_method_invocation_return_dbus_error (
++        invocation,
++        "org.freedesktop.DBus.Error.AccessDenied",
++        "Portal grant management is restricted to the session user");
++      return;
++    }
++
++  if (g_str_equal (method_name, "ListPortalGrants"))
++    {
++      GVariant *grants = gnoblin_portal_grants_list ();
++      g_dbus_method_invocation_return_value (invocation,
++                                             g_variant_new ("(@a(sssubb))", grants));
++      return;
++    }
++
++  if (g_str_equal (method_name, "ListPortalGrantDetails"))
++    {
++      GVariant *grants = gnoblin_portal_grants_list_details ();
++      g_dbus_method_invocation_return_value (invocation,
++                                             g_variant_new ("(@a(sssubbt))", grants));
++      return;
++    }
++
++  if (g_str_equal (method_name, "RevokePortalGrant") ||
++      g_str_equal (method_name, "RevokePortalGrantIfCurrent"))
++    {
++      const char *kind_name;
++      const char *id;
++      guint64 created_at_ms = 0;
++      g_autoptr(GError) error = NULL;
++
++      gboolean check_created_at = g_str_equal (method_name, "RevokePortalGrantIfCurrent");
++      if (check_created_at)
++        g_variant_get (parameters, "(&s&st)", &kind_name, &id, &created_at_ms);
++      else
++        g_variant_get (parameters, "(&s&s)", &kind_name, &id);
++      if (!(check_created_at
++                ? gnoblin_portal_grant_revoke_if_current (kind_name, id, created_at_ms, &error)
++                : gnoblin_portal_grant_revoke (kind_name, id, &error)))
++        {
++          return_grant_error (invocation, error);
++          return;
++        }
++
++      g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
++      return;
++    }
++
++  g_dbus_method_invocation_return_dbus_error (
++    invocation,
++    "org.freedesktop.DBus.Error.UnknownMethod",
++    "Unknown portal grant method");
++}
++
++static const GDBusInterfaceVTable grants_interface_vtable = {
++  .method_call = grants_method_call,
++};
++
++gboolean
++gnoblin_portal_grants_init (GDBusConnection  *connection,
++                            GError          **error)
++{
++  static GDBusNodeInfo *node_info;
++  GDBusInterfaceInfo *interface_info;
++
++  g_return_val_if_fail (G_IS_DBUS_CONNECTION (connection), FALSE);
++
++  if (!node_info)
++    {
++      node_info = g_dbus_node_info_new_for_xml (grants_interface_xml, error);
++      if (!node_info)
++        return FALSE;
++    }
++
++  interface_info = g_dbus_node_info_lookup_interface (node_info,
++                                                       "org.gnoblin.Portal.Grants");
++  if (!g_dbus_connection_register_object (connection,
++                                          "/org/gnoblin/Portal/Grants",
++                                          interface_info,
++                                          &grants_interface_vtable,
++                                          NULL,
++                                          NULL,
++                                          error))
++    return FALSE;
++
++  g_set_object (&management_connection, connection);
++  return TRUE;
++}
+diff --git a/src/gnoblin-portal-grants.h b/src/gnoblin-portal-grants.h
+index b44de85..ff90f7b 100644
+--- a/src/gnoblin-portal-grants.h
++++ b/src/gnoblin-portal-grants.h
+@@ -22,6 +22,8 @@ typedef struct
+   uint32_t device_types;
+   gboolean clipboard_enabled;
+   GVariant *streams;
++  /* Unix milliseconds. Legacy records fall back to their file mtime. */
++  guint64 created_at_ms;
+ } GnoblinPortalGrant;
+ 
+ void gnoblin_portal_grant_clear (GnoblinPortalGrant *grant);
+@@ -43,3 +45,21 @@ gboolean gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+                                      gboolean                 clipboard_enabled,
+                                      GVariant                *streams,
+                                      GError                 **error);
++
++/* Return all valid persisted grants as a(sssubb): id, kind, identity,
++ * device mask, clipboard enabled, and whether screen streams are granted.
++ * Kept for the in-progress API 1.14 consumer.
++ */
++GVariant *gnoblin_portal_grants_list (void);
++
++/* Detailed variant with created_at_ms appended to each record. */
++GVariant *gnoblin_portal_grants_list_details (void);
++
++/* Remove a grant by its opaque filename ID and portal kind. */
++gboolean gnoblin_portal_grant_revoke (const char  *kind_name,
++                                      const char  *id,
++                                      GError     **error);
++gboolean gnoblin_portal_grant_revoke_if_current (const char  *kind_name,
++                                                  const char  *id,
++                                                  guint64      expected_created_at_ms,
++                                                  GError     **error);
++
++/* Export the private, same-session-user management interface on the bus. */
++gboolean gnoblin_portal_grants_init (GDBusConnection  *connection,
++                                     GError          **error);
+diff --git a/src/meson.build b/src/meson.build
+index 76053a8..3bde250 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -111,6 +111,7 @@ sources = built_sources + files(
+   'inputcapture.c',
+   'inputcapturedialog.c',
+   'globalshortcuts.c',
++  'gnoblin-portal-grants.c',
+   'gnoblin-portal-identity.c',
+   'gnomeinputcapture.c',
+   'gnomescreencast.c',
+diff --git a/src/xdg-desktop-portal-gnome.c b/src/xdg-desktop-portal-gnome.c
+index e2f8094..e8aed01 100644
+--- a/src/xdg-desktop-portal-gnome.c
++++ b/src/xdg-desktop-portal-gnome.c
+@@ -63,6 +63,7 @@
+ #include "dynamic-launcher.h"
+ #include "gnoblin-email.h"
+ #include "gnoblin-inhibit.h"
++#include "gnoblin-portal-grants.h"
+ #include "notification.h"
+ #include "usb.h"
+ 
+@@ -125,6 +126,12 @@ on_bus_acquired (GDBusConnection *connection,
+   if (settings_only)
+     return;
+ 
++  if (!gnoblin_portal_grants_init (connection, &error))
++    {
++      g_warning ("error: %s\n", error->message);
++      g_clear_error (&error);
++    }
++
+   if (!file_chooser_init (connection, &error))
+     {
+       g_warning ("error: %s\n", error->message);

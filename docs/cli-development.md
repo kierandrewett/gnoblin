@@ -26,35 +26,51 @@ and a JSON object of arguments:
 { "op": "api", "id": "REQUEST_ID", "method": "workspace.list", "arguments": {} }
 ```
 
-Lua calls the same methods with the same argument objects. The public session
-methods are:
+Lua and CLI calls share the method registry. The CLI maps its actions and
+arguments to canonical methods before dispatch. Typed native window operations
+are dispatched by Mutter; each requires the stable window `id` returned by
+`window.list`. The list below is a method-name index. See the
+[runtime API reference](/config/runtime-api) for each method's arguments,
+accepted values, results, and compatibility limits.
 
-| Group         | Methods                                                                                          |
-| ------------- | ------------------------------------------------------------------------------------------------ |
-| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window` |
-| `window`      | `list`, `match`, `action`                                                                        |
-| `layer`       | `list`                                                                                           |
-| `monitor`     | `list`                                                                                           |
-| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                |
-| `feature`     | `list`, `show`, `enable`, `disable`                                                              |
-| `script`      | `list`                                                                                           |
-| `input`       | `list`, `current`, `select`                                                                      |
-| `privacy`     | `get`                                                                                            |
-| `permissions` | `list`, `check`                                                                                  |
-| `grant`       | `list`, `revoke`                                                                                 |
-| `launch`      | `status`, `begin`, `end`                                                                         |
-| `shell`       | `ping`, `version`, `status`, `reload`                                                            |
-| `config`      | `reload`                                                                                         |
-| `shortcut`    | `capture`                                                                                        |
+| Group         | Methods                                                                                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                              |
+| `window`      | `list`, `match`, `action`, `close`, `minimize`, `toggle_minimize`, `restore`, `set_maximized`, `set_fullscreen`, `set_above`, `set_sticky`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `focus` |
+| `layer`       | `list`                                                                                                                                                                                                        |
+| `monitor`     | `list`                                                                                                                                                                                                        |
+| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                                                                                                                             |
+| `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                                                           |
+| `script`      | `list`                                                                                                                                                                                                        |
+| `input`       | `list`, `current`, `select`                                                                                                                                                                                   |
+| `privacy`     | `get`                                                                                                                                                                                                         |
+| `permissions` | `list`, `check`                                                                                                                                                                                               |
+| `grant`       | `list`, `revoke`                                                                                                                                                                                              |
+| `launch`      | `status`, `begin`, `end`                                                                                                                                                                                      |
+| `shell`       | `ping`, `version`, `status`, `reload`                                                                                                                                                                         |
+| `config`      | `reload`                                                                                                                                                                                                      |
+| `shortcut`    | `list`, `capture`                                                                                                                                                                                             |
 
-`shortcut.capture` accepts `timeout`, an integer from 1 to 60 seconds. The
-CLI defaults to 30 seconds and gives the socket request two extra seconds to
-receive the result. Lua receives an operation ticket and handles completion
-through `gnoblin.api.operation-completed`; see the [Lua runtime API](/config/runtime-api).
+`shortcut.capture` options:
 
-Methods use the `domain.method` form on the socket. Pass either
-`{ "id": "code" }` or `{ "number": 2 }` to select a workspace. Replies
-retain the request ID and return a structured result:
+| Argument  | Type or accepted values      | Default    | Effect                                                                                    |
+| --------- | ---------------------------- | ---------- | ----------------------------------------------------------------------------------------- |
+| `timeout` | Integer from 1 to 60 seconds | 30 seconds | Maximum wait for a shortcut press; the CLI allows two extra seconds for the socket reply. |
+
+Lua receives an operation ticket and handles completion through
+`gnoblin.operation.completed` on native API 1.11. The legacy
+`gnoblin.api.operation-completed` event remains available during migration; see
+the [Lua runtime API](/config/runtime-api).
+
+Methods use the `domain.method` form on the socket. A workspace selector has
+exactly one of these fields:
+
+| Field    | Type or accepted values      | Meaning                                                   |
+| -------- | ---------------------------- | --------------------------------------------------------- |
+| `id`     | String from `workspace.list` | Selects that stable workspace.                            |
+| `number` | Integer from 1 to 1024       | Selects the workspace at that current one-based position. |
+
+Replies retain the request ID and return a structured result:
 
 ```json
 { "event": "reply", "id": "REQUEST_ID", "result": { "workspaces": [] } }
@@ -95,20 +111,38 @@ payload fields and selector values.
 
 ## Change a window
 
-The `window` command's `action` selects an operation such as `"move"`. See the
-[`gnoblinctl` window reference](/gnoblinctl#window-actions) for all actions.
+For a typed native operation, call its canonical `window.*` method and pass a
+stable string `id`. The CLI maps each supported action to its canonical method,
+including `toggle-minimize` to `toggle_minimize`. `restore-or-minimize` stays
+on the legacy action route because it also restores maximized or snapped
+windows.
 
-`window` is a stable string ID from a previous list. For `"move"`, `x` and
+Setters take an `enabled` boolean. Move takes `x` and `y`; resize takes `width`
+and `height`.
+
+Workspace moves take a `workspace` selector with either an `id` or `number`.
+Typed monitor moves take the connector ID from `monitor.list()`.
+`window.action` keeps its numeric monitor index for compatibility.
+
+`window.action` remains the compatibility route for `active`, focus, menu, and
+interactive move or resize. Typed methods require an ID and do not provide the
+verified activation context or pointer interaction needed by those actions.
+`toggle-minimize` also requires an ID because the compatibility route does not
+implement its semantics.
+See the [`gnoblinctl` window reference](/gnoblinctl#window-actions) for CLI
+arguments and ranges.
+
+`window` is a stable string ID from a previous list. For `window.move`, `x` and
 `y` are logical desktop-pixel coordinates:
 
 ```json
-{ "op": "command", "id": "move-1", "command": "window", "action": "move", "window": "42", "x": 100, "y": 80 }
+{ "op": "api", "id": "move-1", "method": "window.move", "arguments": { "id": "42", "x": 100, "y": 80 } }
 ```
 
 Reply:
 
 ```json
-{ "event": "reply", "id": "move-1", "result": { "ok": true, "pending": true, "window": "42", "action": "move" } }
+{ "event": "reply", "id": "move-1", "result": { "id": "42" } }
 ```
 
 If the session is locked:
@@ -118,8 +152,8 @@ If the session is locked:
 ```
 
 Match replies to the request `id`. Other events can arrive between them.
-`pending` acknowledges the request; read the next window snapshot for its result.
-The CLI prints the inner `result`, not the socket envelope.
+The API reply contains the affected stable ID. The CLI prints the inner
+`result`, not the socket envelope.
 
 ## Tests
 

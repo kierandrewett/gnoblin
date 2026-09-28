@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] mutter: route Lua launch operations to native control
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index c65b54fea..cc1bb0bf6 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -909,7 +909,12 @@ meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display)
+               continue;
+             }
+ 
+-          if (g_str_equal (method, "input.select"))
++          if (g_str_equal (method, "launch.status") ||
++              g_str_equal (method, "launch.begin") ||
++              g_str_equal (method, "launch.end"))
++            result = gnoblin_native_control_dispatch_launch (display, method,
++                                                             arguments, &error);
++          else if (g_str_equal (method, "input.select"))
+             {
+               if (gnoblin_native_control_select_input_source (display, arguments,
+                                                                request_id, method,

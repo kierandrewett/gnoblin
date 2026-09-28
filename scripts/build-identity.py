@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Write the identity of the Gnoblin sources used for an installation."""
 
+import argparse
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -66,6 +66,33 @@ identity = {
     "gitRemote": remote,
     "sourceModified": source_modified,
 }
-if len(sys.argv) != 2:
-    raise SystemExit("usage: build-identity.py <output>")
-Path(sys.argv[1]).write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+
+
+def key_file_value(value):
+    """Escape one string using the GLib KeyFile value escapes."""
+    value = str(value)
+    value = value.replace("\\", "\\\\").replace("\n", "\\n")
+    value = value.replace("\r", "\\r").replace("\t", "\\t")
+    if value.startswith(" "):
+        value = "\\s" + value[1:]
+    return value
+
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("output", help="write the existing JSON build identity here")
+parser.add_argument("--ini-output", help="also write GLib KeyFile runtime metadata here")
+arguments = parser.parse_args()
+Path(arguments.output).write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
+
+if arguments.ini_output:
+    metadata = ["[version]"]
+    fields = {
+        "gnoblin": identity.get("version"),
+        "gnome": identity.get("gnomeVersion"),
+        "mutter": identity.get("components", {}).get("mutter"),
+        "git_remote": identity.get("gitRemote"),
+        "git_sha": identity.get("gitSha"),
+        "build_id": identity.get("buildId"),
+    }
+    metadata.extend(f"{name}={key_file_value(value)}" for name, value in fields.items() if value is not None)
+    Path(arguments.ini_output).write_text("\n".join(metadata) + "\n")

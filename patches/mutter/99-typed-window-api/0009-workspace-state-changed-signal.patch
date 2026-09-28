@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] emit a Gnoblin workspace state change signal
+
+---
+diff --git a/src/core/meta-workspace-manager.c b/src/core/meta-workspace-manager.c
+index 35ee92a50..f3486df99 100644
+--- a/src/core/meta-workspace-manager.c
++++ b/src/core/meta-workspace-manager.c
+@@ -43,6 +43,7 @@ enum
+   WORKSPACE_SWITCHED,
+   WORKSPACES_REORDERED,
+   ACTIVE_WORKSPACE_CHANGED,
++  GNOBLIN_WORKSPACE_STATE_CHANGED,
+   SHOWING_DESKTOP_CHANGED,
+   LAST_SIGNAL
+ };
+@@ -162,6 +163,13 @@ meta_workspace_manager_class_init (MetaWorkspaceManagerClass *klass)
+                   0, NULL, NULL, NULL,
+                   G_TYPE_NONE, 0);
+ 
++  workspace_manager_signals[GNOBLIN_WORKSPACE_STATE_CHANGED] =
++    g_signal_new ("gnoblin-workspace-state-changed",
++                  G_TYPE_FROM_CLASS (klass),
++                  G_SIGNAL_RUN_LAST,
++                  0, NULL, NULL, NULL,
++                  G_TYPE_NONE, 0);
++
+   workspace_manager_signals[SHOWING_DESKTOP_CHANGED] =
+     g_signal_new ("showing-desktop-changed",
+                   G_TYPE_FROM_CLASS (klass),
+diff --git a/src/core/util.c b/src/core/util.c
+index a423bd785..9870549ea 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1196,6 +1196,7 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+                               g_strdup (name), g_free);
+       if (activate)
+         meta_workspace_activate (workspace, meta_display_get_current_time (display));
++      g_signal_emit_by_name (manager, "gnoblin-workspace-state-changed");
+       return gnoblin_native_workspace_record (manager, workspace);
+     }
+   if (count < 1)
+@@ -1224,6 +1225,7 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+             }
+           g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
+                                   g_strdup (name), g_free);
++          g_signal_emit_by_name (manager, "gnoblin-workspace-state-changed");
+           return gnoblin_native_workspace_record (manager, workspace);
+         }
+       if (g_str_equal (method, "workspace.remove"))

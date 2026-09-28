@@ -1,5 +1,9 @@
 xdg-desktop-portal-gnome gnoblin-portal-policy.c src/gnoblin-portal-policy.c
 xdg-desktop-portal-gnome gnoblin-portal-policy.h src/gnoblin-portal-policy.h
+mutter gnoblin-portal-policy.c src/wayland/gnoblin-portal-policy.c
+mutter gnoblin-portal-policy.h src/wayland/gnoblin-portal-policy.h
+mutter gnoblin-portal-identity.c src/wayland/gnoblin-portal-identity.c
+mutter gnoblin-portal-identity.h src/wayland/gnoblin-portal-identity.h
 xdg-desktop-portal-gnome gnoblin-filechooser.c src/gnoblin-filechooser.c
 xdg-desktop-portal-gnome gnoblin-email.c src/gnoblin-email.c
 xdg-desktop-portal-gnome gnoblin-email.h src/gnoblin-email.h

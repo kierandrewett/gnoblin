@@ -1,0 +1,145 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] core: add early native shortcut capture hook
+
+---
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+index 946015818..d05087e11 100644
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -75,6 +75,12 @@ struct _MetaDisplay
+ 
+   int clutter_event_filter;
+ 
++  void (*native_key_capture_handler) (const ClutterEvent *event,
++                                      gpointer            user_data);
++  gpointer native_key_capture_data;
++  GDestroyNotify native_key_capture_destroy;
++  gboolean native_key_capture_active;
++
+   /* Our best guess as to the "currently" focused window (that is, the
+    * window that we expect will be focused at the point when the X
+    * server processes our next request), and the serial of the request
+diff --git a/src/core/events.c b/src/core/events.c
+index 2fa7b83fa..70696957f 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -158,6 +158,21 @@ meta_display_handle_event (MetaDisplay        *display,
+     return CLUTTER_EVENT_STOP;
+ #endif
+ 
++  /* Shortcut capture must run after the session-lock embargo, but before
++   * captured input, accessibility, text input, global keybindings, or
++   * Wayland delivery can observe these keys. */
++  if (IS_KEY_EVENT (event_type) &&
++      display->native_key_capture_active
++#ifdef HAVE_WAYLAND
++      && (!wayland_compositor ||
++          !meta_wayland_session_lock_is_active (wayland_compositor))
++#endif
++      )
++    {
++      display->native_key_capture_handler (event, display->native_key_capture_data);
++      return CLUTTER_EVENT_STOP;
++    }
++
+   if (meta_display_process_captured_input (display, event))
+     return CLUTTER_EVENT_STOP;
+ 
+@@ -379,6 +394,72 @@ meta_display_init_events (MetaDisplay *display)
+ void
+ meta_display_free_events (MetaDisplay *display)
+ {
++  meta_display_unregister_native_key_capture_handler (
++    display, display->native_key_capture_data);
+   clutter_event_remove_filter (display->clutter_event_filter);
+   display->clutter_event_filter = 0;
+ }
++
++gboolean
++meta_display_register_native_key_capture_handler (MetaDisplay                     *display,
++                                                   MetaDisplayNativeKeyCaptureFunc  callback,
++                                                   gpointer                         user_data,
++                                                   GDestroyNotify                   destroy)
++{
++  g_return_val_if_fail (META_IS_DISPLAY (display), FALSE);
++  g_return_val_if_fail (callback != NULL, FALSE);
++
++  if (display->native_key_capture_handler)
++    return FALSE;
++
++  display->native_key_capture_handler = callback;
++  display->native_key_capture_data = user_data;
++  display->native_key_capture_destroy = destroy;
++
++  return TRUE;
++}
++
++void
++meta_display_unregister_native_key_capture_handler (MetaDisplay *display,
++                                                    gpointer     user_data)
++{
++  GDestroyNotify destroy;
++  gpointer callback_data;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  if (!display->native_key_capture_handler ||
++      display->native_key_capture_data != user_data)
++    return;
++
++  display->native_key_capture_active = FALSE;
++  display->native_key_capture_handler = NULL;
++  callback_data = display->native_key_capture_data;
++  display->native_key_capture_data = NULL;
++  destroy = display->native_key_capture_destroy;
++  display->native_key_capture_destroy = NULL;
++
++  if (destroy)
++    destroy (callback_data);
++}
++
++gboolean
++meta_display_start_native_key_capture (MetaDisplay *display)
++{
++  g_return_val_if_fail (META_IS_DISPLAY (display), FALSE);
++
++  if (!display->native_key_capture_handler ||
++      display->native_key_capture_active)
++    return FALSE;
++
++  display->native_key_capture_active = TRUE;
++  return TRUE;
++}
++
++void
++meta_display_stop_native_key_capture (MetaDisplay *display)
++{
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  display->native_key_capture_active = FALSE;
++}
+diff --git a/src/core/events.h b/src/core/events.h
+index 590b85650..c4efb581c 100644
+--- a/src/core/events.h
++++ b/src/core/events.h
+@@ -34,3 +34,18 @@
+ 
+ void meta_display_init_events (MetaDisplay *display);
+ void meta_display_free_events (MetaDisplay *display);
++
++/* Native shortcut capture runs before normal-session keyboard consumers.
++ * While active, every key press and release is delivered to the registered
++ * handler and consumed. Other event types continue through normal handling. */
++typedef void (* MetaDisplayNativeKeyCaptureFunc) (const ClutterEvent *event,
++                                                  gpointer           user_data);
++
++gboolean meta_display_register_native_key_capture_handler (MetaDisplay                     *display,
++                                                            MetaDisplayNativeKeyCaptureFunc  callback,
++                                                            gpointer                         user_data,
++                                                            GDestroyNotify                   destroy);
++void meta_display_unregister_native_key_capture_handler (MetaDisplay *display,
++                                                         gpointer     user_data);
++gboolean meta_display_start_native_key_capture (MetaDisplay *display);
++void meta_display_stop_native_key_capture (MetaDisplay *display);

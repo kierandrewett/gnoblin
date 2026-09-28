@@ -32,6 +32,7 @@ gnoblin_env_validate_libdir "$LIBDIR" || exit
 IDLE_BINARY="${GNOBLIN_IDLE_BINARY:?Build the session with ./build.sh}"
 GNOBLINCTL_BINARY="${GNOBLINCTL_BINARY:?Build the session with ./build.sh}"
 GNOBLIN_IDENTITY_FILE="${GNOBLIN_IDENTITY_FILE:?Build the session with ./build.sh}"
+GNOBLIN_VERSION_METADATA_FILE="${GNOBLIN_VERSION_METADATA_FILE:?Build the session with ./build.sh}"
 
 # A prior development install may have included GNOME's extension manager,
 # captive-network portal helper, calendar server, or test tools.
@@ -140,5 +141,6 @@ glib-compile-schemas "$INSTALL_PREFIX/share/glib-2.0/schemas"
 # The gnoblinctl CLI (org.gnoblin.Shell control front-end).
 install -Dm755 "$GNOBLINCTL_BINARY" "$INSTALL_PREFIX/bin/gnoblinctl"
 install -Dm644 "$GNOBLIN_IDENTITY_FILE" "$INSTALL_PREFIX/share/gnoblin/version.json"
+install -Dm644 "$GNOBLIN_VERSION_METADATA_FILE" "$INSTALL_PREFIX/share/gnoblin/version.ini"
 
 echo "Session data installed in $PREFIX"

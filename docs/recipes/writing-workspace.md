@@ -66,32 +66,34 @@ local requests = {}
 gnoblin.on("gnoblin.workspace.activated", function(event)
     if event.id ~= "review" or checking or creating then return end
     checking = true
-    requests[gnoblin.workspace.list()] = "list"
+    local operation = gnoblin.workspace.list()
+    requests[operation.id] = "list"
 end)
 
-gnoblin.on("gnoblin.api.operation-completed", function(event)
-    local operation = requests[event.request_id]
+gnoblin.on("gnoblin.operation.completed", function(event)
+    local operation = requests[event.operation_id]
     if not operation then return end
-    requests[event.request_id] = nil
+    requests[event.operation_id] = nil
 
     if not event.ok then
         checking = false
         creating = false
-        print("Workspace action failed: " .. event.error)
+        print("Workspace action failed: " .. event.error.message)
         return
     end
 
     if operation == "list" then
         checking = false
-        for _, workspace in ipairs(event.result.workspaces) do
+        for _, workspace in ipairs(event.value.workspaces) do
             if workspace.id == "review-session" then return end
         end
 
         creating = true
-        requests[gnoblin.workspace.create {
+        local create = gnoblin.workspace.create {
             id = "review-session",
             name = "Review session",
-        }] = "create"
+        }
+        requests[create.id] = "create"
     else
         creating = false
     end
@@ -99,7 +101,7 @@ end)
 ```
 
 Workspace calls enqueue work and return a request ID. Gnoblin later sends the
-`gnoblin.api.operation-completed` event; the example uses its result before
+`gnoblin.operation.completed` event; the example uses its result before
 creating the workspace. See [Lua events](/config/lua-events) for event payloads
 and callback rules.
 

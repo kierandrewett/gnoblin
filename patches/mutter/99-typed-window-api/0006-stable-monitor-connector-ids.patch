@@ -1,0 +1,217 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: use stable connector IDs for monitor operations
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 125bcb154..5ffec8283 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -43,6 +43,9 @@
+ #include "meta/main.h"
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
++#include "meta/meta-logical-monitor.h"
++#include "meta/meta-monitor-manager.h"
++#include "meta/meta-monitor.h"
+ #include "meta/meta-workspace-manager.h"
+ #include "meta/prefs.h"
+ #include "meta/window.h"
+@@ -1312,6 +1315,109 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+   return gnoblin_native_workspace_record (manager, workspace);
+ }
+ 
++static gboolean gnoblin_native_variant_has_only_keys (GVariant          *arguments,
++                                                       const char * const *allowed,
++                                                       GError            **error);
++
++static char *
++gnoblin_native_monitor_id_for_index (MetaDisplay *display,
++                                     int          monitor_index)
++{
++  MetaBackend *backend =
++    meta_context_get_backend (meta_display_get_context (display));
++  MetaMonitorManager *manager = meta_backend_get_monitor_manager (backend);
++  GList *logical_monitors = meta_monitor_manager_get_logical_monitors (manager);
++
++  for (GList *item = logical_monitors; item; item = item->next)
++    {
++      MetaLogicalMonitor *logical_monitor = item->data;
++      GList *monitors;
++      const char *canonical_connector = NULL;
++
++      if (meta_logical_monitor_get_number (logical_monitor) != monitor_index)
++        continue;
++
++      monitors = meta_logical_monitor_get_monitors (logical_monitor);
++      for (GList *monitor_item = monitors;
++           monitor_item;
++           monitor_item = monitor_item->next)
++        {
++          MetaMonitor *monitor = monitor_item->data;
++          const char *connector;
++
++          if (!meta_monitor_is_active (monitor))
++            continue;
++          connector = meta_monitor_get_connector (monitor);
++          if (connector && *connector &&
++              (!canonical_connector ||
++               g_strcmp0 (connector, canonical_connector) < 0))
++            canonical_connector = connector;
++        }
++
++      return canonical_connector ? g_strdup (canonical_connector) : NULL;
++    }
++
++  return NULL;
++}
++
++static int
++gnoblin_native_monitor_selector_resolve (MetaDisplay *display,
++                                         GVariant    *arguments,
++                                         GError     **error)
++{
++  static const char * const monitor_selector_keys[] = { "id", NULL };
++  g_autoptr (GVariant) selector =
++    g_variant_lookup_value (arguments, "monitor", NULL);
++  const char *monitor_id = NULL;
++  MetaBackend *backend =
++    meta_context_get_backend (meta_display_get_context (display));
++  MetaMonitorManager *manager = meta_backend_get_monitor_manager (backend);
++  int monitor_index;
++
++  if (selector && g_variant_is_of_type (selector, G_VARIANT_TYPE_STRING))
++    monitor_id = g_variant_get_string (selector, NULL);
++  else if (selector &&
++           g_variant_is_of_type (selector, G_VARIANT_TYPE_VARDICT) &&
++           gnoblin_native_variant_has_only_keys (selector,
++                                                 monitor_selector_keys,
++                                                 error))
++    g_variant_lookup (selector, "id", "&s", &monitor_id);
++  else
++    {
++      if (error && !*error)
++        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                             "window.move_to_monitor requires a monitor ID or {id = string}");
++      return -1;
++    }
++
++  if (!monitor_id || !*monitor_id)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window.move_to_monitor requires a nonempty monitor ID");
++      return -1;
++    }
++
++  monitor_index =
++    meta_monitor_manager_get_monitor_for_connector (manager, monitor_id);
++  if (monitor_index < 0 || monitor_index >= meta_display_get_n_monitors (display))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "monitor ID is no longer available");
++      return -1;
++    }
++
++  g_autofree char *canonical_id =
++    gnoblin_native_monitor_id_for_index (display, monitor_index);
++  if (!canonical_id || !g_str_equal (canonical_id, monitor_id))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "monitor ID no longer identifies a listed monitor");
++      return -1;
++    }
++
++  return monitor_index;
++}
++
+ static GVariant *
+ gnoblin_native_window_list (MetaDisplay *display,
+                             GVariant    *arguments,
+@@ -1448,8 +1554,13 @@ gnoblin_native_window_list (MetaDisplay *display,
+       g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (monitor_index));
+       if (monitor_index >= 0 && monitor_index < meta_display_get_n_monitors (display))
+         {
++          g_autofree char *monitor_id =
++            gnoblin_native_monitor_id_for_index (display, monitor_index);
+           MtkRectangle monitor_geometry;
+           GVariantBuilder monitor;
++          if (monitor_id)
++            g_variant_builder_add (&entry, "{sv}", "monitorId",
++                                   g_variant_new_string (monitor_id));
+           meta_display_get_monitor_geometry (display, monitor_index,
+                                              &monitor_geometry);
+           g_variant_builder_init (&monitor, G_VARIANT_TYPE_VARDICT);
+@@ -1693,6 +1804,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+   MetaWindow *window;
+   const char *id = NULL;
+   gboolean enabled = FALSE;
++  int monitor_index = -1;
+   guint32 stable_sequence;
+   GVariantBuilder result;
+   g_autofree char *stable_id = NULL;
+@@ -1808,14 +1920,10 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+     }
+   if (allowed == monitor_keys)
+     {
+-      gint64 monitor;
+-      if (!g_variant_lookup (arguments, "monitor", "x", &monitor) ||
+-          monitor < 0 || monitor >= meta_display_get_n_monitors (display))
+-        {
+-          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+-                               "window.move_to_monitor requires an available monitor index");
+-          return NULL;
+-        }
++      monitor_index =
++        gnoblin_native_monitor_selector_resolve (display, arguments, error);
++      if (monitor_index < 0)
++        return NULL;
+     }
+ 
+   backend = meta_context_get_backend (meta_display_get_context (display));
+@@ -1966,15 +2074,13 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+     }
+   else if (g_str_equal (method, "window.move_to_monitor"))
+     {
+-      gint64 monitor;
+-      g_variant_lookup (arguments, "monitor", "x", &monitor);
+       if (!meta_window_allows_move (window))
+         {
+           g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                                "window cannot be moved");
+           return NULL;
+         }
+-      meta_window_move_to_monitor (window, (int) monitor);
++      meta_window_move_to_monitor (window, monitor_index);
+     }
+ 
+   g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
+@@ -2050,14 +2156,27 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+   n_monitors = meta_display_get_n_monitors (display);
+   primary = meta_display_get_primary_monitor (display);
+   g_variant_builder_init (&monitors, G_VARIANT_TYPE ("aa{sv}"));
++  g_autoptr (GHashTable) monitor_ids =
++    g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+   for (int index = 0; index < n_monitors; index++)
+     {
+       GVariantBuilder monitor;
+       MtkRectangle geometry;
++      g_autofree char *monitor_id =
++        gnoblin_native_monitor_id_for_index (display, index);
++
++      if (!monitor_id || g_hash_table_contains (monitor_ids, monitor_id))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                               "a listed monitor has no unique active connector ID");
++          return NULL;
++        }
++      g_hash_table_add (monitor_ids, g_strdup (monitor_id));
+ 
+       meta_display_get_monitor_geometry (display, index, &geometry);
+       g_variant_builder_init (&monitor, G_VARIANT_TYPE_VARDICT);
+-      g_variant_builder_add (&monitor, "{sv}", "id", g_variant_new_int32 (index));
++      g_variant_builder_add (&monitor, "{sv}", "id", g_variant_new_string (monitor_id));
++      g_variant_builder_add (&monitor, "{sv}", "index", g_variant_new_int32 (index));
+       g_variant_builder_add (&monitor, "{sv}", "x", g_variant_new_int32 (geometry.x));
+       g_variant_builder_add (&monitor, "{sv}", "y", g_variant_new_int32 (geometry.y));
+       g_variant_builder_add (&monitor, "{sv}", "width", g_variant_new_int32 (geometry.width));

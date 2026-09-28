@@ -1,0 +1,36 @@
+From 375ebb4ed607d2aca6ba9b713053eb4265656d0b Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: dispatch trusted interactive window grabs
+
+---
+ src/core/util.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/core/util.c b/src/core/util.c
+index 3b52f16f0..61d7d7dbb 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -901,6 +901,19 @@ meta_gnoblin_drain_config_runtime_operations (void)
+                 g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                      "window.focus requires a live one-use shortcut context");
+             }
++          else if (g_str_equal (method, "window.begin_move") ||
++                   g_str_equal (method, "window.begin_resize"))
++            {
++              guint64 context_handle = 0;
++              guint64 generation = 0;
++              if (gnoblin_config_take_focus_context (request_id, &context_handle,
++                                                     &generation))
++                result = gnoblin_native_control_begin_window_grab (
++                  display, method, arguments, context_handle, generation, &error);
++              else
++                g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                                     "interactive window operation requires a live one-use shortcut context");
++            }
+           else
+             result = meta_gnoblin_dispatch_native_api (display, method,
+                                                        arguments, &error);
+-- 
+2.55.0
+

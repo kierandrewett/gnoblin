@@ -1,5 +1,6 @@
 /* Shared Lua configuration loading and native setting accessors. */
 #include "gnoblin-config.h"
+#include "gnoblin-portal-policy.h"
 
 #include <errno.h>
 #include <glib/gstdio.h>
@@ -31,6 +32,8 @@ static GPtrArray* ensure_section(GHashTable* sections, const char* name) {
 }
 
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
+    if (!gnoblin_permission_policy_validate(document, error))
+        return FALSE;
     g_autoptr(GVariant) workspaces = g_variant_lookup_value(document, "workspaces", NULL);
     if (workspaces) {
         gboolean valid = g_variant_is_of_type(workspaces, G_VARIANT_TYPE("av")) &&

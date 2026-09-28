@@ -183,6 +183,7 @@ def parser():
     permissions = add(commands, "permissions", "Inspect portal permission policy")
     permission_actions = permissions.add_subparsers(dest="action")
     add(permission_actions, "list", "Show rules, supported capabilities and configuration path")
+    add(permission_actions, "policy", "Show the committed policy with its revision")
     check = add(permission_actions, "check", "Explain the effective decision for a namespaced identity")
     check.add_argument("capability")
     check.add_argument("identity", help="app-id:com.example.App or host-exe:/usr/bin/app")
@@ -248,8 +249,9 @@ def parser():
     add(layer_actions, "list", "List layer surfaces and their rule namespaces")
     completion = add(commands, "completion", "Print shell completion setup")
     completion.add_argument("shell", choices=["bash", "zsh", "fish"])
-    shortcut = add(commands, "shortcut", "Capture a keyboard shortcut as a GTK accelerator")
+    shortcut = add(commands, "shortcut", "List configured shortcuts and capture key combinations")
     shortcut_actions = shortcut.add_subparsers(dest="action", metavar="ACTION")
+    add(shortcut_actions, "list", "List shortcuts registered by the native compositor")
     add(shortcut_actions, "capture", "Capture one key combination and print its GTK accelerator")
     config = add(commands, "config", "Show the default or manage the active configuration")
     config_actions = config.add_subparsers(dest="action")
@@ -378,12 +380,13 @@ def user_config_path():
     return directory / "init.lua"
 
 
-def compositor(request, path, timeout=5):
+def compositor(request, path, timeout=5, wait_for_operation=None):
     identity = uuid.uuid4().hex
     deadline = time.monotonic() + timeout
     payload = dict(request)
     payload.setdefault("op", "command")
     payload["id"] = identity
+    operation_request_id = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
         try:
@@ -413,6 +416,25 @@ def compositor(request, path, timeout=5):
                     raise CommandError("Invalid compositor response") from None
                 if not isinstance(response, dict):
                     raise CommandError("Invalid compositor response")
+                completion_event = response.get("event")
+                is_legacy_completion = completion_event == "gnoblin.api.operation-completed"
+                is_canonical_completion = completion_event == "gnoblin.operation.completed"
+                completion_id = response.get("request_id" if is_legacy_completion else "operation_id")
+                if (
+                    operation_request_id is not None
+                    and (is_legacy_completion or is_canonical_completion)
+                    and response.get("method") == wait_for_operation
+                    and completion_id == operation_request_id
+                ):
+                    if response.get("ok") is not True:
+                        error = response.get("error", "Operation failed")
+                        if isinstance(error, dict):
+                            error = error.get("message", "Operation failed")
+                        raise CommandError(error if isinstance(error, str) else "Operation failed")
+                    result = response.get("result" if is_legacy_completion else "value")
+                    if not isinstance(result, dict):
+                        raise CommandError("Invalid operation completion")
+                    return result
                 if response.get("id") != identity:
                     continue
                 if response.get("event") == "error":
@@ -420,15 +442,36 @@ def compositor(request, path, timeout=5):
                 if response.get("event") == "reply":
                     if not isinstance(response.get("result"), dict):
                         raise CommandError("Invalid compositor response")
+                    if wait_for_operation:
+                        result = response["result"]
+                        request_id = result.get("request_id")
+                        if (
+                            result.get("method") != wait_for_operation
+                            or not isinstance(request_id, int)
+                            or isinstance(request_id, bool)
+                            or request_id <= 0
+                        ):
+                            raise CommandError("Invalid operation descriptor")
+                        operation_request_id = request_id
+                        continue
                     return response["result"]
 
 
 def api_call(method, arguments, path, timeout=5):
     """Call a canonical Gnoblin session API operation through the bridge."""
+    request = {"op": "api", "method": method, "arguments": arguments}
+    if method == "shortcut.capture":
+        request["api_version"] = {"major": 1, "minor": 8}
+    elif method == "shortcut.list":
+        request["api_version"] = {"major": 1, "minor": 9}
+    elif method in {"grant.list", "grant.revoke"}:
+        request["api_version"] = {"major": 1, "minor": 14}
+        timeout += 6  # Allow the portal backend's five-second async call to finish.
     return compositor(
-        {"op": "api", "method": method, "arguments": arguments},
+        request,
         path,
         timeout,
+        wait_for_operation=method if method in {"shortcut.capture", "grant.list", "grant.revoke"} else None,
     )
 
 
@@ -438,6 +481,8 @@ def dispatch(args, cli):
         return str(user_config_path())
     if cmd == "shortcut" and args.action == "capture":
         return capture_accelerator(args.timeout, args.socket)
+    if cmd == "shortcut" and args.action == "list":
+        return api_call("shortcut.list", {}, args.socket, args.timeout)
 
     def workspace_selector(workspace_id=None, workspace_number=None):
         if workspace_id is not None:

@@ -9,6 +9,8 @@ dialogs apply.
 
 These rules use Gnoblin's portal backend, built by `./build.sh` and selected for
 registered Gnoblin sessions. They have no effect in a stock GNOME session.
+During a Gnoblin session, the native compositor evaluates the committed policy
+for portal requests. The shell does not make permission decisions.
 Changes apply to new requests;
 an existing screen share stays connected.
 

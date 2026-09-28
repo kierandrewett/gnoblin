@@ -1745,7 +1745,7 @@ export class ConfigFile {
     }
 
     wantsEvent(event) {
-        return Boolean(this._events.has(event) || this._events.has("*"));
+        return event === "gnoblin.api.operation-completed" || this._events.has(event) || this._events.has("*");
     }
 
     hasMutterEventListeners() {

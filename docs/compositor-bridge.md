@@ -16,12 +16,210 @@ not need to be installed under `~/.config/gnoblin/scripts/`.
 
 The native compositor preview started with `mutter --gnoblin-config PATH` has
 a limited endpoint at the same socket path. It sends `hello` with an empty
-`features` list and accepts multiple API requests on one connection for ping,
-monitor and window listing, workspace management by ID or number, and basic window
-actions. Send `{"op":"windows"}` to receive an initial window snapshot
-and updated snapshots when windows change.
+`features` list and accepts multiple API requests on one connection. It
+supports ping, window, monitor, layer, input-device, and XKB input-source
+listing, workspace management by ID or number, and basic window actions.
 
-The preview does not provide other subscriptions, bindings, or Shell commands.
+The greeting lists the methods, events, and capabilities available in the
+preview. `monitor.list` returns active connector names as IDs and the current
+numeric `index` used by compatibility actions. For a logical monitor that
+combines cloned outputs, Gnoblin uses the lexicographically first active
+connector.
+
+`layer.list` returns layer-shell surfaces with stable IDs, layer placement,
+anchor, exclusive zone, keyboard-interactivity mode, geometry, and their
+optional title and namespace. Each record includes `revision`; layer surfaces
+do not have application IDs in the layer-shell protocol.
+
+Send `{"op":"windows"}` to receive an initial snapshot and later snapshots as
+windows change. Each snapshot has a monotonically increasing `revision` shared
+by window, workspace, monitor, layer, and input-device state.
+
+Send `{"op":"monitors"}` to receive the current monitor snapshot and later
+snapshots when monitor state changes. A monitor snapshot has
+`event: "monitors"`, a `monitors` array, and the current state `revision`.
+
+Native monitor records include geometry, primary status, scale, index, and a
+record revision. Only active logical monitors are listed. For cloned outputs,
+the connector ID uses the first active connector alphabetically. An ID remains
+usable while its monitor is listed; request another snapshot after outputs
+change.
+
+API version 1.1 subscriptions receive window, workspace, and monitor
+lifecycle messages. `hello.events` lists available messages, and
+`hello.capabilities` includes `window-lifecycle-events`,
+`workspace-lifecycle-events`, and `monitor-lifecycle-events`.
+
+API version 1.2 adds `layer.list` and the `layer-list` capability. Its optional
+`monitor_id`, `namespace`, and `layer` arguments are exact string filters. Layer
+snapshots use the same state revision as window, workspace, and monitor
+snapshots. The preview does not send layer lifecycle events.
+Request API version 1.2 when calling `layer.list`; older or versionless
+requests receive an unsupported-version error. For example:
+
+```json
+{ "op": "api", "id": "layers", "api_version": { "major": 1, "minor": 2 }, "method": "layer.list", "arguments": {} }
+```
+
+### API versions 1.3 and 1.4: input devices
+
+API version 1.3 adds `input.devices` and the `input-device-list` capability.
+The method takes an empty `arguments` object and returns `{devices, revision}`.
+Each device record also has a `revision`.
+
+API 1.3 returns a one-time snapshot.
+
+At API 1.4, `input.devices` also subscribes the connection after returning its
+initial snapshot. The greeting advertises `input-device-lifecycle-events` and
+the two event names. The subscription lasts until the connection closes.
+
+Each event has `revision`, `sequence`, and monotonic `time`. Added events
+include `device`; removed events include `device_id` and the final `last`
+record.
+
+Device IDs are stable only for the current compositor session. Device records
+do not expose device paths or `enabled`; Mutter has no safe enabled-state
+getter. Input-device changes advance the shared state revision. Request API
+version 1.4 to receive lifecycle events:
+
+```json
+{
+    "op": "api",
+    "id": "input-devices",
+    "api_version": { "major": 1, "minor": 4 },
+    "method": "input.devices",
+    "arguments": {}
+}
+```
+
+### API version 1.5: shortcut actions
+
+API version 1.5 adds `shortcut.actions` to list built-in Mutter and window
+manager shortcut actions without GNOME Shell. Its optional `group` argument
+accepts `wm`, `mutter`, or `wayland`. Omit it to list all installed groups.
+
+Each result record contains `id`, `group`, `key`, and `default_bindings`. A
+record also contains `description` when the schema provides one. Bindings come
+from installed GSettings schema defaults and do not reflect user-overridden
+bindings. Request API version 1.5:
+
+```json
+{
+    "op": "api",
+    "id": "shortcut-actions",
+    "api_version": { "major": 1, "minor": 5 },
+    "method": "shortcut.actions",
+    "arguments": { "group": "mutter" }
+}
+```
+
+### API version 1.9: configured shortcuts
+
+API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
+shortcuts configured for the native compositor. Each record contains `name`,
+`binding`, `enabled`, `trigger`, and `revision`.
+
+A record also contains a `command` argument array or an `action` identifier.
+One binding is returned as a string; multiple bindings are returned as an
+array. A built-in action with no bindings has `enabled: false`. Disabled
+declarations and shell integration shortcuts are not included.
+
+```json
+{
+    "op": "api",
+    "id": "shortcut-list",
+    "api_version": { "major": 1, "minor": 9 },
+    "method": "shortcut.list",
+    "arguments": {}
+}
+```
+
+### API version 1.6: XKB input sources
+
+API version 1.6 adds methods for XKB input sources:
+
+- `input.sources` returns configured layouts and variants as
+  `{sources, revision}`.
+- `input.current_source` returns `{available, source?, revision}`. `available`
+  is false when the active keymap was not installed by Gnoblin.
+- `input.select` selects a listed source.
+
+A source read or selection subscribes the connection to input-source lifecycle
+events.
+
+`input.select` takes `{type, id}` from a listed source and completes
+asynchronously. The connection receives `gnoblin.api.operation-completed` with
+the request ID, method, and result or error. API 1.11 clients also receive
+`gnoblin.operation.completed` with the operation ID and either `value` or a
+structured error. Success means Mutter confirmed the keymap change.
+
+Native IBus selection returns an unsupported error. Mutter loads at most four
+layouts into one keymap. Gnoblin changes the active group when you select a
+source outside it. The greeting advertises the input-source capabilities and
+event names.
+
+Source events include `revision`, `sequence`, and monotonic `time`.
+`gnoblin.input.sources-changed` contains the updated `sources` array.
+`gnoblin.input.source-changed` contains `available` and, when available, the
+confirmed `source` record. Request API version 1.6:
+
+```json
+{
+    "op": "api",
+    "id": "input-sources",
+    "api_version": { "major": 1, "minor": 6 },
+    "method": "input.sources",
+    "arguments": {}
+}
+```
+
+Send `{"op":"windows","api_version":{"major":1,"minor":1}}` to subscribe.
+Use `{"op":"monitors","api_version":{"major":1,"minor":1}}` for an
+initial monitor snapshot and lifecycle events.
+
+Monitor events carry `event`,
+`revision`, `sequence`, and monotonic `time` fields. Added and changed messages
+include a `monitor` record; changed messages also include `changed`. Removed
+messages include `monitor_id` and the final `last` record.
+
+The monitor `changed` array can contain `id`, `index`, `x`, `y`, `width`,
+`height`, `primary`, `scale`, `enabled`, `name`, `make`, `model`, `serial`,
+`refresh_rate`, or `transform`.
+
+The server sends an initial window snapshot, then streams window and workspace
+events on that connection. Window and workspace events carry `revision`,
+`sequence`, and monotonic-clock `time` in microseconds. Event payload fields
+match native Lua events, with `event` as the socket message name instead of
+Lua's `name`.
+
+| Event                                                                                   | Additional fields                                                                  |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `gnoblin.workspace.created`, `gnoblin.workspace.renamed`, `gnoblin.workspace.activated` | `workspace` record                                                                 |
+| `gnoblin.workspace.changed`                                                             | `workspace` record and `changed` array (`number`, `window_count`, or `persistent`) |
+| `gnoblin.workspace.removed`                                                             | `workspace_id` and `last` record                                                   |
+| `gnoblin.workspace.window-moved`                                                        | `window_id`, `from_id`, and `to_id`                                                |
+
+Native workspace records use `window_count`. Event payload fields match native
+Lua workspace events.
+
+| Event                                                | Additional fields                                     |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| `gnoblin.window.created`                             | `window` record                                       |
+| `gnoblin.window.changed`                             | `window_id`, `changed` array, and `window` record     |
+| `gnoblin.window.focused`, `gnoblin.window.unfocused` | `window_id` and `window` record                       |
+| `gnoblin.window.attention-changed`                   | `window_id`, `window` record, and `demands_attention` |
+| `gnoblin.window.closed`                              | `window_id` and `last` record                         |
+
+The initial snapshot establishes the window-event baseline, so existing
+windows do not trigger `created` events when a client subscribes. Workspace
+state is not included in that snapshot; request `workspace.list` to establish
+a workspace baseline.
+
+The stream reports `unfocused` before `focused` when focus moves between
+windows. Focus changes do not also emit `changed` solely because the focus
+field changed. Versionless and 1.0 subscriptions receive snapshots only.
+
+The preview does not provide other subscription types, bindings, or Shell commands.
 Its workspace IDs belong to Mutter and follow their workspace objects. Its
 window records use the GTK app ID or
 WM class because Shell's application tracker is not active in this preview.
@@ -53,6 +251,363 @@ The server sends a greeting, including available features:
 
 Additional features depend on the running build. Send one UTF-8 JSON object
 per line, followed by a newline. Keep the connection open.
+
+The native compositor preview greeting reports its API version and lists
+supported methods, events, and capabilities. `state_revision` is the latest
+revision for the preview state.
+
+`revision_scope` names the window, workspace, monitor, layer, input-device,
+and input-source state covered by that revision. It advances when any of those
+states change. Launch feedback uses its own revision on each launch record and
+`gnoblin.launch.changed` event.
+The full shell bridge may advertise additional features.
+
+Native preview clients may request an API version with `api_version`, which
+contains `major` and `minor` fields. The equivalent `api_major` and `api_minor`
+fields are also accepted.
+
+| Minimum version | Added methods or events                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| 1.2             | `layer.list`                                                                                          |
+| 1.3             | `input.devices` read                                                                                  |
+| 1.4             | Input-device lifecycle events                                                                         |
+| 1.5             | `shortcut.actions`                                                                                    |
+| 1.6             | XKB input-source methods                                                                              |
+| 1.7             | `launch.status`, `launch.begin`, `launch.end`, and `gnoblin.launch.changed`                           |
+| 1.9             | `shortcut.list`, generic event subscriptions, and `gnoblin.input.gesture`                             |
+| 1.10            | `gnoblin.shortcut.activated` focus grants and `window.focus`                                          |
+| 1.11            | Connection-owned `shortcut.bind` and `shortcut.unbind`; canonical `gnoblin.operation.completed` event |
+| 1.12            | Trusted interactive window grabs and their capability                                                 |
+| 1.13            | `gnoblin.focus.policy-changed`                                                                        |
+| 1.14            | Portal grant listing and revocation                                                                   |
+| 1.15            | Portal grant snapshots and lifecycle events                                                           |
+
+### API version 1.9: event subscriptions
+
+Send a request with `op: "events"` and an `events` array to subscribe this
+connection to selected native events. Event names must appear in `hello.events`.
+
+Use the existing subscription operations for the `windows` and `monitors`
+snapshot names. The greeting lists `generic-event-subscriptions` and
+`input-gesture-events` in `hello.capabilities`.
+
+The list may contain up to 64 unique event names. A valid request replaces the
+connection's previous event list. Send an empty list to unsubscribe from these
+events. Invalid lists leave the previous subscription in place.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 9 },
+    "events": ["gnoblin.input.gesture", "gnoblin.window.focused"]
+}
+```
+
+The server acknowledges a valid request with `event: "subscribed"` and the
+accepted event names. Requests without API version 1.9 receive an error.
+Subscriptions last until replaced or the connection closes.
+
+The stable `gnoblin.input.gesture` event comes from Mutter's
+`mutter.touchpad.gesture` source. Its fields are:
+
+- `gesture`, `phase`, `fingers`, `sequence`, `time`, and `input_time`.
+- `dx` and `dy` for swipe events; `scale` and `angle_delta` for pinch events.
+
+`input_time` is Mutter's original timestamp. Socket `sequence` values increase
+across native events and may have gaps when a connection filters other events.
+`time` is monotonic-clock microseconds. Device names and private focus contexts
+are not sent.
+
+### API version 1.10: shortcut focus grants
+
+Subscribe to `gnoblin.shortcut.activated` with an API 1.10 event request. The
+event is sent only to subscribed connections and includes the configured
+command shortcut name, `trigger: "press"`, and a connection-specific
+`focus_context` token. Built-in action shortcuts are not included.
+
+The token expires five seconds after the key press and is bound to the
+connection that received it. It can authorize one focus request or, with API
+1.12, one interactive move or resize request.
+
+```json
+{ "op": "events", "api_version": { "major": 1, "minor": 10 }, "events": ["gnoblin.shortcut.activated"] }
+```
+
+Use the received token with `window.focus` when the user selects a listed
+window:
+
+```json
+{
+    "op": "api",
+    "id": "focus",
+    "api_version": { "major": 1, "minor": 10 },
+    "method": "window.focus",
+    "arguments": { "id": "42", "focus_context": "TOKEN_FROM_SHORTCUT_EVENT" }
+}
+```
+
+`window.focus` accepts exactly the string fields `id` and `focus_context`.
+Every attempt with a valid connection token consumes it, including requests
+with an invalid window ID or unknown argument. API 1.12 also accepts this token
+for one interactive move or resize operation. The request fails if the token
+expired, was already used, belongs to another connection, or was revoked.
+
+Config reloads, session locks, subscription changes, and disconnects revoke
+socket tokens. Native Lua `Window:focus(context)` uses its protected Lua
+context instead of a socket token.
+
+### API version 1.11: dynamic shortcut bindings
+
+#### Register a binding
+
+Use `shortcut.bind` to register a connection-owned global accelerator. The
+`arguments` object accepts only `id` and `accelerator`.
+
+- IDs contain 1 to 64 letters, digits, underscores, or hyphens.
+- Accelerators use Mutter's GTK accelerator syntax and are limited to 128 bytes.
+- Mutter rejects invalid accelerators and bindings already claimed by another
+  owner.
+- Bare `Super` is the overlay key and is not accepted by this method.
+- Bindings activate on key press and ignore autorepeat.
+- Each connection can register up to 32 bindings. The compositor accepts 128
+  dynamic bindings in total.
+
+The `hold`, `modal`, `trigger`, and `captureInput` options are rejected. This
+API does not provide held-modifier sessions, modal input handling, or type-ahead
+handoff.
+
+```json
+{
+    "op": "api",
+    "id": "bind-search",
+    "api_version": { "major": 1, "minor": 11 },
+    "method": "shortcut.bind",
+    "arguments": { "id": "search", "accelerator": "<Super>space" }
+}
+```
+
+Use `shortcut.unbind` with the same ID to release a binding. A client can remove
+only its own IDs. Disconnecting the client releases all its bindings.
+
+#### Receive activations
+
+Subscribe to `gnoblin.shortcut.binding-activated` with API 1.11 to receive
+activations for bindings owned by that connection. Each event includes the ID,
+accelerator, `trigger: "press"`, and Mutter's input timestamp. It also includes
+a monotonic timestamp and a connection-specific focus token. The token can
+authorize one `window.focus`, `window.begin_move`, or `window.begin_resize`
+request and expires after five seconds.
+
+```json
+{ "op": "events", "api_version": { "major": 1, "minor": 11 }, "events": ["gnoblin.shortcut.binding-activated"] }
+```
+
+API 1.11 adds `gnoblin.operation.completed`, which carries an operation ID and
+either a success value or a structured error. The legacy event remains for
+older clients. Subscribe with `op: "events"`; clients tracking input-source or
+shortcut-capture APIs also receive completion notifications. Match them by
+operation ID.
+
+Dynamic bindings do not replace the Shell `op: "bind"` protocol. Use that
+protocol for held-modifier sessions, modal input, or type-ahead handoff.
+
+### API version 1.12: interactive window grabs
+
+API 1.12 adds `window.begin_move` and `window.begin_resize`. Both require the
+connection-bound `focus_context` token from a trusted shortcut activation and
+consume it on every attempt, including invalid arguments. A token can authorize
+only one focus or interactive-grab operation.
+
+Use `window.begin_move` to start Mutter's keyboard move grab for a listed
+window:
+
+```json
+{
+    "op": "api",
+    "id": "move",
+    "api_version": { "major": 1, "minor": 12 },
+    "method": "window.begin_move",
+    "arguments": { "id": "42", "focus_context": "TOKEN_FROM_SHORTCUT_EVENT" }
+}
+```
+
+Use `window.begin_resize` with one of `north`, `south`, `east`, `west`,
+`north_east`, `north_west`, `south_east`, or `south_west`:
+
+```json
+{
+    "op": "api",
+    "id": "resize",
+    "api_version": { "major": 1, "minor": 12 },
+    "method": "window.begin_resize",
+    "arguments": { "id": "42", "edge": "south_east", "focus_context": "TOKEN_FROM_SHORTCUT_EVENT" }
+}
+```
+
+The greeting advertises `window-interactive-grabs` when these methods are
+available. Mutter starts the keyboard grab with the trusted shortcut timestamp
+and current pointer sprite. Calls fail if the token is expired, already used,
+revoked, or belongs to another connection; if the session is locked; or if the
+window cannot be moved or resized.
+
+### API version 1.13: focus policy events
+
+Subscribe to `gnoblin.focus.policy-changed` with an API 1.13 event request.
+Gnoblin sends the event after a successful config commit when the effective
+focus policy changes. Failed or rejected config changes do not emit it.
+
+```json
+{ "op": "events", "api_version": { "major": 1, "minor": 13 }, "events": ["gnoblin.focus.policy-changed"] }
+```
+
+The event contains `policy`, `revision`, `sequence`, and monotonic `time`.
+`policy` is the committed focus-policy snapshot. `revision` matches
+`policy.revision`; both identify the committed settings snapshot.
+
+### API version 1.14: portal grants
+
+API 1.14 adds the `grant.list` and `grant.revoke` methods. They use the portal
+backend that owns the persistent grants. Each request returns an operation
+descriptor; the same connection receives its `gnoblin.operation.completed`
+event when the backend finishes. Match the event's `operation_id` to the
+descriptor's `request_id`.
+
+```json
+{
+    "op": "api",
+    "id": "list-grants",
+    "api_version": { "major": 1, "minor": 14 },
+    "method": "grant.list",
+    "arguments": {}
+}
+```
+
+Each item in `value.grants` contains:
+
+| Field           | Meaning                                               |
+| --------------- | ----------------------------------------------------- |
+| `id`            | Opaque value returned by the listing method.          |
+| `kind`          | `screen-cast` or `remote-desktop`.                    |
+| `requester`     | Verified portal identity.                             |
+| `devices`       | Bitmask: keyboard `1`, pointer `2`, touchscreen `4`.  |
+| `clipboard`     | Boolean permission.                                   |
+| `screenStreams` | Boolean indicating whether screen streams are stored. |
+
+Revoke a record using its listed `kind` and `id`:
+
+```json
+{
+    "op": "api",
+    "id": "revoke-grant",
+    "api_version": { "major": 1, "minor": 14 },
+    "method": "grant.revoke",
+    "arguments": { "kind": "screen-cast", "id": "OPAQUE_ID_FROM_LIST" }
+}
+```
+
+The successful value is `{ "ok": true, "id": "..." }`. The operation fails
+if the grant no longer exists, its stored record is invalid, or the portal
+backend is unavailable. `gnoblinctl grant list` and `gnoblinctl grant revoke`
+wait for this completion before returning.
+
+### API version 1.15: portal grant snapshots and events
+
+API 1.15 adds a native snapshot of persistent portal grants. The optional
+filter selects one portal kind. Each record contains its opaque ID, verified
+requester, permission scope, creation timestamp, and snapshot revision:
+
+| Field                | Meaning                                            |
+| -------------------- | -------------------------------------------------- |
+| `id`                 | Opaque portal grant ID.                            |
+| `kind`               | `screen-cast` or `remote-desktop`.                 |
+| `requester`          | Verified portal identity.                          |
+| `devices`            | Array of `keyboard`, `pointer`, or `touchscreen`.  |
+| `clipboard`          | Whether remote-desktop clipboard access is stored. |
+| `has_screen_streams` | Whether a screen-stream selection is stored.       |
+| `created_at`         | Unix time in milliseconds.                         |
+| `revision`           | Revision of the current grant snapshot.            |
+
+```json
+{
+    "op": "api",
+    "id": "grants",
+    "api_version": { "major": 1, "minor": 15 },
+    "method": "portals.grants",
+    "arguments": { "kind": "remote-desktop" }
+}
+```
+
+Use `kind`, `id`, and `created_at` from a record when revoking it. API 1.15
+rechecks the creation time in the portal backend, so a stale record cannot
+revoke a later grant that reused the same ID. The older API 1.14 request shape
+without `created_at` remains available for compatibility.
+
+The portal backend stores creation time for new records. Older stored records
+use their file modification time rounded to whole seconds; this is inferred
+metadata, not a verified consent time.
+
+Subscribe to the portal grant events with API 1.15. Both include the current
+snapshot revision, event sequence, and monotonic time.
+
+- `gnoblin.portal.grant-added` carries a `grant` record.
+- `gnoblin.portal.grant-removed` carries the grant ID and portal kind.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 15 },
+    "events": ["gnoblin.portal.grant-added", "gnoblin.portal.grant-removed"]
+}
+```
+
+### API version 1.16: permission policy
+
+API 1.16 adds `permissions.policy`. It returns the committed default level,
+ordered rules, and revision.
+
+The compatibility method `permissions.list` keeps its existing response shape.
+
+```json
+{
+    "op": "api",
+    "id": "policy",
+    "api_version": { "major": 1, "minor": 16 },
+    "method": "permissions.policy",
+    "arguments": {}
+}
+```
+
+`gnoblin.permission.changed` reports a policy change after a successful
+configuration commit. Its payload contains the committed policy and standard
+revision, sequence, and monotonic-time metadata.
+
+```json
+{ "op": "events", "api_version": { "major": 1, "minor": 16 }, "events": ["gnoblin.permission.changed"] }
+```
+
+The socket and its parent directory are restricted to the current user. Any
+same-user process can connect, so treat connected clients as trusted shell
+components.
+
+Tokens belong to the connection that received them. Do not forward a token to
+another client.
+
+Call `launch.status` to read current records and enable launch-change events on
+the connection.
+
+`launch.begin` requests cursor feedback for an application hint. It does not
+start a process. Mutter reports `started` when a matching mapped window appears
+or becomes focused.
+
+The deadline changes a pending record to `timed_out`. `launch.end` changes it
+to `ended`.
+
+Launch records and events use their own `revision`. Launch feedback does not
+advance the compositor `state_revision`.
+
+Versionless requests remain supported for API 1.0 methods. Newer methods require
+their documented minimum version. An unsupported or malformed requested version
+returns an error and closes that connection.
 
 The `hello.version` field is the socket protocol version. This build always
 advertises `ui-sessions`, `switcher-fallback` and `overlay-shortcut`. It may
@@ -192,18 +747,27 @@ for layer-shell lifecycle events and target selection.
 
 The `windows` snapshot has these fields:
 
-| Field                                         | Meaning                                                             |
-| --------------------------------------------- | ------------------------------------------------------------------- |
-| `id`                                          | Stable window sequence ID for this session.                         |
-| `title`, `appId`                              | Window title and desktop-entry ID (or WM class if unavailable).     |
-| `gtkAppId`, `wmClass`, `ruleAppId`            | Raw GTK ID, WM class and the ID used by window rules.               |
-| `focused`, `minimized`                        | Whether the window is focused or minimised.                         |
-| `workspace`, `workspaceId`, `workspaceNumber` | Current workspace number, stable ID and current one-based position. |
-| `monitorIndex`, `monitor`                     | Zero-based monitor index and its logical origin `{x, y}`.           |
-| `maximized`, `fullscreen`                     | Current window state.                                               |
-| `geometry`                                    | Frame rectangle `{x, y, width, height}` in logical pixels.          |
-| `lastUserTime`                                | Mutter's timestamp for the last user interaction with the window.   |
-| `parent`                                      | Stable ID of its transient parent, or `null`.                       |
+| Field                                         | Meaning                                                              |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| `id`                                          | Stable window sequence ID for this session.                          |
+| `title`, `appId`                              | Window title and desktop-entry ID (or WM class if unavailable).      |
+| `gtkAppId`, `wmClass`, `ruleAppId`            | Raw GTK ID, WM class and the ID used by window rules.                |
+| `focused`, `minimized`                        | Whether the window is focused or minimised.                          |
+| `workspace`, `workspaceId`, `workspaceNumber` | Current workspace number, stable ID and current one-based position.  |
+| `monitorId`                                   | Active connector name for the current monitor, when available.       |
+| `monitorIndex`, `monitor`                     | Zero-based monitor index and its logical origin `{x, y}`.            |
+| `maximized`, `fullscreen`                     | Current window state.                                                |
+| `above`, `sticky`, `demandsAttention`         | Stacking, workspace visibility, and attention state.                 |
+| `closable`, `minimizable`, `maximizable`      | Whether the corresponding window operation is supported.             |
+| `movable`, `resizable`                        | Whether the window can be moved or resized.                          |
+| `role`, `type`                                | Optional window role and Mutter `MetaWindowType` integer.            |
+| `geometry`                                    | Frame rectangle `{x, y, width, height}` in logical pixels.           |
+| `lastUserTime`                                | Mutter's timestamp for the last user interaction with the window.    |
+| `parent`                                      | Stable ID of its transient parent, or `null`/omitted if unavailable. |
+
+Mutter omits optional parent and monitor values when unavailable. Shell may
+return `null` for these fields and may omit native-only fields. See the [Lua event
+reference](/config/lua-events#gnoblin) for `MetaWindowType` values.
 
 Capture IDs come from Mutter; `windows` snapshots use stable sequence IDs.
 Use an ID from the `windows` snapshot or `gnoblinctl window list` for a
@@ -225,15 +789,21 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
     connection.connect(path)
     with connection.makefile("r", encoding="utf-8") as messages:
         print("Greeting:", json.loads(messages.readline()))
-        connection.sendall(b'{"op":"windows"}\n')
+        connection.sendall(b'{"op":"windows","api_version":{"major":1,"minor":1}}\n')
         for line in messages:
             event = json.loads(line)
             if event.get("event") == "windows":
                 print(event["windows"])
+            elif event.get("event", "").startswith("gnoblin.window."):
+                print(event)
+            elif event.get("event", "").startswith("gnoblin.workspace."):
+                print(event)
 ```
 
-It prints the current list and subsequent snapshots as windows change. Stop it
-with Ctrl+C. Each snapshot replaces the previous list; it is not a list of changes.
+It prints the current list and subsequent snapshots. The native preview also
+prints individual window lifecycle events for created, changed, focused, and
+closed windows. Stop it with Ctrl+C. Each snapshot replaces the previous list;
+it is not a list of changes.
 
 ## Temporary UI bindings
 

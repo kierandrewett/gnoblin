@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: batch Lua window lifecycle events
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 79f3caa57..389f3df36 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -823,6 +823,7 @@ meta_gnoblin_finish_config_event (gboolean commit)
+ 
+ static gboolean native_config_host_enabled;
+ static gboolean native_runtime_operations_draining;
++static guint native_runtime_event_batch_depth;
+ static guint native_runtime_operations_idle_id;
+ static void meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display);
+ 
+@@ -842,6 +843,24 @@ meta_gnoblin_set_native_config_host (gboolean enabled)
+   native_config_host_enabled = enabled;
+ }
+ 
++void
++meta_gnoblin_begin_native_event_batch (void)
++{
++  if (native_config_host_enabled)
++    native_runtime_event_batch_depth++;
++}
++
++void
++meta_gnoblin_end_native_event_batch (MetaDisplay *display)
++{
++  if (!native_config_host_enabled || native_runtime_event_batch_depth == 0)
++    return;
++
++  native_runtime_event_batch_depth--;
++  if (native_runtime_event_batch_depth == 0)
++    meta_gnoblin_drain_native_runtime_operations (display);
++}
++
+ static void
+ meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display)
+ {
+@@ -945,7 +964,8 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
+       g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
+                              payload, &frontend_consumed);
+       gnoblin_config_finish_event (TRUE);
+-      meta_gnoblin_drain_native_runtime_operations (display);
++      if (native_runtime_event_batch_depth == 0)
++        meta_gnoblin_drain_native_runtime_operations (display);
+     }
+   return frontend_consumed;
+ #else
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 2cb9be623..45cf6c826 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -122,6 +122,11 @@ GVariant *meta_gnoblin_console_lua (const char *operation, const char *source);
+ 
+ #include "meta/types.h"
+ 
++META_EXPORT
++void meta_gnoblin_begin_native_event_batch (void);
++META_EXPORT
++void meta_gnoblin_end_native_event_batch (MetaDisplay *display);
++
+ META_EXPORT
+ int meta_gnoblin_layer_anchor (MetaWindow *window);
+ 

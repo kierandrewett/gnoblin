@@ -20,6 +20,22 @@ import * as Permissions from "resource:///org/gnome/shell/ui/components/gnoblinP
 
 Gio._promisify(Shell.Screenshot, "composite_to_stream");
 
+const TYPED_WINDOW_METHODS = new Set([
+    "window.close",
+    "window.minimize",
+    "window.toggle_minimize",
+    "window.restore",
+    "window.set_maximized",
+    "window.set_fullscreen",
+    "window.set_above",
+    "window.set_sticky",
+    "window.move",
+    "window.resize",
+    "window.move_to_workspace",
+    "window.move_to_monitor",
+    "window.focus",
+]);
+
 function variantForJson(value) {
     if (typeof value === "boolean") return new GLib.Variant("b", value);
     if (typeof value === "number") {
@@ -373,12 +389,24 @@ export class CompositorBridge {
             throw new Error("invalid API method name");
         if (!arguments_ || typeof arguments_ !== "object" || Array.isArray(arguments_))
             throw new Error("API arguments must be an object");
-        if (method === "window.action" && SessionLock.isLocked(Main.sessionMode.isLocked))
+        if (
+            (method === "window.action" || TYPED_WINDOW_METHODS.has(method)) &&
+            SessionLock.isLocked(Main.sessionMode.isLocked)
+        )
             throw new Error("window management is unavailable while the session is locked");
-        const native =
-            method === "monitor.list" || method === "window.action"
-                ? Meta.gnoblin_dispatch_native_api(global.display, method, jsonDictionary(arguments_))
-                : null;
+        const isNativeMethod =
+            method === "monitor.list" || method === "window.action" || TYPED_WINDOW_METHODS.has(method);
+        if (
+            method.startsWith("window.") &&
+            !TYPED_WINDOW_METHODS.has(method) &&
+            !["window.action", "window.list", "window.match"].includes(method)
+        )
+            throw new Error(`Unsupported Gnoblin API operation: ${method}`);
+        const native = isNativeMethod
+            ? Meta.gnoblin_dispatch_native_api(global.display, method, jsonDictionary(arguments_))
+            : null;
+        if (TYPED_WINDOW_METHODS.has(method) && !native)
+            throw new Error(`Native Gnoblin API operation is unavailable: ${method}`);
         const handler = native ? null : this.apiHandlers()[method];
         if (!native && !handler) throw new Error(`Unsupported Gnoblin API operation: ${method}`);
         const result = native ? native.recursiveUnpack() : handler(arguments_);

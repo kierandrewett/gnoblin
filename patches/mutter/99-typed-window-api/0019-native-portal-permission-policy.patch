@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] portal: evaluate Gnoblin permission policy in native compositor
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index c4977682e..cc9cac5dc 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -597,6 +597,8 @@ mutter_sources += [
+   # gnoblin: extra wlr-/ext- protocols (sources copied from gnoblin overlays
+   # at build time; registered via meta_gnoblin_init_protocols)
+   'wayland/gnoblin-config.c',
++  'wayland/gnoblin-portal-policy.c',
++  'wayland/gnoblin-portal-identity.c',
+   'wayland/gnoblin-lua.c',
+   'wayland/gnoblin-glob.c',
+   'wayland/meta-gnoblin-window-frame.c',
+@@ -604,6 +606,8 @@ mutter_sources += [
+   'wayland/meta-gnoblin-frame-renderer.c',
+   'wayland/meta-gnoblin-frame-renderer.h',
+   'wayland/gnoblin-config.h',
++  'wayland/gnoblin-portal-policy.h',
++  'wayland/gnoblin-portal-identity.h',
+   'wayland/gnoblin-toml.c',
+   'wayland/tomlc99/toml.c',
+   'wayland/meta-gnoblin-protocols.c',

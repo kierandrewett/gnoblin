@@ -13,6 +13,8 @@
 
 #include "wayland/meta-wayland-types.h"
 
+typedef struct _MetaWindow MetaWindow;
+
 /* g_object data key on a MetaWindow holding the desired MetaStackLayer of a
  * layer-shell surface, stored as GINT_TO_POINTER(layer + 1) (0/NULL = unset).
  * Read by the gnoblin calculate_layer patch in meta-window-wayland.c. */
@@ -22,6 +24,12 @@
  * receive keyboard focus. Pointer/touch input is always allowed by
  * wlr-layer-shell unless the client sets an empty input region. */
 #define META_WAYLAND_LAYER_SHELL_KEYBOARD_FOCUSABLE_KEY "gnoblin-layer-shell-keyboard-focusable"
+
+/* Build the native `layer.list` record for a layer-shell MetaWindow. Returns
+ * NULL for windows that do not have the layer-shell snapshot marker. The
+ * monitor ID is the canonical connector selected by the native monitor API,
+ * or NULL when no active connector can be resolved. */
+GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const char* monitor_id);
 
 gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface);
 

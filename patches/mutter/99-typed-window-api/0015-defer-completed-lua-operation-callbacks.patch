@@ -1,0 +1,127 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] mutter: defer completed Lua operation callbacks
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 88cd7a687..873520a87 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -831,6 +831,8 @@ static gboolean native_config_host_enabled;
+ static gboolean native_runtime_operations_draining;
+ static guint native_runtime_event_batch_depth;
+ static guint native_runtime_operations_idle_id;
++static MetaDisplay *native_runtime_callback_display;
++static guint native_runtime_callbacks_idle_id;
+ static void meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display);
+ 
+ static gboolean
+@@ -843,10 +845,93 @@ meta_gnoblin_drain_native_runtime_operations_idle (gpointer user_data)
+   return G_SOURCE_REMOVE;
+ }
+ 
++static gboolean
++meta_gnoblin_dispatch_deferred_runtime_callbacks_idle (gpointer user_data)
++{
++  MetaDisplay *display = META_DISPLAY (user_data);
++  gboolean frontend_consumed = FALSE;
++
++  native_runtime_callbacks_idle_id = 0;
++  if (!native_config_host_enabled || display != native_runtime_callback_display)
++    return G_SOURCE_REMOVE;
++
++#ifdef HAVE_WAYLAND
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) document =
++    gnoblin_config_dispatch_deferred_callbacks (&error);
++
++  if (error)
++    g_warning ("gnoblin deferred Lua callback: %s", error->message);
++
++  if (document)
++    {
++      g_autoptr (GVariant) payload =
++        g_variant_ref_sink (g_variant_new_array (G_VARIANT_TYPE ("{sv}"), NULL, 0));
++
++      /* A NULL event marks this as a document update, not a Lua event. */
++      g_signal_emit_by_name (display, "gnoblin-config-event", NULL, document,
++                             payload, &frontend_consumed);
++      gnoblin_config_finish_event (TRUE);
++    }
++  meta_gnoblin_drain_native_runtime_operations (display);
++#endif
++
++  return G_SOURCE_REMOVE;
++}
++
++static void
++meta_gnoblin_schedule_deferred_runtime_callbacks (gpointer user_data)
++{
++  MetaDisplay *display = META_DISPLAY (user_data);
++
++  if (!native_config_host_enabled || display != native_runtime_callback_display ||
++      native_runtime_callbacks_idle_id)
++    return;
++
++  native_runtime_callbacks_idle_id =
++    g_idle_add_full (G_PRIORITY_DEFAULT_IDLE,
++                     meta_gnoblin_dispatch_deferred_runtime_callbacks_idle,
++                     g_object_ref (display), g_object_unref);
++}
++
+ void
+ meta_gnoblin_set_native_config_host (gboolean enabled)
+ {
+   native_config_host_enabled = enabled;
++  if (!enabled)
++    {
++      gnoblin_config_set_runtime_wakeup_callback (NULL, NULL);
++      if (native_runtime_callbacks_idle_id)
++        {
++          g_source_remove (native_runtime_callbacks_idle_id);
++          native_runtime_callbacks_idle_id = 0;
++        }
++      if (native_runtime_operations_idle_id)
++        {
++          g_source_remove (native_runtime_operations_idle_id);
++          native_runtime_operations_idle_id = 0;
++        }
++      native_runtime_callback_display = NULL;
++    }
++}
++
++void
++meta_gnoblin_set_native_config_display (MetaDisplay *display)
++{
++  if (native_runtime_callbacks_idle_id)
++    {
++      g_source_remove (native_runtime_callbacks_idle_id);
++      native_runtime_callbacks_idle_id = 0;
++    }
++  if (!display && native_runtime_operations_idle_id)
++    {
++      g_source_remove (native_runtime_operations_idle_id);
++      native_runtime_operations_idle_id = 0;
++    }
++
++  native_runtime_callback_display = display;
++  gnoblin_config_set_runtime_wakeup_callback (
++    display ? meta_gnoblin_schedule_deferred_runtime_callbacks : NULL, display);
+ }
+ 
+ void
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 45cf6c826..6ca866b79 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -122,6 +122,9 @@ GVariant *meta_gnoblin_console_lua (const char *operation, const char *source);
+ 
+ #include "meta/types.h"
+ 
++META_EXPORT
++void meta_gnoblin_set_native_config_display (MetaDisplay *display);
++
+ META_EXPORT
+ void meta_gnoblin_begin_native_event_batch (void);
+ META_EXPORT

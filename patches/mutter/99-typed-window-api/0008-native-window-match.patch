@@ -1,0 +1,132 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] mutter: implement native window matching
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index dbdc8029..910b0d60 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1655,6 +1655,112 @@ gnoblin_native_window_list (MetaDisplay *display,
+   return g_variant_ref_sink (g_variant_builder_end (&result));
+ }
+ 
++static GVariant *
++gnoblin_native_window_match (MetaDisplay *display,
++                             GVariant    *arguments,
++                             GError     **error)
++{
++  const char *selector = "active";
++  g_autoptr (GVariant) selector_value = NULL;
++  g_autoptr (GVariant) snapshot = NULL;
++  g_autoptr (GVariant) windows = NULL;
++  g_autoptr (GVariant) selected = NULL;
++
++  if (arguments && !g_variant_is_of_type (arguments, G_VARIANT_TYPE_VARDICT))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window.match arguments must be an object");
++      return NULL;
++    }
++
++  if (arguments)
++    {
++      selector_value = g_variant_lookup_value (arguments, "window", NULL);
++      if (selector_value &&
++          !g_variant_is_of_type (selector_value, G_VARIANT_TYPE_STRING))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "window selector must be a string");
++          return NULL;
++        }
++      if (selector_value)
++        selector = g_variant_get_string (selector_value, NULL);
++    }
++
++  snapshot = gnoblin_native_window_list (display, NULL, error);
++  if (!snapshot)
++    return NULL;
++  windows = g_variant_lookup_value (snapshot, "windows",
++                                   G_VARIANT_TYPE ("aa{sv}"));
++  for (gsize i = 0; windows && i < g_variant_n_children (windows); i++)
++    {
++      g_autoptr (GVariant) candidate = g_variant_get_child_value (windows, i);
++      const char *id = NULL;
++      gboolean focused = FALSE;
++
++      g_variant_lookup (candidate, "id", "&s", &id);
++      g_variant_lookup (candidate, "focused", "b", &focused);
++      if ((g_str_equal (selector, "active") && focused) ||
++          (!g_str_equal (selector, "active") && id &&
++           g_str_equal (selector, id)))
++        {
++          selected = g_steal_pointer (&candidate);
++          break;
++        }
++    }
++
++  if (!selected)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "window not found");
++      return NULL;
++    }
++
++  const char *id = "";
++  const char *title = "";
++  const char *desktop_app_id = "";
++  const char *gtk_app_id = "";
++  const char *wm_class = "";
++  const char *rule_app_id = "";
++  gboolean focused = FALSE;
++  g_variant_lookup (selected, "id", "&s", &id);
++  g_variant_lookup (selected, "title", "&s", &title);
++  g_variant_lookup (selected, "appId", "&s", &desktop_app_id);
++  g_variant_lookup (selected, "gtkAppId", "&s", &gtk_app_id);
++  g_variant_lookup (selected, "wmClass", "&s", &wm_class);
++  g_variant_lookup (selected, "ruleAppId", "&s", &rule_app_id);
++  g_variant_lookup (selected, "focused", "b", &focused);
++
++  GVariantBuilder identity;
++  GVariantBuilder match;
++  GVariantBuilder result;
++  g_variant_builder_init (&identity, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&identity, "{sv}", "desktop_app_id",
++                         g_variant_new_string (desktop_app_id));
++  g_variant_builder_add (&identity, "{sv}", "gtk_app_id",
++                         g_variant_new_string (gtk_app_id));
++  g_variant_builder_add (&identity, "{sv}", "wm_class",
++                         g_variant_new_string (wm_class));
++  g_variant_builder_add (&identity, "{sv}", "rule_app_id",
++                         g_variant_new_string (rule_app_id));
++  g_variant_builder_init (&match, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&match, "{sv}", "type",
++                         g_variant_new_string ("window"));
++  g_variant_builder_add (&match, "{sv}", "title", g_variant_new_string (title));
++  g_variant_builder_add (&match, "{sv}", "focused",
++                         g_variant_new_boolean (focused));
++  if (*rule_app_id)
++    g_variant_builder_add (&match, "{sv}", "app_id",
++                           g_variant_new_string (rule_app_id));
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&result, "{sv}", "id", g_variant_new_string (id));
++  g_variant_builder_add (&result, "{sv}", "identity",
++                         g_variant_builder_end (&identity));
++  g_variant_builder_add (&result, "{sv}", "match",
++                         g_variant_builder_end (&match));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
++
+ static GVariant *
+ gnoblin_native_window_action (MetaDisplay *display,
+                               GVariant    *arguments,
+@@ -2205,7 +2311,7 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+     return gnoblin_native_typed_window_operation (display, method,
+                                                  arguments, error);
+   if (g_strcmp0 (method, "window.match") == 0)
+-    return NULL;
++    return gnoblin_native_window_match (display, arguments, error);
+   if (g_str_has_prefix (method, "window."))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
