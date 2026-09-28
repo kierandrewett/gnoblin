@@ -109,8 +109,11 @@ override restores the default on reload.
 
 ## Media keys
 
-Media keys use command shortcuts. The starter config includes editable volume,
-microphone mute, brightness, and playback controls.
+The starter config uses command shortcuts for volume, microphone mute, and
+playback. GNOME Shell handles brightness keys itself in 5% steps and shows an
+OSD. To rebind them, set `shell.screen_brightness_up` and
+`shell.screen_brightness_down` in
+[keybindings](/config/configure/keybindings).
 
 Run `gnoblinctl config path` to see the config file used by your session. Run
 `gnoblinctl config default` to print the packaged starter config. For example,
@@ -127,7 +130,7 @@ gnoblin.configure {
 }
 ```
 
-Edit or remove these entries in your Lua config to change the media-key
+Edit or remove the command shortcut entries in your Lua config to change their
 behavior. The commands they call must be installed.
 
 ## Avoid conflicts

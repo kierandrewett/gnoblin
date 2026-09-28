@@ -64,12 +64,15 @@ end
 
 The bundled config supplies these names:
 
-| Keys       | Shortcut names                                               |
-| ---------- | ------------------------------------------------------------ |
-| Volume     | `volume-up`, `volume-down`, `volume-mute`, `microphone-mute` |
-| Brightness | `brightness-up`, `brightness-down`                           |
-| Playback   | `media-play-pause`, `media-next`, `media-previous`           |
-| Files      | `files`                                                      |
+| Keys     | Shortcut names                                               |
+| -------- | ------------------------------------------------------------ |
+| Volume   | `volume-up`, `volume-down`, `volume-mute`, `microphone-mute` |
+| Playback | `media-play-pause`, `media-next`, `media-previous`           |
+| Files    | `files`                                                      |
+
+GNOME Shell handles the brightness keys itself, in 5% steps, and requests an
+OSD for each press. To rebind them, set `shell.screen_brightness_up` and
+`shell.screen_brightness_down` in [`keybindings`](/config/configure/keybindings).
 
 To disable one after loading the bundled config:
 

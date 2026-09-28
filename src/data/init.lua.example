@@ -171,8 +171,8 @@ gnoblin.configure {
         ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
         ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
         ["microphone-mute"] = {binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}},
-        ["brightness-up"] = {binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}},
-        ["brightness-down"] = {binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}},
+        -- GNOME Shell handles the brightness keys itself; rebind them with
+        -- keybindings = {shell = {screen_brightness_up = {...}}}.
         ["media-play-pause"] = {binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}},
         ["media-next"] = {binding = "XF86AudioNext", command = {"playerctl", "next"}},
         ["media-previous"] = {binding = "XF86AudioPrev", command = {"playerctl", "previous"}},
