@@ -59,9 +59,9 @@ def main() -> int:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
-                    server.listen(2)
+                    server.listen(4)
                     ready.set()
-                    for _ in range(2):
+                    for _ in range(4):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -69,11 +69,30 @@ def main() -> int:
                             received.append(request)
                             if request["method"] == "session.status":
                                 result = {"session": "test-session", "locked": False}
-                            else:
+                            elif request["method"] == "monitor.list":
                                 result = {"monitors": [{"id": "HDMI-1", "primary": True}]}
+                            elif request["method"] == "animation.get":
+                                result = None
+                            else:
+                                result = {
+                                    "request_id": 17,
+                                    "method": "animation.preview",
+                                    "target_type": "namespace",
+                                    "target": "panel:test",
+                                }
                             response = {"event": "reply", "id": request["id"], "result": result}
                             stream.write(json.dumps(response).encode() + b"\n")
                             stream.flush()
+                            if request.get("method") == "animation.preview":
+                                completion = {
+                                    "event": "gnoblin.operation.completed",
+                                    "operation_id": 17,
+                                    "method": "animation.preview",
+                                    "ok": True,
+                                    "value": {"session": "preview-17"},
+                                }
+                                stream.write(json.dumps(completion).encode() + b"\n")
+                                stream.flush()
             except BaseException as error:  # propagate background-thread failures
                 server_error.append(error)
 
@@ -86,10 +105,27 @@ def main() -> int:
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
         assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "primary": True}]}
+        animation_get = run(binary, "--socket", socket_path, "--format", "json", "animation", "get", "missing")
+        assert animation_get.returncode == 0, animation_get.stderr
+        assert json.loads(animation_get.stdout) is None
+        animation_preview = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "animation",
+            "preview",
+            "gnoblin-layer-open",
+            "--namespace",
+            "panel:test",
+        )
+        assert animation_preview.returncode == 0, animation_preview.stderr
+        assert json.loads(animation_preview.stdout) == {"session": "preview-17"}
         server_thread.join(timeout=5)
-        assert not server_thread.is_alive(), "mock compositor did not finish monitor request"
+        assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 2
+        assert len(received) == 4
         request = received[0]
         assert request["op"] == "api"
         assert request["method"] == "session.status"
@@ -99,6 +135,18 @@ def main() -> int:
         assert monitor_request["op"] == "api"
         assert monitor_request["method"] == "monitor.list"
         assert monitor_request["arguments"] == {}
+        get_request = received[2]
+        assert get_request["method"] == "animation.get"
+        assert get_request["api_version"] == {"major": 1, "minor": 18}
+        assert get_request["arguments"] == {"name": "missing"}
+        preview_request = received[3]
+        assert preview_request["method"] == "animation.preview"
+        assert preview_request["arguments"] == {
+            "name": "gnoblin-layer-open",
+            "target_type": "namespace",
+            "target": "panel:test",
+            "autoplay": False,
+        }
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

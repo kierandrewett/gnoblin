@@ -34,10 +34,13 @@ typedef struct {
 } CommandSpec;
 
 static const CommandSpec commands[] = {
+    {"status", NULL},
     {"ping", NULL},
     {"version", NULL},
-    {"status", NULL},
+    {"capabilities", NULL},
+    {"focus", "history policy"},
     {"reload", NULL},
+    {"logout", NULL},
     {"privacy", NULL},
     {"permissions", "list policy check"},
     {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
@@ -47,15 +50,13 @@ static const CommandSpec commands[] = {
     {"layer", "list"},
     {"completion", NULL},
     {"shortcut", "list capture"},
-    {"config", "path default reload"},
+    {"config", "path default show reload"},
     {"workspace", "list create rename remove switch next previous move-active"},
     {"monitor", "list"},
     {"input", "list current select devices"},
-    {"feature", "list show enable disable"},
-    {"script", "list"},
     {"grant", "list revoke"},
     {"launch", "status begin end"},
-    {"animation", "list surfaces inspect preview seek step play pause stop"},
+    {"animation", "list get surfaces inspect preview seek step play pause stop"},
 };
 
 static const CommandSpec* find_command(const char* name) {
@@ -181,10 +182,8 @@ static void print_version(const char* format) {
             const char* name;
             const char* label;
         } components[] = {
-            {"gnome-shell", "Gnoblin Shell base"},
-            {"gsettings-desktop-schemas", "Desktop schemas"},
-            {"mutter", "Mutter base"},
-            {"xdg-desktop-portal-gnome", "Gnoblin portal base"},
+            {"mutter", "Mutter"},
+            {"xdg-desktop-portal-gnome", "Gnoblin portal backend"},
         };
         for (guint i = 0; i < G_N_ELEMENTS(components); i++) {
             const char* version = member_string(versions, components[i].name, NULL);
@@ -292,48 +291,71 @@ static gboolean parse_cli(Cli* cli, int argc, char** argv, GError** error) {
     return TRUE;
 }
 
-static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* arguments,
-                                 GError** error) {
+static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
+                                 JsonObject* arguments, GError** error) {
+    const char* method_name = method ? method : "";
     g_autofree char* id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
     json_builder_begin_object(builder);
     json_builder_set_member_name(builder, "op");
-    json_builder_add_string_value(builder, "api");
+    json_builder_add_string_value(builder, op);
     json_builder_set_member_name(builder, "id");
     json_builder_add_string_value(builder, id);
-    json_builder_set_member_name(builder, "method");
-    json_builder_add_string_value(builder, method);
-    if (g_str_equal(method, "layer.list") || g_str_equal(method, "input.devices") ||
-        g_str_equal(method, "shortcut.capture") || g_str_equal(method, "shortcut.list") ||
-        g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke") ||
-        g_str_equal(method, "permissions.policy")) {
+    if (method) {
+        json_builder_set_member_name(builder, "method");
+        json_builder_add_string_value(builder, method_name);
+    }
+    if (g_str_equal(method_name, "layer.list") || g_str_equal(method_name, "input.devices") ||
+        g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
+        g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
+        g_str_equal(method_name, "permissions.policy") ||
+        g_str_equal(method_name, "privacy.state") || g_str_equal(method_name, "version") ||
+        g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
+        g_str_equal(method_name, "capabilities.list") ||
+        g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
+        g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
         json_builder_set_member_name(builder, "major");
         json_builder_add_int_value(builder, 1);
         json_builder_set_member_name(builder, "minor");
-        json_builder_add_int_value(
-            builder, g_str_equal(method, "permissions.policy")                                  ? 16
-                     : g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke") ? 14
-                     : g_str_equal(method, "shortcut.list")                                     ? 9
-                     : g_str_equal(method, "layer.list")                                        ? 2
-                     : g_str_equal(method, "input.devices") ? 3
-                                                            : 8);
+        json_builder_add_int_value(builder, g_str_equal(method_name, "session.logout")          ? 32
+                                            : g_str_equal(method_name, "session.status")        ? 29
+                                            : g_str_equal(method_name, "runtime.reload_config") ? 20
+                                            : g_str_equal(method_name, "version") ||
+                                                    g_str_equal(method_name, "capabilities.list") ||
+                                                    g_str_equal(method_name, "focus.history") ||
+                                                    g_str_equal(method_name, "focus.policy") ||
+                                                    g_str_equal(method_name, "settings")
+                                                ? 19
+                                            : g_str_has_prefix(method_name, "animation.")    ? 18
+                                            : g_str_equal(method_name, "privacy.state")      ? 17
+                                            : g_str_equal(method_name, "permissions.policy") ? 16
+                                            : g_str_equal(method_name, "grant.list") ||
+                                                    g_str_equal(method_name, "grant.revoke")
+                                                ? 14
+                                            : g_str_equal(method_name, "shortcut.list") ? 9
+                                            : g_str_equal(method_name, "layer.list")    ? 2
+                                            : g_str_equal(method_name, "input.devices") ? 3
+                                                                                        : 8);
         json_builder_end_object(builder);
     }
-    json_builder_set_member_name(builder, "arguments");
-    json_builder_add_value(builder, json_node_init_object(json_node_alloc(), arguments));
+    if (method) {
+        json_builder_set_member_name(builder, "arguments");
+        json_builder_add_value(builder, json_node_init_object(json_node_alloc(), arguments));
+    }
     json_builder_end_object(builder);
     g_autoptr(JsonNode) request = json_builder_get_root(builder);
     g_autofree char* encoded = json_to_string(request, FALSE);
     g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
 
-    gboolean waits_for_operation = g_str_equal(method, "shortcut.capture") ||
-                                   g_str_equal(method, "grant.list") ||
-                                   g_str_equal(method, "grant.revoke");
-    guint wait_timeout = cli->timeout + (g_str_equal(method, "shortcut.capture") ? 2
-                                         : g_str_has_prefix(method, "grant.")    ? 6
-                                                                                 : 0);
+    gboolean waits_for_operation =
+        g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
+        g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
+    guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
+                                         : g_str_has_prefix(method_name, "grant.")    ? 6
+                                                                                      : 0);
     g_autoptr(GSocketClient) client = g_socket_client_new();
     g_socket_client_set_timeout(client, wait_timeout);
     g_autoptr(GSocketAddress) address = g_unix_socket_address_new(cli->socket_path);
@@ -391,7 +413,7 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
             gint64 completion_id = json_object_get_int_member_with_default(
                 response, legacy_completion ? "request_id" : "operation_id", 0);
             if (operation_request_id > 0 && (legacy_completion || canonical_completion) &&
-                g_str_equal(member_string(response, "method", ""), method) &&
+                g_str_equal(member_string(response, "method", ""), method_name) &&
                 completion_id == operation_request_id) {
                 if (!json_object_get_boolean_member_with_default(response, "ok", FALSE)) {
                     const char* message = member_string(response, "error", NULL);
@@ -421,8 +443,15 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
                 return NULL;
             }
             if (g_str_equal(event, "reply")) {
+                JsonNode* result_node = json_object_get_member(response, "result");
                 JsonObject* result = member_object(response, "result");
-                if (!result) {
+                gboolean read_method = word_in(
+                    "version capabilities.list focus.history settings focus.policy", method_name);
+                gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
+                                        word_in("capabilities.list focus.history", method_name);
+                gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
+                                       (read_method || g_str_equal(method_name, "animation.get"));
+                if (!result && !array_result && !null_result) {
                     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                         "Invalid compositor response");
                     return NULL;
@@ -433,7 +462,7 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
                         (json_node_get_value_type(request_id) != G_TYPE_INT &&
                          json_node_get_value_type(request_id) != G_TYPE_INT64) ||
                         json_node_get_int(request_id) <= 0 ||
-                        !g_str_equal(member_string(result, "method", ""), method)) {
+                        !g_str_equal(member_string(result, "method", ""), method_name)) {
                         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                             "Invalid operation descriptor");
                         return NULL;
@@ -441,13 +470,52 @@ static JsonNode* call_compositor(Cli* cli, const char* method, JsonObject* argum
                     operation_request_id = json_node_get_int(request_id);
                     continue;
                 }
-                return json_node_copy(json_object_get_member(response, "result"));
+                return json_node_copy(result_node);
             }
         }
     }
     g_set_error_literal(
         error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
         "Request timed out; it was not retried. Check current state before repeating an action.");
+    return NULL;
+}
+
+static char* focused_window_id(Cli* cli, GError** error) {
+    JsonObject* arguments = json_object_new();
+    json_object_set_boolean_member(arguments, "focused", TRUE);
+    g_autoptr(JsonNode) snapshot = call_compositor(cli, "api", "window.list", arguments, error);
+    json_object_unref(arguments);
+    if (!snapshot)
+        return NULL;
+    if (!JSON_NODE_HOLDS_OBJECT(snapshot)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Invalid focused-window snapshot");
+        return NULL;
+    }
+
+    JsonObject* object = json_node_get_object(snapshot);
+    JsonNode* windows_node = json_object_get_member(object, "windows");
+    if (!windows_node || !JSON_NODE_HOLDS_ARRAY(windows_node)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Focused-window snapshot has no windows array");
+        return NULL;
+    }
+
+    JsonArray* windows = json_node_get_array(windows_node);
+    for (guint i = 0; i < json_array_get_length(windows); i++) {
+        JsonObject* window = json_array_get_object_element(windows, i);
+        if (!window)
+            continue;
+        JsonNode* focused = json_object_get_member(window, "focused");
+        const char* id = member_string(window, "id", NULL);
+        if (focused && JSON_NODE_HOLDS_VALUE(focused) &&
+            json_node_get_value_type(focused) == G_TYPE_BOOLEAN && json_node_get_boolean(focused) &&
+            id && *id)
+            return g_strdup(id);
+    }
+
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                        "No focused window is available for this command");
     return NULL;
 }
 
@@ -495,6 +563,8 @@ static gboolean validate_cli(Cli* cli, GError** error) {
         extra = g_strcmp0(cli->action, "inspect") == 0   ? "event window layer namespace"
                 : g_strcmp0(cli->action, "preview") == 0 ? "event window layer namespace autoplay"
                                                          : NULL;
+    else if (g_strcmp0(cli->command, "focus") == 0 && g_strcmp0(cli->action, "history") == 0)
+        extra = "workspace-id monitor-id limit";
 
     GHashTableIter iterator;
     gpointer key;
@@ -513,7 +583,8 @@ static gboolean validate_cli(Cli* cli, GError** error) {
         return FALSE;
     }
     if (spec->actions && cli->action &&
-        word_in("list current next previous surfaces path default reload capture status",
+        word_in("list current next previous surfaces path default show reload capture status "
+                "policy history",
                 cli->action) &&
         arg_count(cli) != 0) {
         g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE, "%s %s takes no arguments",
@@ -623,6 +694,7 @@ static char* config_path(void) {
         config_home && *config_home
             ? g_build_filename(config_home, "gnoblin", NULL)
             : g_build_filename(g_get_home_dir(), ".config", "gnoblin", NULL);
+    /* Match the runtime: legacy files remain visible until users convert them. */
     const char* names[] = {"init.lua", "gnoblin.toml", "gnoblin.conf"};
     for (guint i = 0; i < G_N_ELEMENTS(names); i++) {
         char* candidate = g_build_filename(directory, names[i], NULL);
@@ -655,31 +727,10 @@ static char* default_config(GError** error) {
     return NULL;
 }
 
-static JsonNode* version_record(const char* shell_version) {
-    g_autoptr(JsonNode) identity = load_identity();
-    JsonObject* source = json_node_get_object(identity);
-    JsonObject* result = new_object();
-    g_autofree char* base = g_strdup(shell_version);
-    if (g_str_has_suffix(base, "-gnoblin"))
-        base[strlen(base) - strlen("-gnoblin")] = 0;
-    set_string(result, "gnomeVersion", base);
-    set_string(result, "gnoblinVersion", member_string(source, "version", "unknown"));
-    set_string(result, "shellVersion", shell_version);
-    const char* names[] = {"gitRemote",  "gitSha",           "mutterApi",
-                           "components", "componentCommits", "sourceModified"};
-    for (guint i = 0; i < G_N_ELEMENTS(names); i++) {
-        JsonNode* node = json_object_get_member(source, names[i]);
-        if (node)
-            json_object_set_member(result, names[i], json_node_copy(node));
-        else
-            json_object_set_null_member(result, names[i]);
-    }
-    return object_node(result);
-}
-
 static JsonNode* dispatch(Cli* cli, GError** error) {
     const char* command = cli->command;
     const char* action = cli->action;
+    const char* op = "api";
     JsonObject* arguments = new_object();
     const char* method = NULL;
     g_autofree char* owned_method = NULL;
@@ -698,6 +749,8 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         }
         if (is(action, "reload"))
             method = "runtime.reload_config";
+        else if (is(action, "show"))
+            method = "settings";
     } else if (is(command, "window")) {
         if (is(action, "list")) {
             set_if(arguments, "app_id", option(cli, "app-id"));
@@ -735,15 +788,28 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             if (!require_count(cli, minimum, count, error))
                 goto invalid;
             const char* window = arg(cli, 0) ? arg(cli, 0) : "active";
+            if (is(action, "focus")) {
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                                    "window focus requires a one-use trusted context or an XDG "
+                                    "activation token; gnoblinctl cannot create either");
+                goto invalid;
+            }
             if (is(action, "toggle-minimize") && is(window, "active")) {
                 g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
                                     "window toggle-minimize requires a stable window ID");
                 goto invalid;
             }
             gboolean typed =
-                !is(window, "active") && !word_in("focus menu interactive-move interactive-resize "
-                                                  "restore-or-minimize",
-                                                  action);
+                !word_in("focus menu interactive-move interactive-resize restore-or-minimize",
+                         action) &&
+                (!is(action, "monitor") || !is(window, "active"));
+            g_autofree char* resolved_window = NULL;
+            if (typed && is(window, "active")) {
+                resolved_window = focused_window_id(cli, error);
+                if (!resolved_window)
+                    goto invalid;
+                window = resolved_window;
+            }
             if (!typed) {
                 set_string(arguments, "action", action);
                 set_string(arguments, "window", window);
@@ -846,7 +912,11 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                          : (owned_method = g_strdup_printf("workspace.%s", action));
         }
     } else if (is(command, "animation") && action) {
-        if (is(action, "inspect") || is(action, "preview")) {
+        if (is(action, "get")) {
+            if (!require_count(cli, 1, 1, error))
+                goto invalid;
+            set_string(arguments, "name", arg(cli, 0));
+        } else if (is(action, "inspect") || is(action, "preview")) {
             if (!require_count(cli, 1, 1, error))
                 goto invalid;
             set_string(arguments, "name", arg(cli, 0));
@@ -861,7 +931,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 target = option(cli, "namespace");
                 type = "namespace";
             }
-            set_string(arguments, "targetType", type);
+            set_string(arguments, "target_type", type);
             set_string(arguments, "target", target ? target : "active");
             if (is(action, "preview"))
                 set_boolean(arguments, "autoplay", has(cli, "autoplay"));
@@ -897,14 +967,6 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         } else if (action) {
             method = owned_method = g_strdup_printf("input.%s", action);
         }
-    } else if (is(command, "feature")) {
-        if (is(action, "show") || is(action, "enable") || is(action, "disable")) {
-            if (!require_count(cli, 1, 1, error))
-                goto invalid;
-            set_string(arguments, "id", arg(cli, 0));
-        }
-        if (action)
-            method = owned_method = g_strdup_printf("feature.%s", action);
     } else if (is(command, "permissions")) {
         if (is(action, "check")) {
             if (!require_count(cli, 2, 2, error))
@@ -954,18 +1016,35 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         method = "layer.list";
     else if (is(command, "monitor") && is(action, "list"))
         method = "monitor.list";
-    else if (is(command, "script") && is(action, "list"))
-        method = "script.list";
+    else if (is(command, "focus") && is(action, "history")) {
+        set_if(arguments, "workspace_id", option(cli, "workspace-id"));
+        set_if(arguments, "monitor_id", option(cli, "monitor-id"));
+        if (option(cli, "limit")) {
+            guint limit;
+            if (!parse_uint(option(cli, "limit"), 1, 256, &limit)) {
+                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                    "--limit must be between 1 and 256");
+                goto invalid;
+            }
+            set_number(arguments, "limit", limit);
+        }
+        method = "focus.history";
+    } else if (is(command, "focus") && is(action, "policy"))
+        method = "focus.policy";
+    else if (is(command, "capabilities"))
+        method = "capabilities.list";
     else if (is(command, "privacy"))
-        method = "privacy.get";
+        method = "privacy.state";
     else if (is(command, "reload"))
-        method = "shell.reload";
+        method = "runtime.reload_config";
     else if (is(command, "status"))
-        method = "shell.status";
+        method = "session.status";
+    else if (is(command, "logout"))
+        method = "session.logout";
     else if (is(command, "ping"))
-        method = "shell.ping";
+        op = "ping";
     else if (is(command, "version"))
-        method = "shell.version";
+        method = "version";
     else if (is(command, "shortcut") && is(action, "list"))
         method = "shortcut.list";
     else if (is(command, "shortcut") && is(action, "capture")) {
@@ -974,31 +1053,32 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         method = "shortcut.capture";
     }
 
-    if (!method) {
+    if (!method && !g_str_equal(op, "ping")) {
         g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION,
                             "unknown command or action");
         goto invalid;
     }
 
-    reply = call_compositor(cli, method, arguments, error);
+    reply = call_compositor(cli, op, method, arguments, error);
     if (!reply)
         return NULL;
-    JsonObject* response = json_node_get_object(reply);
-    if (is(command, "status") || is(command, "version")) {
-        const char* shell_version = member_string(response, "version", "unknown");
-        JsonNode* record = version_record(shell_version);
-        if (is(command, "status")) {
-            JsonObject* merged = json_node_get_object(record);
-            GList* members = json_object_get_members(response);
-            for (GList* item = members; item; item = item->next)
-                if (!is(item->data, "version"))
-                    json_object_set_member(
-                        merged, item->data,
-                        json_node_copy(json_object_get_member(response, item->data)));
-            g_list_free(members);
-        }
-        return record;
+    if (!JSON_NODE_HOLDS_OBJECT(reply)) {
+        if (is(command, "animation") && is(action, "get") && JSON_NODE_HOLDS_NULL(reply))
+            return json_node_copy(reply);
+        if ((is(command, "capabilities") || (is(command, "focus") && is(action, "history"))) &&
+            JSON_NODE_HOLDS_ARRAY(reply))
+            return json_node_copy(reply);
+        if ((is(command, "version") || is(command, "capabilities") || is(command, "focus") ||
+             (is(command, "config") && is(action, "show"))) &&
+            JSON_NODE_HOLDS_NULL(reply))
+            return json_node_copy(reply);
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Invalid compositor response");
+        return NULL;
     }
+    JsonObject* response = json_node_get_object(reply);
+    if (is(command, "version"))
+        return json_node_copy(reply);
     if (is(command, "ping"))
         return string_node(member_string(response, "pong", ""));
     if (is(command, "shortcut"))
@@ -1011,8 +1091,10 @@ invalid:
 }
 
 static char* node_text(JsonNode* node) {
-    if (!node || JSON_NODE_HOLDS_NULL(node))
+    if (!node)
         return g_strdup("-");
+    if (JSON_NODE_HOLDS_NULL(node))
+        return g_strdup("null");
     if (JSON_NODE_HOLDS_VALUE(node)) {
         GType type = json_node_get_value_type(node);
         if (type == G_TYPE_BOOLEAN)
@@ -1192,6 +1274,51 @@ static void print_grants(JsonArray* grants) {
     }
 }
 
+static gboolean boolean_member(JsonObject* object, const char* name, gboolean* value) {
+    JsonNode* node = object ? json_object_get_member(object, name) : NULL;
+    if (!node || !JSON_NODE_HOLDS_VALUE(node) || json_node_get_value_type(node) != G_TYPE_BOOLEAN)
+        return FALSE;
+    *value = json_node_get_boolean(node);
+    return TRUE;
+}
+
+static gboolean print_privacy_state(JsonObject* object) {
+    JsonNode* available_node = json_object_get_member(object, "available");
+    if (!available_node || !JSON_NODE_HOLDS_OBJECT(available_node) ||
+        !json_object_has_member(object, "revision"))
+        return FALSE;
+
+    JsonObject* available = json_node_get_object(available_node);
+    static const struct {
+        const char* key;
+        const char* label;
+    } activities[] = {
+        {"screen_sharing", "Screen sharing"},
+        {"microphone_in_use", "Microphone"},
+        {"camera_in_use", "Camera"},
+        {"location_in_use", "Location"},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(activities); i++) {
+        gboolean source_available;
+        g_autofree char* status = NULL;
+        if (!boolean_member(available, activities[i].key, &source_available))
+            status = g_strdup("Unknown");
+        else if (!source_available)
+            status = g_strdup("Unavailable");
+        else {
+            gboolean active;
+            if (!boolean_member(object, activities[i].key, &active))
+                status = g_strdup("Unknown");
+            else
+                status = g_strdup(active ? "In use" : "Not in use");
+        }
+        g_print("%s: %s\n", activities[i].label, status);
+    }
+    g_autofree char* revision = node_text(json_object_get_member(object, "revision"));
+    g_print("Revision: %s\n", revision);
+    return TRUE;
+}
+
 static void render(JsonNode* result, const char* format, gboolean raw_string) {
     if (raw_string && JSON_NODE_HOLDS_VALUE(result)) {
         g_print("%s", json_node_get_string(result));
@@ -1210,6 +1337,8 @@ static void render(JsonNode* result, const char* format, gboolean raw_string) {
     }
     if (JSON_NODE_HOLDS_OBJECT(result)) {
         JsonObject* object = json_node_get_object(result);
+        if (print_privacy_state(object))
+            return;
         GList* members = json_object_get_members(object);
         if (members && !members->next &&
             JSON_NODE_HOLDS_ARRAY(json_object_get_member(object, members->data))) {
@@ -1225,6 +1354,10 @@ static void render(JsonNode* result, const char* format, gboolean raw_string) {
                 g_print("%s: %s\n", label, value);
             }
         g_list_free(members);
+        return;
+    }
+    if (JSON_NODE_HOLDS_ARRAY(result)) {
+        print_table(json_node_get_array(result));
         return;
     }
     g_autofree char* value = node_text(result);
@@ -1262,6 +1395,8 @@ static const char* action_usage(const char* command, const char* action) {
             return "(--id ID | --number N) [--follow]";
     }
     if (g_str_equal(command, "animation")) {
+        if (g_str_equal(action, "get"))
+            return "NAME";
         if (g_str_equal(action, "inspect") || g_str_equal(action, "preview"))
             return "NAME [--event EVENT] [--window WINDOW | --layer LAYER | --namespace NAME] "
                    "[--autoplay for preview]";
@@ -1272,6 +1407,8 @@ static const char* action_usage(const char* command, const char* action) {
         if (word_in("play pause stop", action))
             return "SESSION";
     }
+    if (g_str_equal(command, "focus") && g_str_equal(action, "history"))
+        return "[--workspace-id ID] [--monitor-id ID] [--limit 1..256]";
     if (g_str_equal(command, "permissions") && g_str_equal(action, "check"))
         return "CAPABILITY IDENTITY";
     if (g_str_equal(command, "grant") && g_str_equal(action, "revoke"))
@@ -1284,8 +1421,6 @@ static const char* action_usage(const char* command, const char* action) {
     }
     if (g_str_equal(command, "input") && g_str_equal(action, "select"))
         return "TYPE ID";
-    if (g_str_equal(command, "feature") && word_in("show enable disable", action))
-        return "ID";
     return NULL;
 }
 
