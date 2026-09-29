@@ -43,6 +43,12 @@ add_executable(runtime-cache-test
   src/native-control/gnoblin-runtime-cache.c)
 target_link_libraries(runtime-cache-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME runtime-cache COMMAND runtime-cache-test)
+add_executable(lua-pattern-test
+  tests/lua-pattern-test.c
+  src/config/gnoblin-lua-pattern.c)
+target_include_directories(lua-pattern-test PRIVATE src/config)
+target_link_libraries(lua-pattern-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME lua-pattern COMMAND lua-pattern-test)
 if(GNOBLIN_LUA_FOUND)
   add_executable(gnoblin
     src/session/gnoblin-runtime.c
