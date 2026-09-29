@@ -1,23 +1,27 @@
 # Lua runtime API
 
 Use `gnoblin` runtime methods from an event callback to inspect or change the
-running session. Lua and `gnoblinctl` use the same method names and argument
-fields. Operation-based methods return an `Operation`; `gnoblinctl` waits for
-the matching reply and prints its result.
+running session. Lua and `gnoblinctl` share method names and argument fields
+where a method is exposed over the control socket. Some trusted interaction
+methods are Lua-runtime-only. Operation-based methods return an `Operation`;
+`gnoblinctl` waits for the matching reply and prints its result.
+
+Lua callbacks run on the `gnoblin` supervisor's event loop, separate
+from Mutter's compositor main thread. Keep callbacks nonblocking; operations
+complete asynchronously.
 
 `gnoblin.settings` returns an immutable snapshot of the active configuration
 using public snake_case setting names. Read it as a property, for example
-`gnoblin.settings.window_management.focus_mode`. It is available in native and
-Shell-backed Lua runtimes after the initial configuration is committed.
+`gnoblin.settings.window_management.focus_mode`. It is available after the
+initial configuration is committed.
 
 The snapshot includes a `revision` that advances when committed configuration
 values change. A no-op event or identical reload keeps the same revision. This
 field belongs to the detached snapshot and is never written into the config.
-`gnoblin.snapshot()` remains a compatibility function that returns a mutable
-copy of the config view; prefer `gnoblin.settings` for reads.
+`gnoblin.snapshot()` returns a detached copy of the config view; prefer
+`gnoblin.settings` for immutable runtime reads.
 
-`gnoblin.version()` returns an immutable `Version` record in native and
-Shell-backed Lua runtimes. It reads the installed
+`gnoblin.version()` returns an immutable `Version` record. It reads the installed
 `share/gnoblin/version.ini` metadata file. Set `GNOBLIN_VERSION_METADATA_FILE`
 to use another file. If that path is unset or unreadable, Gnoblin checks the
 executable's installation prefix and then the system XDG data directories. A
@@ -33,11 +37,126 @@ The record contains string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`,
 does not include a separate `buildId`, so `build_id` is `"unknown"` unless an
 identity file supplies it.
 
+Native-control API 1.19 exposes these reads to local clients:
+
+- `version` returns the version record.
+- `capabilities.list` and `focus.history` return arrays.
+- `settings` and `focus.policy` return committed settings snapshots.
+
+Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
+`session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
+events and capability-bound `window.snap.offer`.
+
+API 1.27 adds two events for shell-owned presentation of compositor requests:
+`gnoblin.window.menu-requested` and `gnoblin.osd.requested`.
+
+Native-control API 1.28 adds direct socket methods for text insertion and
+keyboard-selected window snapping. See the [compositor bridge](/compositor-bridge#api-128-text-insertion-and-keyboard-snapping)
+for their connection-owned token contract.
+
+Native-control API 1.29 adds `session.status` as a read available to Lua and
+local socket clients.
+
+Native-control API 1.30 adds one-use capabilities for actions from Mutter WM
+menus.
+
+Native-control API 1.32 adds `session.logout()` and lets a socket client focus
+a window with a compositor-verified XDG Activation token. Lua focus operations
+continue to require a trusted `FocusContext` from a shortcut event.
+
+Native-control API 1.33 adds the `microphone-monitor` capability and the
+`gnoblin.capability.changed` event for PipeWire availability transitions.
+
+`gnoblin.session.status()` returns a record with these fields:
+
+- `state` is `"running"` while the compositor answers the request.
+- `lock_available` says whether Mutter can report its lock state.
+- When `lock_available` is true, `lock_state` is `unlocked`, `covering`,
+  `locked`, or `failsafe`.
+
+When lock state is unavailable, the record omits `lock_state`; unavailable does
+not mean unlocked.
+
+The read cannot report why a stopped session exited. The socket is unavailable
+after the compositor stops. The socket read is served directly by Mutter and
+does not require the Lua supervisor; it reports compositor availability, not
+supervisor health. Subscribe to
+`gnoblin.session.lock-state-changed` for lock transitions.
+
+`gnoblin.session.logout()` takes no arguments and returns an operation whose
+successful value is `{accepted = true}`. After the compositor confirms that
+operation, the supervisor exits successfully and stops the compositor. The
+session wrapper then stops Gnoblin's user services and returns to the login
+manager. A socket caller may receive EOF while the session is closing.
+
+Send `{}` as `arguments` for reads without filters. Responses contain the
+snapshot directly, not an operation handle. See the
+[compositor bridge](/compositor-bridge#connect) for the wire format and version
+requirements.
+
+API 1.20 adds `runtime.reload_config()` with no arguments. In a standalone
+native session, reload applies changes to these settings:
+
+- `animations`
+- `input`
+- `permissions`
+- `touchpad-gestures`
+- `window-rules`
+- `workspaces`
+
+Other setting changes are rejected and leave the active runtime unchanged.
+Start a new session to apply them.
+
+The native open-animation matcher uses updated rules for windows mapped after
+reload. Reload does not replay open animations for windows already mapped.
+
+The Lua `Operation` completes after the candidate config has loaded, validated,
+and been staged. Its `runtime_generation` is the generation assigned if the
+candidate commits; it does not confirm commit. Mutter waits for active-runtime
+operations and deferred callbacks before swapping runtimes.
+
+`gnoblin.config.reloaded` signals that the candidate became active. If the
+session stops first, the candidate is discarded and that event is not sent, even
+if the Lua operation already reported successful staging.
+
+After the commit, the runtime also emits `gnoblin.focus.policy-changed` and
+`gnoblin.permission.changed` when those effective policies changed. These
+events carry the committed policy snapshot and configuration revision. A
+failed reload emits `gnoblin.config.reload-failed` while the previous runtime
+remains active.
+
+`gnoblin.session.lock()` asks a subscribed external client to start its lock UI.
+It takes no arguments and returns an `Operation<LockRequest>`.
+
+On success, `dispatched` is `true`. `subscribers` counts connected clients
+subscribed when Gnoblin targets the request. A slow connection may close before
+it handles the event. Neither field confirms delivery or lock state. The
+operation fails when compositor locking is unavailable or no client is
+subscribed. No Lua unlock method is provided.
+
+The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
+`locked` confirms the compositor's lock transition. See the
+[compositor bridge](/compositor-bridge#api-version-121-session-locking)
+for socket subscription and request details.
+
+`gnoblin.session.activity()` returns the latest native idle-monitor sample.
+Its fields are `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
+`revision`. The threshold is fixed at 120000 milliseconds. Activity state is
+independent of idle inhibitors and the GNOME idle-delay setting.
+
+When the sample is available and idle, `idle_for_ms` advances from the last
+sample using the supervisor's monotonic clock. If monitoring is unavailable,
+`idle` is false and `idle_for_ms` is zero.
+
+`gnoblin.session.activity-changed` is emitted when availability or idle state
+changes. Its `idle_for_ms` is sampled at that transition and does not update
+continuously. The event also carries `threshold_ms`, `revision`, `sequence`,
+and monotonic-clock `time`.
+
 Native sessions provide immediate reads through `gnoblin.windows`,
 `gnoblin.workspaces`, `gnoblin.monitors`, `gnoblin.layers`,
-`gnoblin.input.devices()`, and `gnoblin.capabilities`. Callbacks run in
-the compositor's main thread, so keep them short. See [Lua events](/config/lua-events)
-for event names and callback behavior.
+`gnoblin.input.devices()`, and `gnoblin.capabilities`. See
+[Lua events](/config/lua-events) for event names and callback behavior.
 
 `gnoblin.focus.policy` returns a read-only snapshot of the supported focus
 settings. Its `revision` identifies the committed settings snapshot.
@@ -61,8 +180,7 @@ may return fewer records.
 
 History includes minimized windows and removes windows after they close. At
 startup, only the focused window seeds the recent order. Other open windows
-stay in snapshot order until the runtime observes their focus. Shell-backed Lua
-runtimes do not provide focus history.
+stay in snapshot order until the runtime observes their focus.
 
 The settings property becomes available after the initial config load commits.
 Native compositor snapshots are seeded after the initial Lua config
@@ -82,14 +200,14 @@ end)
 Operation-based Lua API calls queue one operation, including legacy list
 queries. The handle exposes the completion state and result:
 
-| Member                  | Type                                      | Meaning                                                                                                          |
-| ----------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `id`                    | Positive integer                          | Request ID for this session.                                                                                     |
-| `method`                | String                                    | Canonical API method name.                                                                                       |
-| `status`                | `"pending"`, `"succeeded"`, or `"failed"` | Current operation state.                                                                                         |
-| `value`                 | Result or `nil`                           | Completed value on success.                                                                                      |
-| `error`                 | `Error`, string, or `nil`                 | Failure detail. Native API 1.11 uses the `Error` record; Shell-backed compatibility operations may use a string. |
-| `on_complete(callback)` | Function to `Subscription`                | Call once with `(value, error)`.                                                                                 |
+| Member                  | Type                                      | Meaning                                                       |
+| ----------------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| `id`                    | Positive integer                          | Request ID for this session.                                  |
+| `method`                | String                                    | Canonical API method name.                                    |
+| `status`                | `"pending"`, `"succeeded"`, or `"failed"` | Current operation state.                                      |
+| `value`                 | Result or `nil`                           | Completed value on success.                                   |
+| `error`                 | `Error` or `nil`                          | Failure detail with a stable code and human-readable message. |
+| `on_complete(callback)` | Function to `Subscription`                | Call once with `(value, error)`.                              |
 
 If the operation has already completed, Gnoblin schedules the callback for the
 next main-loop turn. You can unsubscribe before it runs.
@@ -106,7 +224,7 @@ message.
 
 During migration, Gnoblin also sends the legacy
 `gnoblin.api.operation-completed` event with a request ID, result, and string
-error. Shell-backed compatibility operations use the legacy shape.
+error.
 
 Native `Error.code` values are:
 
@@ -215,9 +333,8 @@ Subscribe to these window events to track changes:
 - `gnoblin.window.changed` and `gnoblin.window.attention-changed`
 - `gnoblin.window.focused` and `gnoblin.window.unfocused`
 
-These reads are available only when Gnoblin runs with the native Mutter
-runtime. They raise a Lua error when no native snapshot is available.
-Shell-backed compatibility sessions do not populate these caches.
+These reads are available in Gnoblin's standalone Mutter runtime. They raise a
+Lua error when the snapshot is unavailable.
 
 The native runtime exposes `gnoblin.monitors.list()` and
 `gnoblin.monitors.primary()` as cached read-only snapshot methods. The primary
@@ -258,20 +375,48 @@ Layer records expose these fields:
 
 Mutter currently omits `app_id` because layer-shell does not provide one.
 
+`gnoblin.layers.animation_policy(namespace)` returns the effective enter and
+exit phases and `window_shadow` for a layer namespace. The namespace must be 1
+to 128 UTF-8 bytes. Without an animation override, both phases use `slide`.
+
+`window_shadow` defaults to `false` unless a matching default-window rule
+supplies a shadow value. The method raises a Lua error if the committed policy
+cannot be read. Native-control API 1.31 also exposes this read to socket
+clients as `layer.animation_policy` with a `namespace` argument.
+
 `gnoblin.capabilities.list()` returns read-only native compositor and protocol
 capability records. It takes no arguments and has no filters or mutators. The
-read raises a Lua error if its snapshot is unavailable and is not populated in
-Shell-backed compatibility sessions.
+read raises a Lua error if its snapshot is unavailable.
 
-Each `Capability` has a string `id`, a string `description`, a boolean
-`available`, an integer `revision`, and an optional string `reason`. The
-current snapshot lists only capabilities advertised as available, so every
-record has `available = true` and omits `reason`.
+Capability records expose these fields:
+
+- `id`: the capability name.
+- `description`: what the capability provides.
+- `available`: whether its current requirements are met.
+- `revision`: the compositor state revision.
+- `reason`: the cause when the capability is unavailable; omitted otherwise.
+
+The standalone runtime advertises these optional capabilities:
+
+- `window-thumbnails`: bounded window previews.
+- `session-activity`: native idle-monitor state.
+- `microphone-monitor`: PipeWire microphone activity monitoring.
+
+`microphone-monitor` is available only when this Mutter build includes
+remote-desktop support and the PipeWire monitor is connected. When unavailable,
+`reason` is one of:
+
+- `remote_desktop_disabled`: the Mutter build lacks remote-desktop support.
+- `pipewire_unavailable`: the monitor cannot connect.
+
+Subscribe to `gnoblin.capability.changed` through the Lua event API or API 1.33
+on the compositor socket to receive the updated record when availability
+changes. Check the capability snapshot before using an optional capability.
 
 `gnoblin.input.devices()` returns read-only records from the latest native
 input-device snapshot. It takes no arguments and is available in runtime event
-callbacks after native startup. The read raises a Lua error if its snapshot is
-unavailable and is not populated in Shell-backed compatibility sessions.
+callbacks after startup. The read raises a Lua error if its snapshot is
+unavailable.
 
 Input-device records expose these fields:
 
@@ -312,8 +457,7 @@ unknown.
 source and returns an operation handle. The operation completes only after
 Mutter confirms the keymap change. Native IBus selection is not implemented;
 selecting an IBus engine fails explicitly. Native selection changes the seat's
-keyboard layout. Per-window source restoration remains in the Shell-backed
-compatibility path, where XKB and IBus selection behavior is unchanged.
+keyboard layout. Per-window source restoration is not provided.
 
 Subscribe to `gnoblin.input.source-changed` for confirmed current-source
 changes and `gnoblin.input.sources-changed` when the configured source list
@@ -325,6 +469,52 @@ Mutter's current keymap is external or unknown.
 `"cursor"`, `"pad"`, or `"unknown"`. Capabilities are zero or more of
 `"pointer"`, `"keyboard"`, `"touchpad"`, `"touch"`, `"tablet_tool"`,
 `"tablet_pad"`, `"trackball"`, and `"trackpoint"`.
+
+### Insert text into the focused Wayland client
+
+Use `gnoblin.input.text_target(context)` from a shortcut event callback to
+request a one-use text target. It returns an operation; on success, its value
+is an opaque `TextTarget`:
+
+```lua
+gnoblin.events.on("gnoblin.shortcut.activated", function(event)
+    if not event.focus_context then
+        return
+    end
+
+    gnoblin.input.text_target(event.focus_context):on_complete(function(target, err)
+        if err then
+            return
+        end
+        target:insert_text("😀")
+    end)
+end)
+```
+
+The compositor consumes the `FocusContext` when it handles the request. It
+creates a target only when the same Wayland surface and client still have
+keyboard focus and have an active text-input-v3 session. The target expires
+with its five-second `FocusContext` deadline. Locking the session, reloading
+the runtime, losing focus, or closing the runtime revokes it. X11 clients are
+not supported.
+
+`TextTarget.window_id` is the focused window's stable ID when the surface
+belongs to a window. `TextTarget.caret` is an optional rectangle in
+compositor logical coordinates. These fields are for shell presentation; only
+the opaque target authorizes insertion.
+
+Call `target:insert_text(text)` once. It returns an operation and consumes the
+target on the first attempt. Text must contain 1 to 256 bytes of valid UTF-8
+without NUL or control characters.
+
+Insertion succeeds only while the same surface, client, focus epoch, and active
+text input remain current. The session must be unlocked. Mutter commits the
+text through its focused input-method path.
+
+Modifiers held when the shortcut activated may remain held. Adding another
+modifier invalidates the target. Ctrl, Alt, Shift, Lock, Meta, and Hyper state
+prevents target creation. Gnoblin keeps at most 128 active text targets per
+compositor; creation fails while the limit is full.
 
 ### Snapshot record methods
 
@@ -358,6 +548,7 @@ Record properties remain read-only. In the native runtime,
 `Window:focus(context)` requests focus using the context from
 `gnoblin.shortcut.activated`. The callback provides that value only for a
 trusted shortcut key press. It expires after five seconds.
+A successful focus operation completes with `{id = window.id}`.
 
 The same context can authorize `begin_move` or `begin_resize`. It works once
 across all three operations. A config reload invalidates contexts from the old
@@ -365,17 +556,130 @@ Lua runtime; a session lock also revokes them.
 
 Mutter still applies its normal window activation policy.
 
-Contexts are not provided for clicks, Shell-backed shortcuts, release bindings,
-synthetic input, input-method events, or repeated key presses. Direct
+Contexts are not provided for clicks, external-client shortcuts, release
+bindings, synthetic input, input-method events, or repeated key presses. Direct
 `gnoblin.window.focus`, `gnoblin.window.begin_move`, and
 `gnoblin.window.begin_resize` calls without a context remain denied.
 
 A separate shell process can subscribe through native-control API 1.10 and use
 its connection-bound `focus_context` token; see the
 [compositor bridge](/compositor-bridge#api-version-110-shortcut-focus-grants).
-Socket tokens expire after five seconds and work only on the connection that
-received them. Disconnect, event-filter replacement, config reload, or session
-lock revokes them. A failed focus request consumes its context.
+
+### Pointer and keyboard snapping
+
+Lua pointer callbacks receive a read-only `event.drag` record on the started
+and updated events. It contains window and drag IDs, settings revision, pointer
+coordinates, modifiers, monitor and work-area rectangles, the window frame,
+and maximized state.
+
+Call `event.drag:offer_targets(targets)` during the callback. An offer can
+contain 1 to 128 targets. Each target has:
+
+- a unique `id`;
+- pointer `hit` and destination `frame` rectangles;
+- optional `maximize`, `required_modifiers`, and `forbidden_modifiers` fields.
+
+Rectangles use integer logical coordinates and `{x, y, width, height}` fields.
+Both must fit in the current work area. Modifier arrays accept only `control`,
+which cannot be both required and forbidden.
+
+On release, Mutter checks the latest accepted offer against the actual pointer
+and modifiers. A match applies its frame; otherwise Mutter completes the
+normal move or tile-preview behavior. The shell owns snap guides and other
+presentation.
+
+Drag records expire on release, lock, config reload, window loss, or compositor
+teardown. An old runtime cannot replace an offer after reload.
+
+Layer-shell clients can use the native-control socket API 1.26. Subscribe to
+the drag lifecycle events before a drag begins. Started and updated events
+include a private token for that connection. Submit an offer on that same
+connection:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 26 },
+    "id": "offer-1",
+    "method": "window.snap.offer",
+    "arguments": {
+        "drag_id": 42,
+        "drag_token": "<token from the event>",
+        "targets": [
+            {
+                "id": "left",
+                "hit": { "x": 0, "y": 0, "width": 700, "height": 900 },
+                "frame": { "x": 0, "y": 0, "width": 700, "height": 900 }
+            }
+        ]
+    }
+}
+```
+
+The token belongs to one live drag and config generation. The first accepted
+Lua or socket offer owns that drag; only that owner can replace its targets.
+Disconnect or replacing the event subscription revokes a socket token and
+clears its offer.
+
+The compositor checks the actual release pointer, modifiers, monitor, and work
+area before applying a match. It never waits for the shell or Lua runtime on
+release.
+
+### Compositor requests
+
+Subscribe to `gnoblin.window.menu-requested` to show a shell-owned window menu,
+or `gnoblin.osd.requested` to show an OSD requested by Mutter. Both events
+require native-control API 1.27. They are also available to Lua callbacks as
+events with the same names.
+
+`gnoblin.window.menu-requested` includes:
+
+- `window_id`: Gnoblin's stable window ID;
+- `menu_type`: `wm` for a window manager menu or `app` for an application menu;
+- `x` and `y`: global logical coordinates supplied by Mutter.
+
+For `menu_type == "wm"`, Lua receives a non-serializable
+`event.menu_context` userdata. In that callback, call
+`event.menu_context:begin_move()` or
+`event.menu_context:begin_resize(edge)` to start Mutter's keyboard grab on the
+exact window that raised the menu. The context works once, expires after five
+seconds, and is available only during that event callback. It is revoked on
+session lock or runtime/config teardown. App-menu requests have no context.
+
+Socket API 1.30 clients receive a per-connection `menu_context` token on WM
+menu events. Pass it to `window.begin_move` or `window.begin_resize` without an
+`id`; Gnoblin binds it to the client and original window. Application-menu
+events remain informational.
+
+The token expires after five seconds and is consumed on every matching attempt,
+including malformed arguments. Disconnect and event-subscription replacement
+revoke it. Both Lua and socket paths recheck the window and lock state before
+using a fresh Mutter timestamp.
+
+`gnoblin.osd.requested` includes the stable `monitor_id` and may include
+`icon` and `label`. These are the fields Mutter supplies. It provides no OSD
+level, maximum, or output list. Gnoblin does not create the OSD; the subscribed
+shell decides how to present the request.
+
+For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
+a trusted shortcut callback. It consumes the one-use focus context and returns
+an `Operation<SnapContext>` for the focused window; callers cannot provide a
+window ID.
+
+Commit once with a monitor ID and frame rectangle. Gnoblin checks the window,
+monitor, lock state, runtime generation, and work-area bounds again. The
+operation resolves to `{window_id, monitor_id, committed = true}`. The context
+expires with its source focus context and is revoked by lock or config reload.
+
+Keyboard `SnapContext` is available to Lua and native-control API 1.28 clients.
+Socket clients use `window.snap_context` and `window.snap`; they pass the focus
+token from a shortcut event and cannot choose the target window.
+
+Socket focus tokens expire after five seconds and work only on the connection
+that received them. Disconnect, event-filter replacement, config reload, or
+session lock revokes them. A failed focus request consumes its context.
+Gnoblin keeps at most 128 active snap contexts per compositor. If the limit is
+full, context creation fails until an existing context expires or is revoked.
 
 Any same-user process can connect to the mode-0600 socket, so same-user clients
 are inside the trust boundary.
@@ -389,15 +693,38 @@ Native workspace records rename the `windows` count to `window_count` and add
 a revision. Window, workspace, monitor, layer, input-device, and capability
 snapshots share a revision that advances when any of those states changes.
 
-| Method                | Arguments                                                     | Successful result                        |
-| --------------------- | ------------------------------------------------------------- | ---------------------------------------- |
-| `window.list(args)`   | Optional `app_id`, `title`, `focused` filters                 | `{windows = {Window, ...}}`              |
-| `window.match(args)`  | Optional string `window` ID; defaults to `"active"`           | Window identity and a `match` rule table |
-| `window.action(args)` | `action`; optional `window`, geometry, `monitor`, `workspace` | Action result                            |
-| `layer.list()`        | None                                                          | `{surfaces = {Surface, ...}}`            |
-| `monitor.list()`      | None                                                          | `{monitors = {Monitor, ...}}`            |
+The table below documents raw compositor-socket operations. The socket keeps
+`window.action` for compatibility; the standalone Lua runtime does not expose
+`gnoblin.window.action`. Lua callers use the typed methods on `Window`
+snapshots.
 
-In the native preview, each monitor has these fields:
+| Method                   | Arguments                                                         | Successful result                                            |
+| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                     | `{windows = {Window, ...}}`                                  |
+| `window.match(args)`     | Optional string `window` ID; defaults to `"active"`               | Window identity and a `match` rule table                     |
+| `window.action(args)`    | `action`; optional `window`, geometry, `monitor`, `workspace`     | Action result                                                |
+| `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320 | Asynchronous operation with actual dimensions and base64 PNG |
+| `layer.list()`           | None                                                              | `{surfaces = {Surface, ...}}`                                |
+| `monitor.list()`         | None                                                              | `{monitors = {Monitor, ...}}`                                |
+
+`window.thumbnail` requires API 1.23. It accepts a stable window `id` and
+integer `width` and `height` dimensions up to 480 by 320. The compositor scales
+down to fit while preserving aspect ratio.
+
+The operation returns the stable `window_id`, actual dimensions, and `data` as
+a base64-encoded PNG. Encoded PNG output is limited to 512 KiB.
+
+- Requests fail while the session is locked.
+- Each socket client can have one active capture; the session allows four.
+- Gnoblin drops results after a disconnect or window destruction.
+
+Thumbnails are compositor-rendered previews. Mutter 51 provides no
+protected-content metadata or DRM-redaction guarantee, and Gnoblin does not
+promise that protected content is hidden. The local socket is mode 0600; as
+with other native-control methods, same-user processes are inside the session
+trust boundary.
+
+In the standalone runtime, each monitor has these fields:
 
 | Field                       | Meaning                                                                                                            |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -454,23 +781,23 @@ Typed operations take the stable string `id` returned by `window.list`. They
 reject unknown argument fields. Each successful operation returns `{id}` as
 its completed value. Window operations fail while the session is locked.
 
-| Method                           | Arguments                                                                                             | Effect                                                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `window.close(args)`             | `id`                                                                                                  | Requests a normal close; the application can show an unsaved-work prompt.                                           |
-| `window.minimize(args)`          | `id`                                                                                                  | Minimizes the window.                                                                                               |
-| `window.toggle_minimize(args)`   | `id`                                                                                                  | Restores a minimized window; otherwise minimizes it.                                                                |
-| `window.restore(args)`           | `id`                                                                                                  | Removes minimization and maximization. It does not leave fullscreen.                                                |
-| `window.set_maximized(args)`     | `id`, `enabled` boolean                                                                               | Sets maximization on or off.                                                                                        |
-| `window.set_fullscreen(args)`    | `id`, `enabled` boolean                                                                               | Sets fullscreen on or off.                                                                                          |
-| `window.set_above(args)`         | `id`, `enabled` boolean                                                                               | Sets always-on-top on or off.                                                                                       |
-| `window.set_sticky(args)`        | `id`, `enabled` boolean                                                                               | Shows the window on all workspaces or only its own.                                                                 |
-| `window.move(args)`              | `id`, integer `x`, integer `y` from −100000 to 100000                                                 | Sets the frame position in logical desktop pixels.                                                                  |
-| `window.resize(args)`            | `id`, integer `width`, integer `height` from 1 to 32768                                               | Sets the outer frame size in logical pixels.                                                                        |
-| `window.move_to_workspace(args)` | `id`, `workspace` selector; optional `follow` boolean                                                 | Moves the window; `follow = true` also activates that workspace.                                                    |
-| `window.move_to_monitor(args)`   | `id`, `monitor` connector ID or `{id = connector ID}`                                                 | Moves the window to that active monitor.                                                                            |
-| `window.focus(args)`             | Native Lua: `Window:focus(FocusContext)`; socket API 1.10: `id`, `focus_context`                      | Focuses a listed window using one trusted, single-use shortcut context. Direct calls without a context fail closed. |
-| `window.begin_move(args)`        | Native Lua: `Window:begin_move(FocusContext)`; socket API 1.12: `id`, `focus_context`                 | Starts Mutter's keyboard move grab using the trusted shortcut timestamp.                                            |
-| `window.begin_resize(args)`      | Native Lua: `Window:begin_resize(edge, FocusContext)`; socket API 1.12: `id`, `edge`, `focus_context` | Starts Mutter's keyboard resize grab at the selected edge.                                                          |
+| Method                           | Arguments                                                                                                                                    | Effect                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `window.close(args)`             | `id`                                                                                                                                         | Requests a normal close; the application can show an unsaved-work prompt.  |
+| `window.minimize(args)`          | `id`                                                                                                                                         | Minimizes the window.                                                      |
+| `window.toggle_minimize(args)`   | `id`                                                                                                                                         | Restores a minimized window; otherwise minimizes it.                       |
+| `window.restore(args)`           | `id`                                                                                                                                         | Removes minimization and maximization. It does not leave fullscreen.       |
+| `window.set_maximized(args)`     | `id`, `enabled` boolean                                                                                                                      | Sets maximization on or off.                                               |
+| `window.set_fullscreen(args)`    | `id`, `enabled` boolean                                                                                                                      | Sets fullscreen on or off.                                                 |
+| `window.set_above(args)`         | `id`, `enabled` boolean                                                                                                                      | Sets always-on-top on or off.                                              |
+| `window.set_sticky(args)`        | `id`, `enabled` boolean                                                                                                                      | Shows the window on all workspaces or only its own.                        |
+| `window.move(args)`              | `id`, integer `x`, integer `y` from −100000 to 100000                                                                                        | Sets the frame position in logical desktop pixels.                         |
+| `window.resize(args)`            | `id`, integer `width`, integer `height` from 1 to 32768                                                                                      | Sets the outer frame size in logical pixels.                               |
+| `window.move_to_workspace(args)` | `id`, `workspace` selector; optional `follow` boolean                                                                                        | Moves the window; `follow = true` also activates that workspace.           |
+| `window.move_to_monitor(args)`   | `id`, `monitor` connector ID or `{id = connector ID}`                                                                                        | Moves the window to that active monitor.                                   |
+| `window.focus(args)`             | Lua: `Window:focus(FocusContext)`; socket 1.10: `id` + `focus_context`; socket 1.32: `id` + `activation_token`                               | Focuses a listed window with one-use focus proof.                          |
+| `window.begin_move(args)`        | Native Lua: `Window:begin_move(FocusContext)`; socket API 1.12: `id`, `focus_context`; menu API 1.30: `menu_context`                         | Starts a keyboard move grab with one-use shortcut or WM-menu authority.    |
+| `window.begin_resize(args)`      | Native Lua: `Window:begin_resize(edge, FocusContext)`; socket API 1.12: `id`, `edge`, `focus_context`; menu API 1.30: `menu_context`, `edge` | Starts a keyboard resize grab at the selected edge with one-use authority. |
 
 Resize edges are:
 
@@ -478,82 +805,164 @@ Resize edges are:
 - `north_east`, `north_west`, `south_east`, or `south_west` to resize from a corner.
 
 Each interactive method needs the same one-use trusted context used by the
-focus method. The context authorizes one operation. Mutter starts its keyboard
-grab with the shortcut timestamp and current pointer sprite. Calls without a
-trusted context fail closed.
+Lua focus method. The context authorizes one operation. Mutter starts its
+keyboard grab with the shortcut timestamp and current pointer sprite. Calls
+without a trusted context fail closed.
+
+Socket clients can use `window.focus` with an XDG Activation token at API
+1.32. The shell obtains the token through XDG Activation after user input on
+one of its Wayland surfaces, then sends it with the target window's stable
+`id`.
+
+Gnoblin checks that the same process created the token and owns the socket
+connection. Mutter validates the seat, serial, and source surface. Gnoblin
+checks that the session is unlocked and consumes the token before focusing.
+
+The token is single-use. Gnoblin does not expose it to Lua or accept
+caller-supplied timestamps or input serials. See the
+[compositor bridge](../compositor-bridge.md#api-version-132-xdg-activation-focus-and-session-logout)
+for the wire format.
 
 The native `monitor.list()` result uses active connector names such as `DP-1`
 or `eDP-1` as string IDs. For cloned outputs, it selects the first active
 connector alphabetically.
 
 A typed move fails with `not_found` if its connector ID is no longer listed.
-The compatibility `window.action` monitor action still takes the current
-numeric index.
-
-Shell-backed sessions retain `window.action` for compatibility actions such as
-`focus`, `menu`, `interactive-move`, and `interactive-resize`. The standalone
-native compositor denies `window.action` with `action: "focus"`; use
+The legacy `window.action` monitor action still takes the current numeric
+index. Native `window.action` with `action: "focus"` is denied; use
 `window.focus` with a verified context instead.
 
 ## Animations
 
-| Method                    | Arguments                                        | Successful result                            |
-| ------------------------- | ------------------------------------------------ | -------------------------------------------- |
-| `animation.list()`        | None                                             | `{animations = {Animation, ...}}`            |
-| `animation.surfaces()`    | None                                             | `{surfaces = {Surface, ...}}`                |
-| `animation.inspect(args)` | `name`, `target`; optional `event`, `targetType` | Animation details and resolved specification |
-| `animation.preview(args)` | Same as inspect; optional `autoplay`             | Preview session ID and specification         |
-| `animation.seek(args)`    | `session`; `progress` from 0 to 1                | Session action result                        |
-| `animation.step(args)`    | `session`; `milliseconds` from 1 to 60000        | Session action result                        |
-| `animation.play(args)`    | `session`                                        | Session action result                        |
-| `animation.pause(args)`   | `session`                                        | Session action result                        |
-| `animation.stop(args)`    | `session`                                        | Session action result                        |
+The Lua runtime exposes animation controls through `gnoblin.animations`. Keep
+`gnoblin.animation { ... }` for declaring or updating a named animation in
+configuration.
 
-| Field        | Accepted value                                  | Meaning                                       |
-| ------------ | ----------------------------------------------- | --------------------------------------------- |
-| `targetType` | `window` (default), `layer`, or `namespace`     | Selects how to resolve `target`.              |
-| `target`     | `"active"` or window ID; layer ID; or namespace | Identifies the preview target.                |
-| `name`       | 1–80 ASCII letters, digits, `_` or `-`          | Selects an animation.                         |
-| `event`      | Optional lowercase kebab-case event name        | Selects an event supported by that animation. |
-| `autoplay`   | Boolean; default `false`                        | Starts a preview immediately when `true`.     |
+| Method                             | Arguments                                         | Successful result                            |
+| ---------------------------------- | ------------------------------------------------- | -------------------------------------------- |
+| `gnoblin.animations.list()`        | None                                              | `{animations = AnimationInfo[]}`             |
+| `gnoblin.animations.get(name)`     | Animation name                                    | Animation record or `nil`                    |
+| `gnoblin.animations.surfaces()`    | None                                              | `{surfaces = {Surface, ...}}`                |
+| `gnoblin.animations.inspect(args)` | `name`, `target`; optional `event`, `target_type` | Animation details and resolved specification |
+| `gnoblin.animations.preview(args)` | Same as inspect; optional `autoplay`              | `AnimationPreview` record                    |
+| `gnoblin.animations.seek(args)`    | `session`; `progress` from 0 to 1                 | Updated `AnimationPreview` record            |
+| `gnoblin.animations.step(args)`    | `session`; `milliseconds` from 1 to 60000         | Updated `AnimationPreview` record            |
+| `gnoblin.animations.play(args)`    | `session`                                         | Updated `AnimationPreview` record            |
+| `gnoblin.animations.pause(args)`   | `session`                                         | Updated `AnimationPreview` record            |
+| `gnoblin.animations.stop(args)`    | `session`                                         | `{ok = true, session = string}`              |
+
+| Field         | Accepted value                                  | Meaning                                       |
+| ------------- | ----------------------------------------------- | --------------------------------------------- |
+| `target_type` | `window` (default), `layer`, or `namespace`     | Selects how to resolve `target`.              |
+| `target`      | `"active"` or window ID; layer ID; or namespace | Identifies the preview target.                |
+| `name`        | 1–80 ASCII letters, digits, `_` or `-`          | Selects an animation.                         |
+| `event`       | Optional lowercase kebab-case event name        | Selects an event supported by that animation. |
+| `autoplay`    | Boolean; default `false`                        | Starts a preview immediately when `true`.     |
 
 See the [animation guide](/guides/animations) for supported animation events.
+In Lua, `gnoblin.animations.preview(spec)` returns an `Operation`. Its
+successful value is an immutable preview record.
 
-## Features, scripts, and input
+The record methods are `seek`, `step`, `play`, `pause`, and `stop`. They return
+new operations. The stop result contains an `ok` flag and a `session` ID.
 
-| Method                  | Arguments    | Successful result                                               |
-| ----------------------- | ------------ | --------------------------------------------------------------- |
-| `feature.list()`        | None         | Feature records with `id`, `description`, and `enabled`         |
-| `feature.show(args)`    | `id`         | `{id, enabled}`                                                 |
-| `feature.enable(args)`  | `id`         | `{ok, id, enabled}`                                             |
-| `feature.disable(args)` | `id`         | `{ok, id, enabled}`                                             |
-| `script.list()`         | None         | `{scripts = {...}}`                                             |
-| `input.list()`          | None         | Input-source records with `type`, `id`, `shortName`, and `name` |
-| `input.current()`       | None         | Current input source record                                     |
-| `input.select(args)`    | `type`, `id` | `{ok, type, id}`                                                |
+Configured `open` and `close` animations run for normal windows during their
+map and destroy lifecycles. The compositor starts built-in or registered
+animations whose event matches the selected rule. The native methods below
+control explicit preview sessions.
 
-Use IDs returned by the matching `list` method for feature and input
-operations. Input `type` and `id` values depend on the sources available in
-your session.
+For example, inspect a new window's `open` animation, seek to its midpoint,
+then play from there:
+
+```lua
+gnoblin.events.on("gnoblin.window.created", function(event)
+    local request = gnoblin.animations.preview {
+        name = "gnome-open",
+        event = "open",
+        target = event.window.id,
+        target_type = "window",
+    }
+
+    request:on_complete(function(preview, error)
+        if error then
+            print(error.message)
+            return
+        end
+
+        preview:seek(0.5):on_complete(function(seeked, seek_error)
+            if seek_error then
+                print(seek_error.message)
+                return
+            end
+            seeked:play()
+        end)
+    end)
+end)
+```
+
+## Input sources
+
+| Method               | Arguments    | Successful result                                           |
+| -------------------- | ------------ | ----------------------------------------------------------- |
+| `input.list()`       | None         | Input-source records with `type`, `id`, `shortName`, `name` |
+| `input.current()`    | None         | Current input-source record                                 |
+| `input.select(args)` | `type`, `id` | `{ok, type, id}`                                            |
+
+Use IDs returned by `input.list()` to select a source. `type` and `id` depend
+on the sources available in your session. The immediate read methods
+`gnoblin.input.sources()` and `gnoblin.input.current_source()` return native
+XKB snapshots; see the input details below.
 
 ## Privacy and permissions
 
-| Method                    | Arguments                | Successful result                                        |
-| ------------------------- | ------------------------ | -------------------------------------------------------- |
-| `privacy.get()`           | None                     | `{screenSharing, microphoneInUse, locationInUse}`        |
-| `permissions.list()`      | None                     | Current permission policy                                |
-| `permissions.policy()`    | None                     | Immutable policy with `default`, `rules`, and `revision` |
-| `permissions.check(args)` | `capability`, `identity` | Permission decision with scope details                   |
-| `grant.list()`            | None                     | `{grants = {Grant, ...}}`                                |
-| `grant.revoke(args)`      | `kind`, `id`             | `{ok, id}`                                               |
+| Method                             | Arguments                | Successful result                                        |
+| ---------------------------------- | ------------------------ | -------------------------------------------------------- |
+| `gnoblin.privacy.state()`          | None                     | Read-only `PrivacyState` snapshot                        |
+| `gnoblin.privacy.stop_sharing()`   | None                     | `Operation<{requested: integer}>`                        |
+| `gnoblin.privacy.stop_recording()` | None                     | `Operation<{requested: integer}>`                        |
+| `permissions.list()`               | None                     | Current permission policy                                |
+| `permissions.policy()`             | None                     | Immutable policy with `default`, `rules`, and `revision` |
+| `permissions.check(args)`          | `capability`, `identity` | Permission decision with scope details                   |
+| `grant.list()`                     | None                     | `{grants = {Grant, ...}}`                                |
+| `grant.revoke(args)`               | `kind`, `id`             | `{ok, id}`                                               |
 
 Permission capabilities, identities, grant kinds, and scope fields use the
 same values as [session permissions](/config/configure/permissions).
 
+`permissions.check` returns an immutable decision with `level`, `rule`,
+`monitors` (a string array), `devices` (an array containing any of
+`"keyboard"`, `"pointer"`, and `"touchscreen"`), `clipboard`, and `revision`.
+The revision identifies the committed permission-policy snapshot.
+
+`gnoblin.privacy.state()` returns an immutable `PrivacyState` record with an
+`available` field and a `revision`.
+
+The `available` record uses `screen_sharing`, `recording`,
+`microphone_in_use`, `camera_in_use`, and `location_in_use`. Gnoblin omits an
+activity field when its source is unavailable.
+
+The native runtime reports screen-sharing and recording activity from Mutter's
+tracked remote-access handles. Microphone monitoring is available when Mutter
+is built with remote-desktop support and can connect to PipeWire.
+
+It reports running audio-capture streams and ignores the GNOME Volume Control
+and pavucontrol meter streams. This reports an active capture stream; it does
+not inspect whether the stream is carrying audible samples. Camera and location
+activity are unavailable. The `available` value for each source distinguishes
+unsupported monitoring from inactive activity.
+
+`gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording
+handles. `gnoblin.privacy.stop_recording()` requests closure of tracked
+recording handles. Each operation result contains integer `requested`, the
+number of handles passed to `meta_remote_access_handle_stop()`. A positive
+count confirms that the calls were issued, not that a session has already
+closed. Mutter reports closure later through `gnoblin.privacy.changed`; these
+methods do not revoke a saved portal grant.
+
 `permissions.policy()` returns the committed Gnoblin policy directly.
 Native-control API 1.16 adds the matching socket method and
-`gnoblin.permission.changed` event. The compatibility `permissions.list()`
-response keeps its current wrapper and metadata.
+`gnoblin.permission.changed` event. `permissions.list()` is the operation-based policy read; use
+`permissions.policy()` for the immutable native snapshot.
 
 Use `grant.revoke` with the `kind` and `id` from a listed portal grant.
 
@@ -604,13 +1013,13 @@ the same records as a JSON array and accepts the same optional `kind` filter.
 API 1.15 clients can subscribe to `gnoblin.portal.grant-added` and
 `gnoblin.portal.grant-removed`; see the [compositor bridge](/compositor-bridge#api-version-115-portal-grant-snapshots-and-events).
 
-## Launch feedback, shell, and configuration
+## Launch feedback and configuration
 
 Use `gnoblin.launches` to read launch feedback and track a launch request.
 `list()` returns the latest cached native snapshot as immutable `Launch`
-records. The native host seeds an empty snapshot during startup and refreshes
-it before dispatching launch-change events. The method is unavailable before
-native startup completes.
+records. The native controller seeds an empty snapshot during startup and
+refreshes it before dispatching launch-change events. The method is unavailable
+before native startup completes.
 
 | Method                            | Arguments                                     | Result                                          |
 | --------------------------------- | --------------------------------------------- | ----------------------------------------------- |
@@ -625,23 +1034,17 @@ token when it is cancelled or the application has started. The returned
 `Operation` handle completes asynchronously, as described near the start of
 this page.
 
-The older `gnoblin.launch.status()`, `begin(args)`, and `end(args)` methods
-remain available for compatibility. They keep the native field names and
-argument-table shape described below.
+The operation-based `launch.status()`, `launch.begin(args)`, and
+`launch.end(args)` methods remain available for generic API and bridge callers.
+They use the same native controller as `gnoblin.launches` while keeping their
+established field names and argument-table shape.
 
-| Compatibility method      | Arguments                                       | Successful result                                                |
-| ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
-| `launch.status()`         | None                                            | `{launches, revision}`                                           |
-| `launch.begin(args)`      | `token`, `application`; optional `milliseconds` | `Launch` record                                                  |
-| `launch.end(args)`        | `token`                                         | `{ok, token}`                                                    |
-| `shell.ping()`            | None                                            | `{pong}`                                                         |
-| `shell.version()`         | None                                            | `{version}`                                                      |
-| `shell.status()`          | None                                            | Shell version, connection state, window count, focused window ID |
-| `shell.reload()`          | None                                            | Reload acknowledgement                                           |
-| `runtime.reload_config()` | None                                            | Configuration reload acknowledgement                             |
-
-On the native compositor API, `launch.status()` returns current launch records
-and their separate revision.
+| Method                    | Arguments                                       | Successful result                                |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| `launch.status()`         | None                                            | `{launches, revision}`                           |
+| `launch.begin(args)`      | `token`, `application`; optional `milliseconds` | `Launch` record                                  |
+| `launch.end(args)`        | `token`                                         | `{ok, token}`                                    |
+| `runtime.reload_config()` | None                                            | `{ok, action}`, plus native `runtime_generation` |
 
 `launch.begin` accepts a token up to 128 characters and an application hint up
 to 512 characters. `milliseconds` defaults to 3000 and is clamped to 100–10000
@@ -661,19 +1064,20 @@ window appears or becomes focused. `launch.end` changes a pending record to
 `ended`; the deadline changes it to `timed_out`.
 
 Matching uses GTK application ID, WM class, or WM class instance. Values are
-lowercased and a `.desktop` suffix is removed. The native API does not use
-GNOME Shell application tracker names and cannot report failures from an
-external process launcher. Subscribe to `gnoblin.launch.changed` for updates.
-End a request with the same token when it is cancelled or the application has
-started.
+lowercased and a `.desktop` suffix is removed. The native controller cannot report failures from an external process
+launcher.
 
-`shell.reload` reloads the GNOME Shell integration;
-`runtime.reload_config` reloads Gnoblin configuration.
+Subscribe to `gnoblin.launch.changed` for updates. End a request with the same
+token when it is cancelled or the application has started.
+
+The native socket response waits until the candidate commits. If shutdown
+aborts an outstanding reload, the server queues an error reply, but may close
+the connection before that reply flushes; the client can receive EOF instead.
 
 ## Shortcut state and capture
 
 `gnoblin.shortcuts.list()` returns named shortcuts configured for the native
-compositor. Records do not include shortcuts owned by a shell integration.
+compositor. Records do not include shortcuts owned by external shell clients.
 Each read-only record contains:
 
 - `name`, `binding`, `enabled`, `trigger`, and `revision`.
@@ -700,6 +1104,51 @@ same connection-bound token. See the
 [compositor bridge](/compositor-bridge#api-version-110-shortcut-focus-grants)
 for the socket request format.
 
+API 1.22 adds held and modal dynamic shortcut bindings. `shortcut.bind` accepts
+`id` and `accelerator`, with optional `hold`, `trigger`, `mode`, and
+`capture_input` fields:
+
+- `hold` accepts `none`, `super`, `control`, or `alt`. It defaults to `none`.
+- `trigger` accepts `press` or `release`. It defaults to `press`.
+- `mode` accepts `passive` or `modal`. It defaults to `passive`. Modal mode
+  requires a held modifier and captures keyboard events while it is held.
+- `capture_input` defaults to `false`. Set it to `true` for a bare `Super`
+  binding; this flag is rejected for other accelerators. A bare `Super`
+  binding also requires `trigger: "release"`, `hold: "none"`, and an available
+  compositor early modifier hook.
+
+`shortcut.unbind` accepts only the binding `id`.
+
+```json
+{
+    "op": "api",
+    "id": "bind-search",
+    "api_version": { "major": 1, "minor": 22 },
+    "method": "shortcut.bind",
+    "arguments": { "id": "search", "accelerator": "Super", "trigger": "release", "capture_input": true }
+}
+```
+
+Registrations belong to the socket connection that created them. Disconnecting
+that client removes its bindings. Active sessions also end on modifier
+release, unbind, config reload, session lock, capture preemption, owner
+disconnect, or after ten seconds.
+
+Socket clients can subscribe to the following API 1.22 events:
+
+- `gnoblin.shortcut.session.activated` when a held binding starts.
+- `gnoblin.shortcut.session.key` for captured keyboard input. Fields include
+  `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
+- `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
+  `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
+  `timed_out`, and `compositor_stopped`.
+
+`gnoblin.shortcut.binding-activated` remains available from API 1.11. Its first
+trusted activation can carry a connection-bound, one-use `focus_context` token.
+
+Modal sessions capture keyboard events only. Pointer input remains available to
+the shell's layer-shell surfaces and client windows.
+
 `gnoblin.shortcuts.actions(group?)` reads built-in actions from installed
 GSettings schemas. Omit `group` to list all installed groups.
 
@@ -713,6 +1162,12 @@ An unknown group raises an error. Requesting a supported group whose schema is
 not installed also raises an error. The `shell` group is not included. This
 read API is separate from `gnoblin.configure.shortcuts`, which declares
 shortcut configuration.
+
+To assign a built-in action, set `action = action.id` on a named
+`gnoblin.configure.shortcuts` entry. See the
+[shortcut configuration reference](./configure/shortcuts.md) for the
+declarative form. `gnoblin.shortcuts.bind()` registers a Gnoblin shortcut event;
+it does not invoke a built-in action.
 
 Each action record contains:
 
