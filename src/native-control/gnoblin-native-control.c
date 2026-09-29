@@ -151,11 +151,6 @@ typedef struct {
 
 typedef struct {
     char* name;
-    char** argv;
-} NativeAutostart;
-
-typedef struct {
-    char* name;
     char* binding;
     char** bindings;
     guint binding_count;
@@ -810,13 +805,6 @@ typedef struct {
     GSubprocess* process;
 } RunningCommand;
 
-static void native_autostart_free(gpointer data) {
-    NativeAutostart* entry = data;
-    g_free(entry->name);
-    g_strfreev(entry->argv);
-    g_free(entry);
-}
-
 static void native_shortcut_free(gpointer data) {
     NativeShortcut* shortcut = data;
     g_free(shortcut->name);
@@ -933,73 +921,6 @@ static void launch_native_command(const char* category, const char* name, char**
     run->process = process;
     g_subprocess_wait_async(process, NULL, native_command_finished, run);
     g_message("gnoblin-%s: started %s", category, name);
-}
-
-static gboolean start_native_autostart(GVariant* document, GError** error) {
-    g_autoptr(GVariant) declarations =
-        document ? g_variant_lookup_value(document, "autostart", NULL) : NULL;
-    if (!declarations)
-        return TRUE;
-    if (!g_variant_is_of_type(declarations, G_VARIANT_TYPE("av"))) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "autostart must be an array of entries");
-        return FALSE;
-    }
-
-    g_autoptr(GHashTable) names = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    g_autoptr(GPtrArray) entries = g_ptr_array_new_with_free_func(native_autostart_free);
-    for (gsize index = 0; index < g_variant_n_children(declarations); index++) {
-        g_autoptr(GVariant) boxed = g_variant_get_child_value(declarations, index);
-        g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
-        g_autoptr(GVariant) when_value = NULL;
-        g_autoptr(GVariant) command = NULL;
-        const char* name = NULL;
-        const char* when = "on_login";
-        if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT))
-            goto invalid_entry;
-        GVariantIter fields;
-        const char* key;
-        GVariant* value;
-        g_variant_iter_init(&fields, entry);
-        while (g_variant_iter_next(&fields, "{&sv}", &key, &value)) {
-            gboolean supported =
-                g_str_equal(key, "name") || g_str_equal(key, "command") || g_str_equal(key, "when");
-            g_variant_unref(value);
-            if (!supported)
-                goto invalid_entry;
-        }
-        if (!g_variant_lookup(entry, "name", "&s", &name) || !*name ||
-            g_utf8_strlen(name, -1) > 80 || g_hash_table_contains(names, name))
-            goto invalid_entry;
-        when_value = g_variant_lookup_value(entry, "when", NULL);
-        if (when_value && (!g_variant_is_of_type(when_value, G_VARIANT_TYPE_STRING) ||
-                           !g_str_equal(g_variant_get_string(when_value, NULL), when)))
-            goto invalid_entry;
-        command = g_variant_lookup_value(entry, "command", NULL);
-        NativeAutostart* parsed = g_new0(NativeAutostart, 1);
-        parsed->name = g_strdup(name);
-        parsed->argv = native_command_argv(command);
-        if (!parsed->argv) {
-            native_autostart_free(parsed);
-            goto invalid_entry;
-        }
-        g_hash_table_add(names, g_strdup(name));
-        g_ptr_array_add(entries, parsed);
-        continue;
-
-    invalid_entry:
-        g_set_error(
-            error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-            "autostart entry %zu needs a unique name, command array, and optional when='on_login'",
-            index + 1);
-        return FALSE;
-    }
-
-    for (guint index = 0; index < entries->len; index++) {
-        NativeAutostart* entry = g_ptr_array_index(entries, index);
-        launch_native_command("autostart", entry->name, entry->argv);
-    }
-    return TRUE;
 }
 
 static void native_shortcut_activated(MetaDisplay* display, guint action, gpointer device,
@@ -6415,8 +6336,6 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (!apply_native_keybindings(document, error))
         goto fail;
     if (!start_native_shortcuts(control, document, error))
-        goto fail;
-    if (!start_native_autostart(document, error))
         goto fail;
     return control;
 
