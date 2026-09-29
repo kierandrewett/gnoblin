@@ -7,7 +7,10 @@
 #include <lua.h>
 #include <lualib.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "gnoblin-lua-pattern.h"
 
 #if __has_include("../core/gnoblin-native-control.h")
 #include "../core/gnoblin-native-control.h"
@@ -18,10 +21,16 @@
 #define MAX_CONFIG_DEPTH 64
 #define MAX_CONFIG_FILES 32
 #define LUA_FOCUS_CONTEXT_METATABLE "gnoblin.FocusContext"
+#define LUA_MENU_CONTEXT_METATABLE "gnoblin.MenuContext"
+#define LUA_TEXT_TARGET_METATABLE "gnoblin.TextTarget"
+#define LUA_WINDOW_DRAG_METATABLE "gnoblin.WindowDrag"
+#define LUA_SNAP_CONTEXT_METATABLE "gnoblin.SnapContext"
+#define LUA_READONLY_SNAPSHOT_METATABLE "gnoblin.ReadonlySnapshot"
 
 typedef struct {
     guint64 handle;
     guint64 generation;
+    guint64 native_generation;
     gint64 expires_at_us;
     gboolean consumed;
 } LuaFocusContext;
@@ -29,6 +38,39 @@ typedef struct {
 typedef struct {
     guint64 handle;
     guint64 generation;
+    guint64 native_generation;
+    gint64 expires_at_us;
+    char window_id[24];
+    gboolean consumed;
+} LuaMenuContext;
+
+typedef struct {
+    char token[65];
+    char window_id[24];
+    guint64 generation;
+    gboolean consumed;
+    gboolean has_caret;
+    double x, y, width, height;
+} LuaTextTarget;
+
+typedef struct {
+    guint64 id;
+    guint64 settings_revision;
+    guint64 generation;
+    gboolean ended;
+} LuaWindowDrag;
+
+typedef struct {
+    char token[65];
+    guint64 generation;
+    gboolean consumed;
+} LuaSnapContext;
+
+typedef struct {
+    guint64 handle;
+    guint64 generation;
+    guint64 native_generation;
+    gint64 expires_at_us;
 } LuaFocusOperation;
 
 typedef struct {
@@ -58,10 +100,24 @@ typedef struct {
     guint64 launch_revision;
     GVariant* portal_grant_snapshot;
     guint64 portal_grant_revision;
+    GVariant* animation_snapshot;
+    guint64 animation_revision;
+    GVariant* privacy_snapshot;
+    guint64 privacy_revision;
+    GVariant* session_activity_snapshot;
+    guint64 session_activity_revision;
+    gint64 session_activity_sampled_at_us;
+    GVariant* session_lock_snapshot;
     guint64 input_gesture_sequence;
     guint64 dispatch_focus_handle;
     guint64 dispatch_focus_generation;
+    guint64 dispatch_native_focus_generation;
     gint64 dispatch_focus_expires_at_us;
+    guint64 dispatch_menu_handle;
+    guint64 dispatch_menu_generation;
+    guint64 dispatch_native_menu_generation;
+    gint64 dispatch_menu_expires_at_us;
+    char dispatch_menu_window_id[24];
     GVariant* settings_document;
     guint64 settings_revision;
     GPtrArray* focus_history_ids;
@@ -84,21 +140,37 @@ typedef struct {
 
 static LuaRuntime* active_runtime;
 static LuaRuntime* pending_runtime;
+static LuaRuntime* deferred_runtime;
 static guint64 next_runtime_operation_id;
 static guint64 next_settings_revision;
 static guint64 next_runtime_generation;
+static gboolean revision_counters_seeded;
 static GnoblinConfigRuntimeWakeupFunc runtime_wakeup_callback;
 static gpointer runtime_wakeup_data;
 static GnoblinConfigFocusPolicyChangedFunc focus_policy_changed_callback;
 static gpointer focus_policy_changed_data;
 static GnoblinConfigPermissionPolicyChangedFunc permission_policy_changed_callback;
 static gpointer permission_policy_changed_data;
+static GnoblinConfigSettingsChangedFunc settings_changed_callback;
+static gpointer settings_changed_data;
 
 static int lua_workspace_action(lua_State* state);
 static int lua_generic_api_action(lua_State* state);
 static int lua_focus_history(lua_State* state);
+static int lua_animation_preview_method(lua_State* state);
 static int lua_permissions_list(lua_State* state);
 static int lua_permissions_policy(lua_State* state);
+static int lua_privacy_state(lua_State* state);
+static int lua_session_activity(lua_State* state);
+static int lua_session_status(lua_State* state);
+static int lua_input_text_target(lua_State* state);
+static int lua_text_target_insert_text(lua_State* state);
+static int lua_text_target_index(lua_State* state);
+static void push_window_drag(lua_State* state, GVariant* value);
+static void push_snap_context(lua_State* state, GVariant* value);
+static int lua_window_drag_offer_targets(lua_State* state);
+static int lua_snap_context_commit(lua_State* state);
+static int lua_windows_snap_context(lua_State* state);
 static int lua_permissions_check(lua_State* state);
 static int lua_launches_begin(lua_State* state);
 static int lua_launches_end(lua_State* state);
@@ -113,11 +185,51 @@ static int lua_focus_context_tostring(lua_State* state) {
     return 1;
 }
 
+static int lua_menu_context_tostring(lua_State* state) {
+    lua_pushliteral(state, "MenuContext");
+    return 1;
+}
+
+static int lua_menu_context_begin_move(lua_State* state);
+static int lua_menu_context_begin_resize(lua_State* state);
+
+static int lua_menu_context_index(lua_State* state) {
+    const char* key = lua_tostring(state, 2);
+    if (key && g_str_equal(key, "begin_move"))
+        lua_pushcfunction(state, lua_menu_context_begin_move);
+    else if (key && g_str_equal(key, "begin_resize"))
+        lua_pushcfunction(state, lua_menu_context_begin_resize);
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+static void push_menu_context(lua_State* state, guint64 handle, guint64 generation,
+                              guint64 native_generation, gint64 expires_at_us,
+                              const char* window_id) {
+    LuaMenuContext* context = lua_newuserdatauv(state, sizeof(*context), 0);
+    *context = (LuaMenuContext){.handle = handle,
+                                .generation = generation,
+                                .native_generation = native_generation,
+                                .expires_at_us = expires_at_us};
+    g_strlcpy(context->window_id, window_id ? window_id : "", sizeof(context->window_id));
+    if (luaL_newmetatable(state, LUA_MENU_CONTEXT_METATABLE)) {
+        lua_pushcfunction(state, lua_menu_context_tostring);
+        lua_setfield(state, -2, "__tostring");
+        lua_pushcfunction(state, lua_menu_context_index);
+        lua_setfield(state, -2, "__index");
+        lua_pushliteral(state, "MenuContext");
+        lua_setfield(state, -2, "__metatable");
+    }
+    lua_setmetatable(state, -2);
+}
+
 static void push_focus_context(lua_State* state, guint64 handle, guint64 generation,
-                               gint64 expires_at_us) {
+                               guint64 native_generation, gint64 expires_at_us) {
     LuaFocusContext* context = lua_newuserdatauv(state, sizeof(*context), 0);
     *context = (LuaFocusContext){.handle = handle,
                                  .generation = generation,
+                                 .native_generation = native_generation,
                                  .expires_at_us = expires_at_us,
                                  .consumed = FALSE};
     if (luaL_newmetatable(state, LUA_FOCUS_CONTEXT_METATABLE)) {
@@ -156,10 +268,11 @@ static const char* api_methods[] = {
     "window.begin_resize",
     "window.list",
     "window.match",
-    "window.action",
+    "window.thumbnail",
     "layer.list",
     "monitor.list",
     "animation.list",
+    "animation.get",
     "animation.surfaces",
     "animation.inspect",
     "animation.preview",
@@ -168,17 +281,15 @@ static const char* api_methods[] = {
     "animation.play",
     "animation.pause",
     "animation.stop",
-    "feature.list",
-    "feature.show",
-    "feature.enable",
-    "feature.disable",
-    "script.list",
     "input.list",
     "input.current",
     "input.select",
+    "input.text_target",
     "input.sources",
     "input.current_source",
     "privacy.get",
+    "privacy.stop_sharing",
+    "privacy.stop_recording",
     "permissions.list",
     "permissions.policy",
     "permissions.check",
@@ -187,12 +298,14 @@ static const char* api_methods[] = {
     "launch.status",
     "launch.begin",
     "launch.end",
-    "shell.ping",
-    "shell.version",
-    "shell.status",
-    "shell.reload",
+    "session.lock",
+    "session.activity",
+    "session.status",
+    "session.logout",
     "runtime.reload_config",
     "shortcut.capture",
+    "shortcut.bind",
+    "shortcut.unbind",
     NULL,
 };
 
@@ -212,6 +325,14 @@ static const struct {
     {"workspaces.move_active", "workspace.move_active"},
     {"workspaces.move_window", "workspace.move_window"},
     {"input.select_source", "input.select"},
+    {"animations.surfaces", "animation.surfaces"},
+    {"animations.inspect", "animation.inspect"},
+    {"animations.preview", "animation.preview"},
+    {"animations.seek", "animation.seek"},
+    {"animations.step", "animation.step"},
+    {"animations.play", "animation.play"},
+    {"animations.pause", "animation.pause"},
+    {"animations.stop", "animation.stop"},
 };
 
 static gboolean append_array_key(const char* key) {
@@ -279,6 +400,18 @@ static const char* lua_error_text(lua_State* state) {
                                               : "Lua configuration failed";
 }
 
+gboolean gnoblin_config_window_pattern_match(const char* pattern, const char* value,
+                                             GError** error) {
+    gboolean matched = FALSE;
+    g_autoptr(GError) matcher_error = NULL;
+    if (!gnoblin_lua_pattern_match(pattern, value, &matched, &matcher_error)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s",
+                    matcher_error ? matcher_error->message : "Lua pattern matching failed");
+        return FALSE;
+    }
+    return matched;
+}
+
 static gboolean marked_array(lua_State* state, int index) {
     gboolean result = FALSE;
     if (!lua_getmetatable(state, index))
@@ -290,6 +423,14 @@ static gboolean marked_array(lua_State* state, int index) {
     return result;
 }
 
+static void mark_array_table(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    lua_newtable(state);
+    lua_pushboolean(state, TRUE);
+    lua_setfield(state, -2, "__gnoblin_array");
+    lua_setmetatable(state, index);
+}
+
 static GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean force_array,
                                   int keybinding_depth, GError** error) {
     int type = lua_type(state, index);
@@ -297,6 +438,18 @@ static GVariant* variant_from_lua(lua_State* state, int index, int depth, gboole
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                             "Lua config nesting exceeds 64 levels");
         return NULL;
+    }
+    if (type == LUA_TUSERDATA) {
+        if (!luaL_testudata(state, index, LUA_READONLY_SNAPSHOT_METATABLE)) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua values must be read-only Gnoblin snapshots");
+            return NULL;
+        }
+        lua_getiuservalue(state, index, 1);
+        GVariant* value =
+            variant_from_lua(state, -1, depth + 1, force_array, keybinding_depth, error);
+        lua_pop(state, 1);
+        return value;
     }
     if (type == LUA_TBOOLEAN)
         return g_variant_new_boolean(lua_toboolean(state, index));
@@ -410,19 +563,31 @@ static void push_variant(lua_State* state, GVariant* value) {
         lua_pushinteger(state, g_variant_get_int32(value));
     else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
         lua_pushinteger(state, g_variant_get_uint32(value));
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT64))
+        lua_pushinteger(state, (lua_Integer)g_variant_get_uint64(value));
     else if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
         lua_pushnumber(state, g_variant_get_double(value));
     else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
         lua_pushstring(state, g_variant_get_string(value, NULL));
     else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY)) {
         lua_newtable(state);
+        mark_array_table(state, -1);
         for (gsize i = 0; i < g_variant_n_children(value); i++) {
             g_autoptr(GVariant) child = g_variant_get_child_value(value, i);
             lua_pushstring(state, g_variant_get_string(child, NULL));
             lua_rawseti(state, -2, i + 1);
         }
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE("aa{sv}"))) {
+        lua_newtable(state);
+        mark_array_table(state, -1);
+        for (gsize i = 0; i < g_variant_n_children(value); i++) {
+            g_autoptr(GVariant) child = g_variant_get_child_value(value, i);
+            push_variant(state, child);
+            lua_rawseti(state, -2, i + 1);
+        }
     } else if (g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
         lua_newtable(state);
+        mark_array_table(state, -1);
         GVariantIter iter;
         GVariant* child;
         guint i = 1;
@@ -490,6 +655,7 @@ static int lua_record_method(lua_State* state) {
     gboolean workspace = g_str_has_prefix(method, "workspace.");
     gboolean workspace_move = g_str_equal(method, "workspace.move_window");
     gboolean portal_grant = g_str_equal(method, "grant.revoke");
+    gboolean thumbnail = g_str_equal(method, "window.thumbnail");
     lua_getiuservalue(state, 1, 1);
     int backing = lua_absindex(state, -1);
     lua_getfield(state, -1, "id");
@@ -571,6 +737,8 @@ static int lua_record_method(lua_State* state) {
         LuaFocusOperation* operation = g_new0(LuaFocusOperation, 1);
         operation->handle = context->handle;
         operation->generation = context->generation;
+        operation->native_generation = context->native_generation;
+        operation->expires_at_us = context->expires_at_us;
         g_hash_table_replace(config->focus_operations, g_strdup(key), operation);
         context->consumed = TRUE;
         config->actions_in_dispatch++;
@@ -628,6 +796,22 @@ static int lua_record_method(lua_State* state) {
             return luaL_error(state, "%s requires a monitor selector", method);
         lua_pushvalue(state, 2);
         lua_setfield(state, arguments, "monitor");
+    } else if (thumbnail) {
+        if (supplied != 1 || !lua_istable(state, 2))
+            return luaL_error(state, "window:thumbnail requires a size table");
+        static const char* const size_fields[] = {"width", "height", NULL};
+        if (!table_fields_allowed(state, 2, size_fields))
+            return luaL_error(state, "window:thumbnail size accepts only width and height");
+        const char* dimensions[] = {"width", "height"};
+        const lua_Integer limits[] = {480, 320};
+        for (guint i = 0; i < G_N_ELEMENTS(dimensions); i++) {
+            lua_getfield(state, 2, dimensions[i]);
+            if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
+                lua_tointeger(state, -1) > limits[i])
+                return luaL_error(state, "window:thumbnail %s must be an integer from 1 to %d",
+                                  dimensions[i], (int)limits[i]);
+            lua_setfield(state, arguments, dimensions[i]);
+        }
     } else if (g_str_equal(method, "workspace.rename")) {
         if (supplied != 1 || lua_type(state, 2) != LUA_TSTRING)
             return luaL_error(state, "workspace:rename requires a name");
@@ -675,6 +859,13 @@ static void add_record_method(lua_State* state, int method_table, const char* na
     lua_setfield(state, method_table, name);
 }
 
+static void add_animation_preview_method(lua_State* state, int method_table, const char* name,
+                                         const char* operation) {
+    lua_pushstring(state, operation);
+    lua_pushcclosure(state, lua_animation_preview_method, 1);
+    lua_setfield(state, method_table, name);
+}
+
 static void add_snapshot_methods(lua_State* state, int backing, int method_table) {
     lua_getfield(state, backing, "id");
     gboolean has_id = lua_type(state, -1) == LUA_TSTRING;
@@ -686,6 +877,21 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
     lua_pop(state, 1);
     lua_getfield(state, backing, "number");
     gboolean is_workspace = lua_isinteger(state, -1);
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "session");
+    gboolean is_animation_preview = lua_type(state, -1) == LUA_TSTRING;
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "name");
+    is_animation_preview &= lua_type(state, -1) == LUA_TSTRING;
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "target_type");
+    is_animation_preview &= lua_type(state, -1) == LUA_TSTRING;
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "progress");
+    is_animation_preview &= lua_type(state, -1) == LUA_TNUMBER;
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "playing");
+    is_animation_preview &= lua_isboolean(state, -1);
     lua_pop(state, 1);
     if (is_window) {
         const char* methods[][2] = {{"close", "window.close"},
@@ -703,9 +909,16 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
                                     {"focus", "window.focus"},
                                     {"begin_move", "window.begin_move"},
                                     {"begin_resize", "window.begin_resize"},
+                                    {"thumbnail", "window.thumbnail"},
                                     {NULL, NULL}};
         for (guint i = 0; methods[i][0]; i++)
             add_record_method(state, method_table, methods[i][0], methods[i][1]);
+    } else if (is_animation_preview) {
+        add_animation_preview_method(state, method_table, "seek", "animation.seek");
+        add_animation_preview_method(state, method_table, "step", "animation.step");
+        add_animation_preview_method(state, method_table, "play", "animation.play");
+        add_animation_preview_method(state, method_table, "pause", "animation.pause");
+        add_animation_preview_method(state, method_table, "stop", "animation.stop");
     } else if (is_workspace) {
         add_record_method(state, method_table, "activate", "workspace.switch");
         add_record_method(state, method_table, "rename", "workspace.rename");
@@ -752,6 +965,8 @@ static void push_readonly_copy(lua_State* state, int index) {
         lua_rawset(state, backing);
         lua_pop(state, 1);
     }
+    if (marked_array(state, index))
+        mark_array_table(state, backing);
     lua_newtable(state); /* Methods stay out of pairs()/snapshot fields. */
     int method_table = lua_absindex(state, -1);
     add_snapshot_methods(state, backing, method_table);
@@ -761,18 +976,152 @@ static void push_readonly_copy(lua_State* state, int index) {
     lua_setiuservalue(state, readonly, 1);
     lua_pop(state, 2); /* method table, backing */
 
-    lua_newtable(state); /* metatable */
-    lua_pushcfunction(state, lua_readonly_index);
-    lua_setfield(state, -2, "__index");
-    lua_pushcfunction(state, lua_readonly_newindex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pushcfunction(state, lua_readonly_len);
-    lua_setfield(state, -2, "__len");
-    lua_pushcfunction(state, lua_readonly_pairs);
-    lua_setfield(state, -2, "__pairs");
-    lua_pushboolean(state, FALSE);
-    lua_setfield(state, -2, "__metatable");
+    if (luaL_newmetatable(state, LUA_READONLY_SNAPSHOT_METATABLE)) {
+        lua_pushcfunction(state, lua_readonly_index);
+        lua_setfield(state, -2, "__index");
+        lua_pushcfunction(state, lua_readonly_newindex);
+        lua_setfield(state, -2, "__newindex");
+        lua_pushcfunction(state, lua_readonly_len);
+        lua_setfield(state, -2, "__len");
+        lua_pushcfunction(state, lua_readonly_pairs);
+        lua_setfield(state, -2, "__pairs");
+        lua_pushboolean(state, FALSE);
+        lua_setfield(state, -2, "__metatable");
+    }
     lua_setmetatable(state, readonly);
+}
+
+static gboolean variant_is_animation_preview(GVariant* value) {
+    const char* session = NULL;
+    const char* name = NULL;
+    const char* target_type = NULL;
+    double progress = 0.0;
+    gboolean playing = FALSE;
+    return value && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) &&
+           g_variant_lookup(value, "session", "&s", &session) && session && *session &&
+           g_variant_lookup(value, "name", "&s", &name) && name && *name &&
+           g_variant_lookup(value, "target_type", "&s", &target_type) && target_type &&
+           *target_type && g_variant_lookup(value, "progress", "d", &progress) &&
+           isfinite(progress) && g_variant_lookup(value, "playing", "b", &playing);
+}
+
+static void push_text_target(lua_State* state, GVariant* value) {
+    const char* token = NULL;
+    const char* window_id = NULL;
+    g_autoptr(GVariant) caret = NULL;
+    if (!value || !g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) ||
+        !g_variant_lookup(value, "target", "&s", &token) || !token || strlen(token) != 64 ||
+        !g_str_is_ascii(token)) {
+        lua_pushnil(state);
+        return;
+    }
+    caret = g_variant_lookup_value(value, "caret", G_VARIANT_TYPE_VARDICT);
+    g_variant_lookup(value, "window_id", "&s", &window_id);
+    for (const char* cursor = token; *cursor; cursor++)
+        if (!g_ascii_isxdigit(*cursor)) {
+            lua_pushnil(state);
+            return;
+        }
+    LuaTextTarget* target = lua_newuserdatauv(state, sizeof(*target), 0);
+    memset(target, 0, sizeof(*target));
+    g_strlcpy(target->token, token, sizeof(target->token));
+    if (window_id && strlen(window_id) < sizeof(target->window_id))
+        g_strlcpy(target->window_id, window_id, sizeof(target->window_id));
+    target->generation = active_runtime ? active_runtime->generation : 0;
+    target->has_caret = caret && g_variant_lookup(caret, "x", "d", &target->x) &&
+                        g_variant_lookup(caret, "y", "d", &target->y) &&
+                        g_variant_lookup(caret, "width", "d", &target->width) &&
+                        g_variant_lookup(caret, "height", "d", &target->height);
+    if (luaL_newmetatable(state, LUA_TEXT_TARGET_METATABLE)) {
+        lua_pushcfunction(state, lua_text_target_index);
+        lua_setfield(state, -2, "__index");
+        lua_pushliteral(state, "TextTarget");
+        lua_setfield(state, -2, "__metatable");
+    }
+    lua_setmetatable(state, -2);
+}
+
+static void push_window_drag(lua_State* state, GVariant* value) {
+    LuaWindowDrag* drag = lua_newuserdatauv(state, sizeof(*drag), 2);
+    memset(drag, 0, sizeof(*drag));
+    g_variant_lookup(value, "id", "t", &drag->id);
+    g_variant_lookup(value, "settings_revision", "t", &drag->settings_revision);
+    drag->generation = active_runtime ? active_runtime->generation : 0;
+    push_variant(state, value);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    lua_setiuservalue(state, -2, 1);
+    lua_newtable(state);
+    lua_pushcfunction(state, lua_window_drag_offer_targets);
+    lua_setfield(state, -2, "offer_targets");
+    lua_setiuservalue(state, -2, 2);
+    if (luaL_newmetatable(state, LUA_WINDOW_DRAG_METATABLE)) {
+        lua_pushcfunction(state, lua_readonly_index);
+        lua_setfield(state, -2, "__index");
+        lua_pushcfunction(state, lua_readonly_newindex);
+        lua_setfield(state, -2, "__newindex");
+        lua_pushliteral(state, "WindowDrag");
+        lua_setfield(state, -2, "__metatable");
+    }
+    lua_setmetatable(state, -2);
+}
+
+static void push_snap_context(lua_State* state, GVariant* value) {
+    const char* token = NULL;
+    if (!value || !g_variant_lookup(value, "context", "&s", &token) || !token ||
+        strlen(token) != 64 || !g_str_is_ascii(token)) {
+        lua_pushnil(state);
+        return;
+    }
+    LuaSnapContext* context = lua_newuserdatauv(state, sizeof(*context), 2);
+    memset(context, 0, sizeof(*context));
+    g_strlcpy(context->token, token, sizeof(context->token));
+    context->generation = active_runtime ? active_runtime->generation : 0;
+    GVariantBuilder public_fields;
+    g_variant_builder_init(&public_fields, G_VARIANT_TYPE_VARDICT);
+    GVariantIter iter;
+    const char* key;
+    GVariant* field;
+    g_variant_iter_init(&iter, value);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &field)) {
+        g_autoptr(GVariant) owned = field;
+        if (!g_str_equal(key, "context"))
+            g_variant_builder_add(&public_fields, "{sv}", key, field);
+    }
+    g_autoptr(GVariant) public_value = g_variant_ref_sink(g_variant_builder_end(&public_fields));
+    push_variant(state, public_value);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    lua_setiuservalue(state, -2, 1);
+    lua_newtable(state);
+    lua_pushcfunction(state, lua_snap_context_commit);
+    lua_setfield(state, -2, "commit");
+    lua_setiuservalue(state, -2, 2);
+    if (luaL_newmetatable(state, LUA_SNAP_CONTEXT_METATABLE)) {
+        lua_pushcfunction(state, lua_readonly_index);
+        lua_setfield(state, -2, "__index");
+        lua_pushcfunction(state, lua_readonly_newindex);
+        lua_setfield(state, -2, "__newindex");
+        lua_pushliteral(state, "SnapContext");
+        lua_setfield(state, -2, "__metatable");
+    }
+    lua_setmetatable(state, -2);
+}
+
+static void push_operation_result(lua_State* state, const char* method, GVariant* value) {
+    if (g_str_equal(method, "input.text_target")) {
+        push_text_target(state, value);
+        return;
+    }
+    if (g_str_equal(method, "window.snap_context")) {
+        push_snap_context(state, value);
+        return;
+    }
+    push_variant(state, value);
+    if (!g_str_has_prefix(method, "animation.") || !variant_is_animation_preview(value))
+        return;
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
 }
 
 static gboolean is_array(lua_State* state, int index) {
@@ -1027,6 +1376,7 @@ static void push_public_settings(lua_State* state, GVariant* value, const char* 
     }
     if (g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
         lua_newtable(state);
+        mark_array_table(state, -1);
         GVariantIter iter;
         GVariant* child;
         guint i = 1;
@@ -1095,7 +1445,7 @@ static int lua_gnoblin_index(lua_State* state) {
             enum { FOCUS_STRING, FOCUS_BOOLEAN, FOCUS_INTEGER } kind;
         } fields[] = {
             {"focus_mode", "click", FALSE, 0, FOCUS_STRING},
-            {"focus_new_windows", "smart", FALSE, 0, FOCUS_STRING},
+            {"focus_new_windows", "strict", FALSE, 0, FOCUS_STRING},
             {"raise_on_click", NULL, TRUE, 0, FOCUS_BOOLEAN},
             {"auto_raise", NULL, FALSE, 0, FOCUS_BOOLEAN},
             {"focus_change_on_pointer_rest", NULL, FALSE, 0, FOCUS_BOOLEAN},
@@ -1471,6 +1821,7 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
     static const char* const resize[] = {"id", "width", "height", NULL};
     static const char* const workspace[] = {"id", "workspace", "follow", NULL};
     static const char* const monitor[] = {"id", "monitor", NULL};
+    static const char* const thumbnail[] = {"id", "width", "height", NULL};
     static const char* const monitor_selector[] = {"id", NULL};
     luaL_checktype(state, 1, LUA_TTABLE);
     const char* const* fields = id_only;
@@ -1486,6 +1837,8 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
         fields = workspace;
     else if (g_str_equal(method, "window.move_to_monitor"))
         fields = monitor;
+    else if (g_str_equal(method, "window.thumbnail"))
+        fields = thumbnail;
     if (!table_fields_allowed(state, 1, fields))
         luaL_error(state, "%s arguments contain an unsupported field", method);
 
@@ -1546,6 +1899,17 @@ static gboolean window_operation_valid_args(lua_State* state, const char* method
             luaL_error(state, "window.move_to_monitor requires a monitor ID or {id = string}");
         }
         lua_pop(state, 1);
+    } else if (fields == thumbnail) {
+        const char* dimensions[] = {"width", "height"};
+        const lua_Integer limits[] = {480, 320};
+        for (guint i = 0; i < G_N_ELEMENTS(dimensions); i++) {
+            lua_getfield(state, 1, dimensions[i]);
+            if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < 1 ||
+                lua_tointeger(state, -1) > limits[i])
+                luaL_error(state, "window.thumbnail %s must be an integer from 1 to %d",
+                           dimensions[i], (int)limits[i]);
+            lua_pop(state, 1);
+        }
     }
     return TRUE;
 }
@@ -1765,6 +2129,14 @@ static int lua_generic_api_action(lua_State* state) {
 
     if (g_str_equal(method, "grant.list") && lua_gettop(state) != 0)
         return luaL_error(state, "grant.list takes no arguments");
+    if ((g_str_equal(method, "privacy.stop_sharing") ||
+         g_str_equal(method, "privacy.stop_recording")) &&
+        lua_gettop(state) != 0)
+        return luaL_error(state, "%s takes no arguments", method);
+    if (g_str_equal(method, "session.lock") && lua_gettop(state) != 0)
+        return luaL_error(state, "session.lock takes no arguments");
+    if (g_str_equal(method, "session.logout") && lua_gettop(state) != 0)
+        return luaL_error(state, "session.logout takes no arguments");
     if (g_str_equal(method, "grant.revoke")) {
         static const char* const fields[] = {"kind", "id", "created_at", NULL};
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
@@ -1791,15 +2163,17 @@ static int lua_generic_api_action(lua_State* state) {
 
     GVariant* arguments = NULL;
     if (lua_gettop(state) == 0) {
+        if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind"))
+            return luaL_error(state, "%s requires an argument table", method);
         if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.list") &&
-            !g_str_equal(method, "window.match") && !g_str_equal(method, "window.action"))
+            !g_str_equal(method, "window.match"))
             return luaL_error(state, "%s requires an argument table", method);
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         arguments = g_variant_builder_end(&empty);
     } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
         if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.list") &&
-            !g_str_equal(method, "window.match") && !g_str_equal(method, "window.action"))
+            !g_str_equal(method, "window.match"))
             window_operation_valid_args(state, method);
         if (g_str_equal(method, "input.select"))
             input_source_selector_valid_args(state);
@@ -1816,6 +2190,57 @@ static int lua_generic_api_action(lua_State* state) {
                                   "shortcut capture timeout must be an integer from 1 to 60");
             }
             lua_pop(state, 1);
+        }
+        if (g_str_equal(method, "shortcut.bind")) {
+            static const char* const fields[] = {"id",   "accelerator",   "hold", "trigger",
+                                                 "mode", "capture_input", NULL};
+            if (!table_fields_allowed(state, 1, fields))
+                return luaL_error(state,
+                                  "shortcut.bind accepts id, accelerator, hold, trigger, mode, "
+                                  "and capture_input");
+            lua_getfield(state, 1, "id");
+            gboolean valid_id =
+                lua_type(state, -1) == LUA_TSTRING && strlen(lua_tostring(state, -1)) <= 64 &&
+                g_regex_match_simple("^[A-Za-z0-9_-]+$", lua_tostring(state, -1), 0, 0);
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "accelerator");
+            gboolean valid_accelerator = lua_type(state, -1) == LUA_TSTRING &&
+                                         lua_tostring(state, -1)[0] != '\0' &&
+                                         strlen(lua_tostring(state, -1)) <= 128 &&
+                                         g_utf8_validate(lua_tostring(state, -1), -1, NULL);
+            lua_pop(state, 1);
+            if (!valid_id || !valid_accelerator)
+                return luaL_error(state, "shortcut.bind requires id and accelerator strings");
+            lua_getfield(state, 1, "hold");
+            gboolean valid_hold =
+                lua_isnil(state, -1) || (lua_type(state, -1) == LUA_TSTRING &&
+                                         (g_str_equal(lua_tostring(state, -1), "none") ||
+                                          g_str_equal(lua_tostring(state, -1), "super") ||
+                                          g_str_equal(lua_tostring(state, -1), "control") ||
+                                          g_str_equal(lua_tostring(state, -1), "alt")));
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "trigger");
+            gboolean valid_trigger =
+                lua_isnil(state, -1) || (lua_type(state, -1) == LUA_TSTRING &&
+                                         (g_str_equal(lua_tostring(state, -1), "press") ||
+                                          g_str_equal(lua_tostring(state, -1), "release")));
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "mode");
+            gboolean valid_mode =
+                lua_isnil(state, -1) || (lua_type(state, -1) == LUA_TSTRING &&
+                                         (g_str_equal(lua_tostring(state, -1), "passive") ||
+                                          g_str_equal(lua_tostring(state, -1), "modal")));
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "capture_input");
+            gboolean valid_capture = lua_isnil(state, -1) || lua_isboolean(state, -1);
+            lua_pop(state, 1);
+            if (!valid_hold || !valid_trigger || !valid_mode || !valid_capture)
+                return luaL_error(state, "shortcut.bind has an invalid option value");
+        }
+        if (g_str_equal(method, "shortcut.unbind")) {
+            static const char* const fields[] = {"id", NULL};
+            if (!table_fields_allowed(state, 1, fields))
+                return luaL_error(state, "shortcut.unbind accepts only id");
         }
         GError* error = NULL;
         arguments = variant_from_lua(state, 1, 0, FALSE, 0, &error);
@@ -1853,6 +2278,767 @@ static int lua_generic_api_action(lua_State* state) {
         lua_pushinteger(state, request_id); /* legacy socket/C caller contract */
     else
         push_operation_handle(state, config, request_id, method);
+    return 1;
+}
+
+static int lua_input_text_target(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    LuaFocusContext* context = luaL_testudata(state, 1, LUA_FOCUS_CONTEXT_METATABLE);
+    if (lua_gettop(state) != 1 || !context)
+        return luaL_error(state, "input.text_target requires a FocusContext from a shortcut event");
+    if (!config || !active_runtime || config != &active_runtime->config || !config->dispatching ||
+        config->api_calling || context->consumed || !context->handle ||
+        context->generation != active_runtime->generation ||
+        context->expires_at_us <= g_get_monotonic_time())
+        return luaL_error(state, "FocusContext is expired, consumed, or belongs to an old runtime");
+    if (config->rejecting_operations || !config->runtime_actions ||
+        config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(
+            state, "text target operation is unavailable or the event action limit was reached");
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string("input.text_target"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    g_autofree char* key = g_strdup_printf("%" G_GUINT64_FORMAT, request_id);
+    LuaFocusOperation* operation = g_new0(LuaFocusOperation, 1);
+    operation->handle = context->handle;
+    operation->generation = context->generation;
+    operation->native_generation = context->native_generation;
+    operation->expires_at_us = context->expires_at_us;
+    g_hash_table_replace(config->focus_operations, g_strdup(key), operation);
+    context->consumed = TRUE;
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id, "input.text_target");
+    return 1;
+}
+
+static int lua_menu_context_begin(lua_State* state, gboolean resize) {
+    LuaMenuContext* context = luaL_checkudata(state, 1, LUA_MENU_CONTEXT_METATABLE);
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    /* A typed capability is one-use even if the caller supplies malformed arguments. */
+    gboolean already_consumed = context->consumed;
+    context->consumed = TRUE;
+    gboolean malformed = lua_gettop(state) != (resize ? 2 : 1);
+    const char* edge = NULL;
+    if (resize && !malformed) {
+        if (lua_type(state, 2) != LUA_TSTRING)
+            malformed = TRUE;
+        else
+            edge = lua_tostring(state, 2);
+    }
+    if (already_consumed || !config || !active_runtime || !config->dispatching ||
+        config->api_calling || context->generation != active_runtime->generation ||
+        !context->native_generation || context->expires_at_us <= g_get_monotonic_time() ||
+        context->handle != config->dispatch_menu_handle ||
+        context->generation != config->dispatch_menu_generation ||
+        context->native_generation != config->dispatch_native_menu_generation ||
+        !g_str_equal(context->window_id, config->dispatch_menu_window_id))
+        return luaL_error(state, "MenuContext is expired, consumed, or outside its callback scope");
+    if (config->rejecting_operations || !config->runtime_actions ||
+        config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(
+            state, "MenuContext operation is unavailable or the event action limit was reached");
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    if (resize && edge)
+        g_variant_builder_add(&arguments, "{sv}", "edge", g_variant_new_string(edge));
+    if (malformed)
+        g_variant_builder_add(&arguments, "{sv}", "_malformed", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&arguments, "{sv}", "_menu_context_handle",
+                          g_variant_new_uint64(context->handle));
+    g_variant_builder_add(&arguments, "{sv}", "_menu_context_generation",
+                          g_variant_new_uint64(context->native_generation));
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(
+        &action, "{sv}", "method",
+        g_variant_new_string(resize ? "window.begin_resize" : "window.begin_move"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id,
+                          resize ? "window.begin_resize" : "window.begin_move");
+    return 1;
+}
+
+static int lua_menu_context_begin_move(lua_State* state) {
+    return lua_menu_context_begin(state, FALSE);
+}
+
+static int lua_menu_context_begin_resize(lua_State* state) {
+    return lua_menu_context_begin(state, TRUE);
+}
+
+static int lua_windows_snap_context(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    LuaFocusContext* context = luaL_testudata(state, 1, LUA_FOCUS_CONTEXT_METATABLE);
+    if (lua_gettop(state) != 1 || !context)
+        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
+    if (!config || !active_runtime || config != &active_runtime->config || !config->dispatching ||
+        config->api_calling || context->consumed || !context->handle ||
+        context->generation != active_runtime->generation ||
+        context->expires_at_us <= g_get_monotonic_time())
+        return luaL_error(state, "FocusContext is expired, consumed, or belongs to an old runtime");
+    if (config->rejecting_operations || !config->runtime_actions ||
+        config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(
+            state, "SnapContext operation is unavailable or the event action limit was reached");
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string("window.snap_context"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    g_autofree char* key = g_strdup_printf("%" G_GUINT64_FORMAT, request_id);
+    LuaFocusOperation* operation = g_new0(LuaFocusOperation, 1);
+    operation->handle = context->handle;
+    operation->generation = context->generation;
+    operation->native_generation = context->native_generation;
+    operation->expires_at_us = context->expires_at_us;
+    g_hash_table_replace(config->focus_operations, g_strdup(key), operation);
+    context->consumed = TRUE;
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id, "window.snap_context");
+    return 1;
+}
+
+static int lua_snap_context_commit(lua_State* state) {
+    LuaSnapContext* context = luaL_checkudata(state, 1, LUA_SNAP_CONTEXT_METATABLE);
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    static const char* const fields[] = {"monitor_id", "frame", NULL};
+    if (lua_gettop(state) != 2 || !lua_istable(state, 2) || !table_fields_allowed(state, 2, fields))
+        return luaL_error(state, "SnapContext:commit requires {monitor_id, frame}");
+    if (!config || !active_runtime || context->consumed ||
+        context->generation != active_runtime->generation || !config->runtime_actions ||
+        config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(state, "SnapContext is consumed, stale, or operations are unavailable");
+    lua_getfield(state, 2, "monitor_id");
+    const char* monitor_id = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+    if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
+        !g_utf8_validate(monitor_id, -1, NULL))
+        return luaL_error(state, "SnapContext:commit requires a valid monitor_id");
+    lua_pop(state, 1);
+    lua_getfield(state, 2, "frame");
+    static const char* const rect_fields[] = {"x", "y", "width", "height", NULL};
+    if (!lua_istable(state, -1) || !table_fields_allowed(state, -1, rect_fields))
+        return luaL_error(state, "SnapContext:commit frame requires x, y, width and height");
+    GVariantBuilder frame;
+    g_variant_builder_init(&frame, G_VARIANT_TYPE_VARDICT);
+    const char* rect_keys[] = {"x", "y", "width", "height"};
+    const lua_Integer lows[] = {-100000, -100000, 1, 1};
+    const lua_Integer highs[] = {100000, 100000, 32768, 32768};
+    for (guint i = 0; i < G_N_ELEMENTS(rect_keys); i++) {
+        lua_getfield(state, -1, rect_keys[i]);
+        if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < lows[i] ||
+            lua_tointeger(state, -1) > highs[i])
+            return luaL_error(state, "SnapContext frame %s is out of range", rect_keys[i]);
+        g_variant_builder_add(&frame, "{sv}", rect_keys[i],
+                              g_variant_new_int32((gint32)lua_tointeger(state, -1)));
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&arguments, "{sv}", "context", g_variant_new_string(context->token));
+    g_variant_builder_add(&arguments, "{sv}", "monitor_id", g_variant_new_string(monitor_id));
+    g_variant_builder_add(&arguments, "{sv}", "frame", g_variant_builder_end(&frame));
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string("window.snap"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    context->consumed = TRUE;
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id, "window.snap");
+    return 1;
+}
+
+static gboolean lua_snap_rect(lua_State* state, int index, GVariantBuilder* rect) {
+    static const char* const fields[] = {"x", "y", "width", "height", NULL};
+    static const char* const keys[] = {"x", "y", "width", "height"};
+    static const lua_Integer lows[] = {-100000, -100000, 1, 1};
+    static const lua_Integer highs[] = {100000, 100000, 32768, 32768};
+    if (!lua_istable(state, index) || !table_fields_allowed(state, index, fields))
+        return FALSE;
+    index = lua_absindex(state, index);
+    g_variant_builder_init(rect, G_VARIANT_TYPE_VARDICT);
+    for (guint i = 0; i < G_N_ELEMENTS(keys); i++) {
+        lua_getfield(state, index, keys[i]);
+        if (!lua_isinteger(state, -1) || lua_tointeger(state, -1) < lows[i] ||
+            lua_tointeger(state, -1) > highs[i]) {
+            lua_pop(state, 1);
+            g_variant_builder_clear(rect);
+            return FALSE;
+        }
+        g_variant_builder_add(rect, "{sv}", keys[i],
+                              g_variant_new_int32((gint32)lua_tointeger(state, -1)));
+        lua_pop(state, 1);
+    }
+    return TRUE;
+}
+
+static gboolean lua_dense_array(lua_State* state, int index, lua_Integer maximum) {
+    index = lua_absindex(state, index);
+    lua_Integer length = lua_rawlen(state, index);
+    if (length > maximum)
+        return FALSE;
+    lua_Integer entries = 0;
+    lua_pushnil(state);
+    while (lua_next(state, index)) {
+        gboolean valid_key = lua_isinteger(state, -2);
+        lua_Integer key = valid_key ? lua_tointeger(state, -2) : 0;
+        if (!valid_key || key < 1 || key > length) {
+            lua_pop(state, 2);
+            return FALSE;
+        }
+        entries++;
+        lua_pop(state, 1);
+    }
+    return entries == length;
+}
+
+static int lua_window_drag_offer_targets(lua_State* state) {
+    LuaWindowDrag* drag = luaL_checkudata(state, 1, LUA_WINDOW_DRAG_METATABLE);
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    if (lua_gettop(state) != 2 || !lua_istable(state, 2) || lua_rawlen(state, 2) < 1 ||
+        !lua_dense_array(state, 2, 128))
+        return luaL_error(state, "WindowDrag:offer_targets requires 1-128 targets");
+    if (!config || !active_runtime || !config->dispatching || config->api_calling ||
+        config->rejecting_operations || !config->runtime_actions || drag->id == 0 ||
+        drag->generation != active_runtime->generation || drag->ended ||
+        config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(state, "WindowDrag is stale or offers are unavailable");
+    int targets_index = lua_absindex(state, 2);
+    GVariantBuilder targets;
+    g_variant_builder_init(&targets, G_VARIANT_TYPE("av"));
+    g_autoptr(GHashTable) ids = g_hash_table_new(g_str_hash, g_str_equal);
+    lua_Integer count = lua_rawlen(state, targets_index);
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, targets_index, i);
+        int target_index = lua_absindex(state, -1);
+        static const char* const target_fields[] = {
+            "id", "hit", "frame", "maximize", "required_modifiers", "forbidden_modifiers", NULL};
+        if (!lua_istable(state, target_index) ||
+            !table_fields_allowed(state, target_index, target_fields))
+            return luaL_error(state, "snap target %d has unsupported fields", (int)i);
+        lua_getfield(state, target_index, "id");
+        const char* id = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        if (!id || !*id || strlen(id) > 64 || !g_utf8_validate(id, -1, NULL) ||
+            g_hash_table_contains(ids, id))
+            return luaL_error(state, "snap target %d needs a unique nonempty ID up to 64 bytes",
+                              (int)i);
+        g_hash_table_add(ids, (gpointer)id);
+        GVariantBuilder record, hit, frame;
+        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(id));
+        lua_pop(state, 1);
+        lua_getfield(state, target_index, "hit");
+        if (!lua_snap_rect(state, -1, &hit))
+            return luaL_error(state, "snap target %d hit rectangle is invalid", (int)i);
+        g_variant_builder_add(&record, "{sv}", "hit", g_variant_builder_end(&hit));
+        lua_pop(state, 1);
+        lua_getfield(state, target_index, "frame");
+        if (!lua_snap_rect(state, -1, &frame))
+            return luaL_error(state, "snap target %d frame rectangle is invalid", (int)i);
+        g_variant_builder_add(&record, "{sv}", "frame", g_variant_builder_end(&frame));
+        lua_pop(state, 1);
+        lua_getfield(state, target_index, "maximize");
+        if (!lua_isnil(state, -1)) {
+            if (!lua_isboolean(state, -1))
+                return luaL_error(state, "snap target maximize must be boolean");
+            g_variant_builder_add(&record, "{sv}", "maximize",
+                                  g_variant_new_boolean(lua_toboolean(state, -1)));
+        }
+        lua_pop(state, 1);
+        const char* modifier_fields[] = {"required_modifiers", "forbidden_modifiers"};
+        for (guint m = 0; m < G_N_ELEMENTS(modifier_fields); m++) {
+            lua_getfield(state, target_index, modifier_fields[m]);
+            if (!lua_isnil(state, -1)) {
+                if (!lua_istable(state, -1) || !lua_dense_array(state, -1, 1))
+                    return luaL_error(state, "snap target modifier arrays accept only control");
+                GVariantBuilder list;
+                g_variant_builder_init(&list, G_VARIANT_TYPE_STRING_ARRAY);
+                for (lua_Integer j = 1; j <= lua_rawlen(state, -1); j++) {
+                    lua_rawgeti(state, -1, j);
+                    if (lua_type(state, -1) != LUA_TSTRING ||
+                        !g_str_equal(lua_tostring(state, -1), "control"))
+                        return luaL_error(state, "snap target modifier must be 'control'");
+                    g_variant_builder_add(&list, "s", "control");
+                    lua_pop(state, 1);
+                }
+                g_variant_builder_add(&record, "{sv}", modifier_fields[m],
+                                      g_variant_builder_end(&list));
+            }
+            lua_pop(state, 1);
+        }
+        g_variant_builder_add_value(&targets,
+                                    g_variant_new_variant(g_variant_builder_end(&record)));
+        lua_pop(state, 1);
+    }
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&arguments, "{sv}", "drag_id", g_variant_new_uint64(drag->id));
+    g_variant_builder_add(&arguments, "{sv}", "settings_revision",
+                          g_variant_new_uint64(drag->settings_revision));
+    g_variant_builder_add(&arguments, "{sv}", "targets", g_variant_builder_end(&targets));
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string("window.snap.offer"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id, "window.snap.offer");
+    return 1;
+}
+
+static int lua_text_target_insert_text(lua_State* state) {
+    LuaTextTarget* target = luaL_checkudata(state, 1, LUA_TEXT_TARGET_METATABLE);
+    LuaConfig* config = active_runtime ? &active_runtime->config : NULL;
+    size_t length = 0;
+    const char* text = luaL_checklstring(state, 2, &length);
+    if (lua_gettop(state) != 2)
+        return luaL_error(state, "TextTarget:insert_text takes exactly one string");
+    gboolean valid = length > 0 && length <= 256 && !memchr(text, '\0', length) &&
+                     g_utf8_validate(text, length, NULL);
+    if (valid) {
+        const char* cursor = text;
+        const char* end = text + length;
+        while (cursor < end) {
+            if (g_unichar_iscntrl(g_utf8_get_char(cursor))) {
+                valid = FALSE;
+                break;
+            }
+            cursor = g_utf8_next_char(cursor);
+        }
+    }
+    gboolean usable = !target->consumed && target->token[0] && target->generation &&
+                      active_runtime && target->generation == active_runtime->generation;
+    target->consumed = TRUE;
+    if (!usable)
+        return luaL_error(state, "TextTarget is consumed or belongs to an old runtime");
+    if (!valid)
+        return luaL_error(state,
+                          "inserted text must be 1-256 bytes of UTF-8 without control characters");
+    if (!config || !config->dispatching || config->api_calling || config->rejecting_operations ||
+        !config->runtime_actions)
+        return luaL_error(state,
+                          "TextTarget:insert_text is available only in a runtime event callback");
+    if (config->runtime_actions->len >= 256 || config->actions_in_dispatch >= 64)
+        return luaL_error(state, "too many pending Gnoblin session actions");
+    guint64 request_id = allocate_operation_id();
+    if (!request_id)
+        return luaL_error(state, "Gnoblin operation request ID space is exhausted");
+    GVariantBuilder arguments, action;
+    g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&arguments, "{sv}", "target", g_variant_new_string(target->token));
+    g_variant_builder_add(&arguments, "{sv}", "text", g_variant_new_string(text));
+    g_variant_builder_init(&action, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
+    g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string("input.insert_text"));
+    g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
+    g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+    config->actions_in_dispatch++;
+    push_operation_handle(state, config, request_id, "input.insert_text");
+    return 1;
+}
+
+static int lua_text_target_index(lua_State* state) {
+    LuaTextTarget* target = luaL_checkudata(state, 1, LUA_TEXT_TARGET_METATABLE);
+    const char* field = luaL_checkstring(state, 2);
+    if (g_str_equal(field, "insert_text")) {
+        lua_pushcfunction(state, lua_text_target_insert_text);
+    } else if (g_str_equal(field, "window_id") && target->window_id[0]) {
+        lua_pushstring(state, target->window_id);
+    } else if (g_str_equal(field, "caret") && target->has_caret) {
+        lua_createtable(state, 0, 4);
+        lua_pushnumber(state, target->x);
+        lua_setfield(state, -2, "x");
+        lua_pushnumber(state, target->y);
+        lua_setfield(state, -2, "y");
+        lua_pushnumber(state, target->width);
+        lua_setfield(state, -2, "width");
+        lua_pushnumber(state, target->height);
+        lua_setfield(state, -2, "height");
+    } else {
+        lua_pushnil(state);
+    }
+    return 1;
+}
+
+static int lua_animation_preview_method(lua_State* state) {
+    const char* method = lua_tostring(state, lua_upvalueindex(1));
+    int supplied = lua_gettop(state) - 1;
+    if (lua_gettop(state) < 1 || !lua_isuserdata(state, 1))
+        return luaL_error(state, "animation preview methods must be called on a preview record");
+
+    lua_getiuservalue(state, 1, 1);
+    if (!lua_istable(state, -1))
+        return luaL_error(state, "animation preview record is unavailable");
+    lua_getfield(state, -1, "session");
+    if (lua_type(state, -1) != LUA_TSTRING)
+        return luaL_error(state, "animation preview record has no session ID");
+
+    lua_newtable(state);
+    int arguments = lua_absindex(state, -1);
+    lua_pushvalue(state, -2);
+    lua_setfield(state, arguments, "session");
+
+    if (g_str_equal(method, "animation.seek")) {
+        if (supplied != 1 || lua_type(state, 2) != LUA_TNUMBER)
+            return luaL_error(state, "preview:seek requires a number from 0 to 1");
+        double progress = lua_tonumber(state, 2);
+        if (!isfinite(progress) || progress < 0.0 || progress > 1.0)
+            return luaL_error(state, "preview:seek requires a number from 0 to 1");
+        lua_pushnumber(state, progress);
+        lua_setfield(state, arguments, "progress");
+    } else if (g_str_equal(method, "animation.step")) {
+        if (supplied != 1 || !lua_isinteger(state, 2) || lua_tointeger(state, 2) < 1 ||
+            lua_tointeger(state, 2) > 60000)
+            return luaL_error(state, "preview:step requires an integer from 1 to 60000");
+        lua_pushvalue(state, 2);
+        lua_setfield(state, arguments, "milliseconds");
+    } else if (g_str_equal(method, "animation.play") || g_str_equal(method, "animation.pause") ||
+               g_str_equal(method, "animation.stop")) {
+        if (supplied != 0) {
+            const char* operation = method + strlen("animation.");
+            return luaL_error(state, "preview:%s takes no arguments", operation);
+        }
+    } else {
+        return luaL_error(state, "unsupported animation preview method");
+    }
+
+    lua_pushvalue(state, arguments);
+    lua_replace(state, 1);
+    lua_settop(state, 1);
+    lua_pushlightuserdata(state, active_runtime ? &active_runtime->config : NULL);
+    lua_pushstring(state, method);
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_insert(state, 1);
+    lua_call(state, 1, 1);
+    return 1;
+}
+
+static gboolean animation_name_valid(const char* name) {
+    gsize length = name ? strlen(name) : 0;
+    if (length == 0 || length > 80)
+        return FALSE;
+    for (gsize i = 0; i < length; i++) {
+        unsigned char character = (unsigned char)name[i];
+        if (!g_ascii_isalnum(character) && character != '_' && character != '-')
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static GVariant* animation_records(LuaConfig* config) {
+    return config && config->animation_snapshot
+               ? g_variant_lookup_value(config->animation_snapshot, "animations",
+                                        G_VARIANT_TYPE("aa{sv}"))
+               : NULL;
+}
+
+static GVariant* policy_array_record(GVariant* array, gsize index) {
+    if (!array || index >= g_variant_n_children(array))
+        return NULL;
+    GVariant* child = g_variant_get_child_value(array, index);
+    if (g_variant_is_of_type(child, G_VARIANT_TYPE_VARIANT)) {
+        GVariant* value = g_variant_get_variant(child);
+        g_variant_unref(child);
+        return value;
+    }
+    return child;
+}
+
+static gboolean policy_rule_matches(GVariant* match, const char* type, const char* app_id,
+                                    const char* title, const char* layer, gboolean focused,
+                                    GError** error) {
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, match);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        gboolean matched = FALSE;
+        if (g_str_equal(key, "type")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+                      g_str_equal(g_variant_get_string(value, NULL), type);
+        } else if (g_str_equal(key, "focused")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
+                      g_variant_get_boolean(value) == focused;
+        } else if (g_str_equal(key, "app-id") || g_str_equal(key, "app_id") ||
+                   g_str_equal(key, "title") || g_str_equal(key, "layer")) {
+            const char* pattern = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
+                                      ? g_variant_get_string(value, NULL)
+                                      : NULL;
+            const char* candidate = g_str_equal(key, "app-id") || g_str_equal(key, "app_id")
+                                        ? app_id
+                                    : g_str_equal(key, "title") ? title
+                                                                : layer;
+            matched = pattern && candidate &&
+                      gnoblin_config_window_pattern_match(pattern, candidate, error);
+            if (error && *error) {
+                g_variant_unref(value);
+                return FALSE;
+            }
+        }
+        /* Workspace and other match fields have no value in a namespace-only
+         * query, matching the old shell bridge's synthetic layer record. */
+        g_variant_unref(value);
+        if (!matched)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean builtin_animation_supports(const char* name, const char* event) {
+    if (g_str_equal(name, "none"))
+        return TRUE;
+    if (g_str_equal(name, "fade") || g_str_equal(name, "gnome"))
+        return g_str_equal(event, "minimize") || g_str_equal(event, "restore") ||
+               g_str_equal(event, "open") || g_str_equal(event, "close") ||
+               g_str_equal(event, "dialog-open") || g_str_equal(event, "dialog-close") ||
+               g_str_equal(event, "layer-open") || g_str_equal(event, "layer-close");
+    if (g_str_equal(name, "slide"))
+        return g_str_equal(event, "layer-open") || g_str_equal(event, "layer-close");
+    if (g_str_equal(name, "gnoblin-layer-open"))
+        return g_str_equal(event, "layer-open");
+    if (g_str_equal(name, "gnoblin-layer-close"))
+        return g_str_equal(event, "layer-close");
+    if (g_str_equal(name, "gnome-minimize"))
+        return g_str_equal(event, "minimize");
+    if (g_str_equal(name, "gnome-restore"))
+        return g_str_equal(event, "restore");
+    if (g_str_equal(name, "gnome-open"))
+        return g_str_equal(event, "open");
+    if (g_str_equal(name, "gnome-close"))
+        return g_str_equal(event, "close");
+    if (g_str_equal(name, "gnome-dialog-open"))
+        return g_str_equal(event, "dialog-open");
+    if (g_str_equal(name, "gnome-dialog-close"))
+        return g_str_equal(event, "dialog-close");
+    if (g_str_equal(name, "gnome-workspace-switch"))
+        return g_str_equal(event, "workspace-switch");
+    if (g_str_equal(name, "gnome-resize"))
+        return g_str_equal(event, "resize");
+    if (g_str_equal(name, "gnome-tile-preview-open"))
+        return g_str_equal(event, "tile-preview-open");
+    if (g_str_equal(name, "gnome-tile-preview-close"))
+        return g_str_equal(event, "tile-preview-close");
+    if (g_str_equal(name, "gnome-dialog-dim"))
+        return g_str_equal(event, "dialog-dim");
+    if (g_str_equal(name, "gnome-dialog-undim"))
+        return g_str_equal(event, "dialog-undim");
+    if (g_str_equal(name, "gnoblin-shadow-change"))
+        return g_str_equal(event, "shadow-change");
+    return FALSE;
+}
+
+static gboolean policy_animation_supports(GVariant* document, const char* name, const char* event) {
+    g_autoptr(GVariant) animations = g_variant_lookup_value(document, "animations", NULL);
+    for (gsize i = 0; animations && i < g_variant_n_children(animations); i++) {
+        g_autoptr(GVariant) record = policy_array_record(animations, i);
+        const char* record_name = NULL;
+        const char* record_event = NULL;
+        gboolean enabled = TRUE;
+        if (!record || !g_variant_is_of_type(record, G_VARIANT_TYPE_VARDICT) ||
+            !g_variant_lookup(record, "name", "&s", &record_name) ||
+            !g_str_equal(record_name, name))
+            continue;
+        g_variant_lookup(record, "event", "&s", &record_event);
+        g_variant_lookup(record, "enable", "b", &enabled);
+        return enabled && g_strcmp0(record_event, event) == 0;
+    }
+    return builtin_animation_supports(name, event);
+}
+
+static GVariant* policy_layer_phase(GVariant* document, const char* namespace, gboolean opening,
+                                    GError** error) {
+    const char* event = opening ? "layer-open" : "layer-close";
+    const char* alias = opening ? "in" : "out";
+    const char* selected = "slide";
+    g_autoptr(GVariant) selected_duration = NULL;
+    g_autoptr(GVariant) selected_easing = NULL;
+    g_autoptr(GVariant) rules = g_variant_lookup_value(document, "window-rules", NULL);
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) rule = policy_array_record(rules, i);
+        if (!rule || !g_variant_is_of_type(rule, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT) ||
+            !policy_rule_matches(match, "layer", "", "", namespace, FALSE, error)) {
+            if (error && *error)
+                return NULL;
+            continue;
+        }
+        g_autoptr(GVariant) animation = g_variant_lookup_value(rule, "animation", NULL);
+        if (!animation)
+            continue;
+        const char* name = NULL;
+        gboolean has_override = FALSE;
+        if (g_variant_is_of_type(animation, G_VARIANT_TYPE_STRING)) {
+            name = g_variant_get_string(animation, NULL);
+        } else if (g_variant_is_of_type(animation, G_VARIANT_TYPE_VARDICT)) {
+            g_autoptr(GVariant) phase_name = g_variant_lookup_value(animation, event, NULL);
+            if (!phase_name) {
+                phase_name =
+                    g_variant_lookup_value(animation, opening ? "layer_open" : "layer_close", NULL);
+            }
+            if (!phase_name)
+                phase_name = g_variant_lookup_value(animation, alias, NULL);
+            if (!phase_name || !g_variant_is_of_type(phase_name, G_VARIANT_TYPE_STRING))
+                continue;
+            name = g_variant_get_string(phase_name, NULL);
+            has_override = TRUE;
+        } else {
+            continue;
+        }
+        if (!policy_animation_supports(document, name, event))
+            continue;
+        selected = name;
+        g_clear_pointer(&selected_duration, g_variant_unref);
+        g_clear_pointer(&selected_easing, g_variant_unref);
+        if (has_override) {
+            selected_duration = g_variant_lookup_value(animation, "duration", NULL);
+            selected_easing = g_variant_lookup_value(animation, "ease", NULL);
+            if (!selected_easing)
+                selected_easing = g_variant_lookup_value(animation, "easing", NULL);
+        }
+    }
+
+    GVariantBuilder phase;
+    g_variant_builder_init(&phase, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&phase, "{sv}", "animation", g_variant_new_string(selected));
+    if (selected_duration)
+        g_variant_builder_add(&phase, "{sv}", "duration", selected_duration);
+    if (selected_easing)
+        g_variant_builder_add(&phase, "{sv}", "easing", selected_easing);
+    return g_variant_ref_sink(g_variant_builder_end(&phase));
+}
+
+static GVariant* layer_animation_policy(LuaConfig* config, const char* namespace, GError** error) {
+    if (!config || !config->settings_document) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua configuration is unavailable");
+        return NULL;
+    }
+    g_autoptr(GVariant) enter =
+        policy_layer_phase(config->settings_document, namespace, TRUE, error);
+    if (!enter)
+        return NULL;
+    g_autoptr(GVariant) exit =
+        policy_layer_phase(config->settings_document, namespace, FALSE, error);
+    if (!exit)
+        return NULL;
+
+    /* The former policy adapter resolved window shadow against the default
+     * window identity, distinct from the queried layer namespace. */
+    g_autoptr(GVariant) window_shadow = g_variant_ref_sink(g_variant_new_boolean(FALSE));
+    g_autoptr(GVariant) window_rules =
+        g_variant_lookup_value(config->settings_document, "window-rules", NULL);
+    for (gsize i = 0; window_rules && i < g_variant_n_children(window_rules); i++) {
+        g_autoptr(GVariant) rule = policy_array_record(window_rules, i);
+        if (!rule || !g_variant_is_of_type(rule, G_VARIANT_TYPE_VARDICT))
+            continue;
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT) ||
+            !policy_rule_matches(match, "window", "", "", NULL, TRUE, error)) {
+            if (error && *error)
+                return NULL;
+            continue;
+        }
+        g_autoptr(GVariant) corners = g_variant_lookup_value(rule, "corners", NULL);
+        g_autoptr(GVariant) shadow =
+            corners ? g_variant_lookup_value(corners, "shadow", NULL) : NULL;
+        if (shadow) {
+            g_clear_pointer(&window_shadow, g_variant_unref);
+            window_shadow = g_variant_ref(shadow);
+        }
+    }
+
+    GVariantBuilder policy;
+    g_variant_builder_init(&policy, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&policy, "{sv}", "namespace", g_variant_new_string(namespace));
+    g_variant_builder_add(&policy, "{sv}", "enter", enter);
+    g_variant_builder_add(&policy, "{sv}", "exit", exit);
+    g_variant_builder_add(&policy, "{sv}", "window_shadow", window_shadow);
+    g_variant_builder_add(&policy, "{sv}", "revision",
+                          g_variant_new_uint64(config->settings_revision));
+    return g_variant_ref_sink(g_variant_builder_end(&policy));
+}
+
+static int lua_layers_animation_policy(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
+        return luaL_error(state, "gnoblin.layers.animation_policy requires one namespace string");
+    const char* namespace = lua_tostring(state, 1);
+    gsize length = strlen(namespace);
+    if (length == 0 || length > 128 || !g_utf8_validate(namespace, length, NULL))
+        return luaL_error(state, "layer namespace must be 1 to 128 bytes of UTF-8");
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) result = layer_animation_policy(config, namespace, &error);
+    if (!result)
+        return luaL_error(state, "%s", error ? error->message : "could not resolve layer policy");
+    push_variant(state, result);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_animations_list(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.animations.list takes no arguments");
+    g_autoptr(GVariant) records = animation_records(config);
+    if (!records)
+        return luaL_error(state, "native animation snapshot is unavailable");
+    push_variant(state, records);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+/* Read the current native animation registry without queuing a runtime action. */
+static int lua_animation_get(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
+        return luaL_error(state, "gnoblin.animations.get requires one animation name");
+    const char* name = lua_tostring(state, 1);
+    if (!animation_name_valid(name))
+        return luaL_error(
+            state, "animation name must be 1 to 80 ASCII letters, digits, underscores, or hyphens");
+    g_autoptr(GVariant) records = animation_records(config);
+    if (!records)
+        return luaL_error(state, "native animation snapshot is unavailable");
+    for (gsize i = 0; i < g_variant_n_children(records); i++) {
+        g_autoptr(GVariant) record = g_variant_get_child_value(records, i);
+        const char* record_name = NULL;
+        if (!g_variant_lookup(record, "name", "&s", &record_name) ||
+            !g_str_equal(record_name, name))
+            continue;
+        push_variant(state, record);
+        push_readonly_copy(state, -1);
+        lua_remove(state, -2);
+        return 1;
+    }
+    lua_pushnil(state);
     return 1;
 }
 
@@ -2455,6 +3641,7 @@ static int lua_focus_history(lua_State* state) {
     g_autoptr(GVariant) windows = lua_window_array(config);
     guint result_limit = (guint)limit;
     lua_newtable(state);
+    mark_array_table(state, -1);
     guint result_index = 1;
     for (guint history_index = 0;
          windows && history_index < config->focus_history_ids->len && result_index <= result_limit;
@@ -2822,6 +4009,7 @@ static int lua_capabilities_list(lua_State* state) {
     g_autoptr(GVariant) capabilities =
         g_variant_lookup_value(config->capability_snapshot, "capabilities", G_VARIANT_TYPE("av"));
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (gsize i = 0; capabilities && i < g_variant_n_children(capabilities); i++) {
         g_autoptr(GVariant) wrapped = g_variant_get_child_value(capabilities, i);
         g_autoptr(GVariant) capability = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
@@ -2862,6 +4050,98 @@ static int lua_permissions_policy(lua_State* state) {
     if (!snapshot)
         return luaL_error(state, "committed permission policy is unavailable");
     push_variant(state, snapshot);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_privacy_state(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.privacy.state takes no arguments");
+    if (!config || !config->privacy_snapshot)
+        return luaL_error(state, "native privacy snapshot is unavailable");
+
+    g_autoptr(GVariant) available =
+        g_variant_lookup_value(config->privacy_snapshot, "available", G_VARIANT_TYPE_VARDICT);
+    if (!available)
+        return luaL_error(state, "native privacy snapshot is unavailable");
+    GVariantBuilder state_builder;
+    g_variant_builder_init(&state_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&state_builder, "{sv}", "available", available);
+    static const char* const fields[] = {"screen_sharing", "recording",       "microphone_in_use",
+                                         "camera_in_use",  "location_in_use", NULL};
+    for (guint i = 0; fields[i]; i++) {
+        g_autoptr(GVariant) value =
+            g_variant_lookup_value(config->privacy_snapshot, fields[i], G_VARIANT_TYPE_BOOLEAN);
+        if (value)
+            g_variant_builder_add(&state_builder, "{sv}", fields[i], value);
+    }
+    g_variant_builder_add(&state_builder, "{sv}", "revision",
+                          g_variant_new_uint64(config->privacy_revision));
+    g_autoptr(GVariant) snapshot = g_variant_ref_sink(g_variant_builder_end(&state_builder));
+    push_variant(state, snapshot);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_session_activity(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.session.activity takes no arguments");
+    if (!config || !config->session_activity_snapshot)
+        return luaL_error(state, "native session activity snapshot is unavailable");
+    gboolean available = FALSE;
+    gboolean idle = FALSE;
+    guint64 threshold_ms = 0;
+    guint64 idle_for_ms = 0;
+    g_variant_lookup(config->session_activity_snapshot, "available", "b", &available);
+    g_variant_lookup(config->session_activity_snapshot, "idle", "b", &idle);
+    g_variant_lookup(config->session_activity_snapshot, "threshold_ms", "t", &threshold_ms);
+    g_variant_lookup(config->session_activity_snapshot, "idle_for_ms", "t", &idle_for_ms);
+    if (available && idle && config->session_activity_sampled_at_us > 0) {
+        guint64 elapsed_ms =
+            (guint64)MAX(0, g_get_monotonic_time() - config->session_activity_sampled_at_us) / 1000;
+        idle_for_ms =
+            G_MAXUINT64 - idle_for_ms < elapsed_ms ? G_MAXUINT64 : idle_for_ms + elapsed_ms;
+    }
+    GVariantBuilder snapshot_builder;
+    g_variant_builder_init(&snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&snapshot_builder, "{sv}", "available", g_variant_new_boolean(available));
+    g_variant_builder_add(&snapshot_builder, "{sv}", "idle", g_variant_new_boolean(idle));
+    g_variant_builder_add(&snapshot_builder, "{sv}", "threshold_ms",
+                          g_variant_new_uint64(threshold_ms));
+    g_variant_builder_add(&snapshot_builder, "{sv}", "idle_for_ms",
+                          g_variant_new_uint64(idle_for_ms));
+    g_variant_builder_add(&snapshot_builder, "{sv}", "revision",
+                          g_variant_new_uint64(config->session_activity_revision));
+    g_autoptr(GVariant) snapshot = g_variant_ref_sink(g_variant_builder_end(&snapshot_builder));
+    push_variant(state, snapshot);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_session_status(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.session.status takes no arguments");
+    gboolean lock_available = FALSE;
+    const char* lock_state = NULL;
+    if (config && config->session_lock_snapshot) {
+        g_variant_lookup(config->session_lock_snapshot, "lock_available", "b", &lock_available);
+        g_variant_lookup(config->session_lock_snapshot, "lock_state", "&s", &lock_state);
+    }
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "state", g_variant_new_string("running"));
+    g_variant_builder_add(&builder, "{sv}", "lock_available",
+                          g_variant_new_boolean(lock_available));
+    if (lock_available && lock_state)
+        g_variant_builder_add(&builder, "{sv}", "lock_state", g_variant_new_string(lock_state));
+    g_autoptr(GVariant) status = g_variant_ref_sink(g_variant_builder_end(&builder));
+    push_variant(state, status);
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
     return 1;
@@ -2918,8 +4198,18 @@ static int lua_permissions_check(lua_State* state) {
     const char* const* monitor_values =
         decision.monitors ? (const char* const*)decision.monitors : empty_monitors;
     g_variant_builder_add(&result, "{sv}", "monitors", g_variant_new_strv(monitor_values, -1));
-    g_variant_builder_add(&result, "{sv}", "devices", g_variant_new_uint32(decision.devices));
+    GVariantBuilder devices;
+    g_variant_builder_init(&devices, G_VARIANT_TYPE_STRING_ARRAY);
+    if (decision.devices & 1)
+        g_variant_builder_add(&devices, "s", "keyboard");
+    if (decision.devices & 2)
+        g_variant_builder_add(&devices, "s", "pointer");
+    if (decision.devices & 4)
+        g_variant_builder_add(&devices, "s", "touchscreen");
+    g_variant_builder_add(&result, "{sv}", "devices", g_variant_builder_end(&devices));
     g_variant_builder_add(&result, "{sv}", "clipboard", g_variant_new_boolean(decision.clipboard));
+    g_variant_builder_add(&result, "{sv}", "revision",
+                          g_variant_new_uint64(config->settings_revision));
     g_autoptr(GVariant) snapshot = g_variant_ref_sink(g_variant_builder_end(&result));
     if (lua_gettop(state) == 3)
         lua_pop(state, 2);
@@ -3144,6 +4434,10 @@ static int lua_launches_end(lua_State* state) {
     return call_launch_operation(state, "launch.end", arguments);
 }
 
+static gint compare_string_pointers(gconstpointer left, gconstpointer right) {
+    return g_strcmp0(*(const gchar* const*)left, *(const gchar* const*)right);
+}
+
 static int lua_shortcut_actions(lua_State* state) {
     static const struct {
         const char* group;
@@ -3192,7 +4486,7 @@ static int lua_shortcut_actions(lua_State* state) {
             g_settings_schema_unref(schema);
             continue;
         }
-        g_strv_sort(keys);
+        qsort(keys, g_strv_length(keys), sizeof(*keys), compare_string_pointers);
         for (guint key_index = 0; keys[key_index]; key_index++) {
             GSettingsSchemaKey* schema_key = g_settings_schema_get_key(schema, keys[key_index]);
             if (!schema_key)
@@ -3329,7 +4623,7 @@ static void lua_set_version_string(lua_State* state, const char* field, const ch
     lua_setfield(state, -2, field);
 }
 
-static int lua_version(lua_State* state) {
+static int lua_gnoblin_version(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.version takes no arguments");
 
@@ -3367,13 +4661,19 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_setglobal(state, blocked[i]);
     }
     lua_newtable(state);
-    lua_pushcfunction(state, lua_version);
+    lua_pushcfunction(state, lua_gnoblin_version);
     lua_setfield(state, -2, "version");
     lua_newtable(state);
     lua_setfield(state, -2, "config");
     for (guint i = 0; api_methods[i]; i++) {
-        if (g_str_equal(api_methods[i], "shortcut.capture"))
+        if (g_str_equal(api_methods[i], "shortcut.capture") ||
+            g_str_equal(api_methods[i], "shortcut.bind") ||
+            g_str_equal(api_methods[i], "shortcut.unbind"))
             continue; /* Public collection API is gnoblin.shortcuts.capture. */
+        if (g_str_equal(api_methods[i], "privacy.get"))
+            continue; /* Exposed as the native snapshot read gnoblin.privacy.state(). */
+        if (g_str_has_prefix(api_methods[i], "animation."))
+            continue; /* Controls are gnoblin.animations.*; gnoblin.animation declares config. */
         const char* separator = strchr(api_methods[i], '.');
         g_autofree char* domain = g_strndup(api_methods[i], separator - api_methods[i]);
         const char* operation = separator + 1;
@@ -3384,9 +4684,18 @@ static void install_api(lua_State* state, LuaConfig* config) {
             lua_pushvalue(state, -1);
             lua_setfield(state, -3, domain);
         }
-        if (g_str_equal(api_methods[i], "permissions.list") ||
-            g_str_equal(api_methods[i], "permissions.policy") ||
-            g_str_equal(api_methods[i], "permissions.check")) {
+        if (g_str_equal(api_methods[i], "session.status")) {
+            lua_pushlightuserdata(state, config);
+            lua_pushcclosure(state, lua_session_status, 1);
+        } else if (g_str_equal(api_methods[i], "session.activity")) {
+            lua_pushlightuserdata(state, config);
+            lua_pushcclosure(state, lua_session_activity, 1);
+        } else if (g_str_equal(api_methods[i], "input.text_target")) {
+            lua_pushlightuserdata(state, config);
+            lua_pushcclosure(state, lua_input_text_target, 1);
+        } else if (g_str_equal(api_methods[i], "permissions.list") ||
+                   g_str_equal(api_methods[i], "permissions.policy") ||
+                   g_str_equal(api_methods[i], "permissions.check")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state,
                              g_str_equal(api_methods[i], "permissions.list") ? lua_permissions_list
@@ -3428,6 +4737,25 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_setfield(state, -2, operation);
         lua_pop(state, 1);
     }
+    lua_getfield(state, -1, "animations");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_animations_list, 1);
+    lua_setfield(state, -2, "list");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_animation_get, 1);
+    lua_setfield(state, -2, "get");
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "privacy");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, -3, "privacy");
+    }
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_privacy_state, 1);
+    lua_setfield(state, -2, "state");
+    lua_pop(state, 1);
     lua_newtable(state);
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_windows_list, 1);
@@ -3438,6 +4766,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_windows_by_id, 1);
     lua_setfield(state, -2, "by_id");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_windows_snap_context, 1);
+    lua_setfield(state, -2, "snap_context");
     lua_setfield(state, -2, "windows");
     lua_getfield(state, -1, "workspaces");
     lua_pushlightuserdata(state, config);
@@ -3462,6 +4793,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_layers_list, 1);
     lua_setfield(state, -2, "list");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_layers_animation_policy, 1);
+    lua_setfield(state, -2, "animation_policy");
     lua_setfield(state, -2, "layers");
     lua_getfield(state, -1, "capabilities");
     if (!lua_istable(state, -1)) {
@@ -3495,6 +4829,14 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushliteral(state, "shortcut.capture");
     lua_pushcclosure(state, lua_generic_api_action, 2);
     lua_setfield(state, -2, "capture");
+    lua_pushlightuserdata(state, config);
+    lua_pushliteral(state, "shortcut.bind");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_setfield(state, -2, "bind");
+    lua_pushlightuserdata(state, config);
+    lua_pushliteral(state, "shortcut.unbind");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_setfield(state, -2, "unbind");
     lua_setfield(state, -2, "shortcuts");
     lua_newtable(state);
     lua_pushlightuserdata(state, config);
@@ -3583,34 +4925,16 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setglobal(state, "require");
 }
 
-static gboolean merge_variant(lua_State* state, GVariant* document, GError** error) {
-    if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT)) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "loaded config must be a table");
-        return FALSE;
-    }
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, "config");
-    push_variant(state, document);
-    merge_table(state, -2, -1, NULL, TRUE);
-    lua_pop(state, 3);
-    return TRUE;
-}
-
-static gboolean evaluate_toml(lua_State* state, LuaConfig* config, const char* path,
-                              GError** error) {
-    g_autofree char* contents = NULL;
-    if (!g_file_get_contents(path, &contents, NULL, error))
-        return FALSE;
-    g_autoptr(GVariant) document = gnoblin_config_parse_toml(contents, error);
-    if (!document)
-        return FALSE;
-    return merge_variant(state, document, error);
-}
-
 static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* given, gboolean root,
                               GError** error) {
     g_autofree char* path = g_canonicalize_filename(given, NULL);
+    if (!g_str_has_suffix(path, ".lua")) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "%s: Gnoblin configuration uses Lua only. Convert this file to Lua and "
+                    "give it a .lua filename.",
+                    path);
+        return FALSE;
+    }
     add_path(config->paths, path);
     if (!g_file_test(path, G_FILE_TEST_EXISTS)) {
         if (root)
@@ -3631,43 +4955,38 @@ static gboolean evaluate_path(lua_State* state, LuaConfig* config, const char* g
     g_hash_table_add(config->active, g_strdup(path));
     g_autofree char* old = g_steal_pointer(&config->current_path);
     config->current_path = g_strdup(path);
+    int status = luaL_loadfilex(state, path, "t");
+    if (status == LUA_OK)
+        status = lua_pcall(state, 0, 1, 0);
     gboolean ok;
-    if (!g_str_has_suffix(path, ".lua")) {
-        ok = evaluate_toml(state, config, path, error);
+    if (status != LUA_OK) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s: %s", path, lua_error_text(state));
+        lua_pop(state, 1);
+        ok = FALSE;
+    } else if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        ok = TRUE;
+    } else if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Lua config must return a table or nil");
+        ok = FALSE;
     } else {
-        int status = luaL_loadfilex(state, path, "t");
-        if (status == LUA_OK)
-            status = lua_pcall(state, 0, 1, 0);
-        if (status != LUA_OK) {
-            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s: %s", path,
-                        lua_error_text(state));
-            lua_pop(state, 1);
-            ok = FALSE;
-        } else if (lua_isnil(state, -1)) {
-            lua_pop(state, 1);
-            ok = TRUE;
-        } else if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "Lua config must return a table or nil");
-            ok = FALSE;
+        g_autoptr(GError) conversion = NULL;
+        g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, FALSE, FALSE, &conversion);
+        ok = value != NULL && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
+        if (ok) {
+            lua_getglobal(state, "gnoblin");
+            lua_getfield(state, -1, "config");
+            merge_table(state, -1, -3, NULL, TRUE);
+            lua_pop(state, 3);
         } else {
-            g_autoptr(GError) conversion = NULL;
-            g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, FALSE, FALSE, &conversion);
-            ok = value != NULL && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
-            if (ok) {
-                lua_getglobal(state, "gnoblin");
-                lua_getfield(state, -1, "config");
-                merge_table(state, -1, -3, NULL, TRUE);
-                lua_pop(state, 3);
-            } else {
-                lua_pop(state, 1);
-                if (conversion)
-                    g_propagate_error(error, g_steal_pointer(&conversion));
-                else
-                    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                        "Lua config must return a table of settings");
-            }
+            lua_pop(state, 1);
+            if (conversion)
+                g_propagate_error(error, g_steal_pointer(&conversion));
+            else
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "Lua config must return a table of settings");
         }
     }
     g_free(config->current_path);
@@ -3768,6 +5087,10 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.shortcut_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.portal_grant_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.animation_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.settings_document, g_variant_unref);
     g_clear_pointer(&runtime->config.focus_history_ids, g_ptr_array_unref);
     g_clear_pointer(&runtime->config.paths, g_ptr_array_unref);
@@ -3782,7 +5105,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
 void gnoblin_config_update_window_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3798,7 +5121,7 @@ void gnoblin_config_update_window_snapshot(GVariant* snapshot, guint64 revision)
 void gnoblin_config_update_workspace_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3813,7 +5136,7 @@ void gnoblin_config_update_workspace_snapshot(GVariant* snapshot, guint64 revisi
 void gnoblin_config_update_monitor_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3828,7 +5151,7 @@ void gnoblin_config_update_monitor_snapshot(GVariant* snapshot, guint64 revision
 void gnoblin_config_update_layer_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3843,7 +5166,7 @@ void gnoblin_config_update_layer_snapshot(GVariant* snapshot, guint64 revision) 
 void gnoblin_config_update_capability_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3858,7 +5181,7 @@ void gnoblin_config_update_capability_snapshot(GVariant* snapshot, guint64 revis
 void gnoblin_config_update_input_device_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3873,7 +5196,7 @@ void gnoblin_config_update_input_device_snapshot(GVariant* snapshot, guint64 rev
 void gnoblin_config_update_input_source_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3888,7 +5211,7 @@ void gnoblin_config_update_input_source_snapshot(GVariant* snapshot, guint64 rev
 void gnoblin_config_update_shortcut_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3903,7 +5226,7 @@ void gnoblin_config_update_shortcut_snapshot(GVariant* snapshot, guint64 revisio
 void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3918,7 +5241,7 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
 void gnoblin_config_update_portal_grant_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime};
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
     for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
         LuaRuntime* runtime = runtimes[i];
         if (!runtime || (i == 1 && runtime == runtimes[0]))
@@ -3927,6 +5250,149 @@ void gnoblin_config_update_portal_grant_snapshot(GVariant* snapshot, guint64 rev
         runtime->config.portal_grant_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.portal_grant_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    if (snapshot) {
+        const struct {
+            const char* key;
+            const GVariantType* type;
+        } fields[] = {{"available", G_VARIANT_TYPE_BOOLEAN},
+                      {"idle", G_VARIANT_TYPE_BOOLEAN},
+                      {"threshold_ms", G_VARIANT_TYPE_UINT64},
+                      {"idle_for_ms", G_VARIANT_TYPE_UINT64}};
+        for (guint i = 0; i < G_N_ELEMENTS(fields); i++) {
+            g_autoptr(GVariant) value =
+                g_variant_lookup_value(snapshot, fields[i].key, fields[i].type);
+            if (!value)
+                return;
+        }
+    }
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
+        runtime->config.session_activity_revision = snapshot ? revision : 0;
+        runtime->config.session_activity_sampled_at_us = snapshot ? g_get_monotonic_time() : 0;
+        if (snapshot)
+            runtime->config.session_activity_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision) {
+    (void)revision;
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    gboolean available = FALSE;
+    if (snapshot && !g_variant_lookup(snapshot, "lock_available", "b", &available))
+        return;
+    if (available) {
+        const char* state = NULL;
+        if (!g_variant_lookup(snapshot, "lock_state", "&s", &state) ||
+            !(g_str_equal(state, "unlocked") || g_str_equal(state, "covering") ||
+              g_str_equal(state, "locked") || g_str_equal(state, "failsafe")))
+            return;
+    }
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
+        if (snapshot)
+            runtime->config.session_lock_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_privacy_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    static const char* const fields[] = {"screen_sharing", "recording",       "microphone_in_use",
+                                         "camera_in_use",  "location_in_use", NULL};
+    static const char* const allowed[] = {
+        "available",     "screen_sharing",  "recording", "microphone_in_use",
+        "camera_in_use", "location_in_use", NULL};
+    g_autoptr(GVariant) available =
+        snapshot ? g_variant_lookup_value(snapshot, "available", G_VARIANT_TYPE_VARDICT) : NULL;
+    if (snapshot && !available)
+        return;
+    for (guint i = 0; available && fields[i]; i++) {
+        g_autoptr(GVariant) value =
+            g_variant_lookup_value(available, fields[i], G_VARIANT_TYPE_BOOLEAN);
+        if (!value)
+            return;
+        gboolean is_available = g_variant_get_boolean(value);
+        g_autoptr(GVariant) activity = g_variant_lookup_value(snapshot, fields[i], NULL);
+        if (is_available != (activity != NULL) ||
+            (activity && !g_variant_is_of_type(activity, G_VARIANT_TYPE_BOOLEAN)))
+            return;
+    }
+    if (available) {
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        guint count = 0;
+        g_variant_iter_init(&iter, available);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+            g_variant_unref(value);
+            gboolean known = FALSE;
+            for (guint i = 0; fields[i]; i++)
+                known |= g_str_equal(key, fields[i]);
+            if (!known)
+                return;
+            count++;
+        }
+        if (count != G_N_ELEMENTS(fields) - 1)
+            return;
+    }
+    if (snapshot) {
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        g_variant_iter_init(&iter, snapshot);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+            g_variant_unref(value);
+            gboolean known = FALSE;
+            for (guint i = 0; allowed[i]; i++)
+                known |= g_str_equal(key, allowed[i]);
+            if (!known)
+                return;
+        }
+    }
+
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
+        runtime->config.privacy_revision = snapshot ? revision : 0;
+        if (snapshot)
+            runtime->config.privacy_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_animation_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    g_autoptr(GVariant) records =
+        snapshot ? g_variant_lookup_value(snapshot, "animations", G_VARIANT_TYPE("aa{sv}")) : NULL;
+    if (snapshot && !records)
+        return;
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.animation_snapshot, g_variant_unref);
+        runtime->config.animation_revision = snapshot ? revision : 0;
+        if (snapshot)
+            runtime->config.animation_snapshot = g_variant_ref(snapshot);
     }
 }
 
@@ -3999,6 +5465,26 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
             g_variant_ref(snapshot_source->config.portal_grant_snapshot);
         runtime->config.portal_grant_revision = snapshot_source->config.portal_grant_revision;
     }
+    if (snapshot_source && snapshot_source->config.animation_snapshot) {
+        runtime->config.animation_snapshot =
+            g_variant_ref(snapshot_source->config.animation_snapshot);
+        runtime->config.animation_revision = snapshot_source->config.animation_revision;
+    }
+    if (snapshot_source && snapshot_source->config.privacy_snapshot) {
+        runtime->config.privacy_snapshot = g_variant_ref(snapshot_source->config.privacy_snapshot);
+        runtime->config.privacy_revision = snapshot_source->config.privacy_revision;
+    }
+    if (snapshot_source && snapshot_source->config.session_activity_snapshot) {
+        runtime->config.session_activity_snapshot =
+            g_variant_ref(snapshot_source->config.session_activity_snapshot);
+        runtime->config.session_activity_revision =
+            snapshot_source->config.session_activity_revision;
+        runtime->config.session_activity_sampled_at_us =
+            snapshot_source->config.session_activity_sampled_at_us;
+    }
+    if (snapshot_source && snapshot_source->config.session_lock_snapshot)
+        runtime->config.session_lock_snapshot =
+            g_variant_ref(snapshot_source->config.session_lock_snapshot);
     if (snapshot_source && snapshot_source->config.settings_document) {
         runtime->config.settings_document =
             g_variant_ref(snapshot_source->config.settings_document);
@@ -4024,14 +5510,15 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
         g_propagate_error(error, g_steal_pointer(&run.error));
     }
     // The builder returns a floating variant. Own it before exposing another
-    // reference to the Shell; otherwise a later event can unref a stale value.
+    // reference to the supervisor; otherwise a later event can unref a stale value.
     runtime->document = run.result ? g_variant_ref_sink(run.result) : NULL;
+    lua_runtime_free(pending_runtime);
+    pending_runtime = runtime;
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
+        pending_runtime = NULL;
         lua_runtime_free(runtime);
         return NULL;
     }
-    lua_runtime_free(pending_runtime);
-    pending_runtime = runtime;
     if (paths)
         *paths = g_ptr_array_ref(runtime->config.paths);
     if (directories)
@@ -4306,10 +5793,11 @@ static GVariant* input_gesture_event(LuaConfig* config, GVariant* payload) {
     return g_variant_ref_sink(g_variant_builder_end(&event));
 }
 
-GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error) {
-    // Shell is applying a newly parsed configuration before committing it.
+static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVariant* payload,
+                                                        GError** error) {
+    // The supervisor is applying a candidate configuration before committing it.
     // Compositor preference changes in that window can emit transition events;
-    // do not send those to the old Lua runtime or let it mutate the pending one.
+    // do not send those to the old Lua runtime or let them mutate the candidate.
     if (pending_runtime)
         return NULL;
     if (!active_runtime)
@@ -4353,8 +5841,11 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
                 GVariant* result = g_variant_lookup_value(payload, value_field, NULL);
                 GVariant* failure = g_variant_lookup_value(payload, "error", NULL);
                 if (result) {
-                    push_variant(state, result);
+                    lua_getfield(state, handle, "method");
+                    const char* method = lua_tostring(state, -1);
+                    push_operation_result(state, method ? method : "", result);
                     lua_setfield(state, handle, "value");
+                    lua_pop(state, 1);
                     g_variant_unref(result);
                 }
                 if (failure) {
@@ -4438,12 +5929,33 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
                 push_variant(state, event_payloads[event_index]);
                 lua_pushstring(state, event_names[event_index]);
                 lua_setfield(state, -2, "name");
-                if (g_str_equal(event_names[event_index], "gnoblin.shortcut.activated") &&
-                    active_runtime->config.dispatch_focus_handle) {
+                if (g_str_equal(event_names[event_index], "gnoblin.window.drag.started") ||
+                    g_str_equal(event_names[event_index], "gnoblin.window.drag.updated")) {
+                    push_window_drag(state, event_payloads[event_index]);
+                    lua_setfield(state, -2, "drag");
+                }
+                gboolean trusted_activation =
+                    g_str_equal(event_names[event_index], "gnoblin.shortcut.activated");
+                if (g_str_equal(event_names[event_index], "gnoblin.shortcut.binding-activated")) {
+                    lua_getfield(state, -1, "first");
+                    trusted_activation = lua_toboolean(state, -1);
+                    lua_pop(state, 1);
+                }
+                if (trusted_activation && active_runtime->config.dispatch_focus_handle) {
                     push_focus_context(state, active_runtime->config.dispatch_focus_handle,
                                        active_runtime->config.dispatch_focus_generation,
+                                       active_runtime->config.dispatch_native_focus_generation,
                                        active_runtime->config.dispatch_focus_expires_at_us);
                     lua_setfield(state, -2, "focus_context");
+                }
+                if (g_str_equal(event_names[event_index], "gnoblin.window.menu-requested") &&
+                    active_runtime->config.dispatch_menu_handle) {
+                    push_menu_context(state, active_runtime->config.dispatch_menu_handle,
+                                      active_runtime->config.dispatch_menu_generation,
+                                      active_runtime->config.dispatch_native_menu_generation,
+                                      active_runtime->config.dispatch_menu_expires_at_us,
+                                      active_runtime->config.dispatch_menu_window_id);
+                    lua_setfield(state, -2, "menu_context");
                 }
                 if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
                     g_warning("Lua event '%s' failed: %s", event_names[event_index],
@@ -4508,11 +6020,75 @@ GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GE
     return g_variant_ref(active_runtime->pending_document);
 }
 
+GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error) {
+    if (!event || !payload || !g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT))
+        return gnoblin_config_dispatch_event_internal(event, payload, error);
+    guint64 handle = 0, native_generation = 0;
+    gint64 expires_at_us = 0;
+    const char* window_id = NULL;
+    const char* menu_type = NULL;
+    gboolean has_handle = g_variant_lookup(payload, "_menu_context_handle", "t", &handle);
+    gboolean has_generation =
+        g_variant_lookup(payload, "_menu_context_generation", "t", &native_generation);
+    gboolean has_expiry =
+        g_variant_lookup(payload, "_menu_context_expires_at_us", "x", &expires_at_us);
+    gboolean has_any = has_handle || has_generation || has_expiry;
+    if (!has_any)
+        return gnoblin_config_dispatch_event_internal(event, payload, error);
+    gboolean valid = g_str_equal(event, "gnoblin.window.menu-requested") && has_handle && handle &&
+                     has_generation && native_generation && has_expiry &&
+                     expires_at_us > g_get_monotonic_time() &&
+                     g_variant_lookup(payload, "window_id", "&s", &window_id) && window_id &&
+                     *window_id && strlen(window_id) < 24 &&
+                     g_variant_lookup(payload, "menu_type", "&s", &menu_type) &&
+                     g_str_equal(menu_type, "wm");
+    if (!valid) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "invalid private WM menu capability event");
+        return NULL;
+    }
+    if (!active_runtime || active_runtime->config.dispatch_menu_handle) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "WM menu capability cannot be nested or dispatched without a runtime");
+        return NULL;
+    }
+    GVariantBuilder clean;
+    GVariantIter fields;
+    const char* name;
+    GVariant* value;
+    g_variant_builder_init(&clean, G_VARIANT_TYPE_VARDICT);
+    g_variant_iter_init(&fields, payload);
+    while (g_variant_iter_next(&fields, "{&sv}", &name, &value)) {
+        g_autoptr(GVariant) field = value;
+        if (g_str_equal(name, "_menu_context_handle") ||
+            g_str_equal(name, "_menu_context_generation") ||
+            g_str_equal(name, "_menu_context_expires_at_us"))
+            continue;
+        g_variant_builder_add(&clean, "{sv}", name, field);
+    }
+    g_autoptr(GVariant) public_payload = g_variant_ref_sink(g_variant_builder_end(&clean));
+    LuaConfig* config = &active_runtime->config;
+    config->dispatch_menu_handle = handle;
+    config->dispatch_menu_generation = active_runtime->generation;
+    config->dispatch_native_menu_generation = native_generation;
+    config->dispatch_menu_expires_at_us = expires_at_us;
+    g_strlcpy(config->dispatch_menu_window_id, window_id, sizeof(config->dispatch_menu_window_id));
+    GVariant* document = gnoblin_config_dispatch_event_internal(event, public_payload, error);
+    config->dispatch_menu_handle = 0;
+    config->dispatch_menu_generation = 0;
+    config->dispatch_native_menu_generation = 0;
+    config->dispatch_menu_expires_at_us = 0;
+    config->dispatch_menu_window_id[0] = '\0';
+    return document;
+}
+
 GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* payload,
-                                                 guint64 context_handle, gint64 expires_at_us,
-                                                 GError** error) {
-    if (!active_runtime || !context_handle || expires_at_us <= g_get_monotonic_time() || !event ||
-        !g_str_equal(event, "gnoblin.shortcut.activated")) {
+                                                 guint64 context_handle, guint64 native_generation,
+                                                 gint64 expires_at_us, GError** error) {
+    if (!active_runtime || !context_handle || !native_generation ||
+        expires_at_us <= g_get_monotonic_time() || !event ||
+        (!g_str_equal(event, "gnoblin.shortcut.activated") &&
+         !g_str_equal(event, "gnoblin.shortcut.binding-activated"))) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                             "invalid trusted shortcut activation context");
         return NULL;
@@ -4525,10 +6101,12 @@ GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* pa
     }
     config->dispatch_focus_handle = context_handle;
     config->dispatch_focus_generation = active_runtime->generation;
+    config->dispatch_native_focus_generation = native_generation;
     config->dispatch_focus_expires_at_us = expires_at_us;
     GVariant* document = gnoblin_config_dispatch_event(event, payload, error);
     config->dispatch_focus_handle = 0;
     config->dispatch_focus_generation = 0;
+    config->dispatch_native_focus_generation = 0;
     config->dispatch_focus_expires_at_us = 0;
     return document;
 }
@@ -4537,19 +6115,45 @@ guint64 gnoblin_config_runtime_generation(void) {
     return active_runtime ? active_runtime->generation : 0;
 }
 
+gboolean gnoblin_config_seed_runtime_counters(guint64 settings_revision, guint64 runtime_generation,
+                                              guint64 operation_id_watermark, GError** error) {
+    if (active_runtime || pending_runtime || deferred_runtime || revision_counters_seeded ||
+        next_settings_revision || next_runtime_generation || next_runtime_operation_id) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_BUSY,
+                            "runtime counters can only be seeded before the first load");
+        return FALSE;
+    }
+    if (!settings_revision || !runtime_generation || operation_id_watermark > G_MAXINT64) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "replacement runtime counters are invalid");
+        return FALSE;
+    }
+    next_settings_revision = settings_revision;
+    next_runtime_generation = runtime_generation;
+    next_runtime_operation_id = operation_id_watermark;
+    revision_counters_seeded = TRUE;
+    return TRUE;
+}
+
 gboolean gnoblin_config_take_focus_context(gint64 request_id, guint64* context_handle,
-                                           guint64* generation) {
-    if (!active_runtime || request_id <= 0 || !context_handle || !generation)
+                                           guint64* generation, guint64* native_generation,
+                                           gint64* expires_at_us) {
+    if (!active_runtime || request_id <= 0 || !context_handle || !generation ||
+        !native_generation || !expires_at_us)
         return FALSE;
     g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, request_id);
     LuaFocusOperation* operation =
         g_hash_table_lookup(active_runtime->config.focus_operations, key);
     if (!operation)
         return FALSE;
-    gboolean valid = operation->handle != 0 && operation->generation == active_runtime->generation;
+    gboolean valid =
+        operation->handle != 0 && operation->generation == active_runtime->generation &&
+        operation->native_generation != 0 && operation->expires_at_us > g_get_monotonic_time();
     if (valid) {
         *context_handle = operation->handle;
         *generation = operation->generation;
+        *native_generation = operation->native_generation;
+        *expires_at_us = operation->expires_at_us;
     }
     g_hash_table_remove(active_runtime->config.focus_operations, key);
     return valid;
@@ -4566,6 +6170,16 @@ GVariant* gnoblin_config_drain_runtime_operations(void) {
         g_variant_builder_add_value(&operations, g_ptr_array_index(pending, i));
     g_ptr_array_set_size(pending, 0);
     return g_variant_ref_sink(g_variant_builder_end(&operations));
+}
+
+guint gnoblin_config_runtime_pending_operations(void) {
+    if (!active_runtime)
+        return 0;
+
+    return g_hash_table_size(active_runtime->config.operations) +
+           (active_runtime->config.deferred_callbacks
+                ? active_runtime->config.deferred_callbacks->len
+                : 0);
 }
 
 GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error) {
@@ -4608,6 +6222,9 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     if (g_str_equal(method, "shortcut.capture")) {
         domain = g_strdup("shortcuts");
         operation = "capture";
+    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
+        domain = g_strdup("shortcuts");
+        operation = g_str_equal(method, "shortcut.bind") ? "bind" : "unbind";
     } else {
         domain = g_strndup(method, separator - method);
         operation = separator + 1;
@@ -4657,6 +6274,140 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     return operation_call;
 }
 
+GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
+    static const char* read_methods[] = {
+        "version",        "capabilities.list",      "focus.history",
+        "settings",       "focus.policy",           "session.activity",
+        "session.status", "layer.animation_policy", NULL,
+    };
+    gboolean known = FALSE;
+    for (guint i = 0; method && read_methods[i]; i++)
+        known |= g_str_equal(read_methods[i], method);
+    if (!known || !arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Gnoblin API read requires a supported method and argument table");
+        return NULL;
+    }
+    if (pending_runtime || !active_runtime || !active_runtime->config.settings_document) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua API is unavailable before configuration is active");
+        return NULL;
+    }
+
+    gboolean accepts_arguments =
+        g_str_equal(method, "focus.history") || g_str_equal(method, "layer.animation_policy");
+    if (!accepts_arguments && g_variant_n_children(arguments) != 0) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "Lua API read '%s' does not accept arguments", method);
+        return NULL;
+    }
+    if (g_str_equal(method, "layer.animation_policy")) {
+        const char* namespace = NULL;
+        if (g_variant_n_children(arguments) != 1 ||
+            !g_variant_lookup(arguments, "namespace", "&s", &namespace) || !namespace) {
+            g_set_error_literal(
+                error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                "Lua API read 'layer.animation_policy' requires a namespace string");
+            return NULL;
+        }
+        gsize namespace_length = strlen(namespace);
+        if (namespace_length == 0 || namespace_length > 128 ||
+            !g_utf8_validate(namespace, namespace_length, NULL)) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "layer namespace must be 1 to 128 bytes of UTF-8");
+            return NULL;
+        }
+    }
+
+    LuaConfig* config = &active_runtime->config;
+    if (config->dispatching || config->api_calling) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                            "Gnoblin Lua API reads cannot be dispatched reentrantly");
+        return NULL;
+    }
+
+    lua_State* state = active_runtime->state;
+    int base = lua_gettop(state);
+    guint action_start = config->runtime_actions->len;
+    config->api_calling = TRUE;
+
+    lua_getglobal(state, "gnoblin");
+    if (g_str_equal(method, "version")) {
+        lua_getfield(state, -1, "version");
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "capabilities.list")) {
+        lua_getfield(state, -1, "capabilities");
+        lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "focus.history")) {
+        lua_getfield(state, -1, "focus");
+        lua_getfield(state, -1, "history");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "settings")) {
+        lua_getfield(state, -1, "settings");
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "session.activity") || g_str_equal(method, "session.status")) {
+        lua_getfield(state, -1, "session");
+        lua_getfield(state, -1, g_str_equal(method, "session.status") ? "status" : "activity");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "layer.animation_policy")) {
+        lua_getfield(state, -1, "layers");
+        lua_getfield(state, -1, "animation_policy");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else { /* focus.policy */
+        lua_getfield(state, -1, "focus");
+        lua_getfield(state, -1, "policy");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    }
+
+    gboolean is_function = !g_str_equal(method, "settings") && !g_str_equal(method, "focus.policy");
+    int argument_count = 0;
+    if (!lua_isfunction(state, -1) && is_function) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua API read '%s' is not registered",
+                    method);
+        lua_settop(state, base);
+        config->api_calling = FALSE;
+        return NULL;
+    }
+    if (is_function) {
+        if (g_str_equal(method, "layer.animation_policy")) {
+            const char* namespace = NULL;
+            g_variant_lookup(arguments, "namespace", "&s", &namespace);
+            lua_pushstring(state, namespace);
+            argument_count = 1;
+        } else if (g_variant_n_children(arguments) > 0) {
+            push_variant(state, arguments);
+            argument_count = 1;
+        }
+        if (lua_pcall(state, argument_count, 1, 0) != LUA_OK) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua API read '%s' failed: %s",
+                        method, lua_error_text(state));
+            lua_settop(state, base);
+            config->api_calling = FALSE;
+            g_ptr_array_set_size(config->runtime_actions, action_start);
+            return NULL;
+        }
+    }
+
+    GVariant* result = variant_from_lua(state, -1, 0, FALSE, 0, error);
+    lua_settop(state, base);
+    config->api_calling = FALSE;
+    if (config->runtime_actions->len != action_start) {
+        g_ptr_array_set_size(config->runtime_actions, action_start);
+        g_clear_pointer(&result, g_variant_unref);
+        if (error && !*error)
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_FAILED,
+                                "Gnoblin API read unexpectedly queued a mutation");
+        return NULL;
+    }
+    return result ? g_variant_ref_sink(result) : NULL;
+}
+
 void gnoblin_config_finish_load(gboolean commit) {
     if (!pending_runtime)
         return;
@@ -4671,14 +6422,24 @@ void gnoblin_config_finish_load(gboolean commit) {
         guint64 settings_revision = active_runtime ? active_runtime->config.settings_revision : 0;
         lua_runtime_free(active_runtime);
         active_runtime = g_steal_pointer(&pending_runtime);
-        if (next_runtime_generation < G_MAXUINT64)
-            active_runtime->generation = ++next_runtime_generation;
-        else
+        if (revision_counters_seeded) {
+            /* RESUME reconstructs the exact configuration Mutter suspended.
+             * Keep its accepted identity for this first committed load. */
             active_runtime->generation = next_runtime_generation;
+        } else if (next_runtime_generation < G_MAXUINT64) {
+            active_runtime->generation = ++next_runtime_generation;
+        } else {
+            active_runtime->generation = next_runtime_generation;
+        }
         g_clear_pointer(&active_runtime->config.settings_document, g_variant_unref);
         active_runtime->config.settings_document = g_variant_ref(active_runtime->document);
-        active_runtime->config.settings_revision =
-            settings_changed ? ++next_settings_revision : settings_revision;
+        if (revision_counters_seeded) {
+            active_runtime->config.settings_revision = next_settings_revision;
+            revision_counters_seeded = FALSE;
+        } else {
+            active_runtime->config.settings_revision =
+                settings_changed ? ++next_settings_revision : settings_revision;
+        }
         g_autoptr(GVariant) committed_focus_policy =
             focus_policy_snapshot(active_runtime->document, 0);
         if (previous_focus_policy &&
@@ -4699,6 +6460,9 @@ void gnoblin_config_finish_load(gboolean commit) {
             permission_policy_changed_callback(policy, active_runtime->config.settings_revision,
                                                permission_policy_changed_data);
         }
+        if (settings_changed && settings_changed_callback)
+            settings_changed_callback(active_runtime->config.settings_revision,
+                                      settings_changed_data);
     } else {
         lua_runtime_free(g_steal_pointer(&pending_runtime));
         if (active_runtime && active_runtime->config.deferred_callbacks &&
@@ -4709,13 +6473,35 @@ void gnoblin_config_finish_load(gboolean commit) {
     }
 }
 
+gboolean gnoblin_config_defer_load_commit(void) {
+    if (!pending_runtime || deferred_runtime)
+        return FALSE;
+    deferred_runtime = g_steal_pointer(&pending_runtime);
+    return TRUE;
+}
+
+void gnoblin_config_finish_deferred_load(gboolean commit) {
+    if (!deferred_runtime)
+        return;
+    g_assert(!pending_runtime);
+    pending_runtime = g_steal_pointer(&deferred_runtime);
+    gnoblin_config_finish_load(commit);
+}
+
+guint64 gnoblin_config_deferred_runtime_generation(void) {
+    if (!deferred_runtime)
+        return gnoblin_config_runtime_generation();
+    return next_runtime_generation < G_MAXUINT64 ? next_runtime_generation + 1
+                                                 : next_runtime_generation;
+}
+
 static GVariant* focus_policy_snapshot(GVariant* document, guint64 revision) {
     static const struct {
         const char* key;
         const char* default_value;
     } string_fields[] = {
         {"focus-mode", "click"},
-        {"focus-new-windows", "smart"},
+        {"focus-new-windows", "strict"},
     };
     static const struct {
         const char* key;
@@ -4774,6 +6560,12 @@ void gnoblin_config_set_permission_policy_changed_callback(
     permission_policy_changed_data = user_data;
 }
 
+void gnoblin_config_set_settings_changed_callback(GnoblinConfigSettingsChangedFunc callback,
+                                                  gpointer user_data) {
+    settings_changed_callback = callback;
+    settings_changed_data = user_data;
+}
+
 GVariant* gnoblin_config_current_document(void) {
     return active_runtime && active_runtime->document ? g_variant_ref(active_runtime->document)
                                                       : NULL;
@@ -4820,6 +6612,9 @@ void gnoblin_config_finish_event(gboolean commit) {
             permission_policy_changed_callback(policy, active_runtime->config.settings_revision,
                                                permission_policy_changed_data);
         }
+        if (settings_changed && settings_changed_callback)
+            settings_changed_callback(active_runtime->config.settings_revision,
+                                      settings_changed_data);
         return;
     }
     lua_State* state = active_runtime->state;
@@ -4848,5 +6643,3 @@ char** gnoblin_config_runtime_events(void) {
     g_ptr_array_add(events, NULL);
     return (char**)g_ptr_array_free(events, FALSE);
 }
-
-#include "gnoblin-console-lua.inc"
