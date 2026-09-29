@@ -10,6 +10,59 @@ find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GNOBLIN_GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 pkg_check_modules(GNOBLIN_CONTROL REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0 json-glib-1.0)
+# The cached pkg-config result can outlive a removed Lua development package.
+# Recheck it so a stale build tree fails here instead of at the C compiler.
+unset(GNOBLIN_LUA_FOUND CACHE)
+pkg_search_module(GNOBLIN_LUA QUIET IMPORTED_TARGET
+  lua5.4>=5.4 lua-5.4>=5.4 lua54>=5.4 lua>=5.4)
+if(NOT GNOBLIN_LUA_FOUND)
+  message(FATAL_ERROR
+    "Lua 5.4 or newer development files are required for the Gnoblin runtime. Install the development package (for example: Fedora lua-devel, Debian/Ubuntu liblua5.4-dev, or Arch lua) and make its pkg-config metadata and headers available. The Lua command-line interpreter alone is not sufficient.")
+endif()
+set(GNOBLIN_PREFIX "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Private Gnoblin install prefix")
+set(GNOBLIN_LIBDIR "lib64" CACHE STRING "Library directory under the prefix")
+enable_testing()
+add_executable(native-touchpad-router-test
+  tests/native-touchpad-router-test.c
+  src/native-control/gnoblin-touchpad-router.c)
+target_link_libraries(native-touchpad-router-test PRIVATE PkgConfig::GNOBLIN_GIO m)
+add_test(NAME native-touchpad-router COMMAND native-touchpad-router-test)
+add_executable(runtime-protocol-test
+  tests/runtime-protocol-test.c
+  src/native-control/gnoblin-runtime-protocol.c)
+target_link_libraries(runtime-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME runtime-protocol COMMAND runtime-protocol-test)
+set_tests_properties(runtime-protocol PROPERTIES TIMEOUT 10)
+add_executable(runtime-spawn-test
+  tests/runtime-spawn-test.c
+  src/session/gnoblin-runtime-spawn.c)
+target_link_libraries(runtime-spawn-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME runtime-spawn COMMAND runtime-spawn-test)
+add_executable(runtime-cache-test
+  tests/runtime-cache-test.c
+  src/native-control/gnoblin-runtime-cache.c)
+target_link_libraries(runtime-cache-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME runtime-cache COMMAND runtime-cache-test)
+if(GNOBLIN_LUA_FOUND)
+  add_executable(gnoblin
+    src/session/gnoblin-runtime.c
+    src/native-control/gnoblin-runtime-protocol.c
+    src/session/gnoblin-runtime-spawn.c
+    src/config/gnoblin-config.c
+    src/native-control/gnoblin-input-config.c
+    src/config/gnoblin-lua.c
+    src/config/gnoblin-lua-pattern.c
+    src/config/gnoblin-glob.c
+    src/permissions/gnoblin-portal-identity.c
+    src/permissions/gnoblin-portal-policy.c)
+  target_include_directories(gnoblin PRIVATE src/config src/permissions src/native-control)
+  target_compile_definitions(gnoblin PRIVATE
+    GNOBLIN_NATIVE_CONTROL_API_MAJOR=1
+    GNOBLIN_NATIVE_CONTROL_API_MINOR=34)
+  target_link_libraries(gnoblin PRIVATE
+    PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA m)
+  set(GNOBLIN_BINARY "$<TARGET_FILE:gnoblin>")
+endif()
 add_executable(gnoblin-idle src/session/gnoblin-idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_GIO)
 add_executable(gnoblinctl src/tools/gnoblinctl.c)
@@ -24,8 +77,6 @@ add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
   "GNOBLIN_IDENTITY_FALLBACK=\"${CMAKE_BINARY_DIR}/gnoblinctl-identity.json\"")
 
-set(GNOBLIN_PREFIX "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Private Gnoblin install prefix")
-set(GNOBLIN_LIBDIR "lib64" CACHE STRING "Library directory under the prefix")
 set(GNOBLIN_BUILD_TYPE "debugoptimized" CACHE STRING "Meson build type")
 set(GNOBLIN_DEVKIT "disabled" CACHE STRING "Build the Mutter devkit")
 option(GNOBLIN_XWAYLAND "Support X11 applications through XWayland" ON)
@@ -36,6 +87,8 @@ set_property(CACHE GNOBLIN_SOURCE_MODE PROPERTY STRINGS checkout release-archive
 set(GNOBLIN_JOBS "4" CACHE STRING "Parallel jobs inside each Meson build")
 
 get_filename_component(GNOBLIN_PREFIX "${GNOBLIN_PREFIX}" ABSOLUTE)
+target_compile_definitions(gnoblin PRIVATE
+  "GNOBLIN_DEFAULT_COMPOSITOR=\"${GNOBLIN_PREFIX}/bin/gnoblin-mutter\"")
 if(GNOBLIN_PREFIX MATCHES "^(/|/usr|/usr/local|/bin|/sbin|/lib|/lib64)$")
   message(FATAL_ERROR "Use a private install prefix, such as ./install")
 endif()
@@ -54,7 +107,7 @@ if(GNOBLIN_VECTOR_CURSORS)
   list(APPEND GNOBLIN_REQUIREMENTS_OPTIONS --with-vector-cursors)
 endif()
 
-foreach(name IN ITEMS mutter gnome-shell xdg-desktop-portal-gnome)
+foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
   add_custom_target("prepare-${name}-source"
     COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh" "${GNOBLIN_SOURCE_MODE}" "${name}"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
@@ -67,8 +120,7 @@ foreach(name IN ITEMS mutter gnome-shell xdg-desktop-portal-gnome)
     COMMENT "Check ${name} development libraries")
 endforeach()
 add_custom_target(prepare-sources DEPENDS
-  prepare-mutter-source prepare-gnome-shell-source
-  prepare-xdg-desktop-portal-gnome-source)
+  prepare-mutter-source prepare-xdg-desktop-portal-gnome-source)
 
 function(gnoblin_component name)
   ExternalProject_Add("${name}"
@@ -90,10 +142,9 @@ function(gnoblin_component name)
 endfunction()
 
 gnoblin_component(mutter)
-gnoblin_component(gnome-shell mutter)
 gnoblin_component(xdg-desktop-portal-gnome)
 
-add_custom_target(session
+add_custom_target(standalone-session
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_LIBDIR=${GNOBLIN_LIBDIR}"
     "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
     "GNOBLIN_VECTOR_CURSORS=${GNOBLIN_VECTOR_CURSORS}"
@@ -101,8 +152,9 @@ add_custom_target(session
     "GNOBLINCTL_BINARY=$<TARGET_FILE:gnoblinctl>"
     "GNOBLIN_IDENTITY_FILE=${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
+    "GNOBLIN_BINARY=${GNOBLIN_BINARY}"
     "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
-  DEPENDS gnome-shell xdg-desktop-portal-gnome gnoblin-idle gnoblinctl
+  DEPENDS mutter xdg-desktop-portal-gnome gnoblin-idle gnoblinctl gnoblin
   USES_TERMINAL
-  COMMENT "Install Gnoblin session data")
-add_custom_target(gnoblin ALL DEPENDS session)
+  COMMENT "Install the standalone Gnoblin session")
+add_custom_target(gnoblin-session ALL DEPENDS standalone-session)
