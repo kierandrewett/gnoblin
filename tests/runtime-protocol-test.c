@@ -38,6 +38,38 @@ static void test_round_trip(void) {
     close(sockets[1]);
 }
 
+static void test_host_autostart_packet_round_trip(void) {
+    int sockets[2];
+    g_assert_cmpint(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets), ==, 0);
+
+    GVariantBuilder entries;
+    g_variant_builder_init(&entries, G_VARIANT_TYPE("av"));
+    GVariantBuilder payload_builder;
+    g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload_builder, "{sv}", "entries", g_variant_builder_end(&entries));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
+    g_autoptr(GnoblinRuntimeReader) reader = gnoblin_runtime_reader_new();
+    g_assert_true(gnoblin_runtime_writer_queue(writer, GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART, 0,
+                                               payload, &error));
+    g_assert_true(gnoblin_runtime_writer_flush(writer, sockets[0], &error));
+    g_assert_no_error(error);
+
+    GnoblinRuntimePacket received = {0};
+    gboolean available = FALSE;
+    g_assert_true(
+        gnoblin_runtime_reader_receive(reader, sockets[1], &received, &available, &error));
+    g_assert_true(available);
+    g_assert_no_error(error);
+    g_assert_cmpint(received.type, ==, GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART);
+    g_assert_cmpuint(received.request_id, ==, 0);
+    g_assert_true(g_variant_equal(payload, received.payload));
+    gnoblin_runtime_packet_clear(&received);
+    close(sockets[0]);
+    close(sockets[1]);
+}
+
 static void test_reject_non_dictionary(void) {
     int sockets[2];
     g_assert_cmpint(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets), ==, 0);
@@ -159,6 +191,8 @@ static void test_large_fragmented_transfer(void) {
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/runtime-protocol/round-trip", test_round_trip);
+    g_test_add_func("/runtime-protocol/host-autostart-packet-round-trip",
+                    test_host_autostart_packet_round_trip);
     g_test_add_func("/runtime-protocol/reject-non-dictionary", test_reject_non_dictionary);
     g_test_add_func("/runtime-protocol/reject-incompatible-header",
                     test_reject_incompatible_header);
