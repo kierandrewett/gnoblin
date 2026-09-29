@@ -25,6 +25,8 @@ typedef enum {
     GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED = 12,
     GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED = 13,
     GNOBLIN_RUNTIME_PACKET_WORKER_RESUME = 14,
+    /* Initial login autostart list from the runtime worker to the session host. */
+    GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART = 15,
 } GnoblinRuntimePacketType;
 
 typedef struct {
