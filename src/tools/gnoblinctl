@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Control Gnoblin, its windows and live shell settings."""
+"""Control Gnoblin, its windows and live compositor settings."""
 
 import argparse
 import json
@@ -67,10 +67,14 @@ def build_identity():
             remote = urlunsplit((parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", ""))
     return {
         "version": release["version"],
-        "gnomeVersion": components["gnome-shell"]["version"],
+        "gnomeVersion": components["mutter"]["version"],
         "mutterApi": components["mutter"]["api"],
-        "components": {name: value["version"] for name, value in components.items()},
-        "componentCommits": {name: value["commit"] for name, value in components.items()},
+        "components": {
+            name: components[name]["version"] for name in ("mutter", "xdg-desktop-portal-gnome") if name in components
+        },
+        "componentCommits": {
+            name: components[name]["commit"] for name in ("mutter", "xdg-desktop-portal-gnome") if name in components
+        },
         "gitSha": provenance.get("gitSha") or git("rev-parse", "HEAD"),
         "gitRemote": remote,
         "sourceModified": provenance.get("sourceModified")
@@ -103,21 +107,6 @@ def capture_accelerator(wait_seconds, socket_path):
     print("Press a shortcut now; Escape cancels.", file=sys.stderr, flush=True)
     result = api_call("shortcut.capture", {"timeout": wait_seconds}, socket_path, wait_seconds + 2)
     return result["accelerator"]
-
-
-def version_record(shell_version):
-    identity = build_identity()
-    return {
-        "gnomeVersion": str(shell_version).removesuffix("-gnoblin"),
-        "gnoblinVersion": identity.get("version", "unknown"),
-        "shellVersion": shell_version,
-        "gitRemote": identity.get("gitRemote"),
-        "gitSha": identity.get("gitSha"),
-        "components": identity.get("components", {}),
-        "componentCommits": identity.get("componentCommits", {}),
-        "mutterApi": identity.get("mutterApi"),
-        "sourceModified": identity.get("sourceModified"),
-    }
 
 
 def number(low, high):
@@ -162,7 +151,7 @@ def parser():
         prog="gnoblinctl",
         description=__doc__,
         parents=[common],
-        epilog="Examples: gnoblinctl status | gnoblinctl window list | gnoblinctl config path\nUse GROUP --help to see its actions.",
+        epilog="Examples: gnoblinctl ping | gnoblinctl window list | gnoblinctl config path\nUse GROUP --help to see its actions.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     root.add_argument("--version", action="store_true", help="Show installed build identity without a running session")
@@ -172,10 +161,11 @@ def parser():
         return parent.add_parser(name, help=help_text, description=help_text, parents=[common])
 
     for name, description in (
-        ("ping", "Check the shell connection"),
-        ("version", "Show shell and protocol version"),
-        ("status", "Show compositor and shell status"),
-        ("reload", "Soft-reload the shell, keeping open windows"),
+        ("status", "Show the running session and lock availability"),
+        ("ping", "Check whether the compositor control socket responds"),
+        ("version", "Show Gnoblin, GNOME, Mutter, Lua, and protocol versions"),
+        ("reload", "Reload supported runtime configuration"),
+        ("logout", "End this Gnoblin session and return to the login manager"),
         ("privacy", "Show privacy indicators"),
     ):
         add(commands, name, description)
@@ -209,6 +199,7 @@ def parser():
         "focus",
         "close",
         "minimize",
+        "toggle-minimize",
         "restore-or-minimize",
         "restore",
         "maximize",
@@ -229,14 +220,15 @@ def parser():
             {
                 "move": "Set position in logical screen coordinates",
                 "resize": "Set frame size in logical pixels",
-                "monitor": "Move to a logical monitor (zero-based)",
+                "monitor": "Move to a connector ID, or use an index for active",
             }[name],
         )
         action.add_argument("id", help="Window ID, or active")
         for field in fields:
-            bounds = (
-                (1, 32768) if field in ("width", "height") else (0, 1024) if field == "monitor" else (-100000, 100000)
-            )
+            if field == "monitor":
+                action.add_argument(field, help="Connector ID for a window ID, or index for active")
+                continue
+            bounds = (1, 32768) if field in ("width", "height") else (-100000, 100000)
             action.add_argument(field, type=number(*bounds))
     window_workspace = add(actions, "workspace", "Move a window to an existing workspace")
     window_workspace.add_argument("id", help="Window ID, or active")
@@ -257,13 +249,20 @@ def parser():
     config_actions = config.add_subparsers(dest="action")
     add(config_actions, "path", "Show the active configuration path")
     add(config_actions, "default", "Print the bundled default Lua configuration")
+    add(config_actions, "show", "Show the committed settings snapshot")
     add(config_actions, "reload", "Reload the active configuration")
+    focus = add(commands, "focus", "Inspect focus policy and recent focus history")
+    focus_actions = focus.add_subparsers(dest="action")
+    add(focus_actions, "policy", "Show the committed focus policy")
+    history = add(focus_actions, "history", "List recently focused windows")
+    history.add_argument("--workspace-id", help="Only include windows on this workspace")
+    history.add_argument("--monitor-id", help="Only include windows on this monitor")
+    history.add_argument("--limit", type=number(1, 256), help="Maximum records to return (default: 50)")
+    add(commands, "capabilities", "List compositor and protocol capabilities")
     for name, description in (
         ("workspace", "List and switch workspaces"),
         ("monitor", "List monitors"),
         ("input", "Inspect and select input sources"),
-        ("feature", "Inspect and change shell features"),
-        ("script", "List loaded user scripts"),
         ("grant", "List and revoke portal grants"),
         ("launch", "Inspect launch feedback"),
     ):
@@ -310,19 +309,6 @@ def parser():
     select.add_argument("type", help="Source type, such as xkb or ibus")
     select.add_argument("id", help="Exact source ID")
 
-    feature_group = commands.choices["feature"]
-    feature_actions = feature_group.add_subparsers(dest="action")
-    add(feature_actions, "list", "List shell feature switches")
-    show = add(feature_actions, "show", "Show one feature switch")
-    show.add_argument("id")
-    for name, description in (("enable", "Enable a shell feature"), ("disable", "Disable a shell feature")):
-        feature_action = add(feature_actions, name, description)
-        feature_action.add_argument("id")
-
-    script_group = commands.choices["script"]
-    script_actions = script_group.add_subparsers(dest="action")
-    add(script_actions, "list", "List loaded user scripts")
-
     grant = commands.choices["grant"]
     grant_actions = grant.add_subparsers(dest="action")
     add(grant_actions, "list", "List persistent portal permissions")
@@ -343,6 +329,8 @@ def parser():
     animation = add(commands, "animation", "Inspect and preview compositor animations")
     animation_actions = animation.add_subparsers(dest="action")
     add(animation_actions, "list", "List configured animations")
+    get = add(animation_actions, "get", "Show one configured animation")
+    get.add_argument("name")
     add(animation_actions, "surfaces", "List layer-shell animation targets")
     for name in ("inspect", "preview"):
         action = add(animation_actions, name, f"{name.capitalize()} a configured animation")
@@ -440,7 +428,10 @@ def compositor(request, path, timeout=5, wait_for_operation=None):
                 if response.get("event") == "error":
                     raise CommandError(response.get("message", "Compositor rejected request"))
                 if response.get("event") == "reply":
-                    if not isinstance(response.get("result"), dict):
+                    result = response.get("result")
+                    if not isinstance(result, (dict, list)) and result is not None:
+                        raise CommandError("Invalid compositor response")
+                    if result is None and request.get("method") != "animation.get":
                         raise CommandError("Invalid compositor response")
                     if wait_for_operation:
                         result = response["result"]
@@ -458,9 +449,26 @@ def compositor(request, path, timeout=5, wait_for_operation=None):
 
 
 def api_call(method, arguments, path, timeout=5):
-    """Call a canonical Gnoblin session API operation through the bridge."""
+    """Call a canonical Gnoblin session API method through the bridge."""
     request = {"op": "api", "method": method, "arguments": arguments}
-    if method == "shortcut.capture":
+    if method == "runtime.reload_config":
+        request["api_version"] = {"major": 1, "minor": 20}
+    elif method in {"version", "capabilities.list", "focus.history", "settings", "focus.policy"}:
+        request["api_version"] = {"major": 1, "minor": 19}
+    elif method == "session.status":
+        request["api_version"] = {"major": 1, "minor": 29}
+    elif method == "session.logout":
+        request["api_version"] = {"major": 1, "minor": 32}
+    elif method == "window.focus":
+        request["api_version"] = {
+            "major": 1,
+            "minor": 32 if "activation_token" in arguments else 10,
+        }
+    elif method.startswith("animation."):
+        request["api_version"] = {"major": 1, "minor": 18}
+    elif method == "privacy.state":
+        request["api_version"] = {"major": 1, "minor": 17}
+    elif method == "shortcut.capture":
         request["api_version"] = {"major": 1, "minor": 8}
     elif method == "shortcut.list":
         request["api_version"] = {"major": 1, "minor": 9}
@@ -471,14 +479,30 @@ def api_call(method, arguments, path, timeout=5):
         request,
         path,
         timeout,
-        wait_for_operation=method if method in {"shortcut.capture", "grant.list", "grant.revoke"} else None,
+        wait_for_operation=method
+        if method in {"shortcut.capture", "grant.list", "grant.revoke", "runtime.reload_config"}
+        else None,
     )
+
+
+def ping_compositor(path, timeout=5):
+    """Check the compositor transport without calling a public API method."""
+    result = compositor({"op": "ping"}, path, timeout)
+    if not isinstance(result, dict) or result.get("pong") != "pong":
+        raise CommandError("Invalid compositor ping response")
+    return "pong"
 
 
 def dispatch(args, cli):
     cmd = args.command
+    if cmd == "status":
+        return api_call("session.status", {}, args.socket, args.timeout)
+    if cmd == "logout":
+        return api_call("session.logout", {}, args.socket, args.timeout)
     if cmd == "config" and args.action == "path":
         return str(user_config_path())
+    if cmd == "config" and args.action == "show":
+        return api_call("settings", {}, args.socket, args.timeout)
     if cmd == "shortcut" and args.action == "capture":
         return capture_accelerator(args.timeout, args.socket)
     if cmd == "shortcut" and args.action == "list":
@@ -503,38 +527,90 @@ def dispatch(args, cli):
     if cmd == "window" and args.action == "match":
         return api_call("window.match", {"window": args.id}, args.socket, args.timeout)
     if cmd == "window":
-        arguments = {"action": args.action, "window": args.id}
-        for field in ("x", "y", "width", "height", "monitor"):
-            if hasattr(args, field):
-                arguments[field] = getattr(args, field)
         if args.action == "workspace":
+            selector = workspace_selector(
+                args.workspace_id,
+                args.number if args.number is not None else args.workspace,
+            )
+            if args.id != "active":
+                return api_call(
+                    "window.move_to_workspace",
+                    {"id": args.id, "workspace": selector},
+                    args.socket,
+                    args.timeout,
+                )
             return api_call(
                 "workspace.move_window",
-                {
-                    "window": args.id,
-                    "workspace": workspace_selector(
-                        args.workspace_id,
-                        args.number if args.number is not None else args.workspace,
-                    ),
-                },
+                {"window": args.id, "workspace": selector},
                 args.socket,
                 args.timeout,
             )
+
+        typed_methods = {
+            "close": "window.close",
+            "minimize": "window.minimize",
+            "toggle-minimize": "window.toggle_minimize",
+            "restore": "window.restore",
+            "maximize": "window.set_maximized",
+            "unmaximize": "window.set_maximized",
+            "fullscreen": "window.set_fullscreen",
+            "unfullscreen": "window.set_fullscreen",
+            "above": "window.set_above",
+            "unabove": "window.set_above",
+            "stick": "window.set_sticky",
+            "unstick": "window.set_sticky",
+            "move": "window.move",
+            "resize": "window.resize",
+        }
+        if args.id != "active" and args.action in typed_methods:
+            method = typed_methods[args.action]
+            fields = {}
+            if args.action in ("maximize", "unmaximize"):
+                fields["enabled"] = args.action == "maximize"
+            elif args.action in ("fullscreen", "unfullscreen"):
+                fields["enabled"] = args.action == "fullscreen"
+            elif args.action in ("above", "unabove"):
+                fields["enabled"] = args.action == "above"
+            elif args.action in ("stick", "unstick"):
+                fields["enabled"] = args.action == "stick"
+            elif args.action == "move":
+                fields.update(x=args.x, y=args.y)
+            elif args.action == "resize":
+                fields.update(width=args.width, height=args.height)
+            return api_call(method, {"id": args.id, **fields}, args.socket, args.timeout)
+
+        if args.id != "active" and args.action == "monitor":
+            return api_call(
+                "window.move_to_monitor",
+                {"id": args.id, "monitor": args.monitor},
+                args.socket,
+                args.timeout,
+            )
+
+        arguments = {"action": args.action, "window": args.id}
+        for field in ("x", "y", "width", "height", "monitor"):
+            if hasattr(args, field):
+                value = getattr(args, field)
+                if field == "monitor":
+                    value = number(0, 1024)(value)
+                arguments[field] = value
         return api_call("window.action", arguments, args.socket, args.timeout)
     if cmd == "animation":
         arguments = {}
-        if args.action in ("inspect", "preview"):
+        if args.action == "get":
+            arguments["name"] = args.name
+        elif args.action in ("inspect", "preview"):
             arguments["name"] = args.name
             if args.event is not None:
                 arguments["event"] = args.event
             if args.window is not None:
-                arguments.update(targetType="window", target=args.window)
+                arguments.update(target_type="window", target=args.window)
             elif args.layer is not None:
-                arguments.update(targetType="layer", target=args.layer)
+                arguments.update(target_type="layer", target=args.layer)
             elif args.namespace is not None:
-                arguments.update(targetType="namespace", target=args.namespace)
+                arguments.update(target_type="namespace", target=args.namespace)
             else:
-                arguments.update(targetType="window", target="active")
+                arguments.update(target_type="window", target="active")
             if args.action == "preview":
                 arguments["autoplay"] = args.autoplay
         elif args.action in ("seek", "step"):
@@ -586,22 +662,25 @@ def dispatch(args, cli):
             args.socket,
             args.timeout,
         )
-    if cmd == "status":
-        result = api_call("shell.status", {}, args.socket, args.timeout)
-        shell_version = result.pop("version")
-        return {**version_record(shell_version), **result}
     if cmd == "ping":
-        return api_call("shell.ping", {}, args.socket, args.timeout)["pong"]
+        return ping_compositor(args.socket, args.timeout)
     if cmd == "version":
-        return version_record(api_call("shell.version", {}, args.socket, args.timeout)["version"])
-    if cmd == "feature":
-        if args.action == "list":
-            return api_call("feature.list", {}, args.socket, args.timeout)
-        if args.action == "show":
-            return api_call("feature.show", {"id": args.id}, args.socket, args.timeout)
-        return api_call(f"feature.{args.action}", {"id": args.id}, args.socket, args.timeout)
-    if cmd == "script":
-        return api_call("script.list", {}, args.socket, args.timeout)
+        return api_call("version", {}, args.socket, args.timeout)
+    if cmd == "capabilities":
+        return api_call("capabilities.list", {}, args.socket, args.timeout)
+    if cmd == "focus":
+        if args.action == "policy":
+            return api_call("focus.policy", {}, args.socket, args.timeout)
+        arguments = {
+            key: value
+            for key, value in {
+                "workspace_id": args.workspace_id,
+                "monitor_id": args.monitor_id,
+                "limit": args.limit,
+            }.items()
+            if value is not None
+        }
+        return api_call("focus.history", arguments, args.socket, args.timeout)
     if cmd == "input":
         if args.action == "list":
             return api_call("input.list", {}, args.socket, args.timeout)
@@ -609,7 +688,7 @@ def dispatch(args, cli):
             return api_call("input.current", {}, args.socket, args.timeout)
         return api_call("input.select", {"type": args.type, "id": args.id}, args.socket, args.timeout)
     if cmd == "privacy":
-        return api_call("privacy.get", {}, args.socket, args.timeout)
+        return api_call("privacy.state", {}, args.socket, args.timeout)
     if cmd == "permissions":
         if args.action in (None, "list"):
             return api_call("permissions.list", {}, args.socket, args.timeout)
@@ -636,7 +715,7 @@ def dispatch(args, cli):
             )
         return api_call("launch.end", {"token": args.token}, args.socket, args.timeout)
     if cmd == "reload":
-        return api_call("shell.reload", {}, args.socket, args.timeout)
+        return api_call("runtime.reload_config", {}, args.socket, args.timeout)
     if cmd == "config" and args.action == "reload":
         return api_call("runtime.reload_config", {}, args.socket, args.timeout)
 
@@ -690,6 +769,23 @@ def render(result, output_format):
         print(text(result))
     elif isinstance(result, dict) and len(result) == 1 and isinstance(next(iter(result.values())), list):
         table(next(iter(result.values())))
+    elif isinstance(result, list):
+        table(result)
+    elif isinstance(result, dict) and isinstance(result.get("available"), dict):
+        labels = {
+            "screen_sharing": "Screen sharing",
+            "microphone_in_use": "Microphone",
+            "camera_in_use": "Camera",
+            "location_in_use": "Location",
+        }
+        for field, label in labels.items():
+            if not result["available"].get(field, False):
+                status = "unavailable"
+            elif field not in result:
+                status = "unknown"
+            else:
+                status = "active" if result[field] else "inactive"
+            print(f"{label}: {status}")
     elif isinstance(result, dict):
         for key, value in result.items():
             print(f"{human_label(key)}: {text(value)}")
@@ -794,12 +890,12 @@ def main(argv=None):
         if identity.get("mutterApi"):
             print(f"Mutter API: {identity['mutterApi']}")
         labels = {
-            "gnome-shell": "Gnoblin Shell base",
-            "mutter": "Mutter base",
-            "xdg-desktop-portal-gnome": "Gnoblin portal base",
-            "gsettings-desktop-schemas": "Desktop schemas",
+            "mutter": "Mutter",
+            "xdg-desktop-portal-gnome": "Gnoblin portal backend",
         }
         for name, version in identity.get("components", {}).items():
+            if name not in labels:
+                continue
             commit = identity.get("componentCommits", {}).get(name)
             print(f"{labels.get(name, name)}: {version}" + (f" (upstream {commit[:12]})" if commit else ""))
         print(f"Git remote: {identity.get('gitRemote') or 'unknown'}")
@@ -830,8 +926,6 @@ def main(argv=None):
             "workspace",
             "monitor",
             "input",
-            "feature",
-            "script",
             "grant",
             "launch",
             "permissions",
