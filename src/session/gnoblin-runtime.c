@@ -20,6 +20,7 @@ extern char** environ;
 
 #define RUNTIME_FD 198
 #define WORKER_READY_FD 199
+#define WORKER_HOST_FD 200
 #define STARTUP_TIMEOUT_MS 10000
 #define SUSPEND_TIMEOUT_MS 10000
 #define WORKER_MAX_RESTARTS 5
@@ -52,6 +53,8 @@ typedef struct {
     gboolean resume_worker;
     gboolean resume_rejected;
     int ready_fd;
+    int host_control_fd;
+    GVariant* initial_document;
     guint startup_timeout_id;
     guint child_watch_id;
     guint write_watch_id;
@@ -82,6 +85,8 @@ typedef struct {
 } RuntimeDeferredPacket;
 
 static char* session_prefix;
+
+static gboolean send_initial_autostart(int fd, GVariant* document, GError** error);
 
 static gboolean run_command(const char* const argv[], gboolean required) {
     g_autoptr(GError) error = NULL;
@@ -344,6 +349,22 @@ static void runtime_schedule_deferred_callbacks(gpointer user_data);
 static gboolean is_pending_logout(Runtime* runtime, guint64 request_id) {
     return runtime->pending_logout_ids &&
            g_hash_table_contains(runtime->pending_logout_ids, &request_id);
+}
+
+static gboolean send_initial_autostart(int fd, GVariant* document, GError** error) {
+    g_autoptr(GVariant) entries =
+        document ? g_variant_lookup_value(document, "autostart", G_VARIANT_TYPE("av")) : NULL;
+    if (!entries)
+        entries = g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
+    GVariantBuilder payload;
+    g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload, "{sv}", "entries", entries);
+    g_autoptr(GVariant) packet_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
+    g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
+    if (!gnoblin_runtime_writer_queue(writer, GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART, 0,
+                                      packet_payload, error))
+        return FALSE;
+    return gnoblin_runtime_writer_flush(writer, fd, error);
 }
 
 static void remember_pending_logout(Runtime* runtime, guint64 request_id) {
@@ -1077,6 +1098,13 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                                 "compositor runtime handshake is incompatible");
         else {
+            if (!runtime->resume_worker &&
+                !send_initial_autostart(runtime->host_control_fd, runtime->initial_document, error))
+                return FALSE;
+            if (runtime->host_control_fd >= 0) {
+                close(runtime->host_control_fd);
+                runtime->host_control_fd = -1;
+            }
             runtime->ready = TRUE;
             /* The host uses this one-byte notification to distinguish a
              * startup failure from a worker crash after the first handshake. */
@@ -1366,6 +1394,7 @@ static int runtime_worker_main(int argc, char** argv) {
     gboolean devkit = FALSE;
     gboolean resume_worker = FALSE;
     int ready_fd = -1;
+    int host_control_fd = -1;
     guint64 seed_settings_revision = 0;
     guint64 seed_runtime_generation = 0;
     guint64 seed_operation_id_watermark = 0;
@@ -1383,6 +1412,8 @@ static int runtime_worker_main(int argc, char** argv) {
             resume_worker = TRUE;
         else if (g_str_equal(argv[i], "--worker-ready-fd") && i + 1 < argc)
             ready_fd = (int)g_ascii_strtoll(argv[++i], NULL, 10);
+        else if (g_str_equal(argv[i], "--worker-host-fd") && i + 1 < argc)
+            host_control_fd = (int)g_ascii_strtoll(argv[++i], NULL, 10);
         else if (g_str_equal(argv[i], "--seed-settings-revision") && i + 1 < argc)
             seed_settings_revision = g_ascii_strtoull(argv[++i], NULL, 10);
         else if (g_str_equal(argv[i], "--seed-runtime-generation") && i + 1 < argc)
@@ -1402,9 +1433,20 @@ static int runtime_worker_main(int argc, char** argv) {
         g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
         return EXIT_FAILURE;
     }
-    if (ready_fd < 0) {
+    if (ready_fd < 0 || (!resume_worker && host_control_fd < 0)) {
         g_printerr("gnoblin: invalid internal runtime worker arguments\n");
         return EXIT_FAILURE;
+    }
+    if (!resume_worker) {
+        int type = 0;
+        socklen_t type_size = sizeof type;
+        if (fcntl(host_control_fd, F_GETFD) < 0 ||
+            getsockopt(host_control_fd, SOL_SOCKET, SO_TYPE, &type, &type_size) != 0 ||
+            type != SOCK_SEQPACKET) {
+            g_printerr("gnoblin: invalid inherited supervisor channel\n");
+            close(ready_fd);
+            return EXIT_FAILURE;
+        }
     }
     if (resume_worker &&
         !gnoblin_config_seed_runtime_counters(seed_settings_revision, seed_runtime_generation,
@@ -1434,6 +1476,8 @@ static int runtime_worker_main(int argc, char** argv) {
     Runtime runtime = {
         .channel_fd = RUNTIME_FD,
         .ready_fd = ready_fd,
+        .host_control_fd = host_control_fd,
+        .initial_document = resume_worker ? NULL : g_variant_ref(document),
         .resume_worker = resume_worker,
         .exit_status = EXIT_FAILURE,
         .writer = gnoblin_runtime_writer_new(),
@@ -1533,6 +1577,9 @@ static int runtime_worker_main(int argc, char** argv) {
     gnoblin_config_set_permission_policy_changed_callback(NULL, NULL);
     gnoblin_config_set_runtime_wakeup_callback(NULL, NULL);
     g_queue_clear_full(&runtime.policy_events, runtime_policy_event_free);
+    g_clear_pointer(&runtime.initial_document, g_variant_unref);
+    if (runtime.host_control_fd >= 0)
+        close(runtime.host_control_fd);
     g_queue_clear_full(&runtime.deferred_packets, runtime_deferred_packet_free);
     if (runtime.pending_reload) {
         gnoblin_config_finish_deferred_load(FALSE);
@@ -1555,7 +1602,7 @@ static void host_signal_handler(int signal_number) {
 }
 
 static gboolean move_fd_above_runtime_targets(int fd, int* moved_fd, GError** error) {
-    int moved = fcntl(fd, F_DUPFD_CLOEXEC, WORKER_READY_FD + 1);
+    int moved = fcntl(fd, F_DUPFD_CLOEXEC, WORKER_HOST_FD + 1);
     if (moved < 0) {
         g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
                     "could not move worker descriptor: %s", g_strerror(errno));
@@ -1568,11 +1615,12 @@ static gboolean move_fd_above_runtime_targets(int fd, int* moved_fd, GError** er
 static GPid spawn_runtime_worker(const char* executable, const char* config_path, gboolean devkit,
                                  const char* wayland_display, gboolean resume,
                                  guint64 settings_revision, guint64 runtime_generation,
-                                 guint64 operation_id_watermark, int channel_fd, int* ready_fd,
-                                 GError** error) {
+                                 guint64 operation_id_watermark, int channel_fd,
+                                 int host_control_fd, int* ready_fd, GError** error) {
     int status_pipe[2] = {-1, -1};
     int channel_parent_alias = -1, channel_child_alias = -1;
     int status_parent_alias = -1, status_child_alias = -1;
+    int host_parent_alias = -1, host_child_alias = -1;
     if (pipe2(status_pipe, O_CLOEXEC | O_NONBLOCK) != 0) {
         g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
                     "could not create worker status pipe: %s", g_strerror(errno));
@@ -1581,7 +1629,10 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
     if (!move_fd_above_runtime_targets(channel_fd, &channel_parent_alias, error) ||
         !move_fd_above_runtime_targets(channel_fd, &channel_child_alias, error) ||
         !move_fd_above_runtime_targets(status_pipe[0], &status_parent_alias, error) ||
-        !move_fd_above_runtime_targets(status_pipe[1], &status_child_alias, error))
+        !move_fd_above_runtime_targets(status_pipe[1], &status_child_alias, error) ||
+        (host_control_fd >= 0 &&
+         (!move_fd_above_runtime_targets(host_control_fd, &host_parent_alias, error) ||
+          !move_fd_above_runtime_targets(host_control_fd, &host_child_alias, error))))
         goto fail;
 
     posix_spawn_file_actions_t actions;
@@ -1592,18 +1643,24 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         goto fail;
     }
     int channel_temporary_fd = -1, status_temporary_fd = -1;
+    int host_temporary_fd = -1;
     gboolean actions_ready =
         gnoblin_runtime_spawn_add_channel_actions(&actions, channel_parent_alias,
                                                   channel_child_alias, RUNTIME_FD,
                                                   &channel_temporary_fd, error) &&
         gnoblin_runtime_spawn_add_channel_actions(&actions, status_parent_alias, status_child_alias,
-                                                  WORKER_READY_FD, &status_temporary_fd, error);
+                                                  WORKER_READY_FD, &status_temporary_fd, error) &&
+        (host_control_fd < 0 ||
+         gnoblin_runtime_spawn_add_channel_actions(&actions, host_parent_alias, host_child_alias,
+                                                   WORKER_HOST_FD, &host_temporary_fd, error));
     if (!actions_ready) {
         posix_spawn_file_actions_destroy(&actions);
         if (channel_temporary_fd >= 0)
             close(channel_temporary_fd);
         if (status_temporary_fd >= 0)
             close(status_temporary_fd);
+        if (host_temporary_fd >= 0)
+            close(host_temporary_fd);
         goto fail;
     }
 
@@ -1612,6 +1669,7 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
     g_autofree char* generation_arg = g_strdup_printf("%" G_GUINT64_FORMAT, runtime_generation);
     g_autofree char* operation_id_watermark_arg =
         g_strdup_printf("%" G_GUINT64_FORMAT, operation_id_watermark);
+    g_autofree char* host_control_arg = g_strdup_printf("%d", WORKER_HOST_FD);
     g_autoptr(GPtrArray) argv = g_ptr_array_new_with_free_func(g_free);
     g_ptr_array_add(argv, g_strdup(executable));
     g_ptr_array_add(argv, g_strdup("--internal-runtime-worker"));
@@ -1619,6 +1677,10 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
     g_ptr_array_add(argv, g_strdup(config_path));
     g_ptr_array_add(argv, g_strdup("--worker-ready-fd"));
     g_ptr_array_add(argv, g_strdup(ready_arg));
+    if (host_control_fd >= 0) {
+        g_ptr_array_add(argv, g_strdup("--worker-host-fd"));
+        g_ptr_array_add(argv, g_strdup(host_control_arg));
+    }
     if (resume) {
         g_ptr_array_add(argv, g_strdup("--resume-runtime-worker"));
         g_ptr_array_add(argv, g_strdup("--seed-settings-revision"));
@@ -1641,10 +1703,16 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         close(channel_temporary_fd);
     if (status_temporary_fd >= 0)
         close(status_temporary_fd);
+    if (host_temporary_fd >= 0)
+        close(host_temporary_fd);
     close(channel_parent_alias);
     close(channel_child_alias);
     close(status_parent_alias);
     close(status_child_alias);
+    if (host_parent_alias >= 0)
+        close(host_parent_alias);
+    if (host_child_alias >= 0)
+        close(host_child_alias);
     close(status_pipe[1]);
     if (result != 0) {
         close(status_pipe[0]);
@@ -1664,6 +1732,10 @@ fail:
         close(status_parent_alias);
     if (status_child_alias >= 0)
         close(status_child_alias);
+    if (host_parent_alias >= 0)
+        close(host_parent_alias);
+    if (host_child_alias >= 0)
+        close(host_child_alias);
     close(status_pipe[0]);
     close(status_pipe[1]);
     return 0;
@@ -1802,6 +1874,169 @@ static gboolean sleep_before_worker_restart(guint restart_number, Runtime* host)
     return !host_signal_number;
 }
 
+static gboolean receive_host_autostart(int fd, GnoblinRuntimeReader* reader,
+                                       gboolean* received_packet, GVariant** entries,
+                                       GError** error) {
+    for (;;) {
+        GnoblinRuntimePacket packet = {0};
+        gboolean available = FALSE;
+        g_autoptr(GError) receive_error = NULL;
+        if (!gnoblin_runtime_reader_receive(reader, fd, &packet, &available, &receive_error)) {
+            if (*received_packet && g_error_matches(receive_error, G_IO_ERROR, G_IO_ERROR_CLOSED))
+                return TRUE;
+            g_propagate_error(error, g_steal_pointer(&receive_error));
+            return FALSE;
+        }
+        if (!available)
+            return TRUE;
+        g_autoptr(GVariant) payload = g_variant_ref(packet.payload);
+        gboolean valid = packet.type == GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART &&
+                         packet.request_id == 0 && !*received_packet;
+        guint payload_fields = 0;
+        GVariantIter payload_iter;
+        const char* payload_key;
+        GVariant* payload_value;
+        g_variant_iter_init(&payload_iter, payload);
+        while (g_variant_iter_next(&payload_iter, "{&sv}", &payload_key, &payload_value)) {
+            valid = valid && g_str_equal(payload_key, "entries");
+            payload_fields++;
+            g_variant_unref(payload_value);
+        }
+        g_autoptr(GVariant) packet_entries =
+            valid ? g_variant_lookup_value(payload, "entries", G_VARIANT_TYPE("av")) : NULL;
+        valid = valid && payload_fields == 1 && packet_entries != NULL;
+        gnoblin_runtime_packet_clear(&packet);
+        if (!valid) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "Lua runtime sent an invalid initial autostart packet");
+            return FALSE;
+        }
+        *entries = g_steal_pointer(&packet_entries);
+        *received_packet = TRUE;
+    }
+}
+
+typedef struct {
+    GPid pid;
+    char* name;
+} HostAutostartChild;
+
+typedef struct {
+    char* name;
+    char** argv;
+} HostAutostartEntry;
+
+static void host_autostart_entry_free(gpointer data) {
+    HostAutostartEntry* entry = data;
+    g_free(entry->name);
+    g_strfreev(entry->argv);
+    g_free(entry);
+}
+
+static void host_autostart_child_free(gpointer data) {
+    HostAutostartChild* child = data;
+    g_spawn_close_pid(child->pid);
+    g_free(child->name);
+    g_free(child);
+}
+
+static gboolean launch_initial_autostart(GVariant* entries, GPtrArray* children, GError** error) {
+    g_autoptr(GHashTable) names = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_autoptr(GPtrArray) parsed_entries = g_ptr_array_new_with_free_func(host_autostart_entry_free);
+    if (!entries || !g_variant_is_of_type(entries, G_VARIANT_TYPE("av"))) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Lua runtime did not provide an autostart list");
+        return FALSE;
+    }
+    gsize index = 0;
+    for (; index < g_variant_n_children(entries); index++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(entries, index);
+        g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
+        g_autoptr(GVariant) command = NULL;
+        g_autoptr(GVariant) when_value = NULL;
+        const char* name = NULL;
+        if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT) ||
+            !g_variant_lookup(entry, "name", "&s", &name) || !name || !*name ||
+            g_utf8_strlen(name, -1) > 80 || g_hash_table_contains(names, name))
+            goto invalid_entry;
+        GVariantIter fields;
+        const char* key;
+        GVariant* value;
+        g_variant_iter_init(&fields, entry);
+        while (g_variant_iter_next(&fields, "{&sv}", &key, &value)) {
+            gboolean supported =
+                g_str_equal(key, "name") || g_str_equal(key, "command") || g_str_equal(key, "when");
+            g_variant_unref(value);
+            if (!supported)
+                goto invalid_entry;
+        }
+        when_value = g_variant_lookup_value(entry, "when", NULL);
+        if (when_value && (!g_variant_is_of_type(when_value, G_VARIANT_TYPE_STRING) ||
+                           !g_str_equal(g_variant_get_string(when_value, NULL), "on_login")))
+            goto invalid_entry;
+        command = g_variant_lookup_value(entry, "command", G_VARIANT_TYPE("av"));
+        if (!command || g_variant_n_children(command) == 0)
+            goto invalid_entry;
+        gsize argc = g_variant_n_children(command);
+        g_auto(GStrv) argv = g_new0(char*, argc + 1);
+        for (gsize arg = 0; arg < argc; arg++) {
+            g_autoptr(GVariant) wrapped = g_variant_get_child_value(command, arg);
+            g_autoptr(GVariant) argument = g_variant_get_variant(wrapped);
+            if (!g_variant_is_of_type(argument, G_VARIANT_TYPE_STRING))
+                goto invalid_entry;
+            argv[arg] = g_variant_dup_string(argument, NULL);
+        }
+        if (!argv[0] || !*argv[0])
+            goto invalid_entry;
+
+        g_hash_table_add(names, g_strdup(name));
+        HostAutostartEntry* parsed = g_new0(HostAutostartEntry, 1);
+        parsed->name = g_strdup(name);
+        parsed->argv = g_steal_pointer(&argv);
+        g_ptr_array_add(parsed_entries, parsed);
+    }
+
+    for (guint index = 0; index < parsed_entries->len; index++) {
+        HostAutostartEntry* entry = g_ptr_array_index(parsed_entries, index);
+        GPid child_pid = 0;
+        g_autoptr(GError) spawn_error = NULL;
+        if (!g_spawn_async(NULL, entry->argv, NULL, G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
+                           NULL, NULL, &child_pid, &spawn_error)) {
+            g_warning("gnoblin-autostart: could not start %s: %s", entry->name,
+                      spawn_error->message);
+            continue;
+        }
+        HostAutostartChild* child = g_new0(HostAutostartChild, 1);
+        child->pid = child_pid;
+        child->name = g_strdup(entry->name);
+        g_ptr_array_add(children, child);
+        g_message("gnoblin-autostart: started %s", entry->name);
+    }
+    return TRUE;
+
+invalid_entry:
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                "Lua runtime sent invalid autostart entry %zu", index + 1);
+    return FALSE;
+}
+
+static void reap_autostart_children(GPtrArray* children) {
+    for (guint index = 0; index < children->len;) {
+        HostAutostartChild* child = g_ptr_array_index(children, index);
+        int status = 0;
+        pid_t result = waitpid(child->pid, &status, WNOHANG);
+        if (result == 0) {
+            index++;
+            continue;
+        }
+        if (result < 0 && errno == EINTR)
+            continue;
+        if (result < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+            g_warning("gnoblin-autostart: %s exited unsuccessfully", child->name);
+        g_ptr_array_remove_index_fast(children, index);
+    }
+}
+
 static int session_host_main(int argc, char** argv) {
     g_autofree char* compositor_path = g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL);
     g_autofree char* plugin = g_strdup("libgnoblin");
@@ -1878,23 +2113,55 @@ static int session_host_main(int argc, char** argv) {
     gboolean worker_ready = FALSE;
     gboolean worker_start_packet_sent = FALSE;
     gboolean first_worker = TRUE;
+    gboolean host_autostart_received = FALSE;
+    gboolean host_autostart_started = FALSE;
     gboolean stop_session = FALSE;
     gboolean leave_session_alive = FALSE;
     guint restart_count = 0;
     gint64 worker_ready_since_us = 0;
     guint64 resume_revision = 0, resume_generation = 0;
     guint64 resume_operation_id_watermark = 0;
-    worker_pid = spawn_runtime_worker(executable, config_path, devkit, wayland_display, FALSE, 0, 0,
-                                      0, host.channel_fd, &ready_fd, &error);
+    int host_control_sockets[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, host_control_sockets) != 0) {
+        g_printerr("gnoblin: could not create private runtime supervisor channel: %s\n",
+                   g_strerror(errno));
+        terminate_and_reap(&host);
+        close(host.channel_fd);
+        return EXIT_FAILURE;
+    }
+    int host_control_fd = host_control_sockets[0];
+    g_autoptr(GnoblinRuntimeReader) host_control_reader = gnoblin_runtime_reader_new();
+    g_autoptr(GVariant) host_autostart_entries = NULL;
+    g_autoptr(GPtrArray) autostart_children =
+        g_ptr_array_new_with_free_func(host_autostart_child_free);
+    worker_pid =
+        spawn_runtime_worker(executable, config_path, devkit, wayland_display, FALSE, 0, 0, 0,
+                             host.channel_fd, host_control_sockets[1], &ready_fd, &error);
+    close(host_control_sockets[1]);
+    host_control_sockets[1] = -1;
     if (!worker_pid) {
         g_printerr("gnoblin: could not start Lua runtime worker: %s\n",
                    error ? error->message : "spawn failed");
         terminate_and_reap(&host);
         close(host.channel_fd);
+        close(host_control_fd);
         return EXIT_FAILURE;
     }
 
     while (!host_signal_number) {
+        if (host_control_fd >= 0) {
+            struct pollfd control_poll = {.fd = host_control_fd, .events = POLLIN | POLLHUP};
+            if (poll(&control_poll, 1, 0) > 0 && (control_poll.revents & (POLLIN | POLLHUP))) {
+                if (!receive_host_autostart(host_control_fd, host_control_reader,
+                                            &host_autostart_received, &host_autostart_entries,
+                                            &error)) {
+                    g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
+                               error ? error->message : "invalid packet");
+                    stop_session = TRUE;
+                    break;
+                }
+            }
+        }
         if (host_reap_compositor(&host)) {
             stop_session = TRUE;
             break;
@@ -1906,6 +2173,29 @@ static int session_host_main(int argc, char** argv) {
                 worker_ready |= became_ready;
                 if (became_ready && !worker_ready_since_us)
                     worker_ready_since_us = g_get_monotonic_time();
+                if (became_ready && !host_autostart_started) {
+                    if (host_control_fd >= 0 &&
+                        !receive_host_autostart(host_control_fd, host_control_reader,
+                                                &host_autostart_received, &host_autostart_entries,
+                                                &error)) {
+                        g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
+                                   error ? error->message : "invalid packet");
+                        stop_session = TRUE;
+                        break;
+                    }
+                    if (!host_autostart_received ||
+                        !launch_initial_autostart(host_autostart_entries, autostart_children,
+                                                  &error)) {
+                        g_printerr("gnoblin: could not start login autostart: %s\n",
+                                   error ? error->message
+                                         : "Lua runtime did not send the initial list");
+                        stop_session = TRUE;
+                        break;
+                    }
+                    host_autostart_started = TRUE;
+                    close(host_control_fd);
+                    host_control_fd = -1;
+                }
             }
             if (worker_ready_since_us &&
                 g_get_monotonic_time() - worker_ready_since_us >= WORKER_STABLE_RESET_MS * 1000)
@@ -1982,7 +2272,7 @@ static int session_host_main(int argc, char** argv) {
                 worker_pid = spawn_runtime_worker(executable, config_path, devkit, wayland_display,
                                                   TRUE, resume_revision, resume_generation,
                                                   resume_operation_id_watermark, host.channel_fd,
-                                                  &ready_fd, &error);
+                                                  -1, &ready_fd, &error);
                 if (!worker_pid) {
                     g_printerr("gnoblin: could not restart Lua runtime worker: %s\n",
                                error ? error->message : "spawn failed");
@@ -1991,6 +2281,7 @@ static int session_host_main(int argc, char** argv) {
                 }
             }
         }
+        reap_autostart_children(autostart_children);
         g_usleep(50000);
     }
 
@@ -2006,6 +2297,7 @@ static int session_host_main(int argc, char** argv) {
                 stop_session = TRUE;
                 break;
             }
+            reap_autostart_children(autostart_children);
             g_usleep(100000);
         }
     }
@@ -2021,6 +2313,11 @@ static int session_host_main(int argc, char** argv) {
     }
     if (ready_fd >= 0)
         close(ready_fd);
+    reap_autostart_children(autostart_children);
+    if (host_control_fd >= 0)
+        close(host_control_fd);
+    if (host_control_sockets[1] >= 0)
+        close(host_control_sockets[1]);
     if (stop_session && host.compositor_pid)
         terminate_and_reap(&host);
     close(host.channel_fd);
