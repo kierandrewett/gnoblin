@@ -7,7 +7,8 @@ ulimit -c 0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/gnoblin-state.sh"
-gnoblin_state_dir >/dev/null || exit 1
+GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
+export GNOBLIN_STATE_DIR
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 RUNTIME="$PREFIX/bin/gnoblin"
 GNOBLINCTL="$PREFIX/bin/gnoblinctl"
