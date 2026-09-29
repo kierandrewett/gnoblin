@@ -59,20 +59,21 @@ def main() -> int:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
-                    server.listen(1)
+                    server.listen(2)
                     ready.set()
-                    connection, _ = server.accept()
-                    with connection:
-                        stream = connection.makefile("rwb")
-                        request = json.loads(stream.readline())
-                        received.append(request)
-                        response = {
-                            "event": "reply",
-                            "id": request["id"],
-                            "result": {"session": "test-session", "locked": False},
-                        }
-                        stream.write(json.dumps(response).encode() + b"\n")
-                        stream.flush()
+                    for _ in range(2):
+                        connection, _ = server.accept()
+                        with connection:
+                            stream = connection.makefile("rwb")
+                            request = json.loads(stream.readline())
+                            received.append(request)
+                            if request["method"] == "session.status":
+                                result = {"session": "test-session", "locked": False}
+                            else:
+                                result = {"monitors": [{"id": "HDMI-1", "primary": True}]}
+                            response = {"event": "reply", "id": request["id"], "result": result}
+                            stream.write(json.dumps(response).encode() + b"\n")
+                            stream.flush()
             except BaseException as error:  # propagate background-thread failures
                 server_error.append(error)
 
@@ -80,17 +81,24 @@ def main() -> int:
         server_thread.start()
         assert ready.wait(timeout=5), repr(server_error)
         result = run(binary, "--socket", socket_path, "--format", "json", "status")
-        server_thread.join(timeout=5)
-        assert not server_thread.is_alive(), "mock compositor did not finish"
-        assert not server_error, repr(server_error)
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout) == {"session": "test-session", "locked": False}
-        assert len(received) == 1
+        monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
+        assert monitor_result.returncode == 0, monitor_result.stderr
+        assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "primary": True}]}
+        server_thread.join(timeout=5)
+        assert not server_thread.is_alive(), "mock compositor did not finish monitor request"
+        assert not server_error, repr(server_error)
+        assert len(received) == 2
         request = received[0]
         assert request["op"] == "api"
         assert request["method"] == "session.status"
         assert request["api_version"] == {"major": 1, "minor": 29}
         assert request["arguments"] == {}
+        monitor_request = received[1]
+        assert monitor_request["op"] == "api"
+        assert monitor_request["method"] == "monitor.list"
+        assert monitor_request["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
