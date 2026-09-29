@@ -33,8 +33,17 @@ def main() -> int:
     version_result = run(binary, "--version", "--format", "json")
     assert version_result.returncode == 0, version_result.stderr
     identity = json.loads(version_result.stdout)
-    assert isinstance(identity.get("version"), str)
-    assert isinstance(identity.get("gitSha"), str)
+    for field in ("version", "gnomeVersion", "mutterApi", "gitRemote", "gitSha"):
+        assert isinstance(identity.get(field), str) and identity[field], field
+    assert isinstance(identity.get("sourceModified"), bool)
+    components = identity.get("components")
+    assert isinstance(components, dict)
+    for component in ("mutter", "xdg-desktop-portal-gnome"):
+        assert isinstance(components.get(component), str) and components[component], component
+    component_commits = identity.get("componentCommits")
+    assert isinstance(component_commits, dict)
+    for component in ("mutter", "xdg-desktop-portal-gnome"):
+        assert isinstance(component_commits.get(component), str) and component_commits[component], component
 
     invalid_result = run(binary, "not-a-command")
     assert invalid_result.returncode != 0
