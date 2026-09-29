@@ -945,11 +945,12 @@ The native runtime reports screen-sharing and recording activity from Mutter's
 tracked remote-access handles. Microphone monitoring is available when Mutter
 is built with remote-desktop support and can connect to PipeWire.
 
-It reports running audio-capture streams and ignores the GNOME Volume Control
-and pavucontrol meter streams. This reports an active capture stream; it does
-not inspect whether the stream is carrying audible samples. Camera and location
-activity are unavailable. The `available` value for each source distinguishes
-unsupported monitoring from inactive activity.
+It reports running audio-capture streams, including meter streams opened by
+volume-control applications. A stream's self-reported application ID is not
+trusted to suppress microphone activity. The monitor reports an active capture
+stream; it does not inspect whether the stream is carrying audible samples.
+Camera and location activity are unavailable. The `available` value for each
+source distinguishes unsupported monitoring from inactive activity.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording
 handles. `gnoblin.privacy.stop_recording()` requests closure of tracked
