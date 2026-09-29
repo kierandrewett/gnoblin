@@ -44,12 +44,14 @@ def main() -> int:
         socket_path = str(Path(temporary) / "compositor.sock")
         received: list[dict[str, object]] = []
         server_error: list[BaseException] = []
+        ready = threading.Event()
 
         def serve_once() -> None:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
                     server.listen(1)
+                    ready.set()
                     connection, _ = server.accept()
                     with connection:
                         stream = connection.makefile("rwb")
@@ -67,6 +69,7 @@ def main() -> int:
 
         server_thread = threading.Thread(target=serve_once, daemon=True)
         server_thread.start()
+        assert ready.wait(timeout=5), repr(server_error)
         result = run(binary, "--socket", socket_path, "--format", "json", "status")
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish"
