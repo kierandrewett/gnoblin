@@ -2,6 +2,7 @@
 #include "../native-control/gnoblin-runtime-protocol.h"
 #include "../native-control/gnoblin-input-config.h"
 #include "gnoblin-runtime-spawn.h"
+#include "gnoblin-autostart.h"
 #include "../config/gnoblin-config.h"
 
 #include <errno.h>
@@ -86,7 +87,7 @@ typedef struct {
 
 static char* session_prefix;
 
-static gboolean send_initial_autostart(int fd, GVariant* document, GError** error);
+static gboolean send_initial_autostart(int fd, GVariant* document, GVariant* hello, GError** error);
 
 static gboolean run_command(const char* const argv[], gboolean required) {
     g_autoptr(GError) error = NULL;
@@ -351,14 +352,23 @@ static gboolean is_pending_logout(Runtime* runtime, guint64 request_id) {
            g_hash_table_contains(runtime->pending_logout_ids, &request_id);
 }
 
-static gboolean send_initial_autostart(int fd, GVariant* document, GError** error) {
+static gboolean send_initial_autostart(int fd, GVariant* document, GVariant* hello,
+                                       GError** error) {
     g_autoptr(GVariant) entries =
         document ? g_variant_lookup_value(document, "autostart", G_VARIANT_TYPE("av")) : NULL;
     if (!entries)
         entries = g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
+    g_autoptr(GVariant) environment =
+        g_variant_lookup_value(hello, "environment", G_VARIANT_TYPE("a{ss}"));
+    if (!environment) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Mutter HELLO did not provide the session environment");
+        return FALSE;
+    }
     GVariantBuilder payload;
     g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&payload, "{sv}", "entries", entries);
+    g_variant_builder_add(&payload, "{sv}", "environment", environment);
     g_autoptr(GVariant) packet_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
     g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
     if (!gnoblin_runtime_writer_queue(writer, GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART, 0,
@@ -1099,7 +1109,8 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
                                 "compositor runtime handshake is incompatible");
         else {
             if (!runtime->resume_worker &&
-                !send_initial_autostart(runtime->host_control_fd, runtime->initial_document, error))
+                !send_initial_autostart(runtime->host_control_fd, runtime->initial_document,
+                                        packet->payload, error))
                 return FALSE;
             if (runtime->host_control_fd >= 0) {
                 close(runtime->host_control_fd);
@@ -1874,48 +1885,6 @@ static gboolean sleep_before_worker_restart(guint restart_number, Runtime* host)
     return !host_signal_number;
 }
 
-static gboolean receive_host_autostart(int fd, GnoblinRuntimeReader* reader,
-                                       gboolean* received_packet, GVariant** entries,
-                                       GError** error) {
-    for (;;) {
-        GnoblinRuntimePacket packet = {0};
-        gboolean available = FALSE;
-        g_autoptr(GError) receive_error = NULL;
-        if (!gnoblin_runtime_reader_receive(reader, fd, &packet, &available, &receive_error)) {
-            if (*received_packet && g_error_matches(receive_error, G_IO_ERROR, G_IO_ERROR_CLOSED))
-                return TRUE;
-            g_propagate_error(error, g_steal_pointer(&receive_error));
-            return FALSE;
-        }
-        if (!available)
-            return TRUE;
-        g_autoptr(GVariant) payload = g_variant_ref(packet.payload);
-        gboolean valid = packet.type == GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART &&
-                         packet.request_id == 0 && !*received_packet;
-        guint payload_fields = 0;
-        GVariantIter payload_iter;
-        const char* payload_key;
-        GVariant* payload_value;
-        g_variant_iter_init(&payload_iter, payload);
-        while (g_variant_iter_next(&payload_iter, "{&sv}", &payload_key, &payload_value)) {
-            valid = valid && g_str_equal(payload_key, "entries");
-            payload_fields++;
-            g_variant_unref(payload_value);
-        }
-        g_autoptr(GVariant) packet_entries =
-            valid ? g_variant_lookup_value(payload, "entries", G_VARIANT_TYPE("av")) : NULL;
-        valid = valid && payload_fields == 1 && packet_entries != NULL;
-        gnoblin_runtime_packet_clear(&packet);
-        if (!valid) {
-            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                "Lua runtime sent an invalid initial autostart packet");
-            return FALSE;
-        }
-        *entries = g_steal_pointer(&packet_entries);
-        *received_packet = TRUE;
-    }
-}
-
 typedef struct {
     GPid pid;
     char* name;
@@ -1940,9 +1909,13 @@ static void host_autostart_child_free(gpointer data) {
     g_free(child);
 }
 
-static gboolean launch_initial_autostart(GVariant* entries, GPtrArray* children, GError** error) {
+static gboolean launch_initial_autostart(GVariant* entries, GVariant* environment,
+                                         GPtrArray* children, GError** error) {
     g_autoptr(GHashTable) names = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_autoptr(GPtrArray) parsed_entries = g_ptr_array_new_with_free_func(host_autostart_entry_free);
+    g_auto(GStrv) child_environment = gnoblin_autostart_build_environment(environment, error);
+    if (!child_environment)
+        return FALSE;
     if (!entries || !g_variant_is_of_type(entries, G_VARIANT_TYPE("av"))) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                             "Lua runtime did not provide an autostart list");
@@ -2000,8 +1973,9 @@ static gboolean launch_initial_autostart(GVariant* entries, GPtrArray* children,
         HostAutostartEntry* entry = g_ptr_array_index(parsed_entries, index);
         GPid child_pid = 0;
         g_autoptr(GError) spawn_error = NULL;
-        if (!g_spawn_async(NULL, entry->argv, NULL, G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
-                           NULL, NULL, &child_pid, &spawn_error)) {
+        if (!g_spawn_async(NULL, entry->argv, child_environment,
+                           G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &child_pid,
+                           &spawn_error)) {
             g_warning("gnoblin-autostart: could not start %s: %s", entry->name,
                       spawn_error->message);
             continue;
@@ -2132,6 +2106,7 @@ static int session_host_main(int argc, char** argv) {
     int host_control_fd = host_control_sockets[0];
     g_autoptr(GnoblinRuntimeReader) host_control_reader = gnoblin_runtime_reader_new();
     g_autoptr(GVariant) host_autostart_entries = NULL;
+    g_autoptr(GVariant) host_autostart_environment = NULL;
     g_autoptr(GPtrArray) autostart_children =
         g_ptr_array_new_with_free_func(host_autostart_child_free);
     worker_pid =
@@ -2152,9 +2127,9 @@ static int session_host_main(int argc, char** argv) {
         if (host_control_fd >= 0) {
             struct pollfd control_poll = {.fd = host_control_fd, .events = POLLIN | POLLHUP};
             if (poll(&control_poll, 1, 0) > 0 && (control_poll.revents & (POLLIN | POLLHUP))) {
-                if (!receive_host_autostart(host_control_fd, host_control_reader,
-                                            &host_autostart_received, &host_autostart_entries,
-                                            &error)) {
+                if (!gnoblin_autostart_receive_packet(
+                        host_control_fd, host_control_reader, &host_autostart_received,
+                        &host_autostart_entries, &host_autostart_environment, &error)) {
                     g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
                                error ? error->message : "invalid packet");
                     stop_session = TRUE;
@@ -2175,16 +2150,17 @@ static int session_host_main(int argc, char** argv) {
                     worker_ready_since_us = g_get_monotonic_time();
                 if (became_ready && !host_autostart_started) {
                     if (host_control_fd >= 0 &&
-                        !receive_host_autostart(host_control_fd, host_control_reader,
-                                                &host_autostart_received, &host_autostart_entries,
-                                                &error)) {
+                        !gnoblin_autostart_receive_packet(
+                            host_control_fd, host_control_reader, &host_autostart_received,
+                            &host_autostart_entries, &host_autostart_environment, &error)) {
                         g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
                                    error ? error->message : "invalid packet");
                         stop_session = TRUE;
                         break;
                     }
                     if (!host_autostart_received ||
-                        !launch_initial_autostart(host_autostart_entries, autostart_children,
+                        !launch_initial_autostart(host_autostart_entries,
+                                                  host_autostart_environment, autostart_children,
                                                   &error)) {
                         g_printerr("gnoblin: could not start login autostart: %s\n",
                                    error ? error->message
