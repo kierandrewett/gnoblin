@@ -1,9 +1,9 @@
 # gnoblinctl
 
 Run `gnoblinctl --version` to read the installed build identity without a
-running session. It reports the Gnoblin version, GNOME component versions,
-Mutter API, source Git remote, and commit. `gnoblin --version` prints the same
-identity.
+running session. It reports the Gnoblin version, the Mutter and Gnoblin portal
+backend versions, Mutter API, source Git remote, and commit. `gnoblin --version`
+prints the same identity.
 Use `gnoblin --version --json` or `gnoblinctl --version --json` to save the
 complete build identity as JSON.
 
@@ -13,30 +13,37 @@ source provenance. The installed command reads the identity recorded at build
 time. A modified source tree is marked beside its commit; the commit alone does
 not identify those local edits.
 
-`gnoblinctl version` also reports the live Shell version and requires an active
-Gnoblin session.
+`gnoblinctl version` reads the build identity through the running compositor
+API. It requires an active Gnoblin session.
 
 [Configuration reference](/config/configure)
 
-Control Gnoblin from a terminal or script. Configure shell panels with that
-shell's own tools.
+Control Gnoblin from a terminal or Lua configuration. Configure shell panels
+with the external shell's own tools.
 
 ## Start here
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                       | Use it to                                          |
-| ----------------------------- | -------------------------------------------------- |
-| `gnoblinctl window list`      | Find open windows and their IDs                    |
-| `gnoblinctl window match`     | Show the values a window rule can match            |
-| `gnoblinctl layer list`       | Find layer-surface namespaces                      |
-| `gnoblinctl input devices`    | List detected input devices and capabilities       |
-| `gnoblinctl workspace list`   | Show workspace IDs, names, positions and windows   |
-| `gnoblinctl config path`      | Find the config file your session uses             |
-| `gnoblinctl config default`   | Print the bundled default `init.lua`               |
-| `gnoblinctl config reload`    | Apply edits and report config errors               |
-| `gnoblinctl shortcut list`    | List shortcuts registered by the native compositor |
-| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding    |
+| Command                       | Use it to                                             |
+| ----------------------------- | ----------------------------------------------------- |
+| `gnoblinctl status`           | Check the running session and lock-state availability |
+| `gnoblinctl logout`           | End the session and return to the login manager       |
+| `gnoblinctl window list`      | Find open windows and their IDs                       |
+| `gnoblinctl window match`     | Show the values a window rule can match               |
+| `gnoblinctl layer list`       | Find layer-surface namespaces                         |
+| `gnoblinctl input devices`    | List detected input devices and capabilities          |
+| `gnoblinctl workspace list`   | Show workspace IDs, names, positions and windows      |
+| `gnoblinctl config path`      | Find the config file your session uses                |
+| `gnoblinctl config default`   | Print the bundled default `init.lua`                  |
+| `gnoblinctl config reload`    | Apply supported edits and report restart-only changes |
+| `gnoblinctl shortcut list`    | List shortcuts registered by the native compositor    |
+| `gnoblinctl shortcut capture` | Capture a key combination as a shortcut binding       |
+| `gnoblinctl capabilities`     | List compositor and protocol capabilities             |
+| `gnoblinctl focus history`    | List recently focused windows                         |
+| `gnoblinctl focus policy`     | Show the committed focus policy                       |
+| `gnoblinctl config show`      | Show the committed settings snapshot                  |
+| `gnoblinctl ping`             | Check whether the compositor control socket responds  |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.
@@ -45,7 +52,6 @@ Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 
 ```sh
 gnoblinctl window list
-gnoblinctl window focus 42
 gnoblinctl window minimize 42
 gnoblinctl window toggle-minimize 42
 gnoblinctl window restore 42
@@ -54,15 +60,16 @@ gnoblinctl window close 42
 ```
 
 Typed window operations take a stable ID from `window list`. IDs last for the
-window's lifetime, not across logins. The CLI keeps `active` as a compatibility
-target through the legacy window-action route. In Shell-backed sessions,
-`window focus` uses the Shell compatibility route. The standalone native
-compositor denies it because the CLI has no trusted shortcut context.
+window's lifetime, not across logins. For typed actions that accept `active`,
+`gnoblinctl` first reads the focused window's stable ID, then sends the typed
+operation for that ID. If there is no focused window, it reports an error and
+sends no action. `toggle-minimize` still requires an explicit ID.
 
-To focus a window in the native compositor, a shell client must subscribe to
-`gnoblin.shortcut.activated` and call `window.focus` with its one-use context.
-Menu and interactive move or resize use the compatibility route because they
-need Shell handling or pointer interaction.
+`gnoblinctl window focus` is rejected because the command cannot create the
+one-use trusted context required to focus a window. A shell client can focus a
+clicked window by subscribing to `gnoblin.shortcut.activated` and calling
+`window.focus` with its context. Interactive move or resize requires pointer
+interaction or a trusted shortcut context.
 
 To see the exact identity and title used by `gnoblin.window_rule`, run:
 
@@ -110,10 +117,11 @@ gnoblinctl input devices
 
 Each record reports the device name and type, seat, available capabilities,
 and vendor or product IDs when the compositor provides them. Device IDs last
-only for the current compositor session. The command returns a one-time
-snapshot; API 1.4 socket clients can also subscribe to device add and removal
-events. The existing `input list`, `input current`, and `input select`
-commands retain their Shell-backed input-source behavior.
+only for the current compositor session. The command returns a one-time snapshot.
+
+API 1.4 socket clients can also subscribe to device add and removal events. The
+`input list`, `input current`, and `input select` commands inspect and select
+keyboard sources in the standalone runtime.
 
 ## Animations
 
@@ -123,6 +131,7 @@ visual transform; it does not minimize or close the target.
 
 ```sh
 gnoblinctl animation list
+gnoblinctl animation get gnome-open
 gnoblinctl animation surfaces
 gnoblinctl animation inspect gnome-open --window active
 session=$(gnoblinctl animation preview gnome-open --window active --format table | sed -n 's/^session: //p')
@@ -141,11 +150,16 @@ by milliseconds.
 Seeking to 100% keeps the last frame visible until `stop`,
 which restores the target's original visual state. `inspect` accepts `--event EVENT` to inspect a particular event variant. `preview --autoplay` starts playback immediately.
 
-`animation surfaces` prints layer surface IDs, namespaces, and titles; layer
-surfaces are not included in `window list`. `animation list` marks entries
-that the current window/layer preview targets can run with `previewable`.
+`animation surfaces` prints layer surface IDs, namespaces, and titles. Layer
+surfaces are not included in `window list`.
 
-Workspace, console, shadow, tile-preview, dialog-dimming, and layer-companion animations
+`animation list` marks entries that current preview targets can run with
+`previewable`.
+
+`animation get NAME` prints the configured record for an exact name. It returns
+`null` when no animation matches. Use `--json` in scripts.
+
+Workspace, shadow, tile-preview, dialog-dimming, and layer-companion animations
 run on internal compositor actors or effects, so the current CLI cannot
 preview them against a window or layer surface.
 
@@ -198,7 +212,7 @@ exact ID from `gnoblinctl monitor list`. Each entry also has a current `index`
 that can change when outputs are added or removed. Cloned outputs use the
 lexicographically first active connector as their ID.
 
-The standalone native compositor preview supports workspace list, create,
+The standalone compositor supports workspace list, create,
 rename, remove, switch, next, previous, and window moves by ID or number.
 Its list includes configured IDs and names, generated session IDs, active state,
 and window counts. To remove a temporary workspace, first switch away from it
@@ -228,15 +242,18 @@ gnoblinctl window workspace 42 --number 2
 ## Capture a shortcut
 
 Run `gnoblinctl shortcut capture`, then press the key combination. The command
-prints its GTK accelerator. Press Escape to cancel. The default timeout is 30
-seconds; set `--timeout` to an integer from 1 to 60 seconds to change it. If a
-session lock, input-capture session, or stage grab starts during capture, the
-command reports cancellation and releases keyboard input to that owner.
+prints its GTK accelerator. Press Escape to cancel. Bare Super prints the
+special `Super` binding.
+
+The default timeout is 30 seconds. Set `--timeout` to an integer from 1 to 60
+seconds to change it. If a session lock, input-capture session, or stage grab
+starts during capture, the command reports cancellation and releases keyboard
+input to that owner.
 
 ## List configured shortcuts
 
 Run `gnoblinctl shortcut list` to list shortcuts registered by the native
-compositor. Shell integration shortcuts and disabled declarations are not
+compositor. External clients' shortcuts and disabled declarations are not
 included. Each record includes its name, binding, enabled state, trigger,
 revision, and either a command or built-in action. A binding with multiple
 accelerators is shown as a JSON array in the table.
@@ -250,16 +267,17 @@ gnoblinctl shortcut list --json
 ## Window actions
 
 Most actions without extra arguments accept an optional window ID; they use
-`active` if omitted. `toggle-minimize` requires an ID because it has no legacy
-active-window operation. The geometry actions require the ID and numbers shown.
+`active` if omitted. Typed actions resolve `active` to a stable ID before the
+operation. `toggle-minimize` and geometry actions require the ID and numbers
+shown.
 
 | Action                                   | Arguments after action                           | Effect                                                  |
 | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------- |
-| `menu`                                   | `[ID]`                                           | Open the window menu                                    |
 | `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                     |
 | `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                              |
 | `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                  |
-| `focus`, `close`, `minimize`             | `[ID]`                                           | Focus, request close, or minimize                       |
+| `focus`                                  | `[ID]`                                           | Rejected; focusing requires a one-use trusted context   |
+| `close`, `minimize`                      | `[ID]`                                           | Request close or minimize                               |
 | `restore-or-minimize`                    | `[ID]`                                           | Restore minimized/maximized/snapped; otherwise minimize |
 | `toggle-minimize`                        | `ID`                                             | Restore if minimized; otherwise minimize                |
 | `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                     |
@@ -269,33 +287,49 @@ active-window operation. The geometry actions require the ID and numbers shown.
 | `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                           |
 | `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`        |
 
-The CLI uses typed native methods for supported window actions when you pass
-an explicit ID. `active` and omitted IDs use the compatibility route.
+The CLI uses typed native methods for actions with a typed equivalent, including
+when `active` is resolved to a stable ID. Menu and interactive actions remain
+separate because they need compositor input context. Shell clients can focus a
+clicked window with an XDG Activation token through the
+[compositor bridge](/compositor-bridge#api-version-132-xdg-activation-focus-and-session-logout).
 
-Native focus requires a live shortcut context and is not available through
-`gnoblinctl`. `toggle-minimize` requires a stable ID because the compatibility
-method does not match its behavior.
+## Session and policy commands
 
-## Shell and policy commands
+| Command                                                           | Use                                                                                      |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `status`                                                          | Read live session state and lock availability (API 1.29+)                                |
+| `logout`                                                          | End the session and return to the login manager (API 1.32+)                              |
+| `ping`                                                            | Check whether the compositor control socket responds                                     |
+| `version`                                                         | Read the running compositor build identity                                               |
+| `config path`, `config default`, `config show`, `config reload`   | Find, print, inspect, or reload the active configuration                                 |
+| `reload`                                                          | Alias for `config reload`                                                                |
+| `capabilities`                                                    | List compositor and protocol capabilities                                                |
+| `focus history [--workspace-id ID] [--monitor-id ID] [--limit N]` | List recent windows in focus order; limit is 1–256, default 50 (API 1.19+)               |
+| `focus policy`                                                    | Read the committed focus behavior (API 1.19+)                                            |
+| `input list`, `input current`                                     | Inspect configured and selected keyboard sources                                         |
+| `input select TYPE ID`                                            | Select an exact source from `input list`                                                 |
+| `privacy`                                                         | Read the privacy activity sources available in this session                              |
+| `permissions list`                                                | Read portal rules and capabilities                                                       |
+| `permissions policy`                                              | Read the committed policy and its revision (native-control API 1.16+)                    |
+| `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…`                                        |
+| `grant list`, `grant revoke KIND ID`                              | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop`       |
+| `launch status`                                                   | List pending launch feedback                                                             |
+| `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
+| `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
 
-| Command                                                     | Use                                                                                |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `ping`, `version`, `status`                                 | Check the shell, build version and window bridge                                   |
-| `reload`                                                    | Refresh the Shell, theme and installed/personal scripts while keeping windows      |
-| `config path`, `config default`, `config reload`            | Find the active config, print the bundled example, or reload                       |
-| `input list`, `input current`                               | Inspect configured and selected keyboard sources                                   |
-| `input select TYPE ID`                                      | Select an exact source from `input list`                                           |
-| `feature list`, `feature show ID`                           | Inspect live Shell switches                                                        |
-| `feature enable ID`, `feature disable ID`                   | Change a switch                                                                    |
-| `script list`                                               | List loaded package integrations and personal scripts                              |
-| `privacy`                                                   | Read screen-sharing, microphone and location indicators                            |
-| `permissions list`                                          | Read portal rules and capabilities                                                 |
-| `permissions policy`                                        | Read the committed policy and its revision (native-control API 1.16+)              |
-| `permissions check CAPABILITY IDENTITY`                     | Explain a decision for `app-id:…` or `host-exe:…`                                  |
-| `grant list`, `grant revoke KIND ID`                        | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop` |
-| `launch status`                                             | List pending launch feedback                                                       |
-| `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN` | Start or end busy-cursor feedback; duration defaults to 3000 ms, range 1–60000 ms  |
-| `shortcut capture`                                          | Briefly grab the keyboard and print a GTK accelerator or `Super` binding           |
+In a standalone native session, `gnoblinctl config reload` applies changes to:
+
+- `animations`
+- `input`
+- `permissions`
+- `touchpad-gestures`
+- `window-rules`
+- `workspaces`
+
+Other setting changes are rejected without replacing the active runtime; start
+a new session to apply them. The native open-animation matcher uses updated
+rules for windows mapped after reload. Reload does not replay open animations
+for windows already mapped.
 
 For example, to inspect a portal decision and change keyboard source:
 
@@ -310,6 +344,19 @@ Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
+Run `gnoblinctl privacy` to see one status per source. Each status is active,
+inactive or unavailable. Unavailable sources have no activity value. Add
+`--json` to print the `PrivacyState` record. It contains a revision, an
+availability flag for each source, and an activity value only when that source
+is available.
+
+| Source         | Availability field            | Optional activity field |
+| -------------- | ----------------------------- | ----------------------- |
+| Screen sharing | `available.screen_sharing`    | `screen_sharing`        |
+| Microphone     | `available.microphone_in_use` | `microphone_in_use`     |
+| Camera         | `available.camera_in_use`     | `camera_in_use`         |
+| Location       | `available.location_in_use`   | `location_in_use`       |
+
 `grant list` waits for the portal backend and prints its validated persistent
 grants. Use a listed grant's exact `kind` and opaque `id` with `grant revoke`.
 See the [runtime API reference](/config/runtime-api#privacy-and-permissions)
@@ -317,17 +364,14 @@ for the fields in each grant record.
 Human-readable output prints each full grant ID on its own line, even when it
 exceeds the terminal width. Use `--json` for machine-readable output.
 
-For shortcut bindings, run `gnoblinctl shortcut capture` and press a key
-combination. It consumes the captured combination, waits 30 seconds by default
-and supports `--timeout SECONDS` from 1 to 60. Escape cancels. Bare Super prints
-the special `Super` binding. See the
-[shortcuts guide](/guides/shortcuts#key-names) for configuration examples.
+See the [shortcuts guide](/guides/shortcuts#key-names) for configuration
+examples.
 
 ## Output for scripts
 
 ```sh
 gnoblinctl window list --json
-gnoblinctl feature list --format table
+gnoblinctl input list --format table
 ```
 
 Structured results use tables in a terminal and JSON in a pipe.
@@ -360,14 +404,13 @@ IDs, titles and geometry below are illustrative:
 }
 ```
 
-The standalone native compositor preview returns window fields from Mutter:
+The standalone compositor returns window fields from Mutter:
 ID, title and app identity, focus, minimize, workspace and monitor state,
 maximization, fullscreen state, geometry, last user time, and an optional
 transient parent ID. It also returns stacking and attention state, operation
 capabilities, optional role, and `MetaWindowType`.
 
-In this preview, `appId` comes from the GTK app ID or WM class rather than
-Shell's application tracker.
+In the standalone session, `appId` comes from the GTK app ID or WM class.
 
 With `jq` installed, print just the focused window ID:
 
@@ -405,7 +448,7 @@ Uncertain actions are not retried automatically.
 A reply with `pending: true` means accepted, not finished.
 List state again to confirm the result. Window changes are rejected while locked.
 
-## Shell completion
+## Command-line completion
 
 ```sh
 # Bash: ~/.bashrc
@@ -427,9 +470,9 @@ source, but not to run `gnoblinctl`.
 The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
 Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
 
-The bridge is built into current Gnoblin source builds, so `script list` does
-not show it. Package integrations that add namespaced operations do appear in
-`script list`; for example, Bingux installs its text-entry integration with
-its own package. Check `gnoblinctl status`, the running Gnoblin version and the
-session log. See [CLI development](cli-development.md) for the transport
-contract.
+The bridge is built into current Gnoblin source builds. External shell
+integrations run as separate processes and use the bridge directly. Check
+`gnoblinctl ping`, the running Gnoblin version, and the session log. `ping`
+checks only whether the compositor control socket responds; it does not check
+external shell clients. See [CLI development](cli-development.md) for the
+transport contract.

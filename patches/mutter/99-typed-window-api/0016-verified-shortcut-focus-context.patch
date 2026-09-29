@@ -1,11 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Mon, 28 Sep 2026 06:18:39 +0100
-Subject: [PATCH] mutter: dispatch trusted one-use shortcut focus contexts
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: dispatch trusted shortcut context through supervisor
 
 ---
 diff --git a/src/core/display-private.h b/src/core/display-private.h
-index a77d87a81..a5689c9cb 100644
+index 946015818..f82464787 100644
 --- a/src/core/display-private.h
 +++ b/src/core/display-private.h
 @@ -61,6 +61,11 @@ typedef enum
@@ -20,7 +20,7 @@ index a77d87a81..a5689c9cb 100644
  
  /* To avoid ifdefing MetaX11Display usage when built without X11 support */
  #ifndef HAVE_XWAYLAND
-@@ -246,6 +251,9 @@ void meta_display_accelerator_activate (MetaDisplay           *display,
+@@ -240,6 +245,9 @@ void meta_display_accelerator_activate (MetaDisplay           *display,
  void meta_display_accelerator_deactivate (MetaDisplay           *display,
                                            guint                  action,
                                            const ClutterEvent    *event);
@@ -31,7 +31,7 @@ index a77d87a81..a5689c9cb 100644
  
  void meta_display_update_focus_window (MetaDisplay *display,
 diff --git a/src/core/display.c b/src/core/display.c
-index eac594855..9374d12a3 100644
+index 45b860eb8..c1e4948fb 100644
 --- a/src/core/display.c
 +++ b/src/core/display.c
 @@ -128,6 +128,9 @@ typedef struct _MetaDisplayPrivate
@@ -44,7 +44,7 @@ index eac594855..9374d12a3 100644
    MetaWindow *pointer_window;
    gulong pointer_window_unmanaging_handler_id;
  
-@@ -2262,12 +2265,32 @@ meta_display_accelerator_activate (MetaDisplay           *display,
+@@ -2229,12 +2232,32 @@ meta_display_accelerator_activate (MetaDisplay           *display,
                                     guint                  action,
                                     const ClutterEvent    *event)
  {
@@ -78,10 +78,10 @@ index eac594855..9374d12a3 100644
  meta_display_accelerator_deactivate (MetaDisplay           *display,
                                       guint                  action,
 diff --git a/src/core/util-private.h b/src/core/util-private.h
-index 9274cfc45..03e29897e 100644
+index 9274cfc45..f7f61b7d4 100644
 --- a/src/core/util-private.h
 +++ b/src/core/util-private.h
-@@ -22,6 +22,16 @@
+@@ -22,6 +22,17 @@
  
  #pragma once
  
@@ -93,121 +93,57 @@ index 9274cfc45..03e29897e 100644
 +                                                       const char  *event,
 +                                                       GVariant    *payload,
 +                                                       guint64      context_handle,
++                                                       guint64      generation,
 +                                                       gint64       expires_at_us);
 +
  #include <glib/gi18n-lib.h>
  #include <sys/time.h>
  
 diff --git a/src/core/util.c b/src/core/util.c
-index 873520a87..d140327cf 100644
+index a741363f2..2b083fdd2 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -34,6 +34,8 @@
- #include <errno.h>
- #include <string.h>
- 
-+static void meta_gnoblin_revoke_focus_contexts (void);
-+
- #ifdef HAVE_SYS_PRCTL
- #include <sys/prctl.h>
- #endif
-@@ -816,6 +818,8 @@ meta_gnoblin_finish_config_load (gboolean commit)
- {
- #ifdef HAVE_WAYLAND
-   gnoblin_config_finish_load (commit);
-+  if (commit)
-+    meta_gnoblin_revoke_focus_contexts ();
+@@ -716,6 +716,43 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
  #endif
  }
  
-@@ -835,6 +839,13 @@ static MetaDisplay *native_runtime_callback_display;
- static guint native_runtime_callbacks_idle_id;
- static void meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display);
- 
-+static void
-+meta_gnoblin_revoke_focus_contexts (void)
-+{
-+  if (native_runtime_callback_display)
-+    gnoblin_native_control_revoke_focus_contexts (native_runtime_callback_display);
-+}
-+
- static gboolean
- meta_gnoblin_drain_native_runtime_operations_idle (gpointer user_data)
- {
-@@ -900,6 +911,7 @@ meta_gnoblin_set_native_config_host (gboolean enabled)
-   native_config_host_enabled = enabled;
-   if (!enabled)
-     {
-+      meta_gnoblin_revoke_focus_contexts ();
-       gnoblin_config_set_runtime_wakeup_callback (NULL, NULL);
-       if (native_runtime_callbacks_idle_id)
-         {
-@@ -918,6 +930,8 @@ meta_gnoblin_set_native_config_host (gboolean enabled)
- void
- meta_gnoblin_set_native_config_display (MetaDisplay *display)
- {
-+  if (!display)
-+    meta_gnoblin_revoke_focus_contexts ();
-   if (native_runtime_callbacks_idle_id)
-     {
-       g_source_remove (native_runtime_callbacks_idle_id);
-@@ -1012,6 +1026,18 @@ meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display)
-                                                                &error))
-                 continue;
-             }
-+          else if (g_str_equal (method, "window.focus"))
-+            {
-+              guint64 context_handle = 0;
-+              guint64 generation = 0;
-+              if (gnoblin_config_take_focus_context (request_id, &context_handle,
-+                                                     &generation))
-+                result = gnoblin_native_control_focus_window (
-+                  display, arguments, context_handle, generation, &error);
-+              else
-+                g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
-+                                     "window.focus requires a live one-use shortcut context");
-+            }
-           else
-             result = meta_gnoblin_dispatch_native_api (display, method,
-                                                        arguments, &error);
-@@ -1082,6 +1108,40 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
-   return FALSE;
- #endif
- }
-+
 +gboolean
 +meta_display_dispatch_gnoblin_shortcut_event (MetaDisplay *display,
-+                                              const char  *event,
-+                                              GVariant    *payload,
-+                                              guint64      context_handle,
-+                                              gint64       expires_at_us)
++                                               const char  *event,
++                                               GVariant    *payload,
++                                               guint64      context_handle,
++                                               guint64      generation,
++                                               gint64       expires_at_us)
 +{
-+  gboolean frontend_consumed = FALSE;
-+
-+#ifdef HAVE_WAYLAND
 +  g_autoptr (GError) error = NULL;
-+  g_autoptr (GVariant) document =
-+    gnoblin_config_dispatch_shortcut_event (event, payload, context_handle,
-+                                            expires_at_us, &error);
++  g_autoptr (GVariant) event_payload = NULL;
++  GVariantDict payload_dict;
++  gboolean claimed = FALSE;
 +
-+  if (error)
-+    {
-+      g_warning ("gnoblin Lua shortcut event %s: %s", event, error->message);
-+      return FALSE;
-+    }
-+  if (document)
-+    {
-+      g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
-+                             payload, &frontend_consumed);
-+      gnoblin_config_finish_event (TRUE);
-+    }
-+  if (native_runtime_event_batch_depth == 0)
-+    meta_gnoblin_drain_native_runtime_operations (display);
-+  return frontend_consumed;
-+#else
-+  return FALSE;
-+#endif
++  if (!payload || !g_variant_is_of_type (payload, G_VARIANT_TYPE_VARDICT) ||
++      !context_handle || !generation || expires_at_us <= g_get_monotonic_time ())
++    return FALSE;
++
++  g_variant_dict_init (&payload_dict, payload);
++  g_variant_dict_insert (&payload_dict, "focus_context_handle", "t",
++                         context_handle);
++  g_variant_dict_insert (&payload_dict, "focus_context_generation", "t",
++                         generation);
++  g_variant_dict_insert (&payload_dict, "focus_context_expires_at_us", "x",
++                         expires_at_us);
++  event_payload = g_variant_ref_sink (g_variant_dict_end (&payload_dict));
++
++  if (!gnoblin_native_control_is_session (display))
++    return FALSE;
++  if (!gnoblin_native_control_dispatch_runtime_event (display, event,
++                                                       event_payload, &claimed,
++                                                       &error))
++    g_warning ("gnoblin runtime shortcut event %s: %s", event,
++               error ? error->message : "could not queue event");
++  return claimed;
 +}
- GVariant *
- meta_gnoblin_call_config_api (const char *method,
-                               GVariant   *arguments,
++
++
+ #define GNOBLIN_WORKSPACE_ID "gnoblin-native-id"
+ #define GNOBLIN_WORKSPACE_NAME "gnoblin-native-name"
+ #define GNOBLIN_WORKSPACE_PERSISTENT "gnoblin-native-persistent"

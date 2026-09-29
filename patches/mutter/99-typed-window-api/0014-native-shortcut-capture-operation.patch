@@ -122,20 +122,3 @@ index 70696957f..39ff5ec85 100644
  gboolean
  meta_display_start_native_key_capture (MetaDisplay *display)
  {
-diff --git a/src/core/util.c b/src/core/util.c
-index baf5570db..b73b933e7 100644
---- a/src/core/util.c
-+++ b/src/core/util.c
-@@ -906,6 +906,12 @@ meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display)
-               g_str_equal (method, "launch.end"))
-             result = gnoblin_native_control_dispatch_launch (display, method,
-                                                              arguments, &error);
-+          else if (g_str_equal (method, "shortcut.capture"))
-+            {
-+              if (gnoblin_native_control_begin_shortcut_capture (display, arguments,
-+                                                                  request_id, &error))
-+                continue;
-+            }
-           else if (g_str_equal (method, "input.select"))
-             {
-               if (gnoblin_native_control_select_input_source (display, arguments,

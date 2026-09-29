@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 14:00:00 +0100
-Subject: [PATCH] mutter: dispatch basic window actions in compositor
+Subject: [PATCH] mutter: dispatch basic window actions natively
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index e6a7e1f82..2ff98dacf 100644
+index 13c783e9..3198a834 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -40,6 +40,9 @@
+@@ -41,6 +41,9 @@
  #include "cogl/cogl.h"
  #include "meta/common.h"
  #include "meta/main.h"
@@ -16,9 +16,9 @@ index e6a7e1f82..2ff98dacf 100644
 +#include "meta/meta-context.h"
 +#include "meta/window.h"
  
- #include "wayland/gnoblin-config.h"
- #include "wayland/gnoblin-console-lua.h"
-@@ -856,15 +859,145 @@ meta_gnoblin_call_config_api (const char *method,
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+@@ -705,15 +708,146 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
  #endif
  }
  
@@ -146,6 +146,7 @@ index e6a7e1f82..2ff98dacf 100644
 +  return NULL;
 +}
 +
++
  GVariant *
  meta_gnoblin_dispatch_native_api (MetaDisplay *display,
 -                                  const char  *method)
@@ -165,31 +166,15 @@ index e6a7e1f82..2ff98dacf 100644
    if (g_strcmp0 (method, "monitor.list") != 0)
      return NULL;
  
-@@ -905,4 +1038,3 @@ meta_gnoblin_drain_config_runtime_operations (void)
-   return g_variant_ref_sink (g_variant_new_array (G_VARIANT_TYPE_VARDICT, NULL, 0));
- #endif
- }
--
 diff --git a/src/meta/util.h b/src/meta/util.h
-index ee84c2e8f..ee59c75b3 100644
+index 62d9bc66..e43aefe3 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -146,13 +146,17 @@ GVariant *meta_gnoblin_call_config_api (const char *method,
-  * meta_gnoblin_dispatch_native_api:
-  * @display: the active compositor display
-  * @method: a method already validated by the Gnoblin Lua API
-+ * @arguments: validated operation arguments
-+ * @error: return location for a native operation error
-  *
-  * Returns: (transfer full) (nullable): a result for a native method, or %NULL
-  *   when the method still requires a Shell handler
-  */
+@@ -126,4 +126,6 @@ gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean re
+ 
  META_EXPORT
  GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
 -                                            const char  *method);
 +                                            const char  *method,
 +                                            GVariant    *arguments,
 +                                            GError     **error);
- META_EXPORT
- GVariant *meta_gnoblin_drain_config_runtime_operations (void);
- 

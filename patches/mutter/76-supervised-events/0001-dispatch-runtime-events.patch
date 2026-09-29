@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 00:35:00 +0100
+Subject: [PATCH] mutter: route compositor events through supervised runtime
+
+---
+diff --git a/meson.build b/meson.build
+index 6359dbf40..cc503b2b7 100644
+--- a/meson.build
++++ b/meson.build
+@@ -552,6 +552,7 @@ cdata.set('HAVE_EGL', have_egl)
+ cdata.set('HAVE_GL', have_gl)
+ cdata.set('HAVE_GLES2', have_gles2)
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
++cdata.set('HAVE_WAYLAND', true)
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+diff --git a/src/core/util.c b/src/core/util.c
+index 5aa8c6f3e..59e09d846 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -683,3 +683,24 @@ meta_encode_hex (gpointer data,
+ 
+   return g_string_free_and_steal (encoded);
+ }
++
++gboolean
++meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++                                     const char  *event,
++                                     GVariant    *payload)
++{
++#ifdef HAVE_WAYLAND
++  g_autoptr (GError) error = NULL;
++  gboolean claimed = FALSE;
++
++  if (!gnoblin_native_control_is_session (display))
++    return FALSE;
++  if (!gnoblin_native_control_dispatch_runtime_event (display, event, payload,
++                                                      &claimed, &error))
++    g_warning ("gnoblin runtime event %s: %s", event,
++               error ? error->message : "could not queue event");
++  return claimed;
++#else
++  return FALSE;
++#endif
++}
+diff --git a/src/meta/display.h b/src/meta/display.h
+index 8773263e0..11a268a2f 100644
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -105,6 +105,11 @@ META_EXPORT
+ void meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+                                               GVariant    *input);
+ 
++META_EXPORT
++gboolean meta_display_dispatch_gnoblin_event (MetaDisplay *display,
++                                          const char  *event,
++                                          GVariant    *payload);
++
+ META_EXPORT
+ MetaWindow *meta_display_get_focus_window (MetaDisplay *display);
+ 
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index b33b3a845..0cab62fc3 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -54,6 +54,9 @@
+ #include "backends/meta-cursor-xcursor.h"
+ #include "clutter/clutter.h"
+ #include "cogl/cogl.h"
++#include "meta/display.h"
++#include "meta/meta-context.h"
++#include "meta/window.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "meta/meta-cursor-tracker.h"
+ #include "wayland/meta-cursor-wayland.h"
+@@ -1139,6 +1142,10 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
+   MetaBackend *backend = backend_from_pointer (pointer);
+   MetaCursorTracker *cursor_tracker = meta_backend_get_cursor_tracker (backend);
+   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
++  MetaWaylandCompositor *compositor = meta_wayland_seat_get_compositor (seat);
++  MetaDisplay *display = meta_context_get_display (
++    meta_wayland_compositor_get_context (compositor));
+   ClutterSeat *clutter_seat = clutter_backend_get_default_seat (clutter_backend);
+   MetaWindow *toplevel_window;
+   struct wl_client *old_client = NULL;
+@@ -1153,6 +1160,26 @@ meta_wayland_pointer_set_focus_full (MetaWaylandPointer *pointer,
+   if (pointer->focus_surface == surface)
+     return;
+ 
++  {
++    MetaWindow *window = surface ? meta_wayland_surface_get_window (surface) : NULL;
++    const char *app_id = window ? meta_window_get_gtk_application_id (window) : NULL;
++    const char *wm_class = window ? meta_window_get_wm_class (window) : NULL;
++    const char *title = window ? meta_window_get_title (window) : NULL;
++    GVariantBuilder payload;
++    g_autoptr (GVariant) event = NULL;
++
++    g_variant_builder_init (&payload, G_VARIANT_TYPE_VARDICT);
++    g_variant_builder_add (&payload, "{sv}", "app_id",
++                           g_variant_new_string (app_id ? app_id : ""));
++    g_variant_builder_add (&payload, "{sv}", "wm_class",
++                           g_variant_new_string (wm_class ? wm_class : ""));
++    g_variant_builder_add (&payload, "{sv}", "title",
++                           g_variant_new_string (title ? title : ""));
++    event = g_variant_ref_sink (g_variant_builder_end (&payload));
++    meta_display_dispatch_gnoblin_event (display, "pointer_window_changed", event);
++    meta_display_dispatch_gnoblin_event (display, "mutter.wayland.pointer-window-changed", event);
++  }
++
+   if (pointer->focus_surface && pointer->focus_surface->resource)
+     old_client = wl_resource_get_client (pointer->focus_surface->resource);
+   if (surface && surface->resource)

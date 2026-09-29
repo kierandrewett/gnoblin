@@ -22,7 +22,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 PATCH_ROOT = ROOT / "patches"
 AUTHOR = "kierandrewett <kieran@drewett.dev>"
-PROJECTS = ("mutter", "gnome-shell", "xdg-desktop-portal-gnome")
+PROJECTS = ("mutter", "xdg-desktop-portal-gnome")
 AUTHOR_LINE = re.compile(r"(?m)^From: [^\r\n]+$")
 
 
@@ -60,6 +60,11 @@ def main() -> int:
     working.add_argument("--replace", action="store_true")
     working.add_argument("--source-tree", type=Path)
     working.add_argument("--against-index", action="store_true")
+    working.add_argument(
+        "--paths",
+        nargs="+",
+        help="limit the exported diff to paths relative to the subproject root",
+    )
     args = parser.parse_args()
 
     if args.command in ("export", "export-worktree"):
@@ -91,7 +96,16 @@ def main() -> int:
             content = normalize(result.stdout, args.revision)
         else:
             result = subprocess.run(
-                ["git", "-C", str(source), "diff", "--binary", *([] if args.against_index else ["HEAD"]), "--"],
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "diff",
+                    "--binary",
+                    *([] if args.against_index else ["HEAD"]),
+                    "--",
+                    *(args.paths or []),
+                ],
                 capture_output=True,
                 text=True,
                 check=True,

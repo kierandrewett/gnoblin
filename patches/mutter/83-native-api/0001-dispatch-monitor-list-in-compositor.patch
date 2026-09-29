@@ -1,17 +1,18 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 14:00:00 +0100
-Subject: [PATCH] mutter: dispatch compositor monitor query natively
+Subject: [PATCH] mutter: dispatch monitor queries natively
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index db295ff2f..a90b5ff49 100644
+index 59e09d84..13c783e9 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -878,6 +878,46 @@ meta_gnoblin_call_config_api (const char *method,
+@@ -704,3 +704,43 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
+   return FALSE;
  #endif
  }
- 
++
 +GVariant *
 +meta_gnoblin_dispatch_native_api (MetaDisplay *display,
 +                                  const char  *method)
@@ -51,29 +52,15 @@ index db295ff2f..a90b5ff49 100644
 +  g_variant_builder_add (&result, "{sv}", "monitors", g_variant_builder_end (&monitors));
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
 +}
-+
- GVariant *
- meta_gnoblin_drain_config_runtime_operations (void)
- {
 diff --git a/src/meta/util.h b/src/meta/util.h
-index 0b1f7693a..545eef52a 100644
+index 0764bef7..62d9bc66 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -145,6 +145,17 @@ META_EXPORT
- GVariant *meta_gnoblin_call_config_api (const char *method,
-                                         GVariant *arguments,
-                                         GError **error);
-+/**
-+ * meta_gnoblin_dispatch_native_api:
-+ * @display: the active compositor display
-+ * @method: a method already validated by the Gnoblin Lua API
-+ *
-+ * Returns: (transfer full) (nullable): a result for a native method, or %NULL
-+ *   when the method still requires a Shell handler
-+ */
+@@ -123,3 +123,7 @@ META_EXPORT
+ void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
+ META_EXPORT
+ gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean restart, GError **error);
++
 +META_EXPORT
 +GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
 +                                            const char  *method);
- META_EXPORT
- GVariant *meta_gnoblin_drain_config_runtime_operations (void);
- 

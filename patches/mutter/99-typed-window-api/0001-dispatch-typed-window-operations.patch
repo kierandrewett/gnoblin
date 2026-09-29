@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Mon, 14 Sep 2026 16:33:21 +0200
+Date: Tue, 29 Sep 2026 07:52:22 +0100
 Subject: [PATCH] mutter: dispatch typed window operations
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 0e23ca6ff..289bbb260 100644
+index fc99229e5..ed002df1c 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -1432,23 +1432,430 @@ missing_window:
+@@ -1284,6 +1284,379 @@ missing_window:
    return NULL;
  }
  
@@ -385,10 +385,10 @@ index 0e23ca6ff..289bbb260 100644
 +  g_variant_builder_add (&result, "{sv}", "id", g_variant_new_string (stable_id));
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
 +}
-+
+ 
  GVariant *
  meta_gnoblin_dispatch_native_api (MetaDisplay *display,
-                                   const char  *method,
+@@ -1291,13 +1664,50 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
                                    GVariant    *arguments,
                                    GError     **error)
  {
@@ -421,10 +421,10 @@ index 0e23ca6ff..289bbb260 100644
 +      return NULL;
 +    }
  
-   if (g_strcmp0 (method, "window.action") == 0)
-     return gnoblin_native_window_action (display, arguments, error);
-   if (g_strcmp0 (method, "window.list") == 0)
-     return gnoblin_native_window_list (display, arguments, error);
++  if (g_strcmp0 (method, "window.action") == 0)
++    return gnoblin_native_window_action (display, arguments, error);
++  if (g_strcmp0 (method, "window.list") == 0)
++    return gnoblin_native_window_list (display, arguments, error);
 +  if (g_strv_contains (typed_window_methods, method))
 +    return gnoblin_native_typed_window_operation (display, method,
 +                                                 arguments, error);
@@ -439,3 +439,14 @@ index 0e23ca6ff..289bbb260 100644
    if (g_strcmp0 (method, "workspace.list") == 0 ||
        g_strcmp0 (method, "workspace.create") == 0 ||
        g_strcmp0 (method, "workspace.rename") == 0 ||
+@@ -1308,10 +1718,6 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+       g_strcmp0 (method, "workspace.move_active") == 0 ||
+       g_strcmp0 (method, "workspace.move_window") == 0)
+     return gnoblin_native_workspace_api (display, method, arguments, error);
+-  if (g_strcmp0 (method, "window.action") == 0)
+-    return gnoblin_native_window_action (display, arguments, error);
+-  if (g_strcmp0 (method, "window.list") == 0)
+-    return gnoblin_native_window_list (display, arguments, error);
+   if (g_strcmp0 (method, "monitor.list") != 0)
+     return NULL;
+ 

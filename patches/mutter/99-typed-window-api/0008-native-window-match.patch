@@ -1,16 +1,16 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Mon, 28 Sep 2026 06:18:39 +0100
+Date: Mon, 14 Sep 2026 16:33:21 +0200
 Subject: [PATCH] mutter: implement native window matching
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index dbdc8029..910b0d60 100644
+index 770f3ee9f..c8beb055b 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -1655,6 +1655,112 @@ gnoblin_native_window_list (MetaDisplay *display,
-   return g_variant_ref_sink (g_variant_builder_end (&result));
+@@ -1311,6 +1311,113 @@ gnoblin_native_window_list (MetaDisplay *display,
  }
+ 
  
 +static GVariant *
 +gnoblin_native_window_match (MetaDisplay *display,
@@ -118,10 +118,11 @@ index dbdc8029..910b0d60 100644
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
 +}
 +
++
  static GVariant *
  gnoblin_native_window_action (MetaDisplay *display,
                                GVariant    *arguments,
-@@ -2205,7 +2311,7 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+@@ -1861,7 +1968,7 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
      return gnoblin_native_typed_window_operation (display, method,
                                                   arguments, error);
    if (g_strcmp0 (method, "window.match") == 0)

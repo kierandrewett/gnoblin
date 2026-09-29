@@ -1,22 +1,22 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 27 Sep 2026 19:00:00 +0100
-Subject: [PATCH] mutter: list windows in native compositor
+Date: Tue, 29 Sep 2026 07:51:59 +0100
+Subject: [PATCH] mutter: list windows in the native compositor
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 71254a6f9..732557002 100644
+index 3198a8346..3dd6fc57b 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -43,6 +43,7 @@
+@@ -44,6 +44,7 @@
  #include "meta/meta-backend.h"
  #include "meta/meta-context.h"
  #include "meta/window.h"
 +#include "meta/workspace.h"
  
- #include "wayland/gnoblin-config.h"
- #include "wayland/gnoblin-console-lua.h"
-@@ -859,6 +860,109 @@ meta_gnoblin_call_config_api (const char *method,
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+@@ -708,6 +709,110 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
  #endif
  }
  
@@ -123,10 +123,11 @@ index 71254a6f9..732557002 100644
 +  return g_variant_ref_sink (g_variant_builder_end (&result));
 +}
 +
++
  static GVariant *
  gnoblin_native_window_action (MetaDisplay *display,
                                GVariant    *arguments,
-@@ -1012,6 +1116,8 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+@@ -848,6 +953,8 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
  
    if (g_strcmp0 (method, "window.action") == 0)
      return gnoblin_native_window_action (display, arguments, error);

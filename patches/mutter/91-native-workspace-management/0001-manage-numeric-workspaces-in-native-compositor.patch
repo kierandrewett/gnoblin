@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 27 Sep 2026 19:00:00 +0100
+Date: Tue, 29 Sep 2026 07:52:22 +0100
 Subject: [PATCH] mutter: manage numeric workspaces in native compositor
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 0103661c1..cd853b328 100644
+index 2772f130c..82949541b 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -868,11 +868,13 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
+@@ -717,11 +717,13 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
  {
    int index = meta_workspace_index (workspace);
    g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
@@ -24,7 +24,7 @@ index 0103661c1..cd853b328 100644
    g_variant_builder_add (&record, "{sv}", "active",
                           g_variant_new_boolean (index == meta_workspace_manager_get_active_workspace_index (manager)));
    g_variant_builder_add (&record, "{sv}", "windows",
-@@ -880,6 +882,35 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
+@@ -729,6 +731,35 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
    return g_variant_ref_sink (g_variant_builder_end (&record));
  }
  
@@ -60,7 +60,7 @@ index 0103661c1..cd853b328 100644
  static GVariant *
  gnoblin_native_workspace_api (MetaDisplay *display,
                                const char  *method,
-@@ -912,33 +943,170 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+@@ -761,33 +792,170 @@ gnoblin_native_workspace_api (MetaDisplay *display,
                             "workspace switching is unavailable while the session is locked");
        return NULL;
      }
@@ -244,9 +244,9 @@ index 0103661c1..cd853b328 100644
      index = (index + 1) % count;
    else
      index = (index + count - 1) % count;
-@@ -1206,9 +1374,14 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
-   if (g_strcmp0 (method, "window.list") == 0)
-     return gnoblin_native_window_list (display, arguments, error);
+@@ -1054,9 +1222,14 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+   g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
+ 
    if (g_strcmp0 (method, "workspace.list") == 0 ||
 +      g_strcmp0 (method, "workspace.create") == 0 ||
 +      g_strcmp0 (method, "workspace.rename") == 0 ||
@@ -258,5 +258,5 @@ index 0103661c1..cd853b328 100644
 +      g_strcmp0 (method, "workspace.move_active") == 0 ||
 +      g_strcmp0 (method, "workspace.move_window") == 0)
      return gnoblin_native_workspace_api (display, method, arguments, error);
-   if (g_strcmp0 (method, "monitor.list") != 0)
-     return NULL;
+   if (g_strcmp0 (method, "window.action") == 0)
+     return gnoblin_native_window_action (display, arguments, error);

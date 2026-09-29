@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 27 Sep 2026 19:00:00 +0100
-Subject: [PATCH] mutter: list and switch workspaces in native compositor
+Date: Tue, 29 Sep 2026 07:52:22 +0100
+Subject: [PATCH] mutter: list and switch workspaces natively
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 732557002..0103661c1 100644
+index 3dd6fc57b..f3bf84001 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -42,6 +42,8 @@
+@@ -43,6 +43,8 @@
  #include "meta/main.h"
  #include "meta/meta-backend.h"
  #include "meta/meta-context.h"
@@ -17,7 +17,7 @@ index 732557002..0103661c1 100644
  #include "meta/window.h"
  #include "meta/workspace.h"
  
-@@ -860,6 +862,91 @@ meta_gnoblin_call_config_api (const char *method,
+@@ -709,6 +711,92 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
  #endif
  }
  
@@ -106,18 +106,19 @@ index 732557002..0103661c1 100644
 +  return gnoblin_native_workspace_record (manager, workspace);
 +}
 +
++
  static GVariant *
  gnoblin_native_window_list (MetaDisplay *display,
                              GVariant    *arguments,
-@@ -1118,6 +1205,11 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
-     return gnoblin_native_window_action (display, arguments, error);
-   if (g_strcmp0 (method, "window.list") == 0)
-     return gnoblin_native_window_list (display, arguments, error);
+@@ -951,6 +1039,11 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+ 
+   g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
+ 
 +  if (g_strcmp0 (method, "workspace.list") == 0 ||
 +      g_strcmp0 (method, "workspace.switch") == 0 ||
 +      g_strcmp0 (method, "workspace.next") == 0 ||
 +      g_strcmp0 (method, "workspace.previous") == 0)
 +    return gnoblin_native_workspace_api (display, method, arguments, error);
-   if (g_strcmp0 (method, "monitor.list") != 0)
-     return NULL;
- 
+   if (g_strcmp0 (method, "window.action") == 0)
+     return gnoblin_native_window_action (display, arguments, error);
+   if (g_strcmp0 (method, "window.list") == 0)

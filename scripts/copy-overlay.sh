@@ -22,6 +22,13 @@ case "$MODE" in
         ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+case "$PROJ" in
+    mutter | xdg-desktop-portal-gnome) ;;
+    *)
+        echo "unsupported overlay project: $PROJ" >&2
+        exit 2
+        ;;
+esac
 
 n=0
 # Manifests live under src/ at any depth (src/protocols/<feature>/manifest,

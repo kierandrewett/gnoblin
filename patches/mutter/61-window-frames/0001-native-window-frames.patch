@@ -1,21 +1,11 @@
-From 2a8a71d36afb98a7adc5ad1b595a44dc51e9fb85 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 13 Sep 2026 03:05:04 +0100
-Subject: [PATCH] Commit native crop and SSD geometry with client configures
+Date: Sat, 19 Sep 2026 22:05:00 +0100
+Subject: [PATCH] mutter: add native window frames without Lua runtime sources
 
 ---
- src/compositor/meta-window-actor-wayland.c      |  4 ++++
- src/compositor/meta-window-actor.c              | 13 ++++++++++++-
- src/meson.build                                 |  3 +++
- src/meta/util.h                                 |  5 +++++
- src/wayland/meta-wayland-window-configuration.c |  1 +
- src/wayland/meta-wayland-window-configuration.h |  2 ++
- src/wayland/meta-wayland-xdg-shell.c            |  8 ++++++--
- src/wayland/meta-window-wayland.c               |  9 ++++++---
- 8 files changed, 39 insertions(+), 6 deletions(-)
-
 diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
-index 540975a6a..310c953e0 100644
+index 540975a6..310c953e 100644
 --- a/src/compositor/meta-window-actor-wayland.c
 +++ b/src/compositor/meta-window-actor-wayland.c
 @@ -30,6 +30,7 @@
@@ -44,7 +34,7 @@ index 540975a6a..310c953e0 100644
                                          &surfaces_width, &surfaces_height,
                                          &background_width, &background_height))
 diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
-index ee1ac466c..208a09a68 100644
+index ee1ac466..208a09a6 100644
 --- a/src/compositor/meta-window-actor.c
 +++ b/src/compositor/meta-window-actor.c
 @@ -20,6 +20,10 @@
@@ -89,19 +79,19 @@ index ee1ac466c..208a09a68 100644
      {
        MtkRectangle tmp_clip;
 diff --git a/src/meson.build b/src/meson.build
-index e18725013..2c70138d7 100644
+index d1985c21..d3040817 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -599,6 +599,8 @@ mutter_sources += [
-   'wayland/gnoblin-config.c',
-   'wayland/gnoblin-lua.c',
-   'wayland/gnoblin-glob.c',
-+  'wayland/meta-gnoblin-window-frame.c',
-+  'wayland/meta-gnoblin-window-frame.h',
-   'wayland/gnoblin-config.h',
+@@ -597,6 +597,8 @@ mutter_sources += [
+   # at build time; registered via meta_gnoblin_init_protocols)
    'wayland/meta-gnoblin-protocols.c',
    'wayland/meta-gnoblin-protocols.h',
-@@ -1072,6 +1074,7 @@ wayland_protocols = [
++  'wayland/meta-gnoblin-window-frame.c',
++  'wayland/meta-gnoblin-window-frame.h',
+   'wayland/meta-wayland-blur-fade.c',
+   'wayland/meta-wayland-blur-fade.h',
+   'wayland/meta-wayland-idle-notify.c',
+@@ -1071,6 +1073,7 @@ wayland_protocols = [
    ['viewporter', 'stable', ],
    ['xdg-activation', 'staging', 1, ],
    ['xdg-dialog', 'staging', 1, ],
@@ -110,23 +100,20 @@ index e18725013..2c70138d7 100644
    ['xdg-foreign', 'unstable', 2, ],
    ['xdg-output', 'unstable', 1, ],
 diff --git a/src/meta/util.h b/src/meta/util.h
-index 742acc53a..758684b32 100644
+index 09072add..66ba95e0 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -121,6 +121,11 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
+@@ -114,3 +114,8 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
+ 
  META_EXPORT
  const char *meta_gnoblin_layer_namespace (MetaWindow *window);
- 
++
 +META_EXPORT
 +gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
 +META_EXPORT
 +GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
-+
- META_EXPORT
- void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
-                                                 gboolean     armed);
 diff --git a/src/wayland/meta-wayland-window-configuration.c b/src/wayland/meta-wayland-window-configuration.c
-index df309b9c1..d17d9f35b 100644
+index df309b9c..d17d9f35 100644
 --- a/src/wayland/meta-wayland-window-configuration.c
 +++ b/src/wayland/meta-wayland-window-configuration.c
 @@ -135,6 +135,7 @@ meta_wayland_window_configuration_new_from_other (MetaWaylandWindowConfiguration
@@ -138,7 +125,7 @@ index df309b9c1..d17d9f35b 100644
  
    return configuration;
 diff --git a/src/wayland/meta-wayland-window-configuration.h b/src/wayland/meta-wayland-window-configuration.h
-index 249f3ef24..14ac4ca39 100644
+index 249f3ef2..14ac4ca3 100644
 --- a/src/wayland/meta-wayland-window-configuration.h
 +++ b/src/wayland/meta-wayland-window-configuration.h
 @@ -25,6 +25,7 @@
@@ -158,7 +145,7 @@ index 249f3ef24..14ac4ca39 100644
  
  MetaWaylandWindowConfiguration * meta_wayland_window_configuration_new (MetaWindow          *window,
 diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
-index 88d28b8c7..1b83417a5 100644
+index 88d28b8c..1b83417a 100644
 --- a/src/wayland/meta-wayland-xdg-shell.c
 +++ b/src/wayland/meta-wayland-xdg-shell.c
 @@ -910,8 +910,12 @@ meta_wayland_xdg_toplevel_send_configure (MetaWaylandXdgToplevel         *xdg_to
@@ -177,7 +164,7 @@ index 88d28b8c7..1b83417a5 100644
    wl_array_release (&states);
  
 diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
-index 3fc42675b..2634deaac 100644
+index 3fc42675..2634deaa 100644
 --- a/src/wayland/meta-window-wayland.c
 +++ b/src/wayland/meta-window-wayland.c
 @@ -210,6 +210,7 @@ void
@@ -217,5 +204,3 @@ index 3fc42675b..2634deaac 100644
  }
  
  void
--- 
-2.55.0

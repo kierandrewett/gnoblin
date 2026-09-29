@@ -1,93 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 28 Sep 2026 13:22:48 +0100
-Subject: [PATCH] Refresh native workspaces after config commits
+Subject: [PATCH] mutter: preserve native workspace configuration rules
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 82b201e70..1ded972cd 100644
+index 90fff73cf..703fb70ad 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -813,13 +813,20 @@ meta_encode_hex (gpointer data,
-   return g_string_free_and_steal (encoded);
- }
- 
-+static MetaDisplay *native_runtime_callback_display;
-+static void meta_gnoblin_refresh_native_workspaces_after_commit (MetaDisplay *display);
-+
- void
- meta_gnoblin_finish_config_load (gboolean commit)
- {
- #ifdef HAVE_WAYLAND
-   gnoblin_config_finish_load (commit);
-   if (commit)
--    meta_gnoblin_revoke_focus_contexts ();
-+    {
-+      meta_gnoblin_revoke_focus_contexts ();
-+      meta_gnoblin_refresh_native_workspaces_after_commit (
-+        native_runtime_callback_display);
-+    }
- #endif
- }
- 
-@@ -828,6 +835,9 @@ meta_gnoblin_finish_config_event (gboolean commit)
- {
- #ifdef HAVE_WAYLAND
-   gnoblin_config_finish_event (commit);
-+  if (commit)
-+    meta_gnoblin_refresh_native_workspaces_after_commit (
-+      native_runtime_callback_display);
- #endif
- }
- 
-@@ -835,10 +845,21 @@ static gboolean native_config_host_enabled;
- static gboolean native_runtime_operations_draining;
- static guint native_runtime_event_batch_depth;
- static guint native_runtime_operations_idle_id;
--static MetaDisplay *native_runtime_callback_display;
- static guint native_runtime_callbacks_idle_id;
- static void meta_gnoblin_drain_native_runtime_operations (MetaDisplay *display);
- 
-+static void
-+meta_gnoblin_refresh_native_workspaces_after_commit (MetaDisplay *display)
-+{
-+  g_autoptr (GError) error = NULL;
-+
-+  if (!display || meta_gnoblin_initialize_native_workspaces (display, &error))
-+    return;
-+
-+  g_warning ("failed to refresh Gnoblin workspaces after config commit: %s",
-+             error ? error->message : "unknown error");
-+}
-+
- static void
- meta_gnoblin_revoke_focus_contexts (void)
- {
-@@ -883,6 +904,7 @@ meta_gnoblin_dispatch_deferred_runtime_callbacks_idle (gpointer user_data)
-       g_signal_emit_by_name (display, "gnoblin-config-event", NULL, document,
-                              payload, &frontend_consumed);
-       gnoblin_config_finish_event (TRUE);
-+      meta_gnoblin_refresh_native_workspaces_after_commit (display);
-     }
-   meta_gnoblin_drain_native_runtime_operations (display);
- #endif
-@@ -1120,6 +1142,7 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
-       g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
-                              payload, &frontend_consumed);
-       gnoblin_config_finish_event (TRUE);
-+      meta_gnoblin_refresh_native_workspaces_after_commit (display);
-       if (native_runtime_event_batch_depth == 0)
-         meta_gnoblin_drain_native_runtime_operations (display);
-     }
-@@ -1154,6 +1177,7 @@ meta_display_dispatch_gnoblin_shortcut_event (MetaDisplay *display,
-       g_signal_emit_by_name (display, "gnoblin-config-event", event, document,
-                              payload, &frontend_consumed);
-       gnoblin_config_finish_event (TRUE);
-+      meta_gnoblin_refresh_native_workspaces_after_commit (display);
-     }
-   if (native_runtime_event_batch_depth == 0)
-     meta_gnoblin_drain_native_runtime_operations (display);
-@@ -1179,9 +1203,95 @@ meta_gnoblin_call_config_api (const char *method,
+@@ -850,9 +850,95 @@ meta_gnoblin_call_config_api (const char *method,
  #define GNOBLIN_WORKSPACE_ID "gnoblin-native-id"
  #define GNOBLIN_WORKSPACE_NAME "gnoblin-native-name"
  #define GNOBLIN_WORKSPACE_PERSISTENT "gnoblin-native-persistent"
@@ -183,9 +104,9 @@ index 82b201e70..1ded972cd 100644
  static const char *
  gnoblin_native_workspace_id (MetaWorkspace *workspace)
  {
-@@ -1203,45 +1313,256 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
- {
-   g_autoptr (GVariant) document = gnoblin_config_current_document ();
+@@ -875,45 +961,256 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+   g_autoptr (GVariant) document =
+     gnoblin_native_control_get_config_document (display);
    MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
 -  g_object_set_data (G_OBJECT (manager), "gnoblin-native-workspace-count",
 -                     GINT_TO_POINTER (1));
@@ -433,7 +354,7 @@ index 82b201e70..1ded972cd 100644
 +
 +      g_object_set_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT, NULL);
 +      gnoblin_native_workspace_id (workspace);
-+    }
+     }
 +
 +  for (guint index = 0; index < declarations->len; index++)
 +    {
@@ -462,7 +383,7 @@ index 82b201e70..1ded972cd 100644
 +              break;
 +            }
 +        }
-     }
++    }
 +
    return TRUE;
  }

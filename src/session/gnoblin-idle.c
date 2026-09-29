@@ -14,6 +14,7 @@
 #define GNOME_SCREENSAVER_PATH "/org/gnome/ScreenSaver"
 #define SESSION_IDLE_PATH "/org/gnoblin/SessionIdle"
 #define SESSION_IDLE_INTERFACE "org.gnoblin.SessionIdle"
+#define ACTIVITY_THRESHOLD_MS 120000
 
 static const char introspection_xml[] =
     "<node><interface name='org.freedesktop.ScreenSaver'>"
@@ -24,6 +25,18 @@ static const char introspection_xml[] =
     "<method name='SetActive'><arg type='b' direction='in'/></method>"
     "<method name='Lock'/>"
     "<signal name='ActiveChanged'><arg type='b'/></signal>"
+    "</interface>"
+    "<interface name='org.gnoblin.SessionIdle'>"
+    "<method name='GetActivity'>"
+    "<arg name='available' type='b' direction='out'/>"
+    "<arg name='idle' type='b' direction='out'/>"
+    "<arg name='threshold_ms' type='t' direction='out'/>"
+    "<arg name='idle_for_ms' type='t' direction='out'/>"
+    "</method>"
+    "<signal name='ActivityChanged'>"
+    "<arg name='available' type='b'/><arg name='idle' type='b'/>"
+    "<arg name='threshold_ms' type='t'/><arg name='idle_for_ms' type='t'/>"
+    "</signal>"
     "</interface></node>";
 
 typedef struct {
@@ -40,13 +53,118 @@ typedef struct {
     GMainLoop* loop;
     guint next_cookie;
     guint idle_watch;
+    guint activity_idle_watch;
+    guint activity_active_watch;
     guint idle_name_watch;
     guint dbus_owner_signal;
     guint screensaver_signal;
+    guint screensaver_registration;
+    guint activity_registration;
     gboolean name_lost;
+    gboolean activity_available;
+    gboolean activity_idle;
+    guint64 activity_idle_for_ms;
 } IdleService;
 
 static void maybe_activate_idle(IdleService* service);
+static void update_activity(IdleService* service, gboolean publish);
+
+static void publish_activity(IdleService* service, gboolean available, gboolean idle,
+                             guint64 idle_for_ms) {
+    gboolean changed = service->activity_available != available || service->activity_idle != idle;
+    service->activity_available = available;
+    service->activity_idle = available && idle;
+    service->activity_idle_for_ms = available ? idle_for_ms : 0;
+    if (!changed)
+        return;
+
+    g_autoptr(GError) error = NULL;
+    if (!g_dbus_connection_emit_signal(
+            service->session_bus, NULL, SESSION_IDLE_PATH, SESSION_IDLE_INTERFACE,
+            "ActivityChanged",
+            g_variant_new("(bbtt)", service->activity_available, service->activity_idle,
+                          (guint64)ACTIVITY_THRESHOLD_MS, service->activity_idle_for_ms),
+            &error))
+        g_warning("Could not deliver session activity event: %s", error->message);
+}
+
+static GVariant* activity_state(IdleService* service) {
+    return g_variant_new("(bbtt)", service->activity_available, service->activity_idle,
+                         (guint64)ACTIVITY_THRESHOLD_MS, service->activity_idle_for_ms);
+}
+
+static void update_activity(IdleService* service, gboolean publish) {
+    if (!service->idle_monitor) {
+        if (publish)
+            publish_activity(service, FALSE, FALSE, 0);
+        else {
+            service->activity_available = FALSE;
+            service->activity_idle = FALSE;
+            service->activity_idle_for_ms = 0;
+        }
+        return;
+    }
+
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply = g_dbus_proxy_call_sync(service->idle_monitor, "GetIdletime", NULL,
+                                                       G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
+    if (!reply) {
+        g_warning("Could not read session activity: %s", error->message);
+        if (publish)
+            publish_activity(service, FALSE, FALSE, 0);
+        return;
+    }
+    guint64 idle_for_ms = 0;
+    g_variant_get(reply, "(t)", &idle_for_ms);
+    publish_activity(service, TRUE, idle_for_ms >= ACTIVITY_THRESHOLD_MS, idle_for_ms);
+}
+
+static void replace_activity_watches(IdleService* service) {
+    if (!service->idle_monitor)
+        return;
+
+    if (service->activity_idle_watch) {
+        g_dbus_proxy_call_sync(service->idle_monitor, "RemoveWatch",
+                               g_variant_new("(u)", service->activity_idle_watch),
+                               G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+        service->activity_idle_watch = 0;
+    }
+    if (service->activity_active_watch) {
+        g_dbus_proxy_call_sync(service->idle_monitor, "RemoveWatch",
+                               g_variant_new("(u)", service->activity_active_watch),
+                               G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+        service->activity_active_watch = 0;
+    }
+
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) idle_reply = g_dbus_proxy_call_sync(
+        service->idle_monitor, "AddIdleWatch", g_variant_new("(t)", (guint64)ACTIVITY_THRESHOLD_MS),
+        G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
+    if (!idle_reply) {
+        g_warning("Could not register session activity idle watch: %s", error->message);
+        publish_activity(service, FALSE, FALSE, 0);
+        return;
+    }
+    g_variant_get(idle_reply, "(u)", &service->activity_idle_watch);
+
+    g_clear_error(&error);
+    g_autoptr(GVariant) active_reply =
+        g_dbus_proxy_call_sync(service->idle_monitor, "AddUserActiveWatch", NULL,
+                               G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
+    if (!active_reply) {
+        g_warning("Could not register session activity active watch: %s", error->message);
+        if (service->activity_idle_watch) {
+            g_dbus_proxy_call_sync(service->idle_monitor, "RemoveWatch",
+                                   g_variant_new("(u)", service->activity_idle_watch),
+                                   G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+            service->activity_idle_watch = 0;
+        }
+        publish_activity(service, FALSE, FALSE, 0);
+        return;
+    }
+    g_variant_get(active_reply, "(u)", &service->activity_active_watch);
+    update_activity(service, TRUE);
+}
 
 static void inhibitor_free(gpointer data) {
     Inhibitor* inhibitor = data;
@@ -124,6 +242,13 @@ static void on_idle_signal(GDBusProxy* proxy, const char* sender, const char* si
     g_variant_get(parameters, "(u)", &watch);
     if (watch == service->idle_watch)
         maybe_activate_idle(service);
+    else if (watch == service->activity_idle_watch) {
+        service->activity_idle_watch = 0;
+        update_activity(service, TRUE);
+    } else if (watch == service->activity_active_watch) {
+        service->activity_active_watch = 0;
+        replace_activity_watches(service);
+    }
 }
 
 static void on_idle_appeared(GDBusConnection* connection, const char* name, const char* owner,
@@ -141,12 +266,16 @@ static void on_idle_appeared(GDBusConnection* connection, const char* name, cons
     }
     g_signal_connect(service->idle_monitor, "g-signal", G_CALLBACK(on_idle_signal), service);
     replace_idle_watch(service);
+    replace_activity_watches(service);
 }
 
 static void on_idle_vanished(GDBusConnection* connection, const char* name, gpointer data) {
     IdleService* service = data;
     service->idle_watch = 0;
+    service->activity_idle_watch = 0;
+    service->activity_active_watch = 0;
     g_clear_object(&service->idle_monitor);
+    publish_activity(service, FALSE, FALSE, 0);
 }
 
 static void on_idle_setting_changed(GSettings* settings, const char* key, gpointer data) {
@@ -201,7 +330,13 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
     g_autoptr(GError) error = NULL;
     g_autoptr(GVariant) reply = NULL;
 
-    if (g_str_equal(method, "Inhibit")) {
+    if (g_str_equal(interface, SESSION_IDLE_INTERFACE) && g_str_equal(method, "GetActivity")) {
+        update_activity(service, TRUE);
+        g_dbus_method_invocation_return_value(invocation, activity_state(service));
+        return;
+    }
+
+    if (g_str_equal(interface, "org.freedesktop.ScreenSaver") && g_str_equal(method, "Inhibit")) {
         const char *application, *reason;
         Inhibitor* inhibitor;
         guint cookie;
@@ -224,7 +359,7 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
         return;
     }
 
-    if (g_str_equal(method, "UnInhibit")) {
+    if (g_str_equal(interface, "org.freedesktop.ScreenSaver") && g_str_equal(method, "UnInhibit")) {
         Inhibitor* inhibitor;
         guint cookie;
         g_variant_get(parameters, "(u)", &cookie);
@@ -241,11 +376,13 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
         return;
     }
 
-    if (g_str_equal(method, "GetActive")) {
+    if (g_str_equal(interface, "org.freedesktop.ScreenSaver") && g_str_equal(method, "GetActive")) {
         reply = call_screen_saver(service, "GetActive", NULL, G_VARIANT_TYPE("(b)"), &error);
-    } else if (g_str_equal(method, "SetActive")) {
+    } else if (g_str_equal(interface, "org.freedesktop.ScreenSaver") &&
+               g_str_equal(method, "SetActive")) {
         reply = call_screen_saver(service, "SetActive", parameters, NULL, &error);
-    } else if (g_str_equal(method, "Lock")) {
+    } else if (g_str_equal(interface, "org.freedesktop.ScreenSaver") &&
+               g_str_equal(method, "Lock")) {
         reply = call_screen_saver(service, "Lock", NULL, NULL, &error);
     }
     if (!reply) {
@@ -300,10 +437,16 @@ int main(int argc, char** argv) {
     node = g_dbus_node_info_new_for_xml(introspection_xml, &error);
     if (!node)
         g_error("Could not define screen saver interface: %s", error->message);
-    if (!g_dbus_connection_register_object(service.session_bus, SCREENSAVER_PATH,
-                                           node->interfaces[0], &interface_vtable, &service, NULL,
-                                           &error))
+    service.screensaver_registration = g_dbus_connection_register_object(
+        service.session_bus, SCREENSAVER_PATH, node->interfaces[0], &interface_vtable, &service,
+        NULL, &error);
+    if (!service.screensaver_registration)
         g_error("Could not export screen saver interface: %s", error->message);
+    service.activity_registration = g_dbus_connection_register_object(
+        service.session_bus, SESSION_IDLE_PATH, node->interfaces[1], &interface_vtable, &service,
+        NULL, &error);
+    if (!service.activity_registration)
+        g_error("Could not export session activity interface: %s", error->message);
 
     service.inhibitors = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, inhibitor_free);
     service.session_settings = g_settings_new("org.gnome.desktop.session");
@@ -325,6 +468,10 @@ int main(int argc, char** argv) {
     g_bus_unown_name(name_id);
     if (service.idle_name_watch)
         g_bus_unwatch_name(service.idle_name_watch);
+    if (service.screensaver_registration)
+        g_dbus_connection_unregister_object(service.session_bus, service.screensaver_registration);
+    if (service.activity_registration)
+        g_dbus_connection_unregister_object(service.session_bus, service.activity_registration);
     g_dbus_connection_signal_unsubscribe(service.session_bus, service.dbus_owner_signal);
     g_dbus_connection_signal_unsubscribe(service.session_bus, service.screensaver_signal);
     g_hash_table_unref(service.inhibitors);

@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: dispatch launch feedback through native control
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index a9942b536..c83521179 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2935,6 +2935,9 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                                                  arguments, error);
+   if (g_strcmp0 (method, "window.match") == 0)
+     return gnoblin_native_window_match (display, arguments, error);
++  if (g_str_has_prefix (method, "launch."))
++    return gnoblin_native_control_dispatch_launch (display, method,
++                                                  arguments, error);
+   if (g_str_has_prefix (method, "window."))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,

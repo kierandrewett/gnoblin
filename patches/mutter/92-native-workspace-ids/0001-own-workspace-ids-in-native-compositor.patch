@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Sun, 27 Sep 2026 19:00:00 +0100
-Subject: [PATCH] Own workspace IDs in native Gnoblin compositor
+Date: Tue, 29 Sep 2026 07:52:22 +0100
+Subject: [PATCH] mutter: own workspace IDs in native Gnoblin compositor
 
 ---
 diff --git a/src/core/meta-workspace-manager.c b/src/core/meta-workspace-manager.c
@@ -41,28 +41,8 @@ index e013d254f..35ee92a50 100644
    if ((pref == META_PREF_NUM_WORKSPACES ||
         pref == META_PREF_DYNAMIC_WORKSPACES) &&
        !meta_prefs_get_dynamic_workspaces ())
-diff --git a/src/core/mutter.c b/src/core/mutter.c
-index 5acd5c4a5..474957c89 100644
---- a/src/core/mutter.c
-+++ b/src/core/mutter.c
-@@ -139,12 +139,13 @@ load_native_config (GError **error)
-   while (g_variant_iter_next (&iter, "{&sv}", &key, &value))
-     {
-       gboolean supported = g_str_equal (key, "protocols") ||
--                           g_str_equal (key, "layer-shell");
-+                           g_str_equal (key, "layer-shell") ||
-+                           g_str_equal (key, "workspaces");
-       g_variant_unref (value);
-       if (!supported)
-         {
-           g_set_error (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
--                       "%s: native compositor cannot apply '%s'; use a config with only protocols and layer-shell",
-+                       "%s: native compositor cannot apply '%s'; use a config with only protocols, layer-shell, and workspaces",
-                        path, key);
-           goto reject;
-         }
 diff --git a/src/core/util.c b/src/core/util.c
-index cd853b328..0e23ca6ff 100644
+index 82949541b..fc99229e5 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
 @@ -22,6 +22,7 @@
@@ -71,9 +51,9 @@ index cd853b328..0e23ca6ff 100644
  #include "core/display-private.h"
 +#include "core/meta-workspace-manager-private.h"
  #include "core/util-private.h"
+ #include "core/gnoblin-native-control.h"
  
- #include <gio/gunixinputstream.h>
-@@ -862,23 +863,97 @@ meta_gnoblin_call_config_api (const char *method,
+@@ -711,23 +712,98 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
  #endif
  }
  
@@ -102,7 +82,8 @@ index cd853b328..0e23ca6ff 100644
 +meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
 +                                           GError     **error)
 +{
-+  g_autoptr (GVariant) document = gnoblin_config_current_document ();
++  g_autoptr (GVariant) document =
++    gnoblin_native_control_get_config_document (display);
 +  MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
 +  g_object_set_data (G_OBJECT (manager), "gnoblin-native-workspace-count",
 +                     GINT_TO_POINTER (1));
@@ -172,7 +153,7 @@ index cd853b328..0e23ca6ff 100644
    return g_variant_ref_sink (g_variant_builder_end (&record));
  }
  
-@@ -890,14 +965,22 @@ gnoblin_native_workspace_resolve (MetaWorkspaceManager *manager,
+@@ -739,14 +815,22 @@ gnoblin_native_workspace_resolve (MetaWorkspaceManager *manager,
    if (!selector || !g_variant_is_of_type (selector, G_VARIANT_TYPE_VARDICT))
      {
        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -198,7 +179,7 @@ index cd853b328..0e23ca6ff 100644
        return NULL;
      }
    gint64 number;
-@@ -948,9 +1031,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+@@ -797,9 +881,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
        g_autoptr (GVariant) id = g_variant_lookup_value (arguments, "id", NULL);
        if (id)
          {
@@ -220,7 +201,7 @@ index cd853b328..0e23ca6ff 100644
          }
        const char *name = NULL;
        if (!g_variant_lookup (arguments, "name", "&s", &name) ||
-@@ -970,8 +1062,10 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+@@ -819,8 +912,10 @@ gnoblin_native_workspace_api (MetaDisplay *display,
                                 "could not create workspace");
            return NULL;
          }
@@ -233,7 +214,7 @@ index cd853b328..0e23ca6ff 100644
                                g_strdup (name), g_free);
        if (activate)
          meta_workspace_activate (workspace, meta_display_get_current_time (display));
-@@ -1001,13 +1095,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+@@ -850,13 +945,18 @@ gnoblin_native_workspace_api (MetaDisplay *display,
                                     "workspace name must be a nonempty string");
                return NULL;
              }
@@ -254,7 +235,7 @@ index cd853b328..0e23ca6ff 100644
            g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
            if (workspace == meta_workspace_manager_get_active_workspace (manager) ||
                windows || count <= 1)
-@@ -1017,31 +1116,6 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+@@ -866,31 +966,6 @@ gnoblin_native_workspace_api (MetaDisplay *display,
                return NULL;
              }
            g_autoptr (GVariant) record = gnoblin_native_workspace_record (manager, workspace);
@@ -286,7 +267,7 @@ index cd853b328..0e23ca6ff 100644
            meta_workspace_manager_remove_workspace (manager, workspace,
                                                     meta_display_get_current_time (display));
            return g_steal_pointer (&record);
-@@ -1206,6 +1280,8 @@ gnoblin_native_window_list (MetaDisplay *display,
+@@ -1056,6 +1131,8 @@ gnoblin_native_window_list (MetaDisplay *display,
            int number = meta_workspace_index (workspace) + 1;
            g_variant_builder_add (&entry, "{sv}", "workspace", g_variant_new_int32 (number));
            g_variant_builder_add (&entry, "{sv}", "workspaceNumber", g_variant_new_int32 (number));
@@ -296,15 +277,14 @@ index cd853b328..0e23ca6ff 100644
        g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (meta_window_get_monitor (window)));
        g_variant_builder_add (&entry, "{sv}", "maximized", g_variant_new_boolean (meta_window_is_maximized (window)));
 diff --git a/src/meta/util.h b/src/meta/util.h
-index ee59c75b3..d10d5167f 100644
+index 7db174e75..139e36ca2 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -158,5 +158,7 @@ GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+@@ -133,3 +133,7 @@ GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                                             const char  *method,
                                              GVariant    *arguments,
                                              GError     **error);
- META_EXPORT
++
++META_EXPORT
 +gboolean meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
 +                                                     GError     **error);
-+META_EXPORT
- GVariant *meta_gnoblin_drain_config_runtime_operations (void);
--

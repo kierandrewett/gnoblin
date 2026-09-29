@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 07:36:32 +0100
+Subject: [PATCH] mutter: observe passive shortcut modifier releases
+
+---
+diff --git a/src/core/events.c b/src/core/events.c
+index c909e7eb..b2cfc5fa 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -31,6 +31,7 @@
+ #include "compositor/compositor-private.h"
+ #include "compositor/meta-window-actor-private.h"
+ #include "core/display-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "core/window-private.h"
+ #include "meta/meta-backend.h"
+ #include "wayland/meta-wayland-private.h"
+@@ -354,6 +355,8 @@ event_callback (const ClutterEvent *event,
+   MetaDisplay *display = data;
+   gboolean retval;
+ 
++  gnoblin_native_control_observe_key_event (display, event);
++
+   display->current_time = clutter_event_get_time (event);
+   retval = meta_display_handle_event (display, event, event_actor);
+   display->current_time = META_CURRENT_TIME;

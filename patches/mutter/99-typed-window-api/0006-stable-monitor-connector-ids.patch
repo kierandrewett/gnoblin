@@ -5,10 +5,10 @@ Subject: [PATCH] mutter: use stable connector IDs for monitor operations
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 125bcb154..5ffec8283 100644
+index 170827397..770f3ee9f 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -43,6 +43,9 @@
+@@ -44,6 +44,9 @@
  #include "meta/main.h"
  #include "meta/meta-backend.h"
  #include "meta/meta-context.h"
@@ -18,9 +18,9 @@ index 125bcb154..5ffec8283 100644
  #include "meta/meta-workspace-manager.h"
  #include "meta/prefs.h"
  #include "meta/window.h"
-@@ -1312,6 +1315,109 @@ gnoblin_native_workspace_api (MetaDisplay *display,
-   return gnoblin_native_workspace_record (manager, workspace);
+@@ -1040,6 +1043,110 @@ gnoblin_native_workspace_api (MetaDisplay *display,
  }
+ 
  
 +static gboolean gnoblin_native_variant_has_only_keys (GVariant          *arguments,
 +                                                       const char * const *allowed,
@@ -125,10 +125,11 @@ index 125bcb154..5ffec8283 100644
 +  return monitor_index;
 +}
 +
++
  static GVariant *
  gnoblin_native_window_list (MetaDisplay *display,
                              GVariant    *arguments,
-@@ -1448,8 +1554,13 @@ gnoblin_native_window_list (MetaDisplay *display,
+@@ -1176,8 +1283,13 @@ gnoblin_native_window_list (MetaDisplay *display,
        g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (monitor_index));
        if (monitor_index >= 0 && monitor_index < meta_display_get_n_monitors (display))
          {
@@ -142,7 +143,7 @@ index 125bcb154..5ffec8283 100644
            meta_display_get_monitor_geometry (display, monitor_index,
                                               &monitor_geometry);
            g_variant_builder_init (&monitor, G_VARIANT_TYPE_VARDICT);
-@@ -1693,6 +1804,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+@@ -1422,6 +1534,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
    MetaWindow *window;
    const char *id = NULL;
    gboolean enabled = FALSE;
@@ -150,7 +151,7 @@ index 125bcb154..5ffec8283 100644
    guint32 stable_sequence;
    GVariantBuilder result;
    g_autofree char *stable_id = NULL;
-@@ -1808,14 +1920,10 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+@@ -1537,14 +1650,10 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
      }
    if (allowed == monitor_keys)
      {
@@ -169,7 +170,7 @@ index 125bcb154..5ffec8283 100644
      }
  
    backend = meta_context_get_backend (meta_display_get_context (display));
-@@ -1966,15 +2074,13 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+@@ -1695,15 +1804,13 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
      }
    else if (g_str_equal (method, "window.move_to_monitor"))
      {
@@ -186,7 +187,7 @@ index 125bcb154..5ffec8283 100644
      }
  
    g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
-@@ -2050,14 +2156,27 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+@@ -1779,14 +1886,27 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
    n_monitors = meta_display_get_n_monitors (display);
    primary = meta_display_get_primary_monitor (display);
    g_variant_builder_init (&monitors, G_VARIANT_TYPE ("aa{sv}"));
