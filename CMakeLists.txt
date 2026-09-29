@@ -50,10 +50,7 @@ target_include_directories(lua-pattern-test PRIVATE src/config)
 target_link_libraries(lua-pattern-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME lua-pattern COMMAND lua-pattern-test)
 if(GNOBLIN_LUA_FOUND)
-  add_executable(gnoblin
-    src/session/gnoblin-runtime.c
-    src/native-control/gnoblin-runtime-protocol.c
-    src/session/gnoblin-runtime-spawn.c
+  set(GNOBLIN_CONFIG_SOURCES
     src/config/gnoblin-config.c
     src/native-control/gnoblin-input-config.c
     src/config/gnoblin-lua.c
@@ -61,12 +58,31 @@ if(GNOBLIN_LUA_FOUND)
     src/config/gnoblin-glob.c
     src/permissions/gnoblin-portal-identity.c
     src/permissions/gnoblin-portal-policy.c)
-  target_include_directories(gnoblin PRIVATE src/config src/permissions src/native-control)
-  target_compile_definitions(gnoblin PRIVATE
+  add_library(gnoblin-config-core STATIC ${GNOBLIN_CONFIG_SOURCES})
+  target_include_directories(gnoblin-config-core PUBLIC
+    src/config src/permissions src/native-control)
+  target_compile_definitions(gnoblin-config-core PUBLIC
     GNOBLIN_NATIVE_CONTROL_API_MAJOR=1
     GNOBLIN_NATIVE_CONTROL_API_MINOR=34)
-  target_link_libraries(gnoblin PRIVATE
+  target_link_libraries(gnoblin-config-core PUBLIC
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA m)
+
+  foreach(test_name IN ITEMS lua-config lua-api glob-config)
+    add_executable(${test_name}-test tests/${test_name}-test.c)
+    target_link_libraries(${test_name}-test PRIVATE gnoblin-config-core)
+    add_test(NAME ${test_name} COMMAND ${test_name}-test)
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 20)
+  endforeach()
+  set_tests_properties(lua-config PROPERTIES
+    ENVIRONMENT "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR}")
+
+  add_executable(gnoblin
+    src/session/gnoblin-runtime.c
+    src/native-control/gnoblin-runtime-protocol.c
+    src/session/gnoblin-runtime-spawn.c)
+  target_include_directories(gnoblin PRIVATE src/config src/permissions src/native-control)
+  target_link_libraries(gnoblin PRIVATE
+    gnoblin-config-core PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL)
   set(GNOBLIN_BINARY "$<TARGET_FILE:gnoblin>")
 endif()
 add_executable(gnoblin-idle src/session/gnoblin-idle.c)
