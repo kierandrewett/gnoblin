@@ -38,6 +38,12 @@ add_executable(runtime-spawn-test
   src/session/gnoblin-runtime-spawn.c)
 target_link_libraries(runtime-spawn-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME runtime-spawn COMMAND runtime-spawn-test)
+add_executable(autostart-protocol-test
+  tests/autostart-protocol-test.c
+  src/session/gnoblin-autostart.c
+  src/native-control/gnoblin-runtime-protocol.c)
+target_link_libraries(autostart-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME autostart-protocol COMMAND autostart-protocol-test)
 add_executable(runtime-cache-test
   tests/runtime-cache-test.c
   src/native-control/gnoblin-runtime-cache.c)
@@ -78,6 +84,7 @@ if(GNOBLIN_LUA_FOUND)
 
   add_executable(gnoblin
     src/session/gnoblin-runtime.c
+    src/session/gnoblin-autostart.c
     src/native-control/gnoblin-runtime-protocol.c
     src/session/gnoblin-runtime-spawn.c)
   target_include_directories(gnoblin PRIVATE src/config src/permissions src/native-control)
