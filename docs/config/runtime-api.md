@@ -125,14 +125,16 @@ events carry the committed policy snapshot and configuration revision. A
 failed reload emits `gnoblin.config.reload-failed` while the previous runtime
 remains active.
 
-`gnoblin.session.lock()` asks a subscribed external client to start its lock UI.
-It takes no arguments and returns an `Operation<LockRequest>`.
+`gnoblin.session.lock()` asks a subscribed external shell client to show its
+lock UI. The client owns that UI and must use Mutter's lock protocol; this Lua
+method does not lock the session by itself. It takes no arguments and returns
+an `Operation<LockRequest>`.
 
 On success, `dispatched` is `true`. `subscribers` counts connected clients
 subscribed when Gnoblin targets the request. A slow connection may close before
-it handles the event. Neither field confirms delivery or lock state. The
-operation fails when compositor locking is unavailable or no client is
-subscribed. No Lua unlock method is provided.
+it handles the event, so these fields do not confirm that the client showed its
+UI or that the session locked. The operation fails when compositor locking is
+unavailable or no client is subscribed. No Lua unlock method is provided.
 
 The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
 `locked` confirms the compositor's lock transition. See the
