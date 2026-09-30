@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 # gnoblin-env.sh -- shared runtime lookup-path setup for a gnoblin prefix.
 #
-# Source this and call `gnoblin_env_apply "$PREFIX"` from anything that needs
-# gnome-shell/mutter to resolve against a gnoblin build prefix instead of
-# whatever the ambient lookup paths offer. The launchers, installed wrappers,
-# and standalone integration tests all use this function so Mutter ABI and
-# library-directory changes have one source of truth.
+# Source this and call `gnoblin_env_apply "$PREFIX"` from development,
+# installation, and capture scripts that need gnoblin-mutter and related tools
+# to resolve against a Gnoblin build prefix. These callers share one setup for
+# the Mutter ABI and library directory.
 #
 # Callers that need MORE than this (devkit isolation, headless-only backend
 # forcing, disabling extensions for the systemd unit, ...) export their own
 # extra variables after calling gnoblin_env_apply — this only owns the part
 # every caller needs identically.
 #
-# Installed to $PREFIX/libexec/gnoblin-env.sh by scripts/install-session.sh,
-# so the two installed wrappers can source it without depending on this repo
-# checkout still being present at the same path.
+# Installed to $PREFIX/libexec/gnoblin-env.sh by scripts/install-session.sh
+# for tools that need the same setup after the repository checkout is gone.
 set -uo pipefail
 
 # Installation must never merge a Gnoblin runtime into a shared GNOME prefix.
@@ -54,10 +52,7 @@ gnoblin_env_apply() {
     export GNOBLIN_PREFIX="$prefix"
     export GNOBLIN_LIBDIR="$libdir"
     local mutter_api="${GNOBLIN_MUTTER_API:-51}"
-    local shell_libdir="$prefix/$libdir/gnome-shell"
-    local private_libdirs="$shell_libdir:$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api"
-    local private_typelibdirs="$shell_libdir:$shell_libdir/girepository-1.0"
-    private_typelibdirs+=":$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api"
+    local private_libdirs="$prefix/$libdir:$prefix/$libdir/mutter-$mutter_api"
     local cxx_lib=''
     if [ -r "$prefix/libexec/gnoblin-cxx-lib" ]; then
         IFS= read -r cxx_lib <"$prefix/libexec/gnoblin-cxx-lib"
@@ -69,16 +64,11 @@ gnoblin_env_apply() {
     else
         export LD_LIBRARY_PATH="$private_libdirs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     fi
-    export GI_TYPELIB_PATH="$private_typelibdirs${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
     export PATH="$prefix/bin:$PATH"
     export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     # Let GSettings discover Gnoblin's private overrides and the compatible
     # desktop schemas supplied by the host.
     unset GSETTINGS_SCHEMA_DIR
-    export GNOME_SHELL_SESSION_MODE=gnoblin
-    if [ "${GNOBLIN_STANDALONE_SESSION:-0}" = 1 ]; then
-        export XDG_CURRENT_DESKTOP=Gnoblin
-    else
-        export XDG_CURRENT_DESKTOP=Gnoblin:GNOME
-    fi
+    unset GNOME_SHELL_SESSION_MODE
+    export XDG_CURRENT_DESKTOP=Gnoblin
 }
