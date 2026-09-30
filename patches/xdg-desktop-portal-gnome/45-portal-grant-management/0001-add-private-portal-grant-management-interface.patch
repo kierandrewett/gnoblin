@@ -1,11 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From aa5dbc2f16d90c7099a0421b9f6b3d463b95c4ab Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
-Subject: [PATCH] expose Gnoblin portal grant management
+Subject: [PATCH] feat(portal): expose Gnoblin grant management API
 
 ---
+ src/gnoblin-portal-grants.c    | 769 ++++++++++++++++++++++++++++++++-
+ src/gnoblin-portal-grants.h    |  24 +
+ src/meson.build                |   1 +
+ src/xdg-desktop-portal-gnome.c |   7 +
+ 4 files changed, 800 insertions(+), 1 deletion(-)
+
 diff --git a/src/gnoblin-portal-grants.c b/src/gnoblin-portal-grants.c
-index f2e53db..843b19e 100644
+index f2e53db..a208ded 100644
 --- a/src/gnoblin-portal-grants.c
 +++ b/src/gnoblin-portal-grants.c
 @@ -7,12 +7,16 @@
@@ -376,7 +382,7 @@ index f2e53db..843b19e 100644
    return TRUE;
  
  invalid_record:
-@@ -415,3 +684,418 @@ invalid_record:
+@@ -415,3 +684,501 @@ invalid_record:
                 local_error ? local_error->message : "record does not match its lookup key");
    return FALSE;
  }
@@ -800,22 +806,35 @@ index f2e53db..843b19e 100644
 +      return;
 +    }
 +
-+  if (g_str_equal (method_name, "RevokePortalGrant") ||
-+      g_str_equal (method_name, "RevokePortalGrantIfCurrent"))
++  if (g_str_equal (method_name, "RevokePortalGrant"))
 +    {
 +      const char *kind_name;
 +      const char *id;
-+      guint64 created_at_ms = 0;
 +      g_autoptr(GError) error = NULL;
 +
-+      gboolean check_created_at = g_str_equal (method_name, "RevokePortalGrantIfCurrent");
-+      if (check_created_at)
-+        g_variant_get (parameters, "(&s&st)", &kind_name, &id, &created_at_ms);
-+      else
-+        g_variant_get (parameters, "(&s&s)", &kind_name, &id);
-+      if (!(check_created_at
-+                ? gnoblin_portal_grant_revoke_if_current (kind_name, id, created_at_ms, &error)
-+                : gnoblin_portal_grant_revoke (kind_name, id, &error)))
++      g_variant_get (parameters, "(&s&s)", &kind_name, &id);
++      if (!gnoblin_portal_grant_revoke (kind_name, id, &error))
++        {
++          return_grant_error (invocation, error);
++          return;
++        }
++
++      g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
++      return;
++    }
++
++  if (g_str_equal (method_name, "RevokePortalGrantIfCurrent"))
++    {
++      const char *kind_name;
++      const char *id;
++      guint64 expected_created_at_ms;
++      g_autoptr(GError) error = NULL;
++
++      g_variant_get (parameters, "(&s&st)", &kind_name, &id, &expected_created_at_ms);
++      if (!gnoblin_portal_grant_revoke_if_current (kind_name,
++                                                   id,
++                                                   expected_created_at_ms,
++                                                   &error))
 +        {
 +          return_grant_error (invocation, error);
 +          return;
@@ -866,7 +885,7 @@ index f2e53db..843b19e 100644
 +  return TRUE;
 +}
 diff --git a/src/gnoblin-portal-grants.h b/src/gnoblin-portal-grants.h
-index b44de85..ff90f7b 100644
+index b44de85..b17f437 100644
 --- a/src/gnoblin-portal-grants.h
 +++ b/src/gnoblin-portal-grants.h
 @@ -22,6 +22,8 @@ typedef struct
@@ -878,7 +897,7 @@ index b44de85..ff90f7b 100644
  } GnoblinPortalGrant;
  
  void gnoblin_portal_grant_clear (GnoblinPortalGrant *grant);
-@@ -43,3 +45,21 @@ gboolean gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
+@@ -43,3 +45,25 @@ gboolean gnoblin_portal_grant_store (GnoblinPortalGrantKind  kind,
                                       gboolean                 clipboard_enabled,
                                       GVariant                *streams,
                                       GError                 **error);
@@ -905,7 +924,7 @@ index b44de85..ff90f7b 100644
 +gboolean gnoblin_portal_grants_init (GDBusConnection  *connection,
 +                                     GError          **error);
 diff --git a/src/meson.build b/src/meson.build
-index 76053a8..3bde250 100644
+index ace2c66..8016fba 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -111,6 +111,7 @@ sources = built_sources + files(
@@ -941,3 +960,6 @@ index e2f8094..e8aed01 100644
    if (!file_chooser_init (connection, &error))
      {
        g_warning ("error: %s\n", error->message);
+-- 
+2.55.0
+
