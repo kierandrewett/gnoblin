@@ -55,9 +55,6 @@ The source prefixes are `mutter.display`, `mutter.window`,
 signals exposed by the running Mutter build. Newly created windows and
 workspaces are watched as they appear.
 
-Workspace events include `workspace_index`. A `MetaWindow` argument is an
-identity record with `window_id`, `app_id`, and `window_title`.
-
 Gnoblin starts this signal watcher only when the config registers one of these
 events or the `*` listener.
 
@@ -114,10 +111,11 @@ Every signal event includes `source` and `signal`.
 
 - Scalar signal arguments appear as `arg0`, `arg1`, and so on. Their GObject
   types appear in `arg0_type`, `arg1_type`, and so on.
-- Object arguments appear as type names. Window arguments also include
-  `argN_app_id`, `argN_wm_class`, and `argN_title`.
-- `mutter.window.*` events include `window_app_id`, `window_wm_class`, and
-  `window_title`.
+- Workspace signals include `workspace_index`.
+- `window-added` and `window-removed` include a window identity record in
+  `argN`. It contains `window_id`, `app_id`, and `window_title`; `argN_type` is
+  `MetaWindow`.
+- `mutter.window.*` events include `window_id`, `app_id`, and `window_title`.
 
 Values that cannot be represented as simple Lua event fields are omitted or
 reduced to a type or name string.
