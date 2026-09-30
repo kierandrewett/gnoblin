@@ -38,6 +38,7 @@ jobs:
           python3 scripts/manage-patches.py check
           python3 tests/native-socket-text-snap-api.test.py
           python3 tests/session-lock-api.test.py
+          python3 tests/focus-policy-contract.test.py
           python3 tests/check-build-deps.test.py
           python3 tests/release-workflow.test.py
       - name: Build the release source tarball
