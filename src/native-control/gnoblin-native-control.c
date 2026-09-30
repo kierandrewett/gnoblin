@@ -10897,8 +10897,15 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                               g_variant_new_string(operation_error ? operation_error->message
                                                                    : "native operation failed"));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&completion));
-    return native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_COMPLETION, (guint64)operation_id,
-                               payload, error);
+    if (!native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_COMPLETION, (guint64)operation_id,
+                             payload, error))
+        return FALSE;
+
+    g_autoptr(JsonNode) json_result = result ? json_from_variant(result) : NULL;
+    dispatch_operation_completion_full(control, operation_id, method, result != NULL, json_result,
+                                       native_operation_error_code(operation_error),
+                                       operation_error ? operation_error->message : NULL, FALSE);
+    return TRUE;
 }
 
 static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_data) {
