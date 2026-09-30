@@ -13,29 +13,9 @@ from typing import Any, Dict, List, Optional, Union
 REQUIREMENTS = {
     "glib": {
         "capability": "pkgconfig(glib-2.0)",
-        "minimum": "2.86.0",
+        "minimum": "2.81.1",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/gnome-shell/meson.build:24",
-    },
-    "gjs": {
-        "capability": "pkgconfig(gjs-1.0)",
-        "minimum": "1.87.1",
-        "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/gnome-shell/meson.build:25",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/gnoblin-shell.spec:45,66",
-                "kind": "BuildRequires and Requires",
-                "minimum": "1.87.1",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/gnoblin-shell.spec:60,116",
-                "kind": "BuildRequires and Requires",
-                "minimum": "1.87.1",
-                "note": "matches-source-floor",
-            },
-        ],
+        "floorSource": "subprojects/mutter/meson.build:19",
     },
     "wayland": {
         "capability": "pkgconfig(wayland-client)",
@@ -83,41 +63,21 @@ REQUIREMENTS = {
         "floorSource": "subprojects/mutter/meson.build:23",
     },
     "girepository": {
-        "capability": "pkgconfig(girepository-2.0)",
-        "minimum": "2.86.0",
+        "capability": "pkgconfig(gobject-introspection-1.0)",
+        "minimum": "1.41.4",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/gnome-shell/meson.build:27,78",
+        "floorSource": "subprojects/mutter/meson.build:18,299",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/gnoblin-shell.spec:43",
+                "location": "packaging/opensuse/mutter.spec:13,43",
                 "kind": "BuildRequires",
-                "minimum": "2.86.0",
+                "minimum": "1.41.4",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/gnoblin-shell.spec:61,83",
+                "location": "packaging/rpm/mutter.spec:12,58",
                 "kind": "BuildRequires",
-                "minimum": "2.86.0",
-                "note": "matches-source-floor",
-            },
-        ],
-    },
-    "gcr4": {
-        "capability": "pkgconfig(gcr-4)",
-        "minimum": "3.90.0",
-        "declaredScope": "build-closure",
-        "floorSource": "subprojects/gnome-shell/meson.build:26,76",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/gnoblin-shell.spec:41",
-                "kind": "BuildRequires",
-                "minimum": "3.90.0",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/gnoblin-shell.spec:62,82",
-                "kind": "BuildRequires",
-                "minimum": "3.90.0",
+                "minimum": "1.41.4",
                 "note": "matches-source-floor",
             },
         ],

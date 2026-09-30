@@ -15,6 +15,8 @@ SPEC.loader.exec_module(probe)
 class RpmTargetProbeTests(unittest.TestCase):
     def test_requirement_provenance_covers_runtime_contract_and_build_closure(self):
         self.assertEqual(len(probe.REQUIREMENTS), 11)
+        self.assertNotIn("gjs", probe.REQUIREMENTS)
+        self.assertNotIn("gcr4", probe.REQUIREMENTS)
         self.assertEqual(
             {name for name, item in probe.REQUIREMENTS.items() if item["declaredScope"] == "host-runtime-contract"},
             {"glib", "wayland", "libinput", "pipewire"},
@@ -29,11 +31,16 @@ class RpmTargetProbeTests(unittest.TestCase):
             probe.REQUIREMENTS["wayland-protocols"]["floorSource"],
             "subprojects/mutter/meson.build:50,217-218",
         )
+        self.assertEqual(probe.REQUIREMENTS["glib"]["floorSource"], "subprojects/mutter/meson.build:19")
+        self.assertEqual(
+            probe.REQUIREMENTS["girepository"]["capability"],
+            "pkgconfig(gobject-introspection-1.0)",
+        )
         for item in probe.REQUIREMENTS.values():
             self.assertRegex(item["floorSource"], r"^[^:]+:[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)?$")
 
     def test_rpm_specs_match_source_build_closure_floors(self):
-        for component in ("glycin", "libdisplay-info"):
+        for component in ("girepository", "glycin", "libdisplay-info"):
             declarations = probe.REQUIREMENTS[component]["rpmSpecDeclarations"]
             self.assertEqual(
                 {entry["minimum"] for entry in declarations},
