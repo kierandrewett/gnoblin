@@ -4676,6 +4676,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_newtable(state);
     lua_setfield(state, -2, "config");
     for (guint i = 0; api_methods[i]; i++) {
+        if (g_str_has_prefix(api_methods[i], "workspace."))
+            continue; /* Lua exposes workspace operations through workspaces.*. */
         if (g_str_equal(api_methods[i], "shortcut.capture") ||
             g_str_equal(api_methods[i], "shortcut.bind") ||
             g_str_equal(api_methods[i], "shortcut.unbind"))
