@@ -15,7 +15,6 @@ ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "gnome-versions.json"
 PATCH_PROJECTS = (
     "mutter",
-    "gnome-shell",
     "xdg-desktop-portal-gnome",
 )
 RELEASE_PROJECTS = PATCH_PROJECTS + ("gsettings-desktop-schemas",)
@@ -60,17 +59,13 @@ def latest_major(project: str) -> int:
 def generated_values(data: dict) -> tuple[tuple[Path, str, str], ...]:
     components = data["components"]
     mutter = components["mutter"]
-    shell = components["gnome-shell"]
     schemas = components["gsettings-desktop-schemas"]
     portal = components["xdg-desktop-portal-gnome"]
     return (
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^Version:\s+(\S+)$", mutter["version"]),
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^%global mutter_api_version\s+(\S+)$", mutter["api"]),
-        (ROOT / "packaging/rpm/gnoblin-shell.spec", r"(?m)^Version:\s+(\S+)$", shell["version"]),
-        (ROOT / "packaging/rpm/gnoblin-shell.spec", r"(?m)^%define mutter_version\s+(\S+)$", mutter["version"]),
         (ROOT / "packaging/rpm/gnoblin-portal.spec", r"(?m)^Version:\s+(\S+)$", portal["version"]),
         (ROOT / "flake.nix", r"mutter\.git\?rev=([0-9a-f]{40})", mutter["commit"]),
-        (ROOT / "flake.nix", r"gnome-shell\.git\?rev=([0-9a-f]{40})", shell["commit"]),
         (ROOT / "flake.nix", r"xdg-desktop-portal-gnome\.git\?rev=([0-9a-f]{40})", portal["commit"]),
         (
             ROOT / "flake.nix",
