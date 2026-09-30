@@ -584,8 +584,8 @@ API 1.24 adds the `session-activity` capability, the `session.activity` read,
 and `gnoblin.session.activity-changed`.
 
 The read returns `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
-`revision`. The threshold is fixed at 120000 milliseconds, independent of idle
-inhibitors and GNOME's idle-delay setting. When monitoring is unavailable,
+`revision`. Gnoblin uses a fixed threshold of 120 seconds. Idle inhibitors and
+desktop idle-timeout preferences do not change it. When monitoring is unavailable,
 `idle` is false and `idle_for_ms` is zero. While idle, reads advance the
 duration from the last native sample using monotonic time.
 

@@ -143,8 +143,8 @@ for socket subscription and request details.
 
 `gnoblin.session.activity()` returns the latest native idle-monitor sample.
 Its fields are `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
-`revision`. The threshold is fixed at 120000 milliseconds. Activity state is
-independent of idle inhibitors and the GNOME idle-delay setting.
+`revision`. Gnoblin uses a fixed threshold of 120 seconds. Idle inhibitors and
+desktop idle-timeout preferences do not change it.
 
 When the sample is available and idle, `idle_for_ms` advances from the last
 sample using the supervisor's monotonic clock. If monitoring is unavailable,
