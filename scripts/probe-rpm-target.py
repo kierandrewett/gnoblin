@@ -66,7 +66,7 @@ REQUIREMENTS = {
     },
     "libinput": {
         "capability": "pkgconfig(libinput)",
-        "minimum": "1.31.0",
+        "minimum": "1.30.0",
         "declaredScope": "host-runtime-contract",
         "floorSource": "subprojects/mutter/meson.build:53",
     },
