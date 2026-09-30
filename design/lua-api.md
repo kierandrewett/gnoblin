@@ -1210,15 +1210,13 @@ then exits successfully and the session wrapper stops Gnoblin's user services.
 
 ### Current API migration map
 
-This table accounts for every method currently registered in
-`src/config/gnoblin-lua.c` and documented in `docs/config/runtime-api.md`.
-It records legacy method names for migration. Temporary Lua aliases may exist
-while clients migrate, but none of these names creates a GNOME Shell runtime
-dependency in the target contract.
+The Lua runtime uses plural collection reads and typed workspace operations.
+The compositor socket retains its `window.list` and `workspace.list` requests
+for clients such as `gnoblinctl`; those names are not registered as Lua
+methods. The table maps the remaining operation methods to the target API.
 
 | Current method                                                         | Target name or decision                                                                                                                        |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace.list`                                                       | `gnoblin.workspaces.list()`                                                                                                                    |
 | `workspace.create`                                                     | `gnoblin.workspaces.create(options)`                                                                                                           |
 | `workspace.rename`                                                     | `workspace:rename(name)`                                                                                                                       |
 | `workspace.remove`                                                     | `workspace:remove()`                                                                                                                           |
@@ -1227,7 +1225,6 @@ dependency in the target contract.
 | `workspace.previous`                                                   | `gnoblin.workspaces.previous()`                                                                                                                |
 | `workspace.move_active`                                                | `gnoblin.workspaces.active():move_here(window, options)`                                                                                       |
 | `workspace.move_window`                                                | `window:move_to_workspace(target, options)`                                                                                                    |
-| `window.list`                                                          | `gnoblin.windows.list(filter)`                                                                                                                 |
 | `window.match`                                                         | The stable identity and rule match fields become `Window` properties; matching uses list filters.                                              |
 | `window.action`                                                        | Removed from the standalone Lua API; the raw compositor-socket operation remains for compatibility. Lua uses the typed `Window` methods above. |
 | `layer.list`                                                           | `gnoblin.layers.list(filter)`                                                                                                                  |
@@ -1472,8 +1469,8 @@ restrictions.
 
 ### Current window results and actions
 
-The current `window.list` result has `windows`, an array of records with
-these fields. Lua snapshots and socket API 1.35 use the same snake_case
+The compositor socket `window.list` result has `windows`, an array of records
+with these fields. Lua snapshots and socket API 1.35 use the same snake_case
 properties. Socket API 1.x also retains camelCase aliases for compatibility;
 new clients should use the canonical snake_case fields.
 
