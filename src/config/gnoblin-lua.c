@@ -4680,6 +4680,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
             continue; /* Lua exposes workspace operations through workspaces.*. */
         if (g_str_has_prefix(api_methods[i], "window."))
             continue; /* Lua exposes window operations on Window snapshots. */
+        if (g_str_equal(api_methods[i], "input.select"))
+            continue; /* Lua exposes source selection as input.select_source(). */
         if (g_str_equal(api_methods[i], "shortcut.capture") ||
             g_str_equal(api_methods[i], "shortcut.bind") ||
             g_str_equal(api_methods[i], "shortcut.unbind"))
@@ -6246,8 +6248,9 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     guint action_start = config->runtime_actions->len;
     config->actions_in_dispatch = 0;
     config->api_calling = TRUE;
-    gboolean native_operation =
-        g_str_has_prefix(method, "workspace.") || g_str_has_prefix(method, "window.");
+    gboolean native_operation = g_str_has_prefix(method, "workspace.") ||
+                                g_str_has_prefix(method, "window.") ||
+                                g_str_equal(method, "input.select");
     int stack_base = lua_gettop(state);
     if (native_operation) {
         lua_pushlightuserdata(state, config);

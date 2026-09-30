@@ -163,6 +163,7 @@ int main(void) {
 
     const char* menu_runtime_source =
         "local g=require('gnoblin')\n"
+        "assert(g.input.select==nil and type(g.input.select_source)=='function')\n"
         "local menu_calls=0\n"
         "g.on('gnoblin.window.menu-requested', function(event)\n"
         "  assert(event._menu_context_handle==nil and event._menu_context_expires_at_us==nil)\n"
@@ -236,13 +237,32 @@ int main(void) {
         g_variant_lookup_value(socket_window_operation, "method", G_VARIANT_TYPE_STRING);
     g_assert_nonnull(socket_window_method);
     g_assert_cmpstr(g_variant_get_string(socket_window_method, NULL), ==, "window.set_above");
+    GVariantBuilder socket_input_arguments_builder;
+    g_variant_builder_init(&socket_input_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&socket_input_arguments_builder, "{sv}", "type",
+                          g_variant_new_string("xkb"));
+    g_variant_builder_add(&socket_input_arguments_builder, "{sv}", "id",
+                          g_variant_new_string("us"));
+    g_autoptr(GVariant) socket_input_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&socket_input_arguments_builder));
+    g_autoptr(GVariant) socket_input_operation =
+        gnoblin_config_call_api("input.select", socket_input_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_input_operation);
+    g_autoptr(GVariant) socket_input_method =
+        g_variant_lookup_value(socket_input_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_input_method);
+    g_assert_cmpstr(g_variant_get_string(socket_input_method, NULL), ==, "input.select");
     g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 2);
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 3);
     g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
     g_autoptr(GVariant) queued_window_operation =
         g_variant_get_child_value(queued_api_operations, 1);
+    g_autoptr(GVariant) queued_input_operation =
+        g_variant_get_child_value(queued_api_operations, 2);
     g_assert_true(g_variant_equal(socket_workspace_operation, queued_api_operation));
     g_assert_true(g_variant_equal(socket_window_operation, queued_window_operation));
+    g_assert_true(g_variant_equal(socket_input_operation, queued_input_operation));
 
     GVariantBuilder thumbnail_event_builder;
     g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
