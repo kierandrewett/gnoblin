@@ -175,8 +175,8 @@ event revision.
 | `gnoblin.operation.completed`             | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
 | `gnoblin.api.operation-completed`         | `request_id`, `method`, `ok`, `result` or string `error`                           | Legacy completion event retained during migration.                                                  |
 
-Call methods on a lifecycle event's `window` record to act on that window. The
-record is read-only:
+Structured event values are read-only snapshots. Call methods on a lifecycle
+event's `window` record to act on that window:
 
 ```lua
 gnoblin.on("gnoblin.window.changed", function(event)
