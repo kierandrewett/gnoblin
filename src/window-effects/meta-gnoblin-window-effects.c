@@ -5,14 +5,17 @@
 
 #include <cogl/cogl.h>
 #include <math.h>
+#include <string.h>
 
 #define ROUNDED_CLIP_EFFECT_NAME "gnoblin-rounded-clip"
+#define ROUNDED_CLIP_PADDING_LIMIT 128.
 
 typedef struct {
     ClutterOffscreenEffect parent;
     double radius;
     double exponent;
     gboolean automatic;
+    double padding[4];
 } MetaGnoblinRoundedClip;
 
 typedef ClutterOffscreenEffectClass MetaGnoblinRoundedClipClass;
@@ -88,15 +91,25 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     float scale_x;
     float scale_y;
     float radius;
+    float padding_top;
+    float padding_right;
+    float padding_bottom;
+    float padding_left;
 
     if (actor && clutter_offscreen_effect_get_target_rect(effect, &target)) {
         scale_x = target.size.width / MAX(clutter_actor_get_width(actor), 1.f);
         scale_y = target.size.height / MAX(clutter_actor_get_height(actor), 1.f);
         radius = (float)(clip->radius * MIN(scale_x, scale_y));
-        bounds[0] = target.origin.x;
-        bounds[1] = target.origin.y;
-        bounds[2] = target.origin.x + target.size.width;
-        bounds[3] = target.origin.y + target.size.height;
+        padding_top = (float)(clip->padding[0] * scale_y);
+        padding_right = (float)(clip->padding[1] * scale_x);
+        padding_bottom = (float)(clip->padding[2] * scale_y);
+        padding_left = (float)(clip->padding[3] * scale_x);
+        bounds[0] = target.origin.x + padding_left;
+        bounds[1] = target.origin.y + padding_top;
+        bounds[2] = target.origin.x + target.size.width - padding_right;
+        bounds[3] = target.origin.y + target.size.height - padding_bottom;
+        if (bounds[2] <= bounds[0] || bounds[3] <= bounds[1])
+            radius = 0.f;
         cogl_pipeline_set_uniform_float(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_bounds"),
             4, 1, bounds);
@@ -145,15 +158,28 @@ void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor) {
 }
 
 void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double radius,
-                                                  double exponent, gboolean automatic) {
+                                                  double exponent, gboolean automatic,
+                                                  const double padding[4]) {
     MetaGnoblinRoundedClip* clip;
     ClutterEffect* effect;
+    double clamped_padding[4];
+    guint i;
 
     g_return_if_fail(CLUTTER_IS_ACTOR(actor));
+    g_return_if_fail(padding != NULL);
 
     if (!isfinite(radius) || !isfinite(exponent) || radius <= 0) {
         meta_gnoblin_window_effects_clear_rounded_clip(actor);
         return;
+    }
+
+    for (i = 0; i < G_N_ELEMENTS(clamped_padding); i++) {
+        if (!isfinite(padding[i])) {
+            g_warning("Gnoblin rounded clip padding must contain only finite values");
+            return;
+        }
+        clamped_padding[i] =
+            CLAMP(padding[i], -ROUNDED_CLIP_PADDING_LIMIT, ROUNDED_CLIP_PADDING_LIMIT);
     }
 
     effect = clutter_actor_get_effect(actor, ROUNDED_CLIP_EFFECT_NAME);
@@ -168,6 +194,7 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
         clip->radius = radius;
         clip->exponent = exponent;
         clip->automatic = automatic;
+        memcpy(clip->padding, clamped_padding, sizeof(clip->padding));
         clutter_actor_add_effect_with_name(actor, ROUNDED_CLIP_EFFECT_NAME, CLUTTER_EFFECT(clip));
         g_object_unref(clip);
         return;
@@ -175,10 +202,12 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
         clip = META_GNOBLIN_ROUNDED_CLIP(effect);
     }
 
-    if (clip->radius == radius && clip->exponent == exponent && clip->automatic == automatic)
+    if (clip->radius == radius && clip->exponent == exponent && clip->automatic == automatic &&
+        memcmp(clip->padding, clamped_padding, sizeof(clip->padding)) == 0)
         return;
     clip->radius = radius;
     clip->exponent = exponent;
     clip->automatic = automatic;
+    memcpy(clip->padding, clamped_padding, sizeof(clip->padding));
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }
