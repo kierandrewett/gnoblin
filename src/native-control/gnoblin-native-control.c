@@ -3357,6 +3357,11 @@ static void native_window_drag_client_disconnected(GnoblinNativeControl* control
                                                    guint64 client_id);
 
 static void client_close(Client* client) {
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+        g_message("gnoblin-native-control: close client=%" G_GUINT64_FORMAT
+                  " pending=%" G_GSIZE_FORMAT " reading=%d writing=%d deferred=%u",
+                  client->client_id, client->pending_bytes, client->reading, client->writing,
+                  client->pending_deferred_requests);
     if (!client->closing) {
         client->closing = TRUE;
         clear_client_dynamic_shortcuts(client);
@@ -5208,6 +5213,15 @@ static void remove_private_focus_context(JsonNode* node) {
 }
 
 static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET")) {
+        const char* debug_name = control && payload && JSON_NODE_HOLDS_OBJECT(payload)
+                                     ? json_object_get_string_member_with_default(
+                                           json_node_get_object(payload), "name", "")
+                                     : "";
+        g_message("gnoblin-native-control: publish event=%s stopping=%d clients=%u", debug_name,
+                  control ? control->stopping : TRUE,
+                  control && control->clients ? g_hash_table_size(control->clients) : 0);
+    }
     JsonObject* object = json_node_get_object(payload);
     const char* name = json_object_get_string_member_with_default(object, "name", NULL);
     if (!name)
