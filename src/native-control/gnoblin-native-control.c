@@ -9472,6 +9472,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (arguments_node && !JSON_NODE_HOLDS_OBJECT(arguments_node))
         return encode_response(id, NULL, "arguments must be an object");
     if (g_str_equal(method, "window.list")) {
+        if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+            g_message("gnoblin-native-control: handling window.list request %s", id);
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) arguments = arguments_node
@@ -9481,9 +9483,15 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL, "window.list arguments are invalid");
         g_autoptr(GVariant) result =
             meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
-        if (!result)
+        if (!result) {
+            if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+                g_message("gnoblin-native-control: window.list failed: %s",
+                          error ? error->message : "unknown error");
             return encode_response(id, NULL, error ? error->message : "window listing unavailable");
+        }
         g_autoptr(JsonNode) json = json_from_variant(result);
+        if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+            g_message("gnoblin-native-control: returning window.list response %s", id);
         return encode_response(id, json, NULL);
     }
     if (g_str_equal(method, "session.status")) {

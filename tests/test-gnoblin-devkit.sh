@@ -53,7 +53,8 @@ PY
 SCRIPT
 )
 
-output="$(GNOBLIN_STATE_DIR="$ROOT/build/logs/devkit-state" \
+output="$(GNOBLIN_DEBUG_SOCKET=1 \
+    GNOBLIN_STATE_DIR="$ROOT/build/logs/devkit-state" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
