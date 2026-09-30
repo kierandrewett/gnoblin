@@ -8,14 +8,14 @@
 # bytes. RPM-specific sidecar sources are staged when building RPMs.
 set -euo pipefail
 
-PROJ="${1:?usage: make-tarball.sh <mutter|gnome-shell|xdg-desktop-portal-gnome> [outdir]}"
+PROJ="${1:?usage: make-tarball.sh <mutter|xdg-desktop-portal-gnome> [outdir]}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SM="$ROOT/subprojects/$PROJ"
 OUTDIR="${2:-${HOME}/rpmbuild/SOURCES}"
 
 # RPM Version field stays numeric; the gnoblin marker lives in Release/meson.
 case "$PROJ" in
-    mutter | gnome-shell | xdg-desktop-portal-gnome) VER="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)" ;;
+    mutter | xdg-desktop-portal-gnome) VER="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)" ;;
     *)
         echo "unknown subproject: $PROJ" >&2
         exit 1
@@ -34,9 +34,6 @@ esac
 
 mkdir -p "$OUTDIR"
 ARCHIVE_NAME="$PROJ"
-if [[ "$PROJ" == gnome-shell ]]; then
-    ARCHIVE_NAME=gnoblin-shell
-fi
 OUT="$OUTDIR/${ARCHIVE_NAME}-${VER}.tar.xz"
 TEMP="$(mktemp --tmpdir="$OUTDIR" ".${ARCHIVE_NAME}-${VER}.tar.xz.XXXXXX")"
 cleanup() {
