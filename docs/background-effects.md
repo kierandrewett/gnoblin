@@ -61,23 +61,10 @@ Bingux combines material regions per window during scene synchronisation.
 Its standard regions exclude shadows; clients without protocol support retain
 their fallback behavior.
 
-## Tests
+## Verify a change
 
-```sh
-GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-background-effect.sh" \
-bash scripts/run-gnome-shell.sh
-```
-
-Covers negotiation, object errors, commit timing, holes, clipping, scale,
-destruction and subsurfaces with rendered pixels.
-
-Additional checks:
-
-- `tests/test-blur-surface-joins.py`: adjoining surfaces and narrow panels.
-- `tests/test-blur-detail-coverage.py`: icons, separators and borders.
-- Bingux `tests/standard-background.py`: real dock menus.
-- Bingux `tests/popup-shadow-blur.py`: shadows excluded from blur.
-
-Use `GNOBLIN_TEST_STANDARD_BLUR=1` for standard-region paths where supported.
+Use the [devkit](/devkit) to inspect the rendered result with the shell client
+that owns the layer surface. `just test-all` builds the standalone session and
+runs native runtime checks; it does not test a shell client's rendered blur.
+See [testing](/testing) for available checks and their limits.
 Provide the matching Bingux effects module through `QML_IMPORT_PATH`.
