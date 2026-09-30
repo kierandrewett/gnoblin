@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Keep a normal-config nested desktop alive for input/pixel regression checks.
 
-Run only through run-gnome-devkit.sh, with a copied XDG_CONFIG_HOME and private
+Run only through run-gnoblin-devkit.sh, with a copied XDG_CONFIG_HOME and private
 XDG_RUNTIME_DIR. Does not install fixture rules or replace the user's settings.
 """
 
