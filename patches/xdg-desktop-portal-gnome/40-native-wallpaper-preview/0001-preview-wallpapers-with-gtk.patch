@@ -5,15 +5,16 @@ Subject: [PATCH] portal: preview wallpapers without GNOME Desktop libraries
 
 ---
 diff --git a/src/meson.build b/src/meson.build
-index 76053a8..e29bb2b 100644
+index 215995b..87ef3b0 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -81,12 +81,11 @@ deps = [
+@@ -81,13 +81,12 @@ deps = [
    meson.get_compiler('c').find_library('m'),
    dependency('fontconfig'),
    dependency('glib-2.0', version: '>= 2.76'),
 +  dependency('glycin-2'),
    dependency('gio-unix-2.0'),
+   dependency('json-glib-1.0'),
    dependency('gtk4', version: '>= 4.0'),
    dependency('gtk4-unix-print', version: '>= 4.0'),
    dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
