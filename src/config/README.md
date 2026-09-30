@@ -2,7 +2,9 @@
 
 Gnoblin evaluates one Lua root file in a fresh restricted Lua state. The
 default root is `$XDG_CONFIG_HOME/gnoblin/init.lua`. `GNOBLIN_CONFIG` selects
-an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
+an explicit root. Root and included files must use a `.lua` suffix. Existing
+`gnoblin.toml` and `gnoblin.conf` files are detected so Gnoblin can report that
+they need conversion instead of silently creating a new default config.
 
 `gnoblin` is available globally. Its main declarations are:
 
@@ -30,7 +32,7 @@ For example, a settings declaration and a window rule use this shape:
 gnoblin.configure {window_management = {focus_mode = "click"}}
 
 gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.Editor$"},
+    match = {type = "window", app_id = [[^org%.example%.Editor$]]},
     animation = {open = "gnome-open"},
 }
 ```
