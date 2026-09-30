@@ -52,13 +52,13 @@ Mutter objects or private C types.
 The target covers the window-manager calls used by Bingux's current dock,
 launcher, switcher, window menu, and workspace selector:
 
-| Shell need                                                                                        | Gnoblin API                                                                  |
-| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| List and group windows; track creation, closure, focus, attention, workspace, and monitor changes | `gnoblin.windows.list()`, `Window` properties, and `gnoblin.window.*` events |
-| Restore a minimized window or activate a user-selected window                                     | `window:restore()` and `window:focus(context)`                               |
-| Close, minimize, maximize, move, resize, pin above, or keep a window on all workspaces            | Typed `Window` methods and setters                                           |
-| Show and switch workspaces; move a window to another workspace                                    | `gnoblin.workspaces.*`, `Workspace` methods, and workspace events            |
-| Inspect outputs and shell-owned layer surfaces                                                    | `gnoblin.monitors.list()` and `gnoblin.layers.list()`                        |
+| Shell need                                                                                        | Gnoblin API                                                                     |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| List and group windows; track creation, closure, focus, attention, workspace, and monitor changes | `gnoblin.windows.list()`, `Window` properties, and `gnoblin.window.*` events    |
+| Restore a minimized window or activate a user-selected window                                     | `window:restore()`; the shell sends `window.focus` with an XDG Activation token |
+| Close, minimize, maximize, move, resize, pin above, or keep a window on all workspaces            | Typed `Window` methods and setters                                              |
+| Show and switch workspaces; move a window to another workspace                                    | `gnoblin.workspaces.*`, `Workspace` methods, and workspace events               |
+| Inspect outputs and shell-owned layer surfaces                                                    | `gnoblin.monitors.list()` and `gnoblin.layers.list()`                           |
 
 This is a control surface for shell clients. It does not replace the Wayland
 protocols through which those clients create and operate their own UI windows.
@@ -369,8 +369,9 @@ or launch context is valid; an unapproved request remains unfocused and may
 mark the window as demanding attention. `"smart"` focuses a new window even
 when its activation context is weak. This is convenient for apps that do not
 provide activation metadata, but can let an app interrupt the current task, so
-it remains an opt-in compatibility choice. A valid `FocusContext` for an
-explicit shell selection follows the user-activation path in either mode.
+it remains an opt-in compatibility choice. Supervised Lua callbacks use their
+one-use `FocusContext` for an explicit selection. An independent shell client
+uses the socket `window.focus` operation with an XDG Activation token instead.
 
 `gnoblin.focus.history()` is available in the native runtime. It returns live
 window snapshots, including minimized windows, ordered by most-recently
@@ -379,18 +380,20 @@ order when a snapshot is installed. Other windows already open at startup, or
 new windows not yet focused, follow snapshot order until a focus event places
 them in the MRU order. Closed windows are removed. Filters match workspace and
 monitor IDs; `limit` is 1–256 and defaults to 50. A shell client can display
-this list and call `window:focus(context)` when it has a live context from a
-trusted shortcut event. `FocusContext` is an
-opaque, single-use value issued for a real user action. The compositor
-validates it and its lifetime;
-Lua cannot construct or inspect one. Missing, expired, already-used, or
-mismatched context fails with `denied` and does not change keyboard focus. A
-Lua callback that handles a user-originated Gnoblin event receives the context
-on the event record. A shell client handling its own pointer or keyboard event
-uses its Wayland client and standard activation protocol; this checkout has no
-Gnoblin API that converts the shell's input evidence into a `FocusContext`.
-Calls from timers, startup hooks, or application callbacks have no context and
-cannot force focus. The context is not a client-chosen string.
+this list and activate a selected window through the local `window.focus`
+operation with an XDG Activation token obtained after its own user input.
+Gnoblin requires the process that created the token to own the socket
+connection, and Mutter validates the token's source surface and input serial.
+The token is single-use and is not a Lua value.
+
+The Lua `window:focus(context)` method instead requires a `FocusContext`: an
+opaque, single-use value issued for a real user action. A Lua callback that
+handles a user-originated Gnoblin event receives the context on the event
+record. The compositor validates its lifetime; Lua cannot construct or
+inspect it. Missing, expired, already-used, or mismatched context fails with
+`denied` and does not change keyboard focus. Calls from timers, startup hooks,
+or application callbacks have no context and cannot force focus. The context
+is not a client-chosen string.
 
 Application processes do not call this API to claim focus. Wayland
 applications request activation with XDG Activation tokens, and Mutter decides
@@ -1387,9 +1390,10 @@ while connected and the dedicated lock-state event for lock transitions.
 ## Wire contract and versioning
 
 Lua record methods are wrappers around versioned, typed operation names. The
-local client interface exposes those same operations, result records, error
-codes, and event payloads. It must not expose a second shell-only socket
-contract.
+local client interface exposes the same operation names, result records, error
+codes, and event payloads. Authentication evidence can differ by caller: the
+supervised Lua runtime uses compositor-issued contexts, while an external
+shell client supplies an XDG Activation token for user-selected window focus.
 
 The compositor handshake reports `api_major` and `api_minor`:
 
