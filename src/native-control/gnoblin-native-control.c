@@ -3357,11 +3357,6 @@ static void native_window_drag_client_disconnected(GnoblinNativeControl* control
                                                    guint64 client_id);
 
 static void client_close(Client* client) {
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
-        g_message("gnoblin-native-control: close client=%" G_GUINT64_FORMAT
-                  " pending=%" G_GSIZE_FORMAT " reading=%d writing=%d deferred=%u",
-                  client->client_id, client->pending_bytes, client->reading, client->writing,
-                  client->pending_deferred_requests);
     if (!client->closing) {
         client->closing = TRUE;
         clear_client_dynamic_shortcuts(client);
@@ -3970,9 +3965,6 @@ static void dispatch_operation_completion_full(GnoblinNativeControl* control, gi
                                                gboolean dispatch_lua) {
     if (request_id <= 0)
         return;
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
-        g_message("gnoblin-native-control: completing %s request=%" G_GINT64_FORMAT " ok=%d",
-                  method, request_id, ok);
 
     gboolean cancelled_by_restart =
         control->runtime_cancelled_operation_ids &&
@@ -5213,15 +5205,6 @@ static void remove_private_focus_context(JsonNode* node) {
 }
 
 static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET")) {
-        const char* debug_name = control && payload && JSON_NODE_HOLDS_OBJECT(payload)
-                                     ? json_object_get_string_member_with_default(
-                                           json_node_get_object(payload), "name", "")
-                                     : "";
-        g_message("gnoblin-native-control: publish event=%s stopping=%d clients=%u", debug_name,
-                  control ? control->stopping : TRUE,
-                  control && control->clients ? g_hash_table_size(control->clients) : 0);
-    }
     JsonObject* object = json_node_get_object(payload);
     const char* borrowed_name = json_object_get_string_member_with_default(object, "name", NULL);
     g_autofree char* name = g_strdup(borrowed_name);
@@ -5241,14 +5224,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
     if (operation_completion)
         completed_operation_id = json_object_get_int_member(object, "operation_id");
     GList* clients = g_hash_table_get_keys(control->clients);
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
-        g_message("gnoblin-native-control: delivery snapshot event=%s hash_size=%u list_length=%u",
-                  name, g_hash_table_size(control->clients), g_list_length(clients));
     for (GList* item = clients; item; item = item->next) {
         Client* client = item->data;
-        if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
-            g_message("gnoblin-native-control: delivery candidate event=%s client=%p", name,
-                      (void*)client);
         gboolean subscribed = client->event_api_minor >= 9 && client->event_subscriptions &&
                               g_hash_table_contains(client->event_subscriptions, name);
         if (g_str_equal(name, "gnoblin.operation.completed") && completed_operation_id > 0 &&
@@ -5284,12 +5261,6 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
                    client->track_windows && client->windows_api_minor >= 1) {
             subscribed = TRUE;
         }
-        if (g_getenv("GNOBLIN_DEBUG_SOCKET") &&
-            g_str_equal(name, "gnoblin.api.operation-completed"))
-            g_message("gnoblin-native-control: completion event client=%" G_GUINT64_FORMAT
-                      " api=%u event_api=%u subscribed=%d pending=%u",
-                      client->client_id, client->api_minor, client->event_api_minor, subscribed,
-                      client->pending_bytes);
         if ((g_str_equal(name, "gnoblin.window.menu-requested") ||
              g_str_equal(name, "gnoblin.osd.requested")) &&
             client->event_api_minor < 27)
@@ -9821,14 +9792,6 @@ static void write_done(GObject* source, GAsyncResult* result, gpointer user_data
     gboolean written =
         g_output_stream_write_all_finish(G_OUTPUT_STREAM(source), result, NULL, &error);
     Client* client = pending->client;
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET") &&
-        strstr(pending->response, "gnoblin.api.operation-completed"))
-        g_message("gnoblin-native-control: completion write client=%" G_GUINT64_FORMAT
-                  " written=%d",
-                  client->client_id, written);
-    if (g_getenv("GNOBLIN_DEBUG_SOCKET") && !written)
-        g_message("gnoblin-native-control: socket write failed: %s",
-                  error ? error->message : "unknown error");
     client->writing = FALSE;
     client->pending_bytes -= strlen(pending->response);
     g_free(pending->response);
