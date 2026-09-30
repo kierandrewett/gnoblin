@@ -315,17 +315,21 @@ static void runtime_fail(Runtime* runtime, const char* message) {
 }
 
 static GVariant* config_packet_payload(GVariant* document, guint64 revision, guint64 generation) {
+    g_auto(GStrv) runtime_events = gnoblin_config_runtime_events();
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "document_version", g_variant_new_uint32(1));
     g_variant_builder_add(&builder, "{sv}", "settings_revision", g_variant_new_uint64(revision));
     g_variant_builder_add(&builder, "{sv}", "runtime_generation", g_variant_new_uint64(generation));
     g_variant_builder_add(&builder, "{sv}", "document", document);
+    g_variant_builder_add(&builder, "{sv}", "runtime_events",
+                          g_variant_new_strv((const char* const*)runtime_events, -1));
     return g_variant_ref_sink(g_variant_builder_end(&builder));
 }
 
 static GVariant* resume_packet_payload(GVariant* document, guint64 revision, guint64 generation,
                                        guint64 operation_id_watermark) {
+    g_auto(GStrv) runtime_events = gnoblin_config_runtime_events();
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "document", document);
@@ -333,6 +337,8 @@ static GVariant* resume_packet_payload(GVariant* document, guint64 revision, gui
     g_variant_builder_add(&builder, "{sv}", "runtime_generation", g_variant_new_uint64(generation));
     g_variant_builder_add(&builder, "{sv}", "operation_id_watermark",
                           g_variant_new_uint64(operation_id_watermark));
+    g_variant_builder_add(&builder, "{sv}", "runtime_events",
+                          g_variant_new_strv((const char* const*)runtime_events, -1));
     return g_variant_ref_sink(g_variant_builder_end(&builder));
 }
 

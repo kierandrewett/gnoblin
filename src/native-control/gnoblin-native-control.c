@@ -136,6 +136,7 @@ struct _GnoblinNativeControl {
     GHashTable* pending_runtime_requests;
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
+    GHashTable* runtime_event_subscriptions;
     GQueue* pending_runtime_states;
     GQueue* pending_runtime_events;
     gint64 shortcut_capture_request_id;
@@ -10600,17 +10601,47 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     }
 }
 
+static GHashTable* native_runtime_event_subscriptions_from_payload(GVariant* payload,
+                                                                   GError** error) {
+    g_autoptr(GVariant) events =
+        g_variant_lookup_value(payload, "runtime_events", G_VARIANT_TYPE("as"));
+    if (!events) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "runtime configuration is missing Lua event subscriptions");
+        return NULL;
+    }
+    g_auto(GStrv) event_names = g_variant_dup_strv(events, NULL);
+    GHashTable* subscriptions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    for (guint i = 0; event_names[i]; i++) {
+        if (!event_names[i][0] || strlen(event_names[i]) > 128 ||
+            !g_utf8_validate(event_names[i], -1, NULL) ||
+            g_hash_table_contains(subscriptions, event_names[i])) {
+            g_hash_table_unref(subscriptions);
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "runtime configuration contains an invalid Lua event name");
+            return NULL;
+        }
+        g_hash_table_add(subscriptions, g_strdup(event_names[i]));
+    }
+    return subscriptions;
+}
+
 static gboolean native_runtime_resume_snapshot_matches(GnoblinNativeControl* control,
                                                        GVariant* payload) {
     g_autoptr(GVariant) document =
         g_variant_lookup_value(payload, "document", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) current_document =
         gnoblin_runtime_cache_get_document(control->runtime_cache);
+    g_autoptr(GError) events_error = NULL;
+    g_autoptr(GHashTable) subscriptions =
+        native_runtime_event_subscriptions_from_payload(payload, &events_error);
     guint64 revision = 0;
     guint64 generation = 0;
     guint64 operation_id_watermark = 0;
-    return document && current_document &&
-           g_variant_lookup(payload, "settings_revision", "t", &revision) &&
+    if (!subscriptions || !control->runtime_event_subscriptions)
+        return FALSE;
+    return g_hash_table_equal(subscriptions, control->runtime_event_subscriptions) && document &&
+           current_document && g_variant_lookup(payload, "settings_revision", "t", &revision) &&
            g_variant_lookup(payload, "runtime_generation", "t", &generation) &&
            g_variant_lookup(payload, "operation_id_watermark", "t", &operation_id_watermark) &&
            revision == gnoblin_runtime_cache_get_settings_revision(control->runtime_cache) &&
@@ -11067,8 +11098,12 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 bootstrap_runtime_cache
                     ? gnoblin_runtime_cache_get_settings_revision(bootstrap_runtime_cache)
                     : 0;
+            g_autoptr(GError) config_error = NULL;
+            g_autoptr(GHashTable) next_event_subscriptions =
+                native_runtime_event_subscriptions_from_payload(packet.payload, &config_error);
             gboolean fields_valid =
-                document && g_variant_lookup(packet.payload, "document_version", "u", &version) &&
+                document && next_event_subscriptions &&
+                g_variant_lookup(packet.payload, "document_version", "u", &version) &&
                 version == 1 &&
                 g_variant_lookup(packet.payload, "settings_revision", "t", &revision) &&
                 g_variant_lookup(packet.payload, "runtime_generation", "t", &runtime_generation) &&
@@ -11078,7 +11113,6 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 runtime_generation >= control->runtime_generation &&
                 (packet.request_id == 0 ? runtime_generation == control->runtime_generation
                                         : runtime_generation > control->runtime_generation);
-            g_autoptr(GError) config_error = NULL;
             gboolean rollback_failed = FALSE;
             if (candidate_valid) {
                 g_autoptr(GVariant) old_workspaces =
@@ -11166,9 +11200,13 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             } else if (fields_valid) {
                 g_set_error_literal(&config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                     "configuration revision or runtime generation is stale");
-            } else {
+            } else if (!config_error) {
                 g_set_error_literal(&config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                     "supervisor sent an invalid configuration snapshot");
+            }
+            if (handled) {
+                g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
+                control->runtime_event_subscriptions = g_steal_pointer(&next_event_subscriptions);
             }
             g_clear_pointer(&document, g_variant_unref);
             if (packet.request_id > 0) {
@@ -11306,6 +11344,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
     control->runtime_cancelled_operation_ids =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
+    control->runtime_event_subscriptions =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     control->pending_runtime_states = g_queue_new();
     control->pending_runtime_events = g_queue_new();
     control->privacy_handles =
@@ -11721,6 +11761,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref);
     g_clear_pointer(&control->runtime_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);
+    g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
     g_clear_pointer(&control->runtime_reader, gnoblin_runtime_reader_free);
     g_clear_pointer(&control->runtime_writer, gnoblin_runtime_writer_free);
     if (control->pending_runtime_states) {
