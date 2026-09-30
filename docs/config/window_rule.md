@@ -14,19 +14,24 @@ gnoblin.window_rule {
 
 ## Match fields
 
-| Field              | Values                                                                     |
-| ------------------ | -------------------------------------------------------------------------- |
-| `type`             | `"window"` or `"layer"`                                                    |
-| `focused`          | Boolean                                                                    |
-| `app_id`           | JavaScript regular expression against GTK app ID, falling back to WM class |
-| `title`            | JavaScript regular expression against the window title                     |
-| `layer`            | Layer-shell namespace matcher                                              |
-| `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime             |
-| `workspace_number` | Current one-based workspace position, 1–1024                               |
+| Field              | Values                                                         |
+| ------------------ | -------------------------------------------------------------- |
+| `type`             | `"window"` or `"layer"`                                        |
+| `focused`          | Boolean                                                        |
+| `app_id`           | Lua pattern against GTK app ID, falling back to WM class       |
+| `title`            | Lua pattern against the window title                           |
+| `layer`            | Lua pattern against the layer-shell namespace                  |
+| `workspace_id`     | Exact workspace ID; declared or explicitly assigned at runtime |
+| `workspace_number` | Current one-based workspace position, 1–1024                   |
 
-All supplied match fields must match. The `app_id`, `title`, and `layer`
-patterns are case-sensitive JavaScript regular expressions. Use `^` and `$`
-to match the whole value. `workspace_id` matches an exact, case-sensitive ID.
+All supplied match fields must match. Text patterns use Lua 5.4
+`string.find` syntax. They are case-sensitive and search anywhere by default.
+Use `^` and `$` to match the whole value.
+
+In Lua patterns, `.` matches any character and `%.` matches a literal dot.
+For example, `^org%.example%.App$` matches the complete ID
+`org.example.App`. JavaScript and PCRE regex syntax is not supported.
+`workspace_id` matches an exact, case-sensitive ID.
 
 See the [window rules guide](/guides/window_rules#find-the-values) for examples
 and ways to find a live app ID, title, or layer namespace.
@@ -179,9 +184,9 @@ gnoblin.window_rule {
     match = {
         type = "window" | "layer"?,
         focused = boolean?,
-        app_id = string?, -- regular expression
-        title = string?, -- regular expression
-        layer = string?, -- regular expression
+        app_id = string?, -- Lua 5.4 pattern
+        title = string?, -- Lua 5.4 pattern
+        layer = string?, -- Lua 5.4 pattern
         workspace_id = string?,
         workspace_number = integer?, -- 1–1024
     },

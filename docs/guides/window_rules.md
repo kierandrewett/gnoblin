@@ -90,10 +90,13 @@ backgrounds do not stack.
 
 ## Write a matcher
 
-The string fields `app_id`, `title`, and `layer` accept **JavaScript regular
-expressions**. They are not Lua patterns or shell globs. See the [JavaScript
-regular-expression guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions)
-for the syntax.
+The string fields `app_id`, `title`, and `layer` accept **Lua 5.4 patterns**.
+They are case-sensitive and search anywhere by default. Use `^` and `$` to
+match the whole value.
+
+A dot (`.`) matches any character; write `%.` to match a literal dot. See the
+[Lua pattern reference](https://www.lua.org/manual/5.4/manual.html#6.4.1) for
+other pattern characters. JavaScript and PCRE regex syntax is not supported.
 
 Use `^` at the start and `$` at the end to match the whole value. For example,
 if the console reports `org.gnome.Nautilus` as `rule_app_id`, match only that
@@ -101,14 +104,14 @@ app like this:
 
 ```lua
 gnoblin.window_rule {
-    match = {type = "window", app_id = [[^org\.gnome\.Nautilus$]]},
+    match = {type = "window", app_id = [[^org%.gnome%.Nautilus$]]},
     opacity = 0.95,
 }
 ```
 
-In Lua's `[[...]]` string, each backslash is kept as written. The backslash
-before each dot makes it a literal dot in the regular expression. Replace the
-example with the value reported on your system.
+In Lua's `[[...]]` string, percent signs are kept as written. The `%` before
+each dot makes it a literal dot in the pattern. Replace the example with the
+value reported on your system.
 
 To match a title containing `Notes` anywhere, omit the anchors:
 
