@@ -1311,8 +1311,9 @@ The standalone runtime maps changes to
 Use the desktop settings service to read the preference when a shell starts.
 
 The `Native` event rows are implemented only by the native Mutter runtime.
-Their window tables currently contain a subset of the target `Window` fields;
-they are plain callback payloads, not read-only records with methods.
+Their window tables contain the fields supplied by the native event. Structured
+event fields are detached, read-only snapshots; window records expose the same
+methods as window query results when their fields identify them as windows.
 
 Current compatibility aliases are `pointer_window_changed`,
 `focus_changed`, `window_created`, `window_unmanaged`, and

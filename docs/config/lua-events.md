@@ -49,11 +49,14 @@ gnoblin.on("mutter.window.position-changed", function(event)
 end)
 ```
 
-The source prefixes are `mutter.display`, `mutter.window`,
-`mutter.workspace-manager`, `mutter.workspace`, `mutter.backend`,
-`mutter.monitor-manager`, and `mutter.cursor-tracker`. Gnoblin forwards the
-signals exposed by the running Mutter build. Newly created windows and
-workspaces are watched as they appear.
+Gnoblin forwards signals from these Mutter sources:
+
+- Display and windows: `mutter.display`, `mutter.window`.
+- Workspaces: `mutter.workspace-manager`, `mutter.workspace`.
+- Compositor state: `mutter.backend`, `mutter.monitor-manager`,
+  `mutter.cursor-tracker`.
+
+It watches newly created windows and workspaces as they appear.
 
 Gnoblin starts this signal watcher only when the config registers one of these
 events or the `*` listener.
@@ -172,11 +175,25 @@ event revision.
 | `gnoblin.operation.completed`             | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
 | `gnoblin.api.operation-completed`         | `request_id`, `method`, `ok`, `result` or string `error`                           | Legacy completion event retained during migration.                                                  |
 
-Overlapping reload requests report only through their operation results.
+Call methods on a lifecycle event's `window` record to act on that window. The
+record is read-only:
 
-The standalone runtime watches `color-scheme` in
-`org.gnome.desktop.interface`. It emits this event after the value changes, but
-does not report the current value on startup or subscription.
+```lua
+gnoblin.on("gnoblin.window.changed", function(event)
+    if event.window.demands_attention then
+        event.window:set_above(true)
+    end
+end)
+```
+
+### Reloads and appearance
+
+When reload requests overlap, inspect their `Operation` results. Gnoblin emits
+no separate event.
+
+`gnoblin.appearance.color-scheme-changed` fires after the desktop color-scheme
+preference changes. It does not report the initial value. The preference is
+`color-scheme` in `org.gnome.desktop.interface`.
 
 ```lua
 gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
@@ -184,7 +201,9 @@ gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
 end)
 ```
 
-Mutter reports these session lock states in `gnoblin.session.lock-state-changed`:
+### Session state
+
+`gnoblin.session.lock-state-changed` reports these session lock states:
 
 - `unlocked`: no active session lock.
 - `covering`: the compositor has started the lock transition.
@@ -194,88 +213,82 @@ Mutter reports these session lock states in `gnoblin.session.lock-state-changed`
 Only `locked` confirms the lock transition. A `session.lock()` operation result
 reports request dispatch and does not confirm delivery or lock state.
 
-Native-control API 1.17 adds `gnoblin.privacy.changed`. Its `state` snapshot
-reports availability for screen sharing, microphone, camera, and location.
-Activity appears only for available sources. Native sessions currently monitor
-screen sharing.
+`gnoblin.privacy.changed` reports available screen-sharing, microphone, camera,
+and location activity in `state`. Activity appears only for available sources.
+The compositor currently monitors screen sharing.
 
-When PipeWire monitoring connects or disconnects, API 1.33 emits
-`gnoblin.capability.changed` after updating the capability snapshot. An
-unavailable record includes one of these reasons:
+`gnoblin.capability.changed` fires when PipeWire monitoring connects or
+disconnects. Gnoblin updates the capability snapshot first. An unavailable
+capability reports one of these reasons:
 
 - `remote_desktop_disabled`: Mutter was built without remote-desktop support.
 - `pipewire_unavailable`: the monitor is disconnected or could not connect.
 
-Lua callbacks receive `focus_context` as protected userdata for
-`Window:focus(context)`.
+Pass `focus_context` to `Window:focus(context)` to use the authority granted to
+that event. Lua cannot inspect or create the protected value.
 
-Native-control API 1.10 socket clients can subscribe to
-`gnoblin.shortcut.activated`. Each connection receives a separate, single-use
-token for `window.focus`. Socket tokens never appear in Lua payloads or reach
-other connections.
+### Shortcuts and operations
 
-In Lua, `event` identifies the animation definition. Socket frames reserve
-`event` for the protocol event name and use `animation_event` for the
+Socket clients can subscribe to `gnoblin.shortcut.activated`. Each connection
+receives a separate, single-use token for `window.focus`. The token expires
+five seconds after the shortcut press. It is revoked when its connection closes,
+its event subscription changes, the session locks, or the config reloads. Tokens
+never appear in Lua payloads or reach other connections.
+
+In Lua animation events, `event` identifies the animation definition. Socket
+frames use `event` for the protocol event name and `animation_event` for the
 definition.
-
-A socket token expires five seconds after the shortcut press. It is revoked
-when its connection closes, its event subscription changes, the session locks,
-or the config reloads.
 
 Event order depends on the binding's `trigger`:
 
 - `"press"` activates on key-down and deactivates on key-up.
 - `"release"` activates on key-up and has no later deactivation event.
 
-Lua callbacks can subscribe to both events. Socket clients can also subscribe:
-
-- API 1.11 adds `shortcut.bind`, `shortcut.unbind`, and
-  `gnoblin.shortcut.binding-activated`.
-- API 1.36 adds `gnoblin.shortcut.binding-deactivated`.
-- API 1.22 adds held and modal shortcut session events.
+Lua callbacks and socket clients can subscribe to both events. Socket clients
+can also bind dynamic shortcuts and request held or modal shortcut sessions.
 
 See the [shortcut session reference](/compositor-bridge#api-version-122-held-and-modal-shortcut-sessions)
 for accepted options and event fields.
 
-Native API 1.11 adds a stable operation-completion event. It includes:
+Use `gnoblin.operation.completed` to observe asynchronous operations:
 
 - `operation_id`, `method`, and `ok`.
 - `value` on success, or an `Error` record with `code` and `message` on failure.
 
-The legacy `gnoblin.api.operation-completed` event remains available with
-`request_id`, `result`, and a string error.
+The compatibility event `gnoblin.api.operation-completed` uses `request_id`,
+`result`, and a string error.
 
-A wildcard listener receives both event names during migration. Filter by
-`event.name` or handle one form to avoid processing each completion twice.
+When a wildcard listener handles both names, filter by `event.name` to avoid
+processing a completion twice.
 
 In Lua, `operation_id` matches the returned operation handle's `id`.
 
-Native API 1.15 adds two portal grant lifecycle events. Gnoblin updates the
-snapshot cache before dispatching either event. Both include snapshot revision,
-event sequence, and monotonic time.
+### Portal events
 
-- `gnoblin.portal.grant-added` carries the new grant fields as a plain event
-  table.
+Gnoblin updates the portal-grant snapshot before dispatching either grant
+event. Events include a revision, sequence, and monotonic time.
+
+- `gnoblin.portal.grant-added` carries a read-only `PortalGrant` snapshot.
 - `gnoblin.portal.grant-removed` carries the opaque grant ID and portal kind.
 
-Native API 1.16 adds `gnoblin.permission.changed` after a successful config
-commit changes the portal policy. The event carries the committed policy and
-standard revision, sequence, and monotonic-time metadata.
+`gnoblin.permission.changed` fires after a successful config commit changes the
+portal policy. It carries the committed policy and event metadata.
 
 The policy contains a default level, ordered rules, and the committed settings
 revision. Its revision matches the event's top-level revision. Rejected or
 unchanged policies do not emit this event.
 
 The compositor socket and its directory are accessible only to the current
-user. Any process running as that user can subscribe, so treat same-user socket
+user. Any process running as that user can subscribe. Treat same-user socket
 clients as trusted shell components. See the
 [compositor bridge](/compositor-bridge#api-version-110-shortcut-focus-grants)
 for the request format.
 
-When started with `--gnoblin-config PATH`, Mutter sends window, workspace,
-monitor, input, and launch-feedback events directly to Lua. Native `sequence`
-numbers increase across that stream. Gesture events use their own sequence and
-have no state revision.
+### Launch events
+
+With `--gnoblin-config PATH`, Mutter sends window, workspace, monitor, input,
+and launch-feedback events directly to Lua. `sequence` increases across this
+event stream. Gesture events use their own sequence and have no state revision.
 
 `gnoblin.launch.changed` wraps the record under `launch`. It contains:
 
@@ -288,34 +301,40 @@ launch when a matching mapped window appears or becomes focused. It cannot
 report failures from an external process launcher. The revision is scoped to
 launch records and does not advance the compositor `state_revision`.
 
-`gnoblin.operation.completed` reports shortcut capture results:
+Shortcut capture also completes through `gnoblin.operation.completed`:
 
 - Success returns the accelerator in `value.accelerator`.
 - Cancellation, timeout, a locked session, or an input grab returns an `Error` record.
 
-The legacy `gnoblin.api.operation-completed` event uses
+The compatibility event `gnoblin.api.operation-completed` uses
 `result.accelerator` and a string error. The capture hook consumes key events
-while active. It cancels and releases the hook if the session locks or another
-input grab starts.
+while active, then cancels and releases the hook if the session locks or
+another input grab starts.
 
-Monitor records describe active logical monitors. Their `id` is the canonical
-connector name. A monitor change lists the changed record properties in
-`changed`: `id`, `index`, `x`, `y`, `width`, `height`, `primary`, `scale`,
-`enabled`, `name`, `make`, `model`, `serial`, `refresh_rate`, or `transform`.
+### Monitor and workspace records
+
+Monitor records describe active logical monitors. The `id` is the canonical
+connector name. A monitor event's `changed` field lists updated properties:
+
+- Position: `index`, `x`, `y`, `width`, `height`.
+- Display: `primary`, `scale`, `enabled`, `refresh_rate`, `transform`.
+- Identity: `id`, `name`, `make`, `model`, `serial`.
 
 Create, rename, and activation events include a `workspace` record. Workspace
 change events include a `changed` array listing `number`, `window_count`, or
 `persistent`. The `window_count` value matches immediate workspace reads.
 
 A removal carries `workspace_id` and `last`, the final record before removal.
-The moved event has no workspace record; it reports the stable window ID and
-the source and destination workspace IDs.
+The moved event reports the stable window ID and source and destination
+workspace IDs. It has no workspace record.
 
 The attention event also carries `demands_attention` at the top level. It can
 follow a focus request that policy did not activate; it reports Mutter's
 attention state and does not identify why the window requested attention.
 
-Window records include the fields available in standalone compositor snapshots:
+### Window records
+
+Window records contain the fields available from the compositor:
 
 - Identity: `id`, `title`, `app_id`, `gtk_app_id`, `wm_class`, `rule_app_id`, and optional `role`.
 - Location: `workspace_id`, `workspace_number`, `monitor_id`, `monitor_index`, `parent`.
@@ -326,7 +345,7 @@ Window records include the fields available in standalone compositor snapshots:
 - Interaction: `last_user_time`.
 - Record metadata: `revision`, the state revision for this record.
 
-A field is omitted when the native record does not provide it. `monitor_id` is
+A field is omitted when the compositor does not provide it. `monitor_id` is
 the active connector name for the current logical monitor. Cloned outputs use
 the lexicographically first active connector. `monitor_index` is the current
 Mutter order and can change when outputs change.
