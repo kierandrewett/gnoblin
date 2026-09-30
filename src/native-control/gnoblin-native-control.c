@@ -12360,6 +12360,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
                                      "compositor_stopped");
     control->stopping = TRUE;
+    native_corner_toolkit_cache_shutdown(control);
 #ifdef HAVE_REMOTE_DESKTOP
     g_clear_pointer(&control->pipewire_monitor, gnoblin_pipewire_monitor_free);
 #endif
