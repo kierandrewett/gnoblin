@@ -2,21 +2,20 @@
 # Build the self-contained Gnoblin source tarball.
 #
 # The public GitHub source archive is insufficient: it omits Git submodules and
-# therefore cannot reproduce Gnoblin's patched Mutter and GNOME Shell.  The
+# therefore cannot reproduce Gnoblin's patched Mutter and portal backend. The
 # component archives passed here are already materialised by
 # scripts/make-tarball.sh and include Gnoblin's patch stacks.
 set -euo pipefail
 
-if [ "$#" -ne 5 ]; then
-    echo "Usage: $0 <output> <gnoblin-version> <mutter.tar.xz> <shell.tar.xz> <portal.tar.xz>" >&2
+if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 <output> <gnoblin-version> <mutter.tar.xz> <portal.tar.xz>" >&2
     exit 2
 fi
 
 OUTPUT="$(realpath -m "$1")"
 VERSION="$2"
 MUTTER="$(realpath "$3")"
-SHELL="$(realpath "$4")"
-PORTAL="$(realpath "$5")"
+PORTAL="$(realpath "$4")"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" show -s --format=%ct HEAD)}"
 STAGING="$(mktemp -d)"
@@ -25,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for source in "$MUTTER" "$SHELL" "$PORTAL"; do
+for source in "$MUTTER" "$PORTAL"; do
     [ -f "$source" ] || {
         echo "missing prepared component source: $source" >&2
         exit 1
@@ -67,7 +66,6 @@ modified = bool(git("status", "--porcelain", "--untracked-files=all", "--ignore-
 Path(output).write_text(json.dumps({"gitSha": sha, "gitRemote": url, "sourceModified": modified}, sort_keys=True) + "\n")
 PY
 install -m 0644 -- "$MUTTER" "$STAGING/$TOP/sources/"
-install -m 0644 -- "$SHELL" "$STAGING/$TOP/sources/"
 install -m 0644 -- "$PORTAL" "$STAGING/$TOP/sources/"
 
 mkdir -p "$(dirname "$OUTPUT")"

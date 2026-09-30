@@ -50,7 +50,6 @@ SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.
     "$SOURCE_BUNDLE" \
     "$GNOBLIN_VERSION" \
     "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
-    "$SOURCES/gnoblin-shell-$GNOME_VERSION.tar.xz" \
     "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz"
 SOURCE_BUNDLE_SHA256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
 python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
