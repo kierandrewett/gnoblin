@@ -140,7 +140,7 @@ def main() -> int:
                             elif request["method"] == "workspace.create":
                                 result = {"request_id": 18, "method": "workspace.create"}
                             elif request["method"] == "workspace.list":
-                                result = {"request_id": 19, "method": "workspace.list"}
+                                result = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "window.match":
@@ -175,7 +175,6 @@ def main() -> int:
                             if request.get("method") in {
                                 "animation.preview",
                                 "workspace.create",
-                                "workspace.list",
                                 "window.thumbnail",
                             }:
                                 operation_id = result["request_id"]

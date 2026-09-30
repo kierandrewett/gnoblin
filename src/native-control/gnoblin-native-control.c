@@ -10082,18 +10082,30 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     JsonNode* arguments_node = json_object_get_member(request, "arguments");
     if (arguments_node && !JSON_NODE_HOLDS_OBJECT(arguments_node))
         return encode_response(id, NULL, "arguments must be an object");
-    if (g_str_equal(method, "window.list")) {
+    if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {
+        if (g_str_equal(method, "workspace.list") && arguments_node &&
+            json_object_get_size(json_node_get_object(arguments_node)) != 0)
+            return encode_response(id, NULL, "workspace.list does not accept arguments");
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) arguments = arguments_node
                                             ? variant_from_json(arguments_node)
                                             : g_variant_ref_sink(g_variant_builder_end(&empty));
-        if (!arguments)
-            return encode_response(id, NULL, "window.list arguments are invalid");
+        if (!arguments) {
+            const char* message = g_str_equal(method, "window.list")
+                                      ? "window.list arguments are invalid"
+                                      : "workspace.list arguments are invalid";
+            return encode_response(id, NULL, message);
+        }
         g_autoptr(GVariant) result =
             meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
-        if (!result)
-            return encode_response(id, NULL, error ? error->message : "window listing unavailable");
+        if (!result) {
+            const char* message = error ? error->message
+                                  : g_str_equal(method, "window.list")
+                                      ? "window listing unavailable"
+                                      : "workspace listing unavailable";
+            return encode_response(id, NULL, message);
+        }
         g_autoptr(JsonNode) json = json_from_variant(result);
         return encode_response(id, json, NULL);
     }
