@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Publish prepared source RPMs, with Mutter available before Shell builds.
+# Publish prepared source RPMs after each required private dependency is built.
 set -euo pipefail
-if [[ $# != 5 || "$1" != */* ]]; then
-    echo "Usage: $0 <owner/project> <mutter.src.rpm> <shell.src.rpm> <portal.src.rpm> <gnoblin.src.rpm>" >&2
+if [[ $# != 4 || "$1" != */* ]]; then
+    echo "Usage: $0 <owner/project> <mutter.src.rpm> <portal.src.rpm> <gnoblin.src.rpm>" >&2
     exit 2
 fi
 project="$1"
 mutter_srpm="$(realpath "$2")"
-shell_srpm="$(realpath "$3")"
-portal_srpm="$(realpath "$4")"
-meta_srpm="$(realpath "$5")"
+portal_srpm="$(realpath "$3")"
+meta_srpm="$(realpath "$4")"
 command -v copr-cli >/dev/null
 chroots=(fedora-45-x86_64)
 
@@ -23,7 +22,7 @@ build_in_supported_fedora_chroots() {
     copr-cli build "${arguments[@]}" "$project" "$package"
 }
 
-for package in "$mutter_srpm" "$shell_srpm" "$portal_srpm" "$meta_srpm"; do
+for package in "$mutter_srpm" "$portal_srpm" "$meta_srpm"; do
     [[ -f "$package" ]] || {
         echo "Missing source RPM: $package" >&2
         exit 1
@@ -34,12 +33,10 @@ for package in "$mutter_srpm" "$shell_srpm" "$portal_srpm" "$meta_srpm"; do
     }
 done
 [[ "$(rpm -qp --qf '%{NAME}' "$mutter_srpm")" == gnoblin-mutter ]]
-[[ "$(rpm -qp --qf '%{NAME}' "$shell_srpm")" == gnoblin-shell ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$portal_srpm")" == gnoblin-portal ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$meta_srpm")" == gnoblin ]]
 # copr-cli waits by default. Build each dependency in all supported Fedora
 # chroots before starting its dependent package; any failed chroot stops here.
 build_in_supported_fedora_chroots "$mutter_srpm"
-build_in_supported_fedora_chroots "$shell_srpm"
 build_in_supported_fedora_chroots "$portal_srpm"
 build_in_supported_fedora_chroots "$meta_srpm"
