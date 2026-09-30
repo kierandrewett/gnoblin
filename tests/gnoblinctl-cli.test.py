@@ -64,6 +64,26 @@ def main() -> int:
     assert config_result.returncode == 0, config_result.stderr
     assert json.loads(config_result.stdout) == str(config_path)
 
+    legacy_config_directory = Path(build_directory) / "legacy-config-home" / "gnoblin"
+    legacy_config_directory.mkdir(parents=True, exist_ok=True)
+    legacy_config = legacy_config_directory / "gnoblin.toml"
+    legacy_config.touch()
+    (legacy_config_directory / "gnoblin.conf").touch()
+    legacy_config_result = run(
+        binary,
+        "--format",
+        "json",
+        "config",
+        "path",
+        env={
+            **os.environ,
+            "GNOBLIN_CONFIG": "",
+            "XDG_CONFIG_HOME": str(legacy_config_directory.parent),
+        },
+    )
+    assert legacy_config_result.returncode == 0, legacy_config_result.stderr
+    assert json.loads(legacy_config_result.stdout) == str(legacy_config)
+
     invalid_result = run(binary, "not-a-command")
     assert invalid_result.returncode != 0
     assert "unknown command:" in invalid_result.stderr
