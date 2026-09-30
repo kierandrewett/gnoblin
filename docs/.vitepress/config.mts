@@ -155,7 +155,6 @@ export default defineConfig({
                     { text: "Frame architecture", link: "/window-frame-renderers" },
                     { text: "Write a renderer", link: "/frame-renderer-api" },
                     { text: "Native and external UI", link: "/native-ui-removal" },
-                    { text: "Console", link: "/developer-console" },
                 ],
             },
             {
