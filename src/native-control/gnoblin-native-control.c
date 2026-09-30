@@ -5263,6 +5263,12 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
                    client->track_windows && client->windows_api_minor >= 1) {
             subscribed = TRUE;
         }
+        if (g_getenv("GNOBLIN_DEBUG_SOCKET") &&
+            g_str_equal(name, "gnoblin.api.operation-completed"))
+            g_message("gnoblin-native-control: completion event client=%" G_GUINT64_FORMAT
+                      " api=%u event_api=%u subscribed=%d pending=%u",
+                      client->client_id, client->api_minor, client->event_api_minor, subscribed,
+                      client->pending_bytes);
         if ((g_str_equal(name, "gnoblin.window.menu-requested") ||
              g_str_equal(name, "gnoblin.osd.requested")) &&
             client->event_api_minor < 27)
@@ -9794,6 +9800,11 @@ static void write_done(GObject* source, GAsyncResult* result, gpointer user_data
     gboolean written =
         g_output_stream_write_all_finish(G_OUTPUT_STREAM(source), result, NULL, &error);
     Client* client = pending->client;
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET") &&
+        strstr(pending->response, "gnoblin.api.operation-completed"))
+        g_message("gnoblin-native-control: completion write client=%" G_GUINT64_FORMAT
+                  " written=%d",
+                  client->client_id, written);
     if (g_getenv("GNOBLIN_DEBUG_SOCKET") && !written)
         g_message("gnoblin-native-control: socket write failed: %s",
                   error ? error->message : "unknown error");

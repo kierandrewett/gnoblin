@@ -437,6 +437,10 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         if (count < 0)
             return NULL;
         if (count == 0) {
+            if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+                g_printerr("gnoblinctl: EOF request=%s operation=%" G_GINT64_FORMAT
+                           " buffered=%" G_GSIZE_FORMAT "\n",
+                           id, operation_request_id, pending->len);
             g_set_error_literal(
                 error, G_IO_ERROR, G_IO_ERROR_CLOSED,
                 "Compositor disconnected before replying; the request was not retried");
@@ -461,6 +465,12 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
             }
             JsonObject* response = json_node_get_object(json_parser_get_root(parser));
             const char* event = member_string(response, "event", "");
+            if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+                g_printerr(
+                    "gnoblinctl: received event=%s id=%s method=%s operation=%" G_GINT64_FORMAT
+                    "\n",
+                    event, member_string(response, "id", ""), member_string(response, "method", ""),
+                    operation_request_id);
             gboolean legacy_completion = g_str_equal(event, "gnoblin.api.operation-completed");
             gboolean canonical_completion = g_str_equal(event, "gnoblin.operation.completed");
             gint64 completion_id = json_object_get_int_member_with_default(
