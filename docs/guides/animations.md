@@ -4,9 +4,8 @@ Register a named animation once. The first registration for an event becomes
 its default. Shell settings and window rules can select a different name.
 
 The shared registry drives compositor-owned motion for windows, layer-shell
-surfaces, the developer console, shadows, resizing and workspaces. Window and
-layer-shell surfaces use the same keyframe properties, but have different
-lifecycle events.
+surfaces, shadows, resizing and workspaces. Window and layer-shell surfaces use
+the same keyframe properties, but have different lifecycle events.
 
 ## Register a custom animation
 
@@ -56,7 +55,6 @@ animation runs:
 | `layer-open`, `layer-close`               | When a layer-shell surface appears or disappears |
 | `layer-companion-close`                   | When a layer companion is dismissed              |
 | `workspace-switch`                        | When the active workspace changes                |
-| `console-open`, `console-close`           | When the developer console opens or closes       |
 | `shadow-change`                           | When a window shadow changes                     |
 | `resize`                                  | While a window resizes                           |
 | `tile-preview-open`, `tile-preview-close` | When a tile preview appears or disappears        |
@@ -189,8 +187,8 @@ Preset names select definitions in Gnoblin's shared animation registry.
 Profiles named `gnome-*` follow GNOME Shell timing and motion where equivalent
 transitions exist.
 
-Gnoblin also uses that naming family for its layer-shell, console, and shadow
-events. Those profiles belong to Gnoblin.
+Gnoblin also uses that naming family for its layer-shell and shadow events.
+Those profiles belong to Gnoblin.
 
 | Preset                                                                | Default profile and motion                                                                                                                  |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -202,7 +200,6 @@ events. Those profiles belong to Gnoblin.
 | `gnome-resize`, `gnome-tile-preview-open`, `gnome-tile-preview-close` | 250 ms, ease-out quad; eases the resize or preview geometry supplied by the compositor.                                                     |
 | `gnome-dialog-dim`, `gnome-dialog-undim`                              | 500 ms / 250 ms, ease-out quad; eases dim `progress` in / out.                                                                              |
 | `gnoblin-layer-open`, `gnoblin-layer-close`                           | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
-| `gnoblin-console-open`, `gnoblin-console-close`                       | 140 ms, ease-out quad; slides the console vertically by its height.                                                                         |
 | `gnoblin-shadow-change`                                               | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
 | `gnoblin-layer-companion-close`                                       | 180 ms, ease-in quad; moves the companion actor by its dismissal offset.                                                                    |
 
