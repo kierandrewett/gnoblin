@@ -165,6 +165,8 @@ event revision.
 | `gnoblin.focus.policy-changed`            | `policy`, `revision`, `sequence`, `time`                                           | The effective focus policy changes after a successful config commit.                                |
 | `gnoblin.permission.changed`              | `policy`, `revision`, `sequence`, `time`                                           | The committed portal permission policy changes after a successful config commit.                    |
 | `gnoblin.shortcut.activated`              | `shortcut`, `trigger`, `focus_context`                                             | A configured native command shortcut is activated by a trusted key press in the native runtime.     |
+| `gnoblin.shortcut.binding-activated`      | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`      | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.   |
+| `gnoblin.shortcut.binding-deactivated`    | `id`, `accelerator`, `input_time`                                                  | A press-triggered dynamic shortcut is physically released.                                          |
 | `gnoblin.animation.started`               | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
 | `gnoblin.animation.finished`              | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
 | `gnoblin.operation.completed`             | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
@@ -220,13 +222,17 @@ A socket token expires five seconds after the shortcut press. It is revoked
 when its connection closes, its event subscription changes, the session locks,
 or the config reloads.
 
-Native socket bindings are separate from Lua event registrations:
+Event order depends on the binding's `trigger`:
+
+- `"press"` activates on key-down and deactivates on key-up.
+- `"release"` activates on key-up and has no later deactivation event.
+
+Lua callbacks can subscribe to both events. Socket clients can also subscribe:
 
 - API 1.11 adds `shortcut.bind`, `shortcut.unbind`, and
-  `gnoblin.shortcut.binding-activated` for connection-owned bindings.
-- API 1.22 adds held and modal sessions with
-  `gnoblin.shortcut.session.activated`, `gnoblin.shortcut.session.key`, and
-  `gnoblin.shortcut.session.ended`.
+  `gnoblin.shortcut.binding-activated`.
+- API 1.36 adds `gnoblin.shortcut.binding-deactivated`.
+- API 1.22 adds held and modal shortcut session events.
 
 See the [shortcut session reference](/compositor-bridge#api-version-122-held-and-modal-shortcut-sessions)
 for accepted options and event fields.
