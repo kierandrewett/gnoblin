@@ -317,8 +317,8 @@ def main() -> int:
         assert len(subscriptions) == 9
         for subscription in subscriptions:
             assert subscription["op"] == "events"
-            assert subscription["api_version"] == {"major": 1, "minor": 34}
-            assert subscription["events"] == ["gnoblin.api.operation-completed"]
+            assert subscription["api_version"] == {"major": 1, "minor": 11}
+            assert subscription["events"] == ["gnoblin.operation.completed"]
         request = received[0]
         assert request["op"] == "api"
         assert request["method"] == "session.status"
