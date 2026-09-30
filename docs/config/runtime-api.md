@@ -1148,6 +1148,14 @@ Socket clients can subscribe to the following API 1.22 events:
 
 `gnoblin.shortcut.binding-activated` remains available from API 1.11. Its first
 trusted activation can carry a connection-bound, one-use `focus_context` token.
+API 1.36 adds `gnoblin.shortcut.binding-deactivated` for press-triggered
+bindings. The event contains:
+
+- `id` and `accelerator` to identify the binding.
+- `input_time`, Mutter's timestamp for the key release.
+
+Release-triggered bindings activate on release and do not emit a second
+deactivation event.
 
 Modal sessions capture keyboard events only. Pointer input remains available to
 the shell's layer-shell surfaces and client windows.
