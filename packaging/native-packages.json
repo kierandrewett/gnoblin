@@ -103,7 +103,7 @@
       }
     },
     "libinput": {
-      "minVersion": "1.31.0",
+      "minVersion": "1.30.0",
       "names": {
         "arch": "libinput",
         "rpm": "libinput"
