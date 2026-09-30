@@ -528,6 +528,7 @@ Each method returns an `Operation` handle.
 | `window:resize(size)`                          | `{width, height}` integer dimensions          | Resize in logical pixels.                                 |
 | `window:move_to_workspace(selector, options?)` | Workspace selector; optional `follow` boolean | Move this window and optionally activate the destination. |
 | `window:move_to_monitor(target)`               | Monitor connector ID or `{id = ID}`           | Move this window to an active monitor.                    |
+| `window:thumbnail(size)`                       | `width` 1–480; `height` 1–320                 | Capture a bounded compositor-rendered PNG preview.        |
 
 | Workspace method                        | Arguments                                                                   | Effect                              |
 | --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
@@ -550,8 +551,8 @@ Mutter still applies its normal window activation policy.
 
 Contexts are not provided for clicks, external-client shortcuts, release
 bindings, synthetic input, input-method events, or repeated key presses. Direct
-`gnoblin.window.focus`, `gnoblin.window.begin_move`, and
-`gnoblin.window.begin_resize` calls without a context remain denied.
+`Window:focus`, `Window:begin_move`, and `Window:begin_resize` calls without a
+context remain denied.
 
 A separate shell process can subscribe through native-control API 1.10 and use
 its connection-bound `focus_context` token; see the
@@ -687,10 +688,11 @@ Native workspace records rename the `windows` count to `window_count` and add
 a revision. Window, workspace, monitor, layer, input-device, and capability
 snapshots share a revision that advances when any of those states changes.
 
-The table below documents raw compositor-socket operations. The socket keeps
-`window.action` for compatibility; the standalone Lua runtime does not expose
-`gnoblin.window.action`. Lua callers use the typed methods on `Window`
-snapshots.
+Lua configuration changes windows through typed methods on `Window` snapshots.
+
+The raw compositor socket exposes the operations below to clients such as
+`gnoblinctl`. It keeps the generic `window.action` operation for compatibility.
+Lua configuration has no direct window-operation namespace.
 
 | Method                   | Arguments                                                         | Successful result                                            |
 | ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
