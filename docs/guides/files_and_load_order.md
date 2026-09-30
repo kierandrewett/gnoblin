@@ -141,9 +141,10 @@ Use shortcuts or autostart to launch programs.
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.
 
-Lua configuration cannot run arbitrary JavaScript. For custom live automation,
-see [user scripts](/user-scripts); most settings and desktop behavior should
-stay in the supported configuration API.
+For event-driven compositor behavior, load a Lua module that registers a
+callback with `gnoblin.events.on`. See [Lua event handlers](/user-scripts) and
+the [event reference](/config/lua-events). Keep presentation in separate
+Wayland clients; the runtime API controls compositor state.
 
 ## Reload and persistence
 
@@ -170,5 +171,6 @@ An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file
 will replace that change on the next config reload.
 
-`gnoblinctl reload` also reloads the theme and user scripts. Neither reload
-command replaces native libraries or restarts your separate desktop shell.
+`gnoblinctl config reload` replaces the active Lua configuration and its event
+callbacks. It does not replace native libraries or restart separate desktop
+clients.
