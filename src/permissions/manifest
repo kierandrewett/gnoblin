@@ -1,5 +1,7 @@
 xdg-desktop-portal-gnome gnoblin-portal-policy.c src/gnoblin-portal-policy.c
 xdg-desktop-portal-gnome gnoblin-portal-policy.h src/gnoblin-portal-policy.h
+xdg-desktop-portal-gnome ../config/gnoblin-lua-pattern.c src/gnoblin-lua-pattern.c
+xdg-desktop-portal-gnome ../config/gnoblin-lua-pattern.h src/gnoblin-lua-pattern.h
 mutter gnoblin-portal-policy.c src/wayland/gnoblin-portal-policy.c
 mutter gnoblin-portal-policy.h src/wayland/gnoblin-portal-policy.h
 mutter gnoblin-portal-identity.c src/wayland/gnoblin-portal-identity.c
