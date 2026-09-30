@@ -12,6 +12,7 @@ typedef struct {
     ClutterOffscreenEffect parent;
     double radius;
     double exponent;
+    gboolean automatic;
 } MetaGnoblinRoundedClip;
 
 typedef ClutterOffscreenEffectClass MetaGnoblinRoundedClipClass;
@@ -35,10 +36,29 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         COGL_SNIPPET_HOOK_FRAGMENT,
         "uniform vec4 gnoblin_rounded_clip_bounds;"
         "uniform float gnoblin_rounded_clip_radius;"
-        "uniform float gnoblin_rounded_clip_exponent;",
+        "uniform float gnoblin_rounded_clip_exponent;"
+        "uniform float gnoblin_rounded_clip_automatic;",
         "vec2 p=gnoblin_rounded_clip_bounds.xy+"
         "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_bounds.zw-"
         "gnoblin_rounded_clip_bounds.xy);"
+        "float sourceAlpha(vec2 point){"
+        "vec2 uv=(point-gnoblin_rounded_clip_bounds.xy)/"
+        "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
+        "return texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0))).a;}"
+        "bool squareCorner(vec2 point,float radius){"
+        "vec2 middle=(gnoblin_rounded_clip_bounds.xy+"
+        "gnoblin_rounded_clip_bounds.zw)*0.5;"
+        "vec2 direction=vec2(point.x<middle.x?1.0:-1.0,"
+        "point.y<middle.y?1.0:-1.0);"
+        "vec2 origin=vec2(point.x<middle.x?gnoblin_rounded_clip_bounds.x:"
+        "gnoblin_rounded_clip_bounds.z,point.y<middle.y?"
+        "gnoblin_rounded_clip_bounds.y:gnoblin_rounded_clip_bounds.w);"
+        "float inset=min(radius,8.0);"
+        "float reference=sourceAlpha(origin+direction*inset);"
+        "float diagonal=sourceAlpha(origin+direction*0.75);"
+        "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
+        "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
+        "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}"
         "vec2 half_size=(gnoblin_rounded_clip_bounds.zw-"
         "gnoblin_rounded_clip_bounds.xy)*0.5;"
         "float radius=min(gnoblin_rounded_clip_radius,min(half_size.x,half_size.y));"
@@ -48,7 +68,10 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "float distance=pow(pow(q.x/radius,gnoblin_rounded_clip_exponent)+"
         "pow(q.y/radius,gnoblin_rounded_clip_exponent),"
         "1.0/gnoblin_rounded_clip_exponent)*radius;"
-        "float coverage=1.0-smoothstep(radius-0.5,radius+0.5,distance);"
+        "bool corner=q.x>0.0&&q.y>0.0;"
+        "bool preserve=gnoblin_rounded_clip_automatic>0.5&&corner&&"
+        "!squareCorner(p,radius);"
+        "float coverage=preserve?1.0:1.0-smoothstep(radius-0.5,radius+0.5,distance);"
         "cogl_color_out*=coverage;} ");
     cogl_pipeline_add_snippet(pipeline, snippet);
     g_object_unref(snippet);
@@ -83,6 +106,10 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_exponent"),
             (float)clip->exponent);
+        cogl_pipeline_set_uniform_1f(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_automatic"),
+            clip->automatic ? 1.f : 0.f);
     } else {
         /* Uniforms persist on a pipeline. Force the fragment's no-op branch
          * while an actor is being detached or has no offscreen target. */
@@ -118,7 +145,7 @@ void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor) {
 }
 
 void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double radius,
-                                                  double exponent) {
+                                                  double exponent, gboolean automatic) {
     MetaGnoblinRoundedClip* clip;
     ClutterEffect* effect;
 
@@ -140,6 +167,7 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
         clip = g_object_new(META_TYPE_GNOBLIN_ROUNDED_CLIP, NULL);
         clip->radius = radius;
         clip->exponent = exponent;
+        clip->automatic = automatic;
         clutter_actor_add_effect_with_name(actor, ROUNDED_CLIP_EFFECT_NAME, CLUTTER_EFFECT(clip));
         g_object_unref(clip);
         return;
@@ -147,9 +175,10 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
         clip = META_GNOBLIN_ROUNDED_CLIP(effect);
     }
 
-    if (clip->radius == radius && clip->exponent == exponent)
+    if (clip->radius == radius && clip->exponent == exponent && clip->automatic == automatic)
         return;
     clip->radius = radius;
     clip->exponent = exponent;
+    clip->automatic = automatic;
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }
