@@ -40,30 +40,28 @@ Close the terminal to stop the devkit.
 
 ## Options
 
-| Variable                   | Accepted values          | Default    | Purpose                                                           |
-| -------------------------- | ------------------------ | ---------- | ----------------------------------------------------------------- |
-| `MONITOR`                  | `WIDTHxHEIGHT` in pixels | `1600x900` | Sets the nested display size.                                     |
-| `GNOME_DEVKIT_HEADLESS`    | `0` or `1`               | `0`        | `1` starts without a viewer; `0` requires a host Wayland display. |
-| `GNOME_DEVKIT_EXEC`        | Shell command string     | Unset      | Runs the string with `bash -c` instead of opening a terminal.     |
-| `GNOME_DEVKIT_UNSAFE_MODE` | `0` or `1`               | `0`        | `1` enables privileged shell D-Bus APIs for tests.                |
+| Variable                       | Accepted values      | Default | Purpose                                                                |
+| ------------------------------ | -------------------- | ------- | ---------------------------------------------------------------------- |
+| `GNOBLIN_DEVKIT_EXEC`          | Shell command string | Unset   | Runs the command with `bash -c` instead of opening a terminal.         |
+| `GNOBLIN_DEVKIT_CONFIG_SOURCE` | Directory path       | Unset   | Copies this config tree into the devkit's disposable config directory. |
 
-## Headless / scripting mode
+## Run a command
 
 ```sh
-GNOME_DEVKIT_HEADLESS=1 \
-GNOME_DEVKIT_EXEC='gnoblinctl feature list --json' \
+GNOBLIN_DEVKIT_EXEC='gnoblinctl version' \
 ./build.sh --preview
 ```
 
-This runs without a host Wayland display and exits after the command.
+The command runs inside the nested Gnoblin session. A host Wayland display is
+required to show the viewer; close the viewer to stop the session.
 
 ## Isolation
 
-The nested display and D-Bus bus are separate. Host X11, accessibility and gvfs
-connections are not passed through.
+The nested display and D-Bus bus are separate. The devkit uses disposable home
+and XDG directories, and exposes the host PipeWire socket when available.
 
-**Your HOME and runtime directory remain real.** Applications can still read
-or change your files and configuration. This is not a security sandbox.
+Applications launched inside the devkit can still access host services and
+files available to your user. This is not a security sandbox.
 
 For a fresh profile, including screenshots and demos, run:
 
@@ -114,8 +112,8 @@ A devkit capture shows the nested session, not an installed login session.
 
 | Problem                    | Next step                                                |
 | -------------------------- | -------------------------------------------------------- |
-| No host `WAYLAND_DISPLAY`  | Use a Wayland desktop or headless mode                   |
-| No Shell in `./install`    | Finish the source build                                  |
+| No host `WAYLAND_DISPLAY`  | Start the preview from a Wayland desktop                 |
+| No Gnoblin in `./install`  | Finish the source build                                  |
 | No terminal found          | Install one or pass its command explicitly               |
 | Quickshell/Qt mismatch     | Install or rebuild a matching Quickshell                 |
 | `EBUSY` taking the session | Use this devkit launcher, not a direct native/KMS launch |
