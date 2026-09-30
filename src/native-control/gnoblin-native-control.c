@@ -9914,6 +9914,41 @@ static void window_changed(MetaWindow* window, gpointer user_data) {
     schedule_windows(user_data);
 }
 
+static gboolean native_runtime_wants_event(GnoblinNativeControl* control, const char* event) {
+    return control && control->runtime_event_subscriptions &&
+           (g_hash_table_contains(control->runtime_event_subscriptions, event) ||
+            g_hash_table_contains(control->runtime_event_subscriptions, "*"));
+}
+
+static void dispatch_mutter_event(GnoblinNativeControl* control, const char* object,
+                                  const char* signal, MetaWindow* window) {
+    g_autofree char* event = g_strdup_printf("mutter.%s.%s", object, signal);
+    if (!native_runtime_wants_event(control, event))
+        return;
+    GVariantBuilder payload;
+    g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload, "{sv}", "source", g_variant_new_string(object));
+    g_variant_builder_add(&payload, "{sv}", "signal", g_variant_new_string(signal));
+    if (window) {
+        const char* app_id = meta_window_get_gtk_application_id(window);
+        const char* title = meta_window_get_title(window);
+        g_variant_builder_add(&payload, "{sv}", "window_id",
+                              g_variant_new_uint32(meta_window_get_stable_sequence(window)));
+        g_variant_builder_add(&payload, "{sv}", "app_id",
+                              g_variant_new_string(app_id ? app_id : ""));
+        g_variant_builder_add(&payload, "{sv}", "window_title",
+                              g_variant_new_string(title ? title : ""));
+    }
+    g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
+    native_runtime_dispatch_event(control->display, event, event_payload, NULL, NULL);
+}
+
+static void window_position_changed(MetaWindow* window, gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    schedule_windows(control);
+    dispatch_mutter_event(control, "window", "position-changed", window);
+}
+
 static void window_workspace_changed(MetaWindow* window, gpointer user_data) {
     schedule_windows(user_data);
 }
@@ -9934,7 +9969,7 @@ static void track_window(GnoblinNativeControl* control, MetaWindow* window) {
         return;
     g_hash_table_add(control->windows, g_object_ref(window));
     g_signal_connect(window, "notify", G_CALLBACK(window_notified), control);
-    g_signal_connect(window, "position-changed", G_CALLBACK(window_changed), control);
+    g_signal_connect(window, "position-changed", G_CALLBACK(window_position_changed), control);
     g_signal_connect(window, "size-changed", G_CALLBACK(window_changed), control);
     g_signal_connect(window, "workspace-changed", G_CALLBACK(window_workspace_changed), control);
     g_signal_connect(window, "unmanaged", G_CALLBACK(window_unmanaged), control);
@@ -9950,7 +9985,9 @@ static void display_notified(GObject* display, GParamSpec* property, gpointer us
 }
 
 static void display_restacked(MetaDisplay* display, gpointer user_data) {
-    schedule_windows(user_data);
+    GnoblinNativeControl* control = user_data;
+    schedule_windows(control);
+    dispatch_mutter_event(control, "display", "restacked", NULL);
 }
 
 static void workspace_manager_changed(MetaWorkspaceManager* manager, gpointer user_data) {
