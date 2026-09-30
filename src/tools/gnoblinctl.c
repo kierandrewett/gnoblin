@@ -50,7 +50,7 @@ static const CommandSpec commands[] = {
                "unfullscreen move resize monitor workspace"},
     {"layer", "list"},
     {"completion", NULL},
-    {"shortcut", "list capture"},
+    {"shortcut", "actions list capture"},
     {"config", "path default show reload"},
     {"workspace", "list create rename remove switch next previous move-active"},
     {"monitor", "list"},
@@ -300,6 +300,8 @@ static guint api_minor_for_method(const char* method) {
         {"session.logout", 32},
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},
+        {"shortcut.actions", 5},
+        {"shortcut.list", 9},
         {"session.status", 29},
         {"session.activity", 24},
         {"session.lock", 21},
@@ -341,6 +343,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_add_string_value(builder, method_name);
     }
     if (g_str_equal(method_name, "layer.list") || g_str_equal(method_name, "input.devices") ||
+        g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
         g_str_equal(method_name, "permissions.policy") ||
@@ -497,7 +500,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                                 json_object_has_member(result, "request_id") &&
                                                 json_object_has_member(result, "method");
                 gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
-                                        word_in("capabilities.list focus.history", method_name);
+                                        word_in("capabilities.list focus.history shortcut.actions "
+                                                "shortcut.list",
+                                                method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
                                        (read_method || g_str_equal(method_name, "animation.get"));
                 if (!result && !array_result && !null_result) {
@@ -1104,7 +1109,22 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         method = "version";
     else if (is(command, "shortcut") && is(action, "list"))
         method = "shortcut.list";
-    else if (is(command, "shortcut") && is(action, "capture")) {
+    else if (is(command, "shortcut") && is(action, "actions")) {
+        if (arg_count(cli) > 1) {
+            g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                "shortcut actions accepts at most one group");
+            goto invalid;
+        }
+        if (arg_count(cli) == 1) {
+            if (!word_in("wm mutter wayland", arg(cli, 0))) {
+                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                    "group must be wm, mutter, or wayland");
+                goto invalid;
+            }
+            set_string(arguments, "group", arg(cli, 0));
+        }
+        method = "shortcut.actions";
+    } else if (is(command, "shortcut") && is(action, "capture")) {
         g_printerr("Press a shortcut now; Escape cancels.\n");
         set_number(arguments, "timeout", cli->timeout);
         method = "shortcut.capture";
@@ -1122,7 +1142,8 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
     if (!JSON_NODE_HOLDS_OBJECT(reply)) {
         if (is(command, "animation") && is(action, "get") && JSON_NODE_HOLDS_NULL(reply))
             return json_node_copy(reply);
-        if ((is(command, "capabilities") || (is(command, "focus") && is(action, "history"))) &&
+        if ((is(command, "capabilities") || (is(command, "focus") && is(action, "history")) ||
+             (is(command, "shortcut") && (is(action, "actions") || is(action, "list")))) &&
             JSON_NODE_HOLDS_ARRAY(reply))
             return json_node_copy(reply);
         if ((is(command, "version") || is(command, "capabilities") || is(command, "focus") ||
@@ -1138,7 +1159,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         return json_node_copy(reply);
     if (is(command, "ping"))
         return string_node(member_string(response, "pong", ""));
-    if (is(command, "shortcut"))
+    if (is(command, "shortcut") && is(action, "capture"))
         return string_node(member_string(response, "accelerator", ""));
     return json_node_copy(reply);
 
@@ -1466,6 +1487,8 @@ static const char* action_usage(const char* command, const char* action) {
     }
     if (g_str_equal(command, "focus") && g_str_equal(action, "history"))
         return "[--workspace-id ID] [--monitor-id ID] [--limit 1..256]";
+    if (g_str_equal(command, "shortcut") && g_str_equal(action, "actions"))
+        return "[wm | mutter | wayland]";
     if (g_str_equal(command, "permissions") && g_str_equal(action, "check"))
         return "CAPABILITY IDENTITY";
     if (g_str_equal(command, "grant") && g_str_equal(action, "revoke"))
