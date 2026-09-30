@@ -9,8 +9,15 @@
 # never accumulates state.
 set -euo pipefail
 
-PROJ="${1:?usage: apply-patches.sh <mutter|gnome-shell>}"
+PROJ="${1:?usage: apply-patches.sh <mutter|xdg-desktop-portal-gnome>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+case "$PROJ" in
+    mutter | xdg-desktop-portal-gnome) ;;
+    *)
+        echo "unsupported source project: $PROJ" >&2
+        exit 2
+        ;;
+esac
 SM="$ROOT/subprojects/$PROJ"
 
 TAG="$($ROOT/scripts/gnome-versions.py get "$PROJ" version)"
@@ -39,11 +46,17 @@ mapfile -t PATCHES < <(find "$ROOT/patches/$PROJ" -name '*.patch' | sort)
 echo ">> applying ${#PATCHES[@]} patch(es) to $PROJ"
 if [ "${#PATCHES[@]}" -gt 0 ]; then
     printf '   %s\n' "${PATCHES[@]#$ROOT/}"
-    # Apply with your ambient git identity and config unchanged (no -c overrides,
-    # no signing flags). The patch authorship comes from each file's From: header.
+    # Preserve the patch author from each file's From: header. A clean build
+    # environment may not have a configured committer, so supply a stable build
+    # identity only when Git cannot resolve one from its ambient config.
     # The .patch files under patches/ are the source of truth; these commits are
     # only a staging step before `git archive`/tarball and are never pushed.
-    git -C "$SM" am "${PATCHES[@]}"
+    if git -C "$SM" var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
+        git -C "$SM" am "${PATCHES[@]}"
+    else
+        git -C "$SM" -c user.name='Gnoblin Build' \
+            -c user.email='builds@gnoblin.invalid' am "${PATCHES[@]}"
+    fi
 fi
 
 "$ROOT/scripts/subproject-state.sh" record "$PROJ" "$TAG"
