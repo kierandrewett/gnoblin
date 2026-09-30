@@ -292,6 +292,40 @@ static gboolean parse_cli(Cli* cli, int argc, char** argv, GError** error) {
     return TRUE;
 }
 
+static guint api_minor_for_method(const char* method) {
+    static const struct {
+        const char* name;
+        guint minor;
+    } methods[] = {
+        {"session.logout", 32},
+        {"privacy.stop_sharing", 31},
+        {"privacy.stop_recording", 31},
+        {"session.status", 29},
+        {"session.activity", 24},
+        {"session.lock", 21},
+        {"runtime.reload_config", 20},
+        {"version", 19},
+        {"capabilities.list", 19},
+        {"focus.history", 19},
+        {"focus.policy", 19},
+        {"settings", 19},
+        {"privacy.state", 17},
+        {"permissions.policy", 16},
+        {"grant.list", 14},
+        {"grant.revoke", 14},
+        {"shortcut.list", 9},
+        {"layer.list", 2},
+        {"input.devices", 3},
+    };
+
+    if (g_str_has_prefix(method, "animation."))
+        return 18;
+    for (guint i = 0; i < G_N_ELEMENTS(methods); i++)
+        if (g_str_equal(method, methods[i].name))
+            return methods[i].minor;
+    return 8;
+}
+
 static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                  JsonObject* arguments, GError** error) {
     const char* method_name = method ? method : "";
@@ -324,30 +358,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_set_member_name(builder, "major");
         json_builder_add_int_value(builder, 1);
         json_builder_set_member_name(builder, "minor");
-        json_builder_add_int_value(
-            builder,
-            g_str_equal(method_name, "session.logout")     ? 32
-            : g_str_equal(method_name, "session.activity") ? 24
-            : g_str_equal(method_name, "session.lock")     ? 21
-            : g_str_equal(method_name, "privacy.stop_sharing") ||
-                    g_str_equal(method_name, "privacy.stop_recording")
-                ? 31
-            : g_str_equal(method_name, "session.status")        ? 29
-            : g_str_equal(method_name, "runtime.reload_config") ? 20
-            : g_str_equal(method_name, "version") ||
-                    g_str_equal(method_name, "capabilities.list") ||
-                    g_str_equal(method_name, "focus.history") ||
-                    g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings")
-                ? 19
-            : g_str_has_prefix(method_name, "animation.")    ? 18
-            : g_str_equal(method_name, "privacy.state")      ? 17
-            : g_str_equal(method_name, "permissions.policy") ? 16
-            : g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke")
-                ? 14
-            : g_str_equal(method_name, "shortcut.list") ? 9
-            : g_str_equal(method_name, "layer.list")    ? 2
-            : g_str_equal(method_name, "input.devices") ? 3
-                                                        : 8);
+        json_builder_add_int_value(builder, api_minor_for_method(method_name));
         json_builder_end_object(builder);
     }
     if (method) {
