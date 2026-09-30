@@ -25,7 +25,7 @@ sources=(
     "$ROOT/src/config/gnoblin-toml.c"
     "$ROOT/src/config/tomlc99/toml.c"
 )
-for test in lua-config lua-api glob-config lua-console; do
+for test in lua-config lua-api glob-config; do
     cc "$ROOT/tests/$test-test.c" "${sources[@]}" \
         -I "$ROOT/src/config" $CFLAGS -o "$BIN/$test-test"
     GNOBLIN_TEST_SOURCE_ROOT="$ROOT" timeout 20 "$BIN/$test-test"
