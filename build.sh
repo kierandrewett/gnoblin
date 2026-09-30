@@ -18,7 +18,7 @@ fi
 usage() {
     cat <<'HELP'
 Usage: ./build.sh [--prefix DIR] [--jobs N] [--without-xwayland] [--with-vector-cursors] [--verbose] [--dry-run]
-       ./build.sh [--prefix DIR] --register-session [--gnome-session]
+       ./build.sh [--prefix DIR] --register-session
        ./build.sh [--prefix DIR] --preview [--terminal NAME]
 
 Build Gnoblin using the pinned GNOME sources and installed development libraries.
@@ -31,8 +31,7 @@ The build does not change system packages.
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
   --target NAME       Build a CMake target (default: gnoblin)
-  --register-session  Add the lean login to the login screen
-  --gnome-session     Use GNOME Session and Settings Daemon at login
+  --register-session  Add the standalone Gnoblin login
   --preview           Build the optional viewer if needed, then open it
   --terminal NAME     Terminal to open with --preview (default: first available)
   --help              Show this help
@@ -40,7 +39,7 @@ HELP
 }
 
 jobs="${GNOBLIN_BUILD_JOBS:-4}"
-verbose=false dry_run=false register_session=false preview=false standalone=false gnome_session=false
+verbose=false dry_run=false register_session=false preview=false
 xwayland=true
 vector_cursors=false
 xwayland_selected=false
@@ -69,8 +68,6 @@ while [ "$#" -gt 0 ]; do
         --verbose) verbose=true ;;
         --dry-run) dry_run=true ;;
         --register-session) register_session=true ;;
-        --standalone) standalone=true ;;
-        --gnome-session) gnome_session=true ;;
         --preview) preview=true ;;
         --terminal)
             terminal="${2:?--terminal needs a name}"
@@ -93,18 +90,6 @@ done
 }
 if "$preview" && "$register_session"; then
     echo '--preview and --register-session cannot be combined.' >&2
-    exit 2
-fi
-if "$standalone" && ! "$register_session"; then
-    echo '--standalone requires --register-session.' >&2
-    exit 2
-fi
-if "$gnome_session" && ! "$register_session"; then
-    echo '--gnome-session requires --register-session.' >&2
-    exit 2
-fi
-if "$standalone" && "$gnome_session"; then
-    echo '--standalone and --gnome-session cannot be combined.' >&2
     exit 2
 fi
 if [ -n "$terminal" ] && ! "$preview"; then
@@ -140,9 +125,6 @@ if "$register_session"; then
     if [ ! -f "$prefix/share/wayland-sessions/gnoblin.desktop" ]; then
         echo 'No source build found. Run ./build.sh first.' >&2
         exit 1
-    fi
-    if "$gnome_session"; then
-        exec ./scripts/register-session.sh "$prefix" --gnome-session
     fi
     exec ./scripts/register-session.sh "$prefix"
 fi
