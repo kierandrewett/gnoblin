@@ -3,6 +3,7 @@
 
 import base64
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -11,13 +12,18 @@ import threading
 from pathlib import Path
 
 
-def run(binary: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+def run(
+    binary: str,
+    *arguments: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [binary, *arguments],
         check=False,
         capture_output=True,
         text=True,
         timeout=5,
+        env=env,
     )
 
 
@@ -45,6 +51,18 @@ def main() -> int:
     assert isinstance(component_commits, dict)
     for component in ("mutter", "xdg-desktop-portal-gnome"):
         assert isinstance(component_commits.get(component), str) and component_commits[component], component
+
+    config_path = Path(build_directory) / "test-config" / "init.lua"
+    config_result = run(
+        binary,
+        "--format",
+        "json",
+        "config",
+        "path",
+        env={**os.environ, "GNOBLIN_CONFIG": str(config_path)},
+    )
+    assert config_result.returncode == 0, config_result.stderr
+    assert json.loads(config_result.stdout) == str(config_path)
 
     invalid_result = run(binary, "not-a-command")
     assert invalid_result.returncode != 0
