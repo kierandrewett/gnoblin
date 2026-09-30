@@ -53,12 +53,14 @@ BuildRequires: mesa-libGL-devel
 BuildRequires: mesa-libgbm-devel
 BuildRequires: pam-devel
 BuildRequires: pkgconfig(colord) >= %{colord_version}
+BuildRequires: gnome-desktop4-devel
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
 BuildRequires: pkgconfig(lua)
 BuildRequires: pkgconfig(libwacom)
+BuildRequires: xkeyboard-config-devel
 BuildRequires: pkgconfig(xkbcommon)
 BuildRequires: pkgconfig(glesv2)
 BuildRequires: pkgconfig(graphene-gobject-1.0)
