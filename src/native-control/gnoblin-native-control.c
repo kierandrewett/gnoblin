@@ -5996,12 +5996,12 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
         } else if (g_str_equal(key, "focused")) {
             matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
                       g_variant_get_boolean(value) == focused;
-        } else if (g_str_equal(key, "workspace-id")) {
+        } else if (g_str_equal(key, "workspace_id") || g_str_equal(key, "workspace-id")) {
             const char* expected = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
                                        ? g_variant_get_string(value, NULL)
                                        : NULL;
             matched = expected && workspace_id && g_str_equal(expected, workspace_id);
-        } else if (g_str_equal(key, "workspace-number")) {
+        } else if (g_str_equal(key, "workspace_number") || g_str_equal(key, "workspace-number")) {
             gint64 expected = 0;
             if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
                 expected = g_variant_get_int64(value);

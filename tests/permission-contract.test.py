@@ -38,6 +38,14 @@ class PermissionContractTest(unittest.TestCase):
                 implementation,
             )
 
+    def test_window_rules_accept_public_lua_workspace_field_names(self):
+        start = CONTROL.index("static gboolean native_window_rule_matches(")
+        end = CONTROL.index("static void native_apply_window_rules(", start)
+        implementation = CONTROL[start:end]
+
+        for field in ("workspace_id", "workspace-id", "workspace_number", "workspace-number"):
+            self.assertIn(f'g_str_equal(key, "{field}")', implementation)
+
 
 if __name__ == "__main__":
     unittest.main()
