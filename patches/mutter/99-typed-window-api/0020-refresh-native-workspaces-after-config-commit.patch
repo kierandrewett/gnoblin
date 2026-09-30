@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Mon, 28 Sep 2026 13:22:48 +0100
+Date: Mon, 14 Sep 2026 16:33:21 +0200
 Subject: [PATCH] mutter: preserve native workspace configuration rules
 
 ---
 diff --git a/src/core/util.c b/src/core/util.c
-index 90fff73cf..703fb70ad 100644
+index da1604bc8..03c8e284e 100644
 --- a/src/core/util.c
 +++ b/src/core/util.c
-@@ -850,9 +850,95 @@ meta_gnoblin_call_config_api (const char *method,
+@@ -756,9 +756,95 @@ meta_display_dispatch_gnoblin_shortcut_event (MetaDisplay *display,
  #define GNOBLIN_WORKSPACE_ID "gnoblin-native-id"
  #define GNOBLIN_WORKSPACE_NAME "gnoblin-native-name"
  #define GNOBLIN_WORKSPACE_PERSISTENT "gnoblin-native-persistent"
@@ -104,7 +104,7 @@ index 90fff73cf..703fb70ad 100644
  static const char *
  gnoblin_native_workspace_id (MetaWorkspace *workspace)
  {
-@@ -875,45 +961,256 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+@@ -781,45 +867,256 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
    g_autoptr (GVariant) document =
      gnoblin_native_control_get_config_document (display);
    MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
