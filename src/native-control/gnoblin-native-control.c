@@ -112,6 +112,7 @@ struct _GnoblinNativeControl {
     MetaDisplay* display;
     MetaWaylandCompositor* wayland_compositor;
     MetaWorkspaceManager* workspace_manager;
+    MetaCursorTracker* cursor_tracker;
     MetaMonitorManager* monitor_manager;
     ClutterSeat* input_seat;
     MetaBackend* backend;
@@ -150,6 +151,7 @@ struct _GnoblinNativeControl {
     GArray* workspace_manager_signal_handler_ids;
     GArray* backend_signal_handler_ids;
     GArray* monitor_manager_signal_handler_ids;
+    GArray* cursor_tracker_signal_handler_ids;
     GHashTable* window_signal_handler_ids;
     GQueue* pending_runtime_states;
     GQueue* pending_runtime_events;
@@ -10064,6 +10066,8 @@ static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject
                 event = "mutter.backend.keymap-changed";
             else if (g_str_equal(source, "monitor-manager"))
                 event = "mutter.monitor-manager.monitors-changed";
+            else if (g_str_equal(source, "cursor-tracker"))
+                event = "mutter.cursor-tracker.cursor-changed";
             else
                 continue;
         }
@@ -10153,6 +10157,18 @@ static void refresh_monitor_manager_signal_watches(GnoblinNativeControl* control
         refresh_object_signal_watches(control, G_OBJECT(control->monitor_manager),
                                       "monitor-manager",
                                       control->monitor_manager_signal_handler_ids);
+}
+
+static void clear_cursor_tracker_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->cursor_tracker)
+        clear_object_signal_watches(G_OBJECT(control->cursor_tracker),
+                                    control->cursor_tracker_signal_handler_ids);
+}
+
+static void refresh_cursor_tracker_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->cursor_tracker)
+        refresh_object_signal_watches(control, G_OBJECT(control->cursor_tracker), "cursor-tracker",
+                                      control->cursor_tracker_signal_handler_ids);
 }
 
 static void refresh_window_signal_watches(GnoblinNativeControl* control, MetaWindow* window) {
@@ -11483,6 +11499,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     refresh_workspace_manager_signal_watches(control);
                     refresh_backend_signal_watches(control);
                     refresh_monitor_manager_signal_watches(control);
+                    refresh_cursor_tracker_signal_watches(control);
                 }
             }
             g_clear_pointer(&document, g_variant_unref);
@@ -11627,6 +11644,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->workspace_manager_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->backend_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->monitor_manager_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+    control->cursor_tracker_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->window_signal_handler_ids =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)g_array_unref);
     control->pending_runtime_states = g_queue_new();
@@ -11664,6 +11682,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     g_object_set_data(G_OBJECT(control->display), NATIVE_CONTROL_OBJECT_DATA_KEY, control);
     MetaBackend* backend = meta_context_get_backend(context);
     control->backend = backend;
+    control->cursor_tracker = meta_backend_get_cursor_tracker(backend);
     control->remote_access_controller =
         g_object_ref(meta_backend_get_remote_access_controller(backend));
     control->monitor_manager = meta_backend_get_monitor_manager(backend);
@@ -11982,6 +12001,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         clear_workspace_manager_signal_watches(control);
     clear_backend_signal_watches(control);
     clear_monitor_manager_signal_watches(control);
+    clear_cursor_tracker_signal_watches(control);
     if (control->workspace_manager)
         g_signal_handlers_disconnect_by_data(control->workspace_manager, control);
     if (control->monitor_manager)
@@ -12058,6 +12078,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->workspace_manager_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->backend_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->monitor_manager_signal_handler_ids, g_array_unref);
+    g_clear_pointer(&control->cursor_tracker_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->runtime_reader, gnoblin_runtime_reader_free);
     g_clear_pointer(&control->runtime_writer, gnoblin_runtime_writer_free);
     if (control->pending_runtime_states) {
