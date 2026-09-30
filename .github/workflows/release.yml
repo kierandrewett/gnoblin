@@ -156,6 +156,8 @@ jobs:
           test "${#bundle_roots[@]}" -eq 1
           source_dir="${bundle_roots[0]}/sources"
           test -d "$source_dir"
+          install -m 0644 -- "${source_tarballs[0]}" \
+            "$source_dir/gnoblin-${bundle_roots[0]##*/gnoblin-}-source.tar.xz"
           cd "$GITHUB_WORKSPACE"
           for component in mutter gnoblin-shell gnoblin-portal gnoblin; do
             ./scripts/build-srpm.sh "$component" "$source_dir" "$RUNNER_TEMP/gnoblin-rpms"

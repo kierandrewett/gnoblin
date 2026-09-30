@@ -71,6 +71,9 @@ jobs:
           tar -xf "${source_tarballs[0]}" -C "$RUNNER_TEMP/gnoblin-source-bundle"
           mapfile -t bundle_roots < <(find "$RUNNER_TEMP/gnoblin-source-bundle" -mindepth 1 -maxdepth 1 -type d)
           test "${#bundle_roots[@]}" -eq 1
+          gnoblin_version="${bundle_roots[0]##*/gnoblin-}"
+          gnoblin_source="${bundle_roots[0]}/sources/gnoblin-${gnoblin_version}-source.tar.xz"
+          install -m 0644 -- "release-assets/${source_tarballs[0]}" "$gnoblin_source"
           test -d "${bundle_roots[0]}/sources"
           printf '%s\n' "${bundle_roots[0]}/sources" > "$RUNNER_TEMP/gnoblin-source-directory"
       - name: Build private RPM chain
