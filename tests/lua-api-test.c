@@ -177,15 +177,16 @@ int main(void) {
         "    assert(event.menu_context==nil)\n"
         "  end\n"
         "end)\n"
+        "assert(g.window == nil)\n"
         "local thumbnail_events=0\n"
-        "g.on('gnoblin.window.created', function()\n"
+        "g.on('gnoblin.window.created', function(event)\n"
         "  thumbnail_events=thumbnail_events+1\n"
         "  if thumbnail_events==1 then\n"
-        "    local operation=g.window.thumbnail({id='42',width=320,height=200})\n"
+        "    local operation=event.window:thumbnail({width=320,height=200})\n"
         "    assert(operation.method=='window.thumbnail' and operation.status=='pending')\n"
         "  else\n"
         "    assert(not pcall(function()\n"
-        "      g.window.thumbnail({id='42',width=481,height=200})\n"
+        "      event.window:thumbnail({width=481,height=200})\n"
         "    end))\n"
         "  end\n"
         "end)\n";
@@ -211,11 +212,49 @@ int main(void) {
     g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
     g_assert_cmpstr(error->message, ==, "unknown Gnoblin API method 'window.list'");
     g_clear_error(&error);
+    g_autoptr(GVariant) socket_workspace_operation =
+        gnoblin_config_call_api("workspace.next", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_workspace_operation);
+    g_autoptr(GVariant) socket_workspace_method =
+        g_variant_lookup_value(socket_workspace_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_workspace_method);
+    g_assert_cmpstr(g_variant_get_string(socket_workspace_method, NULL), ==, "workspace.next");
+    GVariantBuilder socket_window_arguments_builder;
+    g_variant_builder_init(&socket_window_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&socket_window_arguments_builder, "{sv}", "id",
+                          g_variant_new_string("42"));
+    g_variant_builder_add(&socket_window_arguments_builder, "{sv}", "enabled",
+                          g_variant_new_boolean(TRUE));
+    g_autoptr(GVariant) socket_window_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&socket_window_arguments_builder));
+    g_autoptr(GVariant) socket_window_operation =
+        gnoblin_config_call_api("window.set_above", socket_window_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_window_operation);
+    g_autoptr(GVariant) socket_window_method =
+        g_variant_lookup_value(socket_window_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_window_method);
+    g_assert_cmpstr(g_variant_get_string(socket_window_method, NULL), ==, "window.set_above");
     g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 0);
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 2);
+    g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
+    g_autoptr(GVariant) queued_window_operation =
+        g_variant_get_child_value(queued_api_operations, 1);
+    g_assert_true(g_variant_equal(socket_workspace_operation, queued_api_operation));
+    g_assert_true(g_variant_equal(socket_window_operation, queued_window_operation));
 
     GVariantBuilder thumbnail_event_builder;
     g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
+    GVariantBuilder thumbnail_window_builder;
+    g_variant_builder_init(&thumbnail_window_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&thumbnail_window_builder, "{sv}", "id", g_variant_new_string("42"));
+    GVariantBuilder thumbnail_frame_builder;
+    g_variant_builder_init(&thumbnail_frame_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&thumbnail_window_builder, "{sv}", "frame",
+                          g_variant_builder_end(&thumbnail_frame_builder));
+    g_variant_builder_add(&thumbnail_event_builder, "{sv}", "window",
+                          g_variant_builder_end(&thumbnail_window_builder));
     g_autoptr(GVariant) thumbnail_event_payload =
         g_variant_ref_sink(g_variant_builder_end(&thumbnail_event_builder));
     g_autoptr(GVariant) thumbnail_event_result =

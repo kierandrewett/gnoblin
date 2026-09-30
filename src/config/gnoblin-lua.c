@@ -4678,6 +4678,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
     for (guint i = 0; api_methods[i]; i++) {
         if (g_str_has_prefix(api_methods[i], "workspace."))
             continue; /* Lua exposes workspace operations through workspaces.*. */
+        if (g_str_has_prefix(api_methods[i], "window."))
+            continue; /* Lua exposes window operations on Window snapshots. */
         if (g_str_equal(api_methods[i], "shortcut.capture") ||
             g_str_equal(api_methods[i], "shortcut.bind") ||
             g_str_equal(api_methods[i], "shortcut.unbind"))
@@ -6244,11 +6246,23 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     guint action_start = config->runtime_actions->len;
     config->actions_in_dispatch = 0;
     config->api_calling = TRUE;
-    lua_getglobal(state, "gnoblin");
-    lua_getfield(state, -1, domain);
-    lua_getfield(state, -1, operation);
+    gboolean native_operation =
+        g_str_has_prefix(method, "workspace.") || g_str_has_prefix(method, "window.");
+    int stack_base = lua_gettop(state);
+    if (native_operation) {
+        lua_pushlightuserdata(state, config);
+        lua_pushstring(state, method);
+        lua_pushcclosure(state,
+                         g_str_has_prefix(method, "workspace.") ? lua_workspace_action
+                                                                : lua_generic_api_action,
+                         2);
+    } else {
+        lua_getglobal(state, "gnoblin");
+        lua_getfield(state, -1, domain);
+        lua_getfield(state, -1, operation);
+    }
     if (!lua_isfunction(state, -1)) {
-        lua_pop(state, 3);
+        lua_settop(state, stack_base);
         config->api_calling = FALSE;
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                     "Lua API method '%s' is not registered", method);
@@ -6260,8 +6274,7 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     if (lua_pcall(state, argument_count, 1, 0) != LUA_OK) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua API method '%s' failed: %s",
                     method, lua_error_text(state));
-        lua_pop(state, 1);
-        lua_pop(state, 2);
+        lua_settop(state, stack_base);
         config->api_calling = FALSE;
         g_ptr_array_set_size(config->runtime_actions, action_start);
         config->actions_in_dispatch = 0;
@@ -6269,8 +6282,7 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     }
     gboolean valid_ticket = lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0 &&
                             config->runtime_actions->len == action_start + 1;
-    lua_pop(state, 1);
-    lua_pop(state, 2);
+    lua_settop(state, stack_base);
     config->api_calling = FALSE;
     config->actions_in_dispatch = 0;
     if (!valid_ticket) {
