@@ -134,8 +134,8 @@
               !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
             ) "wayland-protocols-below-1.48"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.31.0"
-            ) "libinput-below-1.31"
+              !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
+            ) "libinput-below-1.30"
             ++ nixpkgs.lib.optional (
               !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.6.0"
             ) "pipewire-below-1.6";
