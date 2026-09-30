@@ -89,6 +89,7 @@ struct _NativeCornerToolkitCache {
     gint ref_count;
     GnoblinNativeControl* control;
     GHashTable* entries;
+    guint pending_count;
 };
 
 struct _NativeMutterSignalWatch {
@@ -5575,9 +5576,83 @@ enum {
 };
 
 typedef struct {
-    NativeCornerToolkitCache* cache;
     pid_t pid;
+    guint64 start_time;
+} NativeCornerProcessIdentity;
+
+typedef struct {
+    NativeCornerToolkitCache* cache;
+    NativeCornerProcessIdentity identity;
 } NativeCornerToolkitProbe;
+
+static guint native_corner_process_identity_hash(gconstpointer data) {
+    const NativeCornerProcessIdentity* identity = data;
+    guint64 start_time = identity->start_time;
+    guint hash = (guint)identity->pid;
+    hash = hash * 33u + (guint)start_time;
+    hash = hash * 33u + (guint)(start_time >> 32);
+    return hash;
+}
+
+static gboolean native_corner_process_identity_equal(gconstpointer a, gconstpointer b) {
+    const NativeCornerProcessIdentity* left = a;
+    const NativeCornerProcessIdentity* right = b;
+    return left->pid == right->pid && left->start_time == right->start_time;
+}
+
+static gboolean native_corner_process_identity_get(pid_t pid,
+                                                   NativeCornerProcessIdentity* identity) {
+    g_autofree char* path = g_strdup_printf("/proc/%d/stat", pid);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+        return FALSE;
+
+    char stat[4096];
+    ssize_t count;
+    do {
+        count = read(fd, stat, sizeof(stat) - 1);
+    } while (count < 0 && errno == EINTR);
+    close(fd);
+    if (count <= 0)
+        return FALSE;
+    stat[count] = '\0';
+
+    /* comm is parenthesized but may itself contain spaces or ')'. The final
+     * ')' separates it from state (field 3); starttime is field 22. */
+    char* cursor = strrchr(stat, ')');
+    if (!cursor)
+        return FALSE;
+    cursor++;
+    for (guint field = 3; field <= 22; field++) {
+        while (g_ascii_isspace(*cursor))
+            cursor++;
+        if (!*cursor)
+            return FALSE;
+        char* end = cursor;
+        while (*end && !g_ascii_isspace(*end))
+            end++;
+        if (field == 22) {
+            g_autofree char* value = g_strndup(cursor, end - cursor);
+            char* parse_end = NULL;
+            const guint64 start_time = g_ascii_strtoull(value, &parse_end, 10);
+            if (parse_end == value || !parse_end || *parse_end)
+                return FALSE;
+            identity->pid = pid;
+            identity->start_time = start_time;
+            return TRUE;
+        }
+        cursor = end;
+    }
+    return FALSE;
+}
+
+static gpointer native_corner_toolkit_cache_lookup(NativeCornerToolkitCache* cache,
+                                                   const NativeCornerProcessIdentity* identity) {
+    return cache ? g_hash_table_lookup(cache->entries, identity) : NULL;
+}
+
+static void native_corner_toolkit_probe_next(GnoblinNativeControl* control,
+                                             const NativeCornerProcessIdentity* after);
 
 static NativeCornerToolkitCache* native_corner_toolkit_cache_ref(NativeCornerToolkitCache* cache) {
     g_atomic_int_inc(&cache->ref_count);
@@ -5615,7 +5690,7 @@ static void native_corner_toolkit_probe_worker(GTask* task, gpointer source_obje
     (void)source_object;
     (void)cancellable;
     NativeCornerToolkitProbe* probe = task_data;
-    g_autofree char* path = g_strdup_printf("/proc/%d/maps", probe->pid);
+    g_autofree char* path = g_strdup_printf("/proc/%d/maps", probe->identity.pid);
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         /* Restricted /proc access is expected in some sandboxes. Match the
@@ -5656,57 +5731,154 @@ static void native_corner_toolkit_probe_finished(GObject* source_object, GAsyncR
     NativeCornerToolkitProbe* probe = g_task_get_task_data(task);
     NativeCornerToolkitCache* cache = probe->cache;
     GnoblinNativeControl* control = cache->control;
-    const guint toolkit_flags = g_task_propagate_int(task, NULL);
+    g_autoptr(GError) error = NULL;
+    const gssize probe_result = g_task_propagate_int(task, &error);
+    const guint toolkit_flags =
+        probe_result >= 0 ? (guint)probe_result : NATIVE_CORNER_TOOLKIT_NONE;
 
     if (!control || control->stopping || !control->display)
         return;
 
-    g_hash_table_insert(cache->entries, GINT_TO_POINTER(probe->pid),
-                        GUINT_TO_POINTER(toolkit_flags + 1));
+    gpointer previous = native_corner_toolkit_cache_lookup(cache, &probe->identity);
+    if (previous && GPOINTER_TO_UINT(previous) == NATIVE_CORNER_TOOLKIT_PENDING + 1 &&
+        cache->pending_count > 0)
+        cache->pending_count--;
+    NativeCornerProcessIdentity* key = g_new(NativeCornerProcessIdentity, 1);
+    *key = probe->identity;
+    g_hash_table_replace(cache->entries, key, GUINT_TO_POINTER(toolkit_flags + 1));
     GSList* windows = meta_display_list_windows(control->display, META_LIST_DEFAULT);
     for (GSList* link = windows; link; link = link->next) {
         MetaWindow* window = link->data;
-        if (meta_window_get_pid(window) == probe->pid)
+        NativeCornerProcessIdentity current_identity;
+        if (meta_window_get_pid(window) == probe->identity.pid &&
+            native_corner_process_identity_get(probe->identity.pid, &current_identity) &&
+            native_corner_process_identity_equal(&current_identity, &probe->identity))
             native_apply_window_rules(control, window);
     }
     g_slist_free(windows);
+
+    /* A full cache can defer new PIDs while every slot is pending. Walk the
+     * current windows again after each completion, starting after this PID,
+     * and use the newly completed slot as room for the next pending probe. */
+    native_corner_toolkit_probe_next(control, &probe->identity);
 }
 
-static void native_corner_toolkit_probe(GnoblinNativeControl* control, pid_t pid) {
+static gboolean native_corner_toolkit_cache_make_room(NativeCornerToolkitCache* cache) {
+    if (g_hash_table_size(cache->entries) < MAX_CORNER_TOOLKIT_CACHE_ENTRIES)
+        return TRUE;
+    if (cache->pending_count >= MAX_CORNER_TOOLKIT_CACHE_ENTRIES)
+        return FALSE;
+
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, cache->entries);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        if (GPOINTER_TO_UINT(value) != NATIVE_CORNER_TOOLKIT_PENDING + 1) {
+            g_hash_table_iter_remove(&iter);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static gboolean native_corner_toolkit_probe(GnoblinNativeControl* control,
+                                            const NativeCornerProcessIdentity* identity) {
     NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
     if (!cache) {
         cache = g_new0(NativeCornerToolkitCache, 1);
         cache->ref_count = 1;
         cache->control = control;
-        cache->entries = g_hash_table_new(g_direct_hash, g_direct_equal);
+        cache->entries = g_hash_table_new_full(native_corner_process_identity_hash,
+                                               native_corner_process_identity_equal, g_free, NULL);
         control->corner_toolkit_cache = cache;
     }
 
-    if (g_hash_table_size(cache->entries) >= MAX_CORNER_TOOLKIT_CACHE_ENTRIES) {
-        GHashTableIter iter;
-        gpointer value;
-        gboolean has_pending = FALSE;
-        g_hash_table_iter_init(&iter, cache->entries);
-        while (g_hash_table_iter_next(&iter, NULL, &value)) {
-            if (GPOINTER_TO_UINT(value) == NATIVE_CORNER_TOOLKIT_PENDING + 1) {
-                has_pending = TRUE;
-                break;
-            }
-        }
-        if (has_pending)
-            return;
-        g_hash_table_remove_all(cache->entries);
-    }
+    if (native_corner_toolkit_cache_lookup(cache, identity) ||
+        !native_corner_toolkit_cache_make_room(cache))
+        return FALSE;
 
-    g_hash_table_insert(cache->entries, GINT_TO_POINTER(pid),
-                        GUINT_TO_POINTER(NATIVE_CORNER_TOOLKIT_PENDING + 1));
+    NativeCornerProcessIdentity* key = g_new(NativeCornerProcessIdentity, 1);
+    *key = *identity;
+    g_hash_table_insert(cache->entries, key, GUINT_TO_POINTER(NATIVE_CORNER_TOOLKIT_PENDING + 1));
+    cache->pending_count++;
     NativeCornerToolkitProbe* probe = g_new0(NativeCornerToolkitProbe, 1);
     probe->cache = native_corner_toolkit_cache_ref(cache);
-    probe->pid = pid;
+    probe->identity = *identity;
     GTask* task = g_task_new(NULL, NULL, native_corner_toolkit_probe_finished, NULL);
     g_task_set_task_data(task, probe, native_corner_toolkit_probe_free);
     g_task_run_in_thread(task, native_corner_toolkit_probe_worker);
     g_object_unref(task);
+    return TRUE;
+}
+
+static void native_corner_toolkit_probe_next(GnoblinNativeControl* control,
+                                             const NativeCornerProcessIdentity* after) {
+    if (!control || control->stopping || !control->display)
+        return;
+
+    NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
+    if (!cache)
+        return;
+
+    g_autoptr(GPtrArray) identities = g_ptr_array_new_with_free_func(g_free);
+    GSList* windows = meta_display_list_windows(control->display, META_LIST_DEFAULT);
+    for (GSList* link = windows; link; link = link->next) {
+        MetaWindow* window = link->data;
+        const pid_t pid = meta_window_get_pid(window);
+        if (pid <= 0)
+            continue;
+        NativeCornerProcessIdentity current;
+        if (!native_corner_process_identity_get(pid, &current))
+            continue;
+
+        gboolean found = FALSE;
+        for (guint i = 0; i < identities->len; i++) {
+            if (native_corner_process_identity_equal(g_ptr_array_index(identities, i), &current)) {
+                found = TRUE;
+                break;
+            }
+        }
+        if (!found) {
+            NativeCornerProcessIdentity* copy = g_new(NativeCornerProcessIdentity, 1);
+            *copy = current;
+            g_ptr_array_add(identities, copy);
+        }
+    }
+    if (identities->len == 0) {
+        g_slist_free(windows);
+        return;
+    }
+
+    guint start = 0;
+    for (guint i = 0; i < identities->len; i++) {
+        if (native_corner_process_identity_equal(g_ptr_array_index(identities, i), after)) {
+            start = (i + 1) % identities->len;
+            break;
+        }
+    }
+
+    for (guint offset = 0; offset < identities->len; offset++) {
+        const guint index = (start + offset) % identities->len;
+        const NativeCornerProcessIdentity* identity = g_ptr_array_index(identities, index);
+        if (native_corner_toolkit_cache_lookup(cache, identity))
+            continue;
+
+        NativeCornerProcessIdentity current;
+        if (!native_corner_process_identity_get(identity->pid, &current) ||
+            !native_corner_process_identity_equal(&current, identity))
+            continue;
+        const guint pending_before = cache->pending_count;
+        for (GSList* link = windows; link; link = link->next) {
+            MetaWindow* window = link->data;
+            if (meta_window_get_pid(window) == identity->pid)
+                native_apply_window_rules(control, window);
+            if (cache->pending_count > pending_before)
+                break;
+        }
+        if (cache->pending_count > pending_before)
+            break;
+    }
+    g_slist_free(windows);
 }
 
 static gboolean native_corner_toolkit_should_skip(GnoblinNativeControl* control, MetaWindow* window,
@@ -5719,10 +5891,14 @@ static gboolean native_corner_toolkit_should_skip(GnoblinNativeControl* control,
     if (pid <= 0)
         return FALSE;
 
+    NativeCornerProcessIdentity identity;
+    if (!native_corner_process_identity_get(pid, &identity))
+        return FALSE;
+
     NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
-    gpointer encoded = cache ? g_hash_table_lookup(cache->entries, GINT_TO_POINTER(pid)) : NULL;
+    gpointer encoded = native_corner_toolkit_cache_lookup(cache, &identity);
     if (!encoded) {
-        native_corner_toolkit_probe(control, pid);
+        native_corner_toolkit_probe(control, &identity);
         /* Match the old watcher: apply auto mode while detection is pending,
          * then update the actor when the bounded maps scan completes. */
         return FALSE;
