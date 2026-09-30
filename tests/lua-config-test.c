@@ -65,7 +65,8 @@ int main(void) {
     g_assert_cmpint(g_mkdir(conf, 0700), ==, 0);
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
-        nested, "local g=require('gnoblin'); g.set {compositor={['enable-animations']=true}}\n", -1,
+        nested,
+        "local g=require('gnoblin'); g.configure {compositor={['enable-animations']=true}}\n", -1,
         &error));
     g_autofree char* fragment = g_build_filename(conf, "10-bingux.lua", NULL);
     g_assert_true(g_file_set_contents(
@@ -80,7 +81,8 @@ int main(void) {
         "    'seek','step','play','pause','stop'}) do\n"
         "  assert(type(g.animations[name])=='function', 'missing gnoblin.animations.'..name)\n"
         "end\n"
-        "g.set { compositor={['enable-animations']=false}, shortcuts={} }; g.config.autostart={}\n"
+        "g.configure { compositor={['enable-animations']=false}, shortcuts={} }; "
+        "g.config.autostart={}\n"
         "g.animation { name='test-open', event='open', duration=240, from={scale_x=0.8}, "
         "to={scale_x=1} }\n"
         "g.animation { name='test-open', duration=260 }\n"
