@@ -20,7 +20,7 @@ if [[ -n "$PREPARED_SOURCES" ]]; then
         echo "Missing complete Gnoblin source bundle: $gnoblin_source" >&2
         exit 1
     }
-    for project in mutter gnome-shell xdg-desktop-portal-gnome; do
+    for project in mutter xdg-desktop-portal-gnome; do
         version="$($ROOT/scripts/gnome-versions.py get "$project" version)"
         archive="$project"
         if [[ "$project" == gnome-shell ]]; then archive=gnoblin-shell; fi
@@ -33,12 +33,11 @@ if [[ -n "$PREPARED_SOURCES" ]]; then
     done
 else
     git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
-    for project in mutter gnome-shell xdg-desktop-portal-gnome; do
+    for project in mutter xdg-desktop-portal-gnome; do
         "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
     done
 fi
 "$ROOT/scripts/stage-rpm-sources.sh" mutter "$SOURCES"
-"$ROOT/scripts/stage-rpm-sources.sh" gnome-shell "$SOURCES"
 
 build() {
     local spec="$1"
@@ -62,7 +61,6 @@ mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-
 ((${#mutter_rpms[@]} == 2))
 install_output "${mutter_rpms[@]}"
 
-build gnoblin-shell.spec --with gnoblin_stack
 build gnoblin-portal.spec
 build gnoblin.spec
 

@@ -17,7 +17,6 @@ esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SPECS=(
     "$ROOT/packaging/opensuse/mutter.spec"
-    "$ROOT/packaging/opensuse/gnoblin-shell.spec"
     "$ROOT/packaging/opensuse/gnoblin-portal.spec"
     "$ROOT/packaging/opensuse/gnoblin.spec"
 )
