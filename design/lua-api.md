@@ -198,7 +198,6 @@ consumed by Mutter during capture and are not sent to Lua.
 | `gnoblin.layers` | `list(filter?)` | **Current subset; native runtime only.** Read-only revisioned layer-surface records; filters match `monitor_id`, `namespace`, and `layer` exactly. |
 | `gnoblin.input` | `devices()`, `sources()`, `current_source()`, `select_source(selector)` | **Current subset; native runtime only.** Read-only device/source snapshots and XKB source selection. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
-| `gnoblin.set(settings)` | `(Settings) -> nil` | **Current but deprecated.** Use `gnoblin.configure(settings)`. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
 | `gnoblin.permission_rule(rule)` | `(PermissionRule) -> nil` | **Current and retained.** Append a portal permission rule. |
 | `gnoblin.shortcut(entry)` | `(Shortcut) -> nil` | **Current compatibility helper.** Prefer `gnoblin.configure {shortcuts = {...}}`. |
