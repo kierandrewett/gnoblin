@@ -41,6 +41,7 @@ static const CommandSpec commands[] = {
     {"focus", "history policy"},
     {"reload", NULL},
     {"logout", NULL},
+    {"session", "activity lock"},
     {"privacy", NULL},
     {"permissions", "list policy check"},
     {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
@@ -311,6 +312,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "permissions.policy") ||
         g_str_equal(method_name, "privacy.state") || g_str_equal(method_name, "version") ||
         g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
+        g_str_equal(method_name, "session.activity") || g_str_equal(method_name, "session.lock") ||
         g_str_equal(method_name, "capabilities.list") ||
         g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
         g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
@@ -321,6 +323,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_add_int_value(builder, 1);
         json_builder_set_member_name(builder, "minor");
         json_builder_add_int_value(builder, g_str_equal(method_name, "session.logout")          ? 32
+                                            : g_str_equal(method_name, "session.activity")      ? 24
+                                            : g_str_equal(method_name, "session.lock")          ? 21
                                             : g_str_equal(method_name, "session.status")        ? 29
                                             : g_str_equal(method_name, "runtime.reload_config") ? 20
                                             : g_str_equal(method_name, "version") ||
@@ -613,7 +617,7 @@ static gboolean validate_cli(Cli* cli, GError** error) {
     }
     if (spec->actions && cli->action &&
         word_in("list current next previous surfaces path default show reload capture status "
-                "policy history",
+                "activity lock policy history",
                 cli->action) &&
         arg_count(cli) != 0) {
         g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE, "%s %s takes no arguments",
@@ -1066,6 +1070,10 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         method = "privacy.state";
     else if (is(command, "reload"))
         method = "runtime.reload_config";
+    else if (is(command, "session") && is(action, "activity"))
+        method = "session.activity";
+    else if (is(command, "session") && is(action, "lock"))
+        method = "session.lock";
     else if (is(command, "status"))
         method = "session.status";
     else if (is(command, "logout"))

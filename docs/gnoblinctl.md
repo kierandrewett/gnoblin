@@ -29,6 +29,8 @@ Run commands from a terminal inside Gnoblin:
 | ----------------------------- | ----------------------------------------------------- |
 | `gnoblinctl status`           | Check the running session and lock-state availability |
 | `gnoblinctl logout`           | End the session and return to the login manager       |
+| `gnoblinctl session activity` | Read the latest idle-monitor sample                   |
+| `gnoblinctl session lock`     | Ask a subscribed shell client to lock the session     |
 | `gnoblinctl window list`      | Find open windows and their IDs                       |
 | `gnoblinctl window match`     | Show the values a window rule can match               |
 | `gnoblinctl layer list`       | Find layer-surface namespaces                         |
@@ -299,6 +301,8 @@ clicked window with an XDG Activation token through the
 | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `status`                                                          | Read live session state and lock availability (API 1.29+)                                |
 | `logout`                                                          | End the session and return to the login manager (API 1.32+)                              |
+| `session activity`                                                | Read the latest idle-monitor sample (API 1.24+)                                          |
+| `session lock`                                                    | Ask a subscribed shell client to lock the session (API 1.21+)                            |
 | `ping`                                                            | Check whether the compositor control socket responds                                     |
 | `version`                                                         | Read the running compositor build identity                                               |
 | `config path`, `config default`, `config show`, `config reload`   | Find, print, inspect, or reload the active configuration                                 |
@@ -316,6 +320,12 @@ clicked window with an XDG Activation token through the
 | `launch status`                                                   | List pending launch feedback                                                             |
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
 | `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
+
+`session activity` reports the latest native idle-monitor sample. If the
+session has no idle monitor, the response reports that activity data is
+unavailable. `session lock` requests a lock from a subscribed external shell
+client. A successful request means the client received it; use the session
+lock state to confirm that the screen is locked.
 
 In a standalone native session, `gnoblinctl config reload` applies changes to:
 
