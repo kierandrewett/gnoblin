@@ -1333,13 +1333,22 @@ static void print_table(JsonArray* array) {
 
     JsonObject* first_object = json_node_get_object(first);
     g_autoptr(GPtrArray) fields = g_ptr_array_new_with_free_func(g_free);
-    if (json_object_has_member(first_object, "appId")) {
-        const char* with_monitor_id[] = {"id",           "focused", "workspace", "monitorId",
-                                         "monitorIndex", "appId",   "title"};
-        const char* without_monitor_id[] = {"id",           "focused", "workspace",
-                                            "monitorIndex", "appId",   "title"};
-        gboolean has_monitor_id = json_object_has_member(first_object, "monitorId");
+    if (json_object_has_member(first_object, "app_id") ||
+        json_object_has_member(first_object, "appId")) {
+        const gboolean snake_case = json_object_has_member(first_object, "app_id");
+        const char* with_monitor_id[] = {
+            "id", "focused", "workspace", "monitor_id", "monitor_index", "app_id", "title"};
+        const char* without_monitor_id[] = {"id",     "focused", "workspace", "monitor_index",
+                                            "app_id", "title"};
+        const char* legacy_with_monitor_id[] = {"id",           "focused", "workspace", "monitorId",
+                                                "monitorIndex", "appId",   "title"};
+        const char* legacy_without_monitor_id[] = {"id",           "focused", "workspace",
+                                                   "monitorIndex", "appId",   "title"};
+        gboolean has_monitor_id =
+            json_object_has_member(first_object, snake_case ? "monitor_id" : "monitorId");
         const char* const* ordered = has_monitor_id ? with_monitor_id : without_monitor_id;
+        if (!snake_case)
+            ordered = has_monitor_id ? legacy_with_monitor_id : legacy_without_monitor_id;
         guint ordered_count =
             has_monitor_id ? G_N_ELEMENTS(with_monitor_id) : G_N_ELEMENTS(without_monitor_id);
         for (guint i = 0; i < ordered_count; i++)
