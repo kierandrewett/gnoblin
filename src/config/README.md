@@ -64,8 +64,9 @@ layer-shell use, and CLI preview commands.
 
 Declarations copy their input. Gnoblin converts setting names from
 `snake_case` to its internal hyphenated form. Keybinding action names stay
-`snake_case` until the shell maps them to GSettings. Renderer and shader
-uniform names stay literal.
+`snake_case` in the Lua document; native control resolves them to GSettings
+keys when it applies the configuration. Renderer and shader uniform names
+stay literal.
 
 Use `gnoblin.load('conf.d/**/*.lua')` to load sorted fragments in the same
 state. `require()` evaluates each module once per reload and returns the cached

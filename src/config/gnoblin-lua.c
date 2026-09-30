@@ -3054,7 +3054,7 @@ static gboolean is_keybinding_action_name(const char* key) {
 }
 
 /* Public declarations use Lua identifiers. Keep keybinding action names in
- * snake_case until the shell maps them to their native GSettings names. */
+ * snake_case until native control maps them to their GSettings keys. */
 static void push_settings(lua_State* state, int source, const char* parent, int depth,
                           int keybinding_depth) {
     if (depth > MAX_CONFIG_DEPTH)
