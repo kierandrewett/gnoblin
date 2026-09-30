@@ -93,7 +93,8 @@ jobs:
             find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' \
+              -name 'gnoblin-portal-[0-9]*.rpm' -o \
+              -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
           python3 scripts/check-rpm-isolation.py "${rpms[@]}"
@@ -128,7 +129,8 @@ jobs:
             find rpms -type f \( \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' \
+              -name 'gnoblin-portal-[0-9]*.rpm' -o \
+              -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
           mapfile -t runtime_rpms < <(
@@ -153,8 +155,7 @@ jobs:
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1
           test -f /usr/share/wayland-sessions/gnoblin.desktop
-          grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
-          test -f /usr/lib/systemd/user/org.gnoblin.Shell.target
+          grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
           for stock_package in gdm gnome-session gnome-shell mutter gnome-settings-daemon xdg-desktop-portal-gnome; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
@@ -175,7 +176,6 @@ jobs:
           zypper --non-interactive remove \
             gnoblin-gnome-integration gnoblin gnoblin-portal gnoblin-mutter
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
-          ! test -e /usr/lib/systemd/user/org.gnoblin.Shell.target
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
           rpm -q gnome-session gnome-shell mutter
           rpm -V gnome-session gnome-shell mutter
