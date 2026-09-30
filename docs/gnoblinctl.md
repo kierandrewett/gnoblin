@@ -313,6 +313,8 @@ clicked window with an XDG Activation token through the
 | `input list`, `input current`                                     | Inspect configured and selected keyboard sources                                         |
 | `input select TYPE ID`                                            | Select an exact source from `input list`                                                 |
 | `privacy`                                                         | Read the privacy activity sources available in this session                              |
+| `privacy stop-sharing`                                            | Ask Mutter to stop tracked screen-sharing sessions (API 1.31+)                           |
+| `privacy stop-recording`                                          | Ask Mutter to stop tracked recording sessions (API 1.31+)                                |
 | `permissions list`                                                | Read portal rules and capabilities                                                       |
 | `permissions policy`                                              | Read the committed policy and its revision (native-control API 1.16+)                    |
 | `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…`                                        |
@@ -326,6 +328,10 @@ session has no idle monitor, the response reports that activity data is
 unavailable. `session lock` requests a lock from a subscribed external shell
 client. A successful request means the client received it; use the session
 lock state to confirm that the screen is locked.
+
+The privacy stop commands ask Mutter to stop matching tracked sessions. Their
+`requested` count reports how many stop calls were issued; it does not confirm
+that the sessions have closed. They do not revoke saved portal grants.
 
 In a standalone native session, `gnoblinctl config reload` applies changes to:
 
