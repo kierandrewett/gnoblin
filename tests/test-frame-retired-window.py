@@ -1,72 +1,76 @@
 #!/usr/bin/env python3
-"""Frame queries must be safe while a destroyed Wayland window is retained."""
+"""Race native window snapshots against Wayland window destruction."""
 
+import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
-import json
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
-repo = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
+GNOBLINCTL = Path(os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or ROOT / "build/ninja/gnoblinctl")
+assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"), "Run inside a supervised Gnoblin session"
+
 root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
-scripts = root / "scripts"
-scripts.mkdir(parents=True, exist_ok=True)
-(scripts / "retired-window.js").write_text("""import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-export default function(api) {
- const path = GLib.build_filenamev([GLib.get_user_config_dir(),'gnoblin','retired-window.json']);
- const timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20, () => {
-  const window = global.get_window_actors().map(a => a.meta_window).find(w => w.title === 'Retired frame query');
-  if (!window) return GLib.SOURCE_CONTINUE;
-  let duringSupported = null;
-  const unmanaging = window.connect('unmanaging', () => {
-   duringSupported = Meta.gnoblin_window_frame_get(window).recursiveUnpack().supported;
-  });
-  const signal = window.connect('unmanaged', () => {
-   window.disconnect(unmanaging);
-   window.disconnect(signal);
-   GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-    const layout = Meta.gnoblin_window_frame_get(window).recursiveUnpack();
-    GLib.file_set_contents(path, JSON.stringify({retired:true,duringSupported,supported:layout.supported}));
-    return GLib.SOURCE_REMOVE;
-   });
-  });
-  GLib.file_set_contents(path, JSON.stringify({watching:true}));
-  return GLib.SOURCE_REMOVE;
- });
-}
-""")
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
+root.mkdir(parents=True, exist_ok=True)
 qml = root / "retired.qml"
-qml.write_text("""import QtQuick
+qml.write_text(
+    """import QtQuick
 import Quickshell
-ShellRoot { FloatingWindow { visible:true; title:"Retired frame query";
- implicitWidth:320; implicitHeight:240; color:"white" } }
-""")
-result = root / "retired-window.json"
+ShellRoot {
+    FloatingWindow {
+        visible: true
+        title: "Retired frame query"
+        implicitWidth: 320
+        implicitHeight: 240
+        color: "white"
+    }
+}
+"""
+)
 
 
-def wait_for(key):
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        if result.exists():
-            record = json.loads(result.read_text())
-            if record.get(key):
-                return record
-        time.sleep(0.05)
-    raise AssertionError("Missing retired-window result: " + key)
+def windows():
+    result = subprocess.run(
+        [str(GNOBLINCTL), "--json", "window", "list"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    return json.loads(result.stdout)["windows"]
+
+
+def target_window():
+    return next((window for window in windows() if window["title"] == "Retired frame query"), None)
 
 
 with (root / "retired-client.log").open("w") as log:
     client = subprocess.Popen([os.environ.get("QS_TEST_BIN", "qs"), "-p", str(qml)], stdout=log, stderr=log)
     try:
-        wait_for("watching")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and target_window() is None:
+            time.sleep(0.03)
+        assert target_window(), "Wayland test window did not appear in native snapshots"
+
+        for _ in range(5):
+            windows()
         client.terminate()
         client.wait(timeout=5)
-        record = wait_for("retired")
-        assert record["supported"] is False and record["duringSupported"] is False, record
-        print("PASS: frame query after Wayland surface destruction returns unsupported")
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and target_window() is not None:
+            windows()
+            time.sleep(0.02)
+        assert target_window() is None, "Destroyed window remained in native snapshots"
+        assert (
+            subprocess.run(
+                [str(GNOBLINCTL), "ping"], check=True, capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+            == "pong"
+        )
+        print("PASS: native window snapshots tolerate Wayland window retirement")
     finally:
         if client.poll() is None:
             client.terminate()
