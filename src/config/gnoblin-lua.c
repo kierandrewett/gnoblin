@@ -873,7 +873,8 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
     if (!has_id)
         return;
     lua_getfield(state, backing, "frame");
-    gboolean is_window = lua_istable(state, -1);
+    gboolean is_window = lua_istable(state, -1) ||
+                         luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE) != NULL;
     lua_pop(state, 1);
     lua_getfield(state, backing, "number");
     gboolean is_workspace = lua_isinteger(state, -1);

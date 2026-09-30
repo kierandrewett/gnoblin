@@ -665,6 +665,21 @@ int main(void) {
         "  assert(latest.location_in_use==nil)\n"
         "  assert(not latest.available.microphone_in_use and not latest.available.camera_in_use)\n"
         "  assert(not latest.available.location_in_use)\n"
+        "end)\n"
+        "g.on('test.snapshot_methods', function()\n"
+        "  local window=assert(g.windows.by_id('window-1'))\n"
+        "  assert(window:set_above(true).method=='window.set_above')\n"
+        "  local workspace=assert(g.workspaces.active())\n"
+        "  assert(workspace.id=='workspace-1' and workspace.name=='Main')\n"
+        "  assert(g.workspaces.by_id('workspace-1'):rename('Work').method=='workspace.rename')\n"
+        "  assert(g.workspaces.list()[1]:activate().method=='workspace.switch')\n"
+        "  assert(workspace:remove().method=='workspace.remove')\n"
+        "  assert(workspace:move_here(window,{follow=true}).method=='workspace.move_window')\n"
+        "  "
+        "assert(g.workspaces.create({name='Terminal',id='terminal',activate=true}).method=='"
+        "workspace.create')\n"
+        "  assert(g.workspaces.next().method=='workspace.next')\n"
+        "  assert(g.workspaces.previous().method=='workspace.previous')\n"
         "end)\n";
     g_assert_true(g_file_set_contents(explicit_root, privacy_source, -1, &error));
     g_clear_pointer(&document, g_variant_unref);
@@ -717,6 +732,14 @@ int main(void) {
                           g_variant_new_string("workspace-1"));
     g_variant_builder_add(&window_record_builder, "{sv}", "monitor_id",
                           g_variant_new_string("monitor-1"));
+    GVariantBuilder frame_builder;
+    g_variant_builder_init(&frame_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&frame_builder, "{sv}", "x", g_variant_new_int64(0));
+    g_variant_builder_add(&frame_builder, "{sv}", "y", g_variant_new_int64(0));
+    g_variant_builder_add(&frame_builder, "{sv}", "width", g_variant_new_int64(800));
+    g_variant_builder_add(&frame_builder, "{sv}", "height", g_variant_new_int64(600));
+    g_variant_builder_add(&window_record_builder, "{sv}", "frame",
+                          g_variant_builder_end(&frame_builder));
     GVariantBuilder windows_builder;
     g_variant_builder_init(&windows_builder, G_VARIANT_TYPE("av"));
     g_variant_builder_add(&windows_builder, "v", g_variant_builder_end(&window_record_builder));
@@ -727,6 +750,49 @@ int main(void) {
     g_autoptr(GVariant) window_snapshot =
         g_variant_ref_sink(g_variant_builder_end(&window_snapshot_builder));
     gnoblin_config_update_window_snapshot(window_snapshot, 17);
+
+    GVariantBuilder workspace_record_builder;
+    g_variant_builder_init(&workspace_record_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "id",
+                          g_variant_new_string("workspace-1"));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "name", g_variant_new_string("Main"));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "number", g_variant_new_int64(1));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "active", g_variant_new_boolean(TRUE));
+    GVariantBuilder workspaces_builder;
+    g_variant_builder_init(&workspaces_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&workspaces_builder, "v",
+                          g_variant_builder_end(&workspace_record_builder));
+    GVariantBuilder workspace_snapshot_builder;
+    g_variant_builder_init(&workspace_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&workspace_snapshot_builder, "{sv}", "workspaces",
+                          g_variant_builder_end(&workspaces_builder));
+    g_autoptr(GVariant) workspace_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&workspace_snapshot_builder));
+    gnoblin_config_update_workspace_snapshot(workspace_snapshot, 17);
+
+    GVariantBuilder snapshot_methods_payload_builder;
+    g_variant_builder_init(&snapshot_methods_payload_builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) snapshot_methods_payload =
+        g_variant_ref_sink(g_variant_builder_end(&snapshot_methods_payload_builder));
+    g_autoptr(GVariant) snapshot_methods_result =
+        gnoblin_config_dispatch_event("test.snapshot_methods", snapshot_methods_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(snapshot_methods_result);
+    g_autoptr(GVariant) snapshot_method_operations = gnoblin_config_drain_runtime_operations();
+    const char* const expected_snapshot_methods[] = {
+        "window.set_above",      "workspace.rename", "workspace.switch", "workspace.remove",
+        "workspace.move_window", "workspace.create", "workspace.next",   "workspace.previous",
+    };
+    g_assert_cmpuint(g_variant_n_children(snapshot_method_operations), ==,
+                     G_N_ELEMENTS(expected_snapshot_methods));
+    for (gsize i = 0; i < G_N_ELEMENTS(expected_snapshot_methods); i++) {
+        g_autoptr(GVariant) operation = g_variant_get_child_value(snapshot_method_operations, i);
+        g_autoptr(GVariant) method =
+            g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
+        g_assert_nonnull(method);
+        g_assert_cmpstr(g_variant_get_string(method, NULL), ==, expected_snapshot_methods[i]);
+    }
+    gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder read_filter_builder;
     g_variant_builder_init(&read_filter_builder, G_VARIANT_TYPE_VARDICT);
