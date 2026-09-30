@@ -10178,10 +10178,26 @@ static void clear_all_workspace_signal_watches(GnoblinNativeControl* control) {
     g_hash_table_remove_all(control->workspace_signal_handler_ids);
 }
 
+static gboolean workspace_signal_subscribed(GnoblinNativeControl* control) {
+    if (!control || !control->runtime_event_subscriptions)
+        return FALSE;
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, control->runtime_event_subscriptions);
+    while (g_hash_table_iter_next(&iter, &key, NULL)) {
+        const char* event = key;
+        if (g_str_equal(event, "*") || g_str_has_prefix(event, "mutter.workspace."))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 static void refresh_all_workspace_signal_watches(GnoblinNativeControl* control) {
     if (!control || !control->workspace_manager || !control->workspace_signal_handler_ids)
         return;
     clear_all_workspace_signal_watches(control);
+    if (!workspace_signal_subscribed(control))
+        return;
     int count = meta_workspace_manager_get_n_workspaces(control->workspace_manager);
     for (int index = 0; index < count; index++) {
         MetaWorkspace* workspace =
