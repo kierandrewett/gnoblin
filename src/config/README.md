@@ -54,7 +54,7 @@ The supported event names are:
 
 - Window: `minimize`, `restore`, `open`, `close`.
 - Dialog: `dialog-open`, `dialog-close`, `dialog-dim`, `dialog-undim`.
-- Layer surface: `layer-open`, `layer-close`, `layer-companion-close`.
+- Layer surface: `layer-open`, `layer-close`.
 - Workspace: `workspace-switch`.
 - Effects: `shadow-change`, `resize`, `tile-preview-open`,
   `tile-preview-close`.
