@@ -47,7 +47,7 @@ static const CommandSpec commands[] = {
     {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
                "focus close minimize toggle-minimize restore-or-minimize restore maximize "
                "unmaximize fullscreen "
-               "unfullscreen move resize monitor workspace"},
+               "unfullscreen move resize monitor workspace thumbnail"},
     {"layer", "list"},
     {"completion", NULL},
     {"shortcut", "actions list capture"},
@@ -300,6 +300,7 @@ static guint api_minor_for_method(const char* method) {
         {"session.logout", 32},
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},
+        {"window.thumbnail", 23},
         {"shortcut.actions", 5},
         {"shortcut.list", 9},
         {"session.status", 29},
@@ -315,7 +316,6 @@ static guint api_minor_for_method(const char* method) {
         {"permissions.policy", 16},
         {"grant.list", 14},
         {"grant.revoke", 14},
-        {"shortcut.list", 9},
         {"layer.list", 2},
         {"input.devices", 3},
     };
@@ -342,8 +342,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_set_member_name(builder, "method");
         json_builder_add_string_value(builder, method_name);
     }
-    if (g_str_equal(method_name, "layer.list") || g_str_equal(method_name, "input.devices") ||
-        g_str_equal(method_name, "shortcut.actions") ||
+    if (g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "layer.list") ||
+        g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
         g_str_equal(method_name, "permissions.policy") ||
@@ -400,6 +400,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
     }
 
     gboolean waits_for_operation =
+        g_str_equal(method_name, "window.thumbnail") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
         g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
@@ -605,6 +606,7 @@ static gboolean validate_cli(Cli* cli, GError** error) {
     if (g_strcmp0(cli->command, "window") == 0)
         extra = g_strcmp0(cli->action, "list") == 0        ? "app-id title focused"
                 : g_strcmp0(cli->action, "workspace") == 0 ? "id number"
+                : g_strcmp0(cli->action, "thumbnail") == 0 ? "output width height"
                                                            : NULL;
     else if (g_strcmp0(cli->command, "workspace") == 0)
         extra = g_strcmp0(cli->action, "create") == 0   ? "name id activate"
@@ -834,6 +836,26 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 json_object_set_object_member(arguments, "workspace", selector);
                 method = "window.move_to_workspace";
             }
+        } else if (is(action, "thumbnail")) {
+            if (!require_count(cli, 1, 1, error))
+                goto invalid;
+            if (!option(cli, "output") || !*option(cli, "output")) {
+                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                    "window thumbnail requires --output PATH");
+                goto invalid;
+            }
+            guint width = 320;
+            guint height = 200;
+            if ((option(cli, "width") && !parse_uint(option(cli, "width"), 1, 480, &width)) ||
+                (option(cli, "height") && !parse_uint(option(cli, "height"), 1, 320, &height))) {
+                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                    "thumbnail bounds must be width 1..480 and height 1..320");
+                goto invalid;
+            }
+            set_string(arguments, "id", arg(cli, 0));
+            set_number(arguments, "width", width);
+            set_number(arguments, "height", height);
+            method = "window.thumbnail";
         } else if (action) {
             guint count = is(action, "move") || is(action, "resize") ? 3
                           : is(action, "monitor")                    ? 2
@@ -1155,6 +1177,55 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         return NULL;
     }
     JsonObject* response = json_node_get_object(reply);
+    if (is(command, "window") && is(action, "thumbnail")) {
+        const char* encoded = member_string(response, "data", NULL);
+        const char* window_id = member_string(response, "window_id", NULL);
+        gint64 width = json_object_get_int_member_with_default(response, "width", 0);
+        gint64 height = json_object_get_int_member_with_default(response, "height", 0);
+        guint requested_width = 320;
+        guint requested_height = 200;
+        if ((option(cli, "width") && !parse_uint(option(cli, "width"), 1, 480, &requested_width)) ||
+            (option(cli, "height") &&
+             !parse_uint(option(cli, "height"), 1, 320, &requested_height))) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "Invalid thumbnail dimensions");
+            return NULL;
+        }
+        gsize image_length = 0;
+        g_autofree guchar* image = encoded ? g_base64_decode(encoded, &image_length) : NULL;
+        static const guchar png_signature[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+
+        if (!window_id || !g_str_equal(window_id, arg(cli, 0)) || width < 1 || width > 480 ||
+            height < 1 || height > 320 || width > requested_width || height > requested_height ||
+            !image || image_length < 24 || image_length > 512 * 1024 ||
+            memcmp(image, png_signature, sizeof png_signature) != 0) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "Compositor returned an invalid window thumbnail");
+            return NULL;
+        }
+        guint32 png_width = ((guint32)image[16] << 24) | ((guint32)image[17] << 16) |
+                            ((guint32)image[18] << 8) | image[19];
+        guint32 png_height = ((guint32)image[20] << 24) | ((guint32)image[21] << 16) |
+                             ((guint32)image[22] << 8) | image[23];
+        if (png_width != (guint32)width || png_height != (guint32)height) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "Thumbnail dimensions do not match the PNG image");
+            return NULL;
+        }
+
+        g_autoptr(GFile) output = g_file_new_for_commandline_arg(option(cli, "output"));
+        if (!g_file_replace_contents(output, (const char*)image, image_length, NULL, FALSE,
+                                     G_FILE_CREATE_PRIVATE, NULL, NULL, error))
+            return NULL;
+
+        JsonObject* result = json_object_new();
+        json_object_set_string_member(result, "path", option(cli, "output"));
+        json_object_set_int_member(result, "width", width);
+        json_object_set_int_member(result, "height", height);
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
+    }
     if (is(command, "version"))
         return json_node_copy(reply);
     if (is(command, "ping"))
@@ -1454,6 +1525,8 @@ static const char* action_usage(const char* command, const char* action) {
             return "WINDOW X Y";
         if (g_str_equal(action, "resize"))
             return "WINDOW WIDTH HEIGHT";
+        if (g_str_equal(action, "thumbnail"))
+            return "WINDOW --output PATH [--width 1..480] [--height 1..320]";
         if (g_str_equal(action, "monitor"))
             return "WINDOW CONNECTOR_ID_OR_INDEX";
         if (g_str_equal(action, "workspace"))
