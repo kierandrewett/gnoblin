@@ -5223,7 +5223,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
                   control && control->clients ? g_hash_table_size(control->clients) : 0);
     }
     JsonObject* object = json_node_get_object(payload);
-    const char* name = json_object_get_string_member_with_default(object, "name", NULL);
+    const char* borrowed_name = json_object_get_string_member_with_default(object, "name", NULL);
+    g_autofree char* name = g_strdup(borrowed_name);
     if (!name)
         return;
 
