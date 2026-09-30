@@ -1,0 +1,61 @@
+name: Gnoblin Lua runtime validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native-runtime:
+    runs-on: ubuntu-latest
+    container: fedora:45
+    timeout-minutes: 120
+    steps:
+      - name: Install checkout and build tools
+        run: dnf -y install git
+
+      - name: Checkout Gnoblin and pinned sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          source scripts/build-deps.sh
+          source /etc/os-release
+          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
+
+      - name: Build all targets as an unprivileged user
+        run: |
+          useradd --create-home builder
+          builder_uid="$(id -u builder)"
+          install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            GNOBLIN_BUILD_JOBS="$(nproc)" \
+            ./build.sh --target all
+
+      - name: Verify standalone artifacts
+        run: |
+          test -x "$GITHUB_WORKSPACE/install/bin/gnoblin"
+          test -x "$GITHUB_WORKSPACE/install/bin/gnoblinctl"
+          test -x "$GITHUB_WORKSPACE/install/bin/gnoblin-mutter"
+          test ! -e "$GITHUB_WORKSPACE/install/bin/gnome-shell"
+
+      - name: Run native runtime and Lua API tests
+        run: |
+          builder_uid="$(id -u builder)"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="/run/user/$builder_uid" \
+            ctest --test-dir "$GITHUB_WORKSPACE/build/ninja" --output-on-failure
