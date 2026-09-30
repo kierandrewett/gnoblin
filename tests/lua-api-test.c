@@ -181,6 +181,24 @@ int main(void) {
     g_assert_no_error(error);
     g_assert_nonnull(menu_runtime);
     gnoblin_config_finish_load(TRUE);
+
+    GVariantBuilder api_arguments_builder;
+    g_variant_builder_init(&api_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) api_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&api_arguments_builder));
+    g_autoptr(GVariant) api_operation =
+        gnoblin_config_call_api("workspace.list", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(api_operation);
+    g_autoptr(GVariant) api_method =
+        g_variant_lookup_value(api_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(api_method);
+    g_assert_cmpstr(g_variant_get_string(api_method, NULL), ==, "workspace.list");
+    g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 1);
+    g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
+    g_assert_true(g_variant_equal(api_operation, queued_api_operation));
+
     GVariantBuilder menu_event;
     g_variant_builder_init(&menu_event, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&menu_event, "{sv}", "window_id", g_variant_new_string("42"));

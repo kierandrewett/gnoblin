@@ -6270,7 +6270,6 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     }
     GVariant* operation_call =
         g_variant_ref(g_ptr_array_index(config->runtime_actions, action_start));
-    g_ptr_array_remove_index(config->runtime_actions, action_start);
     return operation_call;
 }
 
